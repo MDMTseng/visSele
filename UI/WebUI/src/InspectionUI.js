@@ -12,6 +12,7 @@ import dateFormat from "dateformat";
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI ,SLID_UI} from './component/rdxComponent.jsx';
 import { UINSP_ESP32_MINI, UINSP_ESP32_UI } from './component/uInspESP32_UI.jsx';
+import { StationRegionPanel } from './component/StationRegionPanel.jsx';
 import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -822,6 +823,41 @@ class ObjInfoList extends React.Component {
     </SubMenu>
 
 
+    // The station -- inspection region + clean-space regions. Another NEW block,
+    // and it lives HERE rather than in the def editor on purpose: these describe
+    // where the part sits when the camera fires and which patch of plate has to
+    // be empty. That is the machine, not the product, so it is authored on the
+    // live image and stored in machine_setting.json. Everything is in
+    // component/StationRegionPanel.jsx.
+    let stationUI =
+    <SubMenu style={{ 'textAlign': 'left' }} key={"station"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
+      title={<Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>}
+      >
+        <StationRegionPanel
+          ecCanvas={this.ec_canvas}
+          machineSetting={this.props.machine_custom_setting}
+          onApply={(patch) => {
+            // Live first: setup_machine_setting() on the core re-reads
+            // inspection_region and it takes effect on the very next frame,
+            // with no def reload and no restart.
+            this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+              { MachineSetting: { ...this.props.machine_custom_setting, ...patch } });
+          }}
+          onSave={(setting) => {
+            let _s = { ...setting };
+            Object.keys(_s).forEach(k => { if (k.startsWith("_")) delete _s[k]; });
+            this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
+              { filename: "data/machine_setting.json" },
+              new TextEncoder().encode(JSON.stringify(_s, null, 2)),
+              { resolve: () => {
+                  this.props.ACT_machine_custom_setting_Update(setting);
+                  log.info("[station] regions saved");
+                },
+                reject: (e) => log.error("[station] save failed", e) });
+          }} />
+    </SubMenu>
+
+
     // console.log(this.state.SLID_EM_STOP_src_list);
     let SLIDUI=this.props.SLID_API_ID_CONN_INFO===undefined? null:
     <div style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
@@ -890,6 +926,7 @@ class ObjInfoList extends React.Component {
           mode="inline">
           {uInspUI}
           {uInspESP32UI}
+          {stationUI}
           {SLIDUI}
 
           {resultMenu}
@@ -2756,7 +2793,15 @@ class APP_INSP_MODE extends React.Component {
                 measureDisplayRank={this.state.measureDisplayRank}
                 ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
                 downSampleFactor={1}
-                onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
+                onCanvasInit={(canvas) => {
+                  this.ec_canvas = canvas;
+                  // ec_canvas is a plain field, so nothing re-renders when it
+                  // arrives -- and it arrives AFTER the sidebar has rendered
+                  // with ecCanvas=undefined. StationRegionPanel's drag button
+                  // would then be permanently dead until some unrelated state
+                  // change happened to repaint it. Nudge once.
+                  this.setState({ ecCanvasReady: true });
+                }}
                 renderObjAlignRotate={this.state.renderObjAlignRotate}
                 camera_calibration_report={this.props.camera_calibration_report} />
             </ComponentBoundary>}
@@ -2832,7 +2877,11 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
-    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback))
+    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback)),
+    // Station regions are edited here, on the live image, so the redux copy has
+    // to be updated from here too -- otherwise the panel would keep re-adopting
+    // the pre-save value the next time machine_custom_setting changed.
+    ACT_machine_custom_setting_Update:(setting)=>dispatch(UIAct.EV_machine_custom_setting_Update(setting)),
   }
 }
 

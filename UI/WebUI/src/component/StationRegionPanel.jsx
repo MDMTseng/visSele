@@ -1,0 +1,185 @@
+// The station: inspection region + clean-space regions.
+//
+// A NEW block. Nothing here touches the def editor, because none of this
+// belongs to the def: it describes where the part sits when the camera fires
+// and which patch of plate has to be empty -- mechanics, not product. A def
+// carrying it would be redrawn per product for no reason and would be wrong the
+// moment it was copied to another machine. So it lives in machine_setting.json
+// and is authored here, on the live image, in InspectionUI.
+//
+// Coordinates are FULL-SENSOR PIXELS throughout -- the same frame the core's
+// `inspection_region` and the lens model use. Not mm, and not the def's object
+// frame: those move when the calibration or the product moves, and the station
+// does not.
+//
+//   inspection_region : {x,y,w,h}     -- an object whose CENTRE falls outside is
+//                                        dropped by the locator before any work
+//   clean_regions     : [{x,y,w,h,name,dark_thresh,dark_area_max,on_fail}]
+//
+// The whole component is kept in one file on purpose: the drag mode, the
+// numeric fields, the overlay push and the save are one interaction, and
+// splitting them would mean threading canvas state through three modules to
+// gain nothing.
+import React, { useState, useEffect, useRef } from 'react';
+import { Button, InputNumber, Divider, Select, Popconfirm } from 'antd';
+import { AimOutlined, DeleteOutlined, SaveOutlined, PlusOutlined } from '@ant-design/icons';
+import log from 'loglevel';
+
+const EMPTY_REGION = { x: 0, y: 0, w: 0, h: 0 };
+
+// A drag gives two opposite corners in any order; a region is an origin + size.
+function rectFromDrag(info) {
+  const a = info && info.start && info.start.pix;
+  const b = info && info.end && info.end.pix;
+  if (!a || !b) return null;
+  const x = Math.round(Math.min(a.x, b.x)), y = Math.round(Math.min(a.y, b.y));
+  const w = Math.round(Math.abs(b.x - a.x)), h = Math.round(Math.abs(b.y - a.y));
+  if (w < 2 || h < 2) return null;      // a click, not a drag
+  return { x, y, w, h };
+}
+
+function NumRow({ label, value, onChange, suffix }) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+    <span style={{ width: 16, color: '#888' }}>{label}</span>
+    <InputNumber size="small" style={{ width: 78 }} value={value} step={1}
+      onChange={(v) => onChange(Math.round(v || 0))} />
+    {suffix ? <span style={{ color: '#888' }}>{suffix}</span> : null}
+  </div>;
+}
+
+function RectFields({ rect, onChange }) {
+  const set = (k) => (v) => onChange({ ...rect, [k]: v });
+  return <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '2px 0 4px' }}>
+    <NumRow label="x" value={rect.x} onChange={set('x')} />
+    <NumRow label="y" value={rect.y} onChange={set('y')} />
+    <NumRow label="w" value={rect.w} onChange={set('w')} />
+    <NumRow label="h" value={rect.h} onChange={set('h')} />
+  </div>;
+}
+
+/**
+ * props:
+ *   ecCanvas        the INSP_CanvasComponent instance (InspectionUI holds it)
+ *   machineSetting  state.UIData.machine_custom_setting
+ *   onApply(patch)  push live to the core   (ST { MachineSetting })
+ *   onSave(setting) persist                 (SV data/machine_setting.json)
+ */
+export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }) {
+  const [region, setRegion] = useState(EMPTY_REGION);
+  const [clean, setClean]   = useState([]);
+  const [dirty, setDirty]   = useState(false);
+  const [aiming, setAiming] = useState(null);   // null | 'region' | <clean index>
+  const loadedFrom = useRef(null);
+
+  // Adopt whatever the core last told us, but never stomp on edits in progress.
+  useEffect(() => {
+    if (!machineSetting || dirty) return;
+    const sig = JSON.stringify([machineSetting.inspection_region, machineSetting.clean_regions]);
+    if (sig === loadedFrom.current) return;
+    loadedFrom.current = sig;
+    setRegion({ ...EMPTY_REGION, ...(machineSetting.inspection_region || {}) });
+    setClean(Array.isArray(machineSetting.clean_regions) ? machineSetting.clean_regions : []);
+  }, [machineSetting, dirty]);
+
+  // Mirror to the canvas whenever anything moves.
+  useEffect(() => {
+    if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function')
+      ecCanvas.SetStationOverlay({ region, clean });
+  }, [ecCanvas, region, clean]);
+
+  // Drag-to-set. The canvas clears its own callback after one drag, so aiming
+  // is a one-shot: press the target, drag once, done. That is deliberate --
+  // leaving the canvas in ROI mode swallows pan/zoom, and an operator who
+  // wandered off mid-setup would find the image frozen with no explanation.
+  useEffect(() => {
+    if (aiming === null || !ecCanvas) return;
+    ecCanvas.SetROISettingCallBack((info) => {
+      const r = rectFromDrag(info);
+      setAiming(null);
+      if (!r) { log.debug('[station] drag too small, ignored'); return; }
+      setDirty(true);
+      if (aiming === 'region') setRegion(r);
+      else setClean((cs) => cs.map((c, i) => (i === aiming ? { ...c, ...r } : c)));
+    });
+    return () => { if (ecCanvas.SetROISettingCallBack) ecCanvas.SetROISettingCallBack(undefined); };
+  }, [aiming, ecCanvas]);
+
+  const edit = (fn) => { setDirty(true); fn(); };
+  const built = () => ({
+    inspection_region: (region.w > 0 && region.h > 0) ? region : undefined,
+    clean_regions: clean.length ? clean : undefined,
+  });
+
+  const AimBtn = ({ target, children }) => (
+    <Button size="small" icon={<AimOutlined />}
+      type={aiming === target ? 'primary' : 'default'}
+      onClick={() => setAiming(aiming === target ? null : target)}>
+      {aiming === target ? '在影像上拉框…' : children}
+    </Button>
+  );
+
+  return <div style={{ padding: '4px 8px', textAlign: 'left' }}>
+    <Divider orientation="left" style={{ margin: '4px 0', fontSize: 12 }}>檢驗區域(工位)</Divider>
+    <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+      物件中心落在框外就不判定。留空(w或h=0)= 不限制,整個畫面都算。
+      單位是<b>全幀感光元件像素</b>。
+    </div>
+    <AimBtn target="region">拉框設定</AimBtn>
+    <RectFields rect={region} onChange={(r) => edit(() => setRegion(r))} />
+    {region.w > 0 && region.h > 0 ? (
+      <Button size="small" danger icon={<DeleteOutlined />}
+        onClick={() => edit(() => setRegion(EMPTY_REGION))}>清除(不限制)</Button>
+    ) : null}
+
+    <Divider orientation="left" style={{ margin: '8px 0 4px', fontSize: 12 }}>淨空區域</Divider>
+    <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+      低於暗門檻的面積超過上限 → 依「超出時」處理。NA = 視野被污染,這顆量不準,繞回重測。
+    </div>
+    {clean.map((c, i) => (
+      <div key={i} style={{ border: '1px solid #333', borderRadius: 3, padding: 4, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <AimBtn target={i}>{c.name || ('淨空' + (i + 1))}</AimBtn>
+          <Popconfirm title="刪除這個淨空區域?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </div>
+        <RectFields rect={c} onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} />
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <NumRow label="暗" value={c.dark_thresh ?? 128}
+            onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: v } : x))))}
+            suffix="門檻(灰階)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <span style={{ color: '#888' }}>上限</span>
+            <InputNumber size="small" style={{ width: 88 }} step={0.01}
+              value={c.dark_area_max}
+              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_area_max: v } : x))))} />
+            <span style={{ color: '#888' }}>mm²</span>
+          </div>
+          <Select size="small" style={{ width: 140 }} value={c.on_fail === 'ng' ? 'ng' : 'na'}
+            onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, on_fail: v } : x))))}
+            options={[{ value: 'na', label: '超出→NA(繞回)' }, { value: 'ng', label: '超出→NG(吹掉)' }]} />
+        </div>
+      </div>
+    ))}
+    <Button size="small" icon={<PlusOutlined />}
+      onClick={() => edit(() => setClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }]))}>
+      新增淨空區域
+    </Button>
+
+    <Divider style={{ margin: '8px 0 4px' }} />
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <Button size="small" type="primary" icon={<SaveOutlined />} disabled={!dirty}
+        onClick={() => {
+          const patch = built();
+          // Push live first, then persist. If the core rejects it you find out
+          // before it is on disk, not after a restart.
+          if (onApply) onApply(patch);
+          if (onSave) onSave({ ...(machineSetting || {}), ...patch });
+          setDirty(false);
+        }}>套用並存檔</Button>
+      {dirty ? <span style={{ fontSize: 11, color: '#d48806' }}>未存檔</span> : null}
+    </div>
+  </div>;
+}
+
+export default StationRegionPanel;

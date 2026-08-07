@@ -1041,11 +1041,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         y:mm_pix.y_mm,
       }
       
+      // y from y_pix, not x_pix. The copy-paste made the live rubber-band's y
+      // track its own x, so a drag read back as a square on the diagonal. Only
+      // `current` was affected -- start/end were always right -- which is why it
+      // survived: the committed rectangle was correct and only the preview lied.
       info.pix={
         x:mm_pix.x_pix,
-        y:mm_pix.x_pix,
+        y:mm_pix.y_pix,
       }
-      
+
       this.draw();
     }
 
@@ -1185,6 +1189,55 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   draw() {
     this.draw_INSP();
+    this.draw_station_overlay();
+  }
+
+  // The station: inspection region + clean-space regions, in FULL-SENSOR pixels.
+  //
+  // Drawn from draw(), not from inside draw_INSP(), because draw_INSP bails
+  // early when there is no report or no edit_DB_info -- and setting the region
+  // up is exactly when you have neither. It must be visible on an empty plate.
+  //
+  // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
+  // in full-sensor px; undefined draws nothing.
+  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
+
+  draw_station_overlay() {
+    const ov = this.stationOverlay;
+    if (!ov || this.img_info === undefined) return;
+    const mmpp = this.rUtil.get_mmpp();
+    if (!(mmpp > 0)) return;
+    const ctx = this.canvas.getContext('2d');
+    const m = this.worldTransform();
+    ctx.save();
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+
+    const box = (r, stroke, fill, label) => {
+      if (!r || !(r.w > 0) || !(r.h > 0)) return;
+      const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
+      ctx.strokeStyle = stroke;
+      ctx.strokeRect(x, y, w, h);
+      if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
+      if (label) {
+        ctx.fillStyle = stroke;
+        ctx.font = this.rUtil.getFontStyle(1);
+        ctx.fillText(label, x, y - this.rUtil.getIndicationLineSize() * 2);
+      }
+    };
+
+    // The inspection region is the one that decides which object is judged, so
+    // it gets the strong colour; clean regions are checks, not selectors.
+    box(ov.region, '#00b0ff', 'rgba(0,176,255,0.06)', ov.region ? '檢驗區域' : null);
+    (ov.clean || []).forEach((c, i) =>
+      box(c, '#ffab00', 'rgba(255,171,0,0.06)', c.name || ('淨空' + (i + 1))));
+    // Live drag preview -- dashed so it reads as "not committed yet".
+    if (ov.pending) {
+      ctx.setLineDash([6 * mmpp, 4 * mmpp]);
+      box(ov.pending, '#ffffff', null, null);
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
   }
 
 
