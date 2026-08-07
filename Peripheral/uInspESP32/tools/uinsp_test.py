@@ -99,6 +99,7 @@ class UInspLink:
         # frames or mint duplicate ids. Reply *waiting* happens outside it.
         self._tx_lock = threading.Lock()
         self._async = deque(maxlen=20000)
+        self._trig_us = {}          # tid -> board t_us, for report cam_ts
         self._async_ev = threading.Event()
         self._raw_log = deque(maxlen=5000)
         # Frame-integrity + event-loss accounting (see *HHHH trailer / "q").
@@ -428,6 +429,75 @@ class UInspLink:
             self._pending.pop(mid, None)
         return slot["reply"] if got else None
 
+    # A synthetic camera clock, so reports can teach CAM_SYNC.
+    #
+    # READ THIS BEFORE TRUSTING ANY PAIRING RESULT FROM THIS HARNESS.
+    #
+    # cam_ts here is derived from the board's OWN t_us, so it is not a second
+    # clock at all -- it is the same clock plus a constant. The offset the
+    # firmware learns is exactly CAM_TS_EPOCH, the residual is identically
+    # zero, and the timestamp match can therefore never fail. That is the
+    # opposite of what report_match_ts exists to check: it cross-checks tid
+    # pairing against timestamp pairing precisely so that two INDEPENDENT
+    # clocks can be seen to disagree.
+    #
+    # So this makes CAL finish and the rig-less suites run. It does NOT test
+    # pairing, and it can hide a pairing defect. It also MANUFACTURES false
+    # ones: cam1 and cam2 announce the same object with an identical t_us, so a
+    # report citing that t_us leaves the nearest-object search tied and the
+    # firmware logs CAMSYNC MISMATCH d=0 against the neighbour.
+    #
+    # Pairing is verified with the real thing -- core + camera + board. Measured
+    # 2026-08-07, 3148 frames, test1 def, 20 rpm, ~12.4 parts/s:
+    #
+    #   matched 3148/3148, ts_matched 3134, no_candidate 0, stale 0, drops 0
+    #   residual mean -16.7us, max 155us, against a 5000us match window
+    #   zero CAMSYNC MISMATCH lines in the core log
+    #
+    # A real camera clock has a -17us systematic offset and a 155us tail. That
+    # is the number this synthetic one cannot produce and must not be read as.
+    #
+    # The firmware learns its camera-clock offset ONLY from a report that
+    # carries a non-zero cam_ts:
+    #
+    #     if (teach != NULL && cam_ts != 0) CAM_SYNC.observe(cam_ts, cam_us);
+    #
+    # and INSPECTION_MODE_CAL will not hand over to READY until CAM_SYNC is
+    # valid. This harness answered with {tid, cat} and no timestamp, so on a
+    # board configured for timestamp pairing (report_match_ts) CAL could never
+    # finish: every rig-less suite -- chaos, edge, stress, grill -- died at its
+    # first step with "reached READY: state=102".
+    #
+    # cam_trig already carries t_us, the board's own trigger time, so the
+    # answer can be t_us + a fixed epoch. That is a perfect camera clock: the
+    # offset the board learns is exactly CAM_TS_EPOCH with zero jitter, and
+    # every later report lands dead centre of cam_match_window_us. A wall clock
+    # would work too but would add serial latency as noise against a 5ms window.
+    #
+    # Injected here, in the one place every report passes through, rather than
+    # at the eighteen call sites that build one.
+    CAM_TS_EPOCH = 1_600_000_000_000_000   # us, arbitrary, just non-zero
+
+    def note_trig(self, msg):
+        """Remember a cam_trig's board timestamp so a later report can cite it."""
+        if msg.get("type") == "cam_trig" and msg.get("tid") is not None:
+            t = msg.get("t_us")
+            if isinstance(t, (int, float)) and t:
+                self._trig_us[msg["tid"]] = int(t)
+                if len(self._trig_us) > 4096:      # bounded; a soak runs for days
+                    for k in list(self._trig_us)[:2048]:
+                        self._trig_us.pop(k, None)
+
+    def _with_cam_ts(self, obj):
+        if obj.get("type") != "report" or "cam_ts" in obj:
+            return obj
+        t = self._trig_us.get(obj.get("tid"))
+        if t is None:
+            return obj      # unannounced tid (bogus-tid tests) -- leave it bare
+        obj = dict(obj)
+        obj["cam_ts"] = self.CAM_TS_EPOCH + t
+        return obj
+
     def send_nowait(self, obj):
         """Fire and forget.
 
@@ -436,6 +506,7 @@ class UInspLink:
         burn the full timeout per part, which for a paced test also stretches
         the gap between parts far beyond what was asked for.
         """
+        obj = self._with_cam_ts(obj)
         with self._tx_lock:
             obj = dict(obj)
             self._id += 1
@@ -449,7 +520,12 @@ class UInspLink:
     def drain_async(self):
         out = []
         while self._async:
-            out.append(self._async.popleft())
+            item = self._async.popleft()
+            try:
+                self.note_trig(item[1])
+            except Exception:
+                pass
+            out.append(item)
         return out
 
 
@@ -696,6 +772,39 @@ def _widen_selector_window(link, orig_spo):
     return win if back.get("SWITCH") == win else None
 
 
+ST_CAL, ST_SPINUP, ST_RECAL = 102, 103, 104
+
+def _pump_cal(link, timeout=20.0):
+    """Answer the calibration pulses until the board leaves CAL.
+
+    INSPECTION_MODE_CAL fires phantom "sync" pulses and waits for CAM_SYNC to
+    become valid before handing over to READY. Only a report carrying a
+    non-zero cam_ts teaches it, and the answer has to arrive while the pulse is
+    still the outstanding one -- so somebody has to be draining and replying
+    throughout, which nothing here was doing. The plate is deliberately
+    STOPPED during CAL ("gate shut, feeder held"), so _wait_at_speed's
+    step-count poll can never be the thing that gets past this state either: it
+    waits for motion that CAL is designed not to produce.
+
+    cam_ts itself is injected by the link (see Link._with_cam_ts).
+
+    Returns (state, detail). A board that is not in CAL is returned untouched,
+    so this is safe to call unconditionally.
+    """
+    t0 = time.time()
+    answered = 0
+    st, _ = _state(link)
+    while st in (ST_CAL, ST_RECAL) and time.time() - t0 < timeout:
+        for _, msg in link.drain_async():
+            if msg.get("type") == "cam_trig" and msg.get("tid") is not None:
+                link.send_nowait({"type": "report", "tid": msg["tid"],
+                                  "cat": CAT_NA})
+                answered += 1
+        time.sleep(0.01)
+        st, _ = _state(link)
+    return st, f"answered {answered} sync pulses in {time.time()-t0:.1f}s"
+
+
 def _wait_at_speed(link, settle=0.15, tries=30):
     """Block until the plate is turning at a steady rate.
 
@@ -703,6 +812,9 @@ def _wait_at_speed(link, settle=0.15, tries=30):
     phantoms fired while PLATE_FREQ_CURRENT is still ramping up from zero are silently
     rejected and never become objects. Poll SYS_STEP_COUNT until the
     per-interval delta stops climbing (the ramp has plateaued)."""
+    # CAL comes first and stops the plate on purpose; get past it before
+    # asking whether the plate is moving.
+    _pump_cal(link)
     def ssc():
         return (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
             "step_count")
