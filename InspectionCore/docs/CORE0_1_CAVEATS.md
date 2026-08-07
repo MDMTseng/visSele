@@ -894,3 +894,32 @@ same def forced to 0.0     before error=3, 251 B empty     after error=0, 7355 B
 frames now has no such guard until someone places an `obj_detect` region with
 `dark_thresh` + `dark_area_max` on it. The replacement is strictly better but it
 is opt-in, and the gate was not. Which defs need a region is a per-def call.
+
+## L. The station region applies in FI only (2026-08-07)
+
+`inspection_region` in `machine_setting.json` filters located objects to the
+station. It is now enforced **only in FI sessions** (`"FI"`, hardware-triggered
+full inspection). In CI (`"CI"`, free-run, which is what the editor uses) the
+region is published onto the bacpac as zero-size, i.e. the same "no region
+configured" path a machine without one takes.
+
+**Why.** The region describes where a part stands when the machine fires at it.
+In CI nothing is driving the machine: you are dragging a def around, checking a
+light, looking at the plate. Filtering there hides objects for a reason
+unrelated to what you are doing — and it hides them *while you are drawing the
+very box that hides them*, so the box cannot be placed by watching its effect.
+
+**What still shows.** The geometry is sent in the report in both modes, so the
+overlay draws the box during setup. `station.region.active` says which mode you
+are in, and the canvas draws the region **dashed** with `檢驗區域(設定中·未過濾)`
+when it is false. A solid box that is not selecting anything looks exactly like
+one that is, until a part goes the wrong way.
+
+**The offline harness is unconditional.** `--insp` applies the region with no
+mode check: it *is* a full inspection of one frame, with no editor to get in the
+way of. `qa_insp_region.py` therefore still covers the filter itself; it does
+not cover this gate.
+
+**The session start says which it got** — `insp session: FI -- station region
+ENFORCED` / `... CI -- station region off (setup view shows everything)`, logged
+only when a region is configured.

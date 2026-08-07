@@ -1298,8 +1298,17 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
                  : R.tone === 'ng' ? { color: '#ff5252', fill: null }
                  : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
                  : null;
+    // Dashed when the core is not filtering by it. The region only applies in
+    // FI; CI is the setup view and deliberately shows every object, including
+    // the ones a run would drop. A solid box that is not selecting anything
+    // looks exactly like one that is -- until a part goes the wrong way -- so
+    // the line itself says which state it is in.
+    const regionOff = !!(ST && ST.region && ST.region.active === false);
+    if (regionOff) ctx.setLineDash([4 * mmpp, 3 * mmpp]);
     box(ov.region, '#00b0ff', null,
-        ov.region ? '檢驗區域' : null, R.text || null, rState);
+        ov.region ? (regionOff ? '檢驗區域(設定中·未過濾)' : '檢驗區域') : null,
+        R.text || null, rState);
+    if (regionOff) ctx.setLineDash([]);
 
     (ov.clean || []).forEach((c, i) => {
       const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));

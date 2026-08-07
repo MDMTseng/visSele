@@ -42,6 +42,7 @@ label survives — that is the **teach** path, not inspection.
 
 | # | Where | What |
 |---|---|---|
+| 2.0 | `:6120` | **Station region** (`machine_setting.json` `inspection_region`, added 2026-08-07). Labels whose bounding box is not inside the region are dropped before anything above runs, and before `single_result_area_ratio` sums its total. Logged per frame (`region: dropped N of M`). **FI ONLY** — in CI the region is published as zero-size, so the editor sees every object; `station.region.active` in the report says which. |
 | 2.1 | `:6147` | **`single_result_area_ratio`** (def key, off when ≤ 0). If the largest label is not at least this fraction of total area → `return -1`, **zero reports for the frame**. When it is on it also forces `onlyIdx` = the largest label and every other label is skipped (`:6236`). **[SILENT]** — the ratio is logged, the rejection is not. |
 | 2.2 | `:6192` | `areaThres = 100 * dsampLevel²`, marked `//HACK:100 no particular reason, just a hack filter` **in the source**. Labels smaller than this are marked ignore. Hardcoded, no def knob. **[SILENT]** |
 | 2.3 | `:6464` | Stage-1 signature gate: `meanRatio < 0.5 \|\| stage1Sim < sig_st1_matching_sim_thres` (default **0.3**) → `continue`, that label produces no report. **[SILENT]** at default log level (`LOGV`). |

@@ -1640,6 +1640,20 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
 struct InspRegionCfg { float x = 0, y = 0, w = 0, h = 0; int fit = 1; };
 static InspRegionCfg g_insp_region;
 
+// The region describes a STATION -- where a part stands when the machine fires
+// at it -- so it only means anything while the machine is the thing driving the
+// camera. That is FI: hardware-triggered, one frame per registered part.
+//
+// CI is free-run, and it is what the editor uses: you are looking at the plate,
+// dragging a def around, checking a light. Filtering there hides objects for a
+// reason that has nothing to do with what you are doing, and worse, it hides
+// them while you are drawing the very box that does the hiding -- so the box
+// cannot be placed by looking at its effect.
+//
+// So: filter in FI, show everything in CI. Set by the CI/FI session handler,
+// read by the per-frame code that publishes the region onto the bacpac.
+static bool g_full_inspection = false;
+
 static void load_insp_region(cJSON *json_mac_setting)
 {
   cJSON *r = cJSON_GetObjectItem(json_mac_setting, "inspection_region");
@@ -3144,6 +3158,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           imageQueueSkipSize=inspQueue.capacity();//it will never hit the skip size
           datViewQueueSkipSize=datViewQueue.capacity();
+          // Which mode this session is. The station region keys off it: it is a
+          // property of the machine driving the camera, and in CI nothing is.
+          g_full_inspection = (dat->tl[0] == 'F');
+          // Announced, because it silently changes which objects get judged.
+          if (g_insp_region.w > 0 && g_insp_region.h > 0)
+            LOGE("insp session: %s -- station region %s",
+                 g_full_inspection ? "FI" : "CI",
+                 g_full_inspection ? "ENFORCED" : "off (setup view shows everything)");
           if (dat->tl[0] == 'C')
           {
             camera->TriggerMode(0);
@@ -3156,7 +3178,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {                           //no manual trigger and process in thread
             camera->TriggerMode(2);
             doImgProcessThread = true;
-            
+
             datViewQueueSkipSize=2;
           }
 
@@ -6234,12 +6256,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   // reads (same place lensCalib and fieldCal ride). Re-applied per frame so a
   // change saved from InspectionUI takes effect on the next part, with no
   // def reload and no restart.
+  // FI only. In CI the region is published as zero-size, which the engine reads
+  // as "no region configured" -- the same path as a machine that has none, so
+  // there is one behaviour to reason about and not two.
   if (bacpac)
   {
-    bacpac->insp_region_x = g_insp_region.x;
-    bacpac->insp_region_y = g_insp_region.y;
-    bacpac->insp_region_w = g_insp_region.w;
-    bacpac->insp_region_h = g_insp_region.h;
+    bool on = g_full_inspection;
+    bacpac->insp_region_x = on ? g_insp_region.x : 0;
+    bacpac->insp_region_y = on ? g_insp_region.y : 0;
+    bacpac->insp_region_w = on ? g_insp_region.w : 0;
+    bacpac->insp_region_h = on ? g_insp_region.h : 0;
     bacpac->insp_region_fit = g_insp_region.fit;
   }
 
@@ -6532,6 +6558,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       cJSON_AddNumberToObject(rg, "w", g_insp_region.w);
       cJSON_AddNumberToObject(rg, "h", g_insp_region.h);
       cJSON_AddStringToObject(rg, "fit", g_insp_region.fit ? "contain" : "center");
+      // Geometry is sent in both modes -- the box has to be visible in CI or it
+      // cannot be placed -- but only FI filters by it. Saying which is which is
+      // the whole point: a box drawn on screen that is not selecting anything
+      // looks exactly like a box that is, until a part goes the wrong way.
+      cJSON_AddBoolToObject(rg, "active", g_full_inspection);
       cJSON_AddItemToObject(st, "region", rg);
     }
     // The verdict AS THE MACHINE RECEIVES IT, not as the inspection produced it.
@@ -7300,6 +7331,10 @@ int cp_main(int argc, char **argv)
   // silently disagree with the live pipeline -- which would make the offline
   // harness useless for exactly the feature it is best placed to test.
   // Missing file or missing key = no region = old behaviour.
+  //
+  // Unconditional here, unlike the live path, which enables it for FI only:
+  // --insp IS a full inspection of one frame. There is no editor to get in the
+  // way of and nothing to preview, so the CI exemption has nothing to exempt.
   if (cJSON *ms_json = ReadJson("data/machine_setting.json"))
   {
     load_insp_region(ms_json);
