@@ -45,6 +45,37 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
 實作為 `unanswered_policy: stop | force_na`(+ `unanswered_stop_after`),
 預設維持 stop(檢測機保守值),量產穩定後可切 force_na。
 
+- [ ] **auto-rate 棘輪:會靜靜地把機器降到 5/s,而且不報錯**(2026-08-08 量測)
+
+      `autoRateBackoff()` 每次 SKIP 把 `GATE_SEP_EFF_us` ×1.125;
+      `autoRateOk()` 要湊滿 50 顆乾淨料才 ×0.969。抵銷一次退讓需要
+      `ln(1.125)/-ln(0.969) ≈ 3.7` 步 = **185 顆**。三個區間:
+
+      | SKIP 頻率 | 結果 |
+      |---|---|
+      | < 1/185 | 回得來 |
+      | 1/185 ~ 1/50 | 回得來但輸,`eff_sep` 慢慢漲 |
+      | **> 1/50** | **一步都回不來** |
+
+      最後一列是因為 `autoRateBackoff()` 第一行就 `AUTO_RATE_OK_RUN=0`,
+      把累積的乾淨料計數清掉 —— SKIP 比每 50 顆一次還密,那個
+      `if(...<50)` 永遠不通過,回復**一次都不執行**,單調漲到地板
+      `AUTO_RATE_FLOOR_us=200000`(5/s)。
+
+      **全程沒有 fault、沒有 error_hist、狀態一直是 READY。** 從外面
+      只看得到「今天機器比較慢」。這是設計上刻意的保守(退快進慢,
+      同 AIMD 精神),不是 bug —— 要做的是**讓它可見**:
+
+      1. `eff_sep_us` 偏離設定值超過 X% 時發告警(現在只能自己去比對)
+      2. WebUI 顯示 `auto_backoffs` / `auto_recovers`;前者漲後者不動
+         = 正在往地板掉
+      3. 決定要不要在觸底時升級成 fault(現在是無聲的)
+
+      現況餘裕:主機立即回話時實測 SKIP 率 **1/470**(35–40/s,`eff_hz`
+      全程停在 251 沒動)。但那是**沒有相機、沒有核心**的條件;接上真正
+      的檢測後判定變慢、SKIP 率上升,1/185 這條線就是要盯的。
+      量測見 [[project_uinsp_throughput_ceiling]] 與 UINSP_CAVEATS。
+
 ## 第三層:連結契約(Klipper 正典;純軟體)
 
 1. **Framing**:brace-counting → NDJSON + CRC16 + 序號(`{...}*HHHH\n`),
