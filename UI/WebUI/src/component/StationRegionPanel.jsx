@@ -22,7 +22,7 @@
 // gain nothing.
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { Button, InputNumber, Divider, Select, Popconfirm } from 'antd';
+import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip } from 'antd';
 import { AimOutlined, DeleteOutlined, SaveOutlined, PlusOutlined } from '@ant-design/icons';
 import log from 'loglevel';
 
@@ -255,140 +255,117 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   );
 
   if (!open) return header;
+  // The prose that used to sit between every control is behind a "?" now. It was
+  // three paragraphs for two controls, and once a station is set up nobody reads
+  // it again -- but the day you do need it, it is a hover away instead of gone.
+  const Q = ({ children }) => (
+    <Tooltip title={<div style={{ maxWidth: 300, fontSize: 12 }}>{children}</div>}>
+      <span style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
+        borderRadius: '50%', fontSize: 10, lineHeight: '13px', width: 14, height: 14,
+        display: 'inline-block', textAlign: 'center', marginLeft: 4 }}>?</span>
+    </Tooltip>
+  );
+  const Row = ({ children, gap = 6 }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'wrap',
+                  margin: '3px 0' }}>{children}</div>
+  );
 
-  // whiteSpace:'normal' is not cosmetic: this panel lives inside an antd
-  // Menu title, which sets `white-space:nowrap; overflow:hidden;
-  // text-overflow:ellipsis`. Without opting out, every hint line is silently
-  // truncated at the sidebar edge -- the instructions vanish, not the decoration.
+  // Only worth screen space when it DISAGREES. In sync it is one tick; out of
+  // sync it is the most important line in the panel, because the boxes look
+  // right and the machine is doing something else.
+  const inSync = station && station.region
+    && Math.round(station.region.x) === region.x && Math.round(station.region.y) === region.y
+    && Math.round(station.region.w) === region.w && Math.round(station.region.h) === region.h;
+
   return <div style={{ padding: '0 8px 4px', textAlign: 'left', whiteSpace: 'normal' }}>
     {header}
-    <Divider orientation="left" style={{ margin: '4px 0', fontSize: 12 }}>檢驗區域(工位)</Divider>
-    <div style={{ fontSize: 11, color: '#888', marginBottom: 4, whiteSpace: 'normal', lineHeight: 1.35 }}>
-      物件中心落在框外就不判定。留空(w或h=0)= 不限制,整個畫面都算。
-      單位是<b>全幀感光元件像素</b>。
-    </div>
-    <AimBtn target="region">拉框設定</AimBtn>
-    {/* Containment vs centre. The default is containment because it is the one
-        the drawing gesture already means: box the part, get the part. Under the
-        centre rule, excluding a neighbour needs a box smaller than the part
-        itself once spacing drops below part width -- which it does here. */}
-    <div style={{ margin: '4px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-        <span style={{ color: '#888' }}>判定方式</span>
-        <Select size="small" style={{ width: 130 }}
-          value={region.fit === 'center' ? 'center' : 'contain'}
-          onChange={(v) => edit(() => setRegion({ ...region, fit: v }))}
-          options={[{ value: 'contain', label: '整顆在框內' },
-                    { value: 'center',  label: '只看中心點' }]} />
+
+    <Row>
+      <AimBtn target="region">拉框設定</AimBtn>
+      <Select size="small" style={{ width: 112 }}
+        value={region.fit === 'center' ? 'center' : 'contain'}
+        onChange={(v) => edit(() => setRegion({ ...region, fit: v }))}
+        options={[{ value: 'contain', label: '整顆在框內' },
+                  { value: 'center',  label: '只看中心點' }]} />
+      <Q>
+        <b>整顆在框內</b>:外接框全部要在框內。把框畫得舒服地包住一顆,鄰居就進不來
+        (它偏移的距離小於自己的寬度)。代價是零件偏移到凸出框外時會變 NA、繞回重測。<br/><br/>
+        <b>只看中心點</b>:只要中心在框內就算。當間距小於零件寬度時,框會被迫小於零件本身。<br/><br/>
+        物件中心/外接框落在框外就不判定。w 或 h = 0 表示不限制。單位是<b>全幀感光元件像素</b>。
+      </Q>
+      {region.w > 0 && region.h > 0 ? (
+        <Button size="small" danger type="text" icon={<DeleteOutlined />}
+          style={{ padding: '0 4px' }}
+          onClick={() => edit(() => setRegion(EMPTY_REGION))} />
+      ) : null}
+    </Row>
+    {nums ? <RectFields rect={region} showNumbers onChange={(r) => edit(() => setRegion(r))} /> : null}
+    {station && !inSync && station.region ? (
+      <div style={{ fontSize: 11, color: '#d48806', margin: '2px 0' }}>
+        核心跑的是 {Math.round(station.region.w)}×{Math.round(station.region.h)}
+        {' @'}{Math.round(station.region.x)},{Math.round(station.region.y)} — 尚未套用
       </div>
-      <div style={{ fontSize: 11, color: '#888', whiteSpace: 'normal', lineHeight: 1.35 }}>
-        {region.fit === 'center'
-          ? '只要中心點在框內就算。框要小到裝不下兩個中心點才能只選一顆 —— 當間距小於零件寬度時,框會比零件還小。'
-          : '整個外接框都要在框內。把框畫得舒服地包住一顆,鄰居就進不來(它偏移的距離小於自己的寬度)。代價是零件偏移到凸出框外時會變 NA、繞回重測。'}
-      </div>
-    </div>
-    <RectFields rect={region} showNumbers={nums} onChange={(r) => edit(() => setRegion(r))} />
-    {region.w > 0 && region.h > 0 ? (
-      <Button size="small" danger icon={<DeleteOutlined />}
-        onClick={() => edit(() => setRegion(EMPTY_REGION))}>清除(不限制)</Button>
+    ) : null}
+    {station && !station.region ? (
+      <div style={{ fontSize: 11, color: '#888', margin: '2px 0' }}>核心目前不限制區域</div>
     ) : null}
 
-    {/* What the CORE is enforcing, next to what the panel has drawn. A
-        disagreement between the two is the most confusing state this feature
-        has -- the boxes look right and the machine behaves otherwise -- so it
-        is shown rather than left to be inferred from a log. */}
-    {station && station.region ? (
-      <div style={{ fontSize: 11, whiteSpace: 'normal', lineHeight: 1.35,
-                    color: (Math.round(station.region.x) === region.x &&
-                            Math.round(station.region.y) === region.y &&
-                            Math.round(station.region.w) === region.w &&
-                            Math.round(station.region.h) === region.h) ? '#888' : '#d48806',
-                    margin: '2px 0' }}>
-        核心目前使用 {Math.round(station.region.w)}×{Math.round(station.region.h)}
-        {' @'}{Math.round(station.region.x)},{Math.round(station.region.y)}
-        {' · '}{station.region.fit === 'center' ? '只看中心點' : '整顆在框內'}
-        {' · ROI 原點 '}{origin.x},{origin.y}
-        {(Math.round(station.region.x) !== region.x || Math.round(station.region.w) !== region.w)
-          ? ' ← 與畫面上的框不同,尚未套用' : ''}
-      </div>
-    ) : (
-      <div style={{ fontSize: 11, color: '#888', margin: '2px 0' }}>
-        核心目前沒有工位區域(整個畫面都算)
-      </div>
-    )}
+    <Divider orientation="left" style={{ margin: '6px 0 2px', fontSize: 12 }}>
+      淨空區域
+      <Q>低於暗門檻的面積超過上限 → 依「超出時」處理。<br/>
+         NA = 視野被污染,這顆量不準,繞回重測。<br/>NG = 這顆本身不良,吹掉。</Q>
+    </Divider>
 
-    <Divider orientation="left" style={{ margin: '8px 0 4px', fontSize: 12 }}>淨空區域</Divider>
-    <div style={{ fontSize: 11, color: '#888', marginBottom: 4, whiteSpace: 'normal', lineHeight: 1.35 }}>
-      低於暗門檻的面積超過上限 → 依「超出時」處理。NA = 視野被污染,這顆量不準,繞回重測。
-    </div>
-    {clean.map((c, i) => (
-      <div key={i} style={{ border: '1px solid #333', borderRadius: 3, padding: 4, marginBottom: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <AimBtn target={i}>{c.name || ('淨空' + (i + 1))}</AimBtn>
-          <Popconfirm title="刪除這個淨空區域?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </div>
-        <RectFields rect={c} showNumbers={nums} onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} />
-        {/* Live, from the core. Setting dark_area_max off a log tail is not a
-            workflow; watching 1.11 next to 0.0002 while you drag the box is. */}
-        {(() => {
-          const m = station && Array.isArray(station.clean)
-            ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
-          if (!m) return null;
-          return <div style={{ fontSize: 11, margin: '1px 0',
-                               color: m.dirty ? '#c33' : '#389e0d' }}>
-            實測 暗 {Number(m.dark_area_mm2).toFixed(4)} mm² ({(m.dark_ratio * 100).toFixed(2)}%)
-            {m.dirty ? ' — 超出上限' : ' — 乾淨'}
-          </div>;
-        })()}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <NumRow label="暗" value={c.dark_thresh ?? 128}
-            onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: v } : x))))}
-            suffix="門檻(灰階)" />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <span style={{ color: '#888' }}>上限</span>
-            <InputNumber size="small" style={{ width: 88 }} step={0.01}
-              value={c.dark_area_max}
+    {clean.map((c, i) => {
+      const m = station && Array.isArray(station.clean)
+        ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
+      return (
+        <div key={i} style={{ borderLeft: '2px solid #ffab00', paddingLeft: 5, marginBottom: 5 }}>
+          <Row>
+            <AimBtn target={i}>{c.name || ('淨空' + (i + 1))}</AimBtn>
+            {m ? <span style={{ fontSize: 11, color: m.dirty ? '#c33' : '#389e0d' }}>
+              {m.dirty ? '有雜物 ' : '乾淨 '}{Number(m.dark_area_mm2).toFixed(4)}mm²
+            </span> : <span style={{ fontSize: 11, color: '#888' }}>{c.w > 0 ? '等待影像' : '尚未框選'}</span>}
+            <Popconfirm title="刪除?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
+              <Button size="small" danger type="text" icon={<DeleteOutlined />}
+                style={{ padding: '0 4px', marginLeft: 'auto' }} />
+            </Popconfirm>
+          </Row>
+          <Row gap={4}>
+            <span style={{ fontSize: 11, color: '#888' }}>暗</span>
+            <InputNumber size="small" style={{ width: 58 }} value={c.dark_thresh ?? 128}
+              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: Math.round(v || 0) } : x))))} />
+            <span style={{ fontSize: 11, color: '#888' }}>≤</span>
+            <InputNumber size="small" style={{ width: 68 }} step={0.01} value={c.dark_area_max}
               onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_area_max: v } : x))))} />
-            <span style={{ color: '#888' }}>mm²</span>
-          </div>
-          <Select size="small" style={{ width: 140 }} value={c.on_fail === 'ng' ? 'ng' : 'na'}
-            onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, on_fail: v } : x))))}
-            options={[{ value: 'na', label: '超出→NA(繞回)' }, { value: 'ng', label: '超出→NG(吹掉)' }]} />
+            <span style={{ fontSize: 11, color: '#888' }}>mm²</span>
+            <Select size="small" style={{ width: 96 }} value={c.on_fail === 'ng' ? 'ng' : 'na'}
+              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, on_fail: v } : x))))}
+              options={[{ value: 'na', label: '→NA' }, { value: 'ng', label: '→NG' }]} />
+          </Row>
+          {nums ? <RectFields rect={c} showNumbers
+            onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} /> : null}
         </div>
-      </div>
-    ))}
-    <Button size="small" icon={<PlusOutlined />}
-      onClick={() => edit(() => setClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }]))}>
-      新增淨空區域
-    </Button>
+      );
+    })}
 
-    <Divider style={{ margin: '8px 0 4px' }} />
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    <Row>
+      <Button size="small" type="text" icon={<PlusOutlined />} style={{ padding: '0 4px' }}
+        onClick={() => edit(() => setClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }]))}>
+        新增淨空區域</Button>
+    </Row>
+
+    <Row>
       <Button size="small" type="primary" icon={<SaveOutlined />} disabled={!dirty}
         onClick={() => {
           const patch = built();
-          // Push live first, then persist. If the core rejects it you find out
-          // before it is on disk, not after a restart.
           if (onApply) onApply(patch);
           if (onSave) onSave({ ...(machineSetting || {}), ...patch });
-          // Clearing dirty also drops the localStorage draft (see the mirror
-          // effect): once it is on the machine, the machine is the source.
           setDirty(false);
         }}>套用並存檔</Button>
-      <Button size="small" type={nums ? 'primary' : 'default'}
+      {dirty ? <Button size="small" onClick={() => { lsClear(); loadedFrom.current = null; setDirty(false); }}>放棄</Button> : null}
+      <Button size="small" type={nums ? 'primary' : 'text'} style={{ padding: '0 6px', marginLeft: 'auto' }}
         onClick={() => setNums(!nums)}>數值</Button>
-      {dirty ? (
-        <Button size="small" onClick={() => {
-          // Throw the draft away and go back to what the machine is running.
-          lsClear();
-          loadedFrom.current = null;
-          setDirty(false);
-        }}>放棄變更</Button>
-      ) : null}
-    </div>
+    </Row>
   </div>;
 }
-
-export default StationRegionPanel;
