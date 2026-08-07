@@ -2365,21 +2365,40 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
     def ssc():
         return (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
             "step_count")
+    # Measure only while the machine is actually running. An error-stop
+    # decelerates the plate to a standstill over several seconds, and averaging
+    # across that reported "6273 ticks/s = 9.564s/rev, err 79.1%" for a plate
+    # that had just been measured hitting 30800 ticks/s dead on -- a fault
+    # dressed up as a speed error, pointing at the stepper instead of at
+    # whatever stopped the machine.
     c0, t0 = ssc(), time.time()
-    time.sleep(4.0)
+    stalled = None
+    for _ in range(40):
+        time.sleep(0.1)
+        stt, _ = _state(link)
+        if stt != ST_READY:
+            stalled = stt
+            break
     c1, t1 = ssc(), time.time()
     meas_hz = (c1 - c0) / (t1 - t0) if isinstance(c0, int) and isinstance(c1, int) else 0
     err_pct = abs(meas_hz - tick_hz) / tick_hz * 100 if tick_hz else 999
-    rev_s = plan["ticks_per_rev"] / meas_hz if meas_hz else 0
-    rim = ""
-    if plan["diameter_mm"]:
-        rim = " (rim %.0f mm/s)" % (3.14159265 * plan["diameter_mm"] / rev_s) \
-              if rev_s else ""
-    rep.add("G.2", f"plate speed within {plan['speed_tol']:g}% of"
-                   f" {plan['sec_per_rev']:g}s/rev",
-            err_pct <= plan["speed_tol"],
-            f"measured {meas_hz:.0f} ticks/s = {rev_s:.3f}s/rev"
-            f" (err {err_pct:.1f}%){rim}")
+    if stalled is not None:
+        rep.add("G.2", f"plate speed within {plan['speed_tol']:g}% of"
+                       f" {plan['sec_per_rev']:g}s/rev", None,
+                f"left READY for {ST_NAME.get(stalled, stalled)} after "
+                f"{t1-t0:.1f}s -- speed not measurable through a stop; "
+                f"partial {meas_hz:.0f} ticks/s of {tick_hz:.0f} expected")
+    else:
+        rev_s = plan["ticks_per_rev"] / meas_hz if meas_hz else 0
+        rim = ""
+        if plan["diameter_mm"]:
+            rim = " (rim %.0f mm/s)" % (3.14159265 * plan["diameter_mm"] / rev_s) \
+                  if rev_s else ""
+        rep.add("G.2", f"plate speed within {plan['speed_tol']:g}% of"
+                       f" {plan['sec_per_rev']:g}s/rev",
+                err_pct <= plan["speed_tol"],
+                f"measured {meas_hz:.0f} ticks/s = {rev_s:.3f}s/rev"
+                f" (err {err_pct:.1f}%){rim}")
 
     # -- G.3..G.5 sustained stream at the real rate ------------------------
     # seconds <= 0 means run FOREVER (soak): heartbeat every 30s, survive USB
