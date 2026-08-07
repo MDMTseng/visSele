@@ -1260,11 +1260,17 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     };
 
     const R = ov.result || {};
-    const rState = R.tone === 'ok' ? { color: '#00e676', fill: 'rgba(0,230,118,0.10)' }
-                 : R.tone === 'ng' ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
+    // NO fill on the inspection region, in either layer. What is inside it is
+    // the part being measured -- the one thing in the frame worth looking at --
+    // and a tint over it costs contrast on exactly the edges the measurement is
+    // about. The two rings and the caption carry the state without touching the
+    // pixels. Clean regions keep their tint: they are supposed to be empty, so
+    // there is nothing there to obscure.
+    const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
+                 : R.tone === 'ng' ? { color: '#ff5252', fill: null }
                  : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
                  : null;
-    box(ov.region, '#00b0ff', 'rgba(0,176,255,0.06)',
+    box(ov.region, '#00b0ff', null,
         ov.region ? '檢驗區域' : null, R.text || null, rState);
 
     (ov.clean || []).forEach((c, i) => {
