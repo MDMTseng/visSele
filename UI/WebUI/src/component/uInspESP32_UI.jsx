@@ -1143,7 +1143,7 @@ export function UINSP_ESP32_MINI() {
 
       {/* State, speed, feed and what the machine is doing -- the things the
           button deliberately does not say -- on one wrapping line. */}
-      <div style={{ fontSize: 11, lineHeight: 1.35, marginBottom: 3 }}>
+      <div style={{ fontSize: 11, lineHeight: 1.35, marginBottom: 3, whiteSpace: 'normal' }}>
         <b style={{ color }}>{label}</b>
         <span style={{ color: '#888' }}>
           {' · '}{rpm > 0 ? `${rpm.toFixed(1)} rpm` : '盤停止'}

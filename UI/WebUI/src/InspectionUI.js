@@ -840,19 +840,19 @@ class ObjInfoList extends React.Component {
       <>
         <Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>
         <StationRegionPanel
-          ecCanvas={this.ec_canvas}
-          machineSetting={this.props.machine_custom_setting}
+          ecCanvas={this.props.ecCanvas}
+          machineSetting={this.props.machineSetting}
           onApply={(patch) => {
             // Live first: setup_machine_setting() on the core re-reads
             // inspection_region and it takes effect on the very next frame,
             // with no def reload and no restart.
-            this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
-              { MachineSetting: { ...this.props.machine_custom_setting, ...patch } });
+            this.props.WSCMD_CB("ST", 0,
+              { MachineSetting: { ...(this.props.machineSetting||{}), ...patch } });
           }}
           onSave={(setting) => {
             let _s = { ...setting };
             Object.keys(_s).forEach(k => { if (k.startsWith("_")) delete _s[k]; });
-            this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
+            this.props.WSCMD_CB("SV", 0,
               { filename: "data/machine_setting.json" },
               new TextEncoder().encode(JSON.stringify(_s, null, 2)),
               { resolve: () => {
@@ -2568,7 +2568,17 @@ class APP_INSP_MODE extends React.Component {
           SLID_API_ID_CONN_INFO={this.props.SLID_API_ID_CONN_INFO}
           uInspESP32_API_ID_CONN_INFO={this.props.uInspESP32_API_ID_CONN_INFO}
           ACT_WS_GET_OBJ={this.props.ACT_WS_GET_OBJ}
-          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
+          // promiseCBs was being dropped. Nothing needed it until the station
+          // panel, which has to know whether its save actually landed before it
+          // clears the "unsaved" state -- otherwise a failed write looks saved.
+          WSCMD_CB={(tl, prop, data, uintArr, promiseCBs) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr, promiseCBs); }}
+          // The station panel lives in this list's sidebar, but the canvas and
+          // the machine setting belong to APP_INSP_MODE. Hand them down rather
+          // than reaching for props ObjInfoList never had -- which is what made
+          // the drag button look armed while the canvas never heard about it.
+          ecCanvas={this.ec_canvas}
+          machineSetting={this.props.machine_custom_setting}
+          ACT_machine_custom_setting_Update={this.props.ACT_machine_custom_setting_Update}
         />);
     }
     else

@@ -35,13 +35,27 @@ const VIEWPORT = (() => {
   return m ? { width: +m[1], height: +m[2] } : { width: 1600, height: 1000 };
 })();
 
+// A HEADED window is for a human to look at, so it must fit the screen it is on.
+// The fixed 1600x1000 forced a window taller and wider than a laptop display,
+// and the bottom and right of the UI -- where the play button and the toolbar
+// live -- ended up off-screen with no scrollbar to reach them.
+//
+// viewport:null tells Playwright to stop overriding the viewport and let it
+// follow the real window, and --start-maximized then sizes that window to the
+// display. HEADLESS keeps the fixed viewport: that is what regress.mjs runs
+// under, and its golden snapshots are coordinate-sensitive (see /viewport), so
+// they must not move. An explicit WEBCTL_VIEWPORT still wins in either mode.
+const EXPLICIT_VIEWPORT = /^(\d+)x(\d+)$/.test(process.env.WEBCTL_VIEWPORT || '');
+const FIT_WINDOW = !HEADLESS && !EXPLICIT_VIEWPORT;
+
 const context = await chromium.launchPersistentContext(USERDATA, {
   headless: HEADLESS,
-  viewport: VIEWPORT,
+  viewport: FIT_WINDOW ? null : VIEWPORT,
   // Size the OS window to match, or a 1920x1080 viewport just gets scrollbars
   // inside a smaller window.
   args: ['--disable-features=Translate',
-         `--window-size=${VIEWPORT.width},${VIEWPORT.height + 90}`],
+         ...(FIT_WINDOW ? ['--start-maximized']
+                        : [`--window-size=${VIEWPORT.width},${VIEWPORT.height + 90}`])],
 });
 const page = context.pages()[0] || (await context.newPage());
 

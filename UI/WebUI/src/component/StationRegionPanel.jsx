@@ -143,8 +143,14 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     clean_regions: clean.length ? clean : undefined,
   });
 
+  // Arming without a canvas handle is the worst possible failure here: the
+  // button lights up, the operator drags, the image pans, and nothing says why.
+  // That is exactly what happened when this panel was mounted somewhere that
+  // never received the canvas. Refuse to arm, and say so.
+  const canAim = !!(ecCanvas && typeof ecCanvas.SetROISettingCallBack === 'function');
   const AimBtn = ({ target, children }) => (
-    <Button size="small" icon={<AimOutlined />}
+    <Button size="small" icon={<AimOutlined />} disabled={!canAim}
+      title={canAim ? undefined : '畫布尚未就緒'}
       type={aiming === target ? 'primary' : 'default'}
       onClick={() => setAiming(aiming === target ? null : target)}>
       {aiming === target ? '在影像上拉框…' : children}
@@ -173,10 +179,14 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
 
   if (!open) return header;
 
-  return <div style={{ padding: '0 8px 4px', textAlign: 'left' }}>
+  // whiteSpace:'normal' is not cosmetic: this panel lives inside an antd
+  // Menu title, which sets `white-space:nowrap; overflow:hidden;
+  // text-overflow:ellipsis`. Without opting out, every hint line is silently
+  // truncated at the sidebar edge -- the instructions vanish, not the decoration.
+  return <div style={{ padding: '0 8px 4px', textAlign: 'left', whiteSpace: 'normal' }}>
     {header}
     <Divider orientation="left" style={{ margin: '4px 0', fontSize: 12 }}>檢驗區域(工位)</Divider>
-    <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+    <div style={{ fontSize: 11, color: '#888', marginBottom: 4, whiteSpace: 'normal', lineHeight: 1.35 }}>
       物件中心落在框外就不判定。留空(w或h=0)= 不限制,整個畫面都算。
       單位是<b>全幀感光元件像素</b>。
     </div>
@@ -188,7 +198,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     ) : null}
 
     <Divider orientation="left" style={{ margin: '8px 0 4px', fontSize: 12 }}>淨空區域</Divider>
-    <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+    <div style={{ fontSize: 11, color: '#888', marginBottom: 4, whiteSpace: 'normal', lineHeight: 1.35 }}>
       低於暗門檻的面積超過上限 → 依「超出時」處理。NA = 視野被污染,這顆量不準,繞回重測。
     </div>
     {clean.map((c, i) => (
