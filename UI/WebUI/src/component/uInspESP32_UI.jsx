@@ -310,7 +310,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // Poll running stats while the panel is open.
   //
   // NEVER let two polls be outstanding at once. The reply is ~1.6 kB and the
-  // link is 115200 baud, so one get_running_stat alone occupies ~140 ms of wire
+  // link is 230400 baud, so one get_running_stat alone occupies ~70 ms of wire
   // -- and it shares that wire with cam_trig announcements, which the core has
   // measured arriving up to 115 ms late. A blind 1 Hz interval turns a slow
   // link into a dead one: the reply takes longer than the period, the next
@@ -1014,9 +1014,15 @@ export default UINSP_ESP32_UI;
 //
 // getRunningStat() dispatches its reply into redux, so when the modal is open
 // this strip is fed for free. Only when the reply stops changing does it start
-// asking. That matters: the link is 115200 baud and one get_running_stat reply
-// is ~1.6kB, so a second unconditional 1Hz poller would take another ~14% of
-// the wire from cam_trig announcements that are already measured arriving late.
+// asking. That matters: one get_running_stat reply is ~1.6kB, so a second
+// unconditional 1Hz poller would take another ~7% of the wire at 230400 from
+// cam_trig announcements that are already measured arriving late.
+//
+// The link moved 115200 -> 230400 on 2026-08-07 and this reply got much faster
+// than the baud change alone explains: 1518 ms -> 66 ms end to end, flat under
+// 30 Hz load. The guard stays regardless -- it costs nothing and the reason it
+// was added (a reply slower than the poll period collapses the link) is a
+// property of blind polling, not of any particular speed.
 export function UINSP_ESP32_MINI() {
   const dispatch = useDispatch();
   const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);

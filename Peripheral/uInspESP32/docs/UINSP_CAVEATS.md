@@ -622,3 +622,45 @@ not a number to quote.
   coincidence of scale, not evidence, and it has not been tested. If it IS the
   loop, the tail is a firmware scheduling problem rather than an optical one,
   it is fixable, and fixing it moves the throughput ceiling directly.
+
+---
+
+## P. The CONNECT config is not in the WebUI — it is in the core's data dir
+
+`InspectionCore/Core0_1/data/machine_setting.json`, key
+`uInspESP32_peripheral_conn_info`:
+
+```json
+{ "uart_name": "/dev/cu.usbserial-0001", "baudrate": 230400,
+  "machine_type": "uInspESP32", "cat_ok": 3, "cat_ng": 1,
+  "cam_idx": 1, "pairing": "timestamp" }
+```
+
+Grepping the WebUI for `baudrate` or `uart_name` finds **nothing** — the panel
+never builds a CONNECT, it only rides one. So this file is where a link setting
+actually lives, and it is **not git-tracked**: back it up before editing, there
+is no `git checkout` to fall back on.
+
+Two things were stale in it after the 2026-08-07 bench day, and both were found
+only by starting the app and reading `speed:115200` in the core's stdout:
+
+1. **`baudrate` was still 115200** while the firmware had moved to 230400. The
+   ten tool scripts were updated in the same commit as the firmware; this file
+   was not, and nothing warns — the panel would simply have talked garbage.
+2. **`cat_ok`/`cat_ng` were 1 and 2**, i.e. good parts routed to SEL1, the most
+   severe reject station (N). Corrected to `cat_ok: 3, cat_ng: 1` after
+   confirming the plumbing, so good parts go to SEL3 (GPIO 32) and rejects to
+   SEL1 (GPIO 25). Note the machine now uses SEL3 as its pass-through, where the
+   old config used only SEL1/SEL2 and left SEL3 unassigned.
+
+**SEL1/2/3 carry no semantic labels anywhere in the code** — they are
+`PIN_O_SEL1 25`, `PIN_O_SEL2 26`, `PIN_O_SEL3 32` in `HardwareConfig.hpp` and
+nothing else. Which chute each drives is a property of the machine, not of the
+source, so a `cat_ok`/`cat_ng` change cannot be verified by reading code. Ask
+before changing it: the failure mode is good parts in the reject bin, or
+defective parts passing.
+
+**Checklist when the firmware's link settings change:** the firmware
+(`Serial.begin`), `platformio.ini` (`monitor_speed`), the ten `tools/*.py`
+CONNs, and this file. Missing the last one leaves the app broken while every
+test script still passes.
