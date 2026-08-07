@@ -23,6 +23,8 @@ import Switch from 'antd/lib/switch';
 import Tooltip from 'antd/lib/tooltip';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
+import CaretRightOutlined from '@ant-design/icons/CaretRightOutlined';
+import BorderOutlined from '@ant-design/icons/BorderOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -1135,9 +1137,16 @@ export function UINSP_ESP32_MINI() {
           conditional rendering -- a button that vanishes when the machine state
           changes moves the other two under the operator's finger. They disable
           instead. */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 3 }}>
+      {/* The flex sizing lives on the WRAPPERS, not the buttons. antd's Tooltip
+          inserts a <span> around a DISABLED child (so the tip still has
+          something to hang off), and that span becomes the flex item -- so
+          `flex:1` on the Button applies to the wrong element and only the
+          disabled one falls out of the row. Sizing the wrappers is immune to
+          whatever antd decides to wrap. */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 3, alignItems: 'stretch' }}>
+        <div style={{ flex: 2, minWidth: 0, display: 'flex' }}>
         <Button
-          style={{ flex: 2, minWidth: 0, height: 34, fontSize: 15, fontWeight: 700, padding: 0 }}
+          style={{ width: '100%', height: 34, fontSize: 15, fontWeight: 700, padding: 0 }}
           size="large"
           type={running || starting ? 'default' : 'primary'}
           danger={running || starting}
@@ -1154,14 +1163,28 @@ export function UINSP_ESP32_MINI() {
                 .then(() => { if (mounted.current) setBusy(false); });
             }));
           }}
-        >{running || starting ? '停止' : '啟動'}</Button>
+          // Transport icons, not words. It keeps the row one visual language
+          // with the other two, and a triangle/square pair is read faster than a
+          // label at a glance across the machine. The word is not lost: the
+          // status line directly underneath still says STOP or RUN, which is
+          // where the machine's state belongs -- the button says what pressing
+          // it DOES, and the line says what the machine IS.
+          icon={running || starting ? <BorderOutlined /> : <CaretRightOutlined />}
+        />
+        </div>
 
         {/* A lit frame. Disabled while running, because the firmware refuses a
             manual light hold once the stage machine drives those pins -- and it
             is right to: a hold would be stomped within milliseconds. */}
+        {/* Tooltip wraps the DIV, not the button. Given a disabled child antd
+            injects its own inline-block <span> to hang the tip on, and a
+            width:100% button inside an inline-block span resolves against
+            content width -- so the button collapsed to 16px and sat 4px low.
+            With the div as the child there is no injected span at all. */}
         <Tooltip title="拍一張(含背光)">
+        <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
           <Button
-            style={{ flex: 1, minWidth: 0, height: 34, padding: 0 }}
+            style={{ width: '100%', height: 34, padding: 0 }}
             icon={<CameraOutlined />} loading={snapping}
             disabled={running || starting}
             onClick={() => {
@@ -1175,14 +1198,16 @@ export function UINSP_ESP32_MINI() {
                   .then(() => { if (mounted.current) setSnapping(false); });
               }));
             }} />
+        </div>
         </Tooltip>
 
         {/* Clearing the error was only possible from the setup panel, which is a
             modal the operator has to go and find -- for the one action that gets
             a stopped line moving again. */}
         <Tooltip title="清除錯誤">
+        <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
           <Button
-            style={{ flex: 1, minWidth: 0, height: 34, padding: 0 }}
+            style={{ width: '100%', height: 34, padding: 0 }}
             icon={<ReloadOutlined />} loading={clearing}
             danger={inError}
             type={inError ? 'primary' : 'default'}
@@ -1197,6 +1222,7 @@ export function UINSP_ESP32_MINI() {
                   .then(() => { if (mounted.current) setClearing(false); });
               }));
             }} />
+        </div>
         </Tooltip>
       </div>
 
