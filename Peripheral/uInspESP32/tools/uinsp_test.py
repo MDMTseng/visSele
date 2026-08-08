@@ -911,7 +911,7 @@ def _gate_of(link):
     return stat.get("gate") or {}
 
 
-def _pump_until(link, targets, timeout=25.0):
+def _pump_until(link, targets, timeout=25.0, tid_floor=0):
     """Answer the calibration pulses while waiting for a settled state.
 
     INSPECTION_MODE_CAL fires phantom "sync" pulses and hands over only once
@@ -925,6 +925,13 @@ def _pump_until(link, targets, timeout=25.0):
     long they last, which is what makes this safe to call immediately after
     enter_insp_mode / clear_error -- before the board has even left IDLE.
 
+    `tid_floor` refuses to answer anything at or below it. Announcements
+    outlive the run that produced them -- a mode re-entry flushes the pipe but
+    not the queue already holding their cam_trigs -- so answering everything
+    means answering for objects that no longer exist, which the machine calls
+    a tid desync. Callers that have just flushed pass the highest tid they saw
+    while flushing.
+
     Returns (state, detail); state is None if the deadline passed.
     """
     t0 = time.time()
@@ -933,6 +940,8 @@ def _pump_until(link, targets, timeout=25.0):
     while time.time() - t0 < timeout:
         for _, msg in link.drain_async():
             if msg.get("type") == "cam_trig" and msg.get("tid") is not None:
+                if isinstance(msg["tid"], int) and msg["tid"] <= tid_floor:
+                    continue          # flushed before we re-entered; not ours
                 link.send_nowait({"type": "report", "tid": msg["tid"],
                                   "cat": CAT_NA})
                 answered += 1
@@ -1028,8 +1037,11 @@ def _quiesce(link, freq, timeout=None):
     Discarding is the whole point. An answer is a claim about an object that
     exists; there is nothing here to make a claim about.
 
-    Returns the number of frames dropped."""
+    Returns (frames dropped, highest tid seen) -- the tid is what a caller
+    passes to _pump_until as tid_floor, so the announcements discarded here are
+    not answered a moment later."""
     link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    hi_tid = 0
     if timeout is None:
         timeout = 3.0
     dropped, quiet_since = 0, time.time()
@@ -1037,12 +1049,15 @@ def _quiesce(link, freq, timeout=None):
     while time.time() < deadline:
         got = link.drain_async()
         if got:
+            for _, m in got:
+                if m.get("type") == "cam_trig" and isinstance(m.get("tid"), int):
+                    hi_tid = max(hi_tid, m["tid"])
             dropped += len(got)
             quiet_since = time.time()
         elif time.time() - quiet_since > 0.4:
             break
         time.sleep(0.01)
-    return dropped
+    return dropped, hi_tid
 
 
 def _background_rate(link, seconds=3.0):
@@ -1420,7 +1435,7 @@ def _errors_of(stat):
 
 
 def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
-            max_seconds, drop_frac, cat):
+            max_seconds, drop_frac, cat, plate_sweep=None):
     """Measure skip rate against object rate, and find where throughput peaks.
 
     The question this exists to answer: auto-rate drives the machine to a
@@ -1504,16 +1519,36 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
           f"{'p_skip':>8} {'unans':>7} {'+-':>6} {'good/s':>8}  note")
     print("  " + "-" * 84)
 
+    # Two ways to vary the rate, and only one of them is how the machine works.
+    #
+    # phantom  fire injected pulses at a chosen rate. Repeatable, needs no
+    #          material, and bypasses GateSensing -- so it measures the
+    #          pipeline, never the gate.
+    # plate    spin the plate faster and let the real parts arrive as fast as
+    #          the geometry carries them past the sensor. You do not SET the
+    #          rate here, you set the speed and MEASURE the rate -- and it is
+    #          the only mode where the end-to-end ratio means anything, because
+    #          a part has to pass the sensor to be counted at `edges`.
     rows = []
+    sweep = list(plate_sweep) if plate_sweep else None
+    points = list(sweep) if sweep else None
     hz = start_hz
-    while hz <= max_hz:
-        _quiesce(link, need_freq, timeout=3.0)
+    while (points if sweep else hz <= max_hz):
+        # NOTE: the speed is changed AFTER the pipe is flushed, never before.
+        # Setting it here would move the plate while the previous point's parts
+        # are still walking to their stages, and their announcements then land
+        # in a pipeline that has been re-entered -- reported as tid desync,
+        # which is what killed the first plate sweep at its second point.
+        freq_here = points.pop(0) if sweep else need_freq
+        _, floor = _quiesce(link, freq_here, timeout=6.0)
         link.send({"type": "clear_error"}, timeout=2.0)
         link.send({"type": "clear_error_history"}, timeout=2.0)
+        link.send({"type": "set_setup", "plate_freq": freq_here}, timeout=3.0)
         link.send({"type": "enter_insp_mode"}, timeout=3.0)
-        if _pump_until(link, (ST_READY,), timeout=60.0)[0] != ST_READY:
-            print(f"  {hz:>5}/s   never reached READY"); break
-        tb = _settle_cal(link, need_freq, cat=cat)
+        if _pump_until(link, (ST_READY,), timeout=60.0,
+                       tid_floor=floor)[0] != ST_READY:
+            print("  never reached READY"); break
+        tb = _settle_cal(link, freq_here, cat=cat)
         link.send({"type": "reset_running_stat"}, timeout=2.0)
         link.drain_async()
 
@@ -1537,7 +1572,9 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
                         continue          # deliberately unanswered -> SKIP
                     link.send_nowait({"type": "report", "tid": tid, "cat": cat})
                 time.sleep(0.002)
-            link.send_nowait({"type": "trig_phantom_pulse"}); i += 1; fired += 1
+            if not sweep:
+                link.send_nowait({"type": "trig_phantom_pulse"}); fired += 1
+            i += 1
             if i % 50 == 0:
                 g = _gate_of(link)
                 if ((g.get("accept") or 0) - (g0.get("accept") or 0)) >= parts_per_point:
@@ -1584,10 +1621,12 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
             note = "FAULT " + ",".join(ERR_NAME.get(e, str(e)) for e in sorted(set(errs)))
         elif adm < parts_per_point * 0.5:
             note = "thin sample"
-        print(f"  {hz:>5}/s {adm:>9} {judged:>8} {p*100:>7.2f}% "
+        label = ("f%d" % freq_here) if sweep else ("%.0f/s" % hz)
+        print(f"  {label:>6} {adm:>9} {judged:>8} {p*100:>7.2f}% "
               f"{p_skip*100:>7.2f}% {unans:>7} "
               f"{('%.0f%%' % (se*100)) if se == se else '   -':>6} {good:>8.1f}  {note}")
-        rows.append(dict(hz=hz, admitted=adm, judged=judged, skipped=skip,
+        rows.append(dict(hz=(adm/span if (sweep and span) else hz),
+                         freq=freq_here, admitted=adm, judged=judged, skipped=skip,
                          unans=unans, p=p, p_skip=p_skip, se=se, good=good,
                          span=span, errs=errs,
                          edges=dg("edges"), rej_width=dg("rej_width"),
@@ -1596,7 +1635,8 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
                          rej_rate=dg("rej_rate"), rej_busy=dg("rej_busy")))
         if errs:
             break
-        hz += step_hz
+        if not sweep:
+            hz += step_hz
 
     # --- restore before saying anything about the numbers ---
     _quiesce(link, need_freq, timeout=4.0)
@@ -1626,7 +1666,8 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
     for r in rows:
         e2e = ("%6.1f%%" % (r["judged"] / r["edges"] * 100)) if (
             r["edges"] and not phantom_run) else "     --"
-        print(f"  {r['hz']:>5}/s {r['edges']:>7} {r['rej_width']:>6} "
+        lbl = ("f%d" % r["freq"]) if r.get("freq") and sweep else ("%.0f/s" % r["hz"])
+        print(f"  {lbl:>6} {r['edges']:>7} {r['rej_width']:>6} "
               f"{r['rej_unstable']:>7} {r['rej_blocked']:>6} {r['rej_dist']:>6} "
               f"{r['rej_rate']:>6} {r['rej_busy']:>5} {r['admitted']:>7} "
               f"{r['judged']:>7} {e2e:>8}")
@@ -1642,7 +1683,9 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
     # Is the peak interior, or is it the last point we dared to try?
     interior = best is not rows[-1] and best is not rows[0]
     rep.add("P.2", "peak throughput", None,
-            f"{best['good']:.1f} good/s at {best['hz']}/s asked "
+            f"{best['good']:.1f} good/s at "
+            f"{('plate_freq %d' % best['freq']) if sweep else ('%.0f/s asked' % best['hz'])} "
+            f"({best['hz']:.1f} parts/s measured) "
             f"({best['admitted']} admitted, p={best['p']*100:.2f}%)"
             + ("  -- INTERIOR peak: a hill-climb controller is the right shape"
                if interior else
@@ -1657,7 +1700,8 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
         at_setpoint = max(below, key=lambda r: r["hz"])
         loss = (1 - at_setpoint["good"] / best["good"]) * 100 if best["good"] else 0
         rep.add("P.3", "cost of the shipped auto-rate setpoint", None,
-                f"auto-rate targets p<={tgt*100:.3f}%, which here is {at_setpoint['hz']}/s "
+                f"auto-rate targets p<={tgt*100:.3f}%, which here is "
+                f"{at_setpoint['hz']:.1f} parts/s "
                 f"= {at_setpoint['good']:.1f} good/s, {loss:.0f}% below the peak")
     else:
         rep.add("P.3", "cost of the shipped auto-rate setpoint", None,
@@ -1666,7 +1710,7 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
     blind = [r for r in rows if r["p"] > 0.01 and r["p_skip"] < 0.001]
     if blind:
         rep.add("P.5", "parts lost where auto-rate cannot see them", None,
-                "at " + ", ".join(f"{r['hz']}/s ({r['p']*100:.1f}% lost, "
+                "at " + ", ".join(f"{r['hz']:.1f}/s ({r['p']*100:.1f}% lost, "
                                   f"{r['p_skip']*100:.2f}% skip)" for r in blind[:4])
                 + " -- unjudged as UNSET, not SKIP, so the controller reads "
                   "clean and holds speed")
@@ -4117,6 +4161,12 @@ def main():
                          "them, so the instrument can be checked without a "
                          "camera (dry run only)")
     pf.add_argument("--cat", type=int, default=1)
+    pf.add_argument("--plate-sweep", default=None,
+                    help="comma-separated plate_freq values: spin the plate and "
+                         "let the REAL parts set the rate instead of injecting "
+                         "phantoms. The only mode where the end-to-end ratio "
+                         "means anything, because a part has to pass the sensor "
+                         "to be counted at `edges`.")
 
     ch = sub.add_parser("chaos",
                         help="randomized rate + plate speed + offset churn; "
@@ -4250,7 +4300,9 @@ def main():
             stall(link, rep, args.hz, args.stall_seconds, args.cat)
         elif args.cmd == "profile":
             profile(link, rep, args.start_hz, args.max_hz, args.step_hz,
-                    args.parts, args.max_seconds, args.drop_frac, args.cat)
+                    args.parts, args.max_seconds, args.drop_frac, args.cat,
+                    [int(x) for x in args.plate_sweep.split(",")]
+                    if args.plate_sweep else None)
 
         elif args.cmd == "chaos":
             link.auto_reconnect = args.auto_reconnect
