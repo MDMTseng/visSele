@@ -3679,6 +3679,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
       jHl["rx_crc_fail"]=djrl.rx_crc_fail;
+      // Why the chip last booted: lets a host that finds the board freshly in
+      // IDLE tell a panic/watchdog/brownout from a plain power cycle. Moved
+      // here from get_setup, beside the other once-per-boot facts.
+      {
+        static const char* rr_names[]={"UNKNOWN","POWERON","EXT","SW","PANIC",
+                                       "INT_WDT","TASK_WDT","WDT","DEEPSLEEP",
+                                       "BROWNOUT","SDIO"};
+        int rr=(int)esp_reset_reason();
+        jHl["reset_reason"]=rr;
+        jHl["reset_reason_name"]=(rr>=0 && rr<11)?rr_names[rr]:"?";
+        jHl["xtal_mhz"]=(int)rtc_clk_xtal_freq_get();
+      }
     }
     {
       // Gate admission. rate>0 means the fire-rate limit is actually engaging:
@@ -5435,19 +5447,34 @@ void genMachineSetup(JsonDocument &jdoc)
 
   // auto obj=jdoc.createNestedObject("obj");
 
-  jdoc["plate_freq"]=PLATE_FREQ_SETPOINT;
-  jdoc["plate_accel"]=SYS_FREQ_ACCEL;
-  jdoc["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
-  jdoc["auto_rate"]=(bool)AUTO_RATE;
-  jdoc["auto_rate_floor_us"]=AUTO_RATE_FLOOR_us;
-  jdoc["auto_rate_recover_n"]=AUTO_RATE_RECOVER_N;
-  jdoc["report_match_ts"]=REPORT_MATCH_TS;
+  {
+    JsonObject jP = jdoc.createNestedObject("plate");
+    jP["freq"]=PLATE_FREQ_SETPOINT;
+    jP["accel"]=SYS_FREQ_ACCEL;
+    jP["pulses_per_rev"]=pulses_per_rev;
+    jP["diameter_mm"]=plate_diameter_mm;
+    jP["stepper_en_active"]=stepper_en_active;
+    jP["stepper_dir"]=stepper_dir_level;
+  }
+  {
+    JsonObject jGT = jdoc.createNestedObject("gate");
+    jGT["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+    jGT["pulse_min_width"]=minWidth;
+    jGT["pulse_max_width"]=maxWidth;
+    jGT["debounce_rise"]=DEBOUNCE_H_THRES;
+    jGT["debounce_fall"]=DEBOUNCE_L_THRES;
+  }
+  {
+    JsonObject jCM = jdoc.createNestedObject("cam");
+    jCM["report_match_ts"]=REPORT_MATCH_TS;
+    jCM["match_window_us"]=CamClockSync::TOL_US;
+    jCM["recal_idle_ms"]=CAM_RECAL_IDLE_MS;
+    jCM["cal_pulse_us"]=CAL_PULSE_WIDTH_US;
+    jCM["drift_comp"]=CamClockSync::DRIFT_COMP;
+  }
   // Emitted as an integer, not a double: this document IS the persisted config,
   // and JSON_SETIF_ABLE gates on is<int64_t>(). A value written back as a float
   // would fail that test on the next boot and silently revert to the default.
-  jdoc["cam_match_window_us"]=CamClockSync::TOL_US;
-  jdoc["cam_recal_idle_ms"]=CAM_RECAL_IDLE_MS;
-  jdoc["cal_pulse_us"]=CAL_PULSE_WIDTH_US;
   {
     // Widths in microseconds. 0 = not configured, the *_off offset above rules.
     JsonObject jW = jdoc.createNestedObject("stage_pulse_width_us");
@@ -5459,16 +5486,9 @@ void genMachineSetup(JsonDocument &jdoc)
     jW["SEL2"]=STAGE_PULSE_WIDTH_US.SEL2;
     jW["SEL3"]=STAGE_PULSE_WIDTH_US.SEL3;
   }
-  jdoc["cam_drift_comp"]=CamClockSync::DRIFT_COMP;
 
-  jdoc["pulse_min_width"]=minWidth;
-  jdoc["pulse_max_width"]=maxWidth;
 
-  jdoc["gate_debounce_rise"]=DEBOUNCE_H_THRES;
-  jdoc["gate_debounce_fall"]=DEBOUNCE_L_THRES;
 
-  jdoc["stepper_en_active"]=stepper_en_active;
-  jdoc["stepper_dir"]=stepper_dir_level;
 
   // What the machine does about a part that reached the selector unjudged.
   //
@@ -5485,8 +5505,12 @@ void genMachineSetup(JsonDocument &jdoc)
   //         camera stopped answering, and slowing down cannot fix that; it
   //         would only pass unjudged parts more slowly.
   //
-  // The flat keys are still emitted, derived from the same variables, so
-  // existing hosts and every NVS image written before this keep working.
+  // The only representation. The five flat keys this replaced were migrated
+  // out on 2026-08-08 by persisting the group with the firmware that still
+  // emitted both, then dropping them -- an NVS image older than that has no
+  // skip_policy and comes up on the compiled defaults (AUTO_RATE off). This
+  // machine's image was saved through the transition; backup in
+  // tools/machine_config_backup_2026-08-08.json.
   {
     JsonObject jSP = jdoc.createNestedObject("skip_policy");
     jSP["mode"] = AUTO_RATE ? (UNANSWERED_POLICY==1 ? "slow_and_stop" : "slow_only")
@@ -5499,10 +5523,6 @@ void genMachineSetup(JsonDocument &jdoc)
     // than one that tells you what you chose.
     if(!AUTO_RATE && UNANSWERED_POLICY!=1) jSP["unsafe"]=true;
   }
-  jdoc["unanswered_policy"]=UNANSWERED_POLICY;
-  jdoc["unanswered_stop_after"]=UNANSWERED_STOP_AFTER;
-  jdoc["pulses_per_rev"]=pulses_per_rev;
-  jdoc["plate_diameter_mm"]=plate_diameter_mm;
 
   {
     JsonObject jIO = jdoc.createNestedObject("io_on_level");
@@ -5520,32 +5540,12 @@ void genMachineSetup(JsonDocument &jdoc)
   // merely being slow. The get_setup handler adds it once, at the top.
   jdoc["host_timeout_ms"]=host_timeout_ms;
 
-  // Why the chip last booted: lets a host that finds the board freshly in
-  // IDLE tell a panic/watchdog/brownout from a plain power cycle.
-  {
-    static const char* rr_names[]={"UNKNOWN","POWERON","EXT","SW","PANIC",
-                                   "INT_WDT","TASK_WDT","WDT","DEEPSLEEP",
-                                   "BROWNOUT","SDIO"};
-    int rr=(int)esp_reset_reason();
-    jdoc["reset_reason"]=rr;
-    jdoc["reset_reason_name"]=(rr>=0 && rr<11)?rr_names[rr]:"?";
-    jdoc["xtal_mhz"]=(int)rtc_clk_xtal_freq_get();
-  }
-
-
-  {
-    JsonArray jERROR_HIST = jdoc.createNestedArray("error_hist");
-
-    for(int i=0;i<ERROR_HIST.size();i++)
-    {
-      jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
-    }
-  }
-
-
-  // jdoc["PLATE_FREQ_TARGET"]=PLATE_FREQ_TARGET;
-  jdoc["cur_state"]=(int)sysinfo.state;
-  jdoc["step_count"]=(int)SYS_STEP_COUNT;
+  // reset_reason / xtal_mhz / error_hist / cur_state / step_count are NOT
+  // here any more. This document's own contract is that it IS the persisted
+  // config, and none of those are persisted or config -- they made it bigger
+  // for every host that only wanted the settings, on a link where a long
+  // reply does get truncated. state and step_count are on `poll` (122 bytes),
+  // error_hist and the boot facts on get_running_stat.
 
   
 }
@@ -5591,27 +5591,24 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     MachineConfig::setMachineId(jdoc["machine_id"].as<const char*>());
   }
 
-  JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jdoc,"plate_freq");
-  JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jdoc,"plate_accel");
-  JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"min_detect_sep_us");
+  // The config arrives grouped: plate / gate / cam / skip_policy /
+  // stage_pulse_offset / stage_pulse_width_us / io_on_level. An absent group
+  // binds to a null JsonObject, on which is<T>() is false, so every setter
+  // below simply does not fire -- exactly what "key not present" did before.
+  JsonObject jP  = jdoc["plate"];
+  JsonObject jGT = jdoc["gate"];
+  JsonObject jCM = jdoc["cam"];
+
+  JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jP,"freq");
+  JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jP,"accel");
+  JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   // Changing the configured rate always resets the live one: the operator asked
   // for a rate, not for whatever the loop had crept to.
-  if(jdoc["min_detect_sep_us"].is<int>()) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
-  {
-    bool ar=AUTO_RATE;
-    JSON_SETIF_ABLE(ar,jdoc,"auto_rate");
-    if(ar!=AUTO_RATE){ AUTO_RATE=ar; AUTO_RATE_OK_RUN=0;
-                       if(!ar) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us; }
-  }
-  JSON_SETIF_ABLE(AUTO_RATE_FLOOR_us,jdoc,"auto_rate_floor_us");
-  JSON_SETIF_ABLE(AUTO_RATE_RECOVER_N,jdoc,"auto_rate_recover_n");
-  if(AUTO_RATE_RECOVER_N<1) AUTO_RATE_RECOVER_N=1;
-  if(AUTO_RATE_FLOOR_us<SYS_MIN_PULSE_TIME_SEP_us)
-    AUTO_RATE_FLOOR_us=SYS_MIN_PULSE_TIME_SEP_us;
+  if(jGT["min_detect_sep_us"].is<int>()) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
   if(GATE_SEP_EFF_us<SYS_MIN_PULSE_TIME_SEP_us)
     GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
-  JSON_SETIF_ABLE(REPORT_MATCH_TS,jdoc,"report_match_ts");
-  JSON_SETIF_ABLE(CamClockSync::TOL_US,jdoc,"cam_match_window_us");
+  JSON_SETIF_ABLE(REPORT_MATCH_TS,jCM,"report_match_ts");
+  JSON_SETIF_ABLE(CamClockSync::TOL_US,jCM,"match_window_us");
   // TODO (deferred 2026-08-06): the window is really a POSITION tolerance, and
   // expressing it in microseconds hides that.
   //
@@ -5695,23 +5692,23 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
                       "the window noise floor -- a lost frame could be matched "
                       "to a neighbour",(unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
   }
-  JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jdoc,"cam_drift_comp");
-  JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jdoc,"cam_recal_idle_ms");
-  JSON_SETIF_ABLE(CAL_PULSE_WIDTH_US,jdoc,"cal_pulse_us");
+  JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jCM,"drift_comp");
+  JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jCM,"recal_idle_ms");
+  JSON_SETIF_ABLE(CAL_PULSE_WIDTH_US,jCM,"cal_pulse_us");
   // Negative is meaningless; 0 is the documented "off". A floor above that stops
   // a small positive value from recalibrating continuously and never running.
   if(CAM_RECAL_IDLE_MS < 0) CAM_RECAL_IDLE_MS = 0;
   if(CAM_RECAL_IDLE_MS > 0 && CAM_RECAL_IDLE_MS < 2000) CAM_RECAL_IDLE_MS = 2000;
 
-  JSON_SETIF_ABLE(minWidth,jdoc,"pulse_min_width");
-  JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_max_width");
-  JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jdoc,"gate_debounce_rise");
-  JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jdoc,"gate_debounce_fall");
+  JSON_SETIF_ABLE(minWidth,jGT,"pulse_min_width");
+  JSON_SETIF_ABLE(maxWidth,jGT,"pulse_max_width");
+  JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jGT,"debounce_rise");
+  JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jGT,"debounce_fall");
 
-  if(jdoc["stepper_en_active"].is<int>() || jdoc["stepper_dir"].is<int>())
+  if(jP["stepper_en_active"].is<int>() || jP["stepper_dir"].is<int>())
   {
-    JSON_SETIF_ABLE(stepper_en_active,jdoc,"stepper_en_active");
-    JSON_SETIF_ABLE(stepper_dir_level,jdoc,"stepper_dir");
+    JSON_SETIF_ABLE(stepper_en_active,jP,"stepper_en_active");
+    JSON_SETIF_ABLE(stepper_dir_level,jP,"stepper_dir");
     stepper_en_active = stepper_en_active ? 1 : 0;
     stepper_dir_level = stepper_dir_level ? 1 : 0;
     // Re-drive both pins so the new polarity takes effect now, preserving the
@@ -5724,12 +5721,6 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     }
   }
 
-  {
-    int v=UNANSWERED_POLICY;
-    if(jdoc["unanswered_policy"].is<int>()){ v=jdoc["unanswered_policy"]; UNANSWERED_POLICY=(v==1)?1:0; }
-    v=UNANSWERED_STOP_AFTER;
-    if(jdoc["unanswered_stop_after"].is<int>()){ v=jdoc["unanswered_stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
-  }
   // The group is applied AFTER the flat keys, so a document carrying both --
   // which is what get_setup emits and therefore what NVS stores -- ends on the
   // group. A document carrying only the old keys still works untouched.
@@ -5756,8 +5747,8 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
       AUTO_RATE_FLOOR_us=SYS_MIN_PULSE_TIME_SEP_us;
   }
   JSON_SETIF_ABLE(host_timeout_ms,jdoc,"host_timeout_ms");
-  JSON_SETIF_ABLE(pulses_per_rev,jdoc,"pulses_per_rev");
-  JSON_SETIF_ABLE(plate_diameter_mm,jdoc,"plate_diameter_mm");
+  JSON_SETIF_ABLE(pulses_per_rev,jP,"pulses_per_rev");
+  JSON_SETIF_ABLE(plate_diameter_mm,jP,"diameter_mm");
 
   if(jdoc["io_on_level"].is<JsonObject>())
   {

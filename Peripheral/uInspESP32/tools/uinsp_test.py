@@ -396,10 +396,68 @@ class UInspLink:
             self._async.append((time.time(), msg))
             self._async_ev.set()
 
+    # --- config shape adapter ------------------------------------------
+    # The firmware groups its config (2026-08-08): plate / gate / cam /
+    # skip_policy / stage_pulse_offset / stage_pulse_width_us / io_on_level,
+    # and the flat keys are gone. Rather than rewrite 118 call sites -- and
+    # make every one of them carry the mapping -- the translation lives here,
+    # once, where it can be read and corrected in one place.
+    #
+    # This is a compatibility adapter, not a pretence: `poll` and
+    # get_running_stat are untouched, and anything reading a group directly
+    # (_read_spo, skip_policy) goes straight through.
+    _CFG_GROUP = {
+        "plate_freq": ("plate", "freq"),
+        "plate_accel": ("plate", "accel"),
+        "pulses_per_rev": ("plate", "pulses_per_rev"),
+        "plate_diameter_mm": ("plate", "diameter_mm"),
+        "stepper_en_active": ("plate", "stepper_en_active"),
+        "stepper_dir": ("plate", "stepper_dir"),
+        "min_detect_sep_us": ("gate", "min_detect_sep_us"),
+        "pulse_min_width": ("gate", "pulse_min_width"),
+        "pulse_max_width": ("gate", "pulse_max_width"),
+        "gate_debounce_rise": ("gate", "debounce_rise"),
+        "gate_debounce_fall": ("gate", "debounce_fall"),
+        "report_match_ts": ("cam", "report_match_ts"),
+        "cam_match_window_us": ("cam", "match_window_us"),
+        "cam_recal_idle_ms": ("cam", "recal_idle_ms"),
+        "cal_pulse_us": ("cam", "cal_pulse_us"),
+        "cam_drift_comp": ("cam", "drift_comp"),
+        "unanswered_stop_after": ("skip_policy", "stop_after"),
+        "auto_rate_floor_us": ("skip_policy", "rate_floor_us"),
+        "auto_rate_recover_n": ("skip_policy", "recover_n"),
+    }
+
+    @classmethod
+    def _regroup(cls, obj):
+        """Flat keys in a set_setup -> the groups the firmware now expects."""
+        if obj.get("type") != "set_setup":
+            return obj
+        out = {}
+        for k, v in obj.items():
+            g = cls._CFG_GROUP.get(k)
+            if g:
+                out.setdefault(g[0], {})[g[1]] = v
+            else:
+                out[k] = v
+        return out
+
+    @classmethod
+    def _flatten(cls, rep):
+        """Groups in a get_setup reply -> the flat names callers still read.
+        The groups stay too, so a caller can use either."""
+        if not isinstance(rep, dict) or "plate" not in rep:
+            return rep
+        for flat, (grp, key) in cls._CFG_GROUP.items():
+            g = rep.get(grp)
+            if isinstance(g, dict) and key in g:
+                rep.setdefault(flat, g[key])
+        return rep
+
     def send(self, obj, timeout=2.0):
         """Send a command and wait for the reply that echoes its id."""
         with self._tx_lock:
-            obj = dict(obj)
+            obj = self._regroup(dict(obj))
             self._id += 1
             mid = self._id
             obj["id"] = mid
@@ -427,7 +485,7 @@ class UInspLink:
         with self._lock:
             # _dispatch removes it on a hit; this only matters on timeout.
             self._pending.pop(mid, None)
-        return slot["reply"] if got else None
+        return self._flatten(slot["reply"]) if got else None
 
     # A synthetic camera clock, so reports can teach CAM_SYNC.
     #
@@ -508,7 +566,7 @@ class UInspLink:
         """
         obj = self._with_cam_ts(obj)
         with self._tx_lock:
-            obj = dict(obj)
+            obj = self._regroup(dict(obj))
             self._id += 1
             obj["id"] = self._id
             raw = json.dumps(obj, separators=(",", ":")).encode()
@@ -1244,6 +1302,13 @@ def bench(link, rep, count, freq, interval_ms, cat):
     print("\n  Negative check: reporting a tid that does not exist should fault")
     print("  the machine. That fault is the safety net the whole design leans")
     print("  on -- if it does NOT fire, a desync would sort parts silently.")
+    # Settled state first. With report_match_ts on -- the machine's real
+    # setting -- RECAL runs periodically, and a bogus tid delivered mid-RECAL
+    # is answered by a state machine that is somewhere else: B.9 read
+    # "state=104" and called a missing fault a failure. This check is about
+    # what the machine does with an unknown tid, not about catching it between
+    # states.
+    _pump_until(link, (ST_READY,), timeout=40.0)
     bogus = (max(seen) + 100000) if seen else 999999
     link.send_nowait({"type": "report", "tid": bogus, "cat": cat})
     time.sleep(0.5)
