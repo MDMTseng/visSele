@@ -60,7 +60,10 @@ RUNS = [
             "超過之後必須開始失配 —— 兩邊都要成立,只有前半段成立代表視窗根本沒被逼到。",
         argv=["jitter_sweep.py", "--seconds", "60",
               "--jitters", "0", "1000", "2500", "4000", "6000", "10000"],
-        env={},
+        # Without the pattern the core answers NA to everything, so every
+        # object reads as BAD and "zero misplaced verdicts" -- the whole pass
+        # condition -- cannot fail. A vacuous pass is worse than no run.
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED)},
     ),
     dict(
         name="burst", block="A", minutes=16,
@@ -108,10 +111,20 @@ RUNS = [
         name="regress", block="A", minutes=185,
         why="2026-08-06 修掉的每一項都只是『改完沒再看到』,而它取代的故障要 10-30 分鐘才復發。"
             "唯一能證明的是時間。三小時的看守排最後,因為它最長,前面每一項都比它先給出答案。",
-        argv=["regress_watch.py", "--hours", "3", "--report-every", "600"],
-        env={},
+        argv=["regress_watch.py", "--hours", "3", "--report-every", "600",
+              "--verdict-seed", str(VERDICT_SEED)],
+        # Same requirement as jitter: the slip check needs the seeded verdicts,
+        # and regress_watch refuses to call itself a pass without them.
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED)},
     ),
 ]
+
+
+# The core owned by the run in flight. An interrupted queue used to leave it
+# running: the exception propagates out of run_one, past the core_stop calls,
+# and a core nobody is watching keeps the serial port and can keep the plate
+# turning. Tracked here so the handler can shut it down.
+CUR_CORE = (None, None)
 
 
 def log(fh, msg):
@@ -276,7 +289,9 @@ def run_one(r, outdir, fh):
         if line.strip():
             log(fh, "    %s。" % line.strip())
 
+    global CUR_CORE
     p, cfh, err = core_start(r.get("env"), logpath)
+    CUR_CORE = (p, cfh)
     if err:
         core_stop(p, cfh)
         log(fh, "  core: %s -> SKIP" % err)
@@ -292,7 +307,11 @@ def run_one(r, outdir, fh):
 
     t0 = time.time()
     with open(runlog, "w") as rf:
-        proc = subprocess.run([sys.executable] + r["argv"], cwd=HERE,
+        # -u: child stdout is block-buffered when redirected to a file, so a
+        # three-hour run shows nothing at all until it exits. That is fine for
+        # the verdict and useless for watching -- if a long run wedges at hour
+        # two, a buffered log cannot say where.
+        proc = subprocess.run([sys.executable, "-u"] + r["argv"], cwd=HERE,
                               stdout=rf, stderr=subprocess.STDOUT)
     dt = time.time() - t0
     out = open(runlog, encoding="utf8", errors="replace").read()
@@ -359,7 +378,8 @@ def main(a):
         try:
             v, d = run_one(r, outdir, fh)
         except KeyboardInterrupt:
-            log(fh, "interrupted during %s" % r["name"])
+            log(fh, "interrupted during %s -- stopping its core" % r["name"])
+            core_stop(*CUR_CORE)
             stopped = "interrupted"
             break
         results.append((r["name"], v))
