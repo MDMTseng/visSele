@@ -350,8 +350,30 @@ import gi
 gi.require_version('Aravis','0.8')
 from gi.repository import Aravis
 Aravis.update_device_list()
-Aravis.Camera.new(None).get_device().execute_command('DeviceReset')
+cam = Aravis.Camera.new(None)
+print('REGION %d %d %d %d' % cam.get_region())
+print('EXPOSURE %f' % cam.get_exposure_time())
+cam.get_device().execute_command('DeviceReset')
 print('reset issued')
+"""
+
+# DeviceReset returns the camera to its power-on geometry -- it wipes the ROI.
+# That matters more than it sounds: full frame is 2448x2048 at 35.18 fps against
+# 560x452 at 184.89, so inspection wall time roughly doubles and the throughput
+# ceiling drops by 5x. A recovery that silently changes the operating point is
+# the same failure as every other one found this night: the harness reports
+# success and then measures a different machine. So capture the geometry first
+# and put it back.
+CAM_RESTORE = """
+import gi, sys
+gi.require_version('Aravis','0.8')
+from gi.repository import Aravis
+x, y, w, h, e = [float(v) for v in sys.argv[1:6]]
+Aravis.update_device_list()
+cam = Aravis.Camera.new(None)
+cam.set_region(int(x), int(y), int(w), int(h))
+cam.set_exposure_time(e)
+print('restored %dx%d+%d+%d exp=%.0f' % (int(w), int(h), int(x), int(y), e))
 """
 
 
@@ -367,9 +389,15 @@ def camera_ok():
 def camera_recover(fh):
     """DeviceReset, wait for re-enumeration, re-probe. True if it came back."""
     log(fh, "  camera: attempting DeviceReset")
+    geom = None
     try:
-        subprocess.run([CAM_PY, "-c", CAM_RESET], capture_output=True,
-                       text=True, timeout=60)
+        p = subprocess.run([CAM_PY, "-c", CAM_RESET], capture_output=True,
+                           text=True, timeout=60)
+        for line in p.stdout.splitlines():
+            if line.startswith("REGION"):
+                geom = line.split()[1:5]
+            elif line.startswith("EXPOSURE") and geom is not None:
+                geom = geom + [line.split()[1]]
     except Exception as e:
         log(fh, "  camera: reset failed: %s" % e)
         return False
@@ -377,6 +405,13 @@ def camera_recover(fh):
         time.sleep(5)
         ok, why = camera_ok()
         if ok:
+            if geom and len(geom) == 5:
+                r = subprocess.run([CAM_PY, "-c", CAM_RESTORE] + geom,
+                                   capture_output=True, text=True, timeout=60)
+                log(fh, "  camera: %s" % (r.stdout.strip() or r.stderr.strip()))
+            else:
+                log(fh, "  camera: WARNING geometry not captured -- the reset "
+                        "left it at full frame, which is a different machine")
             log(fh, "  camera: recovered")
             return True
     log(fh, "  camera: still wedged after reset -- needs a human (replug USB)")
