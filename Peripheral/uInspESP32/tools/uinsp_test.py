@@ -23,6 +23,8 @@ Usage:
 
 import argparse
 import json
+import math
+import random
 import os
 import sys
 import threading
@@ -1415,6 +1417,226 @@ COMM_Q_DEPTH = 20
 
 def _errors_of(stat):
     return [e for e in (stat or {}).get("error_hist", []) if e not in (0, -1)]
+
+
+def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
+            max_seconds, drop_frac, cat):
+    """Measure skip rate against object rate, and find where throughput peaks.
+
+    The question this exists to answer: auto-rate drives the machine to a
+    FIXED skip rate (0.476% with the shipped constants -- see UINSP_CAVEATS),
+    but good throughput is r*(1-p(r)) and its maximum sits where
+    dp/dr = (1-p)/r. Those two coincide only by accident. Nobody has measured
+    p(r) on this machine, so nobody knows what the fixed setpoint costs.
+
+    Two shapes are possible and they need opposite controllers:
+
+      interior peak   p rises smoothly, r*(1-p) has a maximum, and a slow
+                      hill-climb is the right control law.
+      cliff           p is ~0 until a hard limit (the camera's 35-36Hz
+                      ceiling, or the answer window) and then jumps. Then
+                      r*(1-p) is monotonic up to the edge, there is no
+                      interior maximum, and the right law is "measure the
+                      edge, sit a margin below it" -- which is what auto-rate
+                      already does, except its setpoint is arithmetic rather
+                      than measurement.
+
+    AUTO-RATE IS FROZEN FOR THE SWEEP (skip_policy -> stop_only, restored
+    after). Leaving it on would let the controller move the rate while the
+    rate is being measured, and the resulting p belongs to no r at all.
+
+    Statistics set the clock. Estimating p to within +-e relative needs about
+    (1-p)/(p*e^2) parts: at p=0.5% that is ~5000 parts for +-20%, ~2200 for
+    +-30%. Each point prints the precision it actually achieved, because a
+    curve drawn from 200-part samples is noise with a line through it.
+    """
+    print("\n\033[1m== Throughput profile: skip rate vs object rate ==\033[0m")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plate_freq")
+    orig_sep  = orig.get("min_detect_sep_us")
+    orig_spo  = _read_spo(link)
+    orig_pol  = (orig.get("skip_policy") or {}).get("mode")
+    if not orig_spo:
+        rep.add("P.0", "read the station geometry", False,
+                "get_setup never returned stage_pulse_offset")
+        return
+
+    need_freq = int(91 * max_hz / 2.0 * 1.5) + 500
+    sep_us = max(200, int(1e6 / max_hz / 3))
+    _widen_selector_window(link, orig_spo, freq=need_freq)
+    link.send({"type": "set_setup", "plate_freq": need_freq,
+               "min_detect_sep_us": sep_us}, timeout=3.0)
+    # Freeze the controller; keep the safety stop.
+    link.send({"type": "set_setup", "skip_policy": {"mode": "stop_only"}},
+              timeout=3.0)
+    print(f"  plate_freq={need_freq} min_detect_sep_us={sep_us} "
+          f"auto-rate FROZEN (was {orig_pol})")
+    if drop_frac:
+        print(f"  leaving {drop_frac*100:.1f}% of parts unanswered on purpose "
+              f"-- the dry-run mode. It manufactures skips the way the machine "
+              f"really makes them (reporting tid N sweeps every older UNSET "
+              f"object to SKIP), so the instrument can be checked without a "
+              f"camera. Answering LATE instead does not work: past the window "
+              f"the report matches no object and the machine faults on tid "
+              f"desync, which is a different failure wearing the same clothes.")
+
+    link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    st, _ = _pump_until(link, (ST_READY,), timeout=60.0)
+    rep.add("P.0", "reached READY with the controller frozen", st == ST_READY,
+            f"plate_freq={need_freq}")
+    if st != ST_READY:
+        return
+
+    print(f"\n  {'asked':>6} {'admitted':>9} {'judged':>8} {'p_lost':>8} "
+          f"{'p_skip':>8} {'unans':>7} {'+-':>6} {'good/s':>8}  note")
+    print("  " + "-" * 84)
+
+    rows = []
+    hz = start_hz
+    while hz <= max_hz:
+        _quiesce(link, need_freq, timeout=3.0)
+        link.send({"type": "clear_error"}, timeout=2.0)
+        link.send({"type": "clear_error_history"}, timeout=2.0)
+        link.send({"type": "enter_insp_mode"}, timeout=3.0)
+        if _pump_until(link, (ST_READY,), timeout=60.0)[0] != ST_READY:
+            print(f"  {hz:>5}/s   never reached READY"); break
+        tb = _settle_cal(link, need_freq, cat=cat)
+        link.send({"type": "reset_running_stat"}, timeout=2.0)
+        link.drain_async()
+
+        g0 = _gate_of(link)
+        c0 = (link.send({"type": "get_running_stat"}, timeout=3.0) or {}).get("count") or {}
+        t0 = time.time(); i = 0; period = 1.0 / hz
+        rng = random.Random(1234 + int(hz))
+        fired = 0
+        while True:
+            now = time.time()
+            if (now - t0) >= max_seconds:
+                break
+            while time.time() < t0 + i * period:
+                for _, m in link.drain_async():
+                    if m.get("type") != "cam_trig" or m.get("sync"):
+                        continue
+                    tid = m.get("tid")
+                    if not isinstance(tid, int) or tid <= tb:
+                        continue
+                    if drop_frac and rng.random() < drop_frac:
+                        continue          # deliberately unanswered -> SKIP
+                    link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+                time.sleep(0.002)
+            link.send_nowait({"type": "trig_phantom_pulse"}); i += 1; fired += 1
+            if i % 50 == 0:
+                g = _gate_of(link)
+                if ((g.get("accept") or 0) - (g0.get("accept") or 0)) >= parts_per_point:
+                    break
+        span = time.time() - t0
+        # let the tail land before reading the counters
+        t_end = time.time() + 1.5
+        while time.time() < t_end:
+            for _, m in link.drain_async():
+                if m.get("type") == "cam_trig" and not m.get("sync") \
+                   and isinstance(m.get("tid"), int) and m["tid"] > tb:
+                    if drop_frac and rng.random() < drop_frac:
+                        continue
+                    link.send_nowait({"type": "report", "tid": m["tid"], "cat": cat})
+            time.sleep(0.005)
+
+        g1 = _gate_of(link)
+        st1 = link.send({"type": "get_running_stat"}, timeout=3.0) or {}
+        c1 = st1.get("count") or {}
+        adm  = (g1.get("accept") or 0) - (g0.get("accept") or 0)
+        skip = (c1.get("SKIP") or 0) - (c0.get("SKIP") or 0)
+        judged = sum((c1.get(k) or 0) - (c0.get(k) or 0)
+                     for k in ("SEL1", "SEL2", "SEL3", "NA"))
+        unans = (c1.get("UNANSWERED") or 0) - (c0.get("UNANSWERED") or 0)
+        # TWO different rates, and they are not the same number.
+        #
+        # p_lost is the throughput cost: every admitted part that reached the
+        # selector without a verdict, however the firmware labelled it.
+        # p_skip is what auto-rate actually reacts to -- autoRateBackoff() is
+        # called from the SKIP case only. A part left UNSET (nobody ever spoke
+        # for it) increments UNANSWERED_Count and the controller never sees it,
+        # so a machine can be losing parts steadily while auto-rate reads a
+        # clean 0% and holds full speed. The dry run showed exactly that: 3% of
+        # parts dropped, SKIP_Count 0.
+        p = ((adm - judged) / adm) if adm else 0.0
+        p_skip = (skip / adm) if adm else 0.0
+        # relative standard error of a proportion
+        se = (math.sqrt(p * (1 - p) / adm) / p) if (adm and p > 0) else float("nan")
+        good = judged / span if span else 0.0
+        errs = _errors_of(st1)
+        note = ""
+        if errs:
+            note = "FAULT " + ",".join(ERR_NAME.get(e, str(e)) for e in sorted(set(errs)))
+        elif adm < parts_per_point * 0.5:
+            note = "thin sample"
+        print(f"  {hz:>5}/s {adm:>9} {judged:>8} {p*100:>7.2f}% "
+              f"{p_skip*100:>7.2f}% {unans:>7} "
+              f"{('%.0f%%' % (se*100)) if se == se else '   -':>6} {good:>8.1f}  {note}")
+        rows.append(dict(hz=hz, admitted=adm, judged=judged, skipped=skip,
+                         unans=unans, p=p, p_skip=p_skip, se=se, good=good,
+                         span=span, errs=errs))
+        if errs:
+            break
+        hz += step_hz
+
+    # --- restore before saying anything about the numbers ---
+    _quiesce(link, need_freq, timeout=4.0)
+    link.send({"type": "set_setup", "plate_freq": 0,
+               "min_detect_sep_us": orig_sep,
+               "stage_pulse_offset": orig_spo}, timeout=3.0)
+    if orig_pol:
+        link.send({"type": "set_setup", "skip_policy": {"mode": orig_pol}}, timeout=3.0)
+    link.send({"type": "clear_error"}, timeout=2.0)
+    print(f"\n  restored plate_freq={orig_freq} min_detect_sep_us={orig_sep} "
+          f"skip_policy={orig_pol}")
+
+    if not rows:
+        rep.add("P.1", "measured a throughput curve", False, "no points completed")
+        return
+
+    best = max(rows, key=lambda r: r["good"])
+    rep.add("P.1", "measured a throughput curve", True,
+            f"{len(rows)} points, {sum(r['admitted'] for r in rows)} parts total")
+
+    # Is the peak interior, or is it the last point we dared to try?
+    interior = best is not rows[-1] and best is not rows[0]
+    rep.add("P.2", "peak throughput", None,
+            f"{best['good']:.1f} good/s at {best['hz']}/s asked "
+            f"({best['admitted']} admitted, p={best['p']*100:.2f}%)"
+            + ("  -- INTERIOR peak: a hill-climb controller is the right shape"
+               if interior else
+               "  -- peak is at the edge of the sweep: either raise --max-hz, "
+               "or this is a cliff and the law should be 'measure the edge, "
+               "sit below it'"))
+
+    # What the shipped controller would settle on, against what the curve says.
+    tgt = 0.004762
+    below = [r for r in rows if r["p_skip"] <= tgt]
+    if below:
+        at_setpoint = max(below, key=lambda r: r["hz"])
+        loss = (1 - at_setpoint["good"] / best["good"]) * 100 if best["good"] else 0
+        rep.add("P.3", "cost of the shipped auto-rate setpoint", None,
+                f"auto-rate targets p<={tgt*100:.3f}%, which here is {at_setpoint['hz']}/s "
+                f"= {at_setpoint['good']:.1f} good/s, {loss:.0f}% below the peak")
+    else:
+        rep.add("P.3", "cost of the shipped auto-rate setpoint", None,
+                f"no swept point reached p_skip<={tgt*100:.3f}% -- auto-rate "
+                f"would ratchet to its floor here; start the sweep lower")
+    blind = [r for r in rows if r["p"] > 0.01 and r["p_skip"] < 0.001]
+    if blind:
+        rep.add("P.5", "parts lost where auto-rate cannot see them", None,
+                "at " + ", ".join(f"{r['hz']}/s ({r['p']*100:.1f}% lost, "
+                                  f"{r['p_skip']*100:.2f}% skip)" for r in blind[:4])
+                + " -- unjudged as UNSET, not SKIP, so the controller reads "
+                  "clean and holds speed")
+
+    thin = [r for r in rows if r["se"] == r["se"] and r["se"] > 0.30]
+    if thin:
+        rep.add("P.4", "sample precision", None,
+                f"{len(thin)} of {len(rows)} points worse than +-30% on p "
+                f"(raise --parts): " + ", ".join(f"{r['hz']}/s" for r in thin[:6]))
 
 
 def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
@@ -3838,6 +4060,25 @@ def main():
     sl.add_argument("--stall-seconds", type=float, default=5.0)
     sl.add_argument("--cat", type=int, default=CAT_NA)
 
+    pf = sub.add_parser("profile",
+                        help="measure skip rate against object rate and find "
+                             "where good throughput peaks -- the curve auto-rate "
+                             "is currently guessing at")
+    pf.add_argument("--start-hz", type=float, default=10.0)
+    pf.add_argument("--max-hz", type=float, default=45.0)
+    pf.add_argument("--step-hz", type=float, default=5.0)
+    pf.add_argument("--parts", type=int, default=2500,
+                    help="admitted parts per point; p to +-30%% needs ~2200 at "
+                         "p=0.5%%, ~5000 for +-20%%")
+    pf.add_argument("--max-seconds", type=float, default=180.0,
+                    help="cap per point, in case the rate cannot be reached")
+    pf.add_argument("--drop-frac", type=float, default=0.0,
+                    help="leave this fraction of parts unanswered on purpose: "
+                         "manufactures skips the way the machine really makes "
+                         "them, so the instrument can be checked without a "
+                         "camera (dry run only)")
+    pf.add_argument("--cat", type=int, default=1)
+
     ch = sub.add_parser("chaos",
                         help="randomized rate + plate speed + offset churn; "
                              "must survive without faulting -- board only")
@@ -3968,6 +4209,10 @@ def main():
                    args.dwell, args.cat, not args.no_report)
         elif args.cmd == "stall":
             stall(link, rep, args.hz, args.stall_seconds, args.cat)
+        elif args.cmd == "profile":
+            profile(link, rep, args.start_hz, args.max_hz, args.step_hz,
+                    args.parts, args.max_seconds, args.drop_frac, args.cat)
+
         elif args.cmd == "chaos":
             link.auto_reconnect = args.auto_reconnect
             seed = (args.seed if args.seed is not None
