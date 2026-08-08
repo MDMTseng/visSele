@@ -1464,9 +1464,21 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
 
     need_freq = int(91 * max_hz / 2.0 * 1.5) + 500
     sep_us = max(200, int(1e6 / max_hz / 3))
+    orig_gate = dict(orig.get("gate") or {})
     _widen_selector_window(link, orig_spo, freq=need_freq)
+    # Open every gate filter for the sweep.
+    #
+    # The point of the profile is where the PIPELINE gives, and each filter in
+    # front of it censors the sample differently: the width window drops parts
+    # in total silence, the distance and rate gates drop them at a threshold of
+    # their own choosing. Leaving them set means measuring the filters and
+    # calling it the machine. They are restored at the end, and the counters
+    # below say how many parts each one would have taken.
     link.send({"type": "set_setup", "plate_freq": need_freq,
-               "min_detect_sep_us": sep_us}, timeout=3.0)
+               "gate": {"min_detect_sep_us": sep_us,
+                        "min_detect_dist_um": 0,
+                        "pulse_min_width": 0,
+                        "pulse_max_width": 1000000}}, timeout=3.0)
     # Freeze the controller; keep the safety stop.
     link.send({"type": "set_setup", "skip_policy": {"mode": "stop_only"}},
               timeout=3.0)
@@ -1543,6 +1555,7 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
             time.sleep(0.005)
 
         g1 = _gate_of(link)
+        dg = lambda k: (g1.get(k) or 0) - (g0.get(k) or 0)
         st1 = link.send({"type": "get_running_stat"}, timeout=3.0) or {}
         c1 = st1.get("count") or {}
         adm  = (g1.get("accept") or 0) - (g0.get("accept") or 0)
@@ -1576,7 +1589,11 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
               f"{('%.0f%%' % (se*100)) if se == se else '   -':>6} {good:>8.1f}  {note}")
         rows.append(dict(hz=hz, admitted=adm, judged=judged, skipped=skip,
                          unans=unans, p=p, p_skip=p_skip, se=se, good=good,
-                         span=span, errs=errs))
+                         span=span, errs=errs,
+                         edges=dg("edges"), rej_width=dg("rej_width"),
+                         rej_unstable=dg("rej_unstable"),
+                         rej_blocked=dg("rej_blocked"), rej_dist=dg("rej_dist"),
+                         rej_rate=dg("rej_rate"), rej_busy=dg("rej_busy")))
         if errs:
             break
         hz += step_hz
@@ -1584,7 +1601,7 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
     # --- restore before saying anything about the numbers ---
     _quiesce(link, need_freq, timeout=4.0)
     link.send({"type": "set_setup", "plate_freq": 0,
-               "min_detect_sep_us": orig_sep,
+               "gate": orig_gate,
                "stage_pulse_offset": orig_spo}, timeout=3.0)
     if orig_pol:
         link.send({"type": "set_setup", "skip_policy": {"mode": orig_pol}}, timeout=3.0)
@@ -1595,6 +1612,28 @@ def profile(link, rep, start_hz, max_hz, step_hz, parts_per_point,
     if not rows:
         rep.add("P.1", "measured a throughput curve", False, "no points completed")
         return
+
+    # The whole ladder, sensor edge -> verdict. `accept` alone cannot be traced
+    # back to what the sensor saw, which is what these counters are for.
+    print(f"\n  {'asked':>6} {'edges':>7} {'width':>6} {'unstab':>7} {'block':>6} "
+          f"{'dist':>6} {'rate':>6} {'busy':>5} {'admit':>7} {'judged':>7} {'end2end':>8}")
+    print("  " + "-" * 84)
+    # end-to-end only means something when the parts came through the SENSOR.
+    # trig_phantom_pulse calls newPulseEvent directly and never touches
+    # GateSensing, so in a phantom run `edges` and `admitted` count different
+    # populations and their ratio is arithmetic, not a measurement.
+    phantom_run = any(r["admitted"] > r["edges"] for r in rows)
+    for r in rows:
+        e2e = ("%6.1f%%" % (r["judged"] / r["edges"] * 100)) if (
+            r["edges"] and not phantom_run) else "     --"
+        print(f"  {r['hz']:>5}/s {r['edges']:>7} {r['rej_width']:>6} "
+              f"{r['rej_unstable']:>7} {r['rej_blocked']:>6} {r['rej_dist']:>6} "
+              f"{r['rej_rate']:>6} {r['rej_busy']:>5} {r['admitted']:>7} "
+              f"{r['judged']:>7} {e2e:>8}")
+    if phantom_run:
+        print("  end2end is blank: phantoms bypass GateSensing, so `edges` and "
+              "`admitted`\n  are different populations. It fills in on a real "
+              "run, fed by the sensor.")
 
     best = max(rows, key=lambda r: r["good"])
     rep.add("P.1", "measured a throughput curve", True,

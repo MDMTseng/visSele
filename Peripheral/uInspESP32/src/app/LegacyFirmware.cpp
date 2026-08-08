@@ -642,6 +642,23 @@ volatile uint32_t GATE_REJ_RATE=0;    // faster than min_detect_sep_us
 volatile uint32_t GATE_REJ_DIST=0;    // closer than the 2mm plate-distance gate
 volatile uint32_t GATE_REJ_BUSY=0;    // no room in RBuf / the ACT schedules
 volatile uint32_t GATE_ACCEPT=0;      // registered, for a rejection ratio
+// Every place a real part can vanish between the sensor edge and an object.
+//
+// rej_dist / rej_rate / rej_busy were counted; these four were not, and they
+// sit EARLIER in the chain -- so `accept` could never be traced back to what
+// the sensor actually saw. The width filter in particular drops parts in
+// total silence, which is the worst way to lose them: nothing changes except
+// the output.
+//
+// edges is the honest denominator: pulses that survived debounce. Everything
+// else is attrition on the way to an object.
+volatile uint32_t GATE_EDGES=0, GATE_REJ_WIDTH=0, GATE_REJ_UNSTABLE=0,
+                  GATE_REJ_BLOCKED=0;
+// The minimum travel between two parts, in microns. Was hardcoded 2000 inside
+// newPulseEvent; settable so a measurement run can open it and see what the
+// gate would otherwise have hidden.
+volatile uint32_t GATE_MIN_DIST_um = 2000;
+
 
 volatile uint32_t ERR_CTX_TID=0;
 volatile int32_t  ERR_CTX_STATUS=0;
@@ -1537,7 +1554,8 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   _prePulse=middle_pulse;
   // 2mm, not 3.5mm: parts are specified 3mm apart, and with the plate geometry
   // finally correct a 3.5mm gate would reject conforming production parts.
-  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(2000))){GATE_REJ_DIST++;return -9;}
+  if(GATE_MIN_DIST_um &&
+     middle_pulse-_prePulse_BK<(_PLAT_DIST_step(GATE_MIN_DIST_um))){GATE_REJ_DIST++;return -9;}
   uint64_t curTime = esp_timer_get_time();
   // The fire-rate limit. Rejecting here is the cheapest possible outcome: the
   // object never gets a tid, never gets a camera trigger and never gets a
@@ -1548,7 +1566,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   _preTime=curTime;
 
 
-  if(blockNewDetectedObject)return -1;
+  if(blockNewDetectedObject){ GATE_REJ_BLOCKED++; return -1; }
   pipeLineInfo *head = RBuf.getHead();
   if (head == NULL)
   {
@@ -2210,7 +2228,9 @@ void GateSensing()
     if(!new_Sense)
     {//a pulse is completed -- end_pulse is the last HIGH sample (true edge)
       uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
-      if( diff>minWidth && diff<maxWidth )
+      GATE_EDGES++;
+      if( !(diff>minWidth && diff<maxWidth) ) GATE_REJ_WIDTH++;
+      else
       {
         uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
         (void)middle_pulse;
@@ -2221,6 +2241,11 @@ void GateSensing()
         if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
+        else
+          // Not an error, but not free either: every spin-up and every RECAL
+          // holds SYS_FREQ_STABLE low, and the parts on the plate during it
+          // are simply gone. Counted so that loss has a size.
+          GATE_REJ_UNSTABLE++;
       }
       gateInfo.start_pulse=SYS_STEP_COUNT;
     }
@@ -3502,6 +3527,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
+    GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     // The clock model too. Leaving it out made every segmented experiment
     // read the previous segment's numbers: an A/B control appeared to show 12
     // disagreements that were entirely leftovers, which nearly produced the
@@ -3714,6 +3740,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
                      (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
       // What the gate is enforcing right now. Equal to the configured value
       // unless the auto-rate loop has backed off.
+      jG["edges"]=GATE_EDGES;
+      jG["rej_width"]=GATE_REJ_WIDTH;
+      jG["rej_unstable"]=GATE_REJ_UNSTABLE;
+      jG["rej_blocked"]=GATE_REJ_BLOCKED;
+      jG["min_dist_um"]=GATE_MIN_DIST_um;
       jG["eff_sep_us"]=GATE_SEP_EFF_us;
       jG["eff_hz"]=GATE_SEP_EFF_us ? (uint32_t)(1000000UL/GATE_SEP_EFF_us) : 0;
       jG["auto_rate"]=(bool)AUTO_RATE;
@@ -5463,6 +5494,7 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["pulse_max_width"]=maxWidth;
     jGT["debounce_rise"]=DEBOUNCE_H_THRES;
     jGT["debounce_fall"]=DEBOUNCE_L_THRES;
+    jGT["min_detect_dist_um"]=GATE_MIN_DIST_um;
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
@@ -5704,6 +5736,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   JSON_SETIF_ABLE(maxWidth,jGT,"pulse_max_width");
   JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jGT,"debounce_rise");
   JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jGT,"debounce_fall");
+  JSON_SETIF_ABLE(GATE_MIN_DIST_um,jGT,"min_detect_dist_um");
 
   if(jP["stepper_en_active"].is<int>() || jP["stepper_dir"].is<int>())
   {
