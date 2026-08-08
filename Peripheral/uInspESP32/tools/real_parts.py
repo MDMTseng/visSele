@@ -87,9 +87,19 @@ def show(j, tag):
           % (cs.get('delta_max_us'), cs.get('miss_delta_max_us'),
              cs.get('window_us'), cs.get('cal_runs'), cs.get('cal_fails'),
              cs.get('sync_late'), cs.get('recal_skipped')))
-    print("           plate_freq=%-7s rbuf_peak=%-4s error_hist=%s"
+    # The gate ladder. Without it a run that admits fewer parts than the plate
+    # delivers looks like the plate simply not delivering them -- the throughput
+    # number alone cannot tell "no part arrived" from "a part arrived and was
+    # dropped", and those have opposite fixes.
+    print("           edges=%-6s width=%-5s unstab=%-5s block=%-5s dist=%-5s "
+          "rate=%-5s busy=%-5s"
+          % (g.get('edges'), g.get('rej_width'), g.get('rej_unstable'),
+             g.get('rej_blocked'), g.get('rej_dist'), g.get('rej_rate'),
+             g.get('rej_busy')))
+    print("           plate_freq=%-7s rbuf_peak=%-4s eff_hz=%-5s backoffs=%-4s "
+          "error_hist=%s"
           % (j.get('plate_freq'), j['health'].get('rbuf_peak'),
-             j.get('error_hist')))
+             g.get('eff_hz'), g.get('auto_backoffs'), j.get('error_hist')))
     return j
 
 
@@ -100,7 +110,19 @@ def main(a):
     time.sleep(4.0)
 
     send(s, {"type": "clear_error"},
-            {"type": "set_setup", "plate_freq": a.plate_freq},
+            # Grouped config: the flat `plate_freq` key was removed when the
+            # setup document was reorganised into plate/gate/cam. A flat key is
+            # not rejected -- it is silently ignored, and the plate simply
+            # never turns. A 60s run reported "clean" with accept=0 before this
+            # was found; nothing had moved.
+            {"type": "set_setup", "plate": {"freq": a.plate_freq}},
+            # --min-sep raises the admitted-rate ceiling for a measurement run.
+            # It is NOT persisted: NVS keeps the production 28571us (= 35.0/s),
+            # and a reboot restores it. The floor is the physical part gap --
+            # set the separation longer than the gap and adjacent parts merge
+            # into one detection, which is a wrong answer, not a slow one.
+            *([{"type": "set_setup",
+                "gate": {"min_detect_sep_us": a.min_sep}}] if a.min_sep else []),
             {"type": "stepper_enable"})
 
     print("entering inspection mode: CAL (plate held still) -> SPINUP -> READY")
@@ -157,6 +179,9 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=int, default=300)
     ap.add_argument("--plate-freq", type=int, default=10000)
+    ap.add_argument("--min-sep", type=int, default=0,
+                    help="gate.min_detect_sep_us for this run only (0 = leave "
+                         "the NVS production value alone)")
     a = ap.parse_args()
     rc, s = 1, None
     try:
@@ -168,7 +193,7 @@ if __name__ == '__main__':
         try:
             if s is None:
                 s = sock()
-            send(s, {"type": "set_setup", "plate_freq": 0},
+            send(s, {"type": "set_setup", "plate": {"freq": 0}},
                     {"type": "exit_insp_mode"}, gap=0.5)
             time.sleep(1.0)
             j = stat(s, listen=1.5)
