@@ -5862,30 +5862,88 @@ void PerifSendThread(bool *terminationflag)
               // lighting that moved the apparent edge, host latency -- and what
               // matters is whether the TAIL of that spread ever reaches the
               // boundary, which a single fixed offset cannot ask.
+              // Two components, because they are two different questions.
+              //
+              //   INSP_PERIF_FAULT_TS_NOISE_US=<sigma>    gaussian bulk
+              //   INSP_PERIF_FAULT_TS_SPIKE_US=<k>        salt-and-pepper
+              //   INSP_PERIF_FAULT_TS_SPIKE_EVERY=<n>     one report in n
+              //
+              // The gaussian bulk is what the maintenance loop integrates: many
+              // small errors, one per accepted report, and the question is
+              // whether they cancel or random-walk the offset. Gaussian is the
+              // right shape for that and its tail is unbounded, which is honest
+              // -- an earlier version of this used a bounded uniform because a
+              // bounded worst case is easier to report, which confused "easy to
+              // interpret" with "true".
+              //
+              // The spikes are the other question, and no bulk distribution can
+              // stand in for them. What actually threatens a mis-sort is one
+              // gross excursion -- a frame that arrived very late, a hiccup --
+              // and that is a rare event a gaussian produces far too seldom to
+              // sample inside a 60s run. Making the rate settable buys the
+              // statistics that waiting for a natural one-in-a-million cannot.
+              //
+              // The pass conditions differ accordingly: the bulk must not walk
+              // the clock, the spikes must produce a REFUSAL and never a verdict
+              // on the neighbour.
               static const int64_t f_noise = []{
                 const char *e = getenv("INSP_PERIF_FAULT_TS_NOISE_US");
                 return e ? (int64_t)atoll(e) : (int64_t)0;
+              }();
+              static const int64_t f_spike = []{
+                const char *e = getenv("INSP_PERIF_FAULT_TS_SPIKE_US");
+                return e ? (int64_t)atoll(e) : (int64_t)0;
+              }();
+              static const int f_spike_every = []{
+                const char *e = getenv("INSP_PERIF_FAULT_TS_SPIKE_EVERY");
+                int n = e ? atoi(e) : 0;
+                return n > 0 ? n : 50;
               }();
               static uint32_t f_rng = []{
                 const char *e = getenv("INSP_PERIF_FAULT_TS_NOISE_SEED");
                 uint32_t s = e ? (uint32_t)strtoul(e, NULL, 10) : 20260806u;
                 return s ? s : 1u;   // xorshift is stuck at zero
               }();
+              auto f_next = [&]() -> uint32_t {
+                f_rng ^= f_rng << 13; f_rng ^= f_rng >> 17; f_rng ^= f_rng << 5;
+                return f_rng;
+              };
 
               uint64_t tx_ts = msg.cam_ts_us;
               bool tx_skip = false, tx_twice = false;
 
-              if (f_noise > 0)
+              if (f_noise > 0 || f_spike > 0)
               {
-                f_rng ^= f_rng << 13; f_rng ^= f_rng >> 17; f_rng ^= f_rng << 5;
-                // Uniform on [-f_noise, +f_noise]. Uniform rather than gaussian
-                // on purpose: the question is where the boundary is, and a
-                // bounded distribution says exactly how far the worst sample
-                // was allowed to reach.
-                const int64_t span = 2 * f_noise + 1;
-                const int64_t d = (int64_t)(f_rng % (uint32_t)span) - f_noise;
+                int64_t d = 0;
+                bool spiked = false;
+
+                if (f_noise > 0)
+                {
+                  // Box-Muller. This is the report TX path at ~35 reports/s,
+                  // not an ISR, so the transcendentals cost nothing that
+                  // matters, and getting the SHAPE right is the whole point.
+                  const double u1 = ((f_next() >> 8) + 1.0) / 16777217.0;
+                  const double u2 = ((f_next() >> 8) + 0.0) / 16777216.0;
+                  const double g  = sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
+                  d += (int64_t)llround(g * (double)f_noise);
+                }
+
+                if (f_spike > 0 && (f_next() % (uint32_t)f_spike_every) == 0)
+                {
+                  // Sign is random: a late frame and an early one fail
+                  // differently, because the neighbour they can be confused
+                  // with sits on opposite sides.
+                  d += (f_next() & 1u) ? f_spike : -f_spike;
+                  spiked = true;
+                }
+
                 tx_ts = (uint64_t)((int64_t)tx_ts + d);
-                if (getenv("INSP_PERIF_LOG"))
+                // Spikes are logged unconditionally: they are rare and they are
+                // the ones a verdict has to be explained against afterwards.
+                if (spiked)
+                  LOGE("perif TS SPIKE tid=%lld %+lldus", (long long)msg.tid,
+                       (long long)d);
+                else if (getenv("INSP_PERIF_LOG"))
                   LOGI("[perif TX] ts noise tid=%lld %+lldus",
                        (long long)msg.tid, (long long)d);
               }

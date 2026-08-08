@@ -85,20 +85,51 @@ RUNS = [
     # answer is correct) but a mis-sort never is. The pass condition is the same
     # at every width: zero misplaced verdicts.
 ] + [
+    # 主體:高斯。維護迴路積分的就是這個 —— 每份被接受的報告推一下 offset。
+    # 判準比「沒有錯置」更嚴:sigma 遠小於視窗時連停機都不該有,
+    # 若停機了,代表推擠沒有互相抵銷,時鐘被自己的維護走掉了。
     dict(
-        name="tsnoise_%d" % w, block="A", minutes=5,
-        why=("報告時間戳加 ±%dus 的零均值噪音(視窗 5000us)。"
+        name="tsn_g%d" % s, block="A", minutes=5,
+        why=("報告時間戳加 sigma=%dus 的高斯噪音(視窗 5000us)。"
              "固定偏移測不到這個 —— gate() 從每份被接受的報告重新量測 offset_us,"
-             "所以固定量會被學走。噪音學不走,因此它才是循環式維護穩不穩的直接測試:"
-             "每份報告都推一下 offset,問題是那些推擠互相抵銷還是隨機遊走。"
-             "超過視窗之後停機是設計行為,錯置判定永遠不是。" % w),
+             "固定量正是它設計來追掉的。零均值噪音學不走,"
+             "所以這是循環式維護穩不穩的直接測試:推擠互相抵銷,還是隨機遊走。" % s),
         argv=["jitter_sweep.py", "--seconds", "60", "--jitters", "0"],
         env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
-             "INSP_PERIF_FAULT_TS_NOISE_US": str(w),
+             "INSP_PERIF_FAULT_TS_NOISE_US": str(s),
              "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
     )
-    for w in (500, 2000, 4000, 6000)
+    for s in (200, 1000, 2500)
 ] + [
+    # 椒鹽:偶發的大偏離。高斯的尾巴在 60 秒裡出現得太少,取樣不到;
+    # 而真正會造成錯置的正是這種一次性的大偏離,不是主體分佈。
+    # 把發生率變成可設定的,買到的是等自然事件買不到的統計量。
+    dict(
+        name="tsn_s%d" % k, block="A", minutes=5,
+        why=("每 20 份報告有一份被推 +-%dus(視窗 5000us),符號隨機 —— "
+             "來得太晚和太早失敗的方式不同,能被混淆的鄰居在兩側。"
+             "視窗以內不該有任何影響;視窗以外必須是拒絕回答(停機),"
+             "而**絕不能**是把判定發給鄰居。" % k),
+        argv=["jitter_sweep.py", "--seconds", "60", "--jitters", "0"],
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
+             "INSP_PERIF_FAULT_TS_SPIKE_US": str(k),
+             "INSP_PERIF_FAULT_TS_SPIKE_EVERY": "20",
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
+    )
+    for k in (3000, 6000, 20000)
+] + [
+    dict(
+        name="tsn_mix", block="A", minutes=5,
+        why="兩者一起:sigma=1000us 的主體加上每 20 份一次的 +-6000us 大偏離。"
+            "分開跑各自乾淨不代表合起來乾淨 —— 主體會讓 offset 持續微動,"
+            "大偏離則要在那個已經在動的時鐘上被判斷,這才是產線的形狀。",
+        argv=["jitter_sweep.py", "--seconds", "60", "--jitters", "0"],
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
+             "INSP_PERIF_FAULT_TS_NOISE_US": "1000",
+             "INSP_PERIF_FAULT_TS_SPIKE_US": "6000",
+             "INSP_PERIF_FAULT_TS_SPIKE_EVERY": "20",
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
+    ),
     dict(
         name="burst", block="A", minutes=16,
         why="時間戳配對撐得過『沖垮相機 -> 排空 -> 再沖』的過渡。穩定速率是簡單形狀,"
