@@ -967,3 +967,79 @@ gate→報告        avg 207.2 ms    max 488.2 ms
 `reset_running_stat` 順帶把 `cam_sync` 也清掉,而且在該趟窗口內沒有重新建立
 (`agree`/`delta_max` 全程 0,判定退回 tid 路徑)。要留配對證據就別在量測前
 呼叫它。
+
+## 被忽略的觸發不留任何痕跡 —— 量測,不再是假設(2026-08-08)
+
+整個 timestamp 配對機制的前提是「序列不可信」,而那一直是推論出來的,沒有人量過。
+量了。
+
+**條件:** ROI 560x452(相機能力 184.89 fps)、硬體觸發 Line0、
+`trig_cam_burst` 發出精確數量的脈衝、主機端用 Aravis 收幀並讀 `frame_id`。
+
+```
+triggers fired    200        @ 400 Hz(遠超相機的 184.9)
+frames received    94
+frame id range    0 .. 93    span 94
+id discontinuities  0
+```
+
+**106 個觸發被相機忽略,`frame_id` 完全連續。** 序數配對會從那一刻起偏移 106 格,
+而且沒有任何一個訊號會顯示它發生過。這就是 C-1 存在的理由,現在它是量出來的。
+
+原因很直接:觸發被拒絕時相機**不產生幀**,也就不消耗 `frame_id`。`frame_id` 數的
+是相機**送出**的幀,不是它**收到**的觸發 —— 所以它抓得到傳輸掉幀(號碼跳號),
+抓不到觸發被丟。而後者正是超速下的實際失效模式。
+
+### 但這顆相機其實數得出來 —— `FrameSpecInfo`
+
+MV-CA050-11UM **沒有 GenICam chunk**(`arv-tool features | grep -i chunk` 是空的,
+所以 `CameraLayer_Aravis.cpp` 裡把 chunk 關掉是對的)。Hikrobot 用另一條路:
+`FrameSpecInfoSelector` + `FrameSpecInfo`,把資訊**寫進影像像素**。
+
+可選欄位:`ROIPosition` `LineInputOutput` **`ExtTriggerCount`** **`Framecounter`**
+`BrightnessInfo` `Exposure` `Gain` `Timestamp`。
+
+開啟後 **payload 完全不變**(253120 = 560×452),所以它是**覆寫**既有像素,不是
+附加。沒有手冊,所以用行為把欄位找出來:
+
+```
+[慢] 25 觸發 @ 40 Hz  → 25 幀
+     off=0 與 off=4(32-bit LE)都以 1 遞增
+
+[快] 120 觸發 @ 400 Hz → 56 幀,frame_id 連續、零斷點
+     off=0  仍然以 1 遞增                     -> Framecounter
+     off=4  平均 2.16 遞增(min 2 max 3)      -> ExtTriggerCount
+            值域 27..146,span = 120 = 發出的觸發數,完全吻合
+```
+
+**相機把它拒絕的 64 個觸發也數進去了。** 所以「哪一個觸發產生了這一幀」在硬體層
+是可知的,只是必須從像素裡讀。
+
+**代價與注意事項:**
+
+- 浮水印佔第一列(ROI 的第 0 列 = 全幅 y=428)。目前的站點設定
+  `inspection_region` 從 y=432 起、`clean1` 從 y=429 起 —— **剛好都不重疊**,但
+  這是巧合不是設計。改動 ROI 或站點區域之前必須重新確認。
+- 上面只驗證了 off=0..7 這 8 個 byte。整列其餘部分可能被其他啟用的欄位佔用,
+  開之前要把完整佔用範圍量出來。
+- 用完必須關掉。留著開會讓那些像素永遠是計數器而不是影像。
+
+### 這對 C-1 的意義
+
+**不是拿它取代 timestamp 配對。** 計數器是序數機制,需要兩端對起點、而且任何
+desync 都會延續下去;時間戳是自我描述的證據,不累積誤差、不需要共享狀態。
+
+真正的價值是**獨立的交叉稽核**:`ExtTriggerCount` 來自相機自己,不是另一個軟體
+機制。它能回答目前完全無法區分的兩件事 ——
+
+```
+相機根本沒收到 / 收到了但拒絕     -> ExtTriggerCount 停住 vs 跳號
+產生了但傳輸中掉了               -> frame_id 跳號
+```
+
+今天所有的「掉幀」在數據上長得一模一樣。有了這兩個計數器,它們就分得開,而且
+`tid` 那套過渡期的交叉稽核可以退場(見 FIRMWARE_CONTRACT I-2b)——
+換成一個不會從側面繞過 C-1 的稽核者。
+
+工具:`$CLAUDE_JOB_DIR/tmp/trigcount.py`(觸發 vs frame_id)、
+`specdecode.py`(用行為定位 FrameSpecInfo 欄位,退出時一定關閉)。
