@@ -666,3 +666,90 @@ emulator 或真機上跑。
 來源:`UINSP_CAVEATS.md` §A–§P 與其後的中文章節、`RELIABILITY_ROADMAP.md`、
 2026-08-08 的六份平行程式碼稽核(並行安全 / 算術與時間 / 狀態機與復原 /
 協定與設定 / 誤分選風險 / 儀器誠實度)、以及當天在真機上的量測。
+
+---
+
+## 附錄:模組邊界(2026-08-08 量測)
+
+拆分計畫的依據。**每一條都是量出來的,不是設計出來的** —— 先量再決定,因為
+這一天裡有兩次「看起來可以拆」在量完之後翻盤。
+
+### 現況
+
+```
+LegacyFirmware.cpp   6499 行 = 程式 3728 / 註解 2052(32%)/ 空白
+檔案層級變數          139 個(volatile 62,static 40)
+  被 ISR 鏈碰到的      60 個   ← 真正耦合的部分,不該再拆
+指令分派器            1801 行,44 個指令
+  生產 13 個 773 行 / 診斷 13 個 249 行 / 治具 17 個 745 行
+```
+
+**139 裡有 60 個跨進 ISR。** 那 60 個是一台共享狀態的即時機器,按概念拆開
+(pipeline / scheduler / state machine)正是 `uInspESP32_v2` 做的事,而它需要
+55448 行。不要再做一次。
+
+### 邊界 A:治具(17 指令 / 745 行)
+
+治具只可以碰核心的這 10 個符號。**這份清單就是介面** —— 長出第 11 個就表示
+邊界被破壞了,而不是「需要再加一個 extern」。
+
+```
+cfgPersistDeny()      機器現在可不可以被打擾(唯一的安全判準)
+io_drive()            驅動一個輸出,尊重極性
+phantomEmitOne()      請求一顆幻影 —— T-7 之後的單一收口
+GATE_DISABLED         \
+DRY_RUN                |  治具設定的模式旗標
+SEL1_ACT_COUNTDOWN     |
+SYS_STEPPER_DISABLED  /
+PLATE_FREQ_CURRENT    讀:burst 時序
+stepper_en_active     讀:接腳極性
+```
+
+**治具自有、應該跟著搬的 11 個**:`PH_TRAIN_*` ×8、`CRASH_REQ`、
+`WDT_TEST_REQ`、`LIGHT_HOLD_*`。
+
+需要的介面是兩個函式(照 `AUX_Task_Try_Read` 既有的形狀):
+`rigTryHandle(doc,type,retdoc,doRsp,rspAck)` + `rigService()`(主迴圈呼叫,
+處理 train / light 到期 / crash 與 wdt 演練)。
+
+**目前不搬。** 支持它的兩個理由都已經兌現或消失:雙生產者競爭已由 T-7 從結構上
+解掉(治具區裡 `newPulseEvent` 現在只出現在註解),而生產/開發不分版本,所以
+攻擊面的理由也不成立。剩下的是可讀性,而代價是 745 行機械搬移穿過覆蓋率最低
+的區域 —— 那 17 個指令正是驗證其他一切的工具。**要做生產/開發分版時再做,
+那時理由會回來,而設計工作在這裡已經完成。**
+
+### 邊界 B:設定編解碼 —— 看起來乾淨,量完不是
+
+```
+setMachineSetup   372 行,碰 32 個檔案層級變數
+genMachineSetup   143 行,碰 23 個
+搬出去需要 extern  32 個
+```
+
+對外只有三個函式(`setMachineSetup` / `genMachineSetup` / `cfgUnknownKeys`),
+所以看起來邊界很乾淨。**不是。** 它的工作就是讀寫每一個設定,跟設定的耦合是
+本質的:搬出去等於 32 行 extern,加上「每新增一個設定要在兩處各加一行」的
+維護稅。
+
+**正確的解法不是搬函式,是讓設定有個家。** 把那 32 個全域收進一個
+`MachineSettings` 結構,編解碼拿 reference,extern 歸零 —— 而且 NVS 的
+序列化、`cfg_crc`、schema 檢查全部自然落在同一個地方。代價是它會動到 ISR
+路徑上的欄位,所以是大改,不是順手做的事。
+
+### 邊界 C:ISR 共享狀態的方向約定
+
+60 個 ISR 碰到的變數裡,**11 個沒有 volatile**:
+
+```
+SYS_FREQ_STABLE  SYS_STEPPER_DISABLED  GATE_SEP_EFF_us  SEL1_ACT_COUNTDOWN
+_prePulse  _preTime  SYNC_MARK_NEXT  REAL_ACCEPT_MS  _senseInv_
+DEBOUNCE_L_THRES  DEBOUNCE_H_THRES
+```
+
+全部是**主迴圈寫、ISR 讀**,而那個方向是安全的:ISR 每次進入都會重新載入,
+編譯器沒辦法跨中斷保留暫存器。危險的是反過來 —— ISR 寫、主迴圈在迴圈裡讀,
+那才需要 volatile。
+
+**這個推理目前沒有寫在任何地方。** 將來有人把其中一個改成 ISR 寫、或在主迴圈
+加一個等待迴圈去輪詢它,就會踩到,而且是靜默的。任何一個要新增到這張表的
+變數,必須在旁邊寫明方向。
