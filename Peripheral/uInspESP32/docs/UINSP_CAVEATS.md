@@ -781,3 +781,67 @@ InspectionUI 設好 crop ROI,再照新的 fps 重算 `min_detect_sep_us`** —�
 plate/gate/cam 之後那個鍵不再被解析,**而且不會被拒絕,是靜默忽略** ——
 盤子從頭到尾沒轉,60 秒跑完報告 `=> clean`、`accept=0`。凡是還在送舊平鍵的
 工具與核心路徑都有同一個問題,「乾淨」不代表「有跑」。
+
+## 檢測運算才是真正的天花板,而且差了一個數量級(2026-08-08,載入 test1.hydef)
+
+上一節說相機的 35.18 fps 是牆。把 `data/machine_setting.json` 跟
+`data/test1.hydef` 放進來、開一個 FI session(硬體觸發 + station region
+enforced)之後,那面牆連碰都碰不到:
+
+```
+ImgInspection  n=2214   p50 210.8 ms   p90 301.9   p99 356.2   mean 211.5 ms
+相機實際交幀   n=2214   p50 207.5 ms  →  4.8 fps
+```
+
+**檢測一幀 211 ms = 4.7 幀/秒。** 相機交幀率 4.8 fps 與之完全一致 ——
+相機不是慢,是被管線拖住。板子同期放行 20+/s,**大部分料件根本沒有影像**。
+
+211 ms 花在哪,log 直接講:
+
+```
+[shape] matches=  平均 13.6 個/幀（9–20）
+insp_region: ... outside the station -- dropped     25921 個 = 86%
+存活                                                 每幀約 1.9 個
+```
+
+檢測在 **2448×2048 = 5,013,504 px** 上全域比對,找出整盤的料,再把 86% 丟掉,
+因為不在 **318×424 = 134,832 px** 的站點框內。**多算了 37 倍面積。**
+`inspection_region` 是**比對之後**的篩選,不是相機 ROI —— 它省的是判定,
+不是運算。
+
+### 裁 ROI 的實測效果
+
+相機 ROI 走 `data/default_camera_setting.json` 的 `"ROI": [x,y,w,h]`,
+不是 `inspection_region`。設成涵蓋站點框 + 兩個 clean region 的聯集
+(`[1248,428,560,452]`):
+
+| | 全幅 2448x2048 | ROI 560x452 |
+|---|---|---|
+| 相機上限 | 35.18 fps | **184.89 fps** |
+| 曝光下限 | 28425 us | **5409 us** |
+| 檢測 mean | 211.5 ms | **81.1 ms** |
+| 實際交幀 | 4.8 fps | **12.4 fps** |
+| matches/幀 | 13.6 | 4.4 |
+| 60s @ 20+/s 進料 | **停機 err 1** | **乾淨,1289 顆,UNANS 0** |
+
+2.6 倍,而且順帶把穩定性問題解掉:全幅時同樣的設定會在 200 顆內停機
+(`error_hist=[1]` = `INSP_RESULT_MATCHES_NO_OBJECT`,`miss_max` 179 ms),
+裁完之後 1289 顆零未答、零錯誤。
+
+**還沒榨完:** 裁完仍有 74%(4477/6032)的 match 被站點框丟掉,因為
+560x452 為了含住 clean region 比站點框大得多。要再快就得處理這件事 ——
+clean region 需要那塊面積,但形狀比對不需要在那裡跑。
+
+### 因此,先前關於速率的結論全部要重排
+
+- 相機 35.18 fps:全幅時是牆,裁完不是。
+- `min_detect_sep_us` 28571(35/s):**從來不是實際瓶頸**,實際只跑到 4.7/s。
+- **檢測運算是唯一真正的限制**,而且要走到 30+/s 還差 2.4 倍(現況 12.4)。
+
+順序:**先裁 ROI(相機 + 比對範圍),量到檢測 mean < 33 ms,再談閘門。**
+反過來調閘門只會換到 err 1 或 err 13。
+
+工具:`UI/WebUI/tools/webctl/fi_hold.mjs` —— 開一個 FI session 並掛著,
+讓 `real_parts.py` 在底下轉盤子。`insp_driver.mjs` 送的是 CI 且跑完 N 幀就
+離開,量串流可以,當負載不行:CI 是軟體觸發、station region 不生效,
+兩者都不是生產路徑。
