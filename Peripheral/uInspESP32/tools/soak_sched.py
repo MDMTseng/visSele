@@ -252,23 +252,103 @@ def core_stop(p, fh):
     if p is None:
         return
     try:
+        # SIGINT only, and no escalation. A core killed before it releases the
+        # camera leaves the camera WEDGED: it still enumerates and still accepts
+        # configuration, but AcquisitionStart returns
+        #   USB3Vision write_memory error (invalid-parameter)
+        # and every core started afterwards gets a camera that never delivers a
+        # frame. Calibration then cannot complete, every run reports "never
+        # READY", and the results look like a finding about whatever was being
+        # injected. That is what happened on 2026-08-09: a seven-run noise sweep
+        # measured nothing, including the mildest row that had passed cleanly an
+        # hour earlier.
+        #
+        # This loop used to escalate to SIGTERM after 30s. A core that ignores
+        # SIGINT for a full two minutes is worth a loud complaint and a human;
+        # it is not worth trading for a wedged camera, because the stuck process
+        # costs one run and the wedged camera costs every run after it.
         p.send_signal(signal.SIGINT)
-        for _ in range(60):
+        for _ in range(240):
             if p.poll() is not None:
                 break
             time.sleep(0.5)
         if p.poll() is None:
-            p.terminate()
-            for _ in range(40):
-                if p.poll() is not None:
-                    break
-                time.sleep(0.5)
+            print("WARNING: core pid %s ignored SIGINT for 120s. NOT escalating "
+                  "-- a hard kill wedges the camera. Stop it by hand." % p.pid,
+                  flush=True)
     except Exception:
         pass
     try:
         fh.close()
     except Exception:
         pass
+
+
+# --------------------------------------------------------------------------
+# camera health. Only callable with NO core running -- the core owns the device.
+#
+# The board health check cannot see this failure at all: with a wedged camera
+# the board is perfectly fine (state 100, error_hist empty, counters zero) and
+# reports so. What is broken is upstream of it, and the symptom downstream is
+# "never READY" -- which reads as a finding about whatever the run was
+# injecting. Six runs can be spent that way before anyone looks at the camera.
+#
+# gi/Aravis lives in the Homebrew python, not this one, so shell out.
+# --------------------------------------------------------------------------
+CAM_PY = "/opt/homebrew/bin/python3"
+CAM_PROBE = """
+import gi, sys
+gi.require_version('Aravis','0.8')
+from gi.repository import Aravis
+Aravis.update_device_list()
+if Aravis.get_n_devices() == 0:
+    print('NO_DEVICE'); sys.exit(2)
+cam = Aravis.Camera.new(None)
+st = cam.create_stream(None, None)
+for _ in range(4):
+    st.push_buffer(Aravis.Buffer.new_allocate(cam.get_payload()))
+try:
+    cam.start_acquisition(); cam.stop_acquisition()
+    print('OK')
+except Exception as e:
+    print('WEDGED: %s' % e); sys.exit(3)
+"""
+CAM_RESET = """
+import gi
+gi.require_version('Aravis','0.8')
+from gi.repository import Aravis
+Aravis.update_device_list()
+Aravis.Camera.new(None).get_device().execute_command('DeviceReset')
+print('reset issued')
+"""
+
+
+def camera_ok():
+    try:
+        p = subprocess.run([CAM_PY, "-c", CAM_PROBE], capture_output=True,
+                           text=True, timeout=60)
+        return p.returncode == 0, (p.stdout + p.stderr).strip().splitlines()[-1:]
+    except Exception as e:
+        return False, [str(e)]
+
+
+def camera_recover(fh):
+    """DeviceReset, wait for re-enumeration, re-probe. True if it came back."""
+    log(fh, "  camera: attempting DeviceReset")
+    try:
+        subprocess.run([CAM_PY, "-c", CAM_RESET], capture_output=True,
+                       text=True, timeout=60)
+    except Exception as e:
+        log(fh, "  camera: reset failed: %s" % e)
+        return False
+    for _ in range(20):
+        time.sleep(5)
+        ok, why = camera_ok()
+        if ok:
+            log(fh, "  camera: recovered")
+            return True
+    log(fh, "  camera: still wedged after reset -- needs a human (replug USB)")
+    return False
 
 
 # --------------------------------------------------------------------------
@@ -435,6 +515,20 @@ def run_one(r, outdir, fh):
     log(fh, "  %s  (%.1f min)  -> %s" % (r["name"], dt / 60.0, verdict))
     if not ok2 and verdict.startswith("PASS"):
         verdict = "PASS_BUT_UNHEALTHY_AFTER"
+
+    # "never READY" has two very different causes and they are not
+    # distinguishable from the board: the injected fault genuinely stopped the
+    # machine, or the camera is wedged and no frame ever arrived. Ask the
+    # camera directly -- the core is stopped by now, so it is answerable.
+    if "never READY" in verdict or "HALTED" in verdict:
+        ok_cam, why = camera_ok()
+        if not ok_cam:
+            log(fh, "  camera NOT streaming: %s" % (why or "?"))
+            verdict = "CAMERA_WEDGED"
+            if not camera_recover(fh):
+                verdict = "CAMERA_WEDGED_UNRECOVERED"
+        else:
+            log(fh, "  camera checked: streaming -- the halt is real")
     return verdict, delta
 
 
@@ -474,7 +568,8 @@ def main(a):
             stopped = "interrupted"
             break
         results.append((r["name"], v))
-        if v.startswith("UNHEALTHY") or v == "CORE_FAIL":
+        if v.startswith("UNHEALTHY") or v == "CORE_FAIL" or \
+           v == "CAMERA_WEDGED_UNRECOVERED":
             # Measuring a broken machine for another four hours teaches nothing.
             log(fh, "STOPPING QUEUE: %s left the machine in %s" % (r["name"], v))
             stopped = v
