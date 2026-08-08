@@ -2280,6 +2280,57 @@ void StepGo()
 }
 
 
+// --- phantom emission: requested by the main loop, PERFORMED by the step ISR --
+//
+// newPulseEvent had two producers. The sensor path reaches it from the step ISR
+// (GateSensing inside onTimer); the rig path reached it from the main loop
+// (phantomEmitOne, from trig_phantom_pulse and the train service). Nothing
+// serialised them, and everything they share was unprotected:
+//
+//   tid_counter        a static ++, so two objects could take the same tid --
+//                      and byTid is AUTHORITATIVE in the report handler, so a
+//                      duplicate lands a verdict on the wrong part. That is the
+//                      one path that gets round the 2*TOL uniqueness invariant
+//                      from the side rather than through it.
+//   _prePulse/_preTime  the distance and rate gates' references, read-modify-write
+//   RBuf.getHead()      does NOT reserve the slot. getHead -> write 8 fields ->
+//                       pushHead is not atomic, so both producers could be handed
+//                       the SAME slot, both write it, both push: the ring advances
+//                       twice for one object and the second entry is whatever the
+//                       previous lap left there.
+//
+// It has been survivable only by convention -- the phantom suites set
+// set_gate_disable first, so the ISR does not call newPulseEvent while they run.
+// Convention is not enough for what this is about to be used for: a phantom
+// clock top-up during production makes a rare race a continuous one.
+//
+// Fixed by removing the second producer rather than by locking around it. The
+// main loop only asks; the ISR emits, at most one per tick, and every piece of
+// shared state above goes back to being touched from exactly one context. No
+// critical section, so nothing here can delay a step pulse -- which locking
+// would have done, on the very path whose timing everything else is measured
+// against.
+//
+// It is also more correct: gate_pulse is a step count, and taking it inside the
+// ISR means it cannot be read while SYS_STEP_COUNT is advancing underneath.
+//
+// Single-producer/single-consumer counters: the main loop only ever writes REQ,
+// the ISR only ever writes DONE and DROP. Unsigned wraparound makes the
+// comparison safe without a lock.
+static volatile uint32_t PHANTOM_REQ_N  = 0;   // main loop writes
+static volatile uint32_t PHANTOM_DONE_N = 0;   // ISR writes
+static volatile uint32_t PHANTOM_DROP_N = 0;   // ISR writes: the gate refused it
+
+static inline void phantomServiceISR()
+{
+  if(PHANTOM_DONE_N == PHANTOM_REQ_N) return;
+  PHANTOM_DONE_N++;
+  // Same shape a real detection presents: a narrow pulse centred on now. The
+  // width is nominal -- the gate's width filter is what it has to satisfy.
+  const uint32_t at = SYS_STEP_COUNT;
+  if(newPulseEvent(at-10, at+10, at, 20) != 0) PHANTOM_DROP_N++;
+}
+
 
 void IRAM_ATTR onTimer()
 {
@@ -2318,6 +2369,11 @@ void IRAM_ATTR onTimer()
 
 
   GateSensing();
+
+  // After the sensor, so a real detection always wins the tick it arrived on
+  // and an injected one takes the next. At most one per tick, the same
+  // discipline ACT_TRY_RUN_TASK uses.
+  phantomServiceISR();
 
   Run_ACTS(SYS_STEP_COUNT);
 
@@ -2437,8 +2493,18 @@ static inline void phantomEmitOne()
   // announce, like everything else. The suites already wait for arrival rather
   // than a fixed delay, and objects pipeline, so a run pays one transit, not
   // one per pulse.
-  uint32_t tatPulse = SYS_STEP_COUNT;
-  newPulseEvent(tatPulse-10, tatPulse+10, tatPulse, 20);
+  // Ask; do not emit. See phantomServiceISR above for why the second producer
+  // on newPulseEvent had to go rather than be locked around. The pulse lands on
+  // the next timer tick -- 15.6us at plate_freq 32000, and quantised to a tick
+  // rather than to whenever the main loop got here, which makes the train's
+  // interval MORE exact than it was, not less.
+  //
+  // With the timer alarm off (PLATE_FREQ_CURRENT==0) the request simply waits.
+  // Nothing is lost: a phantom's stage tasks are scheduled at future step
+  // counts, so on a stationary plate it could never have reached its camera
+  // either -- that is exactly why calFireNow exists. `ph_pend` in poll makes a
+  // waiting request visible instead of leaving it to be discovered.
+  PHANTOM_REQ_N++;
 }
 
 // Clock-sync pulses: break the circularity in the offset estimate.
@@ -3622,6 +3688,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["tqcap"]=ISRTrigQ.capacity();
     retdoc["tqovf"]=ISRTRIGQ_OVF;
     retdoc["tqburst"]=ISRTRIGQ_BURST;
+    // Phantom requests the ISR has not emitted yet, and requests the gate
+    // refused. Non-zero pend with a stopped plate is the expected shape (the
+    // timer alarm is off); non-zero pend on a MOVING plate means the ISR is not
+    // running, which is a different and much worse fault.
+    retdoc["ph_pend"]=(uint32_t)(PHANTOM_REQ_N-PHANTOM_DONE_N);
+    retdoc["ph_drop"]=PHANTOM_DROP_N;
     retdoc["hwm_tid_new"]=HWM_TID_NEW;
     retdoc["hwm_tid_old"]=HWM_TID_OLD;
     retdoc["hwm_gate_new"]=HWM_GATE_NEW;
