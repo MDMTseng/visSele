@@ -2513,6 +2513,19 @@ static const int64_t CAL_PULSE_TIMEOUT_MS = 1500;
 // 0 disables. See recalService for where 10s comes from.
 int32_t  CAM_RECAL_IDLE_MS = 10000;
 uint32_t CAM_RECALS = 0;
+// The match window expressed as what it is: a POSITION tolerance, in um.
+// 0 = off, keep the explicit match_window_us. See setMachineSetup for the
+// derivation and for why it rounds down against the SETPOINT.
+//
+// The budget has two claimants and only one of them is the camera. The other
+// is clock drift between top-ups: 35 us/s measured, so CAM_RECAL_IDLE_MS of
+// idle spends CAM_RECAL_IDLE_MS/1000 * 35 us of the window before a single
+// frame has been late. At 10s that is 350us -- which fits inside 5000 and
+// does not fit inside the 373us that 0.3mm buys at plate_freq 32000. Tightening
+// the window without shortening the idle just moves the halt to the first
+// part after every quiet spell.
+int32_t  CAM_MATCH_TOL_um = 0;
+static const int32_t CAM_DRIFT_US_PER_S = 35;   // measured, see CAVEATS O
 static const int64_t SPINUP_TIMEOUT_MS = 30000;
 static uint32_t CAL_RUNS = 0, CAL_FAILS = 0;
 static int64_t  CAL_STARTED_MS = 0;
@@ -3506,6 +3519,41 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"reset_running_stat")==0)
   {
+    // "hwm":true resets ONLY the high-water and averaged values, leaving the
+    // counters and the clock model alone. It exists because every max in here
+    // is a since-reset high-water, so during a long run they latch onto
+    // whatever happened at spin-up and then say nothing for hours: a 3h soak
+    // reported isr_gap_max 12720us and lat_max 366984us from t+136s onward,
+    // both set by the entry seam, and the running values were invisible
+    // underneath them.
+    //
+    // The reason this needs its own flag rather than "just call reset every
+    // few minutes" is CAM_SYNC.reset() below. Clearing the clock mid-run is
+    // NOT recoverable while the line is moving: recalService() bails on
+    // `!CAM_SYNC.valid` before it does anything, so the one thing that could
+    // rebuild the offset is gated on the offset already existing. The machine
+    // silently falls back to tid pairing for the rest of the run and nothing
+    // says so -- measured, as agree=0 and delta_max=0 across a whole window.
+    const bool hwm_only = doc["hwm"].is<bool>() ? doc["hwm"].as<bool>() : false;
+    if(hwm_only)
+    {
+      ISR_GAP_MAX_CY=0;
+      RBUF_PEAK=0;
+      ISRTRIGQ_HWM=0; ISRTRIGQ_BURST=0;
+      ACT_LATE_MAX=0;
+      LOOP_N=0; LOOP_MAX_US=0;
+      SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
+      REP_LAT_N=0; REP_LAT_SUM_US=0; REP_LAT_MAX_US=0;
+      CAM_SYNC.delta_max_us=0;      // the margin, windowed; the offset stays
+      retdoc["hwm"]=true;
+      retdoc["clock_reset"]=false;
+      doRsp=rspAck=true;
+    }
+    else
+    {
+    // Full reset from here. Announced in the reply because it takes the clock
+    // with it, and a caller that did not mean to should be able to see that.
+    retdoc["clock_reset"]=true;
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
     SKIP_Count=0;
@@ -3539,6 +3587,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     REP_LAT_MAX_US=0;
 
     doRsp=rspAck=true;
+    }
 
   }
   // The hot poll. Everything a host checks in a loop -- am I running, is the
@@ -5500,6 +5549,19 @@ void genMachineSetup(JsonDocument &jdoc)
     JsonObject jCM = jdoc.createNestedObject("cam");
     jCM["report_match_ts"]=REPORT_MATCH_TS;
     jCM["match_window_us"]=CamClockSync::TOL_US;
+    // The setting, and what it currently BUYS in millimetres. The second one is
+    // emitted whichever mode is in use, because the hazard the microsecond form
+    // leaves open is precisely that raising plate_freq loosens the position
+    // tolerance and nothing says so. Now something does.
+    jCM["match_tolerance_mm"]=CAM_MATCH_TOL_um/1000.0f;
+    {
+      const double um_per_tick = (double)_PLAT_CIRC_um/(double)_PLAT_PULSE_PER_TURN;
+      const double um_per_s    = um_per_tick*2.0*(double)PLATE_FREQ_SETPOINT;
+      jCM["match_tolerance_mm_eff"] =
+        (PLATE_FREQ_SETPOINT>0.0f)
+          ? (float)(um_per_s*(double)CamClockSync::TOL_US/1e6/1000.0)
+          : 0.0f;
+    }
     jCM["recal_idle_ms"]=CAM_RECAL_IDLE_MS;
     jCM["cal_pulse_us"]=CAL_PULSE_WIDTH_US;
     jCM["drift_comp"]=CamClockSync::DRIFT_COMP;
@@ -5641,6 +5703,49 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
   JSON_SETIF_ABLE(REPORT_MATCH_TS,jCM,"report_match_ts");
   JSON_SETIF_ABLE(CamClockSync::TOL_US,jCM,"match_window_us");
+
+  // "match_tolerance_mm": the window expressed as what it actually is.
+  //
+  // Opt-in, and the microsecond setting stays the primary one. The 2026-08-06
+  // note below decided against deriving from plate speed because a window that
+  // moves underneath you makes failures hard to reproduce -- "the same test at
+  // two speeds stops being the same test" -- and that reasoning still holds.
+  // What it also said, and what this closes, is the hazard it left open:
+  // "raising plate_freq silently loosens the position tolerance, and nothing
+  // says so."
+  //
+  // So there are now two modes and BOTH report the position tolerance:
+  //   match_tolerance_mm > 0   derive the window from it and the setpoint
+  //   match_tolerance_mm == 0  keep the explicit microseconds (default)
+  // and genMachineSetup always emits match_tolerance_mm_eff, so a fixed
+  // window can no longer loosen in millimetres without saying so.
+  //
+  // Rounded DOWN, and against SETPOINT rather than CURRENT. Both are the safe
+  // direction here and both are the OPPOSITE of what stage_pulse_width_us does
+  // (C: rounded up, so a pulse is never too short to fire) -- because the
+  // asymmetry is opposite: too WIDE a window mis-sorts, too narrow only halts.
+  // During spin-up CURRENT is below SETPOINT, so a window derived from SETPOINT
+  // is tighter than it needs to be, which is again the safe side.
+  // Accepted as millimetres and held as micrometres: JSON_SETIF_ABLE gates on
+  // is<typeof(var)>(), and an int32 target silently never matches a value a
+  // host wrote as 0.3 (see the float/int trap at the stage offsets).
+  if(jCM["match_tolerance_mm"].is<float>())
+    CAM_MATCH_TOL_um = (int32_t)(jCM["match_tolerance_mm"].as<float>()*1000.0f+0.5f);
+  if(CAM_MATCH_TOL_um<0) CAM_MATCH_TOL_um=0;
+  if(CAM_MATCH_TOL_um>0 && PLATE_FREQ_SETPOINT>0.0f)
+  {
+    const double um_per_tick = (double)_PLAT_CIRC_um/(double)_PLAT_PULSE_PER_TURN;
+    const double um_per_s    = um_per_tick*2.0*(double)PLATE_FREQ_SETPOINT;
+    int32_t derived = (int32_t)((double)CAM_MATCH_TOL_um*1e6/um_per_s);   // truncates = down
+    if(derived<1) derived=1;                 // the floors below take it from here
+    if(derived!=CamClockSync::TOL_US)
+      djrl.dbg_printf("CAMSYNC window %ld -> %ld us, derived from %ld um at "
+                      "plate_freq %d (%.0f mm/s)",
+                      (long)CamClockSync::TOL_US,(long)derived,
+                      (long)CAM_MATCH_TOL_um,(int)PLATE_FREQ_SETPOINT,um_per_s/1000.0);
+    CamClockSync::TOL_US = derived;
+  }
+
   // TODO (deferred 2026-08-06): the window is really a POSITION tolerance, and
   // expressing it in microseconds hides that.
   //
@@ -5731,6 +5836,24 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // a small positive value from recalibrating continuously and never running.
   if(CAM_RECAL_IDLE_MS < 0) CAM_RECAL_IDLE_MS = 0;
   if(CAM_RECAL_IDLE_MS > 0 && CAM_RECAL_IDLE_MS < 2000) CAM_RECAL_IDLE_MS = 2000;
+
+  // Drift against the window. Warned, not clamped: shortening the idle costs
+  // production time and lengthening the window costs position tolerance, and
+  // which one the operator would rather spend is not this function's call. But
+  // silence here is how a tightened window turns into "it halts after every
+  // pause" with no visible reason -- the first frame after a quiet spell is
+  // late by drift alone.
+  if(CAM_RECAL_IDLE_MS > 0 && CamClockSync::TOL_US > 0)
+  {
+    const int32_t drift_us = (CAM_RECAL_IDLE_MS/1000)*CAM_DRIFT_US_PER_S;
+    if(drift_us*2 > CamClockSync::TOL_US)
+      djrl.dbg_printf("CAMSYNC WARNING: %ld ms idle drifts up to %ld us, which is "
+                      "%ld%% of the %ld us window -- shorten recal_idle_ms or the "
+                      "first part after a pause is late on drift alone",
+                      (long)CAM_RECAL_IDLE_MS,(long)drift_us,
+                      (long)(100L*drift_us/CamClockSync::TOL_US),
+                      (long)CamClockSync::TOL_US);
+  }
 
   JSON_SETIF_ABLE(minWidth,jGT,"pulse_min_width");
   JSON_SETIF_ABLE(maxWidth,jGT,"pulse_max_width");
