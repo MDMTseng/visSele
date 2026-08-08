@@ -969,7 +969,6 @@ void RESET_ALL_PIPELINE_QUEUE()
   act_S.ACT_L2A.clear();
   act_S.ACT_SEL1.clear();
   act_S.ACT_SEL2.clear();
-  // RESET_GateSensing();
 }
 
 
@@ -994,7 +993,6 @@ struct TaskQ2CommInfo{//TODO: rename the infoQ to be more versatile
   int64_t trig_time_us;
   int trig_id;
   uint32_t gate_pulse;
-  // float curFreq;
 
   //log
   string log;
@@ -1209,8 +1207,6 @@ void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
     *head_code = code;
     ERROR_HIST.pushHead();
 
-    // DEBUG_print("errorLOG:");
-    // DEBUG_println((int)code);
     // //errorAction(sysinfo.err_act);
   }
 }
@@ -1471,7 +1467,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         ALL_OUTPUTS_SAFE();
 
         RESET_ALL_PIPELINE_QUEUE();
-        // DEBUG_printf(">>ENTER ERROR(%d)>>>\n",sysinfo.extra_code);
 
         RESET_ALL_PIPELINE_QUEUE();
         // Again, after the queues are empty. Safe-then-clear leaves a window:
@@ -1482,15 +1477,11 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // the end is what actually closes it, and it costs nothing.
         ALL_OUTPUTS_SAFE();
 
-        // digitalWrite(AIR_BLOW_OK_PIN, 0);
-        // digitalWrite(AIR_BLOW_NG_PIN, 0);
-        // digitalWrite(BACK_LIGHT_PIN, 1);
         // targetPulse=get_Stepper_pulse_count()+perRevPulseCount/3;//in jail for a bit
         ERROR_LOG_PUSH((GEN_ERROR_CODE)sysinfo.extra_code);
       } //enter
       else if (i == 1)
       {
-        // int32_t diff=get_Stepper_pulse_count()-targetPulse;
         
         // if(diff>0)//times up
         // {
@@ -1499,7 +1490,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       }
       else
       {
-        // digitalWrite(BACK_LIGHT_PIN, 0);
       }
     }
 
@@ -1588,7 +1578,6 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
     sysinfo.pre_state = sysinfo.state;
     sysinfo.state = state;
     sysinfo.extra_code=extraCode;
-    // DEBUG_printf("=========s:%d=>%d\n",sysinfo.pre_state,sysinfo.state);
     SYS_STATE_LIFECYCLE(sysinfo.pre_state, sysinfo.state );
 
   }
@@ -1645,9 +1634,6 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   }
 
   //get a new object and find a space to log it
-  // TCount++;
-  // head->s_pulse = start_pulse;
-  // head->e_pulse = end_pulse;
   head->w = pulse_width;
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
@@ -1685,10 +1671,6 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
   if (act_S.ACT_L1A.space() >= 2 && act_S.ACT_L2A.space() >= 2 &&
       act_S.ACT_CAM1.space() >= 2 && act_S.ACT_CAM2.space() >= 2 && act_S.ACT_SWITCH.space() >= 1)
   {
-    // DEBUG_printf(">>>>src:%p gate_pulse:%d ",pli,pli->gate_pulse);
-    // DEBUG_printf("s:%d ",pli->s_pulse);
-    // DEBUG_printf("e:%d ",pli->e_pulse);
-    // DEBUG_printf("cur:%d\n",logicPulseCount);
 
     // One coherent snapshot for this object's registration (see SPO_active).
     volatile stagePulseOffset* spo = SPO_active;
@@ -1705,7 +1687,6 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
     ACT_PUSH_TASK(act_S.ACT_SWITCH, pli,spo->SWITCH, 0, );
     return 0;
-    // pli->insp_status=insp_status_OK;
   }
   return -1;
 }
@@ -1719,15 +1700,10 @@ int Run_ACTS(uint32_t cur_pulse)
   bool time_us_fetched=false;
   uint64_t time_us=0;
   struct ACT_SCH *acts= &act_S;
-  // static uint32_t pre_pulse=0;
 
-  // uint32_t diff = cur_pulse-pre_pulse;
   // if(diff!=1)
   // {
-  //   DEBUG_printf("pre_pulse:%d ",pre_pulse);
-  //   DEBUG_printf("cur_pulse:%d \n",cur_pulse);
   // }
-  // pre_pulse=cur_pulse;
 
   GEN_ERROR_CODE ecode=GEN_ERROR_CODE::NOP;
 
@@ -1871,11 +1847,8 @@ int Run_ACTS(uint32_t cur_pulse)
   ACT_TRY_RUN_TASK(
       acts->ACT_SWITCH, cur_pulse,
 
-      // DEBUG_printf("SW src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
 
       pipeLineInfo *pli = task->src;
-      // DEBUG_print("insp_status:");
-      // DEBUG_println(pli->insp_status);
 
       IO_TRACE_LOG(IOT_PIN_SWITCH,pli->insp_status,cur_pulse,pli->tid);
 
@@ -1898,14 +1871,14 @@ int Run_ACTS(uint32_t cur_pulse)
           CONSEC_UNANSWERED=0;
           autoRateOk();   // a part was judged
           SEL3_Count++;
-          // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_on, 1, _task_->src =NULL; );
-          // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
+          // SEL3 has no actuator. These were SEL2's tasks copy-pasted, which
+          // would have ejected every OK part into the NG chute; left commented
+          // rather than deleted, which is why cat=3 is documented as a trap.
           break;
         case 0xFFFF:
           CONSEC_UNANSWERED=0;
           autoRateOk();   // a part was judged
           NA_Count++;
-          // inspResCount.NA++;
           break;
 
         // --- unjudged: the part goes round again, and the run is on notice ---
@@ -1956,11 +1929,9 @@ int Run_ACTS(uint32_t cur_pulse)
       //
       
       {
-        // task->src->insp_status = insp_status_DEL;
         task->src->insp_status = insp_status_DEL;
         task->src->retired     = 1;   // the drain keys off this, not the status
         task->src = NULL;
-        // RBuf.consumeTail();
       }
   );
 
@@ -2215,7 +2186,6 @@ typedef struct GateInfo {
 
 
 
-//uint32_t logicPulseCount = 0;
 
 GateInfo gateInfo={0};
 
@@ -2429,15 +2399,9 @@ static inline void phantomServiceISR()
 void IRAM_ATTR onTimer()
 {
 
-  // static uint32_t cp0_regs[18];
-  // GPIOLS32_SET(PIN_LED);
 
   // enable FPU
-  // xthal_set_cpenable(1);
   // // Save FPU registers
-  // xthal_save_cp0(cp0_regs);
-  // uint32_t nextT=100;
-  // __UPRT_D_("nextT:%d mstp.axis_RUNState:%d\n",mstp.T_next,mstp.axis_RUNState);
   
 
 
@@ -2477,11 +2441,8 @@ void IRAM_ATTR onTimer()
 
   
   // Restore FPU
-  // xthal_restore_cp0(cp0_regs);
   // // and turn it back off
-  // xthal_set_cpenable(0);
   // 
-  // GPIOLS32_CLR(PIN_LED);
 
 }
 StaticJsonDocument<3072> recv_doc;
@@ -2503,7 +2464,6 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
       dataBuff[i]='\'';
   }  
   dataBuff[buffIdx]='\0';
-  // doDataLog=true;
 
   if(recv_data)
     dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
@@ -3308,7 +3268,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     send_json_string(0,buff,slen,0);
     return 0;
   }
-  // const char* id = doc["id"];
   if(strcmp(type,"RESET")==0)
   {
     handleResetCommand();
@@ -3326,8 +3285,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   // else if(strcmp(type,"rsp_JsonRaw_version")==0)
   // {
-  //   const char* _version = doc["version"];
-  //   strcpy(peerVERSION,_version);
   //   return 0;
   // }
 
@@ -5200,8 +5157,6 @@ struct AUX_TASK_INFO {
   }; 
 
   //Just for ioCtrl
-  // string CID;
-  // string TTAG;
 };
 
 static QueueHandle_t AUXTaskQueue[AUX_COUNT];
@@ -5241,16 +5196,13 @@ void AUX_task(void *pvParameter)
 
           case AUX_TASK_INFO_TYPE::AUX_DELAY:
             vTaskDelay(info.delayInfo.time / portTICK_RATE_MS);
-            // G_LOG(">>>>");
           break;
           // case AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_ENC :
           //   while(mstp.EncV<info.wait_enc.value)
           //   {
-          //     vTaskDelay(1 / portTICK_RATE_MS);
           //   }
 
-          // break;
-
+      
           case AUX_TASK_INFO_TYPE::AUX_IO_CTRL :
 
             if(info.ioCtrl.CID[0])
@@ -5278,11 +5230,9 @@ void AUX_task(void *pvParameter)
             }
             // if(info.ioCtrl.state==1)
             // {
-            //   mstp.static_Pin_info|=(uint32_t)1<<info.ioCtrl.pin;
             // }
             // if(info.ioCtrl.state==0)
             // {
-            //   mstp.static_Pin_info&=~(((uint32_t)1)<<info.ioCtrl.pin);
             // }
           break;
 
@@ -5319,7 +5269,6 @@ int rzERROR=0;
 void firmwareSetup()
 {
   
-  // noInterrupts();
   // setRxBufferSize MUST precede begin(): HardwareSerial::setRxBufferSize()
   // bails out with "RX Buffer can't be resized when Serial is already running"
   // the moment _uart exists, so the old begin()-then-resize order silently left
@@ -5367,8 +5316,6 @@ void firmwareSetup()
   // and that is a head-of-line problem better fixed by making the reply small
   // than by making the wire fast.
   Serial.begin(230400);
-  // Serial.begin(460800);
-  // Serial.setHwFlowCtrlMode(0);
   // // setup_comm();
 
   // Must run before the timer is armed: the pulse offsets and plate frequency
@@ -5458,8 +5405,6 @@ void firmwareSetup()
 
   pinMode(PIN_I_GATE, INPUT_PULLUP);
 
-  // CameraIDList[0]="ABC";
-  // CameraIDList[1]="DEF";
 
 
 
@@ -5616,12 +5561,9 @@ void firmwareLoop()
     while(Serial.available() > 0) {
       recvF=true;
       // read the incoming byte:
-      // char c=Serial.read();
-      // djrl.recv_data((uint8_t*)&c,1);
       size_t recvLen = Serial.read(recvBuf,sizeof(recvBuf));
       //
       if(recvLen==0)continue;
-      // djrl.dbg_printf("recvLen:%d",recvLen);
       djrl.recv_data((uint8_t*)recvBuf,(int)recvLen);
       if(doDataLog)
       {
@@ -5639,7 +5581,6 @@ void firmwareLoop()
     }
     if(recvF)
     {
-      // djrl.dbg_printf("recv DONE");
     }
     SEG_END(SEG_RX_US);
   }
@@ -5699,8 +5640,6 @@ void firmwareLoop()
 
 
       retdoc.clear();
-      // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
-      // retdoc["trigger_id"]=info.step;
       switch (info.type)
       {
         case TaskQ2CommInfo_Type::trigInfo :
@@ -5711,7 +5650,6 @@ void firmwareLoop()
 
           string tag = info.trig_tag;
           // if(info.curFreq==info.curFreq)
-          //   replace(tag,"$s_PFQ", "s_PFQ="+toFixed(info.curFreq,100));
 
           retdoc["tag"]=tag;
           retdoc["trigger_id"]=info.trig_id;
@@ -5874,17 +5812,11 @@ void firmwareLoop()
 
 
   }while(0);
-  // static unsigned long startMillis=0; 
   // unsigned long currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
   // if (currentMillis - startMillis >= 100)  //test whether the period has elapsed
   // {
   //   startMillis = currentMillis;  //IMPORTANT to save the start time of the current LED state.
 
-  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins>>24));
-  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins>>16));
-  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins>>8));
-  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins));
-  //   Serial.printf("\n");
   // }
 
 
@@ -5942,7 +5874,6 @@ int intArrayContent_ToJson(char *jbuff, uint32_t jbuffL, int16_t *intarray, int 
 void genMachineSetup(JsonDocument &jdoc)
 {
 
-  // jdoc["axis"]="X,Y,Z1_,R11_,R12_";
 
   JsonObject jSPO  = jdoc.createNestedObject("stage_pulse_offset");
   jSPO["L1A_on"]=STAGE_PULSE_OFFSET.L1A_on;
@@ -5966,7 +5897,6 @@ void genMachineSetup(JsonDocument &jdoc)
 
 
 
-  // auto obj=jdoc.createNestedObject("obj");
 
   {
     JsonObject jP = jdoc.createNestedObject("plate");
