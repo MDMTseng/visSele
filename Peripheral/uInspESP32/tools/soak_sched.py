@@ -125,6 +125,38 @@ RUNS = [
     )
     for k in (3000, 6000, 20000)
 ] + [
+    # 機制檢驗:固定大偏離 +-3000,只掃視窗。
+    #
+    # 「超出視窗才停」預測三段都不停(3000 < 4000)。
+    # 「被接受的報告整個覆寫 offset」預測臨界值是視窗的一半:
+    #   window 4000 -> 3000 > 2000 -> 停
+    #   window 7000 -> 3000 < 3500 -> 不停
+    # 兩個假說在 window=4000 分開,所以那一列才是這組實驗的全部重點。
+    dict(
+        name="win%d" % w, block="A", minutes=4,
+        why=("大偏離固定 +-3000us,視窗 %dus。若臨界值是視窗的一半而不是視窗本身,"
+             "就證明落在視窗內的偏離會被接受並污染 offset_us —— "
+             "gate() 最後一行是整個覆寫,不是混合。" % w),
+        # --gate-sep-us MUST rise with the window. The device clamps
+        # match_window_us to min_detect_sep_us/2, and jitter_sweep prints the
+        # value it REQUESTED, not the one the device accepted. With the default
+        # sep of 2000 every row here ran at window=1000 no matter what was
+        # asked for, so the first version of this sweep never varied the window
+        # at all -- and all three rows halted, which read as a refutation.
+        argv=["jitter_sweep.py", "--seconds", "60", "--jitters", "0",
+              # Constant, NOT derived from w. Deriving it moved the gate
+              # spacing and the window together, so the one row that produced
+              # mis-sorted verdicts could not be attributed to either. 26000
+              # clears the clamp (window <= sep/2) for every w in the sweep.
+              "--gate-sep-us", "26000",
+              "--window-us", str(w)],
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
+             "INSP_PERIF_FAULT_TS_SPIKE_US": "3000",
+             "INSP_PERIF_FAULT_TS_SPIKE_EVERY": "20",
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED + 900 + w)},
+    )
+    for w in (4000, 7000, 12000)
+] + [
     dict(
         name="tsn_mix", block="A", minutes=5,
         why="兩者一起:sigma=1000us 的主體加上每 20 份一次的 +-6000us 大偏離。"
