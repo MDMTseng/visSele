@@ -29,6 +29,7 @@ The plate is stopped and inspection left on every exit path including Ctrl-C.
   python3 soak_real.py --minutes 20 --idle-every 300 --idle-for 15
 """
 import socket, time, json, argparse, datetime
+from uinsp_cfg import regroup
 
 PORT = 4099
 CONN = {"type": "CONNECT", "uart_name": "/dev/cu.usbserial-0001",
@@ -44,6 +45,10 @@ def sock():
 
 def send(s, *cmds, gap=0.3):
     for c in cmds:
+        # Grouped setup keys. The device silently ignores an unrecognised
+        # key and still acks true, so a flat `plate_freq` here is a no-op
+        # that reads as success -- including the one that stops the plate.
+        c = regroup(c)
         s.sendall((c if isinstance(c, str) else json.dumps(c)).encode() + b'\n')
         time.sleep(gap)
         try:

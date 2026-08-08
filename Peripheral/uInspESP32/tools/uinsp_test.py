@@ -30,6 +30,7 @@ import sys
 import threading
 import time
 from collections import deque
+from uinsp_cfg import CFG_GROUP as _SHARED_CFG_GROUP
 
 try:
     import serial
@@ -408,27 +409,11 @@ class UInspLink:
     # This is a compatibility adapter, not a pretence: `poll` and
     # get_running_stat are untouched, and anything reading a group directly
     # (_read_spo, skip_policy) goes straight through.
-    _CFG_GROUP = {
-        "plate_freq": ("plate", "freq"),
-        "plate_accel": ("plate", "accel"),
-        "pulses_per_rev": ("plate", "pulses_per_rev"),
-        "plate_diameter_mm": ("plate", "diameter_mm"),
-        "stepper_en_active": ("plate", "stepper_en_active"),
-        "stepper_dir": ("plate", "stepper_dir"),
-        "min_detect_sep_us": ("gate", "min_detect_sep_us"),
-        "pulse_min_width": ("gate", "pulse_min_width"),
-        "pulse_max_width": ("gate", "pulse_max_width"),
-        "gate_debounce_rise": ("gate", "debounce_rise"),
-        "gate_debounce_fall": ("gate", "debounce_fall"),
-        "report_match_ts": ("cam", "report_match_ts"),
-        "cam_match_window_us": ("cam", "match_window_us"),
-        "cam_recal_idle_ms": ("cam", "recal_idle_ms"),
-        "cal_pulse_us": ("cam", "cal_pulse_us"),
-        "cam_drift_comp": ("cam", "drift_comp"),
-        "unanswered_stop_after": ("skip_policy", "stop_after"),
-        "auto_rate_floor_us": ("skip_policy", "rate_floor_us"),
-        "auto_rate_recover_n": ("skip_policy", "recover_n"),
-    }
+    # The table itself lives in uinsp_cfg.py: eight other tools in this
+    # directory need the same mapping, and two copies of it drift silently
+    # -- the failure mode being a run that configures nothing and says so
+    # nowhere.
+    _CFG_GROUP = _SHARED_CFG_GROUP
 
     @classmethod
     def _regroup(cls, obj):

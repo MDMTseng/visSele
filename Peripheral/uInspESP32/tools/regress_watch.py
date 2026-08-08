@@ -63,6 +63,7 @@ path, Ctrl-C included.
   python3 -u regress_watch.py --hours 8
 """
 import socket, time, json, argparse, datetime, glob, signal
+from uinsp_cfg import regroup
 
 
 # A backgrounded process has SIGINT set to ignore by the shell, so `kill -INT`
@@ -123,6 +124,12 @@ def rpc(s, d, wait=RPC_WAIT):
     the link is gone, and both are results.
     """
     _ID[0] += 1
+    # Grouped setup keys. must() below insists on ack:true precisely so that a
+    # refused command cannot be mistaken for one that ran -- but the device
+    # acks true for keys it did not recognise, so a flat `plate_freq` passes
+    # that check having done nothing at all. The translation has to happen
+    # here, before the assurance is claimed.
+    d = regroup(d)
     d = dict(d, id=_ID[0])
     key = '"id":%d' % _ID[0]
     s.sendall((json.dumps(d) + "\n").encode())

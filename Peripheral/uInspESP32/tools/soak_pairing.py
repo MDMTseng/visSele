@@ -8,6 +8,7 @@ The rates bracket the camera's measured 35-36Hz trigger ceiling, so the sweep
 shows where the pairing starts to degrade and how sharply.
 """
 import socket, time, json, sys, datetime
+from uinsp_cfg import regroup
 
 PORT = 4099
 OUT = '/private/tmp/claude-501/-Users-mdm-workspace-visSele/a4128deb-34af-40d7-aa32-0cf3aabee171/scratchpad/soak_results.txt'
@@ -24,6 +25,10 @@ def sock():
 
 def send(s, *cmds, gap=0.25):
     for c in cmds:
+        # Grouped setup keys. The device silently ignores an unrecognised
+        # key and still acks true, so a flat `plate_freq` here is a no-op
+        # that reads as success -- including the one that stops the plate.
+        c = regroup(c)
         s.sendall((c if isinstance(c, str) else json.dumps(c)).encode() + b'\n')
         time.sleep(gap)
         try: s.recv(65536)
