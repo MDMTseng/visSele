@@ -350,32 +350,23 @@ import gi
 gi.require_version('Aravis','0.8')
 from gi.repository import Aravis
 Aravis.update_device_list()
-cam = Aravis.Camera.new(None)
-print('REGION %d %d %d %d' % cam.get_region())
-print('EXPOSURE %f' % cam.get_exposure_time())
-cam.get_device().execute_command('DeviceReset')
+Aravis.Camera.new(None).get_device().execute_command('DeviceReset')
 print('reset issued')
 """
 
-# DeviceReset returns the camera to its power-on geometry -- it wipes the ROI.
-# That matters more than it sounds: full frame is 2448x2048 at 35.18 fps against
-# 560x452 at 184.89, so inspection wall time roughly doubles and the throughput
-# ceiling drops by 5x. A recovery that silently changes the operating point is
-# the same failure as every other one found this night: the harness reports
-# success and then measures a different machine. So capture the geometry first
-# and put it back.
-CAM_RESTORE = """
-import gi, sys
-gi.require_version('Aravis','0.8')
-from gi.repository import Aravis
-x, y, w, h, e = [float(v) for v in sys.argv[1:6]]
-Aravis.update_device_list()
-cam = Aravis.Camera.new(None)
-cam.set_region(int(x), int(y), int(w), int(h))
-cam.set_exposure_time(e)
-print('restored %dx%d+%d+%d exp=%.0f' % (int(w), int(h), int(x), int(y), e))
-"""
-
+# Do not set the geometry here, and do not "restore" it after a DeviceReset.
+#
+# An earlier version captured region/exposure before the reset and put them
+# back afterwards, on the reasoning that a recovery which silently changes the
+# operating point is a bug. The reasoning stands; the action does not belong in
+# a recovery path, because the CORE sets the geometry itself and anything set
+# from outside is overwritten within seconds of it starting.
+#
+# It was ALSO briefly believed that setting the geometry externally was what
+# wedged the camera. That is NOT established: the "leave it alone" path
+# converged once (3952ms, 14 pulses) and then failed the same way as every
+# other attempt. The failure is intermittent and unisolated -- see
+# UINSP_CAVEATS. Do not read the absence of a geometry restore here as a fix.
 
 def camera_ok():
     try:
@@ -389,15 +380,9 @@ def camera_ok():
 def camera_recover(fh):
     """DeviceReset, wait for re-enumeration, re-probe. True if it came back."""
     log(fh, "  camera: attempting DeviceReset")
-    geom = None
     try:
-        p = subprocess.run([CAM_PY, "-c", CAM_RESET], capture_output=True,
-                           text=True, timeout=60)
-        for line in p.stdout.splitlines():
-            if line.startswith("REGION"):
-                geom = line.split()[1:5]
-            elif line.startswith("EXPOSURE") and geom is not None:
-                geom = geom + [line.split()[1]]
+        subprocess.run([CAM_PY, "-c", CAM_RESET], capture_output=True,
+                       text=True, timeout=60)
     except Exception as e:
         log(fh, "  camera: reset failed: %s" % e)
         return False
@@ -405,13 +390,6 @@ def camera_recover(fh):
         time.sleep(5)
         ok, why = camera_ok()
         if ok:
-            if geom and len(geom) == 5:
-                r = subprocess.run([CAM_PY, "-c", CAM_RESTORE] + geom,
-                                   capture_output=True, text=True, timeout=60)
-                log(fh, "  camera: %s" % (r.stdout.strip() or r.stderr.strip()))
-            else:
-                log(fh, "  camera: WARNING geometry not captured -- the reset "
-                        "left it at full frame, which is a different machine")
             log(fh, "  camera: recovered")
             return True
     log(fh, "  camera: still wedged after reset -- needs a human (replug USB)")
