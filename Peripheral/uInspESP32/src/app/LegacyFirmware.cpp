@@ -213,7 +213,11 @@ int SEL1_ACT_COUNTDOWN=-1;
 #define _PLAT_DIST_um_PER_STEP ((int)(_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
 
 #define _PLAT_DIST_um(stepCount) ((int)(stepCount*_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
-#define _PLAT_DIST_step(dist_um) ((int)(dist_um*_PLAT_PULSE_PER_TURN/_PLAT_CIRC_um))
+// (double) first: dist_um is uint32 and the multiply by 60000 wraps above
+// 71582 um, so min_detect_dist_um 100000 silently resolved to 2261 ticks
+// (28.4mm) instead of 7958 (100mm) -- a gate an order of magnitude looser
+// than configured, with nothing saying so.
+#define _PLAT_DIST_step(dist_um) ((int)((double)(dist_um)*_PLAT_PULSE_PER_TURN/_PLAT_CIRC_um))
 
 //disk D=350 circumference 350*Pi
 //1600*9 steps per round
@@ -953,13 +957,18 @@ void RESET_ALL_PIPELINE_QUEUE()
 {
   
   RBuf.clear();
+  // SWITCH first: it is the stage that PUSHES into ACT_SEL1/ACT_SEL2, so
+  // clearing it last left a window where a tick between the SEL clears and
+  // the SWITCH clear queued a fresh blow into a queue that had just been
+  // emptied -- an actuation surviving the flush and firing later at an
+  // arbitrary plate position with no part behind it.
+  act_S.ACT_SWITCH.clear();
   act_S.ACT_CAM1.clear();
   act_S.ACT_CAM2.clear();
   act_S.ACT_L1A.clear();
   act_S.ACT_L2A.clear();
   act_S.ACT_SEL1.clear();
   act_S.ACT_SEL2.clear();
-  act_S.ACT_SWITCH.clear();
   // RESET_GateSensing();
 }
 
@@ -1427,6 +1436,12 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         blockNewDetectedObject=false;
         FEEDER_ON=true;
         io_drive(FEEDER_PIN, IOI_FEEDER, true);
+        // The unanswered budget belongs to the run, not to the boot. It is
+        // cleared by a judged part and by reset_running_stat, and by nothing
+        // else -- so a run that ended at 8 of stop_after 10 left the next one
+        // halting after TWO unjudged parts, which reads as "it keeps stopping
+        // right after restart" and points nowhere near the cause.
+        CONSEC_UNANSWERED=0;
 
         //
       }
@@ -2017,9 +2032,6 @@ int Run_ACTS(uint32_t cur_pulse)
 inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
-// Names every key a set_setup carries that the schema does not contain.
-// Defined beside setMachineSetup, where the schema tables live.
-static int cfgUnknownKeys(JsonObject in, char *out, size_t outN);
 void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
@@ -3356,7 +3368,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       if(commInfo){
         commInfo->type=TaskQ2CommInfo_Type::btrigInfo;
         
-        uint32_t time_us=esp_timer_get_time();
+        // 64-bit, like the ISR path at the CAM stage. Truncating to uint32 and then
+    // widening into an int64 field does not preserve congruence mod 2^32, so
+    // past 71.6 minutes of uptime this command announced a t_us up to 4294.97 s
+    // in the past -- and t_us is what the pairing consumes.
+    uint64_t time_us=(uint64_t)esp_timer_get_time();
         commInfo->trig_time_us=time_us;
         commInfo->btrig_idx=1;
         commInfo->trig_id=trigger_id;
@@ -3526,7 +3542,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"pin_mode")==0)
   {
+    // Raw pin access takes any GPIO number the caller sends, and SEL1 is 25
+    // while STEPPER_EN is 13 (HardwareConfig.hpp). In READY that means an
+    // arbitrary actuator fired at an arbitrary plate position, or the driver
+    // de-energised at speed. `light` already checks this; these did not.
+    if(cfgPersistDeny()!=NULL)
+    {
+      retdoc["type"]="pin_mode";
+      retdoc["err"]=cfgPersistDeny();
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
+    else {
     doRsp=true;
+    }
     int PIN_Mode=INPUT;
     if(doc["mode"].is<String>()==true)
     {
@@ -3606,6 +3635,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // refuses to run on mismatch (config-drift guard, RELIABILITY_ROADMAP L3).
     // Added here rather than inside genMachineSetup, which hash() itself calls.
     retdoc["cfg_crc"]=MachineConfig::hash();
+    // Settings the stored config still carries that this firmware dropped.
+    // Present means: those values are NOT in effect, whatever they
+    // configured is at its compiled default, and nothing has been written
+    // back. The UI warns, shows the old values, and offers the conversion.
+    if(MachineConfig::staleKeyCount()>0)
+    {
+      retdoc["cfg_stale_n"]=MachineConfig::staleKeyCount();
+      retdoc["cfg_stale_keys"]=MachineConfig::staleKeyNames();
+      retdoc["cfg_stale_values"]=MachineConfig::staleKeyValues();
+    }
 
     doRsp=rspAck=true;
 
@@ -4391,7 +4430,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
 
-    doRsp=false;
+    // Answer. This used to be doRsp=false unconditionally, so a host learned
+    // that its verdict had matched nothing only when the machine halted, and
+    // correlating WHICH report caused it was guesswork. The reply is small --
+    // the id, the ack, and on failure the reason.
+    doRsp=true;
     }                       // end of the cat_ok body
     if(!cat_ok){ doRsp=true; rspAck=false; }
 
@@ -4476,6 +4519,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"pin_on")==0)
   {
+    // Raw pin access takes any GPIO number the caller sends, and SEL1 is 25
+    // while STEPPER_EN is 13 (HardwareConfig.hpp). In READY that means an
+    // arbitrary actuator fired at an arbitrary plate position, or the driver
+    // de-energised at speed. `light` already checks this; these did not.
+    if(cfgPersistDeny()!=NULL)
+    {
+      retdoc["type"]="pin_on";
+      retdoc["err"]=cfgPersistDeny();
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
+    else {
     
     if(doc["pin"].is<int>()==true)
     {
@@ -4483,9 +4538,22 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       digitalWrite(pin,HIGH);
     }
     doRsp=rspAck=true;
+    }
   }
   else if(strcmp(type,"pin_off")==0)
   {
+    // Raw pin access takes any GPIO number the caller sends, and SEL1 is 25
+    // while STEPPER_EN is 13 (HardwareConfig.hpp). In READY that means an
+    // arbitrary actuator fired at an arbitrary plate position, or the driver
+    // de-energised at speed. `light` already checks this; these did not.
+    if(cfgPersistDeny()!=NULL)
+    {
+      retdoc["type"]="pin_off";
+      retdoc["err"]=cfgPersistDeny();
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
+    else {
     
     if(doc["pin"].is<int>()==true)
     {
@@ -4494,6 +4562,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       digitalWrite(pin,LOW);
     }
     doRsp=rspAck=true;
+    }
   }
   // Polarity-aware light hold. pin_on/pin_off above are RAW digitalWrite, and
   // with io_on_level.L1A=0 (ON is LOW, the current machine's config) they do
@@ -4606,6 +4675,25 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"reboot_bootloader")==0)
   {
+    // crash_test and wdt_test both require confirm:true; this one ends in
+    // RTC_CNTL_SW_SYS_RST and did not. Mid-run it resets the chip with the
+    // plate at speed and the outputs in whatever state the ISR left them.
+    if(!(doc["confirm"].is<bool>() && doc["confirm"].as<bool>()))
+    {
+      retdoc["type"]="reboot_bootloader";
+      retdoc["err"]="confirm_required";
+      doRsp=true; rspAck=false;
+      goto reboot_bl_done;
+    }
+    if(cfgPersistDeny()!=NULL)
+    {
+      retdoc["type"]="reboot_bootloader";
+      retdoc["err"]=cfgPersistDeny();
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+      goto reboot_bl_done;
+    }
+    {
     // Enter the ROM serial bootloader without a physical BOOT press.
     //
     // This board's auto-reset circuit is only half wired: DTR->EN resets the
@@ -4675,7 +4763,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // and therefore the pad hold -- alone, which is the combination this needs.
     SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_SW_SYS_RST);
     while(1){}   // not reached
-    doRsp=false;
+    }
+    reboot_bl_done:
+    ;
   }
 
   else if(strcmp(type,"set_gate_disable")==0)
@@ -4807,22 +4897,62 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"stepper_disable")==0)
   {
-    digitalWrite(STEPPER_EN_PIN,!stepper_en_active);
-    SYS_STEPPER_DISABLED=true;
-    doRsp=rspAck=true;
+    // De-energising the driver at speed frees a spinning plate, and leaves
+    // PLATE_FREQ_TARGET non-zero so the ramp still believes it is driving.
+    // Every SEL actuation is also gated on !SYS_STEPPER_DISABLED, so parts
+    // already past SWITCH with a verdict stop being ejected -- silently, since
+    // the counters only move when the actuation happens.
+    if(cfgPersistDeny()!=NULL)
+    {
+      retdoc["type"]="stepper_disable";
+      retdoc["err"]=cfgPersistDeny();
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      digitalWrite(STEPPER_EN_PIN,!stepper_en_active);
+      SYS_STEPPER_DISABLED=true;
+      doRsp=rspAck=true;
+    }
   }
 
 
 
   else if(strcmp(type,"sel_act")==0)
   {
-    int idx=doc["idx"];
+    // Blocking the main loop is only safe with the plate stopped, which is the
+    // same condition an NVS save uses and the same one trig_cam_burst and
+    // `light` already check. This one did not: in READY it blocks the loop that
+    // drains ISRTrigQ and services report, so at 39/s with ~1% latency margin
+    // even 200ms pushes parts past SWITCH unanswered, and 32 entries of
+    // ISRTrigQ overflow into INSP_CAM_TRIG_INFO_CANNOT_BE_SENT. It also fires
+    // the selector at whatever happens to be under it.
+    const char* deny_sel=cfgPersistDeny();
+    if(deny_sel!=NULL)
+    {
+      retdoc["type"]="sel_act";
+      retdoc["err"]=deny_sel;
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+      goto sel_act_done;
+    }
+    {
+    // `idx` was read without is<int>(), so an absent field gave 0 and fell
+    // through the switch silently. `delay` had no upper bound at all --
+    // delay(600000) is ten minutes with the loop stopped, and delay() takes
+    // uint32_t, so a negative became ~49 days and starved the task watchdog
+    // (vTaskDelay yields but does not call esp_task_wdt_reset, and
+    // firmwareLoop's reset is out of reach), i.e. panic and reboot.
+    int idx = doc["idx"].is<int>() ? (int)doc["idx"] : 0;
     int delay_ms=10;
 
     if(doc["delay"].is<int>()==true)
     {
       delay_ms=doc["delay"];
     }
+    if(delay_ms<0)    delay_ms=0;
+    if(delay_ms>2000) delay_ms=2000;   // far past any real blow, still bounded
 
     switch(idx)
     {
@@ -4844,7 +4974,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       io_drive(PIN_O_SEL3,IOI_SEL3,false);
       rspAck=true;
       break;
+      default:
+      retdoc["err"]="idx_must_be_1_2_or_3";
+      rspAck=false;
+      break;
     }
+    retdoc["idx"]=idx;
+    retdoc["delay"]=delay_ms;
+    }
+    sel_act_done:
     doRsp=true;
   }
   
@@ -6015,7 +6153,7 @@ static void cfgNoteUnknown(const char *grp,const char *k,char *out,size_t outN,i
 }
 
 // Returns the count; `out` gets the names, comma separated, truncated if long.
-static int cfgUnknownKeys(JsonObject in, char *out, size_t outN)
+int cfgUnknownKeys(JsonObject in, char *out, size_t outN)
 {
   int n=0;
   out[0]='\0';
@@ -6279,6 +6417,12 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 
   JSON_SETIF_ABLE(minWidth,jGT,"pulse_min_width");
   JSON_SETIF_ABLE(maxWidth,jGT,"pulse_max_width");
+  // Compared against a uint32 width, so a negative converts to ~4.29e9:
+  // pulse_min_width -1 rejects every part as a width failure and counts it
+  // only in GATE_REJ_WIDTH, while pulse_max_width -1 accepts everything.
+  // The debounce thresholds got this floor already; these did not.
+  if(minWidth<0) minWidth=0;
+  if(maxWidth<0) maxWidth=0;
   JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jGT,"debounce_rise");
   JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jGT,"debounce_fall");
   JSON_SETIF_ABLE(GATE_MIN_DIST_um,jGT,"min_detect_dist_um");

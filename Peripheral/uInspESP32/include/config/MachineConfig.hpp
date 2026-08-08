@@ -72,6 +72,10 @@ extern float PLATE_FREQ_SETPOINT;
 // Config is stored as the same JSON the wire uses, so these are shared.
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
+// Names every key in a setup document that the schema does not contain.
+// Defined beside setMachineSetup; used at boot to report what a stored
+// config carries that this firmware no longer understands.
+int cfgUnknownKeys(JsonObject in, char *out, size_t outN);
 
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
 extern volatile bool AUTO_RATE;
@@ -143,6 +147,14 @@ namespace MachineConfig
 
   // True if begin() found a usable stored config.
   bool isLoadedFromNVS();
+  // Stored keys this firmware does not recognise, with their old values.
+  // Never migrated and never re-saved: only an explicit save_setup or
+  // set_setup persist:true may write NVS, so an upgrade cannot rewrite an
+  // operator's calibration behind their back. The UI shows these, shows
+  // the old values, and offers the conversion.
+  int staleKeyCount();
+  const char* staleKeyNames();
+  const char* staleKeyValues();
 
   // Identifies which physical machine this board is bolted to. Empty until
   // set. Reported in get_setup so the host cannot cross-wire two machines'

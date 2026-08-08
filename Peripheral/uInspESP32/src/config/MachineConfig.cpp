@@ -75,6 +75,12 @@ namespace
 
   Preferences prefs;
   bool loadedFromNVS = false;
+  // Keys the stored config carries that this firmware no longer knows, and
+  // what they were set to. Filled at begin(), never acted on, reported so a
+  // person can decide. See begin() for why this is not migrated.
+  int  staleN = 0;
+  char staleKeys[160] = {0};
+  char staleVals[224] = {0};
 
   // How many bytes of a stored blob this firmware is willing to believe, given
   // the version it declares. A blob is only a valid prefix of the current
@@ -189,6 +195,55 @@ namespace MachineConfig
       StaticJsonDocument<3072> jdoc;
       if (deserializeJson(jdoc, txt) != DeserializationError::Ok)
         return;                      // corrupt: defaults stand, nothing applied
+
+      // What this firmware no longer understands, recorded WITH the old values
+      // and never acted on.
+      //
+      // The config is stored as wire JSON, so a renamed or dropped key does not
+      // fail -- it simply stops being read, and whatever it configured silently
+      // reverts to the compiled default. That is how io_on_level was lost once,
+      // on a machine that is active-low: the light and the air came on by
+      // themselves with parts on the plate.
+      //
+      // Deliberately NOT migrated and NOT re-saved. Nothing but an explicit
+      // save_setup / set_setup persist:true may write NVS, so a firmware
+      // upgrade can never quietly rewrite an operator's calibration into a
+      // shape they did not choose. Reporting it instead lets the UI say which
+      // settings were dropped, show what they used to be, and offer the
+      // conversion -- a decision with a person behind it.
+      staleN = cfgUnknownKeys(jdoc.as<JsonObject>(), staleKeys, sizeof(staleKeys));
+      if (staleN > 0)
+      {
+        // The values too, so the UI can show what is about to be lost rather
+        // than only the names.
+        // Walk groups too -- staleKeys names them dotted (cam.cal_pulse_us), and
+        // a first version of this skipped every JsonObject, so the names came
+        // out and the values, which are the whole point for the operator, did
+        // not.
+        staleVals[0] = '\0';
+        auto note = [&](const char *grp, const char *k, JsonVariantConst v)
+        {
+          char dotted[64];
+          if (grp) snprintf(dotted, sizeof(dotted), "%s.%s", grp, k);
+          else     snprintf(dotted, sizeof(dotted), "%s", k);
+          if (!strstr(staleKeys, dotted)) return;
+          char one[64]; one[0]='\0';
+          serializeJson(v, one, sizeof(one));
+          if (strlen(staleVals)+strlen(dotted)+strlen(one)+3 >= sizeof(staleVals)) return;
+          if (staleVals[0]) strcat(staleVals, ",");
+          strcat(staleVals, dotted); strcat(staleVals, "="); strcat(staleVals, one);
+        };
+        for (JsonPair kv : jdoc.as<JsonObject>())
+        {
+          if (kv.value().is<JsonObject>())
+          {
+            for (JsonPair p : kv.value().as<JsonObject>())
+              note(kv.key().c_str(), p.key().c_str(), p.value());
+          }
+          else note(NULL, kv.key().c_str(), kv.value());
+        }
+      }
+
       // Variables only -- pinMode has not run yet.
       setMachineSetup(jdoc, /*apply_hw=*/false);
       loadedFromNVS = true;
@@ -283,6 +338,10 @@ namespace MachineConfig
     }
     return h;
   }
+
+  int staleKeyCount(){ return staleN; }
+  const char* staleKeyNames(){ return staleKeys; }
+  const char* staleKeyValues(){ return staleVals; }
 
   bool isLoadedFromNVS()
   {
