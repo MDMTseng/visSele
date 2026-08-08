@@ -425,6 +425,7 @@ struct CamClockSync
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
+    for(int i=0;i<DELTA_BUCKETS;i++) delta_hist[i]=0;
     miss_delta_last_us=0; miss_delta_max_us=0; last_gap_us=0;
     slope_ppb=0; slope_n=0;
   }
@@ -674,6 +675,18 @@ volatile uint32_t GATE_ACCEPT=0;      // registered, for a rejection ratio
 // else is attrition on the way to an object.
 volatile uint32_t GATE_EDGES=0, GATE_REJ_WIDTH=0, GATE_REJ_UNSTABLE=0,
                   GATE_REJ_BLOCKED=0;
+// One counter per reason, because merging them reverses cause and effect.
+//
+// These four used to share GATE_REJ_UNSTABLE, whose name and comment claimed
+// "the plate is not at speed". A halt sets PLATE_FREQ_TARGET=0, so the plate
+// then decelerates for ~16s at accel 2000 with the sensor still seeing parts,
+// and every one of those was counted as "unstable" -- 375 of them in one
+// measured halt. The counter therefore reads as the CAUSE of a stop when it is
+// its AFTER-EFFECT, and on 2026-08-08 that produced a whole afternoon's wrong
+// conclusion ("three soaks failed from plate-speed instability").
+volatile uint32_t GATE_REJ_STEPPER_OFF=0,   // driver disabled
+                  GATE_REJ_GATE_OFF=0,      // set_gate_disable, or a calibration
+                  GATE_REJ_DRYRUN=0;        // stage clock without the plate
 // The minimum travel between two parts, in microns. Was hardcoded 2000 inside
 // newPulseEvent; settable so a measurement run can open it and see what the
 // gate would otherwise have hidden.
@@ -2141,6 +2154,20 @@ extern void __digitalWrite(uint8_t pin, uint8_t val)
 // the main loop re-reads it rather than caching a stale copy, and the ISR is
 // not free to hoist it. Single writer (the ISR), so its ++ needs no lock.
 volatile uint32_t SYS_STEP_COUNT=0;
+// The plate speed the machine is ACTUALLY running at, differentiated from the
+// step counter in the main loop.
+//
+// Everything that reported "plate_freq" reported PLATE_FREQ_TARGET -- the
+// commanded value -- and line 3688 even carries the measured one commented out
+// beside it. So a host that wrote plate_freq:0 and read plate_freq:0 had
+// confirmed the COMMAND, not the plate: a halt sets TARGET=0 while the plate
+// keeps turning for ~16s at accel 2000. Every "the plate is stopped" line any
+// tool has ever printed, including this session's, was that.
+//
+// Differentiating SYS_STEP_COUNT is the only measurement available -- there is
+// no encoder -- but it is a real one: the ISR advances it, so if the ISR has
+// stopped this reads zero, which is exactly the case the setpoint hides.
+volatile float PLATE_FREQ_MEAS=0.0f;
 
 
 typedef struct GateInfo {
@@ -2272,7 +2299,13 @@ void GateSensing()
           // Not an error, but not free either: every spin-up and every RECAL
           // holds SYS_FREQ_STABLE low, and the parts on the plate during it
           // are simply gone. Counted so that loss has a size.
-          GATE_REJ_UNSTABLE++;
+          // Attributed, not lumped. Order is deliberate: the most specific
+          // and most deliberate reasons first, so "unstable" keeps only the
+          // meaning its name claims.
+          if(SYS_STEPPER_DISABLED)   GATE_REJ_STEPPER_OFF++;
+          else if(GATE_DISABLED)     GATE_REJ_GATE_OFF++;
+          else if(DRY_RUN)           GATE_REJ_DRYRUN++;
+          else                       GATE_REJ_UNSTABLE++;
       }
       gateInfo.start_pulse=SYS_STEP_COUNT;
     }
@@ -3657,6 +3690,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
       REP_LAT_N=0; REP_LAT_SUM_US=0; REP_LAT_MAX_US=0;
       CAM_SYNC.delta_max_us=0;      // the margin, windowed; the offset stays
+      CAM_SYNC.max_resid_us=0;
+      CAM_SYNC.miss_delta_max_us=0;
+      // The histogram is the instrument for SIZING the window, so a tail
+      // carried over from the previous setting is the one thing it must
+      // not show. reset() misses it too -- added there in the same pass.
+      for(int i=0;i<CamClockSync::DELTA_BUCKETS;i++) CAM_SYNC.delta_hist[i]=0;
       retdoc["hwm"]=true;
       retdoc["clock_reset"]=false;
       doRsp=rspAck=true;
@@ -3688,6 +3727,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
+    GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     // The clock model too. Leaving it out made every segmented experiment
     // read the previous segment's numbers: an A/B control appeared to show 12
     // disagreements that were entirely leftovers, which nearly produced the
@@ -3723,7 +3763,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     retdoc["type"]="poll";
     retdoc["state"]=(int)sysinfo.state;
-    retdoc["plate_freq"]=PLATE_FREQ_TARGET;
+    retdoc["plate_freq"]=PLATE_FREQ_TARGET;      // COMMANDED
+    retdoc["plate_freq_meas"]=PLATE_FREQ_MEAS;   // MEASURED -- use this to
+                                                 // decide whether it stopped
     retdoc["step_count"]=SYS_STEP_COUNT;
     retdoc["q"]=RBuf.size();
     // The camera-trigger queue, which is NOT `q`. See ISRTRIGQ_HWM: this is
@@ -3816,7 +3858,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     //current state
     retdoc["state"]=(int)sysinfo.state;
 
-    retdoc["plate_freq"]=PLATE_FREQ_TARGET;//PLATE_FREQ_CURRENT;
+    retdoc["plate_freq"]=PLATE_FREQ_TARGET;      // COMMANDED
+    retdoc["plate_freq_meas"]=PLATE_FREQ_MEAS;   // MEASURED
     // if(SEL1_ACT_COUNTDOWN>=0)
     // {
     // }
@@ -3909,7 +3952,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // unless the auto-rate loop has backed off.
       jG["edges"]=GATE_EDGES;
       jG["rej_width"]=GATE_REJ_WIDTH;
-      jG["rej_unstable"]=GATE_REJ_UNSTABLE;
+      jG["rej_unstable"]=GATE_REJ_UNSTABLE;   // now ONLY "not at speed"
+      jG["rej_stepper_off"]=GATE_REJ_STEPPER_OFF;
+      jG["rej_gate_off"]=GATE_REJ_GATE_OFF;
+      jG["rej_dryrun"]=GATE_REJ_DRYRUN;
       jG["rej_blocked"]=GATE_REJ_BLOCKED;
       jG["min_dist_um"]=GATE_MIN_DIST_um;
       jG["eff_sep_us"]=GATE_SEP_EFF_us;
@@ -5536,6 +5582,20 @@ void firmwareLoop()
     int64_t nowUs=esp_timer_get_time();
     float dt=(nowUs-lastRampUs)*1e-6f;
     lastRampUs=nowUs;
+    {
+      // Measured, not commanded. Tick rate is 2*plate_freq (StepGo emits one
+      // driver pulse per two ticks), so halve it to get the same unit the
+      // setpoint is in.
+      static uint32_t meas_step=0;
+      static int64_t  meas_us=0;
+      if(meas_us!=0 && nowUs>meas_us+100000)
+      {
+        const uint32_t d=(uint32_t)(SYS_STEP_COUNT-meas_step);
+        PLATE_FREQ_MEAS = (float)d*1e6f/(float)(nowUs-meas_us)/2.0f;
+        meas_step=SYS_STEP_COUNT; meas_us=nowUs;
+      }
+      else if(meas_us==0){ meas_step=SYS_STEP_COUNT; meas_us=nowUs; }
+    }
     if(PLATE_FREQ_CURRENT==PLATE_FREQ_TARGET)
     {
       if(PLATE_FREQ_TARGET==0 && SYS_FREQ_STABLE==false)//just stable
