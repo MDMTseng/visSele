@@ -143,7 +143,22 @@ TSQueue<image_pipe_info *> inspSnapQueue(5);
 struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // Raw camera timestamp for the frame, passed through
                        // untouched so the device can match on it.
-                       uint64_t cam_ts_us; };
+                       uint64_t cam_ts_us;
+                       // Host clock at enqueue. The serial write is already
+                       // timed; the QUEUE WAIT was not, and the two answer
+                       // different questions. A slow write means the link; a
+                       // long wait means results are arriving faster than the
+                       // link drains, and the report that finally goes out is
+                       // stale before it is even sent.
+                       //
+                       // This matters because the device-side latency stat is
+                       // blind to exactly the reports that cause trouble: it is
+                       // accumulated only when a report ARRIVES, so answers
+                       // that came too late (or never) are absent from it. A
+                       // run that halted on OBJECT_HAS_NO_INSP_RESULT reported
+                       // avg 478ms / max 666ms against a ~1029ms budget --
+                       // the distribution of the survivors.
+                       uint64_t enq_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 
@@ -174,6 +189,10 @@ std::atomic<long long> perifMissedFrameCount{0};
 // so plain scalars are fine). max_ms is the interesting one -- it exposes any
 // remaining flow-control / driver-buffer stall in the COM peripheral write.
 double g_perifWriteMaxMs = 0, g_perifWriteSumMs = 0, g_perifWriteLastMs = 0;
+// Queue wait, tracked separately from write time: a slow write blames the
+// link, a long wait blames the rate. Same units, same log line, so the two
+// can be compared at a glance instead of inferred from one number.
+double g_perifWaitMaxMs = 0, g_perifWaitSumMs = 0;
 // Smallest frame-to-frame interval this camera has actually delivered. The
 // vendor's ResultingFrameRate is behind the CameraLayer API, and this is the
 // better number anyway: it is what the CURRENT ROI, exposure and transport
@@ -5725,6 +5744,8 @@ void PerifSendThread(bool *terminationflag)
         if (pc != NULL)
         {
           auto _wt0 = std::chrono::steady_clock::now();
+          const double _waitMs = msg.enq_us
+            ? (double)(perif_now_us() - msg.enq_us) / 1000.0 : 0.0;
           int ret;
           if (pc->machine_type == PERIF_UINSP_ESP32)
           {
@@ -6004,14 +6025,19 @@ void PerifSendThread(bool *terminationflag)
           g_perifWriteLastMs = ms;
           g_perifWriteSumMs += ms;
           g_perifWriteCnt++;
-          bool newMax = ms > g_perifWriteMaxMs;
-          if (newMax) g_perifWriteMaxMs = ms;
+          g_perifWaitSumMs += _waitMs;
+          bool newWaitMax = _waitMs > g_perifWaitMaxMs;
+          if (newWaitMax) g_perifWaitMaxMs = _waitMs;
+          bool newMax = (ms > g_perifWriteMaxMs) || newWaitMax;
+          if (ms > g_perifWriteMaxMs) g_perifWriteMaxMs = ms;
           // Log on every new max (the thing you want to catch) and a periodic
           // heartbeat every 100 writes so you can read the steady state.
           if (newMax || (g_perifWriteCnt % 100) == 0)
           {
-            LOGE("perif write: last:%.2fms max:%.2fms avg:%.2fms n:%llu qdepth:%zu drops:%d%s",
+            LOGE("perif write: last:%.2fms max:%.2fms avg:%.2fms | wait last:%.2fms "
+                 "max:%.2fms avg:%.2fms | n:%llu qdepth:%zu drops:%d%s",
                  ms, g_perifWriteMaxMs, g_perifWriteSumMs / (double)g_perifWriteCnt,
+                 _waitMs, g_perifWaitMaxMs, g_perifWaitSumMs / (double)g_perifWriteCnt,
                  (unsigned long long)g_perifWriteCnt, perifSendQueue.size(),
                  perifSendDropCount.load(), newMax ? "  <== NEW MAX" : "");
 
@@ -6598,7 +6624,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
-                        imgPipe->fi.timeStamp_us };
+                        imgPipe->fi.timeStamp_us, perif_now_us() };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
