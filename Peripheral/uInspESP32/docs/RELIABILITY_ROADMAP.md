@@ -90,9 +90,15 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
 
 ## 韌體體質(現況體檢的存量項目)
 
-- [ ] **task WDT 啟用 + wdt_test 演練**(main loop 卡死目前無人知曉 —— 最高性價比)
-- [ ] **健康遙測進 get_running_stat**:min-free-heap、最大 free block、
-      stack 高水位、ISR tick-gap 高水位、RBuf 深度峰值 —— soak 心跳免費變趨勢監測
+- [x] ~~**task WDT 啟用 + wdt_test 演練**~~ **已完成**:`firmwareLoop()` 開頭
+      `esp_task_wdt_reset()`,`wdt_test` 指令可演練(餓死 WDT → panic → 重開)。
+      「實施順序」第 1 項早已標 ✅,勾選漏了。
+- [x] ~~**健康遙測進 get_running_stat**~~ **已完成**:`health` 物件含
+      `free_heap` / `min_heap` / `max_block` / `stack_hwm` / `isr_gap_max_us`
+      / `rbuf_peak`,五項全在。2026-08-08 再加 `poll` 上的
+      `tq/tqhwm/tqcap/tqovf`(相機觸發佇列 —— `Qs` 是 RBuf,是另一個)、
+      `tqburst`、`act_late_max`、`loopn/loopmax_us`、`svc/st/rx/tx_us`
+      分段計時,以及 `pushlog` 指令。
 - [x] ~~ISR 呼叫鏈全面 IRAM 化~~ **決議不做**(2026-08-02):flash 寫入
       已收斂到單一入口(NVS save)且被 standstill guard 硬性攔截;無 OTA、
       無 WiFi、無 flash 日誌,cache-disable 條件已封死。全鏈 IRAM 化的
