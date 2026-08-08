@@ -70,6 +70,52 @@ offset 算出來是正確的,沒有殘差、沒有拒絕、沒有停機 —— �
 **這是 lap-invariant 的**,回流救不了它。目前擋著它的是餵料的不規律
 (sigma 是視窗的 12 倍),**不是程式**。
 
+### C-1a 循環是安全的,而安全來自唯一性 —— bootstrap 與 top-up 不是同一件事
+
+很容易誤以為「只有確定的配對可以教時鐘」。**實際上不是。** `gate()` 對每一份通過
+視窗的普通報告都重新量測 offset:
+
+```c
+offset_us  = (int64_t)cam_ts - (int64_t)nearest_cam_us;   // measured, not blended
+est_cam_us = nearest_cam_us;
+```
+
+所以維護路徑**本來就是循環的**:用 offset 去配對,再拿配對結果去取代 offset。
+而它安全,靠的**不是**教它的人很確定,而是 C-1 的唯一性:
+
+> a wrong offset puts frames outside the window, and outside the window it
+> **stops instead of guessing**.
+
+offset 一旦偏掉,幀就落到視窗外 → 拒絕 → 連兩次停機。它不會悄悄鎖到錯的值上,
+因為是**取代**而不是混合(blending 才會慢慢被帶走)。
+
+所以真正的區分是:
+
+```
+bootstrap   此時沒有 offset,什麼都配不了,只能靠「外面沒有別的東西」
+            -> observe() 收 BOOT_N=8 個樣本取中位數,要求真多數
+top-up      跟每一份普通報告完全同一件事,不需要任何特殊身分
+            -> gate() 直接取代
+```
+
+**現行的 RECAL 把 top-up 當成 bootstrap 在做** —— 關閘門、等閒置、重收 8 個樣本。
+它其實只需要一個能配對的幀。
+
+推論:
+
+- **生產期間不需要 recal。** 普通報告一直在維護 offset。需要補的只有**閒置期**,
+  因為沒有報告就沒有維護。
+- 而閒置期正好是關閘門不痛不癢的時候 —— 所以現行設計的成本沒有看起來大。
+  **真正會痛的是閒置→忙碌的交界**:RECAL 剛開始、閘門關著,料流這時恢復,那些
+  料就沒了,而且只記在 `rej_unstable`(它併了四個原因,見 T-3,所以看不出來)。
+- **幻影式 top-up** 可以消掉那個交界損失:一顆走完整管線的虛擬物件,不關閘門、
+  不需要閒置。它需要兩件事,而且都與配對論證無關:
+  1. **絕不可致動**。今天 `ActRegister_pipeLineInfo` 連 SWITCH 一起註冊、
+     `Run_ACTS` 不檢查 `sync`,所以幻影今天**會噴**。要在註冊時就不排 SWITCH,
+     而不是在分派時多一個 if —— 少一個將來會被漏掉的地方。
+  2. **T-7 必須先修**。把幻影變成常規機制,等於把那個罕見的雙生產者競爭變成
+     連續的。
+
 ### C-1b 視窗是距離,不是時間 —— 由 0.3 mm 決定,不是由間距估
 
 `delta = |cam_us − expectedCamUs(cam_ts)|` 不只是時鐘模型的誤差,它也含**觸發到
