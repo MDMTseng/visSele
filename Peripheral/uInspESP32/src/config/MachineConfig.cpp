@@ -75,6 +75,18 @@ namespace
 
   Preferences prefs;
   bool loadedFromNVS = false;
+  // cfg_crc, cached. poll() asks for it every call and poll() exists to be the
+  // CHEAP one: canonicalImage() declares a local StaticJsonDocument<3072>, runs
+  // the whole of genMachineSetup into it, and serialises through an Arduino
+  // String on the heap. A host polling at 50Hz did 50 of those a second on the
+  // loop task, against a stack high-water measured as low as 2500 bytes -- and
+  // this file already says elsewhere that a 3KB document per frame overflows
+  // the stack rather than merely being slow.
+  //
+  // Invalidated by every path that changes the live config. Starts dirty, so
+  // the first ask is always a real one.
+  uint32_t hashCached = 0;
+  bool     hashDirty  = true;
   // Keys the stored config carries that this firmware no longer knows, and
   // what they were set to. Filled at begin(), never acted on, reported so a
   // person can decide. See begin() for why this is not migrated.
@@ -247,6 +259,7 @@ namespace MachineConfig
       // Variables only -- pinMode has not run yet.
       setMachineSetup(jdoc, /*apply_hw=*/false);
       loadedFromNVS = true;
+    hashDirty = true;
       return;
     }
 
@@ -282,6 +295,7 @@ namespace MachineConfig
 
     applyToGlobals(cfg);
     loadedFromNVS = true;
+    hashDirty = true;
   }
 
   bool save()
@@ -301,6 +315,7 @@ namespace MachineConfig
       return false;
 
     loadedFromNVS = true;
+    hashDirty = true;
     return true;
   }
 
@@ -322,8 +337,11 @@ namespace MachineConfig
     return ok;
   }
 
+  void invalidateHash() { hashDirty = true; }
+
   uint32_t hash()
   {
+    if (!hashDirty) return hashCached;
     // FNV-1a over the same image save() writes, so cfg_crc tracks what is
     // actually persisted. Hashing the legacy packed struct instead would be
     // blind to every field added since -- the struct exists only for migration
@@ -336,6 +354,7 @@ namespace MachineConfig
       h ^= (uint8_t)txt[i];
       h *= 16777619u;
     }
+    hashCached = h; hashDirty = false;
     return h;
   }
 

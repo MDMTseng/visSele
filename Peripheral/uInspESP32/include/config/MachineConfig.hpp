@@ -152,6 +152,10 @@ namespace MachineConfig
   // set_setup persist:true may write NVS, so an upgrade cannot rewrite an
   // operator's calibration behind their back. The UI shows these, shows
   // the old values, and offers the conversion.
+  // Call after anything changes the live config, so the next cfg_crc is
+  // recomputed. hash() is otherwise cached: it builds a 3KB document and a
+  // heap String, and poll() -- the cheap one -- asks for it every call.
+  void invalidateHash();
   int staleKeyCount();
   const char* staleKeyNames();
   const char* staleKeyValues();

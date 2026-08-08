@@ -3628,6 +3628,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     else
     {
     setMachineSetup(doc, true);
+    MachineConfig::invalidateHash();
 
     // Opt-in commit. Without "persist":true this behaves exactly as before --
     // RAM only, gone at power-off -- so probing/jogging during setup doesn't
@@ -5003,7 +5004,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // A short error is infinitely more useful than nothing.
     if(retdoc.overflowed())
     {
-      const char *e="{\"err\":\"stat_doc_overflow\"}";
+      // With the id, or a host that correlates replies by id (uinsp_test,
+      // regress_watch) never matches this and blocks until its timeout -- so
+      // the guard turned silent truncation into a silent timeout plus an
+      // unattributable error line.
+      char e[96];
+      snprintf(e,sizeof(e),"{\"err\":\"stat_doc_overflow\",\"id\":%d,\"ack\":false}",
+               (int)HACK_cur_cmd_id);
       send_json_string(0,(uint8_t*)e,strlen(e),0);
       return 0;
     }
