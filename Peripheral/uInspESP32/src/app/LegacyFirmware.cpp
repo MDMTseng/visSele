@@ -229,6 +229,26 @@ typedef struct pipeLineInfo{
   // neither side caches the other's write. The object is reached through a
   // pointer into RBuf, never copied by value, so a volatile member is free.
   volatile int32_t insp_status;
+  // Retirement, owned by whoever finished with the object and never written by
+  // the report path. The drain used to key off insp_status==DEL, which put the
+  // ONE field the main loop writes freely in charge of whether a slot can ever
+  // be freed:
+  //
+  //   main loop reads insp_status (not DEL) -> ISR runs SWITCH and writes DEL
+  //   -> main loop stores cat over it. Nothing sets DEL again; that object's
+  //   SWITCH task is spent. The drain stops at the first non-DEL tail, so RBuf
+  //   fills to 100, newPulseEvent starts returning GATE_REJ_BUSY for every
+  //   part, no camera fires, no SWITCH runs, CONSEC_UNANSWERED never advances
+  //   -- the machine sits in READY with the plate turning and the feeder on,
+  //   inspecting nothing, and raises no error at all.
+  //
+  // A host verdict reached the same state by a second route: cat below
+  // insp_status_DEL (-1000) passes the worst-wins comparison and overwrites it.
+  //
+  // Separating the flag removes both. The ISR and the sync sweep set it; the
+  // report path never touches it; the drain reads only it. No lock, because
+  // after this there is nothing to contend over.
+  volatile uint8_t retired;
   uint32_t tid;
   // Registration wall time (lower 32 of esp_timer_get_time), for the
   // gate->report latency stat. Wraps every ~71 min; a single latency sample
@@ -1588,6 +1608,9 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   // looking cam_us from whoever held the slot last -- and the timestamp matcher
   // only skips zeroes, so it would happily match a frame against it.
   head->cam_us = 0;
+  // Same reason cam_us is cleared: RBuf is a ring, so without this a recycled
+  // slot arrives already retired and the drain frees it before it has lived.
+  head->retired = 0;
   head->sync = SYNC_MARK_NEXT;
   if(SYNC_MARK_NEXT==0) REAL_ACCEPT_MS = (int64_t)(esp_timer_get_time()/1000);
   SYNC_MARK_NEXT = 0;
@@ -1885,6 +1908,7 @@ int Run_ACTS(uint32_t cur_pulse)
       {
         // task->src->insp_status = insp_status_DEL;
         task->src->insp_status = insp_status_DEL;
+        task->src->retired     = 1;   // the drain keys off this, not the status
         task->src = NULL;
         // RBuf.consumeTail();
       }
@@ -2709,6 +2733,7 @@ static int calFireNow()
   head->tid          = CAL_TID_NEXT++;
   head->trig_us      = (uint32_t)esp_timer_get_time();
   head->cam_us       = 0;
+  head->retired      = 0;
   head->stage        = 0;
   head->sync         = 1;              // only sync objects teach the offset
   RBuf.pushHead();
@@ -2852,7 +2877,7 @@ static void calibrationCleanup()
     // Only the ones still owed an answer leave a tombstone -- an already
     // answered pulse has no report left to arrive.
     if(p->sync && p->insp_status==insp_status_UNSET) syncTombstone(p->cam_us);
-    if(p->sync) p->insp_status=insp_status_DEL;
+    if(p->sync){ p->insp_status=insp_status_DEL; p->retired=1; }
   }
 }
 
@@ -3013,7 +3038,7 @@ static void syncPulseService()
     pipeLineInfo *p=RBuf.getTail(i);
     if(p==NULL) break;
     if(p->sync && p->insp_status!=insp_status_UNSET)
-      p->insp_status=insp_status_DEL;
+      p->insp_status=insp_status_DEL; p->retired=1;
   }
 
   // One at a time, so the returning frame has exactly one candidate by
@@ -3074,7 +3099,7 @@ static void syncPulseService()
         // It may yet come back late -- that is the whole reason we gave up on
         // it rather than knowing it was lost.
         syncTombstone(p->cam_us);
-        p->insp_status=insp_status_DEL;
+        p->insp_status=insp_status_DEL; p->retired=1;
       }
     }
     CAL_PULSE_LOST++;
@@ -3966,6 +3991,42 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     int tid=(doc["tid"].is<int>()==true)?doc["tid"]:-1;
     int cat=(doc["cat"].is<int>()==true)?doc["cat"]:-1;
+
+    // A verdict is one of four values. Anything else is refused here rather
+    // than written into insp_status and discovered at SWITCH.
+    //
+    // Two reasons it has to be checked, and neither is hypothetical:
+    //
+    //  - insp_status carries negative sentinels (SKIP -2100, UNSET -2000,
+    //    DEL -1000) and the repeat guard keeps the MOST severe by `cat <
+    //    current`. A cat below -1000 therefore beats DEL and lands on an object
+    //    that has already passed the selector. Retirement no longer depends on
+    //    that field (see pipeLineInfo::retired), so it can no longer wedge the
+    //    drain -- but writing a host value over a finished object's verdict is
+    //    still nonsense and there is no reason to allow it.
+    //  - An unrecognised value reaches `default:` in the SWITCH dispatch, which
+    //    counts it as UNANSWERED and raises OBJECT_HAS_NO_INSP_RESULT: "object
+    //    reached SWITCH with no verdict". That is false -- a verdict arrived
+    //    and was unusable -- and it points the investigation at latency and
+    //    pairing, which at ~1% margin is exactly where it will find nothing.
+    //    A stale machine_setting.json with cat_ok:0 produces a stream of these.
+    //
+    // -1 stays legal: it is this handler's own "no tid/cat supplied" sentinel
+    // for the paths that carry only a timestamp.
+    const bool cat_ok = (cat==-1 || cat==1 || cat==2 || cat==3 || cat==0xFFFF);
+    if(!cat_ok)
+    {
+      // Answered, unlike every other outcome of this handler. `report` ends
+      // with doRsp=false, so a host that sends something unusable normally
+      // hears nothing at all and finds out when the machine halts. An early
+      // `return` here would have reproduced exactly that.
+      retdoc["type"]="report";
+      retdoc["err"]="bad_cat";
+      retdoc["cat"]=cat;
+      djrl.dbg_printf("REPORT REFUSED: cat=%d is not 1/2/3/65535",cat);
+    }
+    else
+    {
     // The camera's own timestamp for the frame this verdict came from. The host
     // knows this without knowing anything else, which is the point: it stops
     // having to work out WHICH object it inspected.
@@ -4218,6 +4279,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
     doRsp=false;
+    }                       // end of the cat_ok body
+    if(!cat_ok){ doRsp=true; rspAck=false; }
 
   }
 
@@ -5534,7 +5597,7 @@ void firmwareLoop()
     while (tail=RBuf.getTail())
     {
       // task->src->insp_status = insp_status_DEL;
-      if(tail->insp_status == insp_status_DEL)
+      if(tail->retired)
       {
         RBuf.consumeTail();
       }
