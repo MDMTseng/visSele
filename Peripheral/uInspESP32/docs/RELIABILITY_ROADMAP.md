@@ -66,6 +66,18 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
       只看得到「今天機器比較慢」。這是設計上刻意的保守(退快進慢,
       同 AIMD 精神),不是 bug —— 要做的是**讓它可見**:
 
+      **已做(2026-08-08):五個設定收成一個 `skip_policy` 群組**,
+      `{mode, stop_after, rate_floor_us, recover_n}`,mode 為
+      `slow_and_stop`(預設)/ `slow_only` / `stop_only` / `none`。
+      舊平鍵(`auto_rate` / `unanswered_policy` / `unanswered_stop_after` /
+      `auto_rate_floor_us` / `auto_rate_recover_n`)仍照發照收,舊 NVS
+      blob 載得起來(設定是以 wire JSON 存的,改鍵名會掉值 —— `io_on_level`
+      出過這件事)。`none` 會回報 `unsafe: true` 而不是被拒絕。
+      **兩半不是二選一**:slow 反應 skip 的密度,stop 反應連續次數,
+      主機掛掉時降速救不了,只會用比較慢的速度繼續放行未判定料。
+
+      仍待做:
+
       1. `eff_sep_us` 偏離設定值超過 X% 時發告警(現在只能自己去比對)
       2. WebUI 顯示 `auto_backoffs` / `auto_recovers`;前者漲後者不動
          = 正在往地板掉

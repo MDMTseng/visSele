@@ -5470,6 +5470,35 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["stepper_en_active"]=stepper_en_active;
   jdoc["stepper_dir"]=stepper_dir_level;
 
+  // What the machine does about a part that reached the selector unjudged.
+  //
+  // These were three separate flat keys (auto_rate, unanswered_policy,
+  // unanswered_stop_after) plus two more for tuning, and nothing said they
+  // were one decision -- so the combination that reacts to nothing at all
+  // (auto_rate off, policy 0: unjudged parts pass forever, silently) was
+  // reachable by setting two unrelated-looking values.
+  //
+  // The two halves are NOT alternatives, which is why the default arms both:
+  //   slow  reacts to the RATE of skips -- scattered ones mean "a bit fast",
+  //         and the answer is to admit fewer parts and keep running.
+  //   stop  reacts to CONSECUTIVE skips -- ten in a row means the host or the
+  //         camera stopped answering, and slowing down cannot fix that; it
+  //         would only pass unjudged parts more slowly.
+  //
+  // The flat keys are still emitted, derived from the same variables, so
+  // existing hosts and every NVS image written before this keep working.
+  {
+    JsonObject jSP = jdoc.createNestedObject("skip_policy");
+    jSP["mode"] = AUTO_RATE ? (UNANSWERED_POLICY==1 ? "slow_and_stop" : "slow_only")
+                            : (UNANSWERED_POLICY==1 ? "stop_only"     : "none");
+    jSP["stop_after"]    = UNANSWERED_STOP_AFTER;
+    jSP["rate_floor_us"] = AUTO_RATE_FLOOR_us;
+    jSP["recover_n"]     = AUTO_RATE_RECOVER_N;
+    // Said out loud rather than refused: "none" is a legitimate thing to ask
+    // for on a bench, and a machine that silently declines a setting is worse
+    // than one that tells you what you chose.
+    if(!AUTO_RATE && UNANSWERED_POLICY!=1) jSP["unsafe"]=true;
+  }
   jdoc["unanswered_policy"]=UNANSWERED_POLICY;
   jdoc["unanswered_stop_after"]=UNANSWERED_STOP_AFTER;
   jdoc["pulses_per_rev"]=pulses_per_rev;
@@ -5700,6 +5729,31 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     if(jdoc["unanswered_policy"].is<int>()){ v=jdoc["unanswered_policy"]; UNANSWERED_POLICY=(v==1)?1:0; }
     v=UNANSWERED_STOP_AFTER;
     if(jdoc["unanswered_stop_after"].is<int>()){ v=jdoc["unanswered_stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
+  }
+  // The group is applied AFTER the flat keys, so a document carrying both --
+  // which is what get_setup emits and therefore what NVS stores -- ends on the
+  // group. A document carrying only the old keys still works untouched.
+  if(jdoc["skip_policy"].is<JsonObject>())
+  {
+    JsonObject jSP=jdoc["skip_policy"];
+    if(jSP["mode"].is<const char*>())
+    {
+      const char* m=jSP["mode"];
+      bool ar=AUTO_RATE; int up=UNANSWERED_POLICY;
+      if(strcmp(m,"slow_and_stop")==0){ ar=true;  up=1; }
+      else if(strcmp(m,"slow_only")==0){ ar=true;  up=0; }
+      else if(strcmp(m,"stop_only")==0){ ar=false; up=1; }
+      else if(strcmp(m,"none")==0)     { ar=false; up=0; }
+      if(ar!=AUTO_RATE){ AUTO_RATE=ar; AUTO_RATE_OK_RUN=0;
+                         if(!ar) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us; }
+      UNANSWERED_POLICY=up;
+    }
+    if(jSP["stop_after"].is<int>()){ int v=jSP["stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
+    JSON_SETIF_ABLE(AUTO_RATE_FLOOR_us,jSP,"rate_floor_us");
+    JSON_SETIF_ABLE(AUTO_RATE_RECOVER_N,jSP,"recover_n");
+    if(AUTO_RATE_RECOVER_N<1) AUTO_RATE_RECOVER_N=1;
+    if(AUTO_RATE_FLOOR_us<SYS_MIN_PULSE_TIME_SEP_us)
+      AUTO_RATE_FLOOR_us=SYS_MIN_PULSE_TIME_SEP_us;
   }
   JSON_SETIF_ABLE(host_timeout_ms,jdoc,"host_timeout_ms");
   JSON_SETIF_ABLE(pulses_per_rev,jdoc,"pulses_per_rev");
