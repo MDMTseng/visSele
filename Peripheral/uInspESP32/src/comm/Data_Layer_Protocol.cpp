@@ -52,10 +52,32 @@ void Data_JsonRaw_Layer::clearProtocolError()
   jlevel=0;
 }
 
+// Whitespace-tolerant match for `"type" : "RESET"` starting at `at`.
+// Returns the length matched, or 0.
+//
+// This used to be a memcmp against the exact bytes `"type":"RESET"`, and it is
+// the ONLY way back once the parser has latched into RTYPE::ERROR -- no frame
+// is delivered after that, so the post-parse handler that also accepts RESET
+// can never be reached. Python's json.dumps emits `{"type": "RESET"}` with a
+// space after the colon by default, so a host using the obvious call had no
+// escape hatch at all and the board could only be recovered by power-cycling.
+static int matchResetKeyAt(const uint8_t *b,int at,int n)
+{
+  int i=at;
+  const char *k="\"type\"";
+  for(int j=0;k[j];j++,i++){ if(i>=n||b[i]!=k[j]) return 0; }
+  while(i<n && (b[i]==' '||b[i]=='\t')) i++;
+  if(i>=n||b[i]!=':') return 0;
+  i++;
+  while(i<n && (b[i]==' '||b[i]=='\t')) i++;
+  const char *v="\"RESET\"";
+  for(int j=0;v[j];j++,i++){ if(i>=n||b[i]!=v[j]) return 0; }
+  return i-at;
+}
+
 bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
 {
-  const char *resetKey="\"type\":\"RESET\"";
-  const int keyLen=strlen(resetKey);
+  const int keyLen=(int)strlen("\"type\":\"RESET\"");   // shortest possible form
 
   int firstBrace=-1;
   for(int i=0;i<buffIdx;i++)
@@ -64,9 +86,10 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
     {
       firstBrace=i;
     }
-    if(i+keyLen<=buffIdx && memcmp(dataBuff+i,resetKey,keyLen)==0)
+    const int mlen = (i+keyLen<=buffIdx) ? matchResetKeyAt(dataBuff,i,buffIdx) : 0;
+    if(mlen>0)
     {
-      int endIdx=i+keyLen;
+      int endIdx=i+mlen;
       while(endIdx<buffIdx && dataBuff[endIdx]!='}')
       {
         endIdx++;

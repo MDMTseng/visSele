@@ -1283,7 +1283,22 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       {
         blockNewDetectedObject=true;//Accept pulse to trigger camera
         //but in this state will not handle other event
+        // Outputs first, then the queues -- and both, which IDLE did not do.
+        //
+        // A SEL blow is an ON task and an OFF task in the same queue. Clearing
+        // between them discards the OFF and leaves the valve energised, and
+        // IDLE's loop body then drives the plate at the setpoint, so unless the
+        // stop sequence also wrote plate_freq:0 the air stays on indefinitely
+        // with no error. exit_insp_mode landing inside a ~50ms blow is not a
+        // corner case at 39/s with 10% rejects.
+        //
+        // ERROR entry has the same pair in the opposite order (safe then
+        // clear), which leaves its own window: the ISR can fire a pending SEL
+        // ON between them and have its OFF cleared underneath it. Fixed there
+        // too.
+        ALL_OUTPUTS_SAFE();
         RESET_ALL_PIPELINE_QUEUE();
+        ALL_OUTPUTS_SAFE();
       } //enter
       else if (i == 1)
       {
@@ -1444,6 +1459,13 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // DEBUG_printf(">>ENTER ERROR(%d)>>>\n",sysinfo.extra_code);
 
         RESET_ALL_PIPELINE_QUEUE();
+        // Again, after the queues are empty. Safe-then-clear leaves a window:
+        // the ISR can execute a pending SEL ON between the two, and its OFF is
+        // then thrown away by the clear -- valve energised with nothing left to
+        // release it. The double RESET narrows that but cannot close it, since
+        // the tick can land in the first one. Dropping the outputs once more at
+        // the end is what actually closes it, and it costs nothing.
+        ALL_OUTPUTS_SAFE();
 
         // digitalWrite(AIR_BLOW_OK_PIN, 0);
         // digitalWrite(AIR_BLOW_NG_PIN, 0);
@@ -3658,9 +3680,33 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     // Wipes NVS only. The running values stay put, so this cannot disturb a
     // machine mid-run; the compiled defaults come back on the next boot.
+    //
+    // That reasoning is about the RAM values and it is correct, but it is not
+    // the hazard cfgPersistDeny exists for. An NVS erase disables the
+    // instruction cache, and only onTimer() is IRAM -- StepGo, GateSensing,
+    // Run_ACTS and newPulseEvent are all ordinary flash-resident functions the
+    // ISR calls straight into. Erasing with the timer live risks a stall or a
+    // reset mid-production, with a selector possibly energised.
+    //
+    // Every other flash writer is gated on this. This one was not, which also
+    // means RELIABILITY_ROADMAP's decision not to IRAM the ISR chain -- taken
+    // because "flash writes have converged to a single entry point and are
+    // hard-blocked by the standstill guard" -- was resting on a false premise.
+    // There were two entry points.
     retdoc["type"]="clear_saved_setup";
-    retdoc["cleared"]=MachineConfig::clear();
-    doRsp=rspAck=true;
+    const char* deny_clr=cfgPersistDeny();
+    if(deny_clr==NULL)
+    {
+      retdoc["cleared"]=MachineConfig::clear();
+      doRsp=rspAck=true;
+    }
+    else
+    {
+      retdoc["cleared"]=false;
+      retdoc["persist_err"]=deny_clr;
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
   }
   else if(strcmp(type,"reset_running_stat")==0)
   {
@@ -4527,10 +4573,29 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"enter_insp_mode")==0)
   {
-
-    SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
-    
-    doRsp=rspAck=true;
+    // Refuse at zero speed. CAL completes normally on a stationary plate (it
+    // no longer needs motion), and SPINUP's test is `SYS_FREQ_STABLE &&
+    // CURRENT == SETPOINT`, which 0 == 0 satisfies instantly -- so the machine
+    // reaches READY and READY's enter block turns the FEEDER ON. With
+    // PLATE_FREQ_CURRENT at 0 the timer alarm is disabled, so GateSensing never
+    // runs: no detection, no gate counters, no error, and the feeder quietly
+    // piling parts onto a plate that is not moving, reporting state 101.
+    //
+    // And that is the state every stop leaves behind, because stopping must
+    // write plate_freq:0 (CAVEATS B). The WebUI refuses to start from it; the
+    // firmware did not, so any script or a mis-fired RUN barrier got here.
+    if(PLATE_FREQ_SETPOINT<=0.0f)
+    {
+      retdoc["type"]="enter_insp_mode";
+      retdoc["err"]="plate_freq_is_zero";
+      retdoc["hint"]="set plate.freq before entering inspection mode";
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
+      doRsp=rspAck=true;
+    }
   }
   else if(strcmp(type,"exit_insp_mode")==0)
   {
@@ -4674,15 +4739,28 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   else if(strcmp(type,"set_sel1_cd")==0)
   {
     
+    // A missing or non-integer count used to mean 0, and 0 is falsy in the
+    // ACT_SEL1 guard -- so a mistyped command turned the reject station off for
+    // the rest of the boot. Nothing restored it: not clear_error, not RESET,
+    // not re-entering inspection mode. And because "not blown" means recirculate
+    // on this machine, the symptom is not a mis-sort but every NG part going
+    // round forever, throughput collapsing with nothing saying why.
+    //
+    // -1 is the documented "unlimited". Refuse the malformed form instead of
+    // interpreting it.
     if(doc["count"].is<int>()==true)
     {
       SEL1_ACT_COUNTDOWN=doc["count"];
+      retdoc["sel1_cd"]=SEL1_ACT_COUNTDOWN;
+      doRsp=rspAck=true;
     }
     else
     {
-      SEL1_ACT_COUNTDOWN=0;
+      retdoc["err"]="count_required";
+      retdoc["hint"]="integer; -1 = unlimited";
+      retdoc["sel1_cd"]=SEL1_ACT_COUNTDOWN;
+      doRsp=true; rspAck=false;
     }
-    doRsp=rspAck=true;
   }
 
   else if(strcmp(type,"get_sel1_cd")==0)
@@ -5689,13 +5767,22 @@ void firmwareLoop()
     }
   }
 
-  // {
-  //   if(SEL1_ACT_COUNTDOWN==0)
-  //   {
-      
-  //     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::SEL_ACT_LIMIT_REACHES);
-  //   }
-  // }
+  // An exhausted countdown means the reject station has stopped ejecting, and
+  // on this machine that is silent: unblown parts recirculate, so NG material
+  // simply goes round and round while SEL1_Count stays flat and nothing faults.
+  // SEL_ACT_LIMIT_REACHES was declared in FirmwareTypes.hpp for exactly this
+  // and had never been raised by anything -- the guard was commented out.
+  //
+  // Only from a live inspection state, and only once: SEL1_ACT_COUNTDOWN is set
+  // to -1 (unlimited) by the transition so this cannot re-fire every pass while
+  // the operator is reading the error.
+  if(SEL1_ACT_COUNTDOWN==0 &&
+     sysinfo.state==SYS_STATE::INSPECTION_MODE_READY)
+  {
+    SEL1_ACT_COUNTDOWN=-1;
+    SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
+                       (int)GEN_ERROR_CODE::SEL_ACT_LIMIT_REACHES);
+  }
 }
 
 
@@ -6007,6 +6094,29 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 
   JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jP,"freq");
   JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jP,"accel");
+  // Neither of these had any bound at all, and both are divisors or step sizes
+  // in the ramp that drives the timer alarm.
+  //
+  //   freq -1000   the ramp converges to -1000 (the == clamp works fine, it
+  //                just clamps to a negative), then
+  //                (uint64_t)(5000000.0f / -1000.0f) is UB and saturates to 0
+  //                on Xtensa -- timerAlarmEnable with an alarm value of 0.
+  //                Meanwhile CURRENT==TARGET so SYS_FREQ_STABLE goes true and
+  //                spinupService declares the machine READY, feeder on.
+  //   freq 5e6     5000000/5000000 -> alarm period 1 tick: interrupt storm.
+  //   accel 0      step becomes 3.4e38, so the plate goes 0 -> full speed in a
+  //                single loop iteration, scattering the parts on it.
+  //
+  // And freq persists to NVS, so a bad value survives a power cycle.
+  //
+  // Clamped rather than refused: these arrive from a slider, and refusing the
+  // write would leave the machine on the previous value with nothing on screen
+  // to say so. The ceiling is the mechanical limit the plate has actually been
+  // run at with margin, not a number from the arithmetic.
+  if(PLATE_FREQ_SETPOINT < 0.0f)     PLATE_FREQ_SETPOINT = 0.0f;
+  if(PLATE_FREQ_SETPOINT > 60000.0f) PLATE_FREQ_SETPOINT = 60000.0f;
+  if(SYS_FREQ_ACCEL <= 0.0f)         SYS_FREQ_ACCEL = 2000.0f;
+  if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   // Changing the configured rate always resets the live one: the operator asked
   // for a rate, not for whatever the loop had crept to.
