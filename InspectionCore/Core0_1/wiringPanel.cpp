@@ -5821,6 +5821,8 @@ void PerifSendThread(bool *terminationflag)
               //   INSP_PERIF_FAULT_TS_US=<k>  shift that report's cam_ts by k us
               //   INSP_PERIF_FAULT_DROP=1     send nothing at all for it
               //   INSP_PERIF_FAULT_DUP=1      send it twice
+              //   INSP_PERIF_FAULT_TS_NOISE_US=<w>  zero-mean noise on EVERY
+              //                               report's cam_ts (see below)
               //
               // Each models something real: TS_US an exposure that ran late or
               // a clock excursion, DROP a frame the camera declined, DUP a
@@ -5841,8 +5843,52 @@ void PerifSendThread(bool *terminationflag)
               static const bool f_dup  = getenv("INSP_PERIF_FAULT_DUP")  != NULL;
               static uint64_t f_seen = 0;
 
+              // INSP_PERIF_FAULT_TS_NOISE_US=<half-width>  zero-mean noise on
+              // EVERY report's cam_ts, seeded by INSP_PERIF_FAULT_TS_NOISE_SEED
+              // so a failure replays exactly.
+              //
+              // Not a variant of TS_US -- it tests something TS_US structurally
+              // cannot. gate() re-measures offset_us from every accepted
+              // report, so a CONSTANT shift applied to every report is exactly
+              // what that loop exists to track out: it gets learned away and
+              // the run reports nothing. Zero-mean noise cannot be absorbed
+              // that way, which makes this the direct test of whether the
+              // circular maintenance is stable. Every accepted report nudges
+              // the offset; the question is whether the nudges cancel or
+              // random-walk the clock out from under the match window.
+              //
+              // It is also the physically honest perturbation. Real timestamp
+              // error is not a bias, it is a spread -- exposure that ran late,
+              // lighting that moved the apparent edge, host latency -- and what
+              // matters is whether the TAIL of that spread ever reaches the
+              // boundary, which a single fixed offset cannot ask.
+              static const int64_t f_noise = []{
+                const char *e = getenv("INSP_PERIF_FAULT_TS_NOISE_US");
+                return e ? (int64_t)atoll(e) : (int64_t)0;
+              }();
+              static uint32_t f_rng = []{
+                const char *e = getenv("INSP_PERIF_FAULT_TS_NOISE_SEED");
+                uint32_t s = e ? (uint32_t)strtoul(e, NULL, 10) : 20260806u;
+                return s ? s : 1u;   // xorshift is stuck at zero
+              }();
+
               uint64_t tx_ts = msg.cam_ts_us;
               bool tx_skip = false, tx_twice = false;
+
+              if (f_noise > 0)
+              {
+                f_rng ^= f_rng << 13; f_rng ^= f_rng >> 17; f_rng ^= f_rng << 5;
+                // Uniform on [-f_noise, +f_noise]. Uniform rather than gaussian
+                // on purpose: the question is where the boundary is, and a
+                // bounded distribution says exactly how far the worst sample
+                // was allowed to reach.
+                const int64_t span = 2 * f_noise + 1;
+                const int64_t d = (int64_t)(f_rng % (uint32_t)span) - f_noise;
+                tx_ts = (uint64_t)((int64_t)tx_ts + d);
+                if (getenv("INSP_PERIF_LOG"))
+                  LOGI("[perif TX] ts noise tid=%lld %+lldus",
+                       (long long)msg.tid, (long long)d);
+              }
               if (f_every > 0 && (++f_seen % (uint64_t)f_every) == 0)
               {
                 if (f_drop) tx_skip = true;

@@ -66,6 +66,40 @@ RUNS = [
         env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED)},
     ),
     dict(
+        name="jitter_edge", block="A", minutes=8,
+        why="上面那個掃描通過了,但沒有逼到視窗,所以只證明了判準的前半段。"
+            "算術很清楚:標稱 40000us 加減 10000 之後最小間距還有 24736us,離 5000us 的視窗差五倍。"
+            "要讓鄰居真的進到視窗內,抖動必須逼近 40000-5000=35000us。"
+            "這一列掃的就是那個區間 —— 斷點若不落在視窗附近,那視窗就不是限制因素,"
+            "而『2xTOL <= min_detect_sep』這條護欄擋的是別的東西。",
+        argv=["jitter_sweep.py", "--seconds", "60",
+              "--jitters", "20000", "30000", "34000", "37000"],
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED)},
+    ),
+    # Report-timestamp noise. One run per half-width, because the env var is
+    # read at static init and the scheduler gives each run its own core -- which
+    # is the whole reason a sweep of this shape is cheap here.
+    #
+    # 5000us is the match window. Below it nothing may be mis-sorted and nothing
+    # should even halt; above it halts are the DESIGNED behaviour (refusing to
+    # answer is correct) but a mis-sort never is. The pass condition is the same
+    # at every width: zero misplaced verdicts.
+] + [
+    dict(
+        name="tsnoise_%d" % w, block="A", minutes=5,
+        why=("報告時間戳加 ±%dus 的零均值噪音(視窗 5000us)。"
+             "固定偏移測不到這個 —— gate() 從每份被接受的報告重新量測 offset_us,"
+             "所以固定量會被學走。噪音學不走,因此它才是循環式維護穩不穩的直接測試:"
+             "每份報告都推一下 offset,問題是那些推擠互相抵銷還是隨機遊走。"
+             "超過視窗之後停機是設計行為,錯置判定永遠不是。" % w),
+        argv=["jitter_sweep.py", "--seconds", "60", "--jitters", "0"],
+        env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
+             "INSP_PERIF_FAULT_TS_NOISE_US": str(w),
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
+    )
+    for w in (500, 2000, 4000, 6000)
+] + [
+    dict(
         name="burst", block="A", minutes=16,
         why="時間戳配對撐得過『沖垮相機 -> 排空 -> 再沖』的過渡。穩定速率是簡單形狀,"
             "轉態才是序數配對會偷偷錯一格的地方。判準:disagree 0 且無 CAM_CLOCK_LOST。",
