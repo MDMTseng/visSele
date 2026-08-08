@@ -28,7 +28,7 @@ measurements of a broken machine, so a failed health check STOPS the queue.
   python3 soak_sched.py --block A            # unattended: no parts needed
   python3 soak_sched.py --only jitter,burst
 """
-import argparse, json, os, signal, socket, subprocess, sys, time, datetime
+import argparse, json, os, re, signal, socket, subprocess, sys, time, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
@@ -97,7 +97,14 @@ RUNS = [
         argv=["jitter_sweep.py", "--seconds", "60", "--jitters", "0"],
         env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
              "INSP_PERIF_FAULT_TS_NOISE_US": str(s),
-             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
+             # Seed varies per run. Sharing one seed across a sweep does NOT
+             # give independent samples -- the RNG stream is identical, so the
+             # same report indices get hit and every row reproduces the SAME
+             # event. That is exactly what happened on 2026-08-09: three spike
+             # runs halted at 406/408/407 objects and the near-identity read as
+             # "magnitude does not matter", when it only meant the three runs
+             # were one sample seen three times.
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED + s)},
     )
     for s in (200, 1000, 2500)
 ] + [
@@ -114,7 +121,7 @@ RUNS = [
         env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED),
              "INSP_PERIF_FAULT_TS_SPIKE_US": str(k),
              "INSP_PERIF_FAULT_TS_SPIKE_EVERY": "20",
-             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED + k)},
     )
     for k in (3000, 6000, 20000)
 ] + [
@@ -128,7 +135,7 @@ RUNS = [
              "INSP_PERIF_FAULT_TS_NOISE_US": "1000",
              "INSP_PERIF_FAULT_TS_SPIKE_US": "6000",
              "INSP_PERIF_FAULT_TS_SPIKE_EVERY": "20",
-             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED)},
+             "INSP_PERIF_FAULT_TS_NOISE_SEED": str(VERDICT_SEED + 77)},
     ),
     dict(
         name="burst", block="A", minutes=16,
@@ -159,8 +166,12 @@ RUNS = [
         why="判定有沒有落到錯的物件上。agree/disagree 只是兩套配對互比,"
             "總數則完全看不到滑移 —— 錯一格的總數和正確的一模一樣。"
             "這一項要真料件,而且要噪音判定,規則圖樣會把等於其週期的滑移藏起來。",
+        # --seed, not --verdict-seed: that spelling belongs to regress_watch,
+        # and slip_probe exits on the unknown argument. It must equal the
+        # core's INSP_PERIF_VERDICT_PATTERN or the probe cannot derive the
+        # verdict it expects for each part.
         argv=["slip_probe.py", "--real", "--seconds", "480",
-              "--verdict-seed", str(VERDICT_SEED)],
+              "--seed", str(VERDICT_SEED)],
         env={"INSP_PERIF_VERDICT_PATTERN": str(VERDICT_SEED)},
         needs_parts=True,
     ),
@@ -387,6 +398,21 @@ def run_one(r, outdir, fh):
         verdict = "FAIL(stdout)"
     elif r.get("pass_if_stdout") and r["pass_if_stdout"] not in out:
         verdict = "FAIL(no '%s' in output)" % r["pass_if_stdout"]
+
+    # A pass condition of the form "nothing was mis-sorted" is satisfied for
+    # free when nothing was judged at all. Four runs tonight reported PASS that
+    # way: two never reached READY, three were halted throughout. The run tools
+    # print the evidence -- n=0, "never READY", state=112 -- and returned 0
+    # anyway, because from their side refusing to answer IS the correct
+    # behaviour and they are not wrong about that. It is this layer's job to
+    # notice that a correct refusal is not a measurement.
+    if verdict == "PASS":
+        if "never READY" in out:
+            verdict = "INCONCLUSIVE(never READY)"
+        elif re.search(r"^0\s+0\s+0\s+0\s", out, re.M):
+            verdict = "INCONCLUSIVE(nothing judged)"
+        elif re.search(r"\bstate=112\b", out) or re.search(r"\s112\s", out):
+            verdict = "HALTED(machine stopped during the run)"
 
     delta = {}
     if r.get("watch"):
