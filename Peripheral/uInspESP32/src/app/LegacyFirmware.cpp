@@ -1982,6 +1982,9 @@ int Run_ACTS(uint32_t cur_pulse)
 inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
+// Names every key a set_setup carries that the schema does not contain.
+// Defined beside setMachineSetup, where the schema tables live.
+static int cfgUnknownKeys(JsonObject in, char *out, size_t outN);
 void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
@@ -3556,6 +3559,23 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     retdoc["type"]="set_setup";
 
+    // Name back anything the schema does not contain, and refuse the whole
+    // command. Applying the half it understood and acking true is how eight
+    // tools spent a week configuring nothing after the regroup -- see
+    // cfgUnknownKeys. Checked BEFORE anything is applied, so a document with a
+    // typo in it changes nothing at all rather than partially.
+    char unk[160];
+    const int nunk = cfgUnknownKeys(doc.as<JsonObject>(), unk, sizeof(unk));
+    if(nunk>0)
+    {
+      retdoc["err"]="unknown_keys";
+      retdoc["unknown"]=unk;
+      retdoc["n_unknown"]=nunk;
+      djrl.dbg_printf("SET_SETUP REFUSED: %d unknown key(s): %s",nunk,unk);
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
     setMachineSetup(doc, true);
 
     // Opt-in commit. Without "persist":true this behaves exactly as before --
@@ -3580,6 +3600,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     doRsp=true;
     rspAck=persistAck;
+    }                       // end of the schema-clean body
 
   }
   else if(strcmp(type,"save_setup")==0)
@@ -5792,6 +5813,102 @@ void genMachineSetup(JsonDocument &jdoc)
 // would write to an unconfigured GPIO. It does not need to: firmwareSetup rests
 // every actuator at its logical OFF level right after pinMode, and that reads
 // IO_INV_MASK -- so setting the variables is enough to come up correct.
+// --- what a set_setup is allowed to contain ---------------------------------
+//
+// The parser applies what it recognises and ignores the rest, and set_setup
+// acks true either way. That is how eight tools in tools/ spent a week
+// configuring nothing: the setup document was regrouped into plate/gate/cam,
+// their flat `{"plate_freq": 0}` stopped meaning anything, and every one of
+// them was told the command had succeeded -- including the one that stops the
+// plate. A 60-second run reported "=> clean" with accept=0; nothing had turned.
+//
+// So the schema is written down once, here, and anything not in it is named
+// back to the caller. An unrecognised key is a caller that believes something
+// false about the machine, and that is worth an error rather than silence.
+static const char *const K_PLATE[] =
+  {"freq","accel","pulses_per_rev","diameter_mm","stepper_en_active",
+   "stepper_dir",NULL};
+static const char *const K_GATE[] =
+  {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
+   "debounce_fall","min_detect_dist_um",NULL};
+static const char *const K_CAM[] =
+  {"report_match_ts","match_window_us","match_tolerance_mm",
+   "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
+static const char *const K_SKIP[] =
+  {"mode","stop_after","rate_floor_us","recover_n","unsafe",NULL};
+static const char *const K_SPO[] =
+  {"L1A_on","L1A_off","CAM1_on","CAM1_off","L2A_on","L2A_off","CAM2_on",
+   "CAM2_off","SWITCH","SEL1_on","SEL1_off","SEL2_on","SEL2_off","SEL3_on",
+   "SEL3_off",NULL};
+static const char *const K_WIDTH[] =
+  {"L1A","CAM1","L2A","CAM2","SEL1","SEL2","SEL3",NULL};
+// io_on_level is keyed by IO_POL_TAB, so it is checked against that table
+// rather than duplicated here -- two copies of a name list drift.
+static const char *const K_TOP[] =
+  {"type","id","persist",                       // command envelope, not config
+   "machine_id","host_timeout_ms",
+   "CAM1_ID","CAM2_ID","CAM1_Tags","CAM2_Tags",
+   "cfg_from_nvs",                              // reported, harmless to echo back
+   NULL};
+
+static bool cfgKeyKnown(const char *const *tab, const char *k)
+{
+  for(int i=0;tab[i];i++) if(strcmp(tab[i],k)==0) return true;
+  return false;
+}
+
+static void cfgNoteUnknown(const char *grp,const char *k,char *out,size_t outN,int *n)
+{
+  (*n)++;
+  size_t used=strlen(out);
+  if(used+strlen(k)+strlen(grp?grp:"")+4 >= outN) return;   // truncate, keep counting
+  if(used) { strcat(out,","); }
+  if(grp){ strcat(out,grp); strcat(out,"."); }
+  strcat(out,k);
+}
+
+// Returns the count; `out` gets the names, comma separated, truncated if long.
+static int cfgUnknownKeys(JsonObject in, char *out, size_t outN)
+{
+  int n=0;
+  out[0]='\0';
+  if(in.isNull()) return 0;
+  for(JsonPair kv : in)
+  {
+    const char *k = kv.key().c_str();
+    const char *const *tab = NULL;
+    if     (strcmp(k,"plate")==0)                tab=K_PLATE;
+    else if(strcmp(k,"gate")==0)                 tab=K_GATE;
+    else if(strcmp(k,"cam")==0)                  tab=K_CAM;
+    else if(strcmp(k,"skip_policy")==0)          tab=K_SKIP;
+    else if(strcmp(k,"stage_pulse_offset")==0)   tab=K_SPO;
+    else if(strcmp(k,"stage_pulse_width_us")==0) tab=K_WIDTH;
+    else if(strcmp(k,"io_on_level")==0)
+    {
+      JsonObject g = kv.value().as<JsonObject>();
+      if(!g.isNull()) for(JsonPair p : g)
+      {
+        bool ok=false;
+        for(unsigned i=0;i<sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]);i++)
+          if(strcmp(IO_POL_TAB[i].name,p.key().c_str())==0){ ok=true; break; }
+        if(!ok) cfgNoteUnknown("io_on_level",p.key().c_str(),out,outN,&n);
+      }
+      continue;
+    }
+    else
+    {
+      if(!cfgKeyKnown(K_TOP,k)) cfgNoteUnknown(NULL,k,out,outN,&n);
+      continue;
+    }
+    JsonObject g = kv.value().as<JsonObject>();
+    if(g.isNull()){ cfgNoteUnknown(NULL,k,out,outN,&n); continue; }  // group sent as a scalar
+    for(JsonPair p : g)
+      if(!cfgKeyKnown(tab,p.key().c_str()))
+        cfgNoteUnknown(k,p.key().c_str(),out,outN,&n);
+  }
+  return n;
+}
+
 void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 {
   if(jdoc["CAM1_ID"].is<const char*>()  )
