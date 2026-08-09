@@ -4033,6 +4033,50 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       if (camera && camSettingObj)
       {
         CameraSetup(*camera, *camSettingObj);
+        // Persist an ROI change into data/default_camera_setting.json.
+        //
+        // The camera ROI used to live only in the browser's localStorage
+        // (LS_INSP_ROI): the Inspection UI read it on entry and sent it here,
+        // so the crop existed nowhere a headless run could find it. Worse, the
+        // "設定ROI" button writes the FULL-sensor rectangle to localStorage
+        // FIRST -- so the user can see the whole frame to draw on -- and if the
+        // selection is then abandoned, the stored value stays full-frame
+        // forever. That is the state this machine was found in: every headless
+        // run came up cropped from the file at startup and was then reset to
+        // 2448x2048 the moment the UI entered inspection, which put inspection
+        // back on the full frame and capped the rate.
+        //
+        // Writing it to the file makes that file the single source of truth:
+        // the core already applies it at startup, so a headless soak needs
+        // nothing extra, and the UI keeps working unchanged.
+        cJSON *roi = cJSON_GetObjectItem(camSettingObj, "ROI");
+        if (roi && cJSON_IsArray(roi) && cJSON_GetArraySize(roi) == 4)
+        {
+          const char *fp = "data/default_camera_setting.json";
+          char *cur = ReadText((char *)fp);
+          cJSON *doc = cur ? cJSON_Parse(cur) : NULL;
+          if (cur) free(cur);
+          if (doc)
+          {
+            cJSON_DeleteItemFromObject(doc, "ROI");
+            cJSON_AddItemToObject(doc, "ROI", cJSON_Duplicate(roi, 1));
+            char *outStr = cJSON_Print(doc);
+            if (outStr)
+            {
+              FILE *fh = fopen(fp, "w");
+              if (fh) { fputs(outStr, fh); fclose(fh);
+                        LOGE("camera ROI persisted to %s: [%.0f,%.0f %.0fx%.0f]", fp,
+                             cJSON_GetArrayItem(roi,0)->valuedouble,
+                             cJSON_GetArrayItem(roi,1)->valuedouble,
+                             cJSON_GetArrayItem(roi,2)->valuedouble,
+                             cJSON_GetArrayItem(roi,3)->valuedouble); }
+              else LOGE("camera ROI: cannot write %s", fp);
+              free(outStr);
+            }
+            cJSON_Delete(doc);
+          }
+          else LOGE("camera ROI: cannot parse %s -- not persisting", fp);
+        }
       }
 
 
