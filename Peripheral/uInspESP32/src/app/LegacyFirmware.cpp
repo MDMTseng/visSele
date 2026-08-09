@@ -1940,6 +1940,20 @@ int Run_ACTS(uint32_t cur_pulse)
           CONSEC_UNANSWERED++;
           if(UNANSWERED_POLICY==1 && CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
             break;   // fail-to-reject: no actuation -> part recirculates
+          // Policy 0 means do not stop -- for THIS arm too.
+          //
+          // The comment above says SKIP and UNSET "escalate together", and the
+          // SKIP arm has an explicit `if(UNANSWERED_POLICY!=1) break;`. This one
+          // did not, so it fell straight through and faulted on the FIRST
+          // unjudged part no matter what the policy said. skip_policy mode
+          // "none" therefore did not mean none: a 5-hour soak ran 51,161 objects
+          // at 36.5/s with zero disagreements and stopped on object 51,162.
+          //
+          // Not faulting is the safe outcome, not the lenient one: an unjudged
+          // part is never actuated, so it recirculates and gets another pass.
+          // Production runs policy 1 (slow_and_stop) and is unchanged -- it
+          // still stops after UNANSWERED_STOP_AFTER consecutive.
+          if(UNANSWERED_POLICY!=1) break;
           ecode=GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT;
           ERR_CTX_TID=pli->tid;
           ERR_CTX_STATUS=pli->insp_status;
