@@ -109,6 +109,15 @@ typedef struct image_pipe_info
   size_t img_jpg_enc_L;
 
   CameraLayer::frameInfo fi;
+
+  // Host-clock stamps for splitting the report latency. The board measures the
+  // whole chain (trigger -> verdict processed) and that is ~479ms; the send
+  // queue and serial write together account for 2.6ms of it, so the remaining
+  // ~476ms is upstream of them and had no breakdown at all. These two turn
+  // "upstream" into two answerable numbers: how long the frame waited to be
+  // inspected, and how long the inspection itself took.
+  uint64_t host_rx_us;     // pushed onto inspQueue (frame in hand)
+  uint64_t host_insp_us;   // entered ImgPipeProcessCenter_imp
   //acvRadialDistortionParam cam_param;
   FeatureManager_BacPac *bacpac;
 

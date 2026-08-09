@@ -4924,6 +4924,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 
     // LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
 
+    headImgPipe->host_rx_us = perif_now_us();
     if (inspQueue.push_blocking(headImgPipe) == false)
     {
       LOGE("NO resource can be used.....");
@@ -4953,6 +4954,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     //   }
     //
     bool doPassDown = false;
+    headImgPipe->host_rx_us = perif_now_us();
     ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
     if (!doPassDown)
       bpg_pi.resPool.retResrc(headImgPipe);
@@ -5685,26 +5687,35 @@ void PerifConsoleThread(bool *terminationflag)
       if (n <= 0) break;
       if (c == '\r') continue;
       if (c != '\n') { if (line.size() < 4096) line += c; continue; }
-      if (line.compare(0, 4, "!pd ") == 0)
+      if (line.size() > 4 && line[0] == '!' && line[3] == ' ')
       {
-        // Inject a PD packet -- the same one the WebUI sends. Everything else
-        // on this socket goes to the device; '!pd' addresses the core.
+        // Inject a BPG packet with an arbitrary two-letter type -- the same
+        // packets the WebUI sends. Everything else on this socket goes to the
+        // device; a leading '!' addresses the core.
         //
-        // Needed because the peripheral channel does not exist until some
-        // client CONNECTs it. A headless core opens nothing, so the device is
-        // unreachable and every frame goes unreported -- which looks exactly
-        // like a pairing fault. This makes the rig independent of a browser
-        // being open, and it is also the only way to reach PAIRING_MODE, which
-        // is what the positional-vs-timestamp A/B has to switch.
+        // This began as '!pd' alone, because the peripheral channel does not
+        // exist until some client CONNECTs it: a headless core opens nothing,
+        // the device is unreachable, and every frame goes unreported, which
+        // looks exactly like a pairing fault.
         //
-        // conn_info lives in data/machine_setting.json under
+        // Generalised because the same gap applies to the inspection recipe. A
+        // headless core loads no def, so it answers NA to every part -- and a
+        // latency measurement taken that way is missing the largest term in it
+        // (2ms of not-inspecting against 19-45ms of real work). Being able to
+        // send '!ld {"filename":"data/test1.hydef"}' makes an automated rig
+        // able to measure the machine that actually ships, without a browser.
+        //
+        // conn_info for '!pd' lives in data/machine_setting.json under
         // uInspESP32_peripheral_conn_info; pass it through verbatim.
+        char tl[3] = { (char)toupper(line[1]), (char)toupper(line[2]), 0 };
         std::string payload = line.substr(4);
         BPG_protocol_data d =
-          m_BPG_Protocol_Interface::GenStrBPGData((char *)"PD", payload.c_str());
+          m_BPG_Protocol_Interface::GenStrBPGData(tl, payload.c_str());
         d.pgID = 1;
         bpg_pi.toUpperLayer(d, NULL);
-        ::write(cli, "{\"core\":\"pd injected\"}\n", 23);
+        char ack[64];
+        int n = snprintf(ack, sizeof(ack), "{\"core\":\"%s injected\"}\n", tl);
+        ::write(cli, ack, n);
       }
       else if (!line.empty())
       {
@@ -6288,6 +6299,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down)
 {
+  imgPipe->host_insp_us = perif_now_us();
 
   LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d",
        inspQueue.size(), inspQueue.capacity(),
@@ -6625,6 +6637,29 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
                         imgPipe->fi.timeStamp_us, perif_now_us() };
+    // Two stages of the upstream half, logged where the report leaves the
+    // inspection thread. queue = frame waiting for a free inspector,
+    // inspect = the inspection itself. Anything the board sees beyond
+    // queue+inspect+wait+write is camera exposure, readout and USB transport,
+    // which this process cannot time directly -- but it can now be obtained by
+    // subtraction instead of guessed at.
+    {
+      static uint64_t s_n = 0, s_q_sum = 0, s_i_sum = 0;
+      static uint64_t s_q_max = 0, s_i_max = 0;
+      const uint64_t q_us = (imgPipe->host_insp_us > imgPipe->host_rx_us)
+                          ? (imgPipe->host_insp_us - imgPipe->host_rx_us) : 0;
+      const uint64_t i_us = (msg.enq_us > imgPipe->host_insp_us)
+                          ? (msg.enq_us - imgPipe->host_insp_us) : 0;
+      s_n++; s_q_sum += q_us; s_i_sum += i_us;
+      if (q_us > s_q_max) s_q_max = q_us;
+      if (i_us > s_i_max) s_i_max = i_us;
+      if ((s_n % 100) == 0)
+        LOGE("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
+             "max:%.2fms | n:%llu",
+             s_q_sum / 1000.0 / s_n, s_q_max / 1000.0,
+             s_i_sum / 1000.0 / s_n, s_i_max / 1000.0,
+             (unsigned long long)s_n);
+    }
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
