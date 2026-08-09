@@ -24,11 +24,27 @@
 把判定發給錯的物件」才會出貨壞品 —— 這是整套設計的安全邊界,也是為什麼
 「停機而不猜」永遠優於「猜一個」。
 
-tick 率 = `2 x plate_freq`(`StepGo` 每兩 tick 出一個驅動脈衝)。
-**[推]** 盤速 10000 時:閘門→相機 654/20000 = 32.7ms,
-相機→SWITCH (29900-654)/20000 = 1462ms。
-**注意**:這個 2 倍關係與對外的 `pulses_per_rev` 有已知的量綱歧義(V-31,未解)。
-凡是用 tick 換算時間的結論,標 **[推]**,不要當 **[驗]** 用。
+**tick 率 = `2 x plate_freq`** —— **[驗]**,V-31 已解(2026-08-09)。
+
+驗法:量「閘門->相機」的行程時間,對照 NVS 裡的 `CAM1_on`。
+
+```
+plate  5000  travel 915.6ms   9315/(2f) 預測 931.5ms   1.7%
+plate 10000  travel 462.2ms             預測 465.8ms   0.8%
+plate 20000  travel 231.5ms             預測 232.9ms   0.6%
+```
+
+**重要**:`CAM1_on` 的**實際值是 9315(NVS)**,不是原始碼裡的預設 654。
+拿編譯預設去推導會差 14 倍 —— 這個錯今天犯過一次。
+**要看偏移一律 `get_setup`,不要讀原始碼。**
+
+由此,預算可以標 **[驗]**:
+
+```
+CAM->SWITCH = (29900 - 9315) / (2 x plate_freq)
+  plate 10000 -> 1029 ms
+  plate 26000 ->  396 ms
+```
 
 ---
 
@@ -63,13 +79,24 @@ tick 率 = `2 x plate_freq`(`StepGo` 每兩 tick 出一個驅動脈衝)。
 | `host_insp_us` | 核心 | 進入 `ImgPipeProcessCenter_imp` | 核心端拆解 |
 | `enq_us` | 核心 | 報告推進 `perifSendQueue` | 核心端拆解 |
 
-**`report_latency` = `trig_us` -> 報告被處理 = 閘門 -> 判定。**
-韌體的欄位註解自己寫著 `for the gate->report latency stat`。
+**`report_latency.avg_us` = `trig_us` -> 報告被處理 = 閘門 -> 判定**,
+含料件走路。韌體的欄位註解自己寫著 `for the gate->report latency stat`。
+**拿它對 CAM->SWITCH 預算是比錯區段**,這個錯誤在同一天犯了兩次。
 
-**它不是「相機 -> 報告」。** 拿它去對 CAM->SWITCH 的預算是**比錯區段**,
-這個錯誤在同一天犯了兩次。要量電子延遲,該用 `now - cam_us`
-—— `cam_us` 已經在物件裡、是完整 64 位元,**只是從來沒有被拿來算延遲**。
-加這個統計是三行的事,而它會讓這一節永遠不必再被重讀。
+**要用的是 `report_latency.cam_avg_us` / `cam_max_us`**(2026-08-09 新增),
+從 `cam_us` 起算 = **相機觸發 -> 判定 = 電子延遲**,與預算同一個起點。
+
+**[驗]** 三個盤速下的拆解:
+
+```
+plate  5000   gate->rep 929.6ms | cam->rep 14.1ms | travel 915.6ms
+plate 10000   gate->rep 475.9ms | cam->rep 13.7ms | travel 462.2ms
+plate 20000   gate->rep 245.7ms | cam->rep 14.2ms | travel 231.5ms
+```
+
+**電子延遲不隨盤速變化(14ms),行程時間完美反比。**
+`cam_max_us` 是 253-259ms —— 對 plate 26000 的 396ms 預算,
+**最壞的一份報告用掉 65%**。限制吞吐的是尾巴,不是平均。
 
 ---
 
@@ -162,4 +189,4 @@ tick 率 = `2 x plate_freq`(`StepGo` 每兩 tick 出一個驅動脈衝)。
   畫面症狀:按下啟動後出現「轉速沒有寫進裝置,未進入檢測模式」。
 - **曝光參考點**:`cam_ts` 指的是觸發到達還是曝光開始?前者的話,殘差對
   「照到哪一顆」一無所知,得靠外部光感測器才問得到。
-- **V-31**:`pulses_per_rev` 的 2 倍量綱歧義。
+- ~~**V-31**:`pulses_per_rev` 的 2 倍量綱歧義。~~ **已解**(見第一節)。
