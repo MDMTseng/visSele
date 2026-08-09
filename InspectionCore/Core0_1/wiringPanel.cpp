@@ -2738,6 +2738,57 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
         }
 
+        // Replay support, both directions.
+        //
+        // "payload_file": load the whole FI payload from a file instead of
+        // carrying it inline. The WebUI sends `definfo` -- the def's entire
+        // contents, ~53KB -- which cannot be injected through the peripheral
+        // console (4096-byte line cap), so a headless run had no way to send
+        // what the UI sends. It could only send `deffile`, and that produced
+        // every verdict NA while the identical recipe through the UI gave a
+        // normal OK/NA mix. Rather than keep guessing at the difference, let
+        // the exact payload be captured once and replayed byte for byte.
+        {
+          char *pf = (char *)JFetch(json, "payload_file", cJSON_String);
+          if (pf != NULL)
+          {
+            char *pstr = ReadText(pf);
+            if (pstr == NULL)
+            {
+              snprintf(err_str, sizeof(err_str), "payload_file unreadable: %s", pf);
+              LOGE("%s", err_str);
+              break;
+            }
+            cJSON *pjson = cJSON_Parse(pstr);
+            free(pstr);
+            if (pjson == NULL)
+            {
+              snprintf(err_str, sizeof(err_str), "payload_file is not JSON: %s", pf);
+              LOGE("%s", err_str);
+              break;
+            }
+            LOGE("FI: payload replayed from %s", pf);
+            json = pjson;   // leaked deliberately: one-shot, and the session's
+                            // own `json` is owned by the caller.
+          }
+        }
+
+        // Capture the inline form, so the UI's payload becomes replayable.
+        // Written only when definfo is present -- that is the shape a headless
+        // run cannot otherwise produce.
+        if (JFetch_OBJECT(json, "definfo") != NULL)
+        {
+          char *whole = cJSON_PrintUnformatted(json);
+          if (whole)
+          {
+            FILE *fh = fopen("data/last_fi_payload.json", "w");
+            if (fh) { fputs(whole, fh); fclose(fh);
+                      LOGE("FI: payload captured to data/last_fi_payload.json (%zu bytes)",
+                           strlen(whole)); }
+            free(whole);
+          }
+        }
+
         char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
         if(deffile!=NULL)
         {
