@@ -5755,8 +5755,24 @@ void PerifSendThread(bool *terminationflag)
         if (pc != NULL)
         {
           auto _wt0 = std::chrono::steady_clock::now();
+          const uint64_t _popUs = perif_now_us();
           const double _waitMs = msg.enq_us
-            ? (double)(perif_now_us() - msg.enq_us) / 1000.0 : 0.0;
+            ? (double)(_popUs - msg.enq_us) / 1000.0 : 0.0;
+          // Two numbers are needed to tell the two candidate causes apart, and
+          // one alone cannot: qdepth sampled at LOG time was 0 while wait hit
+          // 808ms, which rules nothing out by itself.
+          //
+          //   idle_ms  time since this thread finished its previous send.
+          //   depth    queue size at POP time, not at log time.
+          //
+          // If wait ~= the time the thread spent busy, the item was queued
+          // behind work and this is backlog. If wait >> that -- i.e. the thread
+          // was sitting idle while an item was already enqueued -- then it was
+          // not woken, and the fault is in the handoff rather than in the rate.
+          static uint64_t s_prevDoneUs = 0;
+          const double _idleMs = s_prevDoneUs
+            ? (double)(_popUs - s_prevDoneUs) / 1000.0 : 0.0;
+          const size_t _depthAtPop = perifSendQueue.size();
           int ret;
           if (pc->machine_type == PERIF_UINSP_ESP32)
           {
@@ -6039,6 +6055,14 @@ void PerifSendThread(bool *terminationflag)
           g_perifWaitSumMs += _waitMs;
           bool newWaitMax = _waitMs > g_perifWaitMaxMs;
           if (newWaitMax) g_perifWaitMaxMs = _waitMs;
+          if (newWaitMax && _waitMs > 50.0)
+            LOGE("perif WAIT SPIKE %.1fms: idle_before %.1fms, depth_at_pop %zu, "
+                 "write %.2fms -- %s",
+                 _waitMs, _idleMs, _depthAtPop, ms,
+                 (_idleMs > _waitMs * 0.5)
+                   ? "thread was IDLE while it waited -> not woken"
+                   : "thread was BUSY -> backlog");
+          s_prevDoneUs = perif_now_us();
           bool newMax = (ms > g_perifWriteMaxMs) || newWaitMax;
           if (ms > g_perifWriteMaxMs) g_perifWriteMaxMs = ms;
           // Log on every new max (the thing you want to catch) and a periodic

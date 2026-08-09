@@ -181,8 +181,24 @@ plate 20000   gate->rep 245.7ms | cam->rep 14.2ms | travel 231.5ms
   盤速 10000 應該只有 33ms,而實測是 479ms(約 4700 tick-等效)。
   這正是 **V-31** 那個 2 倍量綱歧義的實際後果 —— 在它解決之前,
   **任何用 tick 換算出來的時間都不要當 [驗] 用**,包括 CAM->SWITCH 的預算。
-- **送出執行緒 808ms 餓死**:`qdepth 0` 排除積壓,原因未明。這是目前唯一
-  真的會掉件的機制(`UNANSWERED`)。
+- **送出執行緒的喚醒延遲**(原記為「餓死」)。**[驗]** 已定位到一側:
+
+```
+WAIT SPIKE  82.9ms: idle_before 206.6ms, depth_at_pop 0 -> 執行緒 IDLE
+WAIT SPIKE 148.0ms: idle_before 282.7ms, depth_at_pop 1 -> 執行緒 IDLE
+```
+
+  `idle_before > wait`,表示東西進佇列時執行緒**已經在閒置**。所以不是積壓。
+  `TSQueue` 用的是正規 `condition_variable` + `notify`,所以也不是漏通知。
+  而 `wait` 的定義就是 push -> pop,在佇列空、執行緒閒置時它**就等於
+  notify -> 執行緒真正被排到**的時間。
+
+  **剩下的候選只有兩個:OS 排程延遲,或 `mutex_` 被長時間持有。**
+  下一刀:在 `push` 內 notify 前後各蓋一個時間戳,把「通知本身」與
+  「被排到」分開。
+
+  影響目前有界:`cam_max_us` 187-259ms,對 plate 20000 的 514ms 預算
+  仍有餘裕,但對 26000 的 396ms 只剩 35%。**這是提吞吐的門檻。**
 - **配對偏移結論存疑**(見上)。
 - **WebUI 無法設定機器**:`SETTABLE_KEYS`(`src/script.jsx:1555`)全是平鍵,
   裝置只收群組,而裝置對未知鍵**靜默忽略但回 ack true**。
