@@ -7,6 +7,9 @@ import 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+// The device's setup document is grouped (plate/gate/cam/skip_policy); this UI
+// speaks flat. Translating at the wire is the whole fix -- see uinspCfg.js.
+import { regroup as uinspRegroup, flatten as uinspFlatten } from './uinspCfg';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
@@ -1176,7 +1179,7 @@ class APPMasterX extends React.Component {
       {
         this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
         StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
-        this.send({type:"set_setup",...newMachineInfo},
+        this.send(uinspRegroup({type:"set_setup",...newMachineInfo}),
         (ret)=>{
           log.debug("[machine-setup] set_setup ack", ret);
           //HACK: just assume it will work
@@ -1196,7 +1199,10 @@ class APPMasterX extends React.Component {
           delete ret["id"];
           delete ret["st"];
           delete ret["ack"];
-          this.machineSetup=ret;
+          // Flatten before anything downstream looks at it: SETTABLE_KEYS is a
+          // list of flat names, so a grouped reply matched none of them and the
+          // entire configuration was filed as read-only device state.
+          this.machineSetup=uinspFlatten(ret);
           this.machineSetupUpdate(this.machineSetup,true);
         },(e)=>console.log(e));
       }
@@ -1615,7 +1621,7 @@ class APPMasterX extends React.Component {
                          machineSetup:this.cfg,
                          deviceState:this.deviceState});
         if(push!==true)return;
-        this.send({type:"set_setup",...settable},
+        this.send(uinspRegroup({type:"set_setup",...settable}),
           (ret)=>log.debug("[machine-setup] set_setup ack",ret),
           (e)=>log.warn("[machine-setup] set_setup failed",e));
       }
@@ -1705,7 +1711,12 @@ class APPMasterX extends React.Component {
       // get_running_stat returns PLATE_FREQ_TARGET (the ramp\'s current goal,
       // which stays 0 in IDLE). They are different variables and only one of
       // them can confirm a set_setup.
-      getSetupP(){ return this.sendP({type:"get_setup"}); }
+      // Flattened, like machineSetupReSync's copy. Callers read flat names off
+      // this -- the Inspection UI's start gate checks `s.plate_freq > 0` to
+      // confirm the speed reached the device -- and a grouped reply makes every
+      // one of those checks read undefined. That is the whole of
+      // "轉速沒有寫進裝置,未進入檢測模式": the write had in fact landed.
+      getSetupP(){ return this.sendP({type:"get_setup"}).then(uinspFlatten); }
 
       // ---- persistence -----------------------------------------------------
 
