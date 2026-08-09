@@ -615,6 +615,27 @@ uint32_t REP_LAT_N=0;
 uint64_t REP_LAT_SUM_US=0;
 uint32_t REP_LAT_MAX_US=0;
 
+// The SAME statistic measured from the camera trigger instead of from the gate.
+//
+// REP_LAT_* runs from trig_us, which is stamped when the gate SEES the part, so
+// it contains the part's travel from the gate to the camera. Measured 924 / 479
+// / 276 ms at plate 5000 / 10000 / 20000 -- it scales with the plate, because
+// most of it is the part walking. That number was compared against the
+// CAM->SWITCH budget twice on 2026-08-09, and both comparisons were wrong,
+// because the budget starts where the camera fires and this starts where the
+// gate fires.
+//
+// cam_us has been carried at full 64 bits all along and was never used for a
+// latency figure. From it:
+//   REP_CAMLAT   = camera trigger -> verdict processed  (the electronics)
+//   REP_LAT - REP_CAMLAT = gate -> camera               (the travel)
+// The second one is also the empirical answer to V-31: compare it against
+// CAM1_on ticks and the 2x tick ambiguity resolves itself, instead of every
+// budget staying [derived] forever.
+uint32_t REP_CAMLAT_N=0;
+uint64_t REP_CAMLAT_SUM_US=0;
+uint32_t REP_CAMLAT_MAX_US=0;
+
 // Incremented from the ISR (Run_ACTS' SWITCH branch), read and zeroed from the
 // main loop (get_running_stat / reset_running_stat). Were uint64_t, which on a
 // 32-bit core is two loads -> get_running_stat could read a half-updated value
@@ -3732,6 +3753,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       LOOP_N=0; LOOP_MAX_US=0;
       SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
       REP_LAT_N=0; REP_LAT_SUM_US=0; REP_LAT_MAX_US=0;
+      REP_CAMLAT_N=0; REP_CAMLAT_SUM_US=0; REP_CAMLAT_MAX_US=0;
       CAM_SYNC.delta_max_us=0;      // the margin, windowed; the offset stays
       CAM_SYNC.max_resid_us=0;
       CAM_SYNC.miss_delta_max_us=0;
@@ -4092,6 +4114,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jL["n"]=REP_LAT_N;
       jL["avg_us"]=REP_LAT_N ? (uint32_t)(REP_LAT_SUM_US/REP_LAT_N) : 0;
       jL["max_us"]=REP_LAT_MAX_US;
+      // From the camera trigger: the electronics alone, directly comparable to
+      // the CAM->SWITCH budget. avg_us above is NOT.
+      jL["cam_n"]=REP_CAMLAT_N;
+      jL["cam_avg_us"]=REP_CAMLAT_N ? (uint32_t)(REP_CAMLAT_SUM_US/REP_CAMLAT_N) : 0;
+      jL["cam_max_us"]=REP_CAMLAT_MAX_US;
     }
 
     doRsp=rspAck=true;
@@ -4290,10 +4317,22 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["tr"]=pressure;
       if(tarP->insp_status==insp_status_UNSET)
       {
-        uint32_t lat=(uint32_t)esp_timer_get_time()-tarP->trig_us;
+        const int64_t now64=esp_timer_get_time();
+        uint32_t lat=(uint32_t)now64-tarP->trig_us;
         REP_LAT_N++;
         REP_LAT_SUM_US+=lat;
         if(lat>REP_LAT_MAX_US)REP_LAT_MAX_US=lat;
+        // cam_us is zero until this object's CAM stage has fired. A report can
+        // arrive for an object whose camera pulse never went out (a retired
+        // calibration slot, a frame paired by timestamp alone), and counting
+        // those would put the whole uptime into the average.
+        if(tarP->cam_us!=0 && now64>(int64_t)tarP->cam_us)
+        {
+          uint32_t clat=(uint32_t)(now64-(int64_t)tarP->cam_us);
+          REP_CAMLAT_N++;
+          REP_CAMLAT_SUM_US+=clat;
+          if(clat>REP_CAMLAT_MAX_US)REP_CAMLAT_MAX_US=clat;
+        }
       }
       // A second report for an object that already has a verdict: keep the
       // WORSE one.
