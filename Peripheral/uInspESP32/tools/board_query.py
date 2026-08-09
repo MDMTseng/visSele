@@ -1,22 +1,33 @@
 #!/usr/bin/env python3
-"""Ask the board something over serial WITHOUT rebooting it.
+"""Ask the board something over serial. THIS REBOOTS THE BOARD. Read on.
 
-Opening a serial port on an ESP32 dev board asserts DTR/RTS, and the auto-reset
-circuit takes that as "reset now". So the obvious way to read error_hist --
-open the port, ask, print -- reboots the board and clears the very history you
-came for. That happened on 2026-08-10: the answer came back uptime_s=1,
-reset_reason POWERON, error_hist [], and the halt it was meant to explain was
-gone.
+Opening a serial port on this ESP32 asserts DTR/RTS and the auto-reset circuit
+takes that as "reset now" -- so asking the board for its error history clears
+the history you came for. On 2026-08-10 that destroyed the evidence for two
+separate faults before anyone noticed.
 
-Both lines have to be de-asserted BEFORE the port is opened, which means
-constructing the Serial object unopened.
+This file was first written claiming to avoid it by de-asserting both lines
+BEFORE open(). MEASURED: that does not work here, and neither does clearing
+HUPCL. Three consecutive queries all reported uptime_s=0 / POWERON:
 
-  python3 board_query.py                       # get_running_stat, health+errors
-  python3 board_query.py '{"type":"poll"}'
-  python3 board_query.py --port /dev/cu.usb... '{"type":"get_setup"}'
+    stty -f /dev/cu.usbserial-0001 -hupcl   +   dtr=False, rts=False pre-open
+    -> query 1: uptime_s=0    query 2: uptime_s=0    query 3: uptime_s=0
 
-Only safe while nothing else holds the port -- the core owns it during a run,
-and two readers make the device look unresponsive.
+So treat a reset as unavoidable on this rig, and pick the tool accordingly:
+
+  * machine RUNNING, or you need state that would be lost -> DO NOT use this.
+    Ask through the core's peripheral console (INSP_PERIF_CONSOLE, port 4099).
+    The core holds the port open continuously, so nothing is reset:
+        printf '{"type":"get_running_stat"}\n' | nc 127.0.0.1 4099
+  * board IDLE and a reboot is acceptable (reading NVS-backed settings, or
+    confirming what the board came up with) -> this is fine, and --allow-reset
+    is required so it is never a surprise.
+
+  python3 board_query.py --allow-reset
+  python3 board_query.py --allow-reset '{"type":"poll"}'
+
+Also: only one thing may hold the port. The core owns it during a run, and a
+second reader makes the device look unresponsive.
 """
 import serial, json, time, sys, argparse
 
@@ -25,13 +36,23 @@ ap.add_argument("cmd", nargs="?", default='{"type":"get_running_stat"}')
 ap.add_argument("--port", default="/dev/cu.usbserial-0001")
 ap.add_argument("--baud", type=int, default=230400)
 ap.add_argument("--wait", type=float, default=2.0)
+ap.add_argument("--allow-reset", action="store_true",
+                help="required: opening the port reboots this board")
 a = ap.parse_args()
+
+if not a.allow_reset:
+    sys.exit("refusing: opening the port REBOOTS this board and clears "
+             "error_hist/uptime/counters. Pass --allow-reset if the board is "
+             "idle and that is acceptable; otherwise ask through the core's "
+             "peripheral console on port 4099 (see the module docstring).")
 
 s = serial.Serial()
 s.port = a.port
 s.baudrate = a.baud
 s.timeout = 0.4
-s.dtr = False          # both BEFORE open(), or the board resets
+# Kept because they are harmless and correct in principle -- but measured NOT
+# to prevent the reset on this hardware. See the docstring.
+s.dtr = False
 s.rts = False
 s.open()
 time.sleep(0.3)

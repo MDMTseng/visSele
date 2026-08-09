@@ -981,3 +981,99 @@ jitter 歸零之後是 701 過 / 702 擋 —— **每兩顆固定放行一顆**,
   **取像→檢驗→回報→分選的吞吐量**,不是判定正確性。
 - `agree 1766 / disagree 0`:在 30/s、8.9mm 間距、位置雜訊開啟下,
   時間戳配對沒有出現任何分歧。
+
+# 2026-08-10 清晨:5 小時 soak,以及它擋在哪裡
+
+目標:用達成 30 obj/s 的那組條件連續跑五小時。**沒有達成**,而擋住的東西
+不在機器、不在韌體,在**主機的 USB-serial**。過程本身比結論值錢。
+
+## 四次嘗試,每次死在不同的地方
+
+```
+run 1   2.5 分   state 112,原因不明 —— 現場沒被保存
+run 2    25 分   err 2  OBJECT_HAS_NO_INSP_RESULT   policy 分支寫漏
+run 3    25 分   err 1  INSP_RESULT_MATCHES_NO_OBJECT  serial 停滯
+run 4   3.6 小時 5 次停滯中斷,全部自動復原;最後控制台沉默
+```
+
+### run 1:量到了,但沒留下證據
+
+核心 log 只有 stdout(LOGE 都在 RAM ring),而我去問板子 `error_hist` 時,
+**開 serial 這個動作本身把板子重開了**,回來是 `uptime_s 1 / POWERON /
+error_hist []`。取證的動作銷毀了要取的證。
+
+修法:`error_hist` 每分鐘隨取樣一起記(走已經開著的控制台,不另開連線);
+跳脫時**先抓 ring dump 再拆機器**(`core_stop` 要兩分鐘,ring 只有 65k 槽)。
+
+### run 2:`skip_policy "none"` 並不是 none
+
+```c
+case insp_status_SKIP:   ... if(UNANSWERED_POLICY!=1) break;   // 有
+case insp_status_UNSET:  ... /* 沒有 */  ecode=OBJECT_HAS_NO_INSP_RESULT;
+```
+
+註解自己寫著兩者「escalate together」,但 UNSET 那條無視 policy、第一顆就故障。
+**跑了 51,161 顆、`disagree 0`,停在第 51,162 顆。**
+不故障才是安全的那一邊:沒判定的物件不會被驅動,它回流再來一次。
+生產用的 policy 1(`slow_and_stop`)未動。
+
+### run 3:根因 —— 主機 USB-serial 停滯
+
+核心 dump:
+
+```
+perif tx stall × 37    wire p50 37ms   max 245ms   "the wire itself"
+perif WAIT SPIKE 664ms: idle_before 686ms, depth_at_pop 24
+```
+
+送出執行緒 686ms 沒被排到,24 筆判定堆在後面。freq 26000 時
+**CAM→SWITCH 預算只有 396ms** —— 停滯比整個預算還長,所以那批物件在判定
+到達前就通過噴嘴(UNANSWERED),接著遲到的判定落在已回收的槽位,
+守衛就停機。**這是 macOS 的問題,目標平台是 Windows。**
+
+## run 4:3.6 小時,自動復原,以及一個穩到不像話的速率
+
+不再問「能不能撐五小時」(這台不行),改問這台能回答的:多久破一次。
+
+```
+乾淨區間    30.9  91.9  31.1  23.9  20.3 分     (5 次,全部 err 1)
+速率        36.53 obj/s   sd 0.043   min 36.4   max 36.6
+判定        466,037 顆    disagree 0    UNANSWERED 245(全部來自中斷當下的突發)
+cam_avg     17.8ms        cam_max 383ms ← 已貼著 396ms 預算
+```
+
+**速率的標準差是 0.04/s。** 三個半小時、46 萬顆、零配對分歧。
+管線本身沒有任何問題;會停是因為底下那條線會卡。
+
+乾淨區間有變短的傾向(91.9 → 31.1 → 23.9 → 20.3),樣本太少不下結論。
+
+## Caveats(這一夜踩到的)
+
+### 沉默看起來和正常運作一模一樣
+
+run 4 最後一小時每分鐘吐一次 `no_stat`,而 harness 把「取不到樣」當成
+**跳過這一筆繼續**,所以它看起來還活著,實際上一個數字都沒產出。
+已改成連續 3 次沉默即判定失敗。**「還在跑」和「已經啞了」從外面是同一個樣子。**
+
+### 背景啟動的行程收不到 SIGINT
+
+`nohup ... &` 之後,shell 會把背景子行程的 SIGINT 設成 ignore,
+而 harness 的清理路徑掛在 `KeyboardInterrupt` 上 —— **兩次 SIGINT 都沒反應**。
+SIGTERM 會到,但會跳過 `finally`,那會把機器留在限制全開、盤還在轉的狀態。
+所以另外寫了 `rescue.py`:先抓證據、再手動照順序還原、最後才停核心。
+
+### `board_query.py` 沒有做到它宣稱的事
+
+它是為了「查板子而不重開板子」而寫的,但**實測做不到**:
+開埠前拉低 DTR/RTS、加上 `stty -hupcl`,連續三次查詢仍然都是
+`uptime_s=0 / POWERON`。已改成預設拒絕執行,要加 `--allow-reset` 才跑,
+並在檔頭寫明:**機器在跑的時候不要用它**,要走核心的週邊控制台(4099),
+因為核心持續持有那個埠,不會觸發重置。
+
+### 還原沒有被確認過
+
+`rescue.py` 送出還原指令時控制台已經完全沉默(連 `log_dump` 都沒產出檔案),
+所以那次還原**沒有回讀確認**。後來直接問板子,設定是對的
+(`28571 / 120 / 1000 / 2000`、`slow_and_stop`、`freq 0`)——
+但那是因為板子重開後從 NVS 載回來的,不是因為還原成功。
+**全程沒有寫過 NVS,所以重開等於回到生產設定。**
