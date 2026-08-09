@@ -118,6 +118,11 @@ typedef struct image_pipe_info
   // inspected, and how long the inspection itself took.
   uint64_t host_rx_us;     // pushed onto inspQueue (frame in hand)
   uint64_t host_insp_us;   // entered ImgPipeProcessCenter_imp
+  // Same idea one queue further along, for the preview. The preview costs the
+  // verdict path 66ms that is NOT queue blocking (that was removed) and the
+  // only way to tell CPU contention from wire time is to split the send
+  // itself. Stamped when the pipe is pushed onto datViewQueue.
+  uint64_t dview_enq_us;   // pushed onto datViewQueue
   //acvRadialDistortionParam cam_param;
   FeatureManager_BacPac *bacpac;
 

@@ -363,7 +363,6 @@ CameraLayer::status bayerToRGB(uint8_t* img_dat, uint8_t* imgBuffer, int width, 
 CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
 {
 
-  LOGI(">>>>");
   if (_frame_cache_buffer == NULL)
   {
     return NAK;
@@ -383,7 +382,9 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
   
   ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
 
-  LOGI(">>>>format:%0X  img_size:%d  wh:%d,%d",format,img_size,w,h);
+  // Constant for the life of a session; one line per frame said nothing new.
+  { static unsigned _lc = 0; if ((_lc++ % 200) == 0)
+      LOGI(">>>>format:%0X  img_size:%d  wh:%d,%d",format,img_size,w,h); }
   if(format == ARV_PIXEL_FORMAT_MONO_8)
   {
     
@@ -863,7 +864,6 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   
   // arv_camera_set_chunk_mode(camera,true,NULL);
 
-  LOGI(">>>>");
   chunk_parser = NULL;
   chunks = NULL;
 

@@ -43,7 +43,12 @@ ws.binaryType = 'arraybuffer';
 
 ws.on('open', () => setTimeout(() => {
   console.log(`[fi] loading ${DEF} and opening a full-inspection session`);
-  ws.send(frame('ST', 0, pg++, { IMG_STREAMING_JPEG_QUALITY: 85 }));
+  // JPEGQ=0 keeps the legacy raw-RGBA wire format (~1MB a frame), which is what
+  // the WebUI still gets by default; 1-100 switches to JPEG. It is an A/B lever
+  // for the preview's cost, so it has to be settable from outside.
+  const jq = process.env.JPEGQ === undefined ? 85 : Number(process.env.JPEGQ);
+  console.log(`[fi] IMG_STREAMING_JPEG_QUALITY=${jq}${jq ? '' : ' (raw RGBA)'}`);
+  ws.send(frame('ST', 0, pg++, { IMG_STREAMING_JPEG_QUALITY: jq }));
   ws.send(frame('FI', 0, pg++, { deffile: DEF, frame_count: -1 }));
   if (!process.env.NO_STREAM) ws.send(frame('SB', 0, pg++, { stream: true }));
   else console.log('[fi] NOT subscribing to the image stream');

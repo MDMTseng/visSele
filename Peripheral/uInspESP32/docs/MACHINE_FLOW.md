@@ -752,3 +752,128 @@ resPool(30)          fetchResrc_blocking -> 取不到就丟這幀 + 計數
 
 有兩次組態下 `delta_hist` 全零、`agree`/`disagree` 都是 0,而判定照常產生 ——
 **時間戳配對那條路沒有被走到**。這是整套安全論證的證據來源,**未查明**。
+
+# 2026-08-10 凌晨:含影像輸出的整體 profile
+
+問題:**開著影像輸出時,整條管線的時間花在哪裡?哪一段在關鍵路徑上?**
+
+四個條件,除了預覽以外完全相同,各 60 秒,20000 (plate freq)、真實料件、
+`fi_hold.mjs` 開生產用的 FI session:
+
+```
+                     cam_avg  cam_max   accept/60s   核心內部
+off   FI,不訂閱串流    18.1ms   32.0ms      846       insp queue 0.05 / inspect 7.10
+raw   FI + 原始 RGBA   17.7ms   53.3ms      841       insp queue 0.03 / inspect 6.67
+jpeg  FI + JPEG 85     18.1ms   33.7ms      845       insp queue 0.03 / inspect 7.02
+quiet raw + 全靜音log  18.3ms  176.8ms      852       (見下)
+```
+
+`cam_avg_us` 是**相機觸發到板子處理完判定**,也就是關鍵路徑本身。
+
+## 結論一:影像輸出已經不在關鍵路徑上了
+
+平均 17.7 / 18.1 / 18.1 ms —— 三者的差距 0.4ms,小於條件之間的重跑誤差。
+接受數 841/845/846 也一樣。**在佇列改成非阻塞之後,預覽對平均延遲與產能
+都沒有可測量的影響**;8/09 記錄的 88ms vs 22ms 差距不復存在。
+
+留下的只有尾巴:`cam_max` 32.0 (off) 對 53.3 (raw),約 +20ms,
+而且只發生在預覽落後的那幾幀。
+
+## 結論二:核心自己只佔 18ms 裡的 7ms,而且全在檢驗
+
+一幀的核心內帳(raw 條件):
+
+```
+inspQueue 等待     0.03ms 平均 (最大 8.6)
+檢驗本身           6.67ms 平均 (最大 37.5)   <- 核心唯一的大項
+perifSendQueue 等  0.01ms 平均
+serial write       0.02ms 平均
+────────────────────────────────
+核心合計           約 6.7ms
+板子量到的總長     17.7ms
+差額               約 11ms = 曝光 + 讀出 + USB + 板端處理
+```
+
+**這 11ms 這個行程量不到**,只能用減法得到 —— 但它現在是有名字的殘量,
+不是「上游」。
+
+## `insp split` 的 inspect 一直是 0.00 —— 儀器自己壞了
+
+8/09 把 `enq_us` 的戳記移到 push 之前時,**沒有把讀它的統計區塊一起移**,
+於是統計讀到的是初始值 0,`inspect` 印出 avg 0.00ms **且** max 0.00ms。
+一個讀到零的計時器看起來像一段很快的階段,這是儀器出錯最貴的一種形式。
+修正後同一台機器同一個設定,那一段是 **6.6-7.1ms**。
+
+**規則:平均與最大同時為零的計時器,先懷疑儀器,不要當成結果。**
+
+## 冗餘 log:每幀 26 行以上,一分鐘就把飛行記錄器蓋掉
+
+ring 是 65534 槽,實測一次 60 秒的執行寫掉 **6.7 萬行**。
+也就是說,**事故之後抓的 dump 已經不含事故**。
+
+先量了它值不值得修:`INSP_LOG=warn` 把所有 LOGI 靜音(只剩一次比較,
+不做格式化),延遲 18.0 -> 18.3ms、接受數 851 vs 852 —— **沒有差別**。
+所以這是可讀性問題,不是效能問題,修法就該是**變稀疏而不是刪掉**。
+
+`LOG_EVERY(n, ...)` 每個呼叫點保留 1/n(第一次一定印)。套用之後:
+
+```
+每幀行數     26+  ->  0.26
+同樣 60 秒   67000 行  ->  233 行
+延遲/產能    17.6ms / accept 850  (不變)
+```
+
+刪掉的是純位置標記(`====`、`>>>>`、`New frame go ...`),
+變稀疏的是有數字但每幀重複的(frameInterval、clean_region、img transfer、
+waterLvL、`[perif] report`、`[shape] matches`)。
+
+**`DO INSP>> waterLvL` 本來是 LOGE**,所以連 WARN 過濾都關不掉它 ——
+每幀印一次佇列深度。深度只有在**不是零**的時候才有意義,而那時丟棄計數器
+本來就會叫。
+
+## 順手挖出來的兩個缺陷
+
+### `!sc` 沒有 `type` 就 SIGSEGV —— 根因找到了
+
+`SC` handler 只有第一個比較檢查 NULL:
+
+```c
+char *cmd_type = JFetch_STRING(json, "type");
+if (cmd_type && strcmp(cmd_type, "log_dump") == 0) { ... }
+...
+if (strcmp(cmd_type, "files_existance_check") == 0)   // <- 沒檢查
+```
+
+而 8/09 三次「注入弄壞核心」裡的 `!sc`,送的是
+`{"target":"camera_setting_refresh", ...}` —— 這個指令**屬於 `RC`,不是 `SC`**。
+送錯 handler 應該得到「不認識的指令」,不該是死掉。
+
+**連帶影響:所有先前用 `!sc` 做「相機設定 refresh」的執行,那一行都是在殺核心。**
+
+### 每一顆都是 NA,原因不是站別區域
+
+以為是 `inspection_region` 左緣切到料件(區域 x=1380,配對中心 p50=1352)。
+實際 log 說的是另一件事:
+
+```
+verdict NA: labeledData EMPTY (shape_based raw-gray path?) -- located but unjudgeable
+clean_regions dirty -> part status ...
+```
+
+**兩個獨立的 NA 來源,而且每幀都發生**(所以 `sort` 那關是 0%,
+`overall_pct` 0)。定位是成功的,判定不成立。**未解**。
+
+## Caveats
+
+- 上表的 `inspect 6.7ms` 是在**每顆都 NA** 的狀態下量的。定位與比對有跑
+  (log 有 `[shape] matches`),但判定那段短路了 —— 真正判定得出結果時
+  只會更長,**不會更短**。
+- `quiet` 那一列的 `cam_max` 176.8ms 與 `insp queue max` 100ms 是單一次
+  打嗝,與靜音無關(平均沒動)。**單一最大值不要當成趨勢。**
+- 一次 `jpeg` 執行以 state=112 停機收場(gate loss `unstable`、n=19),
+  已重跑;**halted 的那次數據作廢,不在表內**。
+- `dview split` 的 `wait` 現在不是阻塞,是**預覽落後多久**。
+  它會到 100-270ms,而同一時間關鍵路徑不動 —— 這正是非阻塞要的效果。
+- 影像其實**只送三分之一**:1100 幀裡 750 幀因為 FPS 上限被跳過
+  (`skipped img:750 of n:1100`)。所以上表的 raw/jpeg 成本是
+  **10 fps 的預覽**,不是 30 fps 的。

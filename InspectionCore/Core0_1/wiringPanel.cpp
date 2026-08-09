@@ -231,6 +231,21 @@ uint64_t g_perifWriteCnt = 0;
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
+// Per-frame chatter, thinned to one line in N per call-site.
+//
+// A 60-second run at ~30 fps wrote 94k lines -- 26 per frame -- into a 65k-slot
+// ring. One minute of running therefore overwrote the entire flight recorder,
+// so the dump taken after an incident no longer contained the incident. The
+// lines are individually useful and collectively useless: what a dump needs is
+// the SHAPE of the run plus every warning, not every frame of a healthy one.
+//
+// This is a legibility fix, not a speed one, and the difference was measured:
+// muting every LOGI (INSP_LOG=warn) moved neither the report latency
+// (18.0 -> 18.3ms avg) nor the accepted rate (851 vs 852 in 60s). Anything
+// that must be seen on EVERY frame belongs at WARN or above, not here.
+#define LOG_EVERY(n, ...) do { static unsigned _lc_ = 0; \
+    if ((_lc_++ % (unsigned)(n)) == 0) LOGI(__VA_ARGS__); } while (0)
+
 
 // One serial port, four writers, and until now no lock between them:
 //
@@ -1379,6 +1394,18 @@ void downSampSetup(CameraLayer &camera, cJSON &settingJson)
   // down_samp_level updates entirely so the stream stays at full res
   // (paired with IGNORE_DYNAMIC_VIEW handling in ImageTransferSetup).
   static const bool ignoreDyn = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
+
+  // A message that says nothing about downsampling must change nothing about
+  // it. This is called unconditionally from the ST handler, so any ST -- one
+  // carrying only IMG_STREAMING_JPEG_QUALITY, say -- used to fall through to
+  // the `else` below and force downSampWithCalib back to true. That made every
+  // narrow setting change a hidden view change, which is why single-field ST
+  // injections kept producing results that could not be compared with the run
+  // before them.
+  if (JFetch_NUMBER(&settingJson, "down_samp_level") == NULL &&
+      getDataFromJson(&settingJson, "down_samp_w_calib", NULL) == cJSON_Invalid)
+    return;
+
   double *val = JFetch_NUMBER(&settingJson, "down_samp_level");
   if (val && !ignoreDyn)
   {
@@ -1816,7 +1843,10 @@ static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff,
     if (!std::isnan(c.dark_ratio_max) && ratio > c.dark_ratio_max) bad = true;
     if (!std::isnan(c.dark_area_max)  && area  > c.dark_area_max)  bad = true;
 
-    LOGI("clean_region '%s' [%.0f,%.0f %.0fx%.0f] thr %.0f: dark %.4f (%.4f mm2)%s",
+    // Two per frame while tuning is the point of this line, and two per
+    // frame forever is how the ring gets erased. The same numbers go to the
+    // UI below every frame regardless, which is where they are read.
+    LOG_EVERY(200, "clean_region '%s' [%.0f,%.0f %.0fx%.0f] thr %.0f: dark %.4f (%.4f mm2)%s",
          c.name.c_str(), c.x, c.y, c.w, c.h, c.dark_thresh, ratio, area,
          bad ? "  -> DIRTY" : "");
 
@@ -2025,7 +2055,7 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     std::vector<int> _params = { cv::IMWRITE_JPEG_QUALITY, jpegQ };
     cv::imencode(".jpg", encode_src, _jpeg, _params);
 
-    LOGI("JPEG size: %zu", _jpeg.size());
+    LOG_EVERY(50, "JPEG size: %zu", _jpeg.size());
 
     header[0] = fmt;
     header[1] = (uint8_t)jpegQ;
@@ -2150,7 +2180,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
     BPG_protocol_data *dat = &bpgdat;
 
-    LOGI("DataType_BPG:[%c%c] pgID:%d", dat->tl[0], dat->tl[1],
+    LOG_EVERY(50, "DataType_BPG:[%c%c] pgID:%d", dat->tl[0], dat->tl[1],
          dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
     // RAII cleanup: this BPG message handler is a ~1600-line do/while with
@@ -3789,8 +3819,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     {
       cJSON *retObj = cJSON_CreateObject();
 
+      // An SC without a "type" is a client mistake, not a reason to die.
+      //
+      // Only the FIRST test below checked for NULL; the chain that follows it
+      // (`if (strcmp(cmd_type, "files_existance_check")...`) does not, so any
+      // SC whose payload lacks "type" segfaulted the core. That is the
+      // "SIGSEGV from an !sc with an unexpected payload" seen three times on
+      // 2026-08-09 -- and the payload in question was a camera_setting_refresh,
+      // which belongs to RC, not SC. Sending a message to the wrong handler
+      // must produce an unhandled command, never a crash.
       char *cmd_type = JFetch_STRING(json, "type");
-      if (cmd_type && strcmp(cmd_type, "log_dump") == 0)
+      if (cmd_type == NULL) cmd_type = (char *)"";
+      if (strcmp(cmd_type, "log_dump") == 0)
       {
         // WebUI "flight recorder" snapshot: ask the drainer to dump the entire
         // current ring (incl. verbose lines that never hit disk under the
@@ -4678,7 +4718,7 @@ int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime,
 
 int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *bacpac, CameraLayer *cam, int repeatTime = 1)
 {
-  LOGI("============w:%d h:%d====================cam:%p", test1_cv.cols, test1_cv.rows, cam);
+  LOG_EVERY(100, "============w:%d h:%d====================cam:%p", test1_cv.cols, test1_cv.rows, cam);
   if (test1_cv.empty()) return -1;
   clock_t t = clock();
   bacpac->cam = cam;
@@ -4688,7 +4728,8 @@ int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *
     me.FeatureMatching(test1_cv);
   }
   clock_t new_t = clock();
-  LOGI("%fms \n", (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
+  LOG_EVERY(100, "ImgInspection %fms (CPU time, not wall)",
+            (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
   return 0;
 }
 
@@ -4977,7 +5018,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     }
   }
   pframeT = t;
-  LOGI("=============== frameInterval:%fms \n", interval);
+  LOG_EVERY(100, "=============== frameInterval:%fms \n", interval);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
   CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
@@ -5394,7 +5435,7 @@ int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t c
   // cam_ts-cam_us, and a step here that the device does not see (or vice versa)
   // says which side of the subtraction is unstable.
   static uint64_t prev_cam_ts = 0;
-  LOGI("[perif] report tid:%lld cat:%d cam_ts:%llu d:%lld",
+  LOG_EVERY(100, "[perif] report tid:%lld cat:%d cam_ts:%llu d:%lld",
        (long long)tid, cat, (unsigned long long)cam_ts_us,
        (long long)(prev_cam_ts ? (int64_t)(cam_ts_us - prev_cam_ts) : 0));
   prev_cam_ts = cam_ts_us;
@@ -5437,9 +5478,20 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
 
   MT_LOCK("InspResultAction lock");
 
+  // Wall-clock split of the preview send.
+  //
+  // Every existing timer in this function is clock(), which on this platform is
+  // CPU time -- it cannot see a thread that is waiting, and waiting is exactly
+  // what we are hunting. These four stamps are perif_now_us (monotonic wall)
+  // and they answer the one open question about the preview: of the 66ms it
+  // still costs the verdict path after the queues were made non-blocking, how
+  // much is the report JSON, how much is the image, and how much is neither
+  // (i.e. this frame sat in datViewQueue while the CPU was elsewhere).
+  const uint64_t _w0 = perif_now_us();
+  uint64_t _wRep = _w0, _wImg = _w0;
 
   clock_t t = clock();
-  
+
   uint64_t cur_ms = current_time_ms();
   float cur_Interval =cur_ms-lastImgSendTime;
   if(lastImgSendTime==0)
@@ -5519,6 +5571,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       LOGE("Caught an error!");
     }
   } while (false);
+  _wRep = perif_now_us();
 
   if (*skipImageTransfer == false)
   do
@@ -5571,7 +5624,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       // subscribers is the number this packet was actually delivered to.
       // pushToSubscribers is a fan-out to a list, so "sent" with an empty list
       // is indistinguishable from "not sent" unless the count is printed.
-      LOGI("img transfer(DL:%d) %fms pgID:%d subscribers:%zu\n", _downSampLevel,
+      LOG_EVERY(50, "img transfer(DL:%d) %fms pgID:%d subscribers:%zu\n", _downSampLevel,
            ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000,
            bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
       
@@ -5583,7 +5636,8 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }
 
   } while (false);
-  
+  _wImg = perif_now_us();
+
   if( *skipInspDataTransfer==false ||*skipImageTransfer==false)//if any of them are sent
   do
   {
@@ -5621,8 +5675,41 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }
   }
 
-  LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  // (the bare "%fms" that used to print here was clock() -- CPU time, on a
+  //  thread that mostly waits. `dview split` below reports the same span in
+  //  wall time, split three ways.)
   t = clock();
+
+  // dview split. Reported every 50 sends so the line is readable at 10-40 fps.
+  // `wait` is the frame's age when this thread picked it up: with the queue
+  // non-blocking that is no longer a stall, it is how far the preview is
+  // BEHIND, and it grows exactly when the send cannot keep up.
+  {
+    static uint64_t s_n = 0, s_wait = 0, s_rep = 0, s_img = 0, s_tot = 0;
+    static uint64_t m_wait = 0, m_rep = 0, m_img = 0, m_tot = 0;
+    static uint64_t s_skipImg = 0, s_skipRep = 0;
+    const uint64_t _w1   = perif_now_us();
+    const uint64_t wait  = (imgPipe->dview_enq_us && _w0 > imgPipe->dview_enq_us)
+                         ? (_w0 - imgPipe->dview_enq_us) : 0;
+    const uint64_t rep   = _wRep - _w0;
+    const uint64_t img   = _wImg - _wRep;
+    const uint64_t tot   = _w1  - _w0;
+    s_n++; s_wait += wait; s_rep += rep; s_img += img; s_tot += tot;
+    if (wait > m_wait) m_wait = wait;
+    if (rep  > m_rep)  m_rep  = rep;
+    if (img  > m_img)  m_img  = img;
+    if (tot  > m_tot)  m_tot  = tot;
+    if (*skipImageTransfer) s_skipImg++;
+    if (*skipInspDataTransfer) s_skipRep++;
+    if ((s_n % 50) == 0)
+      LOGE("dview split: wait avg:%.1fms max:%.1fms | rep avg:%.1fms max:%.1fms"
+           " | img avg:%.1fms max:%.1fms | tot avg:%.1fms max:%.1fms"
+           " | skipped img:%llu rep:%llu of n:%llu | q:%d/%d",
+           s_wait/1000.0/s_n, m_wait/1000.0, s_rep/1000.0/s_n, m_rep/1000.0,
+           s_img/1000.0/s_n, m_img/1000.0, s_tot/1000.0/s_n, m_tot/1000.0,
+           (unsigned long long)s_skipImg, (unsigned long long)s_skipRep,
+           (unsigned long long)s_n, datViewQueue.size(), datViewQueue.capacity());
+  }
 
   MT_UNLOCK("");
 }
@@ -6479,7 +6566,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
           
       bool imgSendState=true;
       bool reportSendState=true;
-      LOGI("vqSize:%d  datViewQueueSkipSize:%d",datViewQueue.size(),datViewQueueSkipSize);
+      LOG_EVERY(100, "vqSize:%d  datViewQueueSkipSize:%d",datViewQueue.size(),datViewQueueSkipSize);
       if(datViewQueue.size()>datViewQueueSkipSize)
       {
         imgSendState=false;
@@ -6552,7 +6639,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 {
   imgPipe->host_insp_us = perif_now_us();
 
-  LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d",
+  // Queue depths every frame at ERROR level -- so they survived even a WARN
+  // filter and were the one line a quiet run could not turn off. Depth
+  // matters when it is NOT zero, and the drop counters already shout then.
+  LOG_EVERY(100, "============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d",
        inspQueue.size(), inspQueue.capacity(),
        datViewQueue.size(), datViewQueue.capacity(),
        inspSnapQueue.size(), inspSnapQueue.capacity(),
@@ -6596,7 +6686,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   clock_t t = clock();
 
-  LOGI("====================================");
   // Reduce the captured frame to the gray working image used by inspection +
   // transport. A mono camera (1-channel) keeps its native gray with no copy and
   // flows 1-channel the whole way; a color/replicated frame (3-channel) takes the
@@ -6626,7 +6715,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
   int ret = 0;
-  LOGI("====================================");
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   //stackingC=0;
   // Per-frame sampler origin sync: cover cameras that re-emit ROI
@@ -6693,8 +6781,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
 
     
-    LOGI("====================================");
-    // matchingEng is rebuilt from scratch by the def-load handlers on the WS
+      // matchingEng is rebuilt from scratch by the def-load handlers on the WS
     // thread (ResetFeature + AddMatchingFeature), while this thread is walking
     // the very features being destroyed. Entering inspection mode does exactly
     // that: it reloads the def, and if a frame is already in flight the shape
@@ -6763,8 +6850,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
                         ? "labeledData EMPTY (shape_based raw-gray path?) -- located but unjudgeable"
                         : "labeling_idx past end of labeledData";
 
+        // Thinned: this fires on EVERY frame when the machine is set up
+        // wrong, which is precisely when the ring must still hold the
+        // history that explains why. LOG_EVERY always prints the first one.
         if (na_reason)
-          LOGI("verdict NA: %s (reports:%zu srep:%zu labeling_idx:%d ldat:%zu)",
+          LOG_EVERY(100, "verdict NA: %s (reports:%zu srep:%zu labeling_idx:%d ldat:%zu)",
                na_reason, reports.size(), srep.size(),
                srep.empty() ? -1 : srep[0].labeling_idx, ldat->size());
 
@@ -6864,8 +6954,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       int cs = eval_clean_regions(capImg, cr_mmpp, cr_off, station_clean_json);
       if (cs != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
       {
-        LOGI("clean_regions dirty -> part status %d (was %d)",
-             InspStatusReducer(stat, cs), stat);
+        LOG_EVERY(100, "clean_regions dirty -> part status %d (was %d)",
+                  InspStatusReducer(stat, cs), stat);
         stat = InspStatusReducer(stat, cs);
       }
     }
@@ -6873,7 +6963,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
 
-    LOGI("stat:%d stat_sec:%d",stat,stat_sec);
+    LOG_EVERY(100, "stat:%d stat_sec:%d",stat,stat_sec);
     
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
   }
@@ -6888,29 +6978,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
                         imgPipe->fi.timeStamp_us, 0 };
-    // Two stages of the upstream half, logged where the report leaves the
-    // inspection thread. queue = frame waiting for a free inspector,
-    // inspect = the inspection itself. Anything the board sees beyond
-    // queue+inspect+wait+write is camera exposure, readout and USB transport,
-    // which this process cannot time directly -- but it can now be obtained by
-    // subtraction instead of guessed at.
-    {
-      static uint64_t s_n = 0, s_q_sum = 0, s_i_sum = 0;
-      static uint64_t s_q_max = 0, s_i_max = 0;
-      const uint64_t q_us = (imgPipe->host_insp_us > imgPipe->host_rx_us)
-                          ? (imgPipe->host_insp_us - imgPipe->host_rx_us) : 0;
-      const uint64_t i_us = (msg.enq_us > imgPipe->host_insp_us)
-                          ? (msg.enq_us - imgPipe->host_insp_us) : 0;
-      s_n++; s_q_sum += q_us; s_i_sum += i_us;
-      if (q_us > s_q_max) s_q_max = q_us;
-      if (i_us > s_i_max) s_i_max = i_us;
-      if ((s_n % 100) == 0)
-        LOGE("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
-             "max:%.2fms | n:%llu",
-             s_q_sum / 1000.0 / s_n, s_q_max / 1000.0,
-             s_i_sum / 1000.0 / s_n, s_i_max / 1000.0,
-             (unsigned long long)s_n);
-    }
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -6939,6 +7006,37 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // consumer idle and the machine at 5% CPU -- because the item had not been
     // enqueued yet. The delay was on this side of the queue the whole time.
     msg.enq_us = perif_now_us();
+
+    // Two stages of the upstream half, logged where the report leaves the
+    // inspection thread. queue = frame waiting for a free inspector,
+    // inspect = the inspection itself. Anything the board sees beyond
+    // queue+inspect+wait+write is camera exposure, readout and USB transport,
+    // which this process cannot time directly -- but it can be obtained by
+    // subtraction instead of guessed at.
+    //
+    // This block MUST stay below the enq_us stamp. It used to sit above it, and
+    // read msg.enq_us while it was still the 0 from the initialiser -- so
+    // `inspect` printed exactly 0.00ms avg AND 0.00ms max for every run since
+    // the stamp was moved down. A timer that reads zero looks like a fast
+    // stage, which is the most expensive way for an instrument to be wrong.
+    {
+      static uint64_t s_n = 0, s_q_sum = 0, s_i_sum = 0;
+      static uint64_t s_q_max = 0, s_i_max = 0;
+      const uint64_t q_us = (imgPipe->host_insp_us > imgPipe->host_rx_us)
+                          ? (imgPipe->host_insp_us - imgPipe->host_rx_us) : 0;
+      const uint64_t i_us = (msg.enq_us > imgPipe->host_insp_us)
+                          ? (msg.enq_us - imgPipe->host_insp_us) : 0;
+      s_n++; s_q_sum += q_us; s_i_sum += i_us;
+      if (q_us > s_q_max) s_q_max = q_us;
+      if (i_us > s_i_max) s_i_max = i_us;
+      if ((s_n % 100) == 0)
+        LOGE("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
+             "max:%.2fms | n:%llu",
+             s_q_sum / 1000.0 / s_n, s_q_max / 1000.0,
+             s_i_sum / 1000.0 / s_n, s_i_max / 1000.0,
+             (unsigned long long)s_n);
+    }
+
     const uint64_t _pushT0 = msg.enq_us;
     const bool _pushed = perifSendQueue.push(msg);
     {
@@ -7013,7 +7111,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
 
   
-  LOGI("====================================");
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())
@@ -7049,6 +7146,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // A preview that skips frames is doing its job; a preview that delays a
       // verdict is a defect. The dropped pipe has to be returned to the pool by
       // hand, or the leak is worse than the stall.
+      imgPipe->dview_enq_us = perif_now_us();
       if (!datViewQueue.push(imgPipe))
       {
         image_pipe_info *discard = NULL;
@@ -7071,6 +7169,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     bool skipInspDataTransfer=false;
     bool skipImageTransfer=false;
     bool inspSnap=false;
+    imgPipe->dview_enq_us = perif_now_us(); // sent inline: the queue wait is nil
     InspResultAction(imgPipe, &skipInspDataTransfer, &skipImageTransfer,&inspSnap, &doPassDown);
 
     if (!doPassDown) //then, we need to recycle the resource here
@@ -7107,7 +7206,6 @@ void ImgPipeProcessThread(bool *terminationflag)
     while (inspQueue.pop_blocking(headImgPipe))
     {
 
-      LOGI("============New frame go ImgPipeProcessCenter_imp");
       //delayStartCounter=10000;
       bool doPassDown = false;
       {
@@ -7115,11 +7213,9 @@ void ImgPipeProcessThread(bool *terminationflag)
         std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
         ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
       }
-      LOGI("============ImgPipeProcessCenter_imp done");
       if (!doPassDown)
         bpg_pi.resPool.retResrc(headImgPipe);
 
-      LOGI("============ImgPipeProcessThread finish one frame");
     }
   }
 }

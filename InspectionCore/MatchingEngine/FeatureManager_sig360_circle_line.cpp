@@ -7218,7 +7218,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   std::vector<sbm::MatchResult> ms;
   try { ms = shapeMatcher->match(scene); }
   catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
-  LOGI("[shape] matches=%d", (int)ms.size());
+  { static unsigned _lc = 0; if ((_lc++ % 100) == 0)
+      LOGI("[shape] matches=%d (1 line in 100)", (int)ms.size()); }
   if (dbg)
   {
     fprintf(stderr, "[SHAPE_DBG] scene %dx%d matches=%d mmpp=%.6f\n",
