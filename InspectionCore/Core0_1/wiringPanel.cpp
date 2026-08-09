@@ -12,6 +12,10 @@
 
 #include <sys/stat.h>
 #include <sys/socket.h>   // INSP_PERIF_CONSOLE dev console
+#ifdef __APPLE__
+#include <pthread.h>
+#include <sys/qos.h>
+#endif
 #include <netinet/in.h>
 #include <atomic>         // std::atomic explicit for mingw
 #include <deque>
@@ -193,6 +197,13 @@ double g_perifWriteMaxMs = 0, g_perifWriteSumMs = 0, g_perifWriteLastMs = 0;
 // link, a long wait blames the rate. Same units, same log line, so the two
 // can be compared at a glance instead of inferred from one number.
 double g_perifWaitMaxMs = 0, g_perifWaitSumMs = 0;
+// How long the PRODUCER spends inside push(). push notifies while holding the
+// queue mutex, so if the mutex were contended this is where it would show. It
+// is the discriminator for the wake-up delay: a fast push next to a slow wait
+// means the notify went out promptly and the consumer simply was not
+// scheduled; a slow push means the lock is the problem. Measuring it here
+// avoids instrumenting TSQueue, which every other queue in the core shares.
+double g_perifPushMaxMs = 0;
 // Smallest frame-to-frame interval this camera has actually delivered. The
 // vendor's ResultingFrameRate is behind the CameraLayer API, and this is the
 // better number anyway: it is what the CURRENT ROI, exposure and transport
@@ -5744,6 +5755,24 @@ void PerifConsoleThread(bool *terminationflag)
 // count sent is the channel's pkt_count at send time, incremented on success).
 void PerifSendThread(bool *terminationflag)
 {
+  // This thread is nearly always idle and does almost no work -- 0.43ms of
+  // serial write per report -- which is exactly why the scheduler was happy to
+  // leave it alone for up to 216ms while the inspection threads saturated the
+  // performance cores. Measured: the producer's push() never exceeded 0.050ms,
+  // so the mutex is uncontended and the notify goes out promptly; the delay is
+  // entirely between the notify and this thread running again.
+  //
+  // The latency it adds lands on a hard deadline: a verdict that misses the
+  // CAM->SWITCH window leaves the part unjudged at the ejector. 216ms against a
+  // 396ms budget at plate 26000 is most of the margin, so the ceiling on
+  // throughput is this scheduling gap rather than any throughput of ours.
+  //
+  // USER_INTERACTIVE rather than USER_INITIATED: the work is latency-critical
+  // and negligible in size, which is precisely the case that class exists for,
+  // and on Apple Silicon it also keeps the thread off the efficiency cores.
+#ifdef __APPLE__
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
   while (terminationflag && *terminationflag == false)
   {
     PerifResultMsg msg;
@@ -6055,6 +6084,7 @@ void PerifSendThread(bool *terminationflag)
           g_perifWaitSumMs += _waitMs;
           bool newWaitMax = _waitMs > g_perifWaitMaxMs;
           if (newWaitMax) g_perifWaitMaxMs = _waitMs;
+          const uint64_t _logT0 = perif_now_us();
           if (newWaitMax && _waitMs > 50.0)
             LOGE("perif WAIT SPIKE %.1fms: idle_before %.1fms, depth_at_pop %zu, "
                  "write %.2fms -- %s",
@@ -6062,11 +6092,24 @@ void PerifSendThread(bool *terminationflag)
                  (_idleMs > _waitMs * 0.5)
                    ? "thread was IDLE while it waited -> not woken"
                    : "thread was BUSY -> backlog");
+          if (newWaitMax && _waitMs > 50.0)
+            LOGE("  push_max %.3fms -- %s", g_perifPushMaxMs,
+                 g_perifPushMaxMs > 5.0
+                   ? "producer blocked in push -> MUTEX contention"
+                   : "producer never blocked -> notify was prompt, "
+                     "consumer was NOT SCHEDULED");
           s_prevDoneUs = perif_now_us();
           bool newMax = (ms > g_perifWriteMaxMs) || newWaitMax;
           if (ms > g_perifWriteMaxMs) g_perifWriteMaxMs = ms;
           // Log on every new max (the thing you want to catch) and a periodic
           // heartbeat every 100 writes so you can read the steady state.
+          // Time the logging itself. The spikes came back at 702/705/706ms --
+          // regular to a millisecond, with idle_before ~= wait, which is not the
+          // shape of scheduler jitter. The only other thing this loop does
+          // between one send and the next pop is LOG, and the log path has known
+          // defects (a single-client hang on 4091, a drainer that can die
+          // silently). An instrument that stalls the thread it measures would
+          // produce exactly this, so measure the instrument.
           if (newMax || (g_perifWriteCnt % 100) == 0)
           {
             LOGE("perif write: last:%.2fms max:%.2fms avg:%.2fms | wait last:%.2fms "
@@ -6075,6 +6118,23 @@ void PerifSendThread(bool *terminationflag)
                  _waitMs, g_perifWaitMaxMs, g_perifWaitSumMs / (double)g_perifWriteCnt,
                  (unsigned long long)g_perifWriteCnt, perifSendQueue.size(),
                  perifSendDropCount.load(), newMax ? "  <== NEW MAX" : "");
+            // How long did the logging in THIS iteration take? The spikes are
+            // regular to the millisecond (702/705/706ms) with idle_before ~=
+            // wait, which is not scheduler jitter. Between one send and the
+            // next pop this loop only LOGs, and the log path has known defects
+            // -- a single-client hang on 4091, a drainer that can die. An
+            // instrument that stalls the thread it measures produces exactly
+            // this shape, so measure the instrument. stderr, deliberately: if
+            // the log transport is the suspect it cannot also be the witness.
+            static double s_logMaxMs = 0;
+            const double lms = (double)(perif_now_us() - _logT0) / 1000.0;
+            if (lms > s_logMaxMs)
+            {
+              s_logMaxMs = lms;
+              if (lms > 20.0)
+                fprintf(stderr, "[perif] LOGGING BLOCKED %.1fms -- the "
+                                "instrument is the delay\n", lms);
+            }
 
             // Trigger accounting, for reconciling the three independent counts:
             // what the firmware announced (rx), what we could not judge (missed)
@@ -6702,7 +6762,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     {
       // A clock-sync frame. Nothing to send.
     }
-    else if (!perifSendQueue.push(msg))
+    const uint64_t _pushT0 = perif_now_us();
+    const bool _pushed = perifSendQueue.push(msg);
+    {
+      const double pms = (double)(perif_now_us() - _pushT0) / 1000.0;
+      if (pms > g_perifPushMaxMs) g_perifPushMaxMs = pms;
+    }
+    if (!_pushed)
     {
       // Full: the peripheral can't keep up. Drop the OLDEST so we keep the
       // freshest result flowing, and count the loss -- never block here.
