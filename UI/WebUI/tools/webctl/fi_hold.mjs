@@ -49,6 +49,16 @@ ws.on('open', () => setTimeout(() => {
   const jq = process.env.JPEGQ === undefined ? 85 : Number(process.env.JPEGQ);
   console.log(`[fi] IMG_STREAMING_JPEG_QUALITY=${jq}${jq ? '' : ' (raw RGBA)'}`);
   ws.send(frame('ST', 0, pg++, { IMG_STREAMING_JPEG_QUALITY: jq }));
+  // MAXFPS caps the preview the way the WebUI does, per verdict class. Without
+  // it the defaults decide how much of the stream is actually encoded, and a
+  // throughput run then reports the cost of whatever rate happened to apply --
+  // in the NA-heavy virtual-object runs that was 1 frame in 3.
+  if (process.env.MAXFPS) {
+    const f = Number(process.env.MAXFPS);
+    console.log(`[fi] preview capped at ${f} fps (OK/NG/NA)`);
+    ws.send(frame('ST', 0, pg++, { ImageTransferSetup: {
+      OK_MAX_FPS: f, NG_MAX_FPS: f, NA_MAX_FPS: f } }));
+  }
   ws.send(frame('FI', 0, pg++, { deffile: DEF, frame_count: -1 }));
   if (!process.env.NO_STREAM) ws.send(frame('SB', 0, pg++, { stream: true }));
   else console.log('[fi] NOT subscribing to the image stream');

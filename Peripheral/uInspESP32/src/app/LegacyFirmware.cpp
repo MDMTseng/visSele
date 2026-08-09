@@ -2468,8 +2468,33 @@ static inline void phantomServiceISR()
     return;
   }
 
+  // Width has to satisfy the gate that is actually configured, not a constant.
+  //
+  // This used to emit a fixed 20-tick pulse. Production runs with
+  // pulse_min_width 120, so the gate refused EVERY virtual object as too
+  // narrow -- which is the 88-97% rejection recorded on 2026-08-09 and read
+  // there as "the injector's scheduling is wrong". The scheduling was fine; the
+  // stimulus did not meet the filter. A test fixture that cannot pass the
+  // machine's own entry test measures the entry test, not the machine.
+  //
+  // Aim at the middle of the configured window so the rig is not sitting on
+  // either edge, and keep the pulse symmetric about `now` so the timestamp the
+  // pairing sees is still the centre.
+  // Aim at a physically plausible part (200 ticks ~ 1.3mm of plate travel) and
+  // only move off it to clear the configured limits. Splitting the window
+  // instead -- lo + (hi-lo)/4 -- makes the pulse track the CONFIG rather than
+  // the part, so opening pulse_max_width to 100000 for a throughput run would
+  // emit a pulse two thirds of a revolution wide.
+  int w = 200;
+  {
+    const int lo = (minWidth > 0) ? minWidth : 1;
+    const int hi = (maxWidth > lo) ? maxWidth : (lo * 4);
+    if(w <= lo) w = lo + (lo / 4 ? lo / 4 : 1);
+    if(w >= hi) w = hi - 1;
+    if(w < 2)   w = 2;
+  }
   const uint32_t at = now;
-  if(newPulseEvent(at-10, at+10, at, 20) != 0) VIRT_DROP_N++;
+  if(newPulseEvent(at - w/2, at + w/2, at, w) != 0) VIRT_DROP_N++;
   else VIRT_EMIT_N++;
 
   uint32_t step = period;
