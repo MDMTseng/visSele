@@ -2406,14 +2406,81 @@ static volatile uint32_t PHANTOM_REQ_N  = 0;   // main loop writes
 static volatile uint32_t PHANTOM_DONE_N = 0;   // ISR writes
 static volatile uint32_t PHANTOM_DROP_N = 0;   // ISR writes: the gate refused it
 
+// Virtual objects scheduled in the TICK domain, not against esp_timer.
+//
+// Every phantom source until now paced itself in time, and that is the one
+// thing a real part never does: a part is registered at the plate position the
+// sensor saw it (gate_pulse = SYS_STEP_COUNT), and camera, SWITCH and the
+// ejectors are all reckoned in ticks from there. A time-paced train therefore
+// exercises a path no real part takes -- its spacing is a duration, so it drifts
+// against the plate the moment the speed moves, and every "spacing" conclusion
+// drawn from it silently assumes time and position are interchangeable.
+//
+// Spacing here is a DISTANCE. It is exact regardless of plate speed and speed
+// jitter, and the objects run the same tick arithmetic real parts do.
+//
+// jitter_ticks is not decoration. Perfectly even virtual spacing is the one
+// case where a persistent off-by-N pairing can hide: every object sits at the
+// same offset from its neighbour, so a slip equal to that period looks
+// identical to a correct match. Real parts arrive irregularly and that
+// irregularity is itself the anti-slip mechanism -- see the slip appendix in
+// docs/MACHINE_FLOW.md. A virtual train that wants to stand in for real traffic
+// has to reproduce it.
+//
+// Written by the main loop, read by the ISR. ISR-only state stays in the ISR.
+static volatile uint32_t VIRT_PERIOD_TICKS = 0;   // 0 = off
+static volatile uint32_t VIRT_JITTER_TICKS = 0;   // +/- this many, uniform
+static volatile uint32_t VIRT_EMIT_N       = 0;   // ISR writes
+static volatile uint32_t VIRT_DROP_N       = 0;   // ISR writes: gate refused it
+
 static inline void phantomServiceISR()
 {
-  if(PHANTOM_DONE_N == PHANTOM_REQ_N) return;
-  PHANTOM_DONE_N++;
-  // Same shape a real detection presents: a narrow pulse centred on now. The
-  // width is nominal -- the gate's width filter is what it has to satisfy.
-  const uint32_t at = SYS_STEP_COUNT;
-  if(newPulseEvent(at-10, at+10, at, 20) != 0) PHANTOM_DROP_N++;
+  // A host request wins the tick; the virtual train takes the next one. Same
+  // discipline as the sensor-vs-phantom ordering above, and it keeps the "at
+  // most one newPulseEvent per tick" property that T-7 restored.
+  if(PHANTOM_DONE_N != PHANTOM_REQ_N)
+  {
+    PHANTOM_DONE_N++;
+    // Same shape a real detection presents: a narrow pulse centred on now. The
+    // width is nominal -- the gate's width filter is what it has to satisfy.
+    const uint32_t at = SYS_STEP_COUNT;
+    if(newPulseEvent(at-10, at+10, at, 20) != 0) PHANTOM_DROP_N++;
+    return;
+  }
+
+  static uint32_t next_tick = 0;
+  static uint32_t rng = 0x9E3779B9u;
+
+  const uint32_t period = VIRT_PERIOD_TICKS;
+  if(period == 0)
+  {
+    // Disarm, so re-enabling starts a fresh interval instead of firing
+    // immediately on a schedule left over from the previous run.
+    next_tick = 0;
+    return;
+  }
+
+  const uint32_t now = SYS_STEP_COUNT;
+  // Unsigned difference: correct across the 32-bit wrap, unlike (now >= next).
+  if(next_tick == 0 || (uint32_t)(now - next_tick) >= 0x80000000u) 
+  {
+    if(next_tick == 0) next_tick = now + period;   // first arming
+    return;
+  }
+
+  const uint32_t at = now;
+  if(newPulseEvent(at-10, at+10, at, 20) != 0) VIRT_DROP_N++;
+  else VIRT_EMIT_N++;
+
+  uint32_t step = period;
+  const uint32_t j = VIRT_JITTER_TICKS;
+  if(j)
+  {
+    rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+    step = period + (rng % (2u*j + 1u)) - j;
+    if((int32_t)step < 1) step = 1;
+  }
+  next_tick = now + step;
 }
 
 
@@ -3847,6 +3914,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // running, which is a different and much worse fault.
     retdoc["ph_pend"]=(uint32_t)(PHANTOM_REQ_N-PHANTOM_DONE_N);
     retdoc["ph_drop"]=PHANTOM_DROP_N;
+    // The tick-domain injector: emitted / refused-by-the-gate.
+    retdoc["virt_n"]=VIRT_EMIT_N;
+    retdoc["virt_drop"]=VIRT_DROP_N;
     retdoc["hwm_tid_new"]=HWM_TID_NEW;
     retdoc["hwm_tid_old"]=HWM_TID_OLD;
     retdoc["hwm_gate_new"]=HWM_GATE_NEW;
@@ -4776,6 +4846,48 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
     phantomEmitOne();
+    doRsp=rspAck=true;
+  }
+
+  // A virtual object train paced by PLATE POSITION rather than by time.
+  //
+  //   {"type":"virt_pulse","period_ticks":N,"jitter_ticks":J}   N=0 stops it
+  //
+  // Spacing is a distance, so it holds across a speed change and across speed
+  // jitter -- unlike trig_phantom_train, whose interval is a duration and
+  // therefore drifts against the plate the moment the speed moves. Real parts
+  // are registered at a position; this is the only injector that behaves the
+  // same way.
+  //
+  // Ticks, not millimetres, on purpose: the tick IS the machine's unit of
+  // position (gate_pulse, the stage offsets, SWITCH). Converting from mm here
+  // would bake in the plate geometry at the wrong layer, and the tick<->mm
+  // relation is exactly what V-31 was ambiguous about until it was measured.
+  //   period_ticks at plate_freq f spans period_ticks/(2f) seconds.
+  //
+  // jitter_ticks defaults to a tenth of the period rather than to zero: a
+  // perfectly even train is the one traffic pattern in which an off-by-N
+  // pairing is invisible, because every object sits at the same offset from
+  // its neighbour. Ask for 0 explicitly if that degeneracy is the point.
+  else if(strcmp(type,"virt_pulse")==0)
+  {
+    retdoc["type"]="virt_pulse";
+    retdoc["prev_emitted"]=VIRT_EMIT_N;
+    retdoc["prev_dropped"]=VIRT_DROP_N;
+
+    uint32_t p_ticks = doc["period_ticks"].is<unsigned int>()
+                     ? (uint32_t)doc["period_ticks"] : 0;
+    uint32_t j_ticks = doc["jitter_ticks"].is<unsigned int>()
+                     ? (uint32_t)doc["jitter_ticks"] : (p_ticks/10);
+    if(j_ticks >= p_ticks && p_ticks) j_ticks = p_ticks - 1;  // keep step >= 1
+
+    VIRT_EMIT_N=0; VIRT_DROP_N=0;
+    VIRT_JITTER_TICKS = j_ticks;
+    VIRT_PERIOD_TICKS = p_ticks;      // last: arms the ISR
+
+    retdoc["period_ticks"]=p_ticks;
+    retdoc["jitter_ticks"]=j_ticks;
+    retdoc["plate_freq"]=PLATE_FREQ_SETPOINT;
     doRsp=rspAck=true;
   }
 
