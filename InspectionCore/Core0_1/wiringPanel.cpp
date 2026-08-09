@@ -5056,9 +5056,14 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
     const bool nl = lockMs > s_lockMax, nw = wireMs > s_wireMax;
     if (nl) s_lockMax = lockMs;
     if (nw) s_wireMax = wireMs;
-    if ((nl || nw) && (lockMs > 20.0 || wireMs > 20.0))
-      LOGE("perif tx split: lock %.1fms (max %.1f) | wire %.1fms (max %.1f) -- %s",
-           lockMs, s_lockMax, wireMs, s_wireMax,
+    // Log EVERY stall, not just new maxima, with the byte count and a wall
+    // clock. One sample said 215ms and nothing else; the distribution says
+    // whether it tracks size (a full tty buffer, which the ~1.1KB/s average
+    // makes unlikely) or arrives as isolated stalls (the USB serial device
+    // itself), and whether it is periodic.
+    if (lockMs > 20.0 || wireMs > 20.0)
+      LOGE("perif tx stall: wire %.1fms lock %.1fms bytes %d t %.3fs -- %s",
+           wireMs, lockMs, contentSize, (double)now / 1e6,
            lockMs > wireMs ? "BLOCKED BY ANOTHER SENDER" : "the wire itself");
   }
   return ret;
