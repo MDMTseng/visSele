@@ -247,6 +247,23 @@ def log(fh, msg):
 # the next run opens a camera that will not stream.
 # --------------------------------------------------------------------------
 def core_start(env_extra, logpath):
+    # A core left over from a previous run is the single most destructive state
+    # this harness can be in, and the least visible: it still holds the camera
+    # and the serial port, so the new core gets no frames, DeviceReset appears
+    # to fail, and an external camera probe reports the device wedged. Three
+    # were found alive at once on 2026-08-09, and the runs in between were
+    # measuring a machine with several cores fighting over it. Refuse to add
+    # another.
+    try:
+        out = subprocess.run(["pgrep", "-f", "mac-arm64/visSele"],
+                             capture_output=True, text=True, timeout=15).stdout
+        alive = [x for x in out.split() if x.strip()]
+    except Exception:
+        alive = []
+    if alive:
+        return None, None, ("%d core(s) already running (pid %s) -- refusing to "
+                            "start another" % (len(alive), ",".join(alive)))
+
     env = dict(os.environ)
     # Fault injection is read at static init, so a stale export from an earlier
     # session silently changes what every run below measures. Clear the lot,
@@ -255,6 +272,11 @@ def core_start(env_extra, logpath):
         if k.startswith("INSP_PERIF_"):
             del env[k]
     env["INSP_PERIF_CONSOLE"] = str(PORT)
+    # The perif write/wait statistics are LOGE, and persistence is OFF by
+    # default so they live only in the RAM ring -- which is right for a 24/7
+    # machine and useless for a harness that wants to read them afterwards. A
+    # measurement that cannot be retrieved is not a measurement.
+    env.setdefault("INSP_LOG_PERSIST", "warn")
     env.update(env_extra or {})
     fh = open(logpath, "w")
     p = subprocess.Popen([CORE_BIN], cwd=CORE_DIR, env=env,
@@ -284,30 +306,44 @@ def core_stop(p, fh):
     if p is None:
         return
     try:
-        # SIGINT only, and no escalation. A core killed before it releases the
-        # camera leaves the camera WEDGED: it still enumerates and still accepts
-        # configuration, but AcquisitionStart returns
-        #   USB3Vision write_memory error (invalid-parameter)
-        # and every core started afterwards gets a camera that never delivers a
-        # frame. Calibration then cannot complete, every run reports "never
-        # READY", and the results look like a finding about whatever was being
-        # injected. That is what happened on 2026-08-09: a seven-run noise sweep
-        # measured nothing, including the mildest row that had passed cleanly an
-        # hour earlier.
+        # The core does not reliably shut down on SIGINT, and BOTH ways of
+        # dealing with that produce the same misleading symptom.
         #
-        # This loop used to escalate to SIGTERM after 30s. A core that ignores
-        # SIGINT for a full two minutes is worth a loud complaint and a human;
-        # it is not worth trading for a wedged camera, because the stuck process
-        # costs one run and the wedged camera costs every run after it.
+        #   SIGINT only (what this used to do after the first "fix"): cores
+        #   that ignore it never die. They accumulate -- three were found alive
+        #   at once -- and every one of them still holds the camera and the
+        #   serial port. The next run then cannot get a frame, DeviceReset
+        #   "fails" because a live process is streaming, and an external
+        #   camera probe reports the device as wedged.
+        #
+        #   Escalate to SIGTERM: the core dies, but WITHOUT releasing the
+        #   camera. AcquisitionStart then returns USB3Vision write_memory error
+        #   (invalid-parameter) for every later process until a DeviceReset.
+        #
+        # So both branches look like "the camera is wedged", which is why six
+        # different hypotheses each explained part of a night's data and none
+        # explained all of it. The real defect is upstream of this file: the
+        # core has no shutdown path that releases the camera.
+        #
+        # Given that, escalate -- an immortal core is strictly worse than a
+        # camera that needs a reset, because it silently corrupts every
+        # subsequent run instead of failing one. Then VERIFY: no core may
+        # survive into the next run.
         p.send_signal(signal.SIGINT)
-        for _ in range(240):
+        for _ in range(60):
             if p.poll() is not None:
                 break
             time.sleep(0.5)
         if p.poll() is None:
-            print("WARNING: core pid %s ignored SIGINT for 120s. NOT escalating "
-                  "-- a hard kill wedges the camera. Stop it by hand." % p.pid,
-                  flush=True)
+            p.terminate()
+            for _ in range(40):
+                if p.poll() is not None:
+                    break
+                time.sleep(0.5)
+        if p.poll() is None:
+            print("WARNING: core pid %s survived SIGINT and SIGTERM. Every run "
+                  "after this one is measuring a machine with two cores on it."
+                  % p.pid, flush=True)
     except Exception:
         pass
     try:
