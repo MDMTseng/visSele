@@ -219,57 +219,82 @@ WAIT SPIKE 148.0ms: idle_before 282.7ms, depth_at_pop 1 -> 執行緒 IDLE
 
 ---
 
-## 附錄:送出執行緒喚醒延遲的排除進度(2026-08-09)
+## 附錄:報告路徑的延遲 —— 完整拆解、排除紀錄、重現方法(2026-08-09)
 
-尖峰:`wait` 66-706ms,而 `idle_before > wait`(東西進佇列時執行緒已閒置)。
+### 結論(全部 [驗])
 
-**已排除,每一項都有量測:**
+```
+gate -> report           480 ms @plate10000   料件走路;隨盤速反比
+  └ camera -> report      14 ms (avg)         電子,不隨盤速變化
+      ├ inspect          9.78 ms avg / 96 max  有配方;無配方時 2.02ms
+      ├ queue(等檢驗)   0.13 ms avg / 55 max
+      ├ wait(等送出)    0.59 ms avg / 112 max
+      └ write(串列)     0.39 ms avg / 215 max  ← 尾巴第一名
+            ├ 等鎖       0.0 ms avg / 0.1 max   perif_tx_lock 沒被搶
+            └ 上線       215 ms                 write() 被阻塞
+
+預算 CAM->SWITCH = (29900 - 9315) / (2 x plate_freq)
+  plate 10000 -> 1029 ms      plate 26000 -> 396 ms
+```
+
+**平均完全不是問題(14ms 對 396ms),尾巴才是。**
+單次 215ms 的串列阻塞會把料件推過截止線:出現該狀況的那一輪
+`UNANSWERED` 是 31,平時是 4-10。
+
+### 為什麼 215ms 不是頻寬
+
+230400 baud 下 215ms 可以送 6KB,而一個報告封包約 100 位元組。
+整條線的實際流量約 11 筆/秒 x 100B = **1.1KB/s,對 23KB/s 的容量**。
+所以是 `write()` 呼叫被阻塞(驅動或裝置端 TX 緩衝),不是在傳資料。
+
+**下一刀的兩個位置**:
+1. 核心開序列埠時的**流控設定** —— 若 RTS/CTS 開著而裝置沒即時拉線,
+   就會出現這種阻塞。
+2. **裝置端 RX 是否來得及排空** —— `setRxBufferSize` 有前科:
+   256B 預設曾造成長封包損毀(見 CAVEATS)。
+
+### 儀器(都在 `wiringPanel.cpp`,LOGE,要 dump 或 `INSP_LOG_PERSIST` 才讀得到)
+
+| log 前綴 | 給出什麼 |
+|---|---|
+| `insp split` | `queue` / `inspect` |
+| `perif write` | `write` / `wait` 的 avg 與 max,`qdepth`,`drops` |
+| `perif WAIT SPIKE` | `idle_before`、`depth_at_pop`、判定忙碌還是閒置 |
+| `perif tx split` | `lock` 與 `wire` 分開 |
+| `report_latency.cam_*`(韌體) | 相機->判定,即電子延遲 |
+
+重現:`python3 tools/soak_sched.py` 起 core ->
+`node UI/WebUI/tools/webctl/enter_inspection.mjs` 載配方 ->
+治具送 `plate.freq` + `stepper_enable` + `enter_insp_mode` ->
+結束後從最新的 `crash_*.dump` grep 上面的前綴。
+
+### 排除紀錄(不要重做這些)
+
+尖峰原本是 `wait` 66-706ms,而 `idle_before > wait`(東西進佇列時執行緒已閒置)。
+針對「交接」提出的五個假說,**每一個都有乾淨的量測,而每一個都無關**:
 
 | 候選 | 判準 | 結果 |
 |---|---|---|
 | 積壓 | `depth_at_pop` 與 `idle_before` | depth 0-2,idle > wait → 不是積壓 |
 | 鎖競爭 | 生產者 `push()` 耗時 | **max 0.050ms** → 鎖沒被搶 |
-| 漏通知 | 讀 `TSQueue` | 正規 `condition_variable` + `notify` |
-| 排程優先權 | 提到 `QOS_CLASS_USER_INTERACTIVE` | 尖峰**沒有**消失 |
+| 漏通知 | 讀 `TSQueue` | 正規 `condition_variable` + predicate |
+| 排程優先權 | 提到 `QOS_CLASS_USER_INTERACTIVE` | 尖峰**沒有**消失(保留,但不是修法) |
 | 儀器自己 | 計時 `LOGE` 本身 | 從未超過 20ms |
 
-**結果:兇手是儀器自己,而且在佇列的另一側。**
+**真正的原因:`enq_us` 蓋在訊息「建構」時,不是「入佇列」時。**
+中間隔著核心端配對(`perifPairFrameForReport`)與拆解記錄,全被算進
+消費者看到的「佇列等待」。所以那五個假說**必然**全部失敗 ——
+它們瞄準佇列之後,而時間花在佇列之前,東西那時還沒進去。
 
-`enq_us` 蓋在訊息**建構**時,不是**入佇列**時。中間隔著核心端配對
-(`perifPairFrameForReport`)與拆解記錄 —— 全都被算進消費者看到的「佇列等待」。
-所以上面五個針對交接的假說**必然全部失敗**:它們瞄準的是佇列之後,
-而時間花在佇列之前,東西那時還沒進去。
+修正(在 `push` 前一行蓋章)後:`wait` avg 2.98-4.18ms -> **0.59ms**,
+max 706-808ms -> **112ms**。
 
-改成在 `push` 前一行蓋章之後:
+### 兩條方法上的教訓
 
-```
-              修正前          修正後
-wait avg   2.98-4.18ms  ->   0.59ms
-wait max    706-808ms   ->   112ms
-```
+**一、五個假說連續落空時,懷疑量測的邊界,不要找第六個假說。**
+「wait」這個名字本身就是陷阱 —— 它讓人從不問起點在哪。
 
-殘留仍有一個 112ms 尖峰,而尾巴最大的單項變成**串列寫入**。
-再把寫入拆成「等鎖」與「上線」:
-
-```
-perif tx split: lock 0.0ms (max 0.1) | wire 215.0ms -- the wire itself
-```
-
-**是線本身。** `perif_tx_lock` 幾乎沒有競爭(max 0.1ms),
-所以不是報告排在狀態輪詢後面。
-
-但 215ms 也**不是頻寬**:230400 baud 下那是 6KB 的量,而封包只有約 100 位元組;
-整體流量約 11 筆/秒 x 100B = 1.1KB/s,對 23KB/s 的線。
-所以是**寫入呼叫被阻塞**(驅動或裝置端 TX 緩衝),不是在傳資料。
-
-代價是真的:那一輪 `UNANS` 31(平時 4-10),`cam_max` 499ms。
-**這是目前吞吐天花板的第一名。** 下一刀:看核心開序列埠時的流控設定,
-以及裝置端 RX 是否來不及排空。
-
-**教訓**:五個假說全部落空時,先懷疑量測的**邊界**,不要再找第六個假說。
-「wait」這個名字讓我從沒問過它的起點在哪裡。
-
-**方法上的注意**:第一版只記了「記錄當下的 `qdepth`」,而那個數字**什麼都
-分不出來** —— 兩個假說都能給出 qdepth 0。要分開它們,需要的是
-**取出當下**的深度加上**執行緒閒置多久**,兩個數字。一個數字看起來像證據,
-實際上不是。
+**二、一個數字看起來像證據,但可能什麼都分不出來。**
+第一版只記了「記錄當下的 `qdepth`」,而積壓與沒被喚醒**都會**給出 qdepth 0。
+要分開它們需要兩個數字:**取出當下**的深度,加上**執行緒閒置多久**。
+同樣地,`write` 一個數字分不開「等鎖」與「上線」,拆開才看得到是線本身。
