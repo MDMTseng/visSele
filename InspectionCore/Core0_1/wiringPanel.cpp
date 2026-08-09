@@ -5576,7 +5576,26 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
   if (*skipImageTransfer == false)
   do
   {
-    // LOGI(">>>>");
+    // INSP_PERIF_FAULT_DVIEW_SLEEP_MS=<n>: pretend the encode is n ms slower.
+    //
+    // "Is the preview off the critical path?" was answered by comparing raw,
+    // JPEG and no-stream -- three points that differ by a millisecond or two,
+    // which is not enough spread to prove anything about a preview that gets
+    // genuinely slow (a bigger sensor, a busier host, a stalled client). This
+    // makes the cost a dial, so the claim can be tested where it would break
+    // rather than where it is comfortable.
+    //
+    // Read once, at first use: it is a bench fault, and a value that could
+    // change under a running machine would make two frames incomparable.
+    static const int dviewSleepMs = []{
+      const char *e = getenv("INSP_PERIF_FAULT_DVIEW_SLEEP_MS");
+      int v = e ? atoi(e) : 0;
+      if (v > 0) LOGE("FAULT INJECTION: preview send padded by %dms per frame", v);
+      return v > 0 ? v : 0;
+    }();
+    if (dviewSleepMs)
+      std::this_thread::sleep_for(std::chrono::milliseconds(dviewSleepMs));
+
     clock_t img_t = clock();
     static cv::Mat test1_buff;  // phase 3a: was acvImage
 
@@ -7113,20 +7132,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   
   if (doPassDown)
   {
-    if(datViewQueue.size()==datViewQueue.capacity())
-    {
-      //full, skip the most important data is send to perifCH(inspection machine)
-      
-      LOGI("SKIP datViewQueue!! info recycle");
-      //recycle the resource here
-      if (imgPipe->datViewInfo.report_json)
-        cJSON_Delete(imgPipe->datViewInfo.report_json);
-      imgPipe->datViewInfo.report_json = NULL;
-      bpg_pi.resPool.retResrc(imgPipe);
-      //do not wait here
-      //TODO: make skip counter let data view queue know
-    }
-    else
     {
       // NEVER block the inspection thread on the preview.
       //
@@ -7146,6 +7151,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // A preview that skips frames is doing its job; a preview that delays a
       // verdict is a defect. The dropped pipe has to be returned to the pool by
       // hand, or the leak is worse than the stall.
+      //
+      // The drop-oldest below was DEAD CODE until now. A `size()==capacity()`
+      // test sat in front of it and, when full, threw away the frame being
+      // offered -- the NEWEST one -- and recycled it. So under load the preview
+      // showed a ten-frame-old queue draining while every fresh frame was
+      // discarded at the door: the live view lagged by the whole queue and
+      // never caught up, and the drop counter stayed at zero the entire time
+      // because that path was never reached. Measured with the encode padded by
+      // 500ms/frame: datViewDropCount 0, preview wait avg 413ms, max 1.5s.
+      //
+      // A preview is only worth showing if it is showing NOW. Push
+      // unconditionally; if the queue is full, evict the stalest frame and let
+      // the new one in.
       imgPipe->dview_enq_us = perif_now_us();
       if (!datViewQueue.push(imgPipe))
       {
