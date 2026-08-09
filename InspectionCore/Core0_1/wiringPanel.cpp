@@ -169,6 +169,12 @@ std::atomic<int> perifSendDropCount{0};
 // dropping them is correct, but silently dropping them hides how far behind the
 // preview is running.
 std::atomic<int> datViewDropCount{0};
+// Frames dropped because inspection was behind, and because the image pool was
+// dry. Both are the price of never stalling acquisition, and both must be
+// visible: a pipeline that silently drops is indistinguishable from one that
+// silently stalls, and the two need opposite fixes.
+std::atomic<int> inspQueueDropCount{0};
+std::atomic<int> poolEmptyDropCount{0};
 
 // --- Peripheral protocol dialect -------------------------------------------
 // uInspMEGA and uInspESP32 correlate a result to a part in incompatible ways:
@@ -4979,11 +4985,22 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   // LOGE("finfo.wh:%d,%d", finfo.width,finfo.height);
   
 
-  image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc_blocking();
+  // Same rule one stage earlier: an empty pool must not stall the camera.
+  //
+  // fetchResrc_blocking parks the acquisition thread until somebody downstream
+  // returns a buffer, so a slow consumer anywhere -- preview, snapshot, a
+  // stalled inspection -- reaches all the way back and holds up every frame.
+  // Take a buffer if one is free, otherwise drop THIS frame and come back for
+  // the next one; the pipeline stays current instead of falling behind by
+  // however long the slowest consumer took.
+  image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc();
   if (headImgPipe == NULL)
   {
-    LOGE("HEAD IMG pipe is NULL");
-    return CameraLayer::NAK;
+    int n = ++poolEmptyDropCount;
+    if ((n % 50) == 1)
+      LOGE("image pool empty -> dropped a frame (cumulative: %d). A consumer "
+           "is holding buffers; acquisition is not blocking on it.", n);
+    return CameraLayer::ACK;
   }
 
   headImgPipe->camLayer = &cl_obj;
@@ -5035,7 +5052,32 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     // LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
 
     headImgPipe->host_rx_us = perif_now_us();
-    if (inspQueue.push_blocking(headImgPipe) == false)
+    // Never block acquisition on inspection.
+    //
+    // push_blocking here makes one slow frame delay EVERY part after it: the
+    // acquisition thread stops, frames pile up inside the camera driver, and
+    // the latency that reaches the board grows without bound until objects
+    // start arriving at the ejector unjudged. Dropping instead costs exactly
+    // one part -- it gets no verdict, nothing fires, and it recirculates for
+    // another pass, which is what this machine does with an unjudged part
+    // anyway. One part lost beats every part late.
+    //
+    // Oldest first, like perifSendQueue: the freshest frame is the one whose
+    // object still has budget left before SWITCH.
+    if (inspQueue.push(headImgPipe) == false)
+    {
+      image_pipe_info *discard = NULL;
+      if (inspQueue.pop(discard) && discard != NULL)
+      {
+        image_pipe_info_gc(*discard, bpg_pi.resPool);
+        int n = ++inspQueueDropCount;
+        if ((n % 50) == 1)
+          LOGE("inspQueue full -> dropped oldest frame (cumulative: %d). "
+               "Inspection is behind; acquisition is NOT waiting for it.", n);
+      }
+      inspQueue.push(headImgPipe);
+    }
+    if (false)
     {
       LOGE("NO resource can be used.....");
       // imagePipeBuffer.clear();
