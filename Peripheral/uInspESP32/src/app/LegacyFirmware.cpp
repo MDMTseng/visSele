@@ -3975,6 +3975,72 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
 
 
+    // The funnel: one acceptance ratio per gate, so tuning has a number to aim
+    // at instead of a symptom to guess from.
+    //
+    // Every "the rate will not come up" on 2026-08-09 was a DIFFERENT stage
+    // throttling, and they look identical from outside -- parts on the plate,
+    // machine running, throughput low. The counters to tell them apart all
+    // existed; what did not exist was the chain that turns them into "this
+    // stage passes 22%, and the loss is spacing".
+    //
+    // Denominator is the stage's own input, not the raw edge count, so a stage
+    // is judged on what reached it. The raw edges stay visible as `edges` so
+    // the whole chain can still be multiplied out.
+    {
+      JsonObject jY = retdoc.createNestedObject("yield");
+      const uint32_t edges  = GATE_EDGES;
+      const uint32_t acc    = GATE_ACCEPT;
+      const uint32_t judged = SEL1_Count + SEL2_Count + SEL3_Count + NA_Count;
+      const uint32_t acted  = SEL1_Count + SEL2_Count + SEL3_Count;
+
+      jY["edges"] = edges;
+
+      // gate: sensor edges -> registered objects
+      {
+        JsonObject g = jY.createNestedObject("gate");
+        g["in"]=edges; g["out"]=acc;
+        g["pct"]= edges ? (100.0*acc/edges) : 0.0;
+        // The dominant loss, named. Ranking them here rather than in the UI
+        // keeps the reasons and their meaning in the same place.
+        const char *why="none"; uint32_t worst=0;
+        struct { const char *n; uint32_t v; } R[] = {
+          {"rate",GATE_REJ_RATE},{"width",GATE_REJ_WIDTH},
+          {"unstable",GATE_REJ_UNSTABLE},{"dist",GATE_REJ_DIST},
+          {"busy",GATE_REJ_BUSY},{"blocked",GATE_REJ_BLOCKED},
+          {"stepper_off",GATE_REJ_STEPPER_OFF},{"gate_off",GATE_REJ_GATE_OFF},
+          {"dryrun",GATE_REJ_DRYRUN},
+        };
+        for(unsigned i=0;i<sizeof(R)/sizeof(R[0]);i++)
+          if(R[i].v>worst){worst=R[i].v; why=R[i].n;}
+        g["loss"]=why; g["loss_n"]=worst;
+      }
+
+      // verdict: registered objects -> objects that got an answer at all
+      {
+        JsonObject v = jY.createNestedObject("verdict");
+        v["in"]=acc; v["out"]=judged;
+        v["pct"]= acc ? (100.0*judged/acc) : 0.0;
+        // UNANSWERED is the report that never arrived in time; SKIP passed the
+        // selector unjudged and raises no error, so it under-reports as err=2.
+        v["unanswered"]=UNANSWERED_Count;
+        v["skip"]=SKIP_Count;
+        v["loss"]= (UNANSWERED_Count>=SKIP_Count) ? "unanswered" : "skip";
+      }
+
+      // sort: answered objects -> objects an ejector acted on. NA is not a
+      // fault: nothing fires and the part recirculates for another pass.
+      {
+        JsonObject a2 = jY.createNestedObject("sort");
+        a2["in"]=judged; a2["out"]=acted;
+        a2["pct"]= judged ? (100.0*acted/judged) : 0.0;
+        a2["na"]=NA_Count; a2["loss"]="na";
+      }
+
+      // End to end, the number to maximise.
+      jY["overall_pct"] = edges ? (100.0*acted/edges) : 0.0;
+    }
+
     JsonObject jCountInfo  = retdoc.createNestedObject("count");
     jCountInfo["SEL1"]=SEL1_Count;
     jCountInfo["SEL2"]=SEL2_Count;
