@@ -5031,7 +5031,15 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
 
   int contentSize=ret;
 
-  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
+  // Split the lock wait from the wire time. "write 140ms" was measured around
+  // the whole call, and this lock is shared with every other thing that talks
+  // to the device -- console commands, the WebUI's live polling, RESET. At
+  // 230400 baud a ~100 byte frame is ~4ms, so 140ms is somebody else holding
+  // the port, not the port being slow. Which of the two it is decides the fix:
+  // a faster link, or not serialising reports behind status polls.
+  const uint64_t _lkT0 = perif_now_us();
+  std::unique_lock<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
+  const uint64_t _lkT1 = perif_now_us();
   if(directStringFormat)
   {
     ret = perifCH->send_json_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
@@ -5039,6 +5047,19 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
   else
   {
     ret = perifCH->send_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
+  }
+  {
+    const uint64_t now = perif_now_us();
+    const double lockMs = (double)(_lkT1 - _lkT0) / 1000.0;
+    const double wireMs = (double)(now - _lkT1) / 1000.0;
+    static double s_lockMax = 0, s_wireMax = 0;
+    const bool nl = lockMs > s_lockMax, nw = wireMs > s_wireMax;
+    if (nl) s_lockMax = lockMs;
+    if (nw) s_wireMax = wireMs;
+    if ((nl || nw) && (lockMs > 20.0 || wireMs > 20.0))
+      LOGE("perif tx split: lock %.1fms (max %.1f) | wire %.1fms (max %.1f) -- %s",
+           lockMs, s_lockMax, wireMs, s_wireMax,
+           lockMs > wireMs ? "BLOCKED BY ANOTHER SENDER" : "the wire itself");
   }
   return ret;
 }
