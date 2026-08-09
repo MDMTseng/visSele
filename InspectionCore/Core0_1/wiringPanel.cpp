@@ -165,6 +165,10 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        uint64_t enq_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
+// Preview frames dropped because the view queue was full. Visible on purpose:
+// dropping them is correct, but silently dropping them hides how far behind the
+// preview is running.
+std::atomic<int> datViewDropCount{0};
 
 // --- Peripheral protocol dialect -------------------------------------------
 // uInspMEGA and uInspESP32 correlate a result to a part in incompatible ways:
@@ -6985,7 +6989,38 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     }
     else
     {
-      datViewQueue.push_blocking(imgPipe);
+      // NEVER block the inspection thread on the preview.
+      //
+      // push_blocking here put a diagnostic on the critical path of a verdict.
+      // The preview send is slow -- raw RGBA is ~1MB a frame and measured 200ms
+      // -- so datViewQueue (capacity 10) fills, and the thread that blocks on it
+      // is the SAME one that enqueues the verdict for the board. Measured
+      // camera->verdict went 22ms with the preview off to 223ms with it on, and
+      // the frame-skip logic could not help: it runs on the consumer side, long
+      // after the producer has already stopped.
+      //
+      // Worse, a blocked inspection thread stops draining inspQueue, so the
+      // image pool empties and acquisition blocks in fetchResrc_blocking too --
+      // the preview back-pressures all the way to the camera.
+      //
+      // Drop the oldest instead, exactly as perifSendQueue does, and count it.
+      // A preview that skips frames is doing its job; a preview that delays a
+      // verdict is a defect. The dropped pipe has to be returned to the pool by
+      // hand, or the leak is worse than the stall.
+      if (!datViewQueue.push(imgPipe))
+      {
+        image_pipe_info *discard = NULL;
+        if (datViewQueue.pop(discard) && discard != NULL)
+        {
+          image_pipe_info_gc(*discard, bpg_pi.resPool);
+          int n = ++datViewDropCount;
+          if ((n % 50) == 1)
+            LOGE("datViewQueue full -> dropping oldest preview frame "
+                 "(cumulative: %d). The preview is behind; inspection is not "
+                 "waiting for it.", n);
+        }
+        datViewQueue.push(imgPipe);
+      }
     }
   }
   else
