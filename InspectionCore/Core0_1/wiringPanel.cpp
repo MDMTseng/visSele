@@ -6720,7 +6720,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
-                        imgPipe->fi.timeStamp_us, perif_now_us() };
+                        imgPipe->fi.timeStamp_us, 0 };
     // Two stages of the upstream half, logged where the report leaves the
     // inspection thread. queue = frame waiting for a free inspector,
     // inspect = the inspection itself. Anything the board sees beyond
@@ -6762,7 +6762,17 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     {
       // A clock-sync frame. Nothing to send.
     }
-    const uint64_t _pushT0 = perif_now_us();
+    // Stamp enq_us HERE, immediately before the push -- not at construction.
+    //
+    // It used to be set in the initialiser above, and everything between the
+    // two is producer work: the core-side pairing (perifPairFrameForReport) and
+    // the split logging. All of that was landing in what the consumer reported
+    // as "queue wait", which is why the wake-up delay survived every test aimed
+    // at the handoff: the mutex was uncontended, the notify prompt, the
+    // consumer idle and the machine at 5% CPU -- because the item had not been
+    // enqueued yet. The delay was on this side of the queue the whole time.
+    msg.enq_us = perif_now_us();
+    const uint64_t _pushT0 = msg.enq_us;
     const bool _pushed = perifSendQueue.push(msg);
     {
       const double pms = (double)(perif_now_us() - _pushT0) / 1000.0;
