@@ -334,6 +334,27 @@ static LatHist g_histEngLock;
 static LatHist g_histMatch, g_histRepJson;
 // Process-wide CPU across the match, to be read NEXT TO g_histMatch.
 static LatHist g_histMatchCpu;
+
+// Keep the picture when a frame costs far more than the others.
+//
+// The remaining question is no longer "what is blocking" -- process cpu across
+// the match runs at 1.9x wall, so nothing is blocked and the work is genuinely
+// there. It is "why do some frames cost ~90x the CPU of the median one"
+// (match cpu 8.64ms typical, 766ms at the peak). That is a property of the
+// IMAGE, and no timing histogram can answer it. So keep the image.
+//
+// Written by a separate thread on purpose: cv::imwrite of a 5MP frame is tens
+// of milliseconds, and putting that on the inspection thread would make the
+// instrument the delay -- the exact mistake already made once here with the
+// logging path.
+struct SlowFrame {
+  cv::Mat img;          // deep copy: the capture buffer is reused immediately
+  double match_ms, match_cpu_ms;
+  uint64_t seq;
+};
+TSQueue<SlowFrame> slowFrameQueue(4);
+static std::atomic<int> g_slowSaved{0};
+static std::atomic<int> g_slowDropped{0};
 static uint64_t g_lastMatchProcCpuUs = 0;
 // Page faults across the stage. After the announcement wait, the engine lock,
 // preemption and the allocator were each ruled out by measurement, faulting is
@@ -7090,6 +7111,43 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
         }
 }
 
+// Drains slowFrameQueue and writes the images out. See the note on SlowFrame:
+// this is off the inspection thread so the act of keeping evidence cannot
+// become the thing being measured.
+void SlowFrameSaveThread(bool *terminationflag)
+{
+  while (terminationflag && *terminationflag == false)
+  {
+    SlowFrame sf;
+    try
+    {
+      while (slowFrameQueue.pop_blocking(sf))
+      {
+        // mkdir on every write rather than once at startup: the directory is
+        // cheap to create and this way a run that has its data/ replaced (the
+        // harness does that) still lands its evidence somewhere.
+        cross_mkdir("data/slowframes");
+        char path[512];
+        snprintf(path, sizeof(path), "data/slowframes/slow_%04llu_%.0fms_cpu%.0fms.png",
+                 (unsigned long long)sf.seq, sf.match_ms, sf.match_cpu_ms);
+        try
+        {
+          if (cv::imwrite(path, sf.img))
+            LOGE("slow frame saved: %s  (match %.1fms, process cpu %.1fms)",
+                 path, sf.match_ms, sf.match_cpu_ms);
+          else
+            LOGE("slow frame WRITE FAILED: %s", path);
+        }
+        catch (const cv::Exception &e)
+        {
+          LOGE("slow frame imwrite threw: %s", e.what());
+        }
+      }
+    }
+    catch (TS_Termination_Exception &e) { break; }
+  }
+}
+
 void PerifWatchdogThread(bool *terminationflag)
 {
 #ifdef __APPLE__
@@ -7639,6 +7697,29 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
     g_lastMatchUs = perif_now_us() - _mT0;
     g_histMatch.add(g_lastMatchUs / 1000.0);
+    {
+      // Threshold, cap and queue depth are all bounded so a bad run cannot
+      // fill the disk or stall inspection: over the cap it simply stops, and a
+      // full queue drops rather than waits.
+      static const double _slowMs = []{
+        const char *e = getenv("INSP_SLOW_FRAME_MS");
+        return e ? atof(e) : 50.0;
+      }();
+      static const int _slowCap = []{
+        const char *e = getenv("INSP_SLOW_FRAME_MAX");
+        return e ? atoi(e) : 40;
+      }();
+      const double _mms = g_lastMatchUs / 1000.0;
+      if (_slowMs > 0 && _mms >= _slowMs && g_slowSaved.load() < _slowCap)
+      {
+        SlowFrame sf;
+        sf.img = capImg.clone();
+        sf.match_ms = _mms;
+        sf.match_cpu_ms = g_lastMatchProcCpuUs / 1000.0;
+        sf.seq = (uint64_t)g_slowSaved.fetch_add(1);
+        if (!slowFrameQueue.push(sf)) g_slowDropped.fetch_add(1);
+      }
+    }
     {
       const RUSnap _ru1 = rusnap();
       // Process-wide, so other threads contribute -- but a spike of thousands
@@ -8394,6 +8475,8 @@ int mainLoop(bool realCamera = false)
       LOGE("OpenCV threads: default %d", cv::getNumThreads());
   }
   std::thread _perifWatchdogThread(PerifWatchdogThread, &terminationFlag);
+  std::thread _slowFrameSaveThread(SlowFrameSaveThread, &terminationFlag);
+  setThreadPriority(_slowFrameSaveThread, TP_BULK, "slow-frame-save");
   setThreadPriority(_perifSendThread, TP_DEADLINE, "perif-send");
   // Same priority as the thread it vouches for, for the reason in its comment.
   setThreadPriority(_perifWatchdogThread, TP_DEADLINE, "perif-watchdog");
