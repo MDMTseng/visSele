@@ -82,7 +82,10 @@ ws.on('message', (data) => {
   if (!h) return;
   counts[h.type] = (counts[h.type] || 0) + 1;
   if (h.type === 'HR') { ws.send(frame('HR', 0, pg++, { a: ['d'] })); return; }
-  if (h.type === 'AK' || h.type === 'ER') {
+  // GS replies come back as their own type, not as AK -- the first version of
+  // this only parsed AK/ER and silently printed nothing while the frames were
+  // arriving and being counted.
+  if (h.type === 'AK' || h.type === 'ER' || h.type === 'GS') {
     const txt = new TextDecoder().decode(new Uint8Array(data).subarray(BPG_HDR));
     // Print pairing health only when it CHANGES. A line every 15s would bury
     // the transition that matters in a run measured in hours.
