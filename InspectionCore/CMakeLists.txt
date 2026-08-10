@@ -386,6 +386,13 @@ target_link_libraries(calib_chessboard PRIVATE MatchingEngine)
 add_executable(jpeg_bench tools/jpeg_bench.cpp)
 target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
 
+# latency_stages -- build the core's timing up one layer at a time, to find the
+# layer where jitter stops being +/-10ms. Links only cJSON on purpose: the
+# camera and the matching engine are later stages and there is no point adding
+# them while the cheap layers are still suspects.
+add_executable(latency_stages tools/latency_stages.cpp)
+target_link_libraries(latency_stages PRIVATE common_lib)
+
 # copy aravis dylib next to the binary for rpath loading (mac)
 if(FEATURE_ARAVIS)
   add_custom_command(TARGET visSele POST_BUILD
