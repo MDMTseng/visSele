@@ -12,6 +12,9 @@
 
 #include <sys/stat.h>
 #include <sys/socket.h>   // INSP_PERIF_CONSOLE dev console
+#ifndef _WIN32
+#include <sys/resource.h> // getrusage: voluntary vs INVOLUNTARY context switches
+#endif
 #ifdef __APPLE__
 #include <pthread.h>
 #include <sys/qos.h>
@@ -170,7 +173,12 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // number. Every other stat here is a fragment of it, and
                        // fragments do not add up to the deadline that is
                        // actually being missed.
-                       uint64_t rx_us; };
+                       uint64_t rx_us;
+                       // Host clock when inspection began on this frame. Only
+                       // needed so a captured event can carry its OWN stage
+                       // breakdown -- the histograms aggregate across frames,
+                       // which is the wrong shape for explaining one event.
+                       uint64_t insp_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 // Preview frames dropped because the view queue was full. Visible on purpose:
@@ -301,7 +309,70 @@ struct ThreadBeat {
   std::atomic<uint64_t> last_us{0};
   std::atomic<uint64_t> cpu_us{0};
 };
-static ThreadBeat g_beatSend, g_beatDview;
+static ThreadBeat g_beatSend, g_beatDview, g_beatRx, g_beatInsp, g_beatDog;
+
+// The watchdog. It does nothing but wake up on a fixed period and measure how
+// late it was, and it is the one instrument here that can answer a question
+// none of the others can:
+//
+//   is the WHOLE machine stopping, or is one thread not being scheduled?
+//
+// Every other reading is taken by a thread that is itself part of the pipeline,
+// so when it reports a gap it cannot say whether the gap was its own. This
+// thread has no queue, no lock, no I/O and no work -- if it is also late, the
+// stall is below the application and no amount of restructuring the report path
+// removes it. If it is on time while the send thread is 600ms late, the fault
+// is specific to that path and IS ours.
+//
+// Deliberately at the same QoS as the send thread: a watchdog running hotter
+// than the thread it vouches for would stay punctual through exactly the
+// preemption being investigated, and quietly certify the machine as healthy.
+//
+// (This is also the profiler we are allowed to have: sampling profilers are
+// off the table on this host -- lldb and `sample` have wedged it before.)
+static const uint64_t DOG_PERIOD_US = 2000;
+static std::atomic<uint64_t> g_dogLateMaxUs{0};
+static std::atomic<uint64_t> g_dogLateSumUs{0};
+static std::atomic<uint64_t> g_dogTicks{0};
+static LatHist g_histDog;
+
+// Context switches and faults, so "it was preempted" stops being a guess.
+// ru_nivcsw jumping across a stall means something else took the core away;
+// ru_nvcsw means we gave it up ourselves (a lock, a sleep, an I/O wait). The
+// two have opposite fixes, and no other reading here tells them apart.
+struct RUSnap { long nvcsw = 0, nivcsw = 0, majflt = 0, minflt = 0; };
+static inline RUSnap rusnap()
+{
+  RUSnap s;
+#ifndef _WIN32
+  struct rusage ru;
+  if (getrusage(RUSAGE_SELF, &ru) == 0)
+  { s.nvcsw = ru.ru_nvcsw; s.nivcsw = ru.ru_nivcsw;
+    s.majflt = ru.ru_majflt; s.minflt = ru.ru_minflt; }
+#endif
+  return s;
+}
+
+// A ring of the most recent large events, with the full scene at each one.
+//
+// This exists because the log ring did NOT survive: run 13 halted three times
+// and every one of them was gone by teardown -- ~5 minutes of ring against a
+// run measured in hours. An event that has to be explained after the fact needs
+// somewhere to live that does not wrap. 32 slots, read over GS.
+struct LatEvent {
+  uint64_t t_us;
+  double e2e_ms, queue_ms, inspect_ms, wait_ms, write_ms;
+  double age_send_ms, age_dview_ms, age_rx_ms, age_insp_ms, age_dog_ms;
+  double self_cpu_ms;          // send thread's own CPU across the gap
+  long   d_nvcsw, d_nivcsw, d_majflt;
+  int    depth_send, depth_insp, depth_view;
+  double dog_late_max_ms;      // worst watchdog overshoot seen so far
+};
+static LatEvent g_latEv[32];
+static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
+// 100ms: an order of magnitude above the 12.3ms steady state, and low enough
+// that a run collects events without needing a halt to happen.
+static const double LAT_EVENT_MS = 100.0;
 
 // CLOCK_THREAD_CPUTIME_ID is per-thread CPU, not wall -- the distinction that
 // made every legacy clock() timer in this file misleading. Here it is the one
@@ -2792,6 +2863,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               for (int i = 0; i < PERIF_HIST_NB - 1; i++)
                 cJSON_AddItemToArray(ed, cJSON_CreateNumber(PERIF_HIST_EDGES_MS[i]));
               struct { const char *k; LatHist *h; } hs[] = {
+                { "dog",     &g_histDog     },   // watchdog wake lateness
                 { "queue",   &g_histQueue   },   // camera in -> inspect starts
                 { "inspect", &g_histInspect },   // inspect -> report enqueued
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
@@ -2809,6 +2881,55 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddItemToObject(o, "bucket", b);
                 for (int i = 0; i < PERIF_HIST_NB; i++)
                   cJSON_AddItemToArray(b, cJSON_CreateNumber((double)e.h->bucket[i]));
+              }
+              // Watchdog summary next to its histogram: if dog_late_max is
+              // small while e2e's tail is large, the machine was running fine
+              // and the report path specifically was not -- which makes the
+              // fault ours. If they move together, it is below us.
+              cJSON *dg = cJSON_CreateObject();
+              cJSON_AddItemToObject(lat, "dog_summary", dg);
+              const uint64_t dn = g_dogTicks.load(std::memory_order_relaxed);
+              cJSON_AddNumberToObject(dg, "period_us", (double)DOG_PERIOD_US);
+              cJSON_AddNumberToObject(dg, "ticks", (double)dn);
+              cJSON_AddNumberToObject(dg, "late_max_ms",
+                g_dogLateMaxUs.load(std::memory_order_relaxed) / 1000.0);
+              cJSON_AddNumberToObject(dg, "late_avg_ms",
+                dn ? g_dogLateSumUs.load(std::memory_order_relaxed) / 1000.0 / dn : 0.0);
+            }
+
+            // The captured scenes. Newest last. Survives as long as the process
+            // does, unlike the log ring that lost all three of run 13's halts.
+            {
+              cJSON *evs = cJSON_CreateArray();
+              cJSON_AddItemToObject(robj, "lat_events", evs);
+              const uint32_t total = g_latEvN.load(std::memory_order_relaxed);
+              const uint32_t have = total < 32 ? total : 32;
+              cJSON_AddNumberToObject(robj, "lat_events_total", (double)total);
+              cJSON_AddNumberToObject(robj, "lat_event_thresh_ms", LAT_EVENT_MS);
+              for (uint32_t i = 0; i < have; i++)
+              {
+                const LatEvent &e = g_latEv[(total - have + i) % 32];
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToArray(evs, o);
+                cJSON_AddNumberToObject(o, "t_us",       (double)e.t_us);
+                cJSON_AddNumberToObject(o, "e2e_ms",     e.e2e_ms);
+                cJSON_AddNumberToObject(o, "queue_ms",   e.queue_ms);
+                cJSON_AddNumberToObject(o, "inspect_ms", e.inspect_ms);
+                cJSON_AddNumberToObject(o, "wait_ms",    e.wait_ms);
+                cJSON_AddNumberToObject(o, "write_ms",   e.write_ms);
+                cJSON_AddNumberToObject(o, "age_send_ms",  e.age_send_ms);
+                cJSON_AddNumberToObject(o, "age_dview_ms", e.age_dview_ms);
+                cJSON_AddNumberToObject(o, "age_rx_ms",    e.age_rx_ms);
+                cJSON_AddNumberToObject(o, "age_insp_ms",  e.age_insp_ms);
+                cJSON_AddNumberToObject(o, "age_dog_ms",   e.age_dog_ms);
+                cJSON_AddNumberToObject(o, "self_cpu_ms",  e.self_cpu_ms);
+                cJSON_AddNumberToObject(o, "d_nvcsw",  (double)e.d_nvcsw);
+                cJSON_AddNumberToObject(o, "d_nivcsw", (double)e.d_nivcsw);
+                cJSON_AddNumberToObject(o, "d_majflt", (double)e.d_majflt);
+                cJSON_AddNumberToObject(o, "q_send", (double)e.depth_send);
+                cJSON_AddNumberToObject(o, "q_insp", (double)e.depth_insp);
+                cJSON_AddNumberToObject(o, "q_view", (double)e.depth_view);
+                cJSON_AddNumberToObject(o, "dog_late_max_ms", e.dog_late_max_ms);
               }
             }
           }
@@ -5279,6 +5400,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     // LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
 
     headImgPipe->host_rx_us = perif_now_us();
+    beat(g_beatRx, headImgPipe->host_rx_us);
     // Never block acquisition on inspection.
     //
     // push_blocking here makes one slow frame delay EVERY part after it: the
@@ -5334,6 +5456,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     //
     bool doPassDown = false;
     headImgPipe->host_rx_us = perif_now_us();
+    beat(g_beatRx, headImgPipe->host_rx_us);
     ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
     if (!doPassDown)
       bpg_pi.resPool.retResrc(headImgPipe);
@@ -6264,6 +6387,43 @@ void PerifConsoleThread(bool *terminationflag)
 // to the peripheral inspection machine, keeping that latency off the
 // inspection thread. pkt_count / count semantics are preserved exactly (the
 // count sent is the channel's pkt_count at send time, incremented on success).
+// See the note at g_beatDog. Sleeps, wakes, measures its own lateness, and
+// nothing else -- so its lateness is a property of the machine rather than of
+// any queue in this file.
+void PerifWatchdogThread(bool *terminationflag)
+{
+#ifdef __APPLE__
+  // Matched to PerifSendThread on purpose. A watchdog at a higher class would
+  // sail through the preemption it is supposed to witness.
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+  uint64_t next = perif_now_us() + DOG_PERIOD_US;
+  while (terminationflag && *terminationflag == false)
+  {
+    const uint64_t now = perif_now_us();
+    if (next > now)
+    {
+      struct timespec ts;
+      const uint64_t d = next - now;
+      ts.tv_sec = (time_t)(d / 1000000ull);
+      ts.tv_nsec = (long)((d % 1000000ull) * 1000ull);
+      nanosleep(&ts, NULL);
+    }
+    const uint64_t woke = perif_now_us();
+    const uint64_t late = woke > next ? woke - next : 0;
+    g_dogTicks.fetch_add(1, std::memory_order_relaxed);
+    g_dogLateSumUs.fetch_add(late, std::memory_order_relaxed);
+    if (late > g_dogLateMaxUs.load(std::memory_order_relaxed))
+      g_dogLateMaxUs.store(late, std::memory_order_relaxed);
+    g_histDog.add(late / 1000.0);
+    beat(g_beatDog, woke);
+    // Absolute schedule, not woke+period: drifting the deadline forward after a
+    // late wake would hide exactly the lateness being measured.
+    next += DOG_PERIOD_US;
+    if (next < woke) next = woke + DOG_PERIOD_US;   // fell far behind; resync
+  }
+}
+
 void PerifSendThread(bool *terminationflag)
 {
   // This thread is nearly always idle and does almost no work -- 0.43ms of
@@ -6600,8 +6760,58 @@ void PerifSendThread(bool *terminationflag)
           // that has both ends. Guarded: rx_us is 0 for any message built
           // before the field existed, and 0 would enter the top bucket and
           // manufacture a tail out of nothing.
+          double _e2eMs = -1.0;
           if (msg.rx_us)
-            g_histE2E.add((double)(perif_now_us() - msg.rx_us) / 1000.0);
+          {
+            _e2eMs = (double)(perif_now_us() - msg.rx_us) / 1000.0;
+            g_histE2E.add(_e2eMs);
+          }
+          // The scene at a large event, captured where it happened.
+          //
+          // Not a log line: the ring holds ~5 minutes and run 13's three halts
+          // were all gone by teardown. This survives for as long as the process
+          // does and is read over GS, so the evidence no longer depends on
+          // catching the dump inside a five-minute window.
+          if (_e2eMs >= LAT_EVENT_MS)
+          {
+            static RUSnap s_ru;                 // previous event's counters
+            const RUSnap ru = rusnap();
+            const uint64_t nowUs = perif_now_us();
+            LatEvent &e = g_latEv[g_latEvN.load(std::memory_order_relaxed) % 32];
+            e.t_us      = nowUs;
+            e.e2e_ms    = _e2eMs;
+            e.queue_ms  = msg.insp_us && msg.rx_us
+                        ? (double)(msg.insp_us - msg.rx_us) / 1000.0 : -1.0;
+            e.inspect_ms= msg.insp_us && msg.enq_us
+                        ? (double)(msg.enq_us - msg.insp_us) / 1000.0 : -1.0;
+            e.wait_ms   = _waitMs;
+            e.write_ms  = ms;
+            // How stale is each thread's last completed iteration? A thread
+            // that is merely slow keeps beating; one that is not running does
+            // not. Reading them TOGETHER is what separates "one thread" from
+            // "all of them", which is the whole question.
+            auto age = [&](ThreadBeat &b) {
+              const uint64_t t = b.last_us.load(std::memory_order_relaxed);
+              return t ? (double)(nowUs - t) / 1000.0 : -1.0;
+            };
+            e.age_send_ms = age(g_beatSend);
+            e.age_dview_ms= age(g_beatDview);
+            e.age_rx_ms   = age(g_beatRx);
+            e.age_insp_ms = age(g_beatInsp);
+            e.age_dog_ms  = age(g_beatDog);
+            const uint64_t cpuNow = thread_cpu_us();
+            const uint64_t cpuPrev = g_beatSend.cpu_us.load(std::memory_order_relaxed);
+            e.self_cpu_ms = cpuPrev ? (double)(cpuNow - cpuPrev) / 1000.0 : -1.0;
+            e.d_nvcsw   = s_ru.nvcsw  ? ru.nvcsw  - s_ru.nvcsw  : 0;
+            e.d_nivcsw  = s_ru.nivcsw ? ru.nivcsw - s_ru.nivcsw : 0;
+            e.d_majflt  = s_ru.majflt ? ru.majflt - s_ru.majflt : 0;
+            s_ru = ru;
+            e.depth_send = (int)_depthAtPop;
+            e.depth_insp = (int)inspQueue.size();
+            e.depth_view = (int)datViewQueue.size();
+            e.dog_late_max_ms = g_dogLateMaxUs.load(std::memory_order_relaxed) / 1000.0;
+            g_latEvN.fetch_add(1, std::memory_order_relaxed);
+          }
           bool newWaitMax = _waitMs > g_perifWaitMaxMs;
           if (newWaitMax) g_perifWaitMaxMs = _waitMs;
           const uint64_t _logT0 = perif_now_us();
@@ -6930,6 +7140,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down)
 {
   imgPipe->host_insp_us = perif_now_us();
+  beat(g_beatInsp, imgPipe->host_insp_us);
 
   // Queue depths every frame at ERROR level -- so they survived even a WARN
   // filter and were the one line a quiet run could not turn off. Depth
@@ -7269,7 +7480,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
-                        imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us };
+                        imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us,
+                        imgPipe->host_insp_us };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -7748,7 +7960,10 @@ int mainLoop(bool realCamera = false)
   setThreadPriority(_inspSnapSaveThread, SCHED_RR, 19);
 
   std::thread _perifSendThread(PerifSendThread, &terminationFlag);
+  std::thread _perifWatchdogThread(PerifWatchdogThread, &terminationFlag);
   setThreadPriority(_perifSendThread, SCHED_RR, 10);
+  // Same priority as the thread it vouches for, for the reason in its comment.
+  setThreadPriority(_perifWatchdogThread, SCHED_RR, 10);
 
   // Returns immediately unless INSP_PERIF_CONSOLE is set.
   std::thread _perifConsoleThread(PerifConsoleThread, &terminationFlag);
