@@ -184,7 +184,10 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // at enqueue so the send side can attribute a spike
                        // without reaching back into inspection-thread state.
                        uint64_t off_us; uint64_t trigwait_us;
-                       uint64_t englock_us; };
+                       uint64_t englock_us;
+                       uint64_t match_us; uint64_t repjson_us;
+                       uint64_t matchcpu_us;
+                       long minflt; long majflt; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 // Preview frames dropped because the view queue was full. Visible on purpose:
@@ -325,6 +328,19 @@ static uint64_t g_lastTrigWaitUs = 0;
 // Time spent ACQUIRING matchingEnglock, separate from holding it.
 static uint64_t g_lastEngLockUs = 0;
 static LatHist g_histEngLock;
+// Inside the inspect stage, split three ways. The spikes are 49-72ms of REAL
+// cpu against a ~7.6ms norm, and one number over the whole stage cannot say
+// whether that is the matching or the JSON that follows it.
+static LatHist g_histMatch, g_histRepJson;
+// Process-wide CPU across the match, to be read NEXT TO g_histMatch.
+static LatHist g_histMatchCpu;
+static uint64_t g_lastMatchProcCpuUs = 0;
+// Page faults across the stage. After the announcement wait, the engine lock,
+// preemption and the allocator were each ruled out by measurement, faulting is
+// the remaining way to burn 39-68ms of wall time without burning CPU.
+static LatHist g_histFaults;   // count, not ms -- reusing the bucket shape
+static uint64_t g_lastMatchUs = 0, g_lastRepJsonUs = 0;
+static long g_lastMinflt = 0, g_lastMajflt = 0;
 static double g_lastLogMs = 0;
 
 // Heartbeats, so a stall can be attributed instead of guessed at.
@@ -380,7 +396,8 @@ static LatHist g_histDog;
 // ru_nivcsw jumping across a stall means something else took the core away;
 // ru_nvcsw means we gave it up ourselves (a lock, a sleep, an I/O wait). The
 // two have opposite fixes, and no other reading here tells them apart.
-struct RUSnap { long nvcsw = 0, nivcsw = 0, majflt = 0, minflt = 0; };
+struct RUSnap { long nvcsw = 0, nivcsw = 0, majflt = 0, minflt = 0;
+                uint64_t cpu_us = 0; };   // user+sys, PROCESS-wide
 static inline RUSnap rusnap()
 {
   RUSnap s;
@@ -388,7 +405,13 @@ static inline RUSnap rusnap()
   struct rusage ru;
   if (getrusage(RUSAGE_SELF, &ru) == 0)
   { s.nvcsw = ru.ru_nvcsw; s.nivcsw = ru.ru_nivcsw;
-    s.majflt = ru.ru_majflt; s.minflt = ru.ru_minflt; }
+    s.majflt = ru.ru_majflt; s.minflt = ru.ru_minflt;
+    // Process-wide CPU. The one reading that does not care WHICH thread
+    // did the work, which is exactly the ambiguity thread-cpu leaves:
+    // wall minus THIS thread's cpu looks identical whether the thread is
+    // blocked or its work is running on somebody else's thread.
+    s.cpu_us = (uint64_t)ru.ru_utime.tv_sec * 1000000ull + ru.ru_utime.tv_usec
+             + (uint64_t)ru.ru_stime.tv_sec * 1000000ull + ru.ru_stime.tv_usec; }
 #endif
   return s;
 }
@@ -413,6 +436,9 @@ struct LatEvent {
   double insp_off_ms;             // of inspect_ms, how much was NOT running
   double trig_wait_ms;            // of that, how much was the announcement wait
   double eng_lock_ms;             // and how much was waiting for the engine lock
+  double match_ms, rep_json_ms;   // the two halves of the real work
+  double match_cpu_ms;            // process cpu across match, vs match_ms
+  long   minflt, majflt;          // page faults across the stage
 };
 static LatEvent g_latEv[32];
 static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
@@ -2963,6 +2989,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 { "inspect", &g_histInspect },   // inspect -> report enqueued
                 { "insp_off", &g_histInspOff },  // inspect wall MINUS its own cpu
                 { "eng_lock", &g_histEngLock },  // waiting for matchingEnglock
+                { "match",    &g_histMatch   },  // ImgInspection itself (wall)
+                { "match_cpu", &g_histMatchCpu },  // ... and the PROCESS cpu it burned
+                { "rep_json", &g_histRepJson },  // FeatureReport2Json
+                { "minflt",   &g_histFaults  },  // COUNT of minor faults, not ms
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
                 { "write",   &g_histWrite   },   // the serial write itself
                 { "e2e",     &g_histE2E     } }; // camera in -> write returned
@@ -3034,6 +3064,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "insp_off_ms", e.insp_off_ms);
                 cJSON_AddNumberToObject(o, "trig_wait_ms", e.trig_wait_ms);
                 cJSON_AddNumberToObject(o, "eng_lock_ms", e.eng_lock_ms);
+                cJSON_AddNumberToObject(o, "match_ms", e.match_ms);
+                cJSON_AddNumberToObject(o, "match_cpu_ms", e.match_cpu_ms);
+                cJSON_AddNumberToObject(o, "rep_json_ms", e.rep_json_ms);
+                cJSON_AddNumberToObject(o, "minflt", (double)e.minflt);
+                cJSON_AddNumberToObject(o, "majflt", (double)e.majflt);
                 cJSON_AddNumberToObject(o, "tx_lock_ms", e.tx_lock_ms);
                 cJSON_AddNumberToObject(o, "tx_wire_ms", e.tx_wire_ms);
               }
@@ -6937,6 +6972,11 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             e.insp_off_ms  = msg.off_us / 1000.0;
             e.trig_wait_ms = msg.trigwait_us / 1000.0;
             e.eng_lock_ms  = msg.englock_us / 1000.0;
+            e.match_ms     = msg.match_us / 1000.0;
+            e.match_cpu_ms = msg.matchcpu_us / 1000.0;
+            e.rep_json_ms  = msg.repjson_us / 1000.0;
+            e.minflt       = msg.minflt;
+            e.majflt       = msg.majflt;
             e.tx_lock_ms = g_perifLastLockMs;
             e.tx_wire_ms = g_perifLastWireMs;
             e.parked_before_enq_ms = (msg.enq_us && s_popEnterUs)
@@ -7594,7 +7634,26 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     std::lock_guard<std::mutex> _insp_guard(matchingEnglock);
     g_lastEngLockUs = perif_now_us() - _lkT0;
     g_histEngLock.add(g_lastEngLockUs / 1000.0);
+    const RUSnap _ru0 = rusnap();
+    const uint64_t _mT0 = perif_now_us();
     ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
+    g_lastMatchUs = perif_now_us() - _mT0;
+    g_histMatch.add(g_lastMatchUs / 1000.0);
+    {
+      const RUSnap _ru1 = rusnap();
+      // Process-wide, so other threads contribute -- but a spike of thousands
+      // over an 11ms window is still unambiguous, and that is the only size
+      // that could explain the missing tens of milliseconds.
+      g_lastMinflt = _ru1.minflt - _ru0.minflt;
+      g_lastMajflt = _ru1.majflt - _ru0.majflt;
+      g_histFaults.add((double)g_lastMinflt);
+      // Process CPU burned across the match, against its wall time.
+      //   ~= wall (or more)  -> the work IS running, on some thread
+      //   ~= 0               -> nothing in this process ran: a real block
+      g_lastMatchProcCpuUs = (_ru1.cpu_us > _ru0.cpu_us)
+                           ? (_ru1.cpu_us - _ru0.cpu_us) : 0;
+      g_histMatchCpu.add(g_lastMatchProcCpuUs / 1000.0);
+    }
     const FeatureReport *report = matchingEng.GetReport();
 
     int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
@@ -7764,7 +7823,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     LOG_EVERY(100, "stat:%d stat_sec:%d",stat,stat_sec);
     
-    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
+    {
+      const uint64_t _jT0 = perif_now_us();
+      imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
+      g_lastRepJsonUs = perif_now_us() - _jT0;
+      g_histRepJson.add(g_lastRepJsonUs / 1000.0);
+    }
   }
 
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -7777,7 +7841,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
                         imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us,
-                        imgPipe->host_insp_us, 0, 0, 0 };
+                        imgPipe->host_insp_us, 0, 0, 0, 0, 0, 0, 0, 0 };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -7842,6 +7906,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         // printed 0.00ms for every run -- see the comment above.
         msg.off_us = g_lastInspOffUs;
         msg.englock_us = g_lastEngLockUs;
+        msg.match_us   = g_lastMatchUs;
+        msg.matchcpu_us = g_lastMatchProcCpuUs;
+        msg.repjson_us = g_lastRepJsonUs;
+        msg.minflt     = g_lastMinflt;
+        msg.majflt     = g_lastMajflt;
         msg.trigwait_us = g_lastTrigWaitUs;
       }
       s_n++; s_q_sum += q_us; s_i_sum += i_us;
@@ -8298,6 +8367,32 @@ int mainLoop(bool realCamera = false)
   setThreadPriority(_inspSnapSaveThread, TP_BULK, "snapshot-save");
 
   std::thread _perifSendThread(PerifSendThread, &terminationFlag);
+  // INSP_CV_THREADS: pin OpenCV's internal thread pool.
+  //
+  // This is the A/B for what insp_off actually means. That instrument is wall
+  // time minus THIS THREAD's cpu, and it cannot tell "blocked" from "the work
+  // is running on somebody else's thread". OpenCV parallelises internally --
+  // LabelingCV.cpp uses cv::parallel_for_ outright, and many core operations do
+  // it themselves -- so a calling thread that dispatches and waits shows
+  // exactly the signature we have been reading as a stall:
+  //
+  //   plate stopped, no announcement wait, no lock contention, nivcsw 0,
+  //   and still insp_off 4.08ms of a 6.66ms stage.
+  //
+  // With one thread the work has to happen on the calling thread. If insp_off
+  // collapses while match's wall time holds or grows, it was parallelism all
+  // along and there is no stall to find. If insp_off survives, it is real.
+  {
+    const char *e = getenv("INSP_CV_THREADS");
+    if (e)
+    {
+      const int n = atoi(e);
+      cv::setNumThreads(n);
+      LOGE("OpenCV threads pinned to %d (was default %d)", n, cv::getNumThreads());
+    }
+    else
+      LOGE("OpenCV threads: default %d", cv::getNumThreads());
+  }
   std::thread _perifWatchdogThread(PerifWatchdogThread, &terminationFlag);
   setThreadPriority(_perifSendThread, TP_DEADLINE, "perif-send");
   // Same priority as the thread it vouches for, for the reason in its comment.
