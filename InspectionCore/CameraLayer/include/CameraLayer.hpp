@@ -58,6 +58,24 @@ class CameraLayer{
       // cannot supply it.
       uint32_t frameNum = 0;
       bool frameNumValid = false;
+
+      // Triggers the CAMERA counted, which is not the same population as
+      // frameNum.
+      //
+      // frameNum counts frames the sensor exposed. A trigger the camera REFUSED
+      // -- arriving inside the exposure floor -- produces no frame, so frameNum
+      // stays contiguous across it and the loss is invisible. ExtTriggerCount
+      // counts the triggers themselves, so `extTrigCount - frameNum` is the
+      // number that were thrown away.
+      //
+      // On the MV-CA050-11UM there is no GenICam chunk for this: the value is
+      // written INTO THE IMAGE, little-endian at the start of row 0, and the
+      // byte offsets are packed by the order the fields were ENABLED rather
+      // than being fixed. Enable exactly one field and the offset is 0; enable
+      // more and a decoder that hardcodes an offset silently reads the wrong
+      // counter. Measured 2026-08-10, see UINSP_CAVEATS.
+      uint32_t extTrigCount = 0;
+      bool extTrigCountValid = false;
       // Time since the previous frame's exposure, 0 when unknown (first frame,
       // or a driver with no usable timestamp).
       uint64_t interval_us = 0;

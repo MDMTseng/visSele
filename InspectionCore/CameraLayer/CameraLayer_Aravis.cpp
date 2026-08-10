@@ -3,6 +3,10 @@
 #include "logctrl.h"
 #include <arv.h>
 #include <stdexcept>
+
+// Set by the acquisition setup from INSP_CAM_TRIG_WATERMARK, read in the frame
+// callback. Written once before streaming starts, so no synchronisation.
+static bool g_trigWatermark = false;
 LOG_MODULE("cam.aravis");
 
 using namespace std;
@@ -570,6 +574,31 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     _fi.frameNum = (uint32_t)arv_buffer_get_frame_id(buffer);
     _fi.frameNumValid = true;
 
+    // The hardware trigger count, read out of the image itself.
+    //
+    // Enabled by INSP_CAM_TRIG_WATERMARK=1 (see the setup path), which turns on
+    // exactly ONE FrameSpecInfo field so the value sits at offset 0. Reading it
+    // here rather than downstream keeps the decode next to the enable, which is
+    // the only place the offset assumption is checkable.
+    //
+    // The watermark overwrites the first pixels of row 0. On this station the
+    // ROI starts at y=428 and the inspection region at y=432, so row 0 is four
+    // rows outside anything judged -- but that is a property of the CURRENT
+    // geometry, not a guarantee. If the inspection region ever reaches row 0,
+    // this has to move or be masked.
+    if (g_trigWatermark && w >= 8)
+    {
+      size_t _bsz = 0;
+      const uint8_t *r0 = (const uint8_t *)arv_buffer_get_data(buffer, &_bsz);
+      if (r0 != NULL && _bsz >= 8)
+      {
+        // offset 4, 32-bit little endian. Offset 0 is Framecounter.
+        _fi.extTrigCount = (uint32_t)r0[4] | ((uint32_t)r0[5] << 8)
+                         | ((uint32_t)r0[6] << 16) | ((uint32_t)r0[7] << 24);
+        _fi.extTrigCountValid = true;
+      }
+    }
+
     // Exposure-floor watch. The interval is taken from the DEVICE timestamp,
     // not the host clock: host arrival is smeared by transport and scheduling,
     // while the device stamp is when the sensor actually exposed -- which is
@@ -1055,6 +1084,56 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
   
   
+  // INSP_CAM_TRIG_WATERMARK: have the camera stamp its trigger count into the
+  // image so a report can carry it.
+  //
+  // This replicates specdecode.py exactly, because that is the ONLY
+  // configuration whose byte layout has ever been measured (UINSP_CAVEATS,
+  // 2026-08-10). Three details are load-bearing and were each got wrong on the
+  // first attempt here:
+  //
+  //   1. clear every field first. Leftover enabled fields change the packing.
+  //   2. enable BOTH ExtTriggerCount and Framecounter. The measurement was made
+  //      with both on; one alone has never been characterised.
+  //   3. ExtTriggerCount is at offset 4, not 0. Offset 0 is Framecounter. Note
+  //      that ExtTriggerCount is enabled FIRST and still lands second, so the
+  //      layout is not "enable order" -- do not re-derive it, copy it.
+  //
+  // Measured behaviour at 400Hz/120 triggers: off=0 stepped by 1 (frames),
+  // off=4 stepped by 2.16 with span exactly 120 -- the camera counting the 64
+  // triggers it REFUSED, which is the whole reason to read this at all.
+  //
+  // The watermark overwrites row 0 (full-frame y=428). The station currently
+  // has inspection_region from y=432 and clean1 from y=429, so nothing judged
+  // overlaps it -- but the caveat file calls that a coincidence, not a design.
+  // Re-check before changing the ROI or the station regions.
+  {
+    const char *e = getenv("INSP_CAM_TRIG_WATERMARK");
+    g_trigWatermark = (e && atoi(e) != 0);
+    if (g_trigWatermark)
+    {
+      static const char *kFields[] = {
+        "ExtTriggerCount", "Framecounter", "Timestamp", "ROIPosition",
+        "LineInputOutput", "BrightnessInfo", "Exposure", "Gain" };
+      ArvDevice *dev = arv_camera_get_device(camera);
+      auto spec = [&](const char *item, gboolean on) -> bool {
+        GError *werr = NULL;
+        arv_device_set_string_feature_value(dev, "FrameSpecInfoSelector", item, &werr);
+        if (werr) { g_error_free(werr); return false; }
+        arv_device_set_boolean_feature_value(dev, "FrameSpecInfo", on, &werr);
+        if (werr) { g_error_free(werr); return false; }
+        return true;
+      };
+      for (size_t i = 0; i < sizeof(kFields)/sizeof(kFields[0]); i++)
+        spec(kFields[i], FALSE);
+      const bool okExt = spec("ExtTriggerCount", TRUE);
+      const bool okFrm = spec("Framecounter",    TRUE);
+      g_trigWatermark = okExt && okFrm;
+      LOGE("camera trigger watermark: %s (ExtTriggerCount=%d Framecounter=%d, "
+           "reading ExtTriggerCount at row0 offset 4)",
+           g_trigWatermark ? "ON" : "FAILED", (int)okExt, (int)okFrm);
+    }
+  }
   arv_camera_start_acquisition (camera, &err);
   if (err)
   {

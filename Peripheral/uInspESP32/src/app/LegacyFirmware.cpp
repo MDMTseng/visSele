@@ -2416,6 +2416,25 @@ void StepGo()
 // Single-producer/single-consumer counters: the main loop only ever writes REQ,
 // the ISR only ever writes DONE and DROP. Unsigned wraparound makes the
 // comparison safe without a lock.
+// Announce every camera trigger to the host, or not.
+//
+// The host used to NEED these: it paired frame<->object itself and would wait
+// up to TRIG_WAIT_MAX_MS for a late announcement. Measured 2026-08-10 with the
+// inspection removed so nothing else could be blamed, that wait WAS the entire
+// remaining latency tail -- trig_wait max 86.15ms against insp_off max 86.35ms,
+// with placement perfect (rx 2024, matched 2024, no_candidate 0). The cost was
+// never mis-pairing; it was waiting for an uplink that arrives after the frame.
+//
+// With the host placing reports by cam_ts instead, these become pure uplink
+// traffic: ~105 bytes each at 36.5/s is 3.8 KB/s of a 23 KB/s link, and every
+// one of them is an ISR-queued event that can overflow into
+// INSP_CAM_TRIG_INFO_CANNOT_BE_SENT.
+//
+// Runtime, not compile time, so turning it back on does not need a reflash --
+// and the counter keeps a suppressed run from looking like a dead link.
+static volatile bool     TRIG_REPORT_ON = true;
+static volatile uint32_t TRIG_REPORT_SUPPRESSED = 0;
+
 static volatile uint32_t PHANTOM_REQ_N  = 0;   // main loop writes
 static volatile uint32_t PHANTOM_DONE_N = 0;   // ISR writes
 static volatile uint32_t PHANTOM_DROP_N = 0;   // ISR writes: the gate refused it
@@ -3956,6 +3975,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // The tick-domain injector: emitted / refused-by-the-gate.
     retdoc["virt_n"]=VIRT_EMIT_N;
     retdoc["virt_drop"]=VIRT_DROP_N;
+    retdoc["trig_report_on"]=(bool)TRIG_REPORT_ON;
+    retdoc["trig_suppressed"]=TRIG_REPORT_SUPPRESSED;
     retdoc["hwm_tid_new"]=HWM_TID_NEW;
     retdoc["hwm_tid_old"]=HWM_TID_OLD;
     retdoc["hwm_gate_new"]=HWM_GATE_NEW;
@@ -4974,6 +4995,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   // perfectly even train is the one traffic pattern in which an off-by-N
   // pairing is invisible, because every object sits at the same offset from
   // its neighbour. Ask for 0 explicitly if that degeneracy is the point.
+  else if(strcmp(type,"trig_report")==0)
+  {
+    retdoc["type"]="trig_report";
+    if(doc["on"].is<bool>()==true) TRIG_REPORT_ON = (bool)doc["on"];
+    retdoc["on"]=(bool)TRIG_REPORT_ON;
+    retdoc["suppressed"]=TRIG_REPORT_SUPPRESSED;
+    doRsp=true;
+  }
   else if(strcmp(type,"virt_pulse")==0)
   {
     retdoc["type"]="virt_pulse";
@@ -5861,6 +5890,15 @@ void firmwareLoop()
       {
         ISRTrigInfo trig=*ISRTrigQ.getTail();
         ISRTrigQ.consumeTail();
+
+        // Consume the queue either way: it is the queue's OVERFLOW that stops
+        // the machine (INSP_CAM_TRIG_INFO_CANNOT_BE_SENT), so suppressing the
+        // send must not also suppress the drain.
+        if(!TRIG_REPORT_ON)
+        {
+          TRIG_REPORT_SUPPRESSED++;
+          continue;
+        }
 
         retdoc.clear();
         retdoc["type"]="cam_trig";

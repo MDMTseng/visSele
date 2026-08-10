@@ -185,6 +185,8 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // without reaching back into inspection-thread state.
                        uint64_t off_us; uint64_t trigwait_us;
                        uint64_t englock_us;
+                       // -1 when the camera watermark is off.
+                       int64_t pcnt;
                        uint64_t match_us; uint64_t repjson_us;
                        uint64_t matchcpu_us;
                        long minflt; long majflt; };
@@ -339,6 +341,21 @@ static LatHist g_histMatchCpu;
 // frame costs can be attributed to a stage instead of guessed at.
 static LatHist g_histStage[MatchingEngine::STAGE_MAX];
 static LatHist g_histStageCpu[MatchingEngine::STAGE_MAX];
+
+// The camera's hardware trigger count, and what it says that frameNum cannot.
+//
+// frameNum counts frames the sensor EXPOSED; extTrigCount counts triggers the
+// camera RECEIVED. A trigger refused inside the exposure floor produces no
+// frame and leaves frameNum contiguous, so the difference between the two is
+// the number of parts the camera silently declined to photograph -- a loss that
+// is otherwise invisible from the host.
+//
+// Exposed rather than logged because the log ring is not readable while a run
+// is live, which has blocked a check four times today.
+static std::atomic<uint64_t> g_camTrigCount{0};
+static std::atomic<uint64_t> g_camFrameNum{0};
+static std::atomic<int64_t>  g_camTrigMinusFrame{0};
+static std::atomic<uint64_t> g_camTrigValidN{0};
 
 // Where the verdict is lost, counted per branch.
 //
@@ -3085,6 +3102,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddNumberToObject(vp, "multi_object", (double)g_naMultiObject.load());
               cJSON_AddNumberToObject(vp, "judged",       (double)g_naJudged.load());
             }
+            {
+              cJSON *ct = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj, "cam_trig", ct);
+              cJSON_AddNumberToObject(ct, "n_valid",
+                (double)g_camTrigValidN.load());
+              cJSON_AddNumberToObject(ct, "ext_trig_count",
+                (double)g_camTrigCount.load());
+              cJSON_AddNumberToObject(ct, "frame_num",
+                (double)g_camFrameNum.load());
+              // Constant offset = fine (they start from different origins).
+              // A DRIFTING difference is triggers the camera refused.
+              cJSON_AddNumberToObject(ct, "trig_minus_frame",
+                (double)g_camTrigMinusFrame.load());
+            }
             cJSON_AddNumberToObject(robj, "cam_max_fps",
               g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
 
@@ -5679,6 +5710,15 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 
     headImgPipe->host_rx_us = perif_now_us();
     beat(g_beatRx, headImgPipe->host_rx_us);
+    if (headImgPipe->fi.extTrigCountValid)
+    {
+      g_camTrigCount.store(headImgPipe->fi.extTrigCount, std::memory_order_relaxed);
+      g_camFrameNum.store(headImgPipe->fi.frameNum, std::memory_order_relaxed);
+      g_camTrigMinusFrame.store((int64_t)headImgPipe->fi.extTrigCount
+                              - (int64_t)headImgPipe->fi.frameNum,
+                                std::memory_order_relaxed);
+      g_camTrigValidN.fetch_add(1, std::memory_order_relaxed);
+    }
     // Never block acquisition on inspection.
     //
     // push_blocking here makes one slow frame delay EVERY part after it: the
@@ -5735,6 +5775,15 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     bool doPassDown = false;
     headImgPipe->host_rx_us = perif_now_us();
     beat(g_beatRx, headImgPipe->host_rx_us);
+    if (headImgPipe->fi.extTrigCountValid)
+    {
+      g_camTrigCount.store(headImgPipe->fi.extTrigCount, std::memory_order_relaxed);
+      g_camFrameNum.store(headImgPipe->fi.frameNum, std::memory_order_relaxed);
+      g_camTrigMinusFrame.store((int64_t)headImgPipe->fi.extTrigCount
+                              - (int64_t)headImgPipe->fi.frameNum,
+                                std::memory_order_relaxed);
+      g_camTrigValidN.fetch_add(1, std::memory_order_relaxed);
+    }
     ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
     if (!doPassDown)
       bpg_pi.resPool.retResrc(headImgPipe);
@@ -6051,7 +6100,8 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
 #endif
 }
 
-int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t cam_ts_us)
+int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t cam_ts_us,
+                         int64_t pcnt)
 {
   uint8_t buffx[200];
 
@@ -6071,6 +6121,16 @@ int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t c
        (long long)(prev_cam_ts ? (int64_t)(cam_ts_us - prev_cam_ts) : 0));
   prev_cam_ts = cam_ts_us;
 
+  // pcnt: the CAMERA's own hardware trigger count for this frame, read out of
+  // the image watermark. Sent alongside cam_ts so the device has two
+  // independent ways to place the report -- a hardware counter and two clocks --
+  // and can require them to agree. Omitted entirely when the watermark is off,
+  // so the device can tell "no counter" from "counter zero".
+  if (pcnt >= 0)
+    return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
+      "{"
+      "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu,\"pcnt\":%lld"
+      "}", (long long)tid, cat, (unsigned long long)cam_ts_us, (long long)pcnt);
   return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
     "{"
     "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu"
@@ -7009,9 +7069,9 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
               }
               else
               {
-                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts);
+                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt);
                 if (tx_twice)
-                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts);
+                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt);
               }
               // The announcement side is traced ([perif RX] cam_trig) but the
               // verdict side was not, so "did tid N ever get answered, and
@@ -8115,9 +8175,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
+    // Positional init over sixteen fields is easy to get wrong -- this already
+    // put pcnt in englock_us's slot once -- so the order is spelled out:
+    //   status, ts/100, tid, cam_ts, enq, rx, insp, off, trigwait, englock,
+    //   pcnt, match, repjson, minflt, majflt, matchcpu
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
                         imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us,
-                        imgPipe->host_insp_us, 0, 0, 0, 0, 0, 0, 0, 0 };
+                        imgPipe->host_insp_us, 0, 0, 0,
+                        imgPipe->fi.extTrigCountValid
+                          ? (int64_t)imgPipe->fi.extTrigCount : (int64_t)-1,
+                        0, 0, 0, 0, 0 };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;

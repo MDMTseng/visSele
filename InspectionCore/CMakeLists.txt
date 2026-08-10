@@ -363,6 +363,21 @@ target_link_libraries(CameraLayer PUBLIC camera_sdk)
 # visSele application (Core0_1)
 # ===========================================================================
 add_executable(visSele Core0_1/main.cpp Core0_1/tmpCodes.cpp Core0_1/wiringPanel.cpp)
+
+# Core-side frame<->object pairing. The header defaults it to 1 and states the
+# precondition for ever defaulting to 0: real-part validation, which phantom and
+# virtual traffic do not provide. So it stays 1 here and this option exists to
+# run the A/B deliberately -- cmake -DPERIF_CORE_PAIRING=0 -- rather than by
+# editing the default and forgetting.
+#
+# At 0 the core names nothing: every report goes out with tid -1 and cam_ts for
+# the DEVICE to place. That also removes `disagree`, which is the only evidence
+# that a verdict landed on the right part, so a run with this off cannot prove
+# placement -- only latency.
+if(DEFINED PERIF_CORE_PAIRING)
+  target_compile_definitions(visSele PRIVATE PERIF_CORE_PAIRING=${PERIF_CORE_PAIRING})
+  message(STATUS "PERIF_CORE_PAIRING forced to ${PERIF_CORE_PAIRING}")
+endif()
 target_include_directories(visSele PRIVATE Core0_1 Core0_1/include)
 # leaf libs (acvImage, cJSON, common_lib, logctrl, lodepng, mjpegLib, polyfit,
 # CircleFitting, simple_uart, smem_channel) arrive transitively via these.
