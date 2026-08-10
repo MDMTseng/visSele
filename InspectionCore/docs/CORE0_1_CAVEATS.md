@@ -1112,3 +1112,58 @@ border strip that pulled it ~1 mm. Excluding an 80 px border moved every
 conclusion. A registration you derived yourself is a measurement instrument, and
 it needs its own witness before its output is evidence — the arcs were that
 witness and they were available from the start.
+
+## PerifSendThread 被餓 1252ms,而 USER_INTERACTIVE 擋不住(2026-08-10)
+
+五小時 soak 的第 8 次嘗試,1.3 小時內停機三次,全部 `error_hist [1]`
+(`INSP_RESULT_MATCHES_NO_OBJECT`)。因果鏈是清楚的:報告晚到超過
+CAM→SWITCH 預算 → 該顆被掃成 UNANSWERED → 遲到的報告再也對不到物件。
+
+**不是線路。** 98 筆 `perif tx stall` 的分佈:
+
+```
+min 20.2  p50 33.1  p90 94.2  max 374.3 ms
+超過 792ms 預算者:0
+```
+
+**不是 TSQueue。** `pop_blocking` 在 mutex 下用 predicate 等待、`push` 在 mutex 下
+notify,不會遺失喚醒。而且 core 自己就量了生產者側:
+
+```
+perif WAIT SPIKE 1252.4ms: idle_before 1281.9ms, depth_at_pop 46, write 0.21ms
+  push_max 0.380ms -- producer never blocked -> notify was prompt,
+                      consumer was NOT SCHEDULED
+```
+
+佇列裡躺著 46 筆,執行緒閒置 1281.9ms,真正寫出去 0.21ms。
+
+**而 QoS 提升早就做過了,而且不夠。** `PerifSendThread` 進入時已經是
+`pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0)`,那是上一輪針對
+量到的 **216ms** 間隙做的修正。同樣一條執行緒現在被餓 **1252ms**——
+**所以「再調高優先權」這個方向已經走到底了,不要再往那裡加。**
+
+尖峰當下的負載狀態:
+
+```
+waterLvL: insp:0/10  dview:10/10  snap:0/5   poolSize:18
+ImgInspection 29.377ms (CPU time)     <- 穩態是 7ms
+```
+
+預覽佇列滿載、檢驗 CPU 時間四倍。有一陣 CPU 爆量,而只需要 0.21ms 的發送執行緒
+排不進去。
+
+### 未解,以及一個必須先排除的干擾
+
+**這三次尖峰的歸因目前不可信**,因為量測期間同一台 Mac 上還跑著本次調查自己的
+分析(15MB dump 的反覆 grep、建置)。halt 2 的時刻與其中一次分析重疊。
+**把自己造成的排程壓力當成受測系統的性質,是這類量測最容易犯的錯。**
+
+下一步順序:
+
+1. 同條件重跑,期間主機保持安靜(只讀已落地的小檔)。尖峰若消失,上面三筆的
+   歸因整個重寫;若仍在,才是機器自己的。
+2. 若仍在:預覽關掉(`NO_STREAM`)做 A/B。`dview 10/10` 指向預覽編碼是主要的
+   競爭者,而它不在關鍵路徑上——真要修,方向是讓它讓路,不是讓發送執行緒插隊。
+
+目標平台是 Windows,但這次不能推給平台:被餓的是一條已經拿到最高 QoS 的執行緒,
+競爭者是我們自己的影像路徑。
