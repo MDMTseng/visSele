@@ -285,7 +285,10 @@ struct LatHist {
 // e2e is not the sum of the other four in any single sample -- they are stages
 // of one frame, but each histogram aggregates over different frames. Read them
 // as "where does the tail live", not as an arithmetic decomposition.
-static LatHist g_histWrite, g_histWait, g_histE2E, g_histQueue, g_histInspect;
+//   log      the send thread's own logging tail, the prime suspect
+static LatHist g_histWrite, g_histWait, g_histE2E, g_histQueue, g_histInspect,
+               g_histLog;
+static double g_lastLogMs = 0;
 
 // Heartbeats, so a stall can be attributed instead of guessed at.
 //
@@ -367,6 +370,7 @@ struct LatEvent {
   long   d_nvcsw, d_nivcsw, d_majflt;
   int    depth_send, depth_insp, depth_view;
   double dog_late_max_ms;      // worst watchdog overshoot seen so far
+  double last_log_ms;          // duration of the most recent logging tail
 };
 static LatEvent g_latEv[32];
 static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
@@ -2864,6 +2868,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddItemToArray(ed, cJSON_CreateNumber(PERIF_HIST_EDGES_MS[i]));
               struct { const char *k; LatHist *h; } hs[] = {
                 { "dog",     &g_histDog     },   // watchdog wake lateness
+                { "log",     &g_histLog     },   // the send thread's logging tail
                 { "queue",   &g_histQueue   },   // camera in -> inspect starts
                 { "inspect", &g_histInspect },   // inspect -> report enqueued
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
@@ -2930,6 +2935,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "q_insp", (double)e.depth_insp);
                 cJSON_AddNumberToObject(o, "q_view", (double)e.depth_view);
                 cJSON_AddNumberToObject(o, "dog_late_max_ms", e.dog_late_max_ms);
+                cJSON_AddNumberToObject(o, "last_log_ms", e.last_log_ms);
               }
             }
           }
@@ -6810,6 +6816,7 @@ void PerifSendThread(bool *terminationflag)
             e.depth_insp = (int)inspQueue.size();
             e.depth_view = (int)datViewQueue.size();
             e.dog_late_max_ms = g_dogLateMaxUs.load(std::memory_order_relaxed) / 1000.0;
+            e.last_log_ms = g_lastLogMs;
             g_latEvN.fetch_add(1, std::memory_order_relaxed);
           }
           bool newWaitMax = _waitMs > g_perifWaitMaxMs;
@@ -6900,6 +6907,21 @@ void PerifSendThread(bool *terminationflag)
               LOGE("perif trig: %s missed(NA):%lld", pbuf,
                    perifMissedFrameCount.load());
             }
+            // The whole logging tail, not just up to the first line.
+            //
+            // This is the prime suspect and it needs a distribution, not a
+            // record-setting print. The 2026-08-10 16:49 capture had the send
+            // thread 811.7ms without completing an iteration while the preview,
+            // camera and inspection threads were all under 1.2ms stale and the
+            // do-nothing watchdog was 15.8ms -- so it was not descheduled, it
+            // was BLOCKED. And beat() is stamped just above this block, which
+            // puts these two LOGE calls inside the unexplained window.
+            //
+            // Corroboration from the same halt: the console's log_dump request
+            // produced no file at all in 60s. The log subsystem was unwell at
+            // exactly the moment the thread that calls into it stopped.
+            g_histLog.add((double)(perif_now_us() - _logT0) / 1000.0);
+            g_lastLogMs = (double)(perif_now_us() - _logT0) / 1000.0;
           }
         }
       }
