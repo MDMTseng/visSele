@@ -30,6 +30,7 @@
 #include <windows.h>      // GetDiskFreeSpaceExA for the disk-low check
 #endif
 #include <main.h>
+#define setThreadPriority setThreadPriority_visSele  // shadow the stale main.h decl
 #include <playground.h>
 #include <stdexcept>
 #include <CameraLayerManager.hpp>
@@ -290,8 +291,26 @@ struct LatHist {
 // of one frame, but each histogram aggregates over different frames. Read them
 // as "where does the tail live", not as an arithmetic decomposition.
 //   log      the send thread's own logging tail, the prime suspect
+//   tx_lock  waiting for perif_tx_lock -- shared with the console, the WebUI
+//            poller and RESET, so this is CONTENTION, not the link
+//   tx_wire  the send call itself. At 230400 baud a ~100 byte frame is ~4ms,
+//            so anything far above that is the device or the tty, not size
+//
+// Split because `write` = tx_lock + tx_wire, and the two have opposite fixes.
+// The queued path's 407ms write max was quoted as a link stall; without this
+// split that was an assumption. Whoever reads a big `write` next should be
+// able to see which half it was.
 static LatHist g_histWrite, g_histWait, g_histE2E, g_histQueue, g_histInspect,
-               g_histLog;
+               g_histLog, g_histTxLock, g_histTxWire;
+// Set by printfTo_perifCH on every send, read by its caller. Single producer
+// while PERIF sends are serialised by perif_tx_lock anyway.
+double g_perifLastLockMs = 0, g_perifLastWireMs = 0;
+// Inspection-thread CPU across one frame's inspection. Written and read by
+// the inspection thread only.
+static uint64_t g_inspCpuT0 = 0;
+// Wall MINUS cpu over the inspect stage: how long the thread was not running
+// while it was supposed to be inspecting. Zero means it genuinely computed.
+static LatHist g_histInspOff;
 static double g_lastLogMs = 0;
 
 // Heartbeats, so a stall can be attributed instead of guessed at.
@@ -376,6 +395,7 @@ struct LatEvent {
   double dog_late_max_ms;      // worst watchdog overshoot seen so far
   double last_log_ms;          // duration of the most recent logging tail
   double parked_before_enq_ms; // >0: already waiting when the item arrived
+  double tx_lock_ms, tx_wire_ms;  // the two halves of write_ms
 };
 static LatEvent g_latEv[32];
 static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
@@ -566,17 +586,63 @@ void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool
 {
   InspResultAction_s(imgPipe,skipInspDataTransfer,skipImageTransfer,inspSnap,ret_pipe_pass_down,datViewMaxFPS,false);
 }
-void setThreadPriority(std::thread &thread, int type, int priority)
-{
+// Thread priorities, expressed as intent rather than as raw numbers.
+//
+// The callers used to pass NICE values (-20..19) to SCHED_RR, whose range on
+// this machine is 15..47. Measured: -20 returns EINVAL, and every other value
+// applied. Since the failure was swallowed (the diagnostic below was commented
+// out), the result went unnoticed and was the exact opposite of the intent:
+//
+//   InspThread (inspection, the heaviest thread) RR -20 -> FAILED, left on the
+//     default policy: the ONLY major thread in the process without a real-time
+//     priority, and the one with the deadline behind it.
+//   _inspSnapSaveThread (writing NG snapshots to disk)  RR 19 -> highest of all
+//   _perifSendThread (the report path)                  RR 10
+//   ActionThread (preview)                              RR  0
+//
+// What that cost, measured 2026-08-10 over 6,423 frames: `insp_off` -- the
+// inspect stage's wall time minus its OWN cpu time, i.e. time it was supposed
+// to be inspecting and was not running -- averaged 2.45ms of an 11.85ms stage
+// (21% of every frame), and on the worst frame 85.3ms of 92.1ms. The inspection
+// was not slow; it was not scheduled.
+//
+// So: name the intent, clamp to what the platform actually accepts, and NEVER
+// fail silently again.
+enum ThreadClass {
+  TP_DEADLINE,   // tiny work, hard deadline: the report path and its watchdog
+  TP_INSPECT,    // the CPU-heavy thing everything else is waiting for
+  TP_PREVIEW,    // wanted, droppable
+  TP_BULK,       // snapshots to disk; must never outrank the above
+};
 
+void setThreadPriority(std::thread &thread, ThreadClass cls, const char *name)
+{
+  const int lo = sched_get_priority_min(SCHED_RR);
+  const int hi = sched_get_priority_max(SCHED_RR);
+  const int span = (hi > lo) ? (hi - lo) : 1;
+  int want;
+  switch (cls)
+  {
+    // Fractions of the platform's own range rather than constants, so this
+    // stays correct if the range differs on the Windows target.
+    case TP_DEADLINE: want = lo + (span * 90) / 100; break;
+    case TP_INSPECT:  want = lo + (span * 70) / 100; break;
+    case TP_PREVIEW:  want = lo + (span * 35) / 100; break;
+    default:          want = lo; break;
+  }
   sched_param sch;
   int policy;
   pthread_getschedparam(thread.native_handle(), &policy, &sch);
-  sch.sched_priority = priority;
-  if (pthread_setschedparam(thread.native_handle(), type, &sch))
-  {
-    // std::cout << "Failed to setschedparam: " << std::strerror(errno) << '\n';
-  }
+  sch.sched_priority = want;
+  const int rc = pthread_setschedparam(thread.native_handle(), SCHED_RR, &sch);
+  // Loud on failure. A priority scheme that silently does not apply is worse
+  // than no scheme, because everyone downstream reasons from the intent.
+  if (rc != 0)
+    LOGE("setThreadPriority(%s): FAILED rc=%d (%s) -- wanted RR %d in [%d,%d]. "
+         "This thread is running at the default policy.",
+         name, rc, strerror(rc), want, lo, hi);
+  else
+    LOGI("setThreadPriority(%s): RR %d  [range %d..%d]", name, want, lo, hi);
 }
 
 int mainThreadLock_lock(int call_lineNumber, char *msg = "", int try_lock_timeout_ms = 0)
@@ -2874,8 +2940,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               struct { const char *k; LatHist *h; } hs[] = {
                 { "dog",     &g_histDog     },   // watchdog wake lateness
                 { "log",     &g_histLog     },   // the send thread's logging tail
+                { "tx_lock", &g_histTxLock  },   // contention on perif_tx_lock
+                { "tx_wire", &g_histTxWire  },   // the send call itself
                 { "queue",   &g_histQueue   },   // camera in -> inspect starts
                 { "inspect", &g_histInspect },   // inspect -> report enqueued
+                { "insp_off", &g_histInspOff },  // inspect wall MINUS its own cpu
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
                 { "write",   &g_histWrite   },   // the serial write itself
                 { "e2e",     &g_histE2E     } }; // camera in -> write returned
@@ -2944,6 +3013,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "dog_late_max_ms", e.dog_late_max_ms);
                 cJSON_AddNumberToObject(o, "last_log_ms", e.last_log_ms);
                 cJSON_AddNumberToObject(o, "parked_before_enq_ms", e.parked_before_enq_ms);
+                cJSON_AddNumberToObject(o, "tx_lock_ms", e.tx_lock_ms);
+                cJSON_AddNumberToObject(o, "tx_wire_ms", e.tx_wire_ms);
               }
             }
           }
@@ -5566,6 +5637,10 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
     // whether it tracks size (a full tty buffer, which the ~1.1KB/s average
     // makes unlikely) or arrives as isolated stalls (the USB serial device
     // itself), and whether it is periodic.
+    g_perifLastLockMs = lockMs;
+    g_perifLastWireMs = wireMs;
+    g_histTxLock.add(lockMs);
+    g_histTxWire.add(wireMs);
     if (lockMs > 20.0 || wireMs > 20.0)
       LOGE("perif tx stall: wire %.1fms lock %.1fms bytes %d t %.3fs -- %s",
            wireMs, lockMs, contentSize, (double)now / 1e6,
@@ -6831,6 +6906,8 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             // Positive => the thread was ALREADY parked in the pop when the
             // item was enqueued, so the notify was late. Negative => it only
             // reached the pop after the item was already waiting.
+            e.tx_lock_ms = g_perifLastLockMs;
+            e.tx_wire_ms = g_perifLastWireMs;
             e.parked_before_enq_ms = (msg.enq_us && s_popEnterUs)
               ? (double)((int64_t)msg.enq_us - (int64_t)s_popEnterUs) / 1000.0 : 0.0;
             g_latEvN.fetch_add(1, std::memory_order_relaxed);
@@ -7265,6 +7342,21 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 {
   imgPipe->host_insp_us = perif_now_us();
   beat(g_beatInsp, imgPipe->host_insp_us);
+  // The inspection thread's OWN cpu clock at the start of this frame.
+  //
+  // `inspect` runs avg 11.7ms with a max of 138.9ms, and wall time alone cannot
+  // say which of the two very different things that is:
+  //
+  //   cpu ~= wall   it really computed for 138ms (a heavy frame)
+  //   cpu << wall   it was descheduled mid-inspection and only computed ~12ms
+  //
+  // The distinction is not academic here. setThreadPriority(InspThread,
+  // SCHED_RR, -20) FAILS -- SCHED_RR's range on this machine is 15..47 and the
+  // error is swallowed -- so the inspection thread is the only major thread in
+  // the process WITHOUT a real-time priority, while NG-snapshot saving sits at
+  // RR 19 and the send path at RR 10. If it is being preempted, that inversion
+  // is the first thing to look at.
+  g_inspCpuT0 = thread_cpu_us();
 
   // Queue depths every frame at ERROR level -- so they survived even a WARN
   // filter and were the one line a quiet run could not turn off. Depth
@@ -7656,6 +7748,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
                           ? (msg.enq_us - imgPipe->host_insp_us) : 0;
       g_histQueue.add(q_us / 1000.0);
       g_histInspect.add(i_us / 1000.0);
+      // wall - cpu. A spike here is time the thread did not get, which is a
+      // scheduling problem; a flat zero next to a large `inspect` means the
+      // work itself is expensive and the fix belongs in the algorithm.
+      {
+        const uint64_t cpu = thread_cpu_us() - g_inspCpuT0;
+        g_histInspOff.add(i_us > cpu ? (i_us - cpu) / 1000.0 : 0.0);
+      }
       s_n++; s_q_sum += q_us; s_i_sum += i_us;
       if (q_us > s_q_max) s_q_max = q_us;
       if (i_us > s_i_max) s_i_max = i_us;
@@ -8101,19 +8200,19 @@ int mainLoop(bool realCamera = false)
   if (terminationFlag)
     return -1;
   std::thread InspThread(ImgPipeProcessThread, &terminationFlag);
-  setThreadPriority(InspThread, SCHED_RR, -20);
+  setThreadPriority(InspThread, TP_INSPECT, "inspection");
   std::thread ActionThread(ImgPipeDatViewThread, &terminationFlag);
-  setThreadPriority(ActionThread, SCHED_RR, 0);
+  setThreadPriority(ActionThread, TP_PREVIEW, "preview");
   LOGI(">>>>>\n");
 
   std::thread _inspSnapSaveThread(InspSnapSaveThread, &terminationFlag);
-  setThreadPriority(_inspSnapSaveThread, SCHED_RR, 19);
+  setThreadPriority(_inspSnapSaveThread, TP_BULK, "snapshot-save");
 
   std::thread _perifSendThread(PerifSendThread, &terminationFlag);
   std::thread _perifWatchdogThread(PerifWatchdogThread, &terminationFlag);
-  setThreadPriority(_perifSendThread, SCHED_RR, 10);
+  setThreadPriority(_perifSendThread, TP_DEADLINE, "perif-send");
   // Same priority as the thread it vouches for, for the reason in its comment.
-  setThreadPriority(_perifWatchdogThread, SCHED_RR, 10);
+  setThreadPriority(_perifWatchdogThread, TP_DEADLINE, "perif-watchdog");
 
   // Returns immediately unless INSP_PERIF_CONSOLE is set.
   std::thread _perifConsoleThread(PerifConsoleThread, &terminationFlag);
