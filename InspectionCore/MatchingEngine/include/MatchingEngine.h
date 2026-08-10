@@ -27,6 +27,23 @@ public:
   cJSON *GetShapeFeaturePoints();
   const FeatureReport *GetReport();
   cJSON*FeatureReport2Json(const FeatureReport *report);
+
+  // Per-bundle-member timing of the last FeatureMatching call.
+  //
+  // A nearly EMPTY frame -- one part half in shot, some dust -- costs 26ms of
+  // process CPU, against an expectation of ~10ms for the whole inspection. A
+  // frame with five parts costs 159ms. The per-frame numbers say the cost
+  // tracks object count, but not WHERE inside the bundle it goes, and the
+  // bundle is a chain of managers (binary/labeling group, sig360 matcher,
+  // stage light report) that each run over the whole image.
+  //
+  // Wall AND process cpu per member, because the two answer different
+  // questions: wall says what the frame waited for, cpu says what it cost. The
+  // matching runs 4-5 wide, so wall alone understates the work by that factor.
+  static const int STAGE_MAX = 8;
+  static double lastStageMs[STAGE_MAX];
+  static double lastStageCpuMs[STAGE_MAX];
+  static int    lastStageN;
   ~MatchingEngine();
 };
 

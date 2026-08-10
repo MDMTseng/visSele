@@ -334,6 +334,90 @@ static LatHist g_histEngLock;
 static LatHist g_histMatch, g_histRepJson;
 // Process-wide CPU across the match, to be read NEXT TO g_histMatch.
 static LatHist g_histMatchCpu;
+// Per-bundle-member cost inside the match, wall and process cpu. The engine
+// records them; this exposes them next to everything else so the 26ms an empty
+// frame costs can be attributed to a stage instead of guessed at.
+static LatHist g_histStage[MatchingEngine::STAGE_MAX];
+static LatHist g_histStageCpu[MatchingEngine::STAGE_MAX];
+
+// Where the verdict is lost, counted per branch.
+//
+// Every frame comes out NA and two fixes aimed from code reading both missed:
+// clearing the clean regions and widening the inspection region changed
+// nothing, and removing the legacy labeledData bounds check changed nothing
+// either. The na_reason string that would have said why lives in a LOG_EVERY
+// that goes to the ring, which is not readable while a run is live -- the third
+// time today that has blocked a check.
+//
+// So count the branches instead and expose them. Exactly one of these
+// increments per frame, so they sum to the frame count and the first nonzero
+// one IS the answer.
+static std::atomic<uint64_t> g_naNoReport{0};      // GetReport() returned NULL
+static std::atomic<uint64_t> g_naWrongType{0};     // not a binary_processing_group
+static std::atomic<uint64_t> g_naNoReports{0};     // .reports == NULL
+static std::atomic<uint64_t> g_naNoLabeled{0};     // .labeledData == NULL  <-- suspect
+static std::atomic<uint64_t> g_naSubBad{0};        // sub-report missing/wrong type
+static std::atomic<uint64_t> g_naNoObject{0};      // srep empty: nothing located
+static std::atomic<uint64_t> g_naMultiObject{0};   // more than one at the station
+static std::atomic<uint64_t> g_naJudged{0};        // reached the judge
+
+// INSP_SKIP_INSPECTION: answer without inspecting.
+//
+// The link test. Everything else on this path -- pairing, the queue, the serial
+// write, the device's CAM->SWITCH window -- stays exactly as it is, and only the
+// image processing is removed. Whatever latency survives is the CHAIN's.
+//
+// Worth keeping permanently: the inspection's cost is data dependent (26ms of
+// process cpu on a near-empty frame, 159ms with five parts in shot, 662ms at
+// the peak), and that variance has masked every chain measurement so far.
+// INSP_PERIF_DEVICE_PAIRING: stop depending on the device's trigger
+// announcements.
+//
+// Measured 2026-08-10 with the inspection removed entirely (so nothing else
+// could be blamed): the whole remaining tail was this wait.
+//
+//   trig_wait_max 86.15ms | insp_off max 86.35ms | inspect max 87.71ms
+//   pairing rx 2024, matched 2024, no_candidate 0  -- placement was PERFECT
+//
+// So the cost is not mis-pairing, it is waiting for an announcement that
+// arrives late over the serial uplink while the frame came over USB3. The
+// device can already place a report itself from cam_ts (CONN carries
+// "pairing":"timestamp"), which is what PERIF_CORE_PAIRING 0 was built for.
+//
+// Turning this on does TWO things, and either alone is wrong:
+//   - never wait for an announcement
+//   - send the report anyway with tid -1 and cam_ts, for the device to place
+// Skipping only the wait would leave the send side refusing every unpaired
+// report ("result with no paired tid -- not sent"), trading a latency problem
+// for a dropped-verdict one.
+//
+// Core-side pairing still RUNS when an announcement happens to be there, so the
+// agree/disagree cross-check survives; it just never costs anything.
+static bool device_pairing()
+{
+  static const bool on = []{
+    const char *e = getenv("INSP_PERIF_DEVICE_PAIRING");
+    const bool v = e && atoi(e) != 0;
+    LOGE("INSP_PERIF_DEVICE_PAIRING=%d -- %s", v ? 1 : 0,
+         v ? "no announcement wait; reports carry cam_ts for the DEVICE to place"
+           : "core waits for announcements and names the object");
+    return v;
+  }();
+  return on;
+}
+
+static bool skip_inspection()
+{
+  static const bool on = []{
+    const char *e = getenv("INSP_SKIP_INSPECTION");
+    const bool v = e && atoi(e) != 0;
+    LOGE("INSP_SKIP_INSPECTION=%d -- %s", v ? 1 : 0,
+         v ? "fixed verdict, NO inspection: this run measures the chain"
+           : "normal inspection");
+    return v;
+  }();
+  return on;
+}
 
 // Keep the picture when a frame costs far more than the others.
 //
@@ -2987,6 +3071,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // real number instead of a guess. Shrinking the ROI raises it --
             // that is the lever for running parts closer together.
             cJSON_AddNumberToObject(robj, "cam_min_interval_ms", g_camMinIntervalMs);
+            // Verdict-path branch counts. Exactly one per frame; the first
+            // nonzero one is where the verdict is being lost.
+            {
+              cJSON *vp = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj, "verdict_path", vp);
+              cJSON_AddNumberToObject(vp, "no_report",    (double)g_naNoReport.load());
+              cJSON_AddNumberToObject(vp, "wrong_type",   (double)g_naWrongType.load());
+              cJSON_AddNumberToObject(vp, "no_reports",   (double)g_naNoReports.load());
+              cJSON_AddNumberToObject(vp, "no_labeled",   (double)g_naNoLabeled.load());
+              cJSON_AddNumberToObject(vp, "sub_bad",      (double)g_naSubBad.load());
+              cJSON_AddNumberToObject(vp, "no_object",    (double)g_naNoObject.load());
+              cJSON_AddNumberToObject(vp, "multi_object", (double)g_naMultiObject.load());
+              cJSON_AddNumberToObject(vp, "judged",       (double)g_naJudged.load());
+            }
             cJSON_AddNumberToObject(robj, "cam_max_fps",
               g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
 
@@ -3017,6 +3115,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
                 { "write",   &g_histWrite   },   // the serial write itself
                 { "e2e",     &g_histE2E     } }; // camera in -> write returned
+              // Bundle members, named by index: the engine does not carry
+              // human names for them, and the index is what the code shows.
+              for (int _si = 0; _si < MatchingEngine::lastStageN; _si++)
+              {
+                char kb[24];
+                snprintf(kb, sizeof(kb), "stage%d", _si);
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, kb, o);
+                cJSON_AddNumberToObject(o, "n", (double)g_histStage[_si].n);
+                cJSON_AddNumberToObject(o, "max_ms", g_histStage[_si].max_ms);
+                cJSON_AddNumberToObject(o, "avg_ms", g_histStage[_si].n
+                  ? g_histStage[_si].sum_ms / g_histStage[_si].n : 0.0);
+                cJSON_AddNumberToObject(o, "cpu_max_ms", g_histStageCpu[_si].max_ms);
+                cJSON_AddNumberToObject(o, "cpu_avg_ms", g_histStageCpu[_si].n
+                  ? g_histStageCpu[_si].sum_ms / g_histStageCpu[_si].n : 0.0);
+              }
               for (auto &e : hs)
               {
                 cJSON *o = cJSON_CreateObject();
@@ -3540,7 +3654,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           std::lock_guard<std::mutex> _me_guard(matchingEnglock);
           int ret = ImgInspection_JSONStr(matchingEng, *srcImg, 1, jsonStr, select_bacpac);
           free(jsonStr);
-          const FeatureReport *report = matchingEng.GetReport();
+          const FeatureReport *report = skip_inspection() ? NULL
+                                : matchingEng.GetReport();
 
           if (report != NULL)
           {
@@ -3866,7 +3981,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // ImgPipeProcessCenter_imp.
             std::lock_guard<std::mutex> _me_guard(matchingEnglock);
             ImgInspection_DefRead(matchingEng, *srcImg, 1, "data/featureDetect.json", &calib_bacpac);
-            const FeatureReport *report = matchingEng.GetReport();
+            const FeatureReport *report = skip_inspection() ? NULL
+                                : matchingEng.GetReport();
 
             if (report != NULL)
             {
@@ -5833,6 +5949,7 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
     // ends.
     const uint64_t _twT0 = perif_now_us();
     const bool _wantWait =
+      !device_pairing() &&
       (pr == PerifTriggerPairing::EMPTY || pr == PerifTriggerPairing::NO_CANDIDATE) &&
       dev_state_wants_wait(bpg_pi.perifCH->last_dev_state);
     if (_wantWait && g_trigWaitSuppressed)
@@ -6664,7 +6781,9 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             // calibration -- which is fed by these very reports -- never even
             // bootstraps.
 #if PERIF_CORE_PAIRING
-            const bool have_identity = (msg.tid >= 0);
+            // With device pairing on, an unpaired report is not a failure --
+            // it is the design: cam_ts goes out and the device places it.
+            const bool have_identity = (msg.tid >= 0) || device_pairing();
 #else
             const bool have_identity = true;   // tid stays -1 on the wire, by design
 #endif
@@ -7128,8 +7247,11 @@ void SlowFrameSaveThread(bool *terminationflag)
         // harness does that) still lands its evidence somewhere.
         cross_mkdir("data/slowframes");
         char path[512];
-        snprintf(path, sizeof(path), "data/slowframes/slow_%04llu_%.0fms_cpu%.0fms.png",
-                 (unsigned long long)sf.seq, sf.match_ms, sf.match_cpu_ms);
+        // A negative match_ms is the control marker (see the capture site).
+        snprintf(path, sizeof(path), "data/slowframes/%s_%04llu_%.0fms_cpu%.0fms.png",
+                 sf.match_ms < 0 ? "ctrl" : "slow",
+                 (unsigned long long)sf.seq,
+                 sf.match_ms < 0 ? -sf.match_ms : sf.match_ms, sf.match_cpu_ms);
         try
         {
           if (cv::imwrite(path, sf.img))
@@ -7692,9 +7814,21 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     std::lock_guard<std::mutex> _insp_guard(matchingEnglock);
     g_lastEngLockUs = perif_now_us() - _lkT0;
     g_histEngLock.add(g_lastEngLockUs / 1000.0);
+    // INSP_SKIP_INSPECTION: answer without inspecting.
+    //
+    // The link test. Everything else in this path -- pairing, the queue, the
+    // serial write, the device's CAM->SWITCH window -- stays exactly as it is,
+    // and only the image processing is removed. Whatever latency survives is
+    // the CHAIN's, not the inspection's.
+    //
+    // Worth having as a permanent lever: the inspection's cost is data
+    // dependent (26ms of process cpu on a near-empty frame, 159ms with five
+    // parts in shot, 662ms at the peak) and that variance has masked every
+    // chain measurement taken so far.
     const RUSnap _ru0 = rusnap();
     const uint64_t _mT0 = perif_now_us();
-    ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
+    if (!skip_inspection())
+      ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
     g_lastMatchUs = perif_now_us() - _mT0;
     g_histMatch.add(g_lastMatchUs / 1000.0);
     {
@@ -7710,6 +7844,27 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         return e ? atoi(e) : 40;
       }();
       const double _mms = g_lastMatchUs / 1000.0;
+      // A CONTROL frame, every INSP_CTRL_FRAME_EVERY-th frame regardless of
+      // timing. Without one, "the slow frames are black" says nothing -- if
+      // every frame is black then black is this run's normal, not the cause.
+      // Same paired-baseline rule the burst ladder was built around, and the
+      // one nearly skipped here.
+      static const int _ctrlEvery = []{
+        const char *e = getenv("INSP_CTRL_FRAME_EVERY");
+        return e ? atoi(e) : 0;
+      }();
+      static uint64_t _frameN = 0;
+      static int _ctrlSaved = 0;
+      _frameN++;
+      if (_ctrlEvery > 0 && (_frameN % (uint64_t)_ctrlEvery) == 0 && _ctrlSaved < 6)
+      {
+        SlowFrame cf;
+        cf.img = capImg.clone();
+        cf.match_ms = -_mms;              // negative marks it as the control
+        cf.match_cpu_ms = g_lastMatchProcCpuUs / 1000.0;
+        cf.seq = 9000 + (uint64_t)(_ctrlSaved++);
+        if (!slowFrameQueue.push(cf)) g_slowDropped.fetch_add(1);
+      }
       if (_slowMs > 0 && _mms >= _slowMs && g_slowSaved.load() < _slowCap)
       {
         SlowFrame sf;
@@ -7734,10 +7889,20 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       g_lastMatchProcCpuUs = (_ru1.cpu_us > _ru0.cpu_us)
                            ? (_ru1.cpu_us - _ru0.cpu_us) : 0;
       g_histMatchCpu.add(g_lastMatchProcCpuUs / 1000.0);
+      for (int _si = 0; _si < MatchingEngine::lastStageN; _si++)
+      {
+        g_histStage[_si].add(MatchingEngine::lastStageMs[_si]);
+        g_histStageCpu[_si].add(MatchingEngine::lastStageCpuMs[_si]);
+      }
     }
-    const FeatureReport *report = matchingEng.GetReport();
+    const FeatureReport *report = skip_inspection() ? NULL
+                                : matchingEng.GetReport();
 
-    int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
+    // A fixed SUCCESS on the skip path: NA would be routed to the NA outlet
+    // and would not exercise the same decision the real verdict does.
+    int stat = skip_inspection()
+             ? FeatureReport_sig360_circle_line_single::STATUS_SUCCESS
+             : FeatureReport_sig360_circle_line_single::STATUS_NA;
 
     int stat_sec = FeatureReport_sig360_circle_line_single::STATUS_UNSET;
 
@@ -7752,6 +7917,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // Only the rejecting cases log, so a healthy run stays quiet.
     // See docs/UINSP_VERDICT_PATH.md for the whole chain.
     const char *na_reason = NULL;
+
+    if (!report)                                              g_naNoReport++;
+    else if (report->type != FeatureReport::binary_processing_group)
+                                                              g_naWrongType++;
+    else if (!report->data.binary_processing_group.reports)   g_naNoReports++;
+    else if (!report->data.binary_processing_group.labeledData) g_naNoLabeled++;
 
     if (report && report->type == FeatureReport::binary_processing_group &&
         report->data.binary_processing_group.reports &&
@@ -7776,8 +7947,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
             *(reports[0]->data.sig360_circle_line.reports);
         stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
 
-        if (srep.size() == 0)          na_reason = "no object located";
-        else if (srep.size() != 1)     na_reason = "more than one object located";
+        if (srep.size() == 0)          { na_reason = "no object located"; g_naNoObject++; }
+        else if (srep.size() != 1)     { na_reason = "more than one object located"; g_naMultiObject++; }
         else if (srep[0].labeling_idx < 0)                     na_reason = "labeling_idx < 0";
         else if (srep[0].labeling_idx >= (int)ldat->size())
           // On the shape_based (raw-gray) path FeatureManager_group leaves
@@ -7797,9 +7968,28 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
                na_reason, reports.size(), srep.size(),
                srep.empty() ? -1 : srep[0].labeling_idx, ldat->size());
 
-        if (srep.size() == 1 &&
-            srep[0].labeling_idx >= 0 &&
-            srep[0].labeling_idx < (int)ldat->size()) //only one detected objects in scence is allowed
+        // The labeledData bounds check that stood here is gone. It read
+        //
+        //     srep[0].labeling_idx >= 0 && labeling_idx < ldat->size()
+        //
+        // and it belonged to the labeling-based pipeline. On the shape_based
+        // (raw-gray) path FeatureManager_group returns early and leaves
+        // labeledData EMPTY, so the test was `0 < 0` on EVERY frame: the object
+        // was located, judged, and then the verdict was dropped by a bounds
+        // check against a vector the locator never fills.
+        //
+        // Measured 2026-08-10: 5,308 consecutive frames, SEL1/SEL2/SEL3 all
+        // zero, NA for every one, with the raw-gray path confirmed active
+        // (SHAPE_DBG printed its marker 3,319 times). Widening the inspection
+        // region to the whole ROI and clearing the clean regions changed
+        // nothing, because control never reached either of them.
+        //
+        // What replaced it is already here: objects outside the station are
+        // dropped in the locator, so `srep.size() == 1` now means "one object AT
+        // THE STATION", and the clean regions below answer "was the field clean
+        // enough for that to mean anything". Those two are the mechanism now.
+        if (srep.size() == 1) g_naJudged++;
+        if (srep.size() == 1)
         {
           // The extra_area_ratio < 0.1 gate stood here. Removed 2026-08-07.
           //
@@ -7906,7 +8096,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     
     {
       const uint64_t _jT0 = perif_now_us();
-      imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
+      // Skipping the inspection also skips building its report: the JSON is
+     // ~553 nodes and is part of the per-frame cost being removed. Downstream
+     // adds fields to this object, so it must still exist.
+     imgPipe->datViewInfo.report_json = skip_inspection()
+       ? cJSON_CreateObject()
+       : matchingEng.FeatureReport2Json(report);
       g_lastRepJsonUs = perif_now_us() - _jT0;
       g_histRepJson.add(g_lastRepJsonUs / 1000.0);
     }
@@ -8744,7 +8939,8 @@ int testCode()
     if (!bw_img.isContinuous()) bw_img = bw_img.clone();
     int ret = bw_img.empty() ? -1 : 0;
     ret = ImgInspection(matchingEng, bw_img, &calib_bacpac, calib_bacpac.cam, 1);
-    const FeatureReport *report = matchingEng.GetReport();
+    const FeatureReport *report = skip_inspection() ? NULL
+                                : matchingEng.GetReport();
     delete (string);
 
     if (report != NULL)
@@ -9012,7 +9208,8 @@ int cp_main(int argc, char **argv)
       fprintf(stderr, "[INSP_PROF] FeatureMatching x%d: avg=%.2f min=%.2f max=%.2f ms\n",
               pn, sum / pn, mn, mx);
     }
-    const FeatureReport *report = matchingEng.GetReport();
+    const FeatureReport *report = skip_inspection() ? NULL
+                                : matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
     AttachStaticInfo(jobj, &bpg_pi);
@@ -9258,7 +9455,8 @@ int cp_main(int argc, char **argv)
     if (!calibImage.isContinuous()) calibImage = calibImage.clone();
     ImgInspection_DefRead(matchingEng, calibImage, 1, "data/cameraCalibration.json", &calib_bacpac);
 
-    const FeatureReport *report = matchingEng.GetReport();
+    const FeatureReport *report = skip_inspection() ? NULL
+                                : matchingEng.GetReport();
 
     if (report != NULL)
     {

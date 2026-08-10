@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <sys/resource.h>
+#endif
+#include <ctime>
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
 #include "FeatureManager_sig360_circle_line.h"
@@ -115,12 +119,43 @@ cJSON * MatchingEngine::SetParam(cJSON *json)
   return retJson;
 }
 
+double MatchingEngine::lastStageMs[MatchingEngine::STAGE_MAX] = {0};
+double MatchingEngine::lastStageCpuMs[MatchingEngine::STAGE_MAX] = {0};
+int    MatchingEngine::lastStageN = 0;
+
+static inline double me_now_ms()
+{
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+static inline double me_proc_cpu_ms()
+{
+#ifndef _WIN32
+  struct rusage ru;
+  if (getrusage(RUSAGE_SELF, &ru) == 0)
+    return ru.ru_utime.tv_sec * 1000.0 + ru.ru_utime.tv_usec / 1000.0
+         + ru.ru_stime.tv_sec * 1000.0 + ru.ru_stime.tv_usec / 1000.0;
+#endif
+  return 0.0;
+}
+
 int MatchingEngine::FeatureMatching(cv::Mat &img_cv)
 {
-  for(int i=0;i<featureBundle.size();i++)
+  const int n = (int)featureBundle.size();
+  lastStageN = n < STAGE_MAX ? n : STAGE_MAX;
+  for(int i=0;i<n;i++)
   {
+    const bool rec = (i < STAGE_MAX);
+    const double t0 = rec ? me_now_ms() : 0.0;
+    const double c0 = rec ? me_proc_cpu_ms() : 0.0;
     featureBundle[i]->setBacPac(bacpac);
     featureBundle[i]->FeatureMatching(img_cv);
+    if (rec)
+    {
+      lastStageMs[i]    = me_now_ms() - t0;
+      lastStageCpuMs[i] = me_proc_cpu_ms() - c0;
+    }
   }
   return 0;
 }
