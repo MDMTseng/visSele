@@ -183,7 +183,8 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // Snapshots of the two per-frame breakdowns above, taken
                        // at enqueue so the send side can attribute a spike
                        // without reaching back into inspection-thread state.
-                       uint64_t off_us; uint64_t trigwait_us; };
+                       uint64_t off_us; uint64_t trigwait_us;
+                       uint64_t englock_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 // Preview frames dropped because the view queue was full. Visible on purpose:
@@ -321,6 +322,9 @@ static LatHist g_histInspOff;
 // read by the inspection thread only.
 static uint64_t g_lastInspOffUs = 0;
 static uint64_t g_lastTrigWaitUs = 0;
+// Time spent ACQUIRING matchingEnglock, separate from holding it.
+static uint64_t g_lastEngLockUs = 0;
+static LatHist g_histEngLock;
 static double g_lastLogMs = 0;
 
 // Heartbeats, so a stall can be attributed instead of guessed at.
@@ -408,6 +412,7 @@ struct LatEvent {
   double tx_lock_ms, tx_wire_ms;  // the two halves of write_ms
   double insp_off_ms;             // of inspect_ms, how much was NOT running
   double trig_wait_ms;            // of that, how much was the announcement wait
+  double eng_lock_ms;             // and how much was waiting for the engine lock
 };
 static LatEvent g_latEv[32];
 static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
@@ -2957,6 +2962,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 { "queue",   &g_histQueue   },   // camera in -> inspect starts
                 { "inspect", &g_histInspect },   // inspect -> report enqueued
                 { "insp_off", &g_histInspOff },  // inspect wall MINUS its own cpu
+                { "eng_lock", &g_histEngLock },  // waiting for matchingEnglock
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
                 { "write",   &g_histWrite   },   // the serial write itself
                 { "e2e",     &g_histE2E     } }; // camera in -> write returned
@@ -3027,6 +3033,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "parked_before_enq_ms", e.parked_before_enq_ms);
                 cJSON_AddNumberToObject(o, "insp_off_ms", e.insp_off_ms);
                 cJSON_AddNumberToObject(o, "trig_wait_ms", e.trig_wait_ms);
+                cJSON_AddNumberToObject(o, "eng_lock_ms", e.eng_lock_ms);
                 cJSON_AddNumberToObject(o, "tx_lock_ms", e.tx_lock_ms);
                 cJSON_AddNumberToObject(o, "tx_wire_ms", e.tx_wire_ms);
               }
@@ -6929,6 +6936,7 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             // reached the pop after the item was already waiting.
             e.insp_off_ms  = msg.off_us / 1000.0;
             e.trig_wait_ms = msg.trigwait_us / 1000.0;
+            e.eng_lock_ms  = msg.englock_us / 1000.0;
             e.tx_lock_ms = g_perifLastLockMs;
             e.tx_wire_ms = g_perifLastWireMs;
             e.parked_before_enq_ms = (msg.enq_us && s_popEnterUs)
@@ -7570,7 +7578,22 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // handler's 20+ early breaks and its try/catch, which is the likely reason
     // it was abandoned -- so take it with a scoped guard instead, which cannot
     // be leaked by any exit path.
+    // Split the engine lock from the engine.
+    //
+    // A captured spike showed inspect 111.3ms made of 39.4ms NOT RUNNING with
+    // trig_wait 0.0 and nivcsw 0 -- nobody preempted it and it was not the
+    // announcement sleep, so it was blocked on something. This lock is the
+    // obvious candidate: it is shared with the def-load path AND with the GS
+    // handler, whose perif_pairing reply takes a lock per getter, 20+ times a
+    // query.
+    //
+    // The other half of that spike was 71.9ms of REAL cpu against a ~7.6ms
+    // norm, so the engine itself is also suspect. One number cannot accuse
+    // both; two can.
+    const uint64_t _lkT0 = perif_now_us();
     std::lock_guard<std::mutex> _insp_guard(matchingEnglock);
+    g_lastEngLockUs = perif_now_us() - _lkT0;
+    g_histEngLock.add(g_lastEngLockUs / 1000.0);
     ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
     const FeatureReport *report = matchingEng.GetReport();
 
@@ -7754,7 +7777,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
                         imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us,
-                        imgPipe->host_insp_us, 0, 0 };
+                        imgPipe->host_insp_us, 0, 0, 0 };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -7818,6 +7841,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         // The same ordering trap already cost this file an instrument that
         // printed 0.00ms for every run -- see the comment above.
         msg.off_us = g_lastInspOffUs;
+        msg.englock_us = g_lastEngLockUs;
         msg.trigwait_us = g_lastTrigWaitUs;
       }
       s_n++; s_q_sum += q_us; s_i_sum += i_us;
