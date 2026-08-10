@@ -36,7 +36,7 @@ function header(dv) {
            length: b[5] * 0x01000000 + (b[6] << 16) + (b[7] << 8) + b[8] };
 }
 
-let pg = 1, frames = 0, lastReport = Date.now(), sinceReport = 0;
+let pg = 1, frames = 0, lastReport = Date.now(), sinceReport = 0, lastPairKey = '';
 const counts = {};
 const ws = new WebSocket(URL);
 ws.binaryType = 'arraybuffer';
@@ -60,6 +60,15 @@ ws.on('open', () => setTimeout(() => {
       OK_MAX_FPS: f, NG_MAX_FPS: f, NA_MAX_FPS: f } }));
   }
   ws.send(frame('FI', 0, pg++, { deffile: DEF, frame_count: -1 }));
+  // Pairing health, which only the WS side can ask for: perif_pairing is a GS
+  // item, while the soak harness talks to the serial console on 4099 and gets
+  // the DEVICE's stat -- so trig_wait_* is invisible from there. It is the one
+  // counter that separates "the link went quiet" from "the plate was empty",
+  // since both leave every part unjudged and both read as a clean NA run.
+  // Polled here rather than logged in the core because LOGE goes to the ring,
+  // which is only readable after the fact, and the 2026-08-10 collapse took
+  // the console down with it -- the dump request got no reply at all.
+  setInterval(() => ws.send(frame('GS', 0, pg++, { items: ['perif_pairing'] })), 15000);
   if (!process.env.NO_STREAM) ws.send(frame('SB', 0, pg++, { stream: true }));
   else console.log('[fi] NOT subscribing to the image stream');
 }, 300));
@@ -75,6 +84,19 @@ ws.on('message', (data) => {
   if (h.type === 'HR') { ws.send(frame('HR', 0, pg++, { a: ['d'] })); return; }
   if (h.type === 'AK' || h.type === 'ER') {
     const txt = new TextDecoder().decode(new Uint8Array(data).subarray(BPG_HDR));
+    // Print pairing health only when it CHANGES. A line every 15s would bury
+    // the transition that matters in a run measured in hours.
+    const p = (() => { try { return JSON.parse(txt).perif_pairing; } catch { return null; } })();
+    if (p) {
+      const k = `${p.trig_wait_suppressed}/${p.trig_wait_skipped}/${p.stale}/${p.no_candidate}`;
+      if (k !== lastPairKey) {
+        lastPairKey = k;
+        console.log(`[fi] pairing: suppressed=${p.trig_wait_suppressed}`
+          + ` skipped=${p.trig_wait_skipped} wait_max=${p.trig_wait_max_ms}`
+          + ` rx=${p.rx} matched=${p.matched} stale=${p.stale} no_cand=${p.no_candidate}`);
+      }
+      return;
+    }
     console.log(`[fi] ${h.type}: ${txt.slice(0, 300)}`);
     return;
   }
