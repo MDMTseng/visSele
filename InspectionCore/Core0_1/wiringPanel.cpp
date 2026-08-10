@@ -372,6 +372,30 @@ void image_pipe_info_occupyFlag_clr(image_pipe_info &pinfo,image_pipe_info_Occup
 bool image_pipe_info_gc(image_pipe_info &info,resourcePool<image_pipe_info> &pool)
 {
   if(info.occupyFlag!=0)return false;
+  // Free the report tree before the slot goes back, because nothing else will.
+  //
+  // resourcePool::retResrc only flips a flag -- no destructor, no free -- and
+  // the slot is handed straight back out, where ImgPipeProcessCenter_imp does
+  //     datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
+  // overwriting the pointer. Every frame recycled through here therefore
+  // orphaned one whole cJSON document. Only the inline non-pass-down branch
+  // deleted it, which is the path a production run almost never takes.
+  //
+  // Measured on 2026-08-10 before the fix: 88.9M live allocations, 3.82GB,
+  // average 42.9 bytes, in two peaks -- 48.5M x 64B (a cJSON node is 64B) and
+  // 40.0M x 16B (its small strings). At 36.5 frames/s that is ~553 nodes a
+  // frame, ~92 MB/min, and phys_footprint reached 3.46GB in 40 minutes.
+  //
+  // The cost was not "the core uses a lot of memory". It pushed a 16GB host
+  // into compression and swap, so the core's OWN pages went out -- and every
+  // thread that touched them stalled on a decompress. That is what froze the
+  // send thread and the preview thread together for 1.4s with neither burning
+  // CPU, which read as a scheduler problem for most of a day.
+  if(info.datViewInfo.report_json)
+  {
+    cJSON_Delete(info.datViewInfo.report_json);
+    info.datViewInfo.report_json=NULL;
+  }
   pool.retResrc(&info);
   return true;
 }
