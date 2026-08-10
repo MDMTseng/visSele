@@ -214,6 +214,47 @@ double g_perifWaitMaxMs = 0, g_perifWaitSumMs = 0;
 // scheduled; a slow push means the lock is the problem. Measuring it here
 // avoids instrumenting TSQueue, which every other queue in the core shares.
 double g_perifPushMaxMs = 0;
+
+// Heartbeats, so a stall can be attributed instead of guessed at.
+//
+// The send thread and the preview thread are decoupled by construction --
+// separate queues, separate mutexes, non-blocking, drop-oldest -- so a stall in
+// one should not be visible in the other. On 2026-08-10 they stalled together:
+// datViewQueue was 10/10 while the send thread sat 1281ms without running, and
+// inspQueue was 0/10, so inspection was NOT the thing eating the machine.
+//
+// A full queue means its CONSUMER is behind. It does NOT mean that consumer is
+// busy, and reading it as "the preview is hogging the CPU" is the mistake this
+// instrument exists to prevent. Two readings settle it:
+//
+//   cpu_us   the thread's OWN cpu time. If it advances by ~0 across a gap in
+//            which it was runnable, it genuinely did not get scheduled. If it
+//            advances, the thread ran and was blocked on something else.
+//   last_us  when the thread last completed a loop iteration. If BOTH threads
+//            go stale in the same window, no amount of priority on one of them
+//            is the fix -- the cause is below the application.
+struct ThreadBeat {
+  std::atomic<uint64_t> last_us{0};
+  std::atomic<uint64_t> cpu_us{0};
+};
+static ThreadBeat g_beatSend, g_beatDview;
+
+// CLOCK_THREAD_CPUTIME_ID is per-thread CPU, not wall -- the distinction that
+// made every legacy clock() timer in this file misleading. Here it is the one
+// we actually want.
+static inline uint64_t thread_cpu_us()
+{
+  struct timespec ts;
+  if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) == 0)
+    return (uint64_t)ts.tv_sec * 1000000ull + (uint64_t)ts.tv_nsec / 1000ull;
+  return 0;
+}
+
+static inline void beat(ThreadBeat &b, uint64_t now_us)
+{
+  b.last_us.store(now_us, std::memory_order_relaxed);
+  b.cpu_us.store(thread_cpu_us(), std::memory_order_relaxed);
+}
 // Smallest frame-to-frame interval this camera has actually delivered. The
 // vendor's ResultingFrameRate is behind the CameraLayer API, and this is the
 // better number anyway: it is what the CURRENT ROI, exposure and transport
@@ -6448,7 +6489,29 @@ void PerifSendThread(bool *terminationflag)
                    ? "producer blocked in push -> MUTEX contention"
                    : "producer never blocked -> notify was prompt, "
                      "consumer was NOT SCHEDULED");
+          // "NOT SCHEDULED" above is an inference from "notify was prompt and
+          // it did not come back". These two lines are the measurement.
+          if (newWaitMax && _waitMs > 50.0)
+          {
+            const uint64_t _cpuNow = thread_cpu_us();
+            const uint64_t _cpuPrev = g_beatSend.cpu_us.load(std::memory_order_relaxed);
+            const double _cpuGapMs = _cpuPrev ? (_cpuNow - _cpuPrev) / 1000.0 : -1.0;
+            const uint64_t _dvBeat = g_beatDview.last_us.load(std::memory_order_relaxed);
+            const double _dvAgeMs = _dvBeat ? (double)(_popUs - _dvBeat) / 1000.0 : -1.0;
+            LOGE("  self_cpu_over_gap %.2fms -- %s | dview_beat_age %.1fms -- %s",
+                 _cpuGapMs,
+                 (_cpuGapMs >= 0 && _cpuGapMs < 5.0)
+                   ? "burned no CPU -> really was not run"
+                   : "burned CPU -> it RAN, so it was blocked on something else",
+                 _dvAgeMs,
+                 (_dvAgeMs > _waitMs * 0.5)
+                   ? "preview thread stalled TOO -> common cause, not contention"
+                   : "preview thread kept running -> it was not starved with us");
+          }
           s_prevDoneUs = perif_now_us();
+          // Stamped AFTER the send, so cpu_us at the next spike is measured
+          // across exactly the window the thread is accused of sleeping through.
+          beat(g_beatSend, s_prevDoneUs);
           bool newMax = (ms > g_perifWriteMaxMs) || newWaitMax;
           if (ms > g_perifWriteMaxMs) g_perifWriteMaxMs = ms;
           // Log on every new max (the thing you want to catch) and a periodic
@@ -6656,6 +6719,10 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
     while (datViewQueue.pop_blocking(headImgPipe))
     {
+      // Stamped on the way IN, so a stale beat means this thread has not come
+      // back round -- which is what a full datViewQueue actually tells us, and
+      // is not the same claim as "the preview is expensive".
+      beat(g_beatDview, perif_now_us());
 
       bool doPassDown = false;
       bool saveToSnap = false;
