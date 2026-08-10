@@ -36,7 +36,7 @@ function header(dv) {
            length: b[5] * 0x01000000 + (b[6] << 16) + (b[7] << 8) + b[8] };
 }
 
-let pg = 1, frames = 0, lastReport = Date.now(), sinceReport = 0, lastPairKey = '';
+let pg = 1, frames = 0, lastReport = Date.now(), sinceReport = 0, lastPairKey = '', lastHist = 0;
 const counts = {};
 const ws = new WebSocket(URL);
 ws.binaryType = 'arraybuffer';
@@ -91,6 +91,25 @@ ws.on('message', (data) => {
     // the transition that matters in a run measured in hours.
     const p = (() => { try { return JSON.parse(txt).perif_pairing; } catch { return null; } })();
     if (p) {
+      // The latency DISTRIBUTION, printed on a fixed cadence rather than
+      // change-only: unlike the pairing counters, every line of this is new
+      // information -- it is the tail that decides whether the delay lives in
+      // the serial write or upstream of it, and max/avg cannot show a tail.
+      const L = p.lat_hist;
+      if (L && Date.now() - lastHist >= 60000) {
+        lastHist = Date.now();
+        const ed = L.edges_ms || [];
+        const lbl = (i) => i === 0 ? `<${ed[0]}`
+                        : i > ed.length - 1 ? `>=${ed[ed.length - 1]}`
+                        : `${ed[i - 1]}-${ed[i]}`;
+        for (const key of ['queue', 'inspect', 'wait', 'write', 'e2e']) {
+          const h = L[key]; if (!h) continue;
+          const nz = (h.bucket || []).map((c, i) => [i, c]).filter(([, c]) => c > 0)
+            .map(([i, c]) => `${lbl(i)}ms:${c}`).join(' ');
+          console.log(`[lat] ${key.padEnd(5)} n=${h.n} avg=${(h.avg_ms).toFixed(2)}ms`
+            + ` max=${(h.max_ms).toFixed(1)}ms | ${nz}`);
+        }
+      }
       const k = `${p.trig_wait_suppressed}/${p.trig_wait_skipped}/${p.stale}/${p.no_candidate}`;
       if (k !== lastPairKey) {
         lastPairKey = k;

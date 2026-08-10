@@ -162,7 +162,15 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // run that halted on OBJECT_HAS_NO_INSP_RESULT reported
                        // avg 478ms / max 666ms against a ~1029ms budget --
                        // the distribution of the survivors.
-                       uint64_t enq_us; };
+                       uint64_t enq_us;
+                       // Host clock when this frame arrived from the camera
+                       // layer (imgPipe->host_rx_us), carried along so the send
+                       // thread can close the loop and measure the WHOLE
+                       // in-core span -- image in to report out -- as one
+                       // number. Every other stat here is a fragment of it, and
+                       // fragments do not add up to the deadline that is
+                       // actually being missed.
+                       uint64_t rx_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 // Preview frames dropped because the view queue was full. Visible on purpose:
@@ -214,6 +222,62 @@ double g_perifWaitMaxMs = 0, g_perifWaitSumMs = 0;
 // scheduled; a slow push means the lock is the problem. Measuring it here
 // avoids instrumenting TSQueue, which every other queue in the core shares.
 double g_perifPushMaxMs = 0;
+
+// Latency HISTOGRAMS for the report path.
+//
+// max and avg were never going to answer this. avg is blind to the events that
+// matter -- 340k frames at 6.03ms did not move when a three-minute anomaly went
+// through -- and max is a single since-boot sample that says nothing about how
+// often. Worse, `perif WAIT SPIKE` only fires when it sets a NEW max, so once
+// an early outlier raises the bar every later spike is silent: "run it longer
+// to collect more samples" does not work.
+//
+// The distribution is what decides where the delay lives, and the question is
+// specifically whether the USB-serial write is the culprit:
+//
+//   write   time inside the serial write itself == the wire.
+//   wait    enqueue -> pop == everything upstream of the wire in this path
+//           (the send thread being scheduled at all).
+//
+// A tail in `write` blames the link. A tail in `wait` with a clean `write`
+// exonerates it, which is what the one WAIT SPIKE we have says (1372.6ms wait,
+// 0.24ms write) -- but that was measured while the cJSON leak was still
+// swapping the machine, so it does not settle the post-fix halts.
+//
+// Edges are in MILLISECONDS and deliberately dense around the deadline: the
+// CAM->SWITCH budget is 792ms at plate freq 13000, so 600/800 straddle it and
+// the count above 800 is, by itself, the number of parts that went unjudged.
+static const double PERIF_HIST_EDGES_MS[] = {
+  0.5, 1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 600, 800, 1200, 2000
+};
+static const int PERIF_HIST_NB =
+  (int)(sizeof(PERIF_HIST_EDGES_MS) / sizeof(PERIF_HIST_EDGES_MS[0])) + 1;
+
+struct LatHist {
+  // Only the send thread writes these, and readers (the GS handler) tolerate a
+  // torn count -- a histogram bucket read one sample stale changes nothing.
+  uint64_t bucket[16] = {0};
+  uint64_t n = 0;
+  double   sum_ms = 0, max_ms = 0;
+  void add(double ms)
+  {
+    n++; sum_ms += ms;
+    if (ms > max_ms) max_ms = ms;
+    int i = 0;
+    while (i < PERIF_HIST_NB - 1 && ms >= PERIF_HIST_EDGES_MS[i]) i++;
+    bucket[i]++;
+  }
+};
+//   queue    frame received from the camera layer -> inspection starts
+//   inspect  inspection starts -> report enqueued for the link
+//   wait     enqueued -> popped by the send thread
+//   write    inside the serial write
+//   e2e      frame received -> write returned.  THE one that faces the budget.
+//
+// e2e is not the sum of the other four in any single sample -- they are stages
+// of one frame, but each histogram aggregates over different frames. Read them
+// as "where does the tail live", not as an arithmetic decomposition.
+static LatHist g_histWrite, g_histWait, g_histE2E, g_histQueue, g_histInspect;
 
 // Heartbeats, so a stall can be attributed instead of guessed at.
 //
@@ -2715,6 +2779,38 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddNumberToObject(robj, "cam_min_interval_ms", g_camMinIntervalMs);
             cJSON_AddNumberToObject(robj, "cam_max_fps",
               g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
+
+            // Report-path latency distributions. Rides on perif_pairing rather
+            // than a new GS item because fi_hold already polls this one -- and a
+            // counter nobody samples is worth nothing. Edges are shipped with
+            // the counts so a reader never has to hardcode them.
+            {
+              cJSON *lat = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj, "lat_hist", lat);
+              cJSON *ed = cJSON_CreateArray();
+              cJSON_AddItemToObject(lat, "edges_ms", ed);
+              for (int i = 0; i < PERIF_HIST_NB - 1; i++)
+                cJSON_AddItemToArray(ed, cJSON_CreateNumber(PERIF_HIST_EDGES_MS[i]));
+              struct { const char *k; LatHist *h; } hs[] = {
+                { "queue",   &g_histQueue   },   // camera in -> inspect starts
+                { "inspect", &g_histInspect },   // inspect -> report enqueued
+                { "wait",    &g_histWait    },   // enqueued -> send thread pops
+                { "write",   &g_histWrite   },   // the serial write itself
+                { "e2e",     &g_histE2E     } }; // camera in -> write returned
+              for (auto &e : hs)
+              {
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, e.k, o);
+                cJSON_AddNumberToObject(o, "n", (double)e.h->n);
+                cJSON_AddNumberToObject(o, "max_ms", e.h->max_ms);
+                cJSON_AddNumberToObject(o, "avg_ms",
+                  e.h->n ? e.h->sum_ms / (double)e.h->n : 0.0);
+                cJSON *b = cJSON_CreateArray();
+                cJSON_AddItemToObject(o, "bucket", b);
+                for (int i = 0; i < PERIF_HIST_NB; i++)
+                  cJSON_AddItemToArray(b, cJSON_CreateNumber((double)e.h->bucket[i]));
+              }
+            }
           }
           else if (strcmp(itemType, "precess_queue_status") == 0)
           {
@@ -6497,6 +6593,15 @@ void PerifSendThread(bool *terminationflag)
           g_perifWriteSumMs += ms;
           g_perifWriteCnt++;
           g_perifWaitSumMs += _waitMs;
+          // Every sample, not just the record-setting ones.
+          g_histWrite.add(ms);
+          g_histWait.add(_waitMs);
+          // Image in -> report out, closed here because this is the only point
+          // that has both ends. Guarded: rx_us is 0 for any message built
+          // before the field existed, and 0 would enter the top bucket and
+          // manufacture a tail out of nothing.
+          if (msg.rx_us)
+            g_histE2E.add((double)(perif_now_us() - msg.rx_us) / 1000.0);
           bool newWaitMax = _waitMs > g_perifWaitMaxMs;
           if (newWaitMax) g_perifWaitMaxMs = _waitMs;
           const uint64_t _logT0 = perif_now_us();
@@ -7164,7 +7269,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
-                        imgPipe->fi.timeStamp_us, 0 };
+                        imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -7213,6 +7318,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
                           ? (imgPipe->host_insp_us - imgPipe->host_rx_us) : 0;
       const uint64_t i_us = (msg.enq_us > imgPipe->host_insp_us)
                           ? (msg.enq_us - imgPipe->host_insp_us) : 0;
+      g_histQueue.add(q_us / 1000.0);
+      g_histInspect.add(i_us / 1000.0);
       s_n++; s_q_sum += q_us; s_i_sum += i_us;
       if (q_us > s_q_max) s_q_max = q_us;
       if (i_us > s_i_max) s_i_max = i_us;
