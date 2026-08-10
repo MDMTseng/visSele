@@ -230,6 +230,10 @@ double g_perifWaitMaxMs = 0, g_perifWaitSumMs = 0;
 // scheduled; a slow push means the lock is the problem. Measuring it here
 // avoids instrumenting TSQueue, which every other queue in the core shares.
 double g_perifPushMaxMs = 0;
+// How often the minimum-write-gap floor actually held a report back. Zero
+// means the pacing insurance never had to do anything, which is the expected
+// steady state and worth being able to prove rather than assume.
+uint64_t g_perifWriteGapNaps = 0;
 
 // Latency HISTOGRAMS for the report path.
 //
@@ -2899,6 +2903,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddNumberToObject(dg, "ticks", (double)dn);
               cJSON_AddNumberToObject(dg, "late_max_ms",
                 g_dogLateMaxUs.load(std::memory_order_relaxed) / 1000.0);
+              cJSON_AddNumberToObject(lat, "write_gap_naps",
+                (double)g_perifWriteGapNaps);
               cJSON_AddNumberToObject(dg, "late_avg_ms",
                 dn ? g_dogLateSumUs.load(std::memory_order_relaxed) / 1000.0 / dn : 0.0);
             }
@@ -6398,85 +6404,73 @@ void PerifConsoleThread(bool *terminationflag)
 // See the note at g_beatDog. Sleeps, wakes, measures its own lateness, and
 // nothing else -- so its lateness is a property of the machine rather than of
 // any queue in this file.
-void PerifWatchdogThread(bool *terminationflag)
-{
-#ifdef __APPLE__
-  // Matched to PerifSendThread on purpose. A watchdog at a higher class would
-  // sail through the preemption it is supposed to witness.
-  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-#endif
-  uint64_t next = perif_now_us() + DOG_PERIOD_US;
-  while (terminationflag && *terminationflag == false)
-  {
-    const uint64_t now = perif_now_us();
-    if (next > now)
-    {
-      struct timespec ts;
-      const uint64_t d = next - now;
-      ts.tv_sec = (time_t)(d / 1000000ull);
-      ts.tv_nsec = (long)((d % 1000000ull) * 1000ull);
-      nanosleep(&ts, NULL);
-    }
-    const uint64_t woke = perif_now_us();
-    const uint64_t late = woke > next ? woke - next : 0;
-    g_dogTicks.fetch_add(1, std::memory_order_relaxed);
-    g_dogLateSumUs.fetch_add(late, std::memory_order_relaxed);
-    if (late > g_dogLateMaxUs.load(std::memory_order_relaxed))
-      g_dogLateMaxUs.store(late, std::memory_order_relaxed);
-    g_histDog.add(late / 1000.0);
-    beat(g_beatDog, woke);
-    // Absolute schedule, not woke+period: drifting the deadline forward after a
-    // late wake would hide exactly the lateness being measured.
-    next += DOG_PERIOD_US;
-    if (next < woke) next = woke + DOG_PERIOD_US;   // fell far behind; resync
-  }
-}
 
-void PerifSendThread(bool *terminationflag)
+// Deliver one result to the peripheral: the serial write and all of the latency
+// accounting around it.
+//
+// Extracted so it can be called from TWO places, because the handoff it used to
+// require turned out to cost more than the thing it was protecting against.
+// The original design pushed every report onto perifSendQueue so that the
+// serial write could not block inspection -- the write can stall over a second
+// under flow control. Measured on 2026-08-10 over 98,099 frames:
+//
+//   the write stalls     1 frame exceeded 100ms
+//   the HANDOFF stalls   routinely: 175ms, 300ms, once 2.5s
+//
+// and a handoff delay lands directly on the CAM->SWITCH deadline while a write
+// stall only costs throughput. The protection was buying a rare throughput risk
+// with a routine deadline risk.
+//
+// INSP_PERIF_DIRECT_SEND=1 calls this inline from the report path instead of
+// queueing. `wait` and `depth` are then trivially zero -- that is not a broken
+// measurement, it IS the change being measured.
+static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
+                               uint64_t popEnterUs)
 {
-  // This thread is nearly always idle and does almost no work -- 0.43ms of
-  // serial write per report -- which is exactly why the scheduler was happy to
-  // leave it alone for up to 216ms while the inspection threads saturated the
-  // performance cores. Measured: the producer's push() never exceeded 0.050ms,
-  // so the mutex is uncontended and the notify goes out promptly; the delay is
-  // entirely between the notify and this thread running again.
-  //
-  // The latency it adds lands on a hard deadline: a verdict that misses the
-  // CAM->SWITCH window leaves the part unjudged at the ejector. 216ms against a
-  // 396ms budget at plate 26000 is most of the margin, so the ceiling on
-  // throughput is this scheduling gap rather than any throughput of ours.
-  //
-  // USER_INTERACTIVE rather than USER_INITIATED: the work is latency-critical
-  // and negligible in size, which is precisely the case that class exists for,
-  // and on Apple Silicon it also keeps the thread off the efficiency cores.
-#ifdef __APPLE__
-  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-#endif
-  while (terminationflag && *terminationflag == false)
-  {
-    PerifResultMsg msg;
-    // Only this thread touches it.
-    static uint64_t s_popEnterUs = 0;
-    try
-    {
-      // When did this thread ENTER the blocking pop? It is the one number that
-      // separates the two remaining explanations, and neither `wait` nor
-      // age_send can distinguish them:
-      //
-      //   entered BEFORE the item was enqueued -> it was already parked in the
-      //     condition variable when the notify went out, and woke ~300ms late.
-      //     A wake-up defect.
-      //   entered AFTER -> it was somewhere else when the item arrived, and the
-      //     delay is upstream in this same loop, not in the handoff.
-      //
-      // Stamped at the bottom of the loop as well as here, so it always refers
-      // to the pop that is about to be measured.
-      s_popEnterUs = perif_now_us();
-      while (perifSendQueue.pop_blocking(msg))
-      {
+  const size_t _loopDepth = depthAtPop;
+  static uint64_t s_popEnterUs = 0;
+  s_popEnterUs = popEnterUs;
         PerifChannel *pc = bpg_pi.perifCH;   // snapshot (may be (re)created by ST cmd)
         if (pc != NULL)
         {
+          // Minimum spacing between writes.
+          //
+          // The queued path's write maxima (114ms, 182ms, 407ms) were not the
+          // link being slow -- they were BURSTS. Once the send thread fell
+          // behind it drained 28 queued reports back to back, and it was that
+          // burst that hit flow control. Direct delivery paces writes at the
+          // frame period, and the same measurement fell to 0.1ms max.
+          //
+          // So this is insurance rather than a fix: at 36.5 reports/s the gap
+          // between writes is ~27ms and a 2ms floor never triggers. It only
+          // does something if reports ever arrive back to back again -- a
+          // recovery drain, a rate change, a future batching caller -- and then
+          // it keeps the link out of the regime that produced those maxima.
+          //
+          // Capped at the floor itself, so a long-idle link cannot accumulate
+          // "credit" and this can never delay a report by more than the gap.
+          {
+            static uint64_t s_lastWriteEndUs = 0;
+            static const uint64_t _minGapUs = []{
+              const char *e = getenv("INSP_PERIF_MIN_WRITE_GAP_US");
+              return e ? (uint64_t)strtoull(e, NULL, 10) : 2000ull;
+            }();
+            if (_minGapUs && s_lastWriteEndUs)
+            {
+              const uint64_t now = perif_now_us();
+              const uint64_t since = now - s_lastWriteEndUs;
+              if (since < _minGapUs)
+              {
+                const uint64_t nap = _minGapUs - since;
+                struct timespec ts;
+                ts.tv_sec = 0;
+                ts.tv_nsec = (long)(nap * 1000ull);
+                nanosleep(&ts, NULL);
+                g_perifWriteGapNaps++;
+              }
+            }
+            s_lastWriteEndUs = perif_now_us();
+          }
           auto _wt0 = std::chrono::steady_clock::now();
           const uint64_t _popUs = perif_now_us();
           const double _waitMs = msg.enq_us
@@ -6495,7 +6489,7 @@ void PerifSendThread(bool *terminationflag)
           static uint64_t s_prevDoneUs = 0;
           const double _idleMs = s_prevDoneUs
             ? (double)(_popUs - s_prevDoneUs) / 1000.0 : 0.0;
-          const size_t _depthAtPop = perifSendQueue.size();
+          const size_t _depthAtPop = _loopDepth;
           int ret;
           if (pc->machine_type == PERIF_UINSP_ESP32)
           {
@@ -6946,6 +6940,87 @@ void PerifSendThread(bool *terminationflag)
             g_lastLogMs = (double)(perif_now_us() - _logT0) / 1000.0;
           }
         }
+}
+
+void PerifWatchdogThread(bool *terminationflag)
+{
+#ifdef __APPLE__
+  // Matched to PerifSendThread on purpose. A watchdog at a higher class would
+  // sail through the preemption it is supposed to witness.
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+  uint64_t next = perif_now_us() + DOG_PERIOD_US;
+  while (terminationflag && *terminationflag == false)
+  {
+    const uint64_t now = perif_now_us();
+    if (next > now)
+    {
+      struct timespec ts;
+      const uint64_t d = next - now;
+      ts.tv_sec = (time_t)(d / 1000000ull);
+      ts.tv_nsec = (long)((d % 1000000ull) * 1000ull);
+      nanosleep(&ts, NULL);
+    }
+    const uint64_t woke = perif_now_us();
+    const uint64_t late = woke > next ? woke - next : 0;
+    g_dogTicks.fetch_add(1, std::memory_order_relaxed);
+    g_dogLateSumUs.fetch_add(late, std::memory_order_relaxed);
+    if (late > g_dogLateMaxUs.load(std::memory_order_relaxed))
+      g_dogLateMaxUs.store(late, std::memory_order_relaxed);
+    g_histDog.add(late / 1000.0);
+    beat(g_beatDog, woke);
+    // Absolute schedule, not woke+period: drifting the deadline forward after a
+    // late wake would hide exactly the lateness being measured.
+    next += DOG_PERIOD_US;
+    if (next < woke) next = woke + DOG_PERIOD_US;   // fell far behind; resync
+  }
+}
+
+void PerifSendThread(bool *terminationflag)
+{
+  // This thread is nearly always idle and does almost no work -- 0.43ms of
+  // serial write per report -- which is exactly why the scheduler was happy to
+  // leave it alone for up to 216ms while the inspection threads saturated the
+  // performance cores. Measured: the producer's push() never exceeded 0.050ms,
+  // so the mutex is uncontended and the notify goes out promptly; the delay is
+  // entirely between the notify and this thread running again.
+  //
+  // The latency it adds lands on a hard deadline: a verdict that misses the
+  // CAM->SWITCH window leaves the part unjudged at the ejector. 216ms against a
+  // 396ms budget at plate 26000 is most of the margin, so the ceiling on
+  // throughput is this scheduling gap rather than any throughput of ours.
+  //
+  // USER_INTERACTIVE rather than USER_INITIATED: the work is latency-critical
+  // and negligible in size, which is precisely the case that class exists for,
+  // and on Apple Silicon it also keeps the thread off the efficiency cores.
+#ifdef __APPLE__
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+  while (terminationflag && *terminationflag == false)
+  {
+    PerifResultMsg msg;
+    // Only this thread touches it.
+    static uint64_t s_popEnterUs = 0;
+    try
+    {
+      // When did this thread ENTER the blocking pop? It is the one number that
+      // separates the two remaining explanations, and neither `wait` nor
+      // age_send can distinguish them:
+      //
+      //   entered BEFORE the item was enqueued -> it was already parked in the
+      //     condition variable when the notify went out, and woke ~300ms late.
+      //     A wake-up defect.
+      //   entered AFTER -> it was somewhere else when the item arrived, and the
+      //     delay is upstream in this same loop, not in the handoff.
+      //
+      // Stamped at the bottom of the loop as well as here, so it always refers
+      // to the pop that is about to be measured.
+      s_popEnterUs = perif_now_us();
+      while (perifSendQueue.pop_blocking(msg))
+      {
+        // Depth is sampled here so the callee need not know whether it was
+        // reached through the queue or called directly.
+        perifDeliverResult(msg, perifSendQueue.size(), s_popEnterUs);
         // Re-stamp for the NEXT pop. Setting it once before the loop would make
         // every reading after the first frame meaningless -- the inner loop
         // never leaves, so the stamp would age forever and every item would
@@ -7592,6 +7667,31 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
              (unsigned long long)s_n);
     }
 
+    // Direct delivery: skip the queue and write from this thread.
+    //
+    // The handoff exists to keep a stalling serial write off the inspection
+    // thread. The measurement says that trade is backwards here -- see the
+    // comment on perifDeliverResult -- so this is the lever to test it, and
+    // very likely the shipping shape.
+    //
+    // Read once and cached: getenv on every frame is both wasteful and a
+    // config that could change mid-run, which would make a run's data mean two
+    // different things.
+    static const bool _direct = []{
+      const char *e = getenv("INSP_PERIF_DIRECT_SEND");
+      const bool on = e && atoi(e) != 0;
+      LOGE("perif delivery: %s", on ? "DIRECT (no queue, no handoff)"
+                                    : "QUEUED via PerifSendThread");
+      return on;
+    }();
+    if (_direct)
+    {
+      // depth 0 and popEnter == enq are the literal truth on this path: there
+      // was no queue to be deep and no thread to have parked.
+      perifDeliverResult(msg, 0, msg.enq_us);
+    }
+    else
+    {
     const uint64_t _pushT0 = msg.enq_us;
     const bool _pushed = perifSendQueue.push(msg);
     {
@@ -7608,6 +7708,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       int n = ++perifSendDropCount;
       if ((n % 50) == 1)
         LOGE("perifSendQueue full -> dropping oldest (cumulative drops: %d)", n);
+    }
     }
   }
   cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
