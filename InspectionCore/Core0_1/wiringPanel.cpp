@@ -371,6 +371,7 @@ struct LatEvent {
   int    depth_send, depth_insp, depth_view;
   double dog_late_max_ms;      // worst watchdog overshoot seen so far
   double last_log_ms;          // duration of the most recent logging tail
+  double parked_before_enq_ms; // >0: already waiting when the item arrived
 };
 static LatEvent g_latEv[32];
 static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
@@ -2936,6 +2937,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "q_view", (double)e.depth_view);
                 cJSON_AddNumberToObject(o, "dog_late_max_ms", e.dog_late_max_ms);
                 cJSON_AddNumberToObject(o, "last_log_ms", e.last_log_ms);
+                cJSON_AddNumberToObject(o, "parked_before_enq_ms", e.parked_before_enq_ms);
               }
             }
           }
@@ -6453,8 +6455,23 @@ void PerifSendThread(bool *terminationflag)
   while (terminationflag && *terminationflag == false)
   {
     PerifResultMsg msg;
+    // Only this thread touches it.
+    static uint64_t s_popEnterUs = 0;
     try
     {
+      // When did this thread ENTER the blocking pop? It is the one number that
+      // separates the two remaining explanations, and neither `wait` nor
+      // age_send can distinguish them:
+      //
+      //   entered BEFORE the item was enqueued -> it was already parked in the
+      //     condition variable when the notify went out, and woke ~300ms late.
+      //     A wake-up defect.
+      //   entered AFTER -> it was somewhere else when the item arrived, and the
+      //     delay is upstream in this same loop, not in the handoff.
+      //
+      // Stamped at the bottom of the loop as well as here, so it always refers
+      // to the pop that is about to be measured.
+      s_popEnterUs = perif_now_us();
       while (perifSendQueue.pop_blocking(msg))
       {
         PerifChannel *pc = bpg_pi.perifCH;   // snapshot (may be (re)created by ST cmd)
@@ -6817,6 +6834,11 @@ void PerifSendThread(bool *terminationflag)
             e.depth_view = (int)datViewQueue.size();
             e.dog_late_max_ms = g_dogLateMaxUs.load(std::memory_order_relaxed) / 1000.0;
             e.last_log_ms = g_lastLogMs;
+            // Positive => the thread was ALREADY parked in the pop when the
+            // item was enqueued, so the notify was late. Negative => it only
+            // reached the pop after the item was already waiting.
+            e.parked_before_enq_ms = (msg.enq_us && s_popEnterUs)
+              ? (double)((int64_t)msg.enq_us - (int64_t)s_popEnterUs) / 1000.0 : 0.0;
             g_latEvN.fetch_add(1, std::memory_order_relaxed);
           }
           bool newWaitMax = _waitMs > g_perifWaitMaxMs;
@@ -6924,6 +6946,11 @@ void PerifSendThread(bool *terminationflag)
             g_lastLogMs = (double)(perif_now_us() - _logT0) / 1000.0;
           }
         }
+        // Re-stamp for the NEXT pop. Setting it once before the loop would make
+        // every reading after the first frame meaningless -- the inner loop
+        // never leaves, so the stamp would age forever and every item would
+        // look like it was enqueued long after the thread parked.
+        s_popEnterUs = perif_now_us();
       }
     }
     catch (TS_Termination_Exception &e)
