@@ -308,6 +308,7 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
     case 230400:
         sp = B230400;
         break;
+#ifndef __linux__
     case 460800:
         sp = 460800;
         break;
@@ -317,7 +318,7 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
     case 1152000:
         sp = 1152000;
         break;
-#ifdef __linux__
+#else
     case 460800:
         sp = B460800;
         break;
@@ -537,7 +538,7 @@ int simple_uart_list(char ***namesp, char ***descriptionp)
     if (glob("/sys/class/tty/ttyS[0-9]*", 0, NULL, &g) >= 0) {
         char buffer[100];
         char **new_names;
-        new_names = realloc(names, (count + g.gl_pathc) * sizeof(char *));
+        new_names = (char **)realloc(names, (count + g.gl_pathc) * sizeof(char *));
         if (!new_names) {
             globfree(&g);
             free(names);
@@ -555,7 +556,7 @@ int simple_uart_list(char ***namesp, char ***descriptionp)
     if (glob ("/sys/class/tty/ttyUSB[0-9]*", 0, NULL, &g) >= 0) {
         char buffer[100];
         char **new_names;
-        new_names = realloc(names, (count + g.gl_pathc) * sizeof (char *));
+        new_names = (char **)realloc(names, (count + g.gl_pathc) * sizeof (char *));
         if (!new_names) {
             globfree(&g);
             free(names);

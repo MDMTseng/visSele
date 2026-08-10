@@ -34,6 +34,7 @@
 #define LOG_RING_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include <atomic>
 
 /* ---------- protocol constants ---------- */
