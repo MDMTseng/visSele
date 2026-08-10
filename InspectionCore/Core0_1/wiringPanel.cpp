@@ -227,6 +227,26 @@ double g_camMinIntervalMs = 0;
 // err=2 (see the trigger wait in ImgPipeProcessCenter_imp): if it creeps toward
 // the cap, parts are packed tighter than the serial link can announce them.
 double g_perifTrigWaitMaxMs = 0;
+// Circuit breaker for that same wait. Also inspection-thread only.
+//
+// The wait costs TRIG_WAIT_MAX_MS per frame that has no announcement, which is
+// the right price for ONE late announcement and a catastrophic one for a link
+// that has stopped announcing at all: at 700ms a frame the inspection thread
+// runs at 1.4 frames/s against a camera still delivering 36, so inspQueue
+// overflows and every frame a late announcement might have matched has already
+// been dropped by the time it lands -- the wait keeps timing out because the
+// waiting is what destroyed the evidence. Measured on 2026-08-10: a 5h soak
+// collapsed 25x at 2.65h and stayed collapsed for the three minutes until it
+// was stopped, throughput pinned at 1.41/s with the 709ms period visible in
+// every log gap.
+//
+// So: after enough back-to-back full timeouts to rule out a merely-late
+// announcement, stop paying. Frames then flow at full rate and go out
+// unpaired, the device counts them UNANSWERED and its own stop policy fires --
+// a fast, loud failure instead of a silent 25x slowdown that still looks alive.
+uint32_t g_trigWaitTimeouts = 0;      // consecutive full-cap timeouts
+bool     g_trigWaitSuppressed = false;
+uint64_t g_trigWaitSuppressedN = 0;   // frames that skipped the wait, cumulative
 uint64_t g_perifWriteCnt = 0;
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
@@ -2619,6 +2639,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 #endif  // PERIF_CORE_PAIRING (status)
 
             cJSON_AddNumberToObject(robj, "trig_wait_max_ms", g_perifTrigWaitMaxMs);
+            // Nonzero skipped is the signature of the 2026-08-10 collapse, and
+            // the only way to tell "the link went quiet" apart from "the plate
+            // was empty" after the fact -- both leave every part unjudged.
+            cJSON_AddNumberToObject(robj, "trig_wait_suppressed", g_trigWaitSuppressed ? 1 : 0);
+            cJSON_AddNumberToObject(robj, "trig_wait_skipped", (double)g_trigWaitSuppressedN);
             // The measured camera ceiling, so the gate cap can be set against a
             // real number instead of a guess. Shrinking the ROI raises it --
             // that is the lever for running parts closer together.
@@ -5315,6 +5340,13 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
     // logged at 130ms, 420ms and 652ms on 2026-08-06. An announcement that
     // arrives after the cap is the same as one that never arrives.
     const int TRIG_WAIT_MAX_MS = 700;
+    // Back-to-back full timeouts before the wait is abandoned (see
+    // g_trigWaitSuppressed). Five is 3.5s of a camera delivering frames while
+    // the link announces nothing -- far past any late announcement (the worst
+    // measured is 652ms, and one timeout already exceeds it), and far short of
+    // anything a healthy run reaches: the 2.65h that ran clean before the
+    // collapse never had two in a row.
+    const uint32_t TRIG_WAIT_GIVEUP_AFTER = 5;
     // States in which a frame's announcement is worth waiting for.
     //
     // This was INSPECTION only, and that is why startup calibration could not
@@ -5349,8 +5381,12 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
     // common one: measured 307 unplaced frames in 4592 parts (6.7%), against
     // 308 triggers that then went stale -- the same parts counted from both
     // ends.
-    if ((pr == PerifTriggerPairing::EMPTY || pr == PerifTriggerPairing::NO_CANDIDATE) &&
-        dev_state_wants_wait(bpg_pi.perifCH->last_dev_state))
+    const bool _wantWait =
+      (pr == PerifTriggerPairing::EMPTY || pr == PerifTriggerPairing::NO_CANDIDATE) &&
+      dev_state_wants_wait(bpg_pi.perifCH->last_dev_state);
+    if (_wantWait && g_trigWaitSuppressed)
+      g_trigWaitSuppressedN++;   // link presumed silent -- do not pay the cap
+    if (_wantWait && !g_trigWaitSuppressed)
     {
       int waited_ms = 0;
       while (waited_ms < TRIG_WAIT_MAX_MS)
@@ -5374,6 +5410,27 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
                ms, TRIG_WAIT_MAX_MS);
         }
       }
+      else if (++g_trigWaitTimeouts >= TRIG_WAIT_GIVEUP_AFTER)
+      {
+        g_trigWaitSuppressed = true;
+        LOGE("perif: %u consecutive %dms trigger waits timed out -- the link has "
+             "stopped announcing. Abandoning the wait so frames keep flowing; "
+             "they go out unpaired and the device will count them UNANSWERED.",
+             g_trigWaitTimeouts, TRIG_WAIT_MAX_MS);
+      }
+    }
+
+    // Any successful pairing means announcements are arriving again. Reset from
+    // the result, not from inside the wait: while suppressed there is no wait,
+    // and the no-wait pairFrame above is then the only thing that can recover.
+    if (pr == PerifTriggerPairing::PAIRED || pr == PerifTriggerPairing::PAIRED_SYNC)
+    {
+      if (g_trigWaitSuppressed)
+        LOGE("perif: announcements are back after %llu frames sent unpaired -- "
+             "trigger wait re-enabled",
+             (unsigned long long)g_trigWaitSuppressedN);
+      g_trigWaitTimeouts = 0;
+      g_trigWaitSuppressed = false;
     }
 
     if (pr == PerifTriggerPairing::PAIRED_SYNC)
@@ -5595,6 +5652,26 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }();
     if (dviewSleepMs)
       std::this_thread::sleep_for(std::chrono::milliseconds(dviewSleepMs));
+
+    // INSP_PERIF_FAULT_DVIEW_SPIN_MS=<n>: BURN n ms of CPU instead of waiting.
+    //
+    // The sleep above answers "does a slow preview delay the verdict"; it
+    // cannot answer "does an expensive preview slow the inspection down",
+    // because sleeping yields the core and computing does not. A bigger sensor
+    // or a heavier codec costs CPU, not patience, so the two faults have to be
+    // separate dials or the conclusion drawn from one gets applied to the other.
+    static const int dviewSpinMs = []{
+      const char *e = getenv("INSP_PERIF_FAULT_DVIEW_SPIN_MS");
+      int v = e ? atoi(e) : 0;
+      if (v > 0) LOGE("FAULT INJECTION: preview burns %dms of CPU per frame", v);
+      return v > 0 ? v : 0;
+    }();
+    if (dviewSpinMs)
+    {
+      const uint64_t _spinEnd = perif_now_us() + (uint64_t)dviewSpinMs * 1000;
+      volatile double _acc = 0;
+      while (perif_now_us() < _spinEnd) { for (int i = 0; i < 512; ++i) _acc += i * 0.5; }
+    }
 
     clock_t img_t = clock();
     static cv::Mat test1_buff;  // phase 3a: was acvImage
