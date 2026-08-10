@@ -153,6 +153,11 @@ core 佔 3.46 GB / 16 GB 主機
   `pgrep -f "mac-arm64/visSele"`,於是 soak 的「是否已有 core 在跑」檢查比對到它,
   拒絕啟動整輪(`verdict: UNSET`);而我事後用同一個 pgrep 檢查,又看到它,
   以為 core 活著。**白跑半小時。** 修法:`pgrep -f "mac-arm64/[v]isSele"`。
+- **`virt_drop` 是停機的結果,不是原因**。停機樣本裡 `virt_drop 119` 與
+  `rej.rej_blocked 119` **完全相等**——那是 `blockNewDetectedObject` 為真時的拒收,
+  也就是機器判定停機後**自己關閘**的動作。把它讀成「虛擬物件產生端在掉」會把調查
+  推向板端,但板端當下 `rbuf_peak 44`、`min_heap 190KB`、`isr_gap_max_us 14.4ms`,
+  毫無壓力。**看 `rej` 的分項,不要只看 `virt_drop` 的總數。**
 - **在受測主機上做分析會汙染資料**。我用來查證的 15MB dump grep / `ps -Ao -m`
   就落在其中一次停機的窗口裡,那筆相關性不能採計。
 
