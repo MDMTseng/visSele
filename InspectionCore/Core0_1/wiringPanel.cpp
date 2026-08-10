@@ -7093,7 +7093,41 @@ void PerifSendThread(bool *terminationflag)
       // Stamped at the bottom of the loop as well as here, so it always refers
       // to the pop that is about to be measured.
       s_popEnterUs = perif_now_us();
-      while (perifSendQueue.pop_blocking(msg))
+      // INSP_PERIF_POLL_US: take the item by POLLING instead of parking in the
+      // queue's condition variable.
+      //
+      // This is the A/B for the one thing the evidence points at and nothing
+      // has yet tested directly. Captured at a halt: the thread was already
+      // inside the blocking pop 35.3ms BEFORE the item was enqueued, then took
+      // 175.6ms to come back -- with nivcsw 0 (nobody preempted it) and the
+      // watchdog 0.4ms (the machine was fine). The send and preview threads,
+      // the only two parked in a condition variable, froze for identical
+      // durations to a tenth of a millisecond while the running threads and the
+      // timer-sleeping watchdog did not.
+      //
+      // If polling collapses the `wait` tail, the queue was never the problem
+      // and the wake-up path was; a 1ms poll of a trivial loop is a price worth
+      // paying for a hard deadline. If the tail survives, the fault is deeper
+      // than the handoff and direct delivery only sidesteps it.
+      static const uint64_t _pollUs = []{
+        const char *e = getenv("INSP_PERIF_POLL_US");
+        const uint64_t v = e ? strtoull(e, NULL, 10) : 0ull;
+        LOGE("perif send wake: %s", v ? "POLLING" : "condition variable");
+        return v;
+      }();
+      auto _take = [&](PerifResultMsg &m) -> bool {
+        if (!_pollUs) return perifSendQueue.pop_blocking(m);
+        for (;;)
+        {
+          if (perifSendQueue.pop(m)) return true;
+          if (terminationflag && *terminationflag) return false;
+          struct timespec ts;
+          ts.tv_sec = 0;
+          ts.tv_nsec = (long)(_pollUs * 1000ull);
+          nanosleep(&ts, NULL);
+        }
+      };
+      while (_take(msg))
       {
         // Depth is sampled here so the callee need not know whether it was
         // reached through the queue or called directly.
