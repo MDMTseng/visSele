@@ -67,6 +67,7 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 影像傳輸 / JPEG 線路格式 | `InspectionCore/docs/IMG_TRANSFER_JPEG.md` | 現行 |
 | 日誌系統與 WebUI 整合 | `InspectionCore/docs/LOGGING_WEBUI.md` | 部分未實作 |
 | **一個「排程問題」其實是記憶體洩漏的完整過程** | `InspectionCore/docs/POSTMORTEM_2026-08-10_stall.md` | 現行 |
+| **報告路徑長延遲的完整調查與修正** | `InspectionCore/docs/REPORT_2026-08-10_latency.md` | 現行 |
 
 ### 只是設計 / 尚未實作(不要當成現況)
 
