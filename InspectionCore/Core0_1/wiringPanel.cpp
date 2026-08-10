@@ -179,7 +179,11 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        // needed so a captured event can carry its OWN stage
                        // breakdown -- the histograms aggregate across frames,
                        // which is the wrong shape for explaining one event.
-                       uint64_t insp_us; };
+                       uint64_t insp_us;
+                       // Snapshots of the two per-frame breakdowns above, taken
+                       // at enqueue so the send side can attribute a spike
+                       // without reaching back into inspection-thread state.
+                       uint64_t off_us; uint64_t trigwait_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 // Preview frames dropped because the view queue was full. Visible on purpose:
@@ -311,6 +315,12 @@ static uint64_t g_inspCpuT0 = 0;
 // Wall MINUS cpu over the inspect stage: how long the thread was not running
 // while it was supposed to be inspecting. Zero means it genuinely computed.
 static LatHist g_histInspOff;
+// Per-frame carry-through, so a captured spike can say WHICH of the two things
+// inside the inspect stage it was: waiting for the device's trigger
+// announcement (a sleep, by design) or something else entirely. Written and
+// read by the inspection thread only.
+static uint64_t g_lastInspOffUs = 0;
+static uint64_t g_lastTrigWaitUs = 0;
 static double g_lastLogMs = 0;
 
 // Heartbeats, so a stall can be attributed instead of guessed at.
@@ -396,6 +406,8 @@ struct LatEvent {
   double last_log_ms;          // duration of the most recent logging tail
   double parked_before_enq_ms; // >0: already waiting when the item arrived
   double tx_lock_ms, tx_wire_ms;  // the two halves of write_ms
+  double insp_off_ms;             // of inspect_ms, how much was NOT running
+  double trig_wait_ms;            // of that, how much was the announcement wait
 };
 static LatEvent g_latEv[32];
 static std::atomic<uint32_t> g_latEvN{0};   // total seen; index = (n-1) % 32
@@ -3013,6 +3025,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "dog_late_max_ms", e.dog_late_max_ms);
                 cJSON_AddNumberToObject(o, "last_log_ms", e.last_log_ms);
                 cJSON_AddNumberToObject(o, "parked_before_enq_ms", e.parked_before_enq_ms);
+                cJSON_AddNumberToObject(o, "insp_off_ms", e.insp_off_ms);
+                cJSON_AddNumberToObject(o, "trig_wait_ms", e.trig_wait_ms);
                 cJSON_AddNumberToObject(o, "tx_lock_ms", e.tx_lock_ms);
                 cJSON_AddNumberToObject(o, "tx_wire_ms", e.tx_wire_ms);
               }
@@ -5754,6 +5768,7 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
     // common one: measured 307 unplaced frames in 4592 parts (6.7%), against
     // 308 triggers that then went stale -- the same parts counted from both
     // ends.
+    const uint64_t _twT0 = perif_now_us();
     const bool _wantWait =
       (pr == PerifTriggerPairing::EMPTY || pr == PerifTriggerPairing::NO_CANDIDATE) &&
       dev_state_wants_wait(bpg_pi.perifCH->last_dev_state);
@@ -5792,6 +5807,12 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
              g_trigWaitTimeouts, TRIG_WAIT_MAX_MS);
       }
     }
+
+    // How long THIS frame spent waiting for its announcement. The histogram
+    // shows the distribution; this is the per-frame value a captured spike
+    // needs, because insp_off alone cannot say whether the stage was sleeping
+    // here on purpose or stuck somewhere it should not be.
+    g_lastTrigWaitUs = perif_now_us() - _twT0;
 
     // Any successful pairing means announcements are arriving again. Reset from
     // the result, not from inside the wait: while suppressed there is no wait,
@@ -6906,6 +6927,8 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             // Positive => the thread was ALREADY parked in the pop when the
             // item was enqueued, so the notify was late. Negative => it only
             // reached the pop after the item was already waiting.
+            e.insp_off_ms  = msg.off_us / 1000.0;
+            e.trig_wait_ms = msg.trigwait_us / 1000.0;
             e.tx_lock_ms = g_perifLastLockMs;
             e.tx_wire_ms = g_perifLastWireMs;
             e.parked_before_enq_ms = (msg.enq_us && s_popEnterUs)
@@ -7731,7 +7754,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
                         imgPipe->fi.timeStamp_us, 0, imgPipe->host_rx_us,
-                        imgPipe->host_insp_us };
+                        imgPipe->host_insp_us, 0, 0 };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -7787,7 +7810,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // work itself is expensive and the fix belongs in the algorithm.
       {
         const uint64_t cpu = thread_cpu_us() - g_inspCpuT0;
-        g_histInspOff.add(i_us > cpu ? (i_us - cpu) / 1000.0 : 0.0);
+        g_lastInspOffUs = i_us > cpu ? (i_us - cpu) : 0;
+        g_histInspOff.add(g_lastInspOffUs / 1000.0);
+        // Attach THIS frame's breakdown, here rather than at the enq_us
+        // stamp above: g_lastInspOffUs is computed in this block, so reading
+        // it earlier would attach the PREVIOUS frame's value to every event.
+        // The same ordering trap already cost this file an instrument that
+        // printed 0.00ms for every run -- see the comment above.
+        msg.off_us = g_lastInspOffUs;
+        msg.trigwait_us = g_lastTrigWaitUs;
       }
       s_n++; s_q_sum += q_us; s_i_sum += i_us;
       if (q_us > s_q_max) s_q_max = q_us;
