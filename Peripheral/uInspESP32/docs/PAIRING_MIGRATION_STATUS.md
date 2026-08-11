@@ -361,6 +361,44 @@ refused to place this frame".
 Not implemented yet; this is the decision the measurement supports, not a
 change that has been made.
 
+### Decision (2026-08-11): timestamp only; pcnt is not carried forward
+
+After the flash-identity measurements, the pulse-count pairing is **not** part
+of the design. `report_match_pcnt` and `INSP_CAM_TRIG_WATERMARK` stay off by
+default, which is what the code already does, so nothing has to be removed --
+but nothing should be built on them either.
+
+Three reasons, in the order they matter:
+
+1. **It is actively wrong where it matters.** Above the camera's frame floor it
+   does not fail silently, it returns a confident number for a frame that was
+   exposed with a different pulse. Measured: 3 of 96 frames caught their own
+   backlight, pattern agreement at chance.
+2. **Timestamp is sufficient.** In the worst case this rig can produce -- both
+   failure modes at once, 7 triggers with no frame and 6 frames slid -- the
+   timestamp separated usable from unusable with no errors, and every usable
+   frame carried exactly the light its own trigger drove.
+3. **Timestamp is portable and the counter is not.** The GenICam device
+   timestamp is standard. `ExtTriggerCount` on this body has no chunk at all --
+   it is written into row 0 pixels, at an offset that is documented nowhere and
+   had to be copied from a working script after three wrong derivations. Every
+   new camera model would be that exercise again.
+
+The `ts_blind` / `pcnt_blind` / `mismatch` split and the dual-mode policy table
+above are kept as a record of how this was settled, not as work to do.
+
+### Decision (2026-08-11): closed-loop speed, not burst allowance
+
+A short burst is absorbed at a measurable rate (UINSP_CAVEATS, same date) so a
+depth-plus-drain limit would be sound -- but it buys a bounded disturbance that
+has to be paid back anyway, and during it the frames are numbered and wrong.
+Controlling plate speed keeps the machine away from the boundary instead of
+managing it at the boundary. That is the direction.
+
+Still worth fixing regardless: `SYS_MIN_PULSE_TIME_SEP_us` defaults to 4000 us
+(250/s), which is FASTER than the measured camera floor of 5420 us at the
+production crop. The default admits a trigger density the camera cannot take.
+
 ## Tomorrow, in order
 
 1. ~~One BOOT press, flash everything.~~ **Done 2026-08-05.**
