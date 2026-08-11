@@ -630,12 +630,18 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
       if (px != NULL && h > 40)
       {
         const size_t stride = (size_t)_bsz / (size_t)h;      // bytes per row
-        // The MIDDLE of the frame, not the top. Rows 8..24 are only the lit
-        // region when the ROI is the production crop; at full frame they are
-        // in an unilluminated corner of the sensor and the mean reads ~1
-        // whatever the backlight does -- measured, and it made the first run
-        // of this test unreadable.
-        const int y0 = h/2 - 8, y1 = h/2 + 8;
+        // Where the backlight actually falls, which is NOT a fixed fraction
+        // of the frame. The lit band is a property of the station: in
+        // full-sensor coordinates it sits around y=428..880, so the crop's
+        // mid-frame is row ~654 while a full-frame capture's mid-frame is row
+        // 1024 -- dark. Rows 8..24 were wrong for the same reason and made the
+        // first run of this test unreadable.
+        // INSP_CAM_TRACE_ROW overrides; default is mid-frame, which is right
+        // for the production crop.
+        static const int _trow = []{ const char *e = getenv("INSP_CAM_TRACE_ROW");
+                                     return e ? atoi(e) : -1; }();
+        const int yc = (_trow >= 0 && _trow < h) ? _trow : h/2;
+        const int y0 = (yc > 8 ? yc - 8 : 0), y1 = (yc + 8 < h ? yc + 8 : h);
         for (int y = y0; y < y1; y++)
         {
           const uint8_t *row = px + (size_t)y * stride;

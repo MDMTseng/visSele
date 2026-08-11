@@ -1399,6 +1399,34 @@ It delivered zero bytes. Aravis on its own, with our core not running:
 A physical replug of the camera fixed it. Same tool immediately after:
 35 frames/s, 175 MiB/s, 564 buffers, 0 failures.
 
+**A replug is not required -- `DeviceReset` clears it** (2026-08-11, later the
+same day, after the third occurrence):
+
+    arv-tool-0.8 -n Hikrobot-<serial> control DeviceReset
+
+"DeviceReset executed", the camera re-enumerates in ~10 s, and a free-run test
+immediately after returned 567 buffers / 2.84 GB at full frame. Nothing may be
+holding the device when this is issued -- stop the core first, and check for
+stray `arv-camera-test` processes, one of which was left behind earlier and
+made a later diagnosis read as LIBUSB_ERROR_ACCESS.
+
+### What actually triggers it
+
+Three occurrences, and every one followed a switch to the FULL-FRAME ROI.
+Nothing wedged across a 5-hour run, a 12.5-minute run or a 6.3-minute run at
+the production crop.
+
+The first was attributed to bandwidth: BGR8 at full frame is 15.04 MB/frame,
+556 MB/s at 37/s, well past USB3. **That explanation is not sufficient.** The
+third occurrence was on Mono8 -- 5.01 MB/frame, ~150 MB/s at 30/s, and the
+camera demonstrably sustains 175 MiB/s. It still wedged, and the settings still
+read back perfectly (Mono8, 2448x2048, TriggerMode On, burst count 1).
+
+So the suspect is the ROI CHANGE itself -- SetROI stops and restarts the
+stream and re-sizes the payload -- rather than the steady-state data rate. Not
+established; what is established is that full frame is where it happens and
+the crop is where it does not.
+
 **Check `cam_max_fps` first.** It is derived from the frame interval and needs
 no watermark, no pairing and no board, so it separates "no frames" from every
 other explanation in one read. Zero means stop diagnosing everything else. The
@@ -1458,4 +1486,47 @@ Both were defects in the instrument, and both produced confident nonsense:
   "inside". That is how the 200 Hz run first read as "96 usable frames,
   behaviour 2 (skip)" when the exposures had no relationship to their triggers
   at all. Judge the SPREAD, not the centred magnitude.
+
+## 2026-08-11 — a short burst is absorbed at the slack rate, and it is measurable
+
+Full frame, Mono8, 30 fps base with a tight cluster spliced in after pulse 55
+(2 extra pulses at 100 Hz). Flash-identity pattern, anchored to the board's own
+per-pulse emission times.
+
+    ext 55 -> 57   (the first extra pulse produced no frame)
+    ext 57  dev +8437 us
+        58      +23544
+        59      +18650       recovering ~4894 us per frame
+        60      +13756
+        61       +8861
+        62       +3968
+        63          -6       fully recovered
+
+Three pulses landed in one 33333 us slot, so the camera was asked for 3 frames'
+work. Its floor at full frame is 29051 us, giving an excess of 24769 us --
+against a measured first deviation of 23544 us. Per-frame slack is
+33333 - 29051 = 4282 us, against a measured recovery of 4894 us/frame. So
+
+    frames disturbed  ~=  burst excess / per-frame slack
+
+which is a leaky bucket with a drain rate that can be MEASURED rather than
+guessed. A burst limit expressed as depth-plus-drain is therefore sound, and
+one expressed as an instantaneous minimum gap is stricter than the hardware
+requires.
+
+What is NOT safe is sustained operation above the floor: at 200 Hz on the crop
+(floor 184.5 fps) the deviation does not recover, it spreads over 83% of a
+period and stays there. A burst is a bounded, self-healing disturbance; being
+over the floor is a structural failure. Those two look identical to a max-minus-
+min spread test and completely different to a p10-p90 one -- the first version
+of this analysis called the burst run "numbering describes nothing" while its
+own detail lines read 99/99 correct.
+
+**During the disturbance the frames exist, are numbered, and are wrong.**
+2 of 6 carried the right light and none were lit. Every one was caught by the
+timestamp, and all 99 frames that landed inside the window carried exactly the
+light their own trigger drove, with a brightness range of 1.8 grey levels. That
+is the case for timestamp as the authority stated as strongly as this rig can
+state it: both failure modes present at once, and it still separated usable
+from unusable without a single error.
 
