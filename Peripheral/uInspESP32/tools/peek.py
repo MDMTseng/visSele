@@ -59,6 +59,57 @@ def ask(cmds, wait=3.0):
     return out
 
 
+class Refused(Exception):
+    """A command the device answered ack:false."""
+
+
+def cmd(c, wait=2.5, must_ack=True):
+    """Send one command and CHECK WHAT CAME BACK.
+
+    ask() returns every line it saw and says nothing about whether the device
+    agreed, and scripts here routinely threw that away. On 2026-08-11 a teardown
+    sequence sent {"plate":{"freq":0}} with a stray top-level "speed_band_pct"
+    beside it; set_setup refuses a document containing any key outside the schema
+    -- loudly, naming the key, with ack:false -- and the script neither looked nor
+    cared. It printed "stopped" and the plate ran at 12000 for several minutes.
+
+    The device was right and the tool was wrong, so the check belongs here. Any
+    command that is refused raises, which is what a stop command failing should
+    do to a script rather than being stepped over.
+    """
+    out = ask([c], wait=wait)
+    for m in out:
+        if m.get("type") == c.get("type") and "ack" in m:
+            if must_ack and not m.get("ack"):
+                raise Refused("%s refused: %s" % (
+                    c.get("type"),
+                    json.dumps({k: v for k, v in m.items()
+                                if k in ("err", "unknown", "n_unknown")})))
+            return out
+    if must_ack:
+        raise Refused("%s: no reply within %.1fs" % (c.get("type"), wait))
+    return out
+
+
+def stop_plate(wait_s=14):
+    """Bring the plate to a stop and PROVE it, for a script's finally block.
+
+    Returns the measured frequency. Raises if it is still turning -- a teardown
+    that cannot confirm the plate stopped must not report success.
+    """
+    cmd({"type": "virt_pulse", "period_ticks": 0}, must_ack=False)
+    cmd({"type": "exit_insp_mode"}, must_ack=False)
+    cmd({"type": "set_setup", "plate": {"freq": 0}})
+    time.sleep(wait_s)
+    _, st = sample()
+    meas = (st or {}).get("plate_freq_meas")
+    if meas is None:
+        raise Refused("stop_plate: no running_stat reply, plate state UNKNOWN")
+    if meas > 1:
+        raise Refused("stop_plate: plate still turning at %.0f" % meas)
+    return meas
+
+
 def sample():
     """One round trip, both documents, so the ticks and the speed agree."""
     d = st = None
