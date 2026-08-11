@@ -1382,3 +1382,31 @@ off=0。解碼端若寫死 `offset=4`,日後任何人關掉 `Framecounter` 就�
 **這一輪沒有重現超速分歧**:跑 30 Hz,相機跟得上,兩個計數器都以 1 遞增。
 分歧是上一節 specdecode 量的(120 觸發 / 56 幀,off=4 平均遞增 2.16,span 120)。
 這次量的是佔用範圍,不是分歧。
+
+## 2026-08-11 — a wedged camera reads as a perfectly configured one
+
+The camera stopped delivering images and every diagnostic said it was fine.
+GenICam queries answered normally: `TriggerMode On`, `TriggerSource Line0`,
+`TriggerActivation RisingEdge`, `AcquisitionBurstFrameCount 1`, the correct
+560x452 ROI, exposure 50us, payload 253120 bytes. The board was provably
+firing -- `trig_cam_burst` replied `emitted 3`, offsets 11/5000/10001us,
+jitter 12us. No error was raised anywhere.
+
+It delivered zero bytes. Aravis on its own, with our core not running:
+
+    n_completed_buffers = 0    n_transferred_bytes = 0    n_failures = 0
+
+A physical replug of the camera fixed it. Same tool immediately after:
+35 frames/s, 175 MiB/s, 564 buffers, 0 failures.
+
+**Check `cam_max_fps` first.** It is derived from the frame interval and needs
+no watermark, no pairing and no board, so it separates "no frames" from every
+other explanation in one read. Zero means stop diagnosing everything else. The
+confirmation that owes nothing to our code is `arv-camera-test-0.8` with
+`n_completed_buffers 0`.
+
+Roughly two hours of runs were spent attributing this to the firmware, to the
+camera ROI, and to the watermark decode -- all of which read as broken because
+nothing was being inspected. Note also that `n_valid 0` on `cam_trig` does NOT
+mean "the watermark is off": it is equally consistent with no frames at all,
+and it was read the wrong way here.

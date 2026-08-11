@@ -289,6 +289,42 @@ lies to the device in one field; it does not make the camera drop a pulse. The
 knee is known to be between 200 Hz (clean) and 400 Hz (53% refused), so
 producing one is a firmware-side burst away.
 
+### Correction: what the full-frame runs actually measured
+
+The commit that fixed the missing braces in `syncPulseService` cites a
+full-frame `CAL FAILED after 30001ms (learned=0, boot_n=0, cal_pulse_lost=0)`
+as the evidence that exposed the bug. **That evidence is contaminated and must
+not be relied on.** The camera was wedged for that entire window: it answered
+GenICam queries and reported a sane configuration -- TriggerMode On, source
+Line0, burst count 1, the correct ROI -- while delivering no image data at all.
+Measured with Aravis alone, outside this codebase: 20 s of free-running
+acquisition produced `n_completed_buffers 0`, `n_transferred_bytes 0`,
+`n_failures 0`. Every run in that window was inspecting nothing.
+
+A physical replug cleared it. Immediately afterwards, same tool, same camera:
+35 frames/s, 175 MiB/s, 564 buffers, 0 failures -- **at full frame**.
+
+Three things follow, and two of them retract earlier claims:
+
+- **The missing braces are still a real defect.** It is a static logic error --
+  `p->retired=1` outside the `if` retires every object in RBuf -- and it is
+  wrong independently of any measurement. But the story that "removing the crop
+  exposed it" is not established, because the machine had no frames at the
+  time. The fix is kept; the causal account is withdrawn pending a clean run.
+- **"Full frame caps the rate and will force refusals" was wrong.** It was
+  assumed, not checked. The camera does 35 fps at 2448x2048 -- the same rate
+  the cropped machine runs at -- so removing the ROI was never going to produce
+  a refused trigger. The premise of that whole experiment was unfounded.
+- **A wedged camera is indistinguishable from a dead trigger wire** from inside
+  this stack, and now also from a config problem: every setting reads correct.
+  `cam_max_fps == 0` in the core's GS is the cheapest positive test, and
+  `arv-camera-test-0.8` with `n_completed_buffers 0` is the confirmation that
+  owes nothing to our code. Check both before diagnosing anything else.
+
+Producing a real refused trigger therefore still has no vehicle. The knee is
+somewhere between 200 Hz (clean) and 400 Hz (53% refused), and reaching it
+needs the firmware-side burst generator that "Still open" already calls for.
+
 ## Tomorrow, in order
 
 1. ~~One BOOT press, flash everything.~~ **Done 2026-08-05.**
