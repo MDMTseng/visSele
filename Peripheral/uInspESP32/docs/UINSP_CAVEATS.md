@@ -1705,29 +1705,95 @@ The two kinds of offset are not the same thing:
   time, so the pulse lasts the right number of microseconds for the speed the
   plate is at now.
 
-**The invariant, and do not break it: A DEADLINE MAY MOVE EARLIER, NEVER LATER.**
-`ACT_TRY_RUN_TASK` takes `min(pushed, live)`. The act queues are FIFO and only
-the tail is ever examined, so a deadline that moved LATER would sit in front of
-the next object's ON edge and delay it. That inversion is impossible while
-widths are frozen; `min()` is what keeps it impossible now that they are not.
+### The one hazard, and how it is bounded
 
-The cost is asymmetric on purpose:
+The act queues are FIFO and only the tail is ever examined. So a deadline that
+moves LATER can sit in front of the next object's ON edge and delay it. Nothing
+else about a live offset is dangerous -- this is the whole risk.
 
-| | live width vs pushed | min() takes | result |
+Note it is not really a speed question. It is the static question of whether a
+pulse is wider than the gap to the next part, which `STAGE_WIDTH_SEL_WARN`
+already checks at config time and which is currently TRUE on this machine: the
+SEL blow is 50 ms against a `min_detect_sep_us` of 28571.
+
+There is a speed component on top of it, though, and it only bites one way.
+Part spacing on the plate is a DISTANCE, so the gap in ticks does not change
+with speed; a pulse width in ticks does. **Accelerating therefore makes
+width/gap worse and can create an inversion that did not exist at push time.**
+
+`ACT_TRY_RUN_TASK` caps the live offset at the next queued task's own deadline:
+
+```
+cap = (next->gate_pulse - task->gate_pulse) + next->offset
+```
+
+expressed relative to THIS task's gate, so it is one unsigned subtraction and
+stays wrap-correct. `RingBuf::getTail(1)` reads the next entry -- no lock, index
+arithmetic. Inversion becomes impossible by construction and the pulse is right
+in both directions.
+
+**Consult the cap only when the deadline actually grew past what was pushed.**
+A shrinking or unchanged deadline cannot overtake anything, and in steady state
+live == pushed, so the lookup costs nothing. Unguarded, seven queues each paid
+for a lookup that nearly always finds nothing and the worst tick went 32 -> 41
+us, which is 98% of the tick at plate_freq 12000.
+
+#### The superseded version, and why it was not enough
+
+The first version used `min(pushed, live)` -- refuse to grow at all. That made
+deceleration exact and left acceleration short by the speed ratio, on the
+argument that short is the safe direction for the neighbour.
+
+The residue was not small, and it has a closed form. A part covers S ticks from
+the gate to a station, ticks accrue at 2f, and a linear ramp at accel `a` gives
+
+```
+f_at_station = sqrt(f0^2 + a*S)          S = SEL1_on = 30000 ticks
+```
+
+so the shortfall is `f0 / sqrt(f0^2 + a*S)`:
+
+| f0 | accel | arrives at | pulse delivered |
 |---|---|---|---|
-| decelerating | smaller | live | pulse exactly right |
-| accelerating | larger | pushed | pulse short by the speed ratio |
+| 8000 | 2000 | 11136 | 71.8% |
+| 10500 | 2000 | 13048 | **80.5%** |
+| 10500 | 1000 | 11843 | 88.7% |
+| 10500 | 500 | 11191 | 93.8% |
 
-Deceleration is the dangerous direction -- that is where a blow grows long
-enough to knock the neighbouring part off the plate -- and it is the one that
-comes out exact. Acceleration leaves the pulse short, which risks an NG not
-being ejected, and that is why a large speed change still drains the pipeline
-first rather than relying on this.
+At the production 10500 with the configured accel 2000, a 50 ms blow came out
+40 ms. Note `speed_band_pct` does not appear anywhere in that expression -- the
+full rule is `f0 / min(f0+delta, sqrt(f0^2+a*S))`, and the band only ever bounded
+the left term. Capping instead of refusing removes the speed term from the pulse
+duration altogether.
 
-Measured in-band with parts flowing, 8000 -> 8700 -> 8000: SEL1 tracked
-798 -> 865 -> 870 -> 813 -> 800 ticks while the duration held at 49.0-50.4 ms.
-ISR max 32 us and overruns 0, unchanged -- the live read is one volatile load
-from a pointer `Run_ACTS` already held.
+(Sanity check on S: 30000 ticks at 8000 is 30000/16000 = 1.875 s, which is the
+1874 ms drain measured independently. The numbers are real.)
+
+### Measured
+
+In-band, 8000 -> 8700 -> 8000, parts flowing, under the superseded `min()` rule:
+SEL1 tracked 798 -> 865 -> 870 -> 813 -> 800 ticks with the duration holding at
+49.0-50.4 ms.
+
+With the cap, a **+50% acceleration** and no drain (`speed_band_pct` raised to
+50 for the test, restored after), which is the case `min()` could not do:
+
+```
+window        54t -> 58 -> 78 -> 80t
+DELIVERED     3315-3398 us against 3333 asked, both directions
+              (min(pushed,live) would have given 2222 us here)
+ISR max       27 us steady, 30 us at 12000 (72% of tick), overruns 0
+admission     never paused -- accept 214 -> 834 continuous
+```
+
+### The instrument that makes this checkable
+
+`health.cam1_pw_{min,max,last}_us` is CAM1's pulse as DELIVERED, timed in the
+ISR between its own two edges. Everything else in this firmware reports INTENT:
+`stage_pulse_offset` gives a tick count, and a tick count is only a duration if
+you also know the speed. It is on CAM1 rather than SEL1 because CAM1 fires for
+every part and is therefore observable on a bench with no verdicts; the physics
+is identical.
 
 ### Editing station geometry mid-run may mis-actuate, and that is accepted
 
@@ -1750,3 +1816,147 @@ makes `set_setup` ack a change it has not applied, which the WebUI reads back as
 
 This does NOT extend to speed. A speed change happens during production, so a
 large one drains first and a small one is bounded by `speed_band_pct`.
+
+
+## Changing plate speed without stopping inspection (2026-08-11)
+
+Before this, ANY speed change shut the gate for the whole ramp -- the admission
+test was `SYS_FREQ_STABLE`, which is literally `CURRENT == TARGET` -- and every
+part on the plate during it was lost. Tolerable with a manual knob, fatal to the
+closed-loop speed control that is coming, which would spend its life ramping.
+
+Three independent layers. They are worth keeping straight, because two of them
+are about CORRECTNESS and the third is only POLICY.
+
+### Layer 1 -- the windows follow the speed (correctness)
+
+`STAGE_PULSE_WIDTH_apply()` is called from the ramp service in `firmwareLoop`,
+guarded by a 0.4% relative threshold (below that the derived tick counts do not
+change, so it would burn seven divides writing back what is already there) and
+by `f >= PLATE_FREQ_TARGET*0.25` (a plate ramping to a stop walks through
+arbitrarily small speeds, and deriving there leaves every window at `us2t`'s
+one-tick floor -- 50 ms of blow stored as 1 tick, observed on a real stop).
+
+**Main loop only.** The ISR reads one pointer, `SPO_active`, a double buffer
+committed with a single atomic store.
+
+### Layer 2 -- the windows reach parts already in flight (correctness)
+
+Layer 1 alone does nothing for a part that is already moving, because its arcs
+used to be baked into an absolute `targetPulse` at admission. See "A task is an
+anchor plus a live offset" above -- that is what makes layer 1 reach them.
+
+### Layer 3 -- who is admitted, and when (POLICY)
+
+This is the layer that is now a choice rather than a requirement.
+
+* **Inside `speed_band_pct` (default 10%)**: applied immediately, admission never
+  pauses. Measured 12000 -> 12800: `accept` went 832 -> 1081 without a gap.
+* **Outside it**: staged as a TRANSACTION. The gate closes, the plate holds its
+  OLD speed and its OLD windows until the pipeline is empty, and only then do
+  setpoint, windows and target move together. Nothing is ever in flight across
+  the change.
+
+```
+8000 -> 12000    accept froze at 162, in_flight 30 -> 0, drain 1874 ms, then ramp
+4000 -> 6000     drain 3689 ms                       (drain scales as 1/plate_freq)
+```
+
+`plate.freq_pending` reports a staged change; `count.FREQ_TXN`,
+`FREQ_TXN_TIMEOUT`, `FREQ_TXN_DRAIN_MAX_MS` report the outcome.
+
+**A change arriving during a drain RETARGETS it.** Without that, a small change
+during a drain writes the setpoint directly (it is small, so nothing stages it)
+and the drain then commits the old pending value on top of it -- the operator's
+most recent instruction silently overwritten by one they had already superseded.
+While a transaction is open the setpoint is not the operator's to write; the
+pending value is. Measured: stage 8000 -> 12000, send 8200 mid-drain, machine
+settles at 8209.
+
+**The drain timeout is 10 s and must not be tightened.** It is a safety net
+against a pipeline that never empties, not a schedule. A real drain is the last
+part's transit time and scales as 1/plate_freq: 1874 ms at 8000. The first value
+written was 3 s, which passes at 8000 and would trip below about 5000 --
+committing with parts in flight, which is the exact failure it exists to
+prevent, while reporting a clean transaction.
+
+### An actuation that was asked for and did not happen is counted
+
+`count.SEL_SUPPRESSED`. A verdict scheduled a blow and no air came out, because
+the plate was out of band. Silence here was the entire problem: during an
+8000 -> 12000 change there are 26-39 parts in flight for the whole 2.2 s ramp,
+they are judged and NOT actuated, and any NG among them leaves in the OK stream.
+Nothing counted it before. (The hole predates the band -- the gate required
+`SYS_FREQ_STABLE`, false through any ramp too.)
+
+Non-zero in production means parts were judged and not sorted. It is not a
+performance counter.
+
+### What is correctness and what is policy, now
+
+With layers 1 and 2 in place the pulse duration no longer depends on plate
+speed in either direction. So:
+
+* `speed_band_pct` and the drain transaction are a decision about **whether to
+  keep admitting parts during a large speed change**, not a correctness
+  requirement. Widening the band or dropping the drain does not break the blow.
+* What remains genuinely constrained is FIFO ordering -- pulse width versus part
+  gap -- and that is bounded in the ISR by the next-task cap.
+
+Decided 2026-08-11 to KEEP the two-tier policy: small changes apply directly,
+large ones go silent and drain. Not for correctness, but because a large change
+is rare and operator-driven and 2-4 s of not admitting costs nothing.
+
+### Where the speed is actually computed
+
+All in `src/app/LegacyFirmware.cpp`, none of it in the ISR:
+
+| what | where |
+|---|---|
+| setpoint written, transaction staged | `setMachineSetup()`, at the `_freq_before` capture |
+| windows converted us -> ticks | `STAGE_PULSE_WIDTH_apply()`; called from `setMachineSetup` and from the ramp service |
+| setpoint -> ramp target | the state machine, `PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT` in CAL / SPINUP / READY loop passes |
+| the ramp itself | `firmwareLoop()`, `step = SYS_FREQ_ACCEL*dt`, `dt` clamped to 0.25 s |
+| **the only line that changes the actual speed** | `timerAlarmWrite(timer, (_TICK2SEC_BASE_>>1)/PLATE_FREQ_CURRENT, true)` |
+| integers published for the ISR | `ISR_BUDGET_CY`, `PLATE_IN_BAND`, `GATE_MIN_DIST_STEPS`, same block |
+| transaction commit | `freqTxnService()`, called from `firmwareLoop` after `spinupService()` |
+| measured speed (reporting only) | `PLATE_FREQ_MEAS`, from a `SYS_STEP_COUNT` delta over >=100 ms |
+
+Four variables, and mixing them up is the usual source of confusion:
+`SETPOINT` (config, persisted) -> `TARGET` (ramp destination) -> `CURRENT`
+(ramped actual, the only one written to hardware), plus `MEAS` (observed).
+
+### What to watch if this misbehaves
+
+| symptom | look at |
+|---|---|
+| parts judged but not sorted | `count.SEL_SUPPRESSED` |
+| a speed change that never applied | `plate.freq_pending`, `count.FREQ_TXN_TIMEOUT` |
+| blow the wrong length | `health.cam1_pw_{min,max,last}_us` -- delivered, not intended |
+| the board goes silent on a speed change | `health.isr_overrun_n` and `health.isr_worst_seg_cy` FIRST. Two independent causes have already done this and both are fixed; those two fields are what say whether one came back. Do NOT respond by re-tightening the gate. |
+
+## A refused `set_setup` is loud, and a tool that does not look will lie (2026-08-11)
+
+`set_setup` refuses a document containing ANY key outside the schema -- it does
+not apply the half it understood. That is deliberate (applying half and acking
+true is how eight tools spent a week configuring nothing after the regroup), and
+it is not quiet about it:
+
+```
+{"dbg":"SET_SETUP REFUSED: 1 unknown key(s): speed_band_pct"}
+{"type":"set_setup","err":"unknown_keys","unknown":"speed_band_pct",
+ "n_unknown":1,"ack":false}
+```
+
+A teardown script sent `{"plate":{"freq":0}}` with a stray TOP-LEVEL
+`speed_band_pct` beside it -- the key exists, but it lives inside `plate` -- and
+never looked at the reply. It printed "stopped" and the plate ran at 12000 for
+several minutes.
+
+The device was right and the tool was wrong. `tools/peek.py` now has `cmd()`,
+which raises on `ack:false` or on no reply, and `stop_plate()`, which stops the
+plate and then READS BACK `plate_freq_meas` and raises if it is still turning. A
+teardown that cannot confirm the plate stopped must not report success.
+
+Worth generalising: on this link an `ack` is cheap to read and every script here
+had been throwing it away.
