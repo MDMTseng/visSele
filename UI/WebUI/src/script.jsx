@@ -1562,8 +1562,11 @@ class APPMasterX extends React.Component {
         "plate_freq","plate_accel","min_detect_sep_us",
         "pulse_min_width","pulse_max_width",
         "gate_debounce_rise","gate_debounce_fall",
+        // The gate's distance rejection. It was mapped in uinspCfg but missing
+        // here, so the panel could display it and never write it.
+        "min_detect_dist_um",
         "stepper_en_active","stepper_dir",
-        "unanswered_policy","unanswered_stop_after",
+        "unanswered_stop_after",
         "host_timeout_ms","pulses_per_rev","plate_diameter_mm",
         "stage_pulse_offset","io_on_level",
         // Per-station widths in MICROSECONDS -- the device converts to ticks
@@ -1575,7 +1578,16 @@ class APPMasterX extends React.Component {
         // JSON_SETIF_ABLE targets in set_setup and none of them were listed, so
         // the panel could display them and never write one.
         "cam_match_window_us","cam_recal_idle_ms","cam_drift_comp",
-        "report_match_ts","auto_rate","auto_rate_floor_us","auto_rate_recover_n",
+        // The match window expressed as what it actually is -- a position
+        // tolerance. Settable on the device since 2026-08-11, unreachable here.
+        "cam_match_tolerance_mm",
+        "report_match_ts","report_match_pcnt",
+        // `auto_rate` and `unanswered_policy` used to live here. The firmware
+        // dropped both flat keys on 2026-08-08 when the decision was collapsed
+        // into ONE name -- so the UI kept writing two keys that no longer
+        // existed and was told ack:true both times. skip_policy_mode is that
+        // one name: "none" | "slow_only" | "stop_only" | "slow_and_stop".
+        "skip_policy_mode","auto_rate_floor_us","auto_rate_recover_n",
         "machine_id","CAM1_Tags","CAM2_Tags","persist",
       ];
 

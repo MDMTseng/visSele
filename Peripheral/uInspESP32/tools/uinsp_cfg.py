@@ -40,11 +40,17 @@ CFG_GROUP = {
     "min_detect_dist_um":    ("gate", "min_detect_dist_um"),
 
     "report_match_ts":       ("cam", "report_match_ts"),
+    "report_match_pcnt":     ("cam", "report_match_pcnt"),
     "cam_match_window_us":   ("cam", "match_window_us"),
+    "cam_match_tolerance_mm":("cam", "match_tolerance_mm"),
     "cam_recal_idle_ms":     ("cam", "recal_idle_ms"),
     "cal_pulse_us":          ("cam", "cal_pulse_us"),
     "cam_drift_comp":        ("cam", "drift_comp"),
 
+    # The ON/OFF switch for the whole skip policy, and the only way to reach
+    # AUTO_RATE. It had no flat name at all, so the two tuning knobs below were
+    # settable while the thing they tune could not be turned on.
+    "skip_policy_mode":      ("skip_policy", "mode"),
     "unanswered_stop_after": ("skip_policy", "stop_after"),
     "auto_rate_floor_us":    ("skip_policy", "rate_floor_us"),
     "auto_rate_recover_n":   ("skip_policy", "recover_n"),

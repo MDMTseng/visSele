@@ -828,6 +828,78 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
         )}
       </Card>
 
+      {/* The skip policy: what the machine does about a part that reached the
+          selector unjudged.
+
+          Two switches rather than one four-way choice, because they are two
+          independent reactions to two different signals -- slow reacts to the
+          RATE of skips, stop reacts to CONSECUTIVE ones -- and the firmware's
+          single `mode` string is just their product. Showing the product back
+          keeps the panel honest about what was actually written.
+
+          This card exists because until 2026-08-11 there was NO way to reach
+          it: `skip_policy.mode` had no flat name in uinspCfg, so the two tuning
+          values below were writable while the thing they tune could not be
+          turned on -- and set_setup answered ack:true to every attempt. */}
+      <Card size="small" style={{ marginBottom: 8 }} title={<span>漏判處置
+        <Why>「漏判」是料走到分選點時還沒有檢測結果。它不會掉 —— 沒有動作就是再轉一圈。
+          但漏判代表機器收料收得比它判得完還快,或是主機/相機不回答了,兩者要分開處理:
+          <b>放慢</b>看的是漏判的「比例」,零星漏判表示稍微快了一點,少收一點料繼續跑;
+          <b>停機</b>看的是「連續」漏判,連續十顆代表系統不再判了,放慢救不了。</Why></span>}>
+        {(() => {
+          // The device reports the product; the switches edit the two halves.
+          const mode = cfg.skip_policy_mode
+            || (dev.skip_policy && dev.skip_policy.mode);
+          const slow = mode === 'slow_only' || mode === 'slow_and_stop';
+          const stop = mode === 'stop_only' || mode === 'slow_and_stop';
+          const mk = (s, t) => (s ? (t ? 'slow_and_stop' : 'slow_only')
+                                  : (t ? 'stop_only' : 'none'));
+          const push = (m) => run('skippol', (api) =>
+            api.machineSetupUpdate({ skip_policy_mode: m }, false, true));
+          return (
+            <>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap',
+                            alignItems: 'center', marginBottom: 8 }}>
+                <span>
+                  <Switch size="small" checked={slow} loading={busy === 'skippol'}
+                    onChange={(v) => push(mk(v, stop))} />
+                  {' '}自動放慢進料
+                </span>
+                <span>
+                  <Switch size="small" checked={stop} loading={busy === 'skippol'}
+                    onChange={(v) => push(mk(slow, v))} />
+                  {' '}連續漏判即停機
+                </span>
+                <span style={dim}>mode = {mode || '—'}</span>
+                {/* The firmware says this out loud rather than refusing it:
+                    "none" is legitimate on a bench and a machine that silently
+                    declines a setting is worse than one that tells you. */}
+                {mode === 'none' && (
+                  <span style={{ color: '#c33' }}>
+                    兩者皆關 —— 漏判的料會一直無聲通過
+                  </span>
+                )}
+              </div>
+              {gate && slow && (
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                  {/* eff vs configured is the whole point of the split: the loop
+                      only ever moves eff, so save-to-NVS during a backoff cannot
+                      write a transient and leave the machine permanently slow. */}
+                  <span>目前實際上限 <b>{gate.eff_hz}</b> 顆/秒
+                    <Why>自動放慢只會動這個值,設定值不動 —— 所以在放慢途中按「存入
+                      NVS」不會把暫時的慢速寫進去,重開機後也不會永久變慢。</Why>
+                    {gate.eff_hz < gateHz ? ` (已放慢,設定為 ${gateHz})` : ''}
+                  </span>
+                  <span>放慢 <b>{gate.auto_backoffs}</b> 次</span>
+                  <span>回復 <b>{gate.auto_recovers}</b> 次</span>
+                  <span style={dim}>最慢到 {gate.auto_floor_hz} 顆/秒</span>
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </Card>
+
       {/* Every station, expressed the way it is actually adjusted: WHERE it
           fires and HOW LONG it stays on. on/off is how the firmware stores it,
           but nobody thinks "move off to 672" -- they think "make the window
