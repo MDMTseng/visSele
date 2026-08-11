@@ -622,6 +622,16 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     // Brightness is sampled from rows 8..24 and NOT row 0: the watermark
     // overwrites the start of row 0, so a mean that included it would be
     // partly a reading of the counter rather than of the light.
+    {
+      static bool _first = true;
+      if (_first) {
+        _first = false;
+        size_t _bs = 0; arv_buffer_get_data(buffer, &_bs);
+        fprintf(stderr, "[camdiag] first frame: buffer=%zu payloadSize=%d "
+                        "wh=%d,%d\n", _bs, payloadSize, w, h);
+        fflush(stderr);
+      }
+    }
     if (g_frameTrace != NULL)
     {
       size_t _bsz = 0;
@@ -768,6 +778,16 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   // so we don't loop forever on the same bad buffer.
   if (bufferStatus == ARV_BUFFER_STATUS_SIZE_MISMATCH) {
     int cur_payload = arv_camera_get_payload(camera, NULL);
+    // Straight to stderr, not the log ring: this fires exactly when imaging is
+    // about to stop, which is precisely when the ring has been unreadable all
+    // day. Says which side is wrong -- what the buffer was allocated for,
+    // what the camera is now sending, and what we last recorded.
+    {
+      size_t _bs = 0; arv_buffer_get_data(buffer, &_bs);
+      fprintf(stderr, "[camdiag] SIZE_MISMATCH buffer=%zu payloadSize=%d "
+                      "camera_payload=%d\n", _bs, payloadSize, cur_payload);
+      fflush(stderr);
+    }
     if (cur_payload > 0) {
       payloadSize = cur_payload;
       g_object_unref(buffer);
@@ -777,6 +797,24 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     }
   }
   arv_stream_push_buffer(stream, buffer);
+  // Does the pool drain? 19 frames arrive at full frame and then stop, with
+  // no error and correctly-sized buffers, so the question is whether the host
+  // ran out of buffers to receive into or the camera stopped sending. Aravis
+  // answers it directly: n_input is what is queued for the device to fill.
+  // First 40 frames only -- this is a bring-up instrument, not a log line for
+  // running. stderr, because the ring accumulates across restarts and reading
+  // a previous run's errors as this one's has already cost a diagnosis today.
+  {
+    static int _n = 0;
+    if (_n < 40) {
+      gint _in = -1, _out = -1;
+      arv_stream_get_n_buffers(stream, &_in, &_out);
+      fprintf(stderr, "[camdiag] frame %d: n_input=%d n_output=%d\n",
+              _n, (int)_in, (int)_out);
+      fflush(stderr);
+      _n++;
+    }
+  }
   _frame_cache_buffer = NULL;
   // LOGI("buffer status:%d has chunks:%d",arv_buffer_get_status (buffer),arv_buffer_has_chunks (buffer));
   // if (arv_buffer_get_status (buffer) == ARV_BUFFER_STATUS_SUCCESS) {
@@ -991,8 +1029,9 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     }
   }
 
-  stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
-  
+  // The stream is created AFTER the region is settled -- see below. Creating
+  // it here, before SetROI, is what broke full frame.
+  //
   // arv_camera_set_chunk_mode(camera,true,NULL);
 
   chunk_parser = NULL;
@@ -1031,6 +1070,24 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
 
   SetROI(0,0,999999,999999,0,0);//MAX ROI
   payloadSize = arv_camera_get_payload(camera, NULL);
+
+  // Create the stream only now, with the region and the pixel format final.
+  //
+  // Aravis fixes a USB3 stream's transfer configuration when the stream is
+  // created. Creating it before SetROI left that configuration describing
+  // whatever region the camera happened to be in when it was opened, and a
+  // later ROI that made the payload BIGGER then produced truncated transfers:
+  // buffers the right size, payload the right size, and a SIZE_MISMATCH on the
+  // very first frame, after which the camera delivers nothing until a
+  // DeviceReset.
+  //
+  // The production crop survived this by accident. Applying it changes the
+  // payload (5013504 -> 253120), which trips the rebuild in StartAquisition,
+  // and the rebuilt stream is created with the camera already cropped. Full
+  // frame leaves the payload equal to the constructor's value, so nothing ever
+  // rebuilt it. Rebuilding later does not help either -- measured: the first
+  // frame is already truncated before StartAquisition is ever reached.
+  stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
 
   // GigE jumbo-frame negotiation: try to use the largest packet size the link
   // supports, falling back to a smaller size on failure. Big throughput win
@@ -1161,8 +1218,26 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     }
     if (tsrc) LOGI("TriggerSource=%s", tsrc);
 
+    // INSP_CAM_FREERUN=1 leaves the camera free-running instead. A bring-up
+    // switch, for one question: arv-camera-test free-runs at full frame
+    // perfectly (567 buffers, 2.84 GB) while this core stops after a handful
+    // of TRIGGERED full-frame images. If the core free-runs cleanly too, the
+    // fault is specific to triggered acquisition; if it stops anyway, the
+    // trigger path is innocent and it is our acquisition path.
+    static const bool _freerun = []{ const char *v = getenv("INSP_CAM_FREERUN");
+                                     return v && *v == '1'; }();
+    if (_freerun)
+    {
+      arv_camera_set_string (camera, "TriggerMode", "Off", &e);
+      if (e) { LOGE("TriggerMode=Off REJECTED: %s", e->message); g_clear_error(&e); }
+      fprintf(stderr, "[camdiag] INSP_CAM_FREERUN=1 -- camera left free-running\n");
+      fflush(stderr);
+    }
+    else
+    {
     arv_camera_set_string (camera, "TriggerMode", "On", &e);
     if (e) { LOGE("TriggerMode=On REJECTED: %s", e->message); g_clear_error(&e); }
+    }
 
     // ONE frame per trigger -- and it has to be done HERE, not only in
     // TriggerMode(), because this constructor configures triggering inline and
@@ -1585,6 +1660,31 @@ CameraLayer::status CameraLayer_Aravis::GetROI(int *x, int *y, int *w, int *h, i
 
 CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 {
+  // Redundant re-application, isolated behind a switch so it can be tested
+  // rather than argued about.
+  //
+  // This is called again on every burst command, and it rewrites the whole
+  // trigger configuration each time -- including register writes to nodes the
+  // device locks while streaming. At full frame the camera stops delivering
+  // during the SECOND round and never recovers without a DeviceReset; at the
+  // production crop the same sequence has not been seen to fail, though it is
+  // not established that the crop is immune rather than simply never pushed.
+  //
+  // INSP_CAM_TRIGMODE_ONCE=1 makes a call that asks for the mode already in
+  // effect a no-op. If full frame then survives, the cause is in here.
+  {
+    static const bool _once = []{ const char *e = getenv("INSP_CAM_TRIGMODE_ONCE");
+                                  return e && *e == '1'; }();
+    static int _applied = -999;
+    if (_once && type == _applied)
+    {
+      fprintf(stderr, "[camdiag] TriggerMode(%d) skipped (already applied)\n", type);
+      fflush(stderr);
+      CameraLayer::TriggerMode(type);
+      return CameraLayer::ACK;
+    }
+    _applied = type;
+  }
   CameraLayer::TriggerMode(type);
   GError *err = NULL;
 
@@ -1615,20 +1715,42 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
   // Acquisition-control nodes are locked while the camera is streaming --
   // writing this one mid-stream fails with a USB3Vision write_memory error and
   // leaves the control endpoint unhappy. Stop, write, restore.
+  //
+  // READ IT FIRST. The stop/restart is the expensive half of this, and the
+  // value is 1 already on every call after the first -- the constructor sets
+  // it. Re-applying it unconditionally means every TriggerMode() call stops
+  // and restarts acquisition for no change at all.
+  //
+  // At the production crop the restart succeeds and nothing is noticed. At
+  // full frame it does not: the restart fails with the USB3Vision
+  // write_memory error documented at StartAquisition, acquisition_started
+  // stays false, every later start fails the same way, and the camera is dead
+  // until a DeviceReset. Measured 2026-08-11: full frame delivered frames
+  // until the first repeat TriggerMode() call and then stopped, at 19 frames
+  // with one trigger cadence and 3 with another -- both in the SECOND burst
+  // round, which is what identified the caller.
   {
-    const bool burst_was_running = acquisition_started;
-    if (burst_was_running) StopAquisition();
-
     GError *burst_err = NULL;
-    arv_camera_set_integer(camera, "AcquisitionBurstFrameCount", 1, &burst_err);
-    if (burst_err)
-    {
-      LOGI("AcquisitionBurstFrameCount=1: %s (harmless if the node is absent)",
-           burst_err->message);
-      g_clear_error(&burst_err);
-    }
+    const gint64 burst_now =
+      arv_camera_get_integer(camera, "AcquisitionBurstFrameCount", &burst_err);
+    const bool burst_readable = (burst_err == NULL);
+    if (burst_err) g_clear_error(&burst_err);
 
-    if (burst_was_running) StartAquisition();
+    if (!burst_readable || burst_now != 1)
+    {
+      const bool burst_was_running = acquisition_started;
+      if (burst_was_running) StopAquisition();
+
+      arv_camera_set_integer(camera, "AcquisitionBurstFrameCount", 1, &burst_err);
+      if (burst_err)
+      {
+        LOGI("AcquisitionBurstFrameCount=1: %s (harmless if the node is absent)",
+             burst_err->message);
+        g_clear_error(&burst_err);
+      }
+
+      if (burst_was_running) StartAquisition();
+    }
   }
 
   //0 for continuous, 1 for soft trigger, 2 for HW trigger
@@ -2211,7 +2333,26 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
   // only then release.
   if (stream) {
     int cur_payload = arv_camera_get_payload(camera, NULL);
-    if (cur_payload > 0 && cur_payload != payloadSize) {
+    // INSP_CAM_FORCE_STREAM_REBUILD=1 rebuilds once on the first start even
+    // when the payload has not changed.
+    //
+    // The stream is created before the constructor sets MAX ROI, so its
+    // transfer configuration belongs to whatever region the camera happened to
+    // be in when it was opened. A later ROI that CHANGES the payload gets a
+    // rebuild and is therefore correct by accident -- which is exactly the
+    // production crop. A full-frame ROI leaves the payload equal to the value
+    // captured at construction, so no rebuild happens and the stream keeps its
+    // stale configuration: buffers the right size, payload the right size, and
+    // truncated transfers. Measured as SIZE_MISMATCH with all three numbers
+    // identical at 5013504, on the FIRST frame.
+    static const bool _force = []{ const char *v = getenv("INSP_CAM_FORCE_STREAM_REBUILD");
+                                   return v && *v == '1'; }();
+    static bool _forced_done = false;
+    bool force_now = false;
+    if (_force && !_forced_done) { force_now = true; _forced_done = true;
+      fprintf(stderr, "[camdiag] forcing a stream rebuild at payload %d\n", cur_payload);
+      fflush(stderr); }
+    if (cur_payload > 0 && (cur_payload != payloadSize || force_now)) {
       LOGI("StartAquisition: payload %d -> %d, rebuilding stream",
            payloadSize, cur_payload);
       payloadSize = cur_payload;

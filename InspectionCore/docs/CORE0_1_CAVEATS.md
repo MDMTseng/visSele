@@ -1235,3 +1235,25 @@ CPU**。初稿在這裡寫成「卡在別的東西上已排除」,是過度宣�
 
 完整過程、六個錯誤假設、以及每個假設是被什麼量測殺掉的:
 **`POSTMORTEM_2026-08-10_stall.md`**。
+
+## 2026-08-11 — full frame wedges the camera, and every setting still reads correct
+
+At ROI 2448x2048 with triggering, the camera delivers 3-25 images and then
+delivers nothing, with no error anywhere. It survives a core restart; only
+`arv-tool-0.8 -n <cam> control DeviceReset` clears it. The production crop is
+unaffected in every run so far. **Cause not identified** -- see
+REPORT_2026-08-11_fullframe_wedge.md for what was excluded and for the four
+conclusions that had to be withdrawn.
+
+Two things from that report are worth having here because they will bite
+again:
+
+- **The log ring accumulates across core restarts.** 27 `bufferStatus:5`
+  entries read out of a dump belonged to other runs and produced a confident
+  diagnosis of the wrong mechanism. Diagnostics that matter now go to stderr.
+- **`cam_max_fps` and `n_valid` are not liveness signals.** `cam_max_fps` is
+  derived from the minimum frame interval, so it is a high-water mark that
+  survives the camera stopping; `n_valid` only counts frames whose watermark
+  decoded, so it reads 0 whenever the watermark is off regardless of how many
+  frames arrive. Count `INSP_CAM_FRAME_TRACE` lines instead.
+
