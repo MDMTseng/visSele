@@ -859,6 +859,14 @@ volatile uint32_t GATE_REJ_STEPPER_OFF=0,   // driver disabled
 // newPulseEvent; settable so a measurement run can open it and see what the
 // gate would otherwise have hidden.
 volatile uint32_t GATE_MIN_DIST_um = 2000;
+// The same distance in plate ticks, converted once in firmwareLoop.
+//
+// The conversion is a double multiply and divide, and newPulseEvent -- which
+// runs in the step ISR -- used to do it per object. See where this is written
+// for why that was worth removing. Zero means the test is off, which is also
+// what a distance too small to be one tick used to mean, so the guard is
+// unchanged in behaviour.
+volatile uint32_t GATE_MIN_DIST_STEPS = 0;
 
 
 volatile uint32_t ERR_CTX_TID=0;
@@ -1907,8 +1915,8 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   _prePulse=middle_pulse;
   // 2mm, not 3.5mm: parts are specified 3mm apart, and with the plate geometry
   // finally correct a 3.5mm gate would reject conforming production parts.
-  if(GATE_MIN_DIST_um &&
-     middle_pulse-_prePulse_BK<(_PLAT_DIST_step(GATE_MIN_DIST_um))){GATE_REJ_DIST++;return -9;}
+  if(GATE_MIN_DIST_STEPS &&
+     middle_pulse-_prePulse_BK<GATE_MIN_DIST_STEPS){GATE_REJ_DIST++;return -9;}
   uint64_t curTime = esp_timer_get_time();
   // The fire-rate limit. Rejecting here is the cheapest possible outcome: the
   // object never gets a tid, never gets a camera trigger and never gets a
@@ -6789,6 +6797,29 @@ void firmwareLoop()
       // silent without rebooting, and what it did. Evaluate it here and hand the
       // ISR a bool.
       PLATE_IN_BAND = plateInSpeedBand();
+      // And the last floating point left anywhere in the step ISR.
+      //
+      // newPulseEvent tested the gate's minimum spacing with
+      // _PLAT_DIST_step(GATE_MIN_DIST_um), which is a double multiply and a
+      // double divide. The plate diameter is a compile-time constant, so the
+      // only runtime input is the config value -- there was never a reason to
+      // convert it per object. This is not the FPU-register hazard (double is
+      // soft-float on this chip, it never touches the coprocessor) but it is
+      // four libgcc calls that live in flash, reached once per ~1200 ticks,
+      // and therefore cold every single time. Same disease as the rest of the
+      // admission path.
+      //
+      // Recomputed from the value rather than hooked onto the setter, so it
+      // cannot go stale if another write site for GATE_MIN_DIST_um appears.
+      {
+        static uint32_t lastMinDistUm = 0xFFFFFFFFu;
+        const uint32_t um = GATE_MIN_DIST_um;
+        if(um != lastMinDistUm)
+        {
+          lastMinDistUm = um;
+          GATE_MIN_DIST_STEPS = um ? (uint32_t)_PLAT_DIST_step(um) : 0;
+        }
+      }
       // Deliberately NOT re-derived here any more. See STAGE_PULSE_WIDTH_apply:
       // the windows are converted once, for the speed the plate is being sent
       // to, and the gate is what keeps the plate near that speed while parts
