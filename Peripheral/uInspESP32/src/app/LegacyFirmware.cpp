@@ -953,6 +953,18 @@ bool STAGE_WIDTH_SEL_WARN = false;
 // change disguised as a default.
 stagePulseWidthUs STAGE_PULSE_WIDTH_US = {0,0,0,0,0,0,0};
 
+// All zero = "the offsets are window STARTS", i.e. today's forward-only shape.
+// Opt-in per station, for the same reason as the widths above: reinterpreting a
+// stored offset as a centre would move every deployed blow earlier by half its
+// width -- 750 ticks on this machine -- which is a behaviour change wearing a
+// feature's clothes.
+stagePulseCenter STAGE_PULSE_CENTER = {0,0,0,0,0,0,0};
+
+// A configured centre sat closer to the gate than half its own window, so the
+// leading edge was clamped to 0 instead of wrapping a uint32_t. Reported the
+// same way the SEL width warning is: said out loud, not silently obeyed.
+bool STAGE_CENTER_CLAMP_WARN = false;
+
 // Turn the microsecond widths into tick offsets and publish them.
 //
 // Done here, in the main loop, rather than in the ISR: the step ISR keeps
@@ -989,14 +1001,14 @@ void STAGE_PULSE_WIDTH_apply()
   // the same rule the match window follows, for the same reason.
   uint32_t sel_cap = us2t(SYS_MIN_PULSE_TIME_SEP_us / 2);
 
-  struct { uint32_t us; uint32_t *on; uint32_t *off; bool is_sel; } M[] = {
-    { STAGE_PULSE_WIDTH_US.CAM1, &STAGE_PULSE_OFFSET.CAM1_on, &STAGE_PULSE_OFFSET.CAM1_off, false },
-    { STAGE_PULSE_WIDTH_US.L1A,  &STAGE_PULSE_OFFSET.L1A_on,  &STAGE_PULSE_OFFSET.L1A_off,  false },
-    { STAGE_PULSE_WIDTH_US.CAM2, &STAGE_PULSE_OFFSET.CAM2_on, &STAGE_PULSE_OFFSET.CAM2_off, false },
-    { STAGE_PULSE_WIDTH_US.L2A,  &STAGE_PULSE_OFFSET.L2A_on,  &STAGE_PULSE_OFFSET.L2A_off,  false },
-    { STAGE_PULSE_WIDTH_US.SEL1, &STAGE_PULSE_OFFSET.SEL1_on, &STAGE_PULSE_OFFSET.SEL1_off, true  },
-    { STAGE_PULSE_WIDTH_US.SEL2, &STAGE_PULSE_OFFSET.SEL2_on, &STAGE_PULSE_OFFSET.SEL2_off, true  },
-    { STAGE_PULSE_WIDTH_US.SEL3, &STAGE_PULSE_OFFSET.SEL3_on, &STAGE_PULSE_OFFSET.SEL3_off, true  },
+  struct { uint32_t us; uint32_t ctr; uint32_t *on; uint32_t *off; bool is_sel; } M[] = {
+    { STAGE_PULSE_WIDTH_US.CAM1, STAGE_PULSE_CENTER.CAM1, &STAGE_PULSE_OFFSET.CAM1_on, &STAGE_PULSE_OFFSET.CAM1_off, false },
+    { STAGE_PULSE_WIDTH_US.L1A,  STAGE_PULSE_CENTER.L1A,  &STAGE_PULSE_OFFSET.L1A_on,  &STAGE_PULSE_OFFSET.L1A_off,  false },
+    { STAGE_PULSE_WIDTH_US.CAM2, STAGE_PULSE_CENTER.CAM2, &STAGE_PULSE_OFFSET.CAM2_on, &STAGE_PULSE_OFFSET.CAM2_off, false },
+    { STAGE_PULSE_WIDTH_US.L2A,  STAGE_PULSE_CENTER.L2A,  &STAGE_PULSE_OFFSET.L2A_on,  &STAGE_PULSE_OFFSET.L2A_off,  false },
+    { STAGE_PULSE_WIDTH_US.SEL1, STAGE_PULSE_CENTER.SEL1, &STAGE_PULSE_OFFSET.SEL1_on, &STAGE_PULSE_OFFSET.SEL1_off, true  },
+    { STAGE_PULSE_WIDTH_US.SEL2, STAGE_PULSE_CENTER.SEL2, &STAGE_PULSE_OFFSET.SEL2_on, &STAGE_PULSE_OFFSET.SEL2_off, true  },
+    { STAGE_PULSE_WIDTH_US.SEL3, STAGE_PULSE_CENTER.SEL3, &STAGE_PULSE_OFFSET.SEL3_on, &STAGE_PULSE_OFFSET.SEL3_off, true  },
   };
   for(auto &m : M)
   {
@@ -1014,6 +1026,22 @@ void STAGE_PULSE_WIDTH_apply()
     // a bug fix's clothes. Say it and let the operator decide.
     if(m.is_sel && sel_cap && t > sel_cap)
       STAGE_WIDTH_SEL_WARN = true;
+    // A centre, when one is configured, replaces the position rather than
+    // adjusting it: BOTH edges are derived, so *_on becomes as derived as
+    // *_off already is and nothing accumulates across repeated applies.
+    //
+    // off is on+t rather than centre+half so the window is exactly t ticks
+    // wide whichever way the halving rounds; the centre is then honoured to
+    // within one tick, which is 0.0126mm of plate.
+    if(m.ctr)
+    {
+      const uint32_t half = t/2;
+      // A centre closer to the gate than half the window would underflow a
+      // uint32_t into ~4 billion ticks -- a pulse that never fires, from a
+      // number that looks merely small. Clamp and say so.
+      if(m.ctr > half) *m.on = m.ctr - half;
+      else             { *m.on = 0; STAGE_CENTER_CLAMP_WARN = true; }
+    }
     *m.off = *m.on + t;
   }
   STAGE_PULSE_OFFSET_publish();
@@ -6620,6 +6648,20 @@ void genMachineSetup(JsonDocument &jdoc)
     jW["SEL2"]=STAGE_PULSE_WIDTH_US.SEL2;
     jW["SEL3"]=STAGE_PULSE_WIDTH_US.SEL3;
   }
+  {
+    // Window centres in TICKS -- a position, so the same unit as
+    // stage_pulse_offset and for the same reason: a tick is a fixed distance
+    // on the plate, so the centre does not move when the speed does. 0 = the
+    // station keeps the forward-only shape.
+    JsonObject jC = jdoc.createNestedObject("stage_pulse_center");
+    jC["CAM1"]=STAGE_PULSE_CENTER.CAM1;
+    jC["L1A"] =STAGE_PULSE_CENTER.L1A;
+    jC["CAM2"]=STAGE_PULSE_CENTER.CAM2;
+    jC["L2A"] =STAGE_PULSE_CENTER.L2A;
+    jC["SEL1"]=STAGE_PULSE_CENTER.SEL1;
+    jC["SEL2"]=STAGE_PULSE_CENTER.SEL2;
+    jC["SEL3"]=STAGE_PULSE_CENTER.SEL3;
+  }
 
 
 
@@ -6726,6 +6768,9 @@ static const char *const K_SPO[] =
    "SEL3_off",NULL};
 static const char *const K_WIDTH[] =
   {"L1A","CAM1","L2A","CAM2","SEL1","SEL2","SEL3",NULL};
+// Same stations as the widths -- a centre is only meaningful beside one.
+static const char *const K_CENTER[] =
+  {"L1A","CAM1","L2A","CAM2","SEL1","SEL2","SEL3",NULL};
 // io_on_level is keyed by IO_POL_TAB, so it is checked against that table
 // rather than duplicated here -- two copies of a name list drift.
 static const char *const K_TOP[] =
@@ -6767,6 +6812,7 @@ int cfgUnknownKeys(JsonObject in, char *out, size_t outN)
     else if(strcmp(k,"skip_policy")==0)          tab=K_SKIP;
     else if(strcmp(k,"stage_pulse_offset")==0)   tab=K_SPO;
     else if(strcmp(k,"stage_pulse_width_us")==0) tab=K_WIDTH;
+    else if(strcmp(k,"stage_pulse_center")==0)   tab=K_CENTER;
     else if(strcmp(k,"io_on_level")==0)
     {
       JsonObject g = kv.value().as<JsonObject>();
@@ -7150,6 +7196,16 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.SEL2,jW,"SEL2");
     JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.SEL3,jW,"SEL3");
   }
+  if (jdoc.containsKey("stage_pulse_center")) {
+    JsonObject jC = jdoc["stage_pulse_center"];
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.CAM1,jC,"CAM1");
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.L1A ,jC,"L1A");
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.CAM2,jC,"CAM2");
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.L2A ,jC,"L2A");
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.SEL1,jC,"SEL1");
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.SEL2,jC,"SEL2");
+    JSON_SETIF_ABLE(STAGE_PULSE_CENTER.SEL3,jC,"SEL3");
+  }
   // Re-derive unconditionally, not only when a width key was present: plate_freq
   // may have changed in this same set_setup, and every configured width is a
   // function of it. Cheap, and it removes an ordering dependency between two
@@ -7160,6 +7216,13 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     STAGE_WIDTH_SEL_WARN = false;
     djrl.dbg_printf("SEL width exceeds half the part spacing -- the blow is "
                     "still open when the next part arrives");
+  }
+  if(STAGE_CENTER_CLAMP_WARN)
+  {
+    STAGE_CENTER_CLAMP_WARN = false;
+    djrl.dbg_printf("stage_pulse_center sits closer to the gate than half its "
+                    "own window -- leading edge clamped to 0, so the window is "
+                    "no longer centred on it");
   }
 
 

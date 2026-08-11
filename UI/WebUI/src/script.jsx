@@ -1572,6 +1572,9 @@ class APPMasterX extends React.Component {
         // Per-station widths in MICROSECONDS -- the device converts to ticks
         // against its own plate_freq, so a recipe survives a speed change.
         "stage_pulse_width_us",
+        // Window CENTRES in ticks. 0 = that station keeps the forward-only
+        // shape, where the offset is the window's start.
+        "stage_pulse_center",
         // Calibration trigger pulse width, us.
         "cal_pulse_us",
         // The camera clock: match window and the recal/drift settings. All are

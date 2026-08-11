@@ -68,6 +68,44 @@ typedef struct stagePulseWidthUs
 } stagePulseWidthUs;
 
 extern stagePulseWidthUs STAGE_PULSE_WIDTH_US;
+
+// Where the window sits relative to the position, in stage ticks.
+//
+// The *_on offsets above are the START of a window and the width runs FORWARD
+// from them. That is right for the camera and the light -- the trigger edge IS
+// the event, and everything after it is exposure -- but it is the wrong shape
+// for the air blow.
+//
+// A blow has to be open before the part arrives (solenoid travel + air
+// transit) and stay open after it (the part needs pushing, not touching). With
+// a forward-only window the only way to buy the leading half is to move the
+// position earlier, which puts two different quantities into one number:
+// WHERE the part is, which is geometry and fixed, and HOW SLOW THE VALVE IS,
+// which is pneumatics and changes with air pressure and nozzle. Retuning the
+// second then silently moves the first -- and the first shares its coordinate
+// frame with the camera trigger.
+//
+// So: a non-zero value here is the CENTRE of the window, and both edges are
+// derived from it --
+//
+//     on  = centre - width/2      off = on + width
+//
+// 0 means "not set", exactly as a 0 width does, so an existing NVS config is
+// untouched and keeps its forward-only behaviour. This is opt-in per station
+// because reinterpreting the stored offsets would move every deployed blow by
+// half its width, which on this machine is 750 ticks.
+typedef struct stagePulseCenter
+{
+  uint32_t CAM1;
+  uint32_t L1A;
+  uint32_t CAM2;
+  uint32_t L2A;
+  uint32_t SEL1;
+  uint32_t SEL2;
+  uint32_t SEL3;
+} stagePulseCenter;
+
+extern stagePulseCenter STAGE_PULSE_CENTER;
 extern float PLATE_FREQ_SETPOINT;
 // Config is stored as the same JSON the wire uses, so these are shared.
 void genMachineSetup(JsonDocument &jdoc);

@@ -141,19 +141,30 @@ const STATIONS = [
   { key: 'SWITCH', label: 'SWITCH 期限', on: 'SWITCH',
     why: '判定期限,不是致動器。料走到這裡還沒有判定就算沒判定 —— 而且會被標成 ' +
          'UNANSWERED 或被較新的回報蓋成 SKIP。必須早於所有 SEL。' },
-  { key: 'SEL1', label: 'SEL1 吹氣', on: 'SEL1_on', off: 'SEL1_off', us: 'SEL1' },
-  { key: 'SEL2', label: 'SEL2 吹氣', on: 'SEL2_on', off: 'SEL2_off', us: 'SEL2' },
-  { key: 'SEL3', label: 'SEL3 吹氣', on: 'SEL3_on', off: 'SEL3_off', us: 'SEL3' },
+  // blow: the window may be CENTRED on its position instead of starting at it.
+  // Only the nozzles get this. A blow has to be open before the part arrives
+  // (solenoid travel + air transit) and stay open after it, so its position
+  // wants to mean "where the part is" -- geometry, fixed -- while the margins
+  // either side are pneumatics and get retuned with air pressure. Forward-only
+  // forces both into one number. The camera does not have that problem: its
+  // trigger edge IS the event and everything after it is exposure.
+  { key: 'SEL1', label: 'SEL1 吹氣', on: 'SEL1_on', off: 'SEL1_off', us: 'SEL1', blow: true },
+  { key: 'SEL2', label: 'SEL2 吹氣', on: 'SEL2_on', off: 'SEL2_off', us: 'SEL2', blow: true },
+  { key: 'SEL3', label: 'SEL3 吹氣', on: 'SEL3_on', off: 'SEL3_off', us: 'SEL3', blow: true },
 ];
 
 // The firmware stores on/off; the panel edits position/width. Kept as an
 // explicit pair of converters rather than done inline, because a half-typed
 // width must not be able to corrupt `off` on the device -- the conversion only
 // happens on commit.
-const spoToEdit = (spo, wus, plate_freq) => {
+const spoToEdit = (spo, wus, plate_freq, ctr) => {
   const e = { ...spo };
   for (const st of STATIONS) {
     if (!st.off) continue;
+    // A centred station's *_on is DERIVED by the device, so the field has to
+    // show the centre instead -- otherwise editing the position would read
+    // back the leading edge and walk the window backwards on every commit.
+    if (st.blow && ctr && Number(ctr[st.us]) > 0) e[st.on] = Number(ctr[st.us]);
     // Prefer the device's configured microseconds. Fall back to converting the
     // stored tick offsets only when no width has ever been set (wus === 0),
     // which is how a machine that predates the us fields still shows something
@@ -341,6 +352,9 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const spo = cfg.stage_pulse_offset || {};
   // Per-station widths in microseconds; {} on firmware that predates them.
   const wus = cfg.stage_pulse_width_us;
+  // Window centres in ticks; 0/absent = that station keeps the forward-only
+  // shape. {} on firmware that predates them, which reads as "all forward".
+  const ctr = cfg.stage_pulse_center || {};
   const plate_freq = stat ? stat.plate_freq : cfg.plate_freq;
   // The CONFIGURED speed (PLATE_FREQ_SETPOINT), not the ramp's current target.
   // Width in microseconds is converted to ticks by the DEVICE against exactly
@@ -423,7 +437,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
 
   // Adopt the station table once, same reasoning as the sliders below.
   useEffect(() => {
-    if (Object.keys(spoEdit).length === 0 && spo.CAM1_on !== undefined) setSpoEdit(spoToEdit(spo, wus, setpoint_freq));
+    if (Object.keys(spoEdit).length === 0 && spo.CAM1_on !== undefined) setSpoEdit(spoToEdit(spo, wus, setpoint_freq, ctr));
   }, [spo.CAM1_on, spoEdit]);
 
   // Adopt the machine's speed once, so the slider opens where the machine
@@ -478,6 +492,17 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       wOut[st.us] = w;
       if (w !== Number((wus || {})[st.us])) changed = true;
     }
+    // Centres, for the nozzles that are in centre mode. The position typed for
+    // such a station IS the centre, so it goes here and the device derives both
+    // edges from it; *_on is still sent above but the device overwrites it.
+    const cOut = {};
+    for (const st of STATIONS) {
+      if (!st.blow) continue;
+      const on = Number(ctr[st.us]) > 0;
+      const v = on ? Number(spoEdit[st.on]) : 0;
+      cOut[st.us] = isFinite(v) ? v : 0;
+      if (cOut[st.us] !== Number(ctr[st.us] || 0)) changed = true;
+    }
     if (!changed) return;
     // Widths go as microseconds and the DEVICE converts to ticks against its own
     // plate_freq. Sending ticks from here would bake in whatever speed the panel
@@ -485,6 +510,29 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
     run('spo', (api) => api.machineSetupUpdate({
       stage_pulse_offset: { ...spo, ...spoOut },
       stage_pulse_width_us: { ...(wus || {}), ...wOut },
+      stage_pulse_center: { ...ctr, ...cOut },
+    }, false, true));
+  };
+
+  // Turn centre mode on or off for one nozzle WITHOUT moving the blow.
+  //
+  // Switching representation must be a no-op on the plate, or nobody can try it
+  // on a running machine -- and a blow that jumps half its own width when you
+  // tick a box is exactly the kind of change that gets reverted and never
+  // revisited. So: on, the centre is seeded from the current leading edge plus
+  // half the width; off, the position falls back to that same leading edge.
+  const setCentered = (st, want) => {
+    const wUs = Number(spoEdit['_w_' + st.key]) || Number((wus || {})[st.us]) || 0;
+    if (want && !(wUs > 0)) {
+      log.warn('[uinsp2] %s: centre needs a width first', st.key);
+      return;
+    }
+    const halfTicks = Math.ceil(wUs * 2 * setpoint_freq / 1e6 / 2);
+    const lead = Number(spo[st.on]) || 0;          // what the device fires at now
+    const next = want ? lead + halfTicks : lead;
+    setSpoEdit({ ...spoEdit, [st.on]: String(next) });
+    run('spo', (api) => api.machineSetupUpdate({
+      stage_pulse_center: { ...ctr, [st.us]: want ? next : 0 },
     }, false, true));
   };
 
@@ -940,6 +988,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           <span style={{ width: 104 }}>站點</span>
           <span style={{ width: 86 }}>觸發位置</span>
           <span style={{ width: 86 }}>寬度 (µs)</span>
+          <span style={{ width: 58 }}>中心</span>
           <span style={{ flex: 1 }}>換算</span>
         </div>
 
@@ -947,6 +996,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           const pos = spoEdit[st.on];
           const wid = st.off ? spoEdit['_w_' + st.key] : undefined;
           const bad = st.off && !(Number(wid) > 0);
+          const centered = !!(st.blow && Number(ctr[st.us]) > 0);
           const isSel = (which) => sel && sel.key === st.key && sel.which === which;
           const cell = (which, val, onCh) => (
             <Input size="small" style={{ width: 82, marginRight: 4,
@@ -966,10 +1016,28 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
               {st.off
                 ? cell('w', wid, (v) => setSpoEdit({ ...spoEdit, ['_w_' + st.key]: v }))
                 : <span style={{ width: 86 }} />}
+              <span style={{ width: 58 }}>
+                {st.blow ? (
+                  <Tooltip title={centered
+                    ? '位置是窗口的中心:前後各展開一半寬度。調氣壓只動寬度,料的位置不動。'
+                    : '位置是窗口的起點,寬度只往後長(今天的行為)。切換不會移動吹氣窗。'}>
+                    <Switch size="small" disabled={!spoUnlock} checked={centered}
+                      onChange={(v) => setCentered(st, v)} />
+                  </Tooltip>
+                ) : null}
+              </span>
               <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
                 {Number(pos) >= 0
                   ? `${(Number(pos) * MM_PER_PULSE).toFixed(1)} mm · ${fmtMs(ticksToMs(Number(pos), refFreq(plate_freq)))}`
                   : '—'}
+                {/* Both edges, spelled out. A centre is only useful if you can
+                    see what it buys either side of the part. */}
+                {centered && Number(wid) > 0 ? (() => {
+                  const t = Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6);
+                  const half = Math.floor(t / 2);
+                  const a = Math.max(0, Number(pos) - half);
+                  return `  [${a} … ${a + t}] t`;
+                })() : ''}
                 {st.off ? (bad
                   ? '  ⚠ 寬度必須 > 0'
                   : `  → ${Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6)} t = ${(Number(wid) * 2 * setpoint_freq / 1e6 * MM_PER_PULSE).toFixed(2)} mm${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0,裝置要等設定轉速後才換算'}`) : ''}
@@ -995,7 +1063,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           <Button size="small" type="primary" loading={busy === 'save'}
             onClick={() => run('save', (api) => api.saveSetupToDevice())}
           >存入 NVS</Button>
-          <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq))}>還原成裝置目前值</Button>
+          <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq, ctr))}>還原成裝置目前值</Button>
           <span style={{ ...dim, fontSize: 11 }}>
             編輯後離開欄位即套用(下一顆料起);存 NVS 才會撐過重開機
           </span>

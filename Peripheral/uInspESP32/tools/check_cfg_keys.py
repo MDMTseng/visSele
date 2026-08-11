@@ -178,7 +178,8 @@ def main():
     flat_top = set(re.findall(r'JSON_SETIF_ABLE\([^,]+,\s*jdoc\s*,\s*"([A-Za-z0-9_]+)"\)',
                               read(FW)))
     flat_top |= {"machine_id", "CAM1_Tags", "CAM2_Tags", "persist",
-                 "stage_pulse_offset", "stage_pulse_width_us", "io_on_level"}
+                 "stage_pulse_offset", "stage_pulse_width_us",
+                 "stage_pulse_center", "io_on_level"}
     for k in sorted(sk):
         if k not in js and k not in flat_top:
             problems.append("dead key         %-24s in SETTABLE_KEYS but the firmware "
