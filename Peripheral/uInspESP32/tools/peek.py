@@ -63,32 +63,78 @@ class Refused(Exception):
     """A command the device answered ack:false."""
 
 
+# Request ids for cmd(). High enough not to collide with the WebUI's own
+# numbering on the same link.
+_ID = [900000]
+LAST_LATENCY_S = None
+
+
 def cmd(c, wait=2.5, must_ack=True):
-    """Send one command and CHECK WHAT CAME BACK.
+    """Send one command, MATCH THE REPLY BY ID, and check the ack.
 
-    ask() returns every line it saw and says nothing about whether the device
-    agreed, and scripts here routinely threw that away. On 2026-08-11 a teardown
-    sequence sent {"plate":{"freq":0}} with a stray top-level "speed_band_pct"
-    beside it; set_setup refuses a document containing any key outside the schema
-    -- loudly, naming the key, with ack:false -- and the script neither looked nor
-    cared. It printed "stopped" and the plate ran at 12000 for several minutes.
+    Two lessons are baked in here, both learned the expensive way.
 
-    The device was right and the tool was wrong, so the check belongs here. Any
-    command that is refused raises, which is what a stop command failing should
-    do to a script rather than being stepped over.
+    First, look at the ack at all. A teardown sent {"plate":{"freq":0}} with a
+    stray top-level "speed_band_pct" beside it; set_setup refuses any document
+    containing a key outside the schema -- loudly, naming the key, ack:false --
+    and the script neither looked nor cared. It printed "stopped" and the plate
+    ran at 12000 for several minutes.
+
+    Second, match by ID, not by `type`. The first version of this function paired
+    a reply to its request by comparing `type`, and enter_insp_mode's ack is
+    `{"id": null, "ack": true}` -- no type field at all. So a command that had
+    already succeeded in 10 ms was reported as "no reply within 5.0s", twice in
+    a 31-minute soak and again in the run after it. A tool written to stop the
+    log from lying had started lying in a new way. The device echoes whatever
+    `id` it is given; that echo is the only reliable pairing on a link that is
+    also carrying cam_trig, pong and dbg traffic.
+
+    Returns the matched reply. Sets LAST_LATENCY_S, which is worth having: the
+    old ask()-based version always blocked its full window, so every round trip
+    cost a host constant and reply latency was unmeasurable.
     """
-    out = ask([c], wait=wait)
-    for m in out:
-        if m.get("type") == c.get("type") and "ack" in m:
-            if must_ack and not m.get("ack"):
-                raise Refused("%s refused: %s" % (
-                    c.get("type"),
-                    json.dumps({k: v for k, v in m.items()
-                                if k in ("err", "unknown", "n_unknown")})))
-            return out
-    if must_ack:
-        raise Refused("%s: no reply within %.1fs" % (c.get("type"), wait))
-    return out
+    global LAST_LATENCY_S
+    _ID[0] += 1
+    rid = _ID[0]
+    msg = dict(c)
+    msg["id"] = rid
+    s = socket.create_connection(("127.0.0.1", PORT), timeout=5)
+    s.settimeout(0.2)
+    t0 = time.time()
+    s.sendall((json.dumps(msg) + "\n").encode())
+    buf, found = b"", None
+    while time.time() - t0 < wait and found is None:
+        try:
+            buf += s.recv(65536)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            line = line.strip()
+            if not line.startswith(b"{"):
+                continue
+            try:
+                m = json.loads(line.split(b"*")[0].decode())
+            except Exception:
+                continue
+            if m.get("id") == rid:
+                found = m
+                break
+    s.close()
+    LAST_LATENCY_S = round(time.time() - t0, 4)
+    if found is None:
+        if must_ack:
+            raise Refused("%s: no reply matching id %d within %.1fs"
+                          % (c.get("type"), rid, wait))
+        return None
+    if must_ack and not found.get("ack", True):
+        raise Refused("%s refused: %s" % (
+            c.get("type"),
+            json.dumps({k: v for k, v in found.items()
+                        if k in ("err", "unknown", "n_unknown")})))
+    return found
 
 
 def stop_plate(wait_s=14):

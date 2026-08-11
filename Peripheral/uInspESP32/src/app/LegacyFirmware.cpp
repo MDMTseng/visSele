@@ -1749,14 +1749,33 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 // state machine that drives it lives up here.
 static void calibrationBegin(bool full);
 void STAGE_PULSE_WIDTH_apply(float pf);
-// One speed, converted once: the speed the plate is being SENT to.
+// The speed the plate is ACTUALLY RUNNING, with the setpoint only as a fallback
+// for a plate that is stopped.
 //
-// Both stations use it, so the early/late split is gone. That split only
-// existed to make live tracking safe, and live tracking is gone -- see
-// SPEED_BAND_PCT for what replaced it.
+// This returned the SETPOINT, from a design where the windows were converted
+// once per set_setup and live tracking did not exist. Live tracking came back
+// (see the ramp service), and this was left behind, so a set_setup snapped every
+// window to the TARGET speed's tick count while the plate was still turning at
+// the OLD one. Delivered pulse ~= asked * f_new/f_old until the tracker caught
+// up a few tens of ms later.
+//
+// That is not a theory. A 31-minute soak measured 30787 delivered CAM1 pulses
+// and EVERY extreme in the whole run landed in a poll interval containing a
+// speed change, with none anywhere else:
+//
+//   min 3069 us   13864 -> 12616   predicted 3065   (decelerate -> short)
+//   max 3662 us    3658 ->  3987   predicted 3691   (accelerate -> long)
+//
+// Bounded by SPEED_BAND_PCT for an in-band change and by the drain for a large
+// one, so it was ~1 pulse per change at up to 10%, which is why it took a soak
+// to see. Steady-state residual after removing tick quantisation was -0.5 us
+// with a 4.3 us sigma, so this transient was the ONLY thing left.
+//
+// Fallback order matters: a stopped plate has CURRENT == 0 and must convert
+// against the setpoint, or every window lands on us2t's one-tick floor.
 static inline float stageWidthRefFreq()
 {
-  return (PLATE_FREQ_SETPOINT > 0.0f) ? PLATE_FREQ_SETPOINT : PLATE_FREQ_CURRENT;
+  return (PLATE_FREQ_CURRENT > 0.0f) ? PLATE_FREQ_CURRENT : PLATE_FREQ_SETPOINT;
 }
 static void calibrationCleanup();
 static void spinupBegin();
