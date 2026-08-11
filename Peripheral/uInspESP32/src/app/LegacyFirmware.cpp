@@ -7422,18 +7422,33 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   //
   // Only in READY. Anywhere else there is nothing in flight to protect, and a
   // spin-up that had to drain a pipeline it has not filled yet would never start.
-  if(PLATE_FREQ_SETPOINT != _freq_before &&
-     sysinfo.state == SYS_STATE::INSPECTION_MODE_READY &&
-     RBuf.size() > 0)
+  if(PLATE_FREQ_SETPOINT != _freq_before)
   {
-    const float tol = _freq_before * (float)SPEED_BAND_PCT * 0.01f;
-    const float d   = PLATE_FREQ_SETPOINT - _freq_before;
-    if(d > tol || d < -tol)
+    if(PLATE_FREQ_PENDING >= 0.0f)
     {
-      PLATE_FREQ_PENDING     = PLATE_FREQ_SETPOINT;
-      PLATE_FREQ_SETPOINT    = _freq_before;
-      blockNewDetectedObject = true;    // stop admitting, let the pipeline empty
-      FREQ_TXN_T0_MS         = millis();
+      // A change arriving while one is already staged retargets the staged one.
+      //
+      // Without this, a SMALL change during a drain writes the setpoint (it is
+      // small, so it is not staged) and the drain then commits the OLD pending
+      // value on top of it -- the operator's most recent instruction is silently
+      // overwritten by one they have already superseded. Size does not matter
+      // here: while a transaction is open, the setpoint is not the operator's
+      // to write, the pending value is.
+      PLATE_FREQ_PENDING  = PLATE_FREQ_SETPOINT;
+      PLATE_FREQ_SETPOINT = _freq_before;
+      FREQ_TXN_T0_MS      = millis();   // the drain restarts with the new order
+    }
+    else if(sysinfo.state == SYS_STATE::INSPECTION_MODE_READY && RBuf.size() > 0)
+    {
+      const float tol = _freq_before * (float)SPEED_BAND_PCT * 0.01f;
+      const float d   = PLATE_FREQ_SETPOINT - _freq_before;
+      if(d > tol || d < -tol)
+      {
+        PLATE_FREQ_PENDING     = PLATE_FREQ_SETPOINT;
+        PLATE_FREQ_SETPOINT    = _freq_before;
+        blockNewDetectedObject = true;  // stop admitting, let the pipeline empty
+        FREQ_TXN_T0_MS         = millis();
+      }
     }
   }
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
