@@ -1628,6 +1628,48 @@ the two `esp_timer_get_time()` calls.
 inside an ISR the second one is usually the answer. Measure with segments, not
 with feature on/off -- a feature toggle moves cache locality too.
 
+#### What the remaining ~23 us is, and what removing it would cost (2026-08-11)
+
+Split inside `newPulseEvent` the same way (`health.isr_npe_worst_cy`, order
+`[pre, ringhead, fill, actreg, tail]`), at pf 8000:
+
+    pre 0.7   ringhead 0.2   fill 1.6   actreg 20.5   tail 1.6   = 24.6 us
+
+All of it is `ActRegister_pipeLineInfo`, which is nine `ACT_PUSH_TASK` and a
+`space()` check. Note that `size()`, `space()`, `getHead()` and `getTail()` do
+NOT lock -- only `pushHead`/`consumeTail`/`pullHead`/`clear` do -- so admission
+takes nine critical sections, not one per call site.
+
+Measured directly by rebuilding `RingBuf`'s critical section as plain interrupt
+masking instead of a per-instance `portMUX` (bench only, reverted):
+
+| build | actreg | newPulseEvent | worst tick | acts seg | overruns |
+|---|---|---|---|---|---|
+| portMUX (shipping) | 20.5 us | 24.6 us | 32 us | 9.0 us | 0 |
+| interrupt mask (experiment) | 10.5 us | 13.4 us | **20 us** | 6.5 us | 0 |
+
+So the lock is worth about 1.1 us per push, 10 us per admitted object, 12 us off
+the worst tick. `Run_ACTS` improves too, because it also pushes and consumes.
+
+**That experiment must not be shipped as-is.** This file's own comment says
+masking interrupts is sufficient because the two contexts share a core -- true
+for the ACT rings and RBuf (timer ISR + main loop, both core 1), false for
+`AUX2CommInfoQ`, which `AUX_task` touches from core 0 (`xTaskCreatePinnedToCore`
+..., 0). A blanket swap is a silent correctness regression on that queue. Any
+real version has to be a per-instance policy, and the cost of it is the audit of
+every `RingBuf` instance, not the twenty lines of macro.
+
+Speed ceiling implied by the worst tick (it must fit `1e6/(2f)`):
+
+| | worst tick | plate_freq wall | at production 10500 |
+|---|---|---|---|
+| now | 32 us | ~15600 | 67% of tick |
+| per-instance lock policy | 20 us | ~25000 | 42% of tick |
+
+The ISR is not currently the binding constraint -- the gate's rate limit
+(`eff_sep_us` 28571, 35/s) and the camera are. Worth revisiting only if
+something needs plate_freq above 15000.
+
 #### The VOID bisect, kept as a warning
 
 A `trig_report on/off` bisect was attempted and proved nothing -- do not repeat
