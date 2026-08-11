@@ -1578,3 +1578,26 @@ So there are two correct options, and only one of them is cheap:
 * Do the arithmetic in the main loop and hand the ISR an integer. This is what
   `ISR_BUDGET_CY` does, and it is the default answer here precisely because the
   tick budget has no room to spend.
+
+### Where the 77 us goes: not yet known
+
+Established: per tick each queue runs AT MOST ONE task (`ACT_TRY_RUN_TASK`
+takes the tail, runs it, consumes it -- no loop), so the spike is one expensive
+task body, not a backlog draining. `IO_TRACE_LOG` early-returns when unarmed,
+so it is free by default. The error path already defers `SYS_STATE_Transfer`
+to `firmwareLoop`, so that is not it either.
+
+Remaining candidates: the CAM1 branch (pushes an announcement onto ISRTrigQ)
+and the SWITCH branch (verdict dispatch plus two `ACT_PUSH_TASK`).
+
+A `trig_report on/off` bisect was attempted and is VOID -- do not repeat it the
+same way. With `virt_pulse` running, the 4099 console is flooded with `cam_trig`
+lines, and a probe that returns the first reply containing "health" picks a
+queued older one. Eight samples came back byte-identical, including a frozen
+`isr_ticks` while the plate was demonstrably turning. Any bisect here needs the
+probe to match a reply to its request (an id echo) before its numbers mean
+anything.
+
+Next step: attribute the duration per branch in the ISR itself -- a second
+CCOUNT read around the SWITCH body, into its own high-water -- rather than
+inferring it from the outside.
