@@ -1124,14 +1124,22 @@ stagePulseCenter STAGE_PULSE_CENTER = {0,0,0,0,0,0,0};
 // were admitted while it was happening (2026-08-11). Bounding the error is
 // cheaper than tracking it, and it removes the interaction rather than
 // narrowing it.
-uint32_t SPEED_BAND_PCT = 10;
+// 0 = a speed change NEVER stages, it just applies. That is the default now.
+//
+// This no longer gates admission or actuation -- see PLATE_RUNNING. All it can
+// still do is decide whether a LARGE change drains the pipeline before ramping,
+// and that was only ever protecting the station windows, which no longer need
+// protecting. Kept rather than deleted because draining first is still the
+// right thing if a reason to want it appears; set a percentage to turn it back
+// on and the transaction machinery below wakes up unchanged.
+uint32_t SPEED_BAND_PCT = 0;
 
 // A speed change large enough to leave the band is a TRANSACTION, not a write.
 //
 // set_setup used to mutate three things at once -- setpoint, the derived station
 // windows, and the ramp target -- while parts were already in the pipeline. Those
 // parts were registered against the old windows and are judged against the new
-// ones, and worse, PLATE_IN_BAND goes false the instant the setpoint jumps, so
+// ones, and worse, the band test went false the instant the setpoint jumped, so
 // SEL1/SEL2 do not fire at all for the whole ramp. Measured on the machine: a
 // user change from 8000 to 12000 took 2.2s with 26-39 parts in flight the entire
 // time. Every NG among them is judged and NOT ejected, which means it leaves in
@@ -1173,16 +1181,31 @@ volatile uint32_t FREQ_TXN_T0_MS = 0;
 // is reported next to SEL1_Count rather than buried in health.
 volatile uint32_t SEL_SUPPRESSED_N = 0;
 
-// The band test's answer, published for the step ISR.
+// Is the plate turning? Published for the step ISR, which must not touch the
+// FPU (GateSensing runs inside onTimer and its registers are not saved).
 //
-// The test itself is floating point and GateSensing runs inside onTimer, whose
-// FPU registers are not saved -- so the ISR reads this and never calls the
-// function. Written once per ramp-service pass; a stale-by-one-pass bool is
-// harmless here because the band is 10% wide and a pass is sub-millisecond.
-volatile bool PLATE_IN_BAND = false;
+// This used to be the band test -- "is the plate within SPEED_BAND_PCT of its
+// setpoint" -- and it gated both admission and actuation. THE BAND IS GONE
+// (2026-08-11), and what is left is the part of it that was always doing real
+// work: do not admit or actuate against a plate that is not moving.
+//
+// The band existed because a station window is a tick count, an arc, whose
+// DURATION is arc/speed -- so a window derived at one speed was wrong at
+// another, and the band bounded how wrong. That is no longer true. A task now
+// carries its anchor and reads its OFF offset live at fire time (see ACT_INFO)
+// and the main loop re-derives the tick counts against the live speed, so the
+// delivered pulse is right at any speed. Measured through a +50% acceleration
+// with parts flowing: 3315-3398 us against 3333 asked; and an accel sweep from
+// 2000 to 100000 Hz/s moved the error not at all -- 64-65 us at every point,
+// which is the one-tick quantisation floor and cannot be improved.
+//
+// So the band was bounding an error that no longer exists, and charging 2.8% of
+// a soak in refused parts plus no ejection at all during any ramp.
+volatile bool PLATE_RUNNING = false;
 
 // True when the plate is close enough to its setpoint for the derived windows
-// to still mean what they say. MAIN LOOP ONLY -- see PLATE_IN_BAND.
+// to still mean what they say. MAIN LOOP ONLY, and now used only to decide
+// whether a large change drains first; see SPEED_BAND_PCT.
 static inline bool plateInSpeedBand()
 {
   const float sp = PLATE_FREQ_SETPOINT;
@@ -2570,15 +2593,15 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                    if(task->info)
                    {
 
-                    // PLATE_IN_BAND, not SYS_FREQ_STABLE, and for the same reason the gate
+                    // PLATE_RUNNING, not SYS_FREQ_STABLE, and for the same reason the gate
                     // uses it: if admission keeps running through a ramp while
                     // actuation does not, the machine inspects normally and quietly
                     // stops ejecting -- every NG judged during the ramp rides on.
                     // That is a worse failure than not inspecting at all, because
                     // nothing about it looks wrong.
-                    if(!(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
+                    if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
                       SEL_SUPPRESSED_N++;   // asked for, not delivered -- see SEL_SUPPRESSED_N
-                    if(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
+                    if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
                       SEL1_Count++;
@@ -2600,9 +2623,9 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
-                  if(!(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
+                  if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
                     SEL_SUPPRESSED_N++;
-                  if(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
+                  if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
                   {
                     SEL2_Count++;
                     IO_ON(PIN_O_SEL2,IOI_SEL2);
@@ -3023,13 +3046,13 @@ void IRAM_ATTR GateSensing()
         // Both hangs also did floating point in this ISR: attempt 2 called
         // plateInSpeedBand() from right here, and onTimer does not save the FPU
         // registers. That is now evaluated in the ramp service and published as
-        // PLATE_IN_BAND, so this reads a bool.
+        // PLATE_RUNNING, so this reads a bool.
         //
         // Two independent causes, both removed. If it hangs a third time, do
         // NOT re-relax anything: read health.isr_overrun_n and
         // health.isr_worst_seg_cy first -- they now say which of the two came
         // back.
-        const bool speed_ok = PLATE_IN_BAND;
+        const bool speed_ok = PLATE_RUNNING;   // the band is gone; see PLATE_RUNNING
         if(SYS_STEPPER_DISABLED==false && speed_ok && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
@@ -3942,7 +3965,8 @@ static void spinupService()
 // Commit a staged speed change once nothing is in flight. See PLATE_FREQ_PENDING.
 //
 // Reopening the gate here is safe without any further test: the plate now starts
-// ramping to the new setpoint, so PLATE_IN_BAND is false until it arrives and
+// ramping to the new setpoint, and admission used to be held off until it
+// arrived -- it no longer is, because
 // the gate stays shut on its own. Admission resumes exactly when the windows
 // become true again, which is the same rule as everywhere else.
 static void freqTxnService()
@@ -7220,11 +7244,11 @@ void firmwareLoop()
       // registers are not saved -- the documented way to make this board go
       // silent without rebooting, and what it did. Evaluate it here and hand the
       // ISR a bool.
-      PLATE_IN_BAND = plateInSpeedBand();
+      PLATE_RUNNING = (PLATE_FREQ_CURRENT > 0.0f);
       {
         static uint32_t _band_last_ms = 0;
         const uint32_t _nowms = millis();
-        if(_band_last_ms && !PLATE_IN_BAND &&
+        if(_band_last_ms && !PLATE_RUNNING &&
            sysinfo.state == SYS_STATE::INSPECTION_MODE_READY)
           BAND_OUT_MS += (_nowms - _band_last_ms);
         _band_last_ms = _nowms;
@@ -7745,7 +7769,8 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
       PLATE_FREQ_SETPOINT = _freq_before;
       FREQ_TXN_T0_MS      = millis();   // the drain restarts with the new order
     }
-    else if(sysinfo.state == SYS_STATE::INSPECTION_MODE_READY && RBuf.size() > 0)
+    else if(SPEED_BAND_PCT &&
+            sysinfo.state == SYS_STATE::INSPECTION_MODE_READY && RBuf.size() > 0)
     {
       const float tol = _freq_before * (float)SPEED_BAND_PCT * 0.01f;
       const float d   = PLATE_FREQ_SETPOINT - _freq_before;

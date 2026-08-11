@@ -2075,3 +2075,88 @@ plate speed: work per tick is flat at ~21 us envelope across 3000-14000 while
 only the budget shrinks (env/tick correlates with speed at r=0.94, env itself at
 r=0.03). An empty pipeline halves it; beyond ~20 objects in flight there is no
 further growth. Anything added to the ISR path spends that 3.3 us directly.
+
+
+## The band is gone (2026-08-11)
+
+`SPEED_BAND_PCT` no longer gates anything. It defaults to 0, and 0 means a speed
+change never stages -- it just applies. The ISR-side bool it used to publish is
+now `PLATE_RUNNING`, which asks only "is the plate turning", the one thing the
+band was doing that was always real work.
+
+### Why it was safe to remove
+
+The band existed to bound an error that no longer exists. A station window is a
+tick count -- an arc -- and its duration is arc/speed, so a window derived at one
+speed was wrong at another and the band bounded how wrong. Since the anchor +
+live-offset rework the delivered pulse is right at any speed:
+
+* +50% acceleration with parts flowing: delivered 3315-3398 us against 3333
+  asked, both directions
+* accel swept 2000 / 10000 / 50000 / 100000 Hz/s at a fixed speed: error max
+  64, 64, 64, 65 us -- the one-tick quantisation floor, unmoved. Acceleration is
+  free as far as the firmware is concerned.
+
+### What it was costing
+
+A 31-minute soak spent 52.6 s (2.8%) out of band, refusing parts, and SEL never
+fired during any ramp at all -- so an NG judged mid-ramp left in the OK stream.
+`SEL_SUPPRESSED` was added to count exactly that.
+
+### Measured after removal, +75% and back
+
+```
+8000 -> 14000    pending 0, FREQ_TXN 0, rej_unstable 0, rej_blocked frozen
+                 accept 242 -> 570 continuous, no pause
+                 delivered 3347-3382 us, err max 71 us, overruns 0
+14000 -> 8000    same
+```
+
+The old behaviour on that change was a 1.9 s drain, ~30 parts refused, and the
+whole in-flight population judged but not sorted.
+
+### What is left, and the one guard that is NOT the band
+
+`PLATE_RUNNING` is `PLATE_FREQ_CURRENT > 0`, published from the ramp service
+because the step ISR must not touch the FPU. Admission and actuation still
+require it. Spin-up from a standstill is handled by the state machine
+(`blockNewDetectedObject` is true until READY), not by this.
+
+**Known gap, deliberately left:** during a ramp DOWN to a stop the window
+re-derivation freezes (`PLATE_FREQ_TARGET > 0 && f >= TARGET*0.25`, which exists
+because deriving at arbitrarily small speeds collapses every window onto `us2t`'s
+one-tick floor). So while the plate coasts to a halt the windows are stale at the
+last derived speed and a blow gets longer in time as the plate slows. It is
+bounded by the stop path -- `exit_insp_mode` sets `blockNewDetectedObject` and
+`ALL_OUTPUTS_SAFE()` runs -- but it is the one place where a window still lies
+about its duration.
+
+### The transaction is kept, not deleted
+
+Set `speed_band_pct` to a percentage and the drain-before-ramp machinery
+(`PLATE_FREQ_PENDING`, `freqTxnService`) wakes up unchanged. Draining before a
+large change is still the right thing if a reason to want it appears; there just
+is not one today.
+
+### Why this matters for closed-loop speed
+
+The point of removing it is the density-following speed control. The binding
+timescale there is not the ramp, it is the DEAD TIME: a part travels 30000 ticks
+from the gate to SEL1, which is 1.43 s at the production 10500, and a speed
+change cannot affect anything already on the plate. So the ramp only has to be
+fast relative to that:
+
+```
+ramp time < 1/4 of dead time   =>   accel > delta_f * f / 3750
+
+10% correction at 10500  ->  accel > 2940     (the old default was 2000)
+30% correction at 10500  ->  accel > 8820
+```
+
+The firmware charges nothing for accel up to its 100000 clamp, so the remaining
+limit is **mechanical and unmeasured**: parts ride the plate on friction, and
+past some acceleration they slide -- which breaks "one tick is a fixed distance",
+the assumption the whole scheme rests on. That number is not in any log here. To
+find it, ramp hard at increasing accel with REAL parts and watch the gate edge
+spacing and `rej_dist`; sliding shows up as the spacing distribution changing.
+`virt_pulse` cannot see it.
