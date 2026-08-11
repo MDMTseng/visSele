@@ -2557,13 +2557,65 @@ void GateSensing()
         // pre-debounce code did, so the calibrated stage_pulse_offset values
         // still line up. (Switching to the object centre -- middle_pulse -- is
         // checklist 5.3's separate, calibration-affecting change.)
-        if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE && GATE_DISABLED==false && DRY_RUN==false)
+        // Changing speed used to stop the machine detecting.
+        //
+        // SYS_FREQ_STABLE is only "CURRENT == TARGET", so ANY speed change --
+        // including a deliberate one on a running machine -- shut the gate
+        // until the ramp finished, and every part that passed meanwhile was
+        // lost. That is a nuisance with a manual speed knob and fatal to a
+        // closed-loop one: an AIMD controller adjusts constantly, so the
+        // machine would spend its life in the ramp with the gate shut.
+        //
+        // Admitting during a ramp is safe when the machine is ALREADY running
+        // and heading somewhere, and the argument is about bounds rather than
+        // about the ramp being harmless. Every speed the part will experience
+        // lies between CURRENT and TARGET, so it is bounded by the larger of
+        // the two -- and TARGET is the speed the operator is deliberately
+        // running at, whose margins (SWITCH deadline against host latency,
+        // blow width against part spacing) are the ones already being met.
+        // Nothing on the way there is more demanding than the destination.
+        //
+        // The other half of the argument is that the station windows now
+        // follow the live speed (STAGE_PULSE_WIDTH_apply, called from the ramp
+        // service). Without that this would be wrong in the dangerous
+        // direction: an arc derived at one speed and crossed at a higher one
+        // is a blow that is too short and a light that is out during exposure.
+        // This relaxation depends on that fix and must not outlive it.
+        //
+        // Three cases stay blocked, deliberately:
+        //   TARGET == 0   stopping. A part admitted now never reaches a
+        //                 station; it just sits on the plate.
+        //   not READY     spin-up and CAL. Those are not "a running machine
+        //                 changing speed", and their protection is untouched.
+        //   the rest      stepper off / gate off / dry run, as before.
+        // REVERTED 2026-08-11, same day it was written. Flashed to the real
+        // machine and it HUNG: twelve seconds of complete UART silence, no
+        // boot banner, nothing -- a hard stop that only a DTR reset cleared.
+        // The correlation is tight: the build before this one carried the
+        // live-speed width tracking alone and ran a speed-change session
+        // without hanging; adding this, and only this, produced the hang on
+        // the first speed change.
+        //
+        // The suspicion, NOT yet demonstrated: this is the only change that
+        // lets a part enter the pipeline while STAGE_PULSE_OFFSET is being
+        // rewritten by the ramp service, and ActRegister_pipeLineInfo reads
+        // SPO_active to bake targetPulse. Publishes went from rare to
+        // continuous when the width tracking moved into the ramp, so the
+        // snapshot's "a reader cannot span two publishes" margin shrank at the
+        // same moment admission started happening underneath it.
+        //
+        // Re-enabling this needs the SEL window computed where it is USED --
+        // at ACT push time, from the live speed -- rather than by republishing
+        // a shared snapshot faster and faster. That removes the interaction
+        // instead of narrowing it.
+        const bool speed_ok = SYS_FREQ_STABLE;
+        if(SYS_STEPPER_DISABLED==false && speed_ok && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
         else
-          // Not an error, but not free either: every spin-up and every RECAL
-          // holds SYS_FREQ_STABLE low, and the parts on the plate during it
-          // are simply gone. Counted so that loss has a size.
+          // Not an error, but not free either: a spin-up, a CAL, or a stop
+          // holds this closed, and the parts on the plate during it are simply
+          // gone. Counted so that loss has a size.
           // Attributed, not lumped. Order is deliberate: the most specific
           // and most deliberate reasons first, so "unstable" keeps only the
           // meaning its name claims.
@@ -6534,7 +6586,27 @@ void firmwareLoop()
     {
       static float lastApplyFreq = 0.0f;
       const float f = PLATE_FREQ_CURRENT;
-      if(f > 0.0f)
+      // TARGET > 0, not just CURRENT > 0: a plate ramping down to a stop passes
+      // through arbitrarily small speeds, and deriving there leaves every
+      // window at us2t's 1-tick floor -- 50ms of blow stored as 1 tick, which
+      // is 0 to anything that reads it. Observed on a real stop, so this is not
+      // a hypothetical: after the plate settled, CAM1 and SEL1 both read 1 t.
+      //
+      // Nothing is lost by freezing: while the plate is stopped the windows
+      // are not used, and the first pass of the next spin-up re-derives them.
+      // The gate stays shut through that spin-up anyway -- admission needs
+      // INSPECTION_MODE_READY, which is only reached at speed.
+      // ...and not while the plate is still well below where it is going.
+      //
+      // TARGET>0 alone was not enough, which a real spin-up showed: with
+      // TARGET 10500 and CURRENT around 120, a 50ms blow derived to 12 ticks,
+      // 0.6ms. The guard was written for the ramp DOWN and the ramp UP walks
+      // through the same small speeds.
+      //
+      // A quarter of target is below any speed at which parts are admitted, so
+      // nothing is being tracked that matters, and it keeps get_setup (which
+      // is also what gets persisted) from ever reporting a collapsed window.
+      if(f > 0.0f && PLATE_FREQ_TARGET > 0.0f && f >= PLATE_FREQ_TARGET*0.25f)
       {
         const float d = f - lastApplyFreq;
         if(lastApplyFreq <= 0.0f || d > f*0.004f || d < -f*0.004f)
