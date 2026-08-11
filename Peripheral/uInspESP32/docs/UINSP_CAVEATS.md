@@ -2247,3 +2247,110 @@ error not at all. The remaining limit is mechanical and still unmeasured: the
 acceleration at which parts SLIDE, which would break "one tick is a fixed
 distance". With a fixed part set that is now easy to test, because N is a
 constant: a step in `rate * 30000 / freq` after a hard ramp IS parts moving.
+
+
+## Auto plate-speed: kept, and the two traps that make it look broken (2026-08-12)
+
+The feature is `tools/rate_hold.py`. It is an ESTIMATOR AND A DIVISION, not a
+loop, and it is worth reading the reasons before changing it, because every
+wrong version tried first looked plausible.
+
+### It only applies when the plate speed sets the arrival rate
+
+A fixed or recirculating set of parts carried by the plate gives
+
+```
+rate = N * plate_freq / 30000        N = parts per revolution, constant
+```
+
+With an independent feeder -- a vibratory bowl -- it does not. At steady state
+the gate sees `feed_rate / removal_fraction` regardless of plate speed; the
+plate only changes how far apart the parts sit. Measuring `rate ∝ speed` on a
+fixed part set and carrying that over to a fed machine is the trap, and it was
+walked into during development: hours of controller tuning against a plant that
+does not exist in that configuration.
+
+**Decided 2026-08-12: the feature stays** -- there is hardware that needs it --
+but the applicability test above is part of it, not a footnote.
+
+### Trap 1: control `gate.edges`, never `gate.accept`
+
+`accept` is what survives the fire-rate limiter, the minimum-distance gate and
+the width filter. The limiter is a fixed TIME while part spacing is a fixed
+DISTANCE, so a faster plate puts more pairs inside the window and rejects more.
+Targeting `accept` therefore closes a POSITIVE feedback around the limiter: too
+few accepted -> spin faster -> reject more -> spin faster still.
+
+Measured: a loop chasing 20 accepted/s drove the plate to 14400 Hz where the
+linear model said 10253, with `rej_rate` climbing at 5.5/s, and the accept rate
+appeared to saturate. On `edges` the plant is exactly linear again and the
+rejections are visible as the loss they are.
+
+### Trap 2: count per REVOLUTION, not per second
+
+The parts are not evenly spaced around the disc, so a window that is not a whole
+number of revolutions ALIASES the angular distribution -- which parts you count
+depends on the phase. Same speed, same material:
+
+| window | revolutions | apparent spread |
+|---|---|---|
+| 5 s at 9400 Hz | 1.57 | **+-12%** |
+| 12 s at 7800 Hz | 3.12 | 1.06% |
+
+That is not counting noise, and treating it as counting noise is what sent three
+tuning attempts wrong. Worse, the first diagnosis was Poisson counting noise --
+predicted 7.4% for a 12 s window against the 1.06% actually measured -- and the
+8% deadband chosen to cover that imaginary noise then parked the loop 5.3% off
+target. Arrivals from a fixed part set at fixed angular spacing are
+quasi-periodic, not random.
+
+So count against the step counter, not the clock:
+
+```
+N = delta_edges * 60000 / delta_ticks       60000 steps per revolution
+plate_freq = target_rate * 30000 / N
+```
+
+`N` is speed-independent by construction and genuinely constant, so it can be
+smoothed hard for nothing.
+
+### Why there is no loop
+
+Three were tried on real parts in one session on the same material:
+
+| approach | rate error | per-window sd |
+|---|---|---|
+| **feedforward on N, no loop** | **+0.29%** | **1.56%** |
+| P + I | -1.3% | ~3% |
+| P only, 8% deadband | +5.3% | ~3% |
+
+Both loops made the rate about three times noisier than leaving it alone, because
+they were correcting a plant with nothing to correct: every speed change is a
+disturbance and the measurement noise comes straight back as one. A loop earns
+its keep when N CHANGES -- parts ejected, added, lost -- and that is slow, so the
+answer is a slow estimator rather than a fast controller.
+
+### How to tell a drifting plant from an oscillating controller
+
+The P+I run held the rate at target while the SPEED wandered 7158 -> 8182 ->
+7365 with a ~340 s period, which fits "the density is drifting and the loop is
+tracking it" exactly as well as "the integral is oscillating". **Open the loop.**
+At fixed speed `rate = density * speed`, so rate drift IS density drift. Six
+minutes at a fixed 7800 held a cumulative mean flat at 15.22, so the density was
+constant and the wander was the controller.
+
+### The bound a correction still has to respect
+
+It must COMPLETE before the part reaches the camera, 9315 ticks from the gate:
+
+```
+delta_f_max = sqrt(f^2 + 9315 * accel) - f
+```
+
+At the production 10500 that is 853 Hz (8.1%) at accel 2000, and ~36% at accel
+10000. The firmware charges nothing for accel up to its 100000 clamp -- a sweep
+of 2000/10000/50000/100000 moved the delivered-pulse error not at all. The
+remaining limit is mechanical and still unmeasured: the acceleration at which
+parts SLIDE, which breaks "one tick is a fixed distance". With a fixed part set
+that is now easy to test, because N is constant -- a step in
+`edges * 60000 / ticks` after a hard ramp IS parts moving.
