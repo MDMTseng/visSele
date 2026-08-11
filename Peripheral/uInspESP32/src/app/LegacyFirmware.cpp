@@ -2631,9 +2631,35 @@ void GateSensing()
         // setpoint for them to still be right, within SPEED_BAND_PCT. Nothing
         // republishes while parts are moving, which is the property the hang
         // took away.
-        const bool speed_ok = SYS_FREQ_STABLE ||
-            (sysinfo.state == SYS_STATE::INSPECTION_MODE_READY &&
-             plateInSpeedBand());
+        // REVERTED TWICE. Do not re-enable without reading this.
+        //
+        // Attempt 1 admitted parts through any ramp, with the station windows
+        // re-derived continuously from the ramp service to match. The machine
+        // hung on the first speed change: twelve seconds of complete UART
+        // silence, no boot banner, cleared only by a DTR reset. That was
+        // blamed on STAGE_PULSE_OFFSET_publish() having become continuous
+        // while parts crossed it.
+        //
+        // Attempt 2 removed the continuous publishing entirely -- windows
+        // converted once for the setpoint, error bounded by SPEED_BAND_PCT
+        // instead of tracked -- and admitted parts only inside that band. It
+        // hung the same way. So the publishing hypothesis is DISPROVEN, and
+        // what survives both attempts is the one thing they share: parts
+        // entering the pipeline while CURRENT != TARGET.
+        //
+        // Current suspicion, untested: the ramp rewrites the step timer's
+        // alarm period as it goes, and Run_ACTS executes inside that timer's
+        // ISR. Until now a ramp always had an EMPTY task queue, because this
+        // gate is what kept parts out -- so the expensive path through
+        // Run_ACTS and a shrinking alarm period never coincided. An ISR that
+        // outruns its own alarm starves the main loop, and a starved main loop
+        // is exactly a machine that stops answering its UART without ever
+        // rebooting.
+        //
+        // If that is right, the fix has nothing to do with pulse widths, and
+        // testing it needs a way that does not involve wedging the production
+        // machine a third time.
+        const bool speed_ok = SYS_FREQ_STABLE;
         if(SYS_STEPPER_DISABLED==false && speed_ok && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
