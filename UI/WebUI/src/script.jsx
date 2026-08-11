@@ -1559,7 +1559,7 @@ class APPMasterX extends React.Component {
       // (LegacyFirmware.cpp, the JSON_SETIF_ABLE block). Anything else in a
       // get_setup reply is read-only runtime state.
       static SETTABLE_KEYS=[
-        "plate_freq","plate_accel","min_detect_sep_us",
+        "plate_freq","plate_accel","speed_band_pct","min_detect_sep_us",
         "pulse_min_width","pulse_max_width",
         "gate_debounce_rise","gate_debounce_fall",
         // The gate's distance rejection. It was mapped in uinspCfg but missing

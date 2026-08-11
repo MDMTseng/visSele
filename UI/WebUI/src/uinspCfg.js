@@ -21,6 +21,7 @@
 export const CFG_GROUP = {
   plate_freq:            ["plate", "freq"],
   plate_accel:           ["plate", "accel"],
+  speed_band_pct:        ["plate", "speed_band_pct"],
   pulses_per_rev:        ["plate", "pulses_per_rev"],
   plate_diameter_mm:     ["plate", "diameter_mm"],
   stepper_en_active:     ["plate", "stepper_en_active"],

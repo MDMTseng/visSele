@@ -921,22 +921,20 @@ stagePulseOffset STAGE_PULSE_OFFSET={
 // object new SEL timing with old CAM timing -- an inherent property of reading
 // SEL late, unrelated to tearing.
 //
-// This used to be dismissed as harmless "because config only changes during
-// deliberate setup". That is NO LONGER TRUE: STAGE_PULSE_WIDTH_apply() now runs
-// from the ramp service, so the derived *_off fields move continuously while
-// the plate changes speed, and publishes are frequent rather than rare.
+// It is harmless because config only changes during deliberate setup, and that
+// property is now LOad-BEARING rather than incidental.
 //
-// The split stopped being a wart and became the mechanism. A window fixed early
-// has to be conservative about a speed it cannot yet know, so CAM/L convert
-// against max(CURRENT,TARGET) and come out long; the blow is read late enough
-// that CURRENT is the speed it will actually fire at, so it converts against
-// that and keeps its DURATION. See STAGE_PULSE_WIDTH_apply's two parameters.
+// It was briefly given up: STAGE_PULSE_WIDTH_apply() was moved into the ramp
+// service so the derived *_off fields would follow the live speed, which made
+// publishes continuous instead of rare. Paired with admitting parts during a
+// ramp, the machine hung on the first speed change -- twelve seconds of UART
+// silence, cleared only by a DTR reset. Both were reverted the same day.
 //
-// What still holds is the tearing guarantee, which is what this snapshot is
-// for: a reader sees one whole buffer. Readers are Run_ACTS and
-// ActRegister_pipeLineInfo, both inside onTimer(), and they hold the pointer
-// for a handful of instructions -- publishes are 256 loop passes apart, so a
-// reader cannot span two of them and meet its own buffer being rewritten.
+// So: readers are Run_ACTS and ActRegister_pipeLineInfo, both inside onTimer(),
+// holding the pointer for a handful of instructions. With publishes confined to
+// set_setup a reader cannot span two of them and meet its own buffer being
+// rewritten. Anything that republishes while the pipeline is live puts that
+// back in play, and the machine has already shown what that costs.
 static stagePulseOffset SPO_snap[2] = { STAGE_PULSE_OFFSET, STAGE_PULSE_OFFSET };
 static volatile stagePulseOffset* volatile SPO_active = &SPO_snap[0];
 
@@ -976,6 +974,49 @@ stagePulseWidthUs STAGE_PULSE_WIDTH_US = {0,0,0,0,0,0,0};
 // feature's clothes.
 stagePulseCenter STAGE_PULSE_CENTER = {0,0,0,0,0,0,0};
 
+// How far the plate may drift from its setpoint before the machine stops
+// inspecting, as a percentage.
+//
+// The station windows are converted ONCE, for the setpoint, and a tick is a
+// fixed distance -- so a window is a fixed arc and the TIME it takes scales
+// with 1/speed. Inside this band a 50ms blow is 50ms +/- this percentage, and
+// that bound is the whole safety argument, because what dislodges a
+// neighbouring part is impulse and impulse follows dwell.
+//
+// Two kinds of speed change, one rule:
+//
+//   small   the closed-loop controller trimming the rate, or an operator
+//           nudging it. Stays inside the band, so the arcs are still right to
+//           within the bound and the line keeps running. This is the case that
+//           matters: a controller that adjusts constantly would otherwise stop
+//           production every time it moved.
+//   large   a deliberate change of operating point. Leaves the band, so the
+//           gate shuts, the plate ramps, the windows are re-derived once for
+//           the new setpoint, and inspection resumes when it arrives.
+//
+// This replaced continuously re-deriving the windows from the ramp service.
+// That tracked the speed exactly but turned STAGE_PULSE_OFFSET_publish() from
+// a rare event into a constant one, and the machine hung the first time parts
+// were admitted while it was happening (2026-08-11). Bounding the error is
+// cheaper than tracking it, and it removes the interaction rather than
+// narrowing it.
+uint32_t SPEED_BAND_PCT = 10;
+
+// True when the plate is close enough to its setpoint for the derived windows
+// to still mean what they say.
+static inline bool plateInSpeedBand()
+{
+  const float sp = PLATE_FREQ_SETPOINT;
+  if(!(sp > 0.0f)) return false;
+  const float tol = sp * (float)SPEED_BAND_PCT * 0.01f;
+  const float dc = PLATE_FREQ_CURRENT - sp;
+  const float dt = PLATE_FREQ_TARGET  - sp;
+  // BOTH, not just current: heading out of the band is as disqualifying as
+  // being out of it, or a large change would keep admitting parts for the
+  // whole first tenth of its ramp.
+  return (dc <= tol && dc >= -tol) && (dt <= tol && dt >= -tol);
+}
+
 // A configured centre sat closer to the gate than half its own window, so the
 // leading edge was clamped to 0 instead of wrapping a uint32_t. Reported the
 // same way the SEL width warning is: said out loud, not silently obeyed.
@@ -1014,41 +1055,30 @@ bool STAGE_CENTER_CLAMP_WARN = false;
 // threshold, not a proportion, so a neighbour that sits still at full speed
 // can be ejected at reduced speed. A blow has to be a fixed TIME.
 //
-// Which means the arc has to breathe as the speed changes -- and that is only
-// safe because the nozzles can now be CENTRED (stage_pulse_center). Around a
-// centre the window expands and contracts symmetrically about the part; from a
-// fixed start it would move only the trailing edge, walking the part's position
-// within its own window as the speed changed.
-// TWO speeds, because the two kinds of station have their offsets read at
-// different moments and therefore need different answers.
+// The answer is NOT to make the arc follow the speed. That was tried, from the
+// ramp service, and it worked -- SEL1 held 50.0ms against an asked 50.0 at
+// 9750, 10500 and 10750 -- but it turned STAGE_PULSE_OFFSET_publish() from a
+// rare event into a continuous one, and the machine hung the first time parts
+// were admitted while it was running.
 //
-//   pf_early  CAM / L. ACT_PUSH_TASK bakes offset+gate_pulse into targetPulse
-//             at REGISTRATION, so this window is fixed while the part still has
-//             most of a revolution to travel. If the plate is accelerating, the
-//             part crosses it faster than the speed it was computed at, and the
-//             window comes out SHORT -- the camera misses the trigger, or the
-//             light is still dark during exposure. So this one is converted
-//             against the fastest the part might see: max(CURRENT, TARGET).
+// Instead the error is BOUNDED and the arc left alone: converted once, here,
+// for the speed the plate is being sent to, while SPEED_BAND_PCT keeps the
+// plate near it whenever parts are moving. Inside a 10% band a 50ms blow is
+// 50ms +/-10%, which is under any impulse threshold worth worrying about, and
+// nothing republishes a shared snapshot while the pipeline is live.
 //
-//   pf_late   SEL. The blow offsets are read late, in the SWITCH branch, a few
-//             thousand ticks before the nozzle fires. The speed then IS the
-//             speed at blow time, so converting against CURRENT gives the blow
-//             the duration it was asked for -- which is the whole point, since
-//             what dislodges a neighbour is impulse and impulse follows dwell.
-//
-// Reading SEL late used to be documented as a harmless quirk. It is what makes
-// a constant blow time possible.
-void STAGE_PULSE_WIDTH_apply(float pf_early, float pf_late)
+// A large speed change leaves the band, so the gate shuts, this runs once for
+// the new setpoint, and inspection resumes at the new operating point.
+void STAGE_PULSE_WIDTH_apply(float pf)
 {
-  if(!(pf_early > 0) || !(pf_late > 0)) return;   // no speed, no conversion
+  if(!(pf > 0)) return;                 // no speed, no conversion
   // ticks = us * (2*pf) / 1e6, rounded up, never zero.
-  auto us2t_at = [](uint32_t us, float pf) -> uint32_t {
+  auto us2t = [pf](uint32_t us) -> uint32_t {
     if(us == 0) return 0;
     double t = ((double)us * 2.0 * (double)pf) / 1000000.0;
     uint32_t r = (uint32_t)(t + 0.999999);
     return r ? r : 1;
   };
-  auto us2t = [&](uint32_t us) -> uint32_t { return us2t_at(us, pf_late); };
 
   // The SEL blow is the one width that must ALSO respect distance: a fixed time
   // covers more plate as speed rises, and a blow wide enough to still be open
@@ -1068,7 +1098,7 @@ void STAGE_PULSE_WIDTH_apply(float pf_early, float pf_late)
   for(auto &m : M)
   {
     if(m.us == 0) continue;             // not configured -> leave *_off alone
-    uint32_t t = us2t_at(m.us, m.is_sel ? pf_late : pf_early);
+    uint32_t t = us2t(m.us);
     // WARN, do not clamp.
     //
     // A blow wider than half the admission spacing is still open when the next
@@ -1449,22 +1479,15 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 // The calibration phase is documented where it is implemented, far below; the
 // state machine that drives it lives up here.
 static void calibrationBegin(bool full);
-void STAGE_PULSE_WIDTH_apply(float pf_early, float pf_late);
-// The speed a window fixed NOW must survive: the fastest the part might be
-// moving by the time it gets there. During a ramp that is where it is heading,
-// not where it is. A stopped machine still needs a derivation so the panel and
-// the persisted config show something real, hence the setpoint fallback.
-static inline float stageWidthEarlyFreq()
+void STAGE_PULSE_WIDTH_apply(float pf);
+// One speed, converted once: the speed the plate is being SENT to.
+//
+// Both stations use it, so the early/late split is gone. That split only
+// existed to make live tracking safe, and live tracking is gone -- see
+// SPEED_BAND_PCT for what replaced it.
+static inline float stageWidthRefFreq()
 {
-  float f = (PLATE_FREQ_CURRENT > PLATE_FREQ_TARGET) ? PLATE_FREQ_CURRENT
-                                                     : PLATE_FREQ_TARGET;
-  return (f > 0.0f) ? f : PLATE_FREQ_SETPOINT;
-}
-// The speed the blow will actually happen at: SEL offsets are read a few
-// thousand ticks before the nozzle fires, so now is close enough to then.
-static inline float stageWidthLateFreq()
-{
-  return (PLATE_FREQ_CURRENT > 0.0f) ? PLATE_FREQ_CURRENT : PLATE_FREQ_SETPOINT;
+  return (PLATE_FREQ_SETPOINT > 0.0f) ? PLATE_FREQ_SETPOINT : PLATE_FREQ_CURRENT;
 }
 static void calibrationCleanup();
 static void spinupBegin();
@@ -2588,27 +2611,29 @@ void GateSensing()
         //   not READY     spin-up and CAL. Those are not "a running machine
         //                 changing speed", and their protection is untouched.
         //   the rest      stepper off / gate off / dry run, as before.
-        // REVERTED 2026-08-11, same day it was written. Flashed to the real
-        // machine and it HUNG: twelve seconds of complete UART silence, no
-        // boot banner, nothing -- a hard stop that only a DTR reset cleared.
-        // The correlation is tight: the build before this one carried the
-        // live-speed width tracking alone and ran a speed-change session
-        // without hanging; adding this, and only this, produced the hang on
-        // the first speed change.
+        // Keep running through a SMALL speed change; stop for a large one.
         //
-        // The suspicion, NOT yet demonstrated: this is the only change that
-        // lets a part enter the pipeline while STAGE_PULSE_OFFSET is being
-        // rewritten by the ramp service, and ActRegister_pipeLineInfo reads
-        // SPO_active to bake targetPulse. Publishes went from rare to
-        // continuous when the width tracking moved into the ramp, so the
-        // snapshot's "a reader cannot span two publishes" margin shrank at the
-        // same moment admission started happening underneath it.
+        // Requiring SYS_FREQ_STABLE -- literally CURRENT == TARGET -- shut the
+        // gate for any speed change at all, and every part that passed
+        // meanwhile was lost. Tolerable with a manual knob, fatal to a
+        // closed-loop one, which adjusts continuously and would spend its life
+        // ramping with the gate shut.
         //
-        // Re-enabling this needs the SEL window computed where it is USED --
-        // at ACT push time, from the live speed -- rather than by republishing
-        // a shared snapshot faster and faster. That removes the interaction
-        // instead of narrowing it.
-        const bool speed_ok = SYS_FREQ_STABLE;
+        // The first attempt at this admitted parts through ANY ramp, paired
+        // with windows re-derived continuously to match. It hung the machine on
+        // the first speed change (2026-08-11): twelve seconds of UART silence,
+        // cleared only by a DTR reset. Admission had started crossing
+        // STAGE_PULSE_OFFSET_publish() exactly when that publish became
+        // constant, and ActRegister_pipeLineInfo reads the snapshot it swaps.
+        //
+        // So the windows are static again -- derived once, for the setpoint --
+        // and this admits parts only while the plate is close enough to that
+        // setpoint for them to still be right, within SPEED_BAND_PCT. Nothing
+        // republishes while parts are moving, which is the property the hang
+        // took away.
+        const bool speed_ok = SYS_FREQ_STABLE ||
+            (sysinfo.state == SYS_STATE::INSPECTION_MODE_READY &&
+             plateInSpeedBand());
         if(SYS_STEPPER_DISABLED==false && speed_ok && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
@@ -6596,26 +6621,13 @@ void firmwareLoop()
       // are not used, and the first pass of the next spin-up re-derives them.
       // The gate stays shut through that spin-up anyway -- admission needs
       // INSPECTION_MODE_READY, which is only reached at speed.
-      // ...and not while the plate is still well below where it is going.
-      //
-      // TARGET>0 alone was not enough, which a real spin-up showed: with
-      // TARGET 10500 and CURRENT around 120, a 50ms blow derived to 12 ticks,
-      // 0.6ms. The guard was written for the ramp DOWN and the ramp UP walks
-      // through the same small speeds.
-      //
-      // A quarter of target is below any speed at which parts are admitted, so
-      // nothing is being tracked that matters, and it keeps get_setup (which
-      // is also what gets persisted) from ever reporting a collapsed window.
-      if(f > 0.0f && PLATE_FREQ_TARGET > 0.0f && f >= PLATE_FREQ_TARGET*0.25f)
-      {
-        const float d = f - lastApplyFreq;
-        if(lastApplyFreq <= 0.0f || d > f*0.004f || d < -f*0.004f)
-        {
-          lastApplyFreq = f;
-          STAGE_PULSE_WIDTH_apply(stageWidthEarlyFreq(), f);
-        }
-      }
-      else lastApplyFreq = 0.0f;   // stopped: next spin-up re-derives from scratch
+      (void)lastApplyFreq; (void)f;
+      // Deliberately NOT re-derived here any more. See STAGE_PULSE_WIDTH_apply:
+      // the windows are converted once, for the speed the plate is being sent
+      // to, and the gate is what keeps the plate near that speed while parts
+      // are moving. Tracking the live speed from this loop is what turned a
+      // rare publish into a continuous one, and that is the interaction the
+      // 2026-08-11 hang is pinned on.
     }
     if(PLATE_FREQ_CURRENT==PLATE_FREQ_TARGET)
     {
@@ -6773,6 +6785,7 @@ void genMachineSetup(JsonDocument &jdoc)
     jP["diameter_mm"]=plate_diameter_mm;
     jP["stepper_en_active"]=stepper_en_active;
     jP["stepper_dir"]=stepper_dir_level;
+    jP["speed_band_pct"]=SPEED_BAND_PCT;
   }
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
@@ -6923,7 +6936,7 @@ void genMachineSetup(JsonDocument &jdoc)
 // back to the caller. An unrecognised key is a caller that believes something
 // false about the machine, and that is worth an error rather than silence.
 static const char *const K_PLATE[] =
-  {"freq","accel","pulses_per_rev","diameter_mm","stepper_en_active",
+  {"freq","accel","speed_band_pct","pulses_per_rev","diameter_mm","stepper_en_active",
    "stepper_dir",NULL};
 static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
@@ -7048,6 +7061,8 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 
   JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jP,"freq");
   JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jP,"accel");
+  JSON_SETIF_ABLE(SPEED_BAND_PCT,jP,"speed_band_pct");
+  if(SPEED_BAND_PCT>50) SPEED_BAND_PCT=50;   // beyond this the arcs mean nothing
   // Neither of these had any bound at all, and both are divisors or step sizes
   // in the ramp that drives the timer alarm.
   //
@@ -7381,7 +7396,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // may have changed in this same set_setup, and every configured width is a
   // function of it. Cheap, and it removes an ordering dependency between two
   // keys in one message.
-  STAGE_PULSE_WIDTH_apply(stageWidthEarlyFreq(),stageWidthLateFreq());
+  STAGE_PULSE_WIDTH_apply(stageWidthRefFreq());
   if(STAGE_WIDTH_SEL_WARN)
   {
     STAGE_WIDTH_SEL_WARN = false;
