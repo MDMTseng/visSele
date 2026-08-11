@@ -823,6 +823,16 @@ volatile uint32_t ISR_WORST_SEG_CY[ISR_SEG_N]={0,0,0,0};
 #define NPE_SEG_N 5
 volatile uint32_t NPE_MAX_CY=0;
 volatile uint32_t NPE_WORST_SEG_CY[NPE_SEG_N]={0,0,0,0,0};
+// The CAM1 pulse as actually delivered, measured from the ISR between its own
+// ON and OFF edges.
+//
+// Everything else in here reports INTENT -- stage_pulse_offset says how many
+// ticks the window is, and a tick count is only a duration if you also know the
+// speed. This measures the thing the camera and the air nozzle actually see. It
+// is on CAM1 rather than SEL1 because CAM1 fires for every part, so it is
+// observable on a bench with no verdicts; the physics is identical.
+volatile uint32_t CAM1_PW_MIN_US=0xFFFFFFFFu, CAM1_PW_MAX_US=0, CAM1_PW_LAST_US=0;
+static uint64_t CAM1_PW_T0=0;
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
 // Why a detection was turned away at the gate. Incremented from the timer ISR
@@ -1270,20 +1280,26 @@ RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
 //   OFF offsets are DURATIONS -- read live, so the pulse lasts the right number
 //       of microseconds even for a part admitted at a different speed.
 //
-// One invariant makes this safe: A DEADLINE MAY MOVE EARLIER, NEVER LATER.
-// ACT_TRY_RUN_TASK takes min(pushed, live). The queues are FIFO and only the
-// tail is examined, so a deadline that moved LATER would sit in front of the
-// next object's ON and delay it -- an inversion that cannot happen today
-// because the widths are frozen at push time. min() removes it by construction.
+// The live offset is used in BOTH directions, clamped by the only thing that
+// actually constrains it: the next task already in the queue.
 //
-// What that costs, stated plainly: on a DECELERATION the live width is smaller,
-// min() takes it, and the pulse comes out exactly right -- this is the dangerous
-// direction, the one where a blow grows long enough to knock the neighbouring
-// part off the plate. On an ACCELERATION the live width is larger, min() keeps
-// the pushed one, and the pulse is short by the speed ratio. Short is the safe
-// direction for the neighbour and the unsafe one for the escape, which is why
-// large changes still drain the pipeline first (see PLATE_FREQ_PENDING) and this
-// only has to be right within the band.
+// The queues are FIFO and only the tail is examined, so a deadline that moved
+// LATER past the next object's edge would sit in front of it and delay it. That
+// is the one real hazard, and it is not a speed question -- it is the static
+// question of whether a pulse is wider than the gap to the next part, which
+// STAGE_WIDTH_SEL_WARN already checks at config time. So ACT_TRY_RUN_TASK caps
+// the live offset at the next queued task's own deadline instead of refusing to
+// grow at all. Inversion becomes impossible by construction, and the pulse is
+// right in both directions.
+//
+// The first version used min(pushed, live), which made deceleration exact and
+// left acceleration short by the speed ratio. That was not a small residue: a
+// part travels 30000 ticks from the gate to SEL1, and ramping at accel a from f0
+// it arrives at sqrt(f0^2 + a*30000) -- at the production 10500 with accel 2000
+// that is 13048, so a 50 ms blow came out 40 ms. Capping instead of refusing
+// removes the speed term from the blow duration altogether, which is what makes
+// speed_band_pct and the drain a POLICY about admission rather than a
+// correctness requirement.
 struct ACT_INFO
 {
   pipeLineInfo *src;
@@ -1322,8 +1338,20 @@ struct ACT_INFO
 //
 // `live_off` is the offset to use instead of the pushed one -- pass
 // `task->offset` for an edge that is a distance, or the SPO_active field for an
-// edge that is a duration. Whatever is passed, min() is applied: a deadline may
-// move earlier, never later. See ACT_INFO.
+// edge that is a duration. It is used as given, capped at the next queued task's
+// deadline so a growing pulse can never overtake the next object's edge. See
+// ACT_INFO.
+//
+// The cap is only consulted when the deadline actually GREW past what was
+// pushed -- a shrinking or unchanged one cannot overtake anything, and in steady
+// state live == pushed, so the extra queue read costs nothing at all. It was not
+// guarded at first and the step ISR's worst tick went 32 -> 41 us, which is 98%
+// of the tick at plate_freq 12000: seven queues each paying for a lookup that
+// nearly always finds nothing to do.
+//
+// The cap is expressed relative to THIS task's gate, so it is one unsigned
+// subtraction and stays wrap-correct: (next_gate - this_gate) is the spacing
+// between the two objects and is always small and positive in a FIFO.
 //
 // The subtraction is unsigned and therefore wrap-correct on its own: SYS_STEP_COUNT
 // rolls over every 2^32 ticks (about 50 h at plate_freq 12000) and
@@ -1340,9 +1368,17 @@ struct ACT_INFO
     uint32_t task_off = 0;                            \
     if (task)                                         \
     {                                                 \
-      task_off = task->offset;                        \
-      const uint32_t _lv_ = (live_off);               \
-      if(_lv_ < task_off) task_off = _lv_;            \
+      task_off = (live_off);                          \
+      if(task_off > task->offset)                     \
+      {                                               \
+        ACT_INFO *_nx_ = act_rb.getTail(1);           \
+        if(_nx_)                                      \
+        {                                             \
+          const uint32_t _cap_ =                      \
+            (uint32_t)(_nx_->gate_pulse - task->gate_pulse) + _nx_->offset; \
+          if(task_off > _cap_) task_off = _cap_;      \
+        }                                             \
+      }                                               \
     }                                                 \
     if (task && ((uint32_t)((cur_pulse) - task->gate_pulse) >= task_off))\
     {                                                 \
@@ -2198,6 +2234,9 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     // overflow; the pulse still went out and the camera still
                     // counted it, so this must not be conditional on either.
                     task->src->cam_pcnt = ++CAM_PULSE_N;
+                    if(time_us_fetched==false)
+                    { time_us=esp_timer_get_time(); time_us_fetched=true; }
+                    CAM1_PW_T0 = time_us;
                     {
                       const uint32_t _deadline = task->gate_pulse + task_off;
                       uint32_t late = cur_pulse - _deadline;
@@ -2248,6 +2287,18 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                   {
                     IO_OFF(PIN_O_CAM1,IOI_CAM1);
                     IO_TRACE_LOG(PIN_O_CAM1,0,cur_pulse,task->src->tid);
+                    if(CAM1_PW_T0)
+                    {
+                      if(time_us_fetched==false)
+                      { time_us=esp_timer_get_time(); time_us_fetched=true; }
+                      const uint32_t pw=(uint32_t)(time_us-CAM1_PW_T0);
+                      if(pw < 10000000u)
+                      {
+                        CAM1_PW_LAST_US=pw;
+                        if(pw>CAM1_PW_MAX_US) CAM1_PW_MAX_US=pw;
+                        if(pw<CAM1_PW_MIN_US) CAM1_PW_MIN_US=pw;
+                      }
+                    }
                   }
 
 
@@ -4653,6 +4704,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
       NPE_MAX_CY=0;
       for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=0;
+      CAM1_PW_MIN_US=0xFFFFFFFFu; CAM1_PW_MAX_US=0;
       RBUF_PEAK=0;
       ISRTRIGQ_HWM=0; ISRTRIGQ_BURST=0;
       ACT_LATE_MAX=0;
@@ -4687,6 +4739,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
       NPE_MAX_CY=0;
       for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=0;
+      CAM1_PW_MIN_US=0xFFFFFFFFu; CAM1_PW_MAX_US=0;
     RBUF_PEAK=0;
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
@@ -4974,6 +5027,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         JsonArray a=jHl.createNestedArray("isr_seg_max_cy");
         JsonArray w=jHl.createNestedArray("isr_worst_seg_cy");
         for(int i=0;i<ISR_SEG_N;i++){ a.add(ISR_SEG_MAX_CY[i]); w.add(ISR_WORST_SEG_CY[i]); }
+        jHl["cam1_pw_min_us"]=(CAM1_PW_MIN_US==0xFFFFFFFFu)?0:CAM1_PW_MIN_US;
+        jHl["cam1_pw_max_us"]=CAM1_PW_MAX_US;
+        jHl["cam1_pw_last_us"]=CAM1_PW_LAST_US;
         jHl["isr_npe_max_cy"]=NPE_MAX_CY;
         JsonArray n=jHl.createNestedArray("isr_npe_worst_cy");
         for(int i=0;i<NPE_SEG_N;i++) n.add(NPE_WORST_SEG_CY[i]);
