@@ -11,3 +11,4 @@
 - `*_CAVEATS.md` 是**追加式紀錄**,不要通讀,`grep` 你的症狀。
 - 現況文件描述機器**現在**的行為,發現不符就當場改。
 - `*_design.md` / `*_plan.md` 描述**打算**做的事,看它自己的 Status 行。
+- [REPORT_2026-08-11_fullframe_wedge.md](REPORT_2026-08-11_fullframe_wedge.md) — full frame stops the camera after 3-25 images; UNSOLVED, with what was excluded and four withdrawn conclusions
