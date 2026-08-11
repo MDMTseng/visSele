@@ -1229,11 +1229,47 @@ RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
 
 
 
+// A task is an ANCHOR plus an OFFSET, not a deadline.
+//
+// It used to be a deadline: ACT_PUSH_TASK baked gate_pulse+offset into
+// targetPulse, so an object's stage windows were frozen at the moment it was
+// admitted. A window is a tick count, ticks are distance, so a window is an ARC
+// and its DURATION is arc/speed -- which means a window frozen at one speed
+// tells the wrong time at another. Measured: a part takes 1874 ms to travel
+// from the gate to the chute at plate_freq 8000, and a 8000->12000 ramp takes
+// 2000 ms, so a part admitted anywhere near a speed change spends most of its
+// journey at a speed its own windows never knew about. Re-deriving the windows
+// in the main loop could not reach it, because its arcs were already baked.
+//
+// Keeping the anchor instead lets the OFFSET be read live, at fire time, from
+// whatever SPO_active currently says. The two kinds of offset are not the same
+// thing and are not treated the same:
+//
+//   ON  offsets are DISTANCES -- the part has to be under the nozzle. A fixed
+//       arc is already correct at any speed, so these stay as pushed.
+//   OFF offsets are DURATIONS -- read live, so the pulse lasts the right number
+//       of microseconds even for a part admitted at a different speed.
+//
+// One invariant makes this safe: A DEADLINE MAY MOVE EARLIER, NEVER LATER.
+// ACT_TRY_RUN_TASK takes min(pushed, live). The queues are FIFO and only the
+// tail is examined, so a deadline that moved LATER would sit in front of the
+// next object's ON and delay it -- an inversion that cannot happen today
+// because the widths are frozen at push time. min() removes it by construction.
+//
+// What that costs, stated plainly: on a DECELERATION the live width is smaller,
+// min() takes it, and the pulse comes out exactly right -- this is the dangerous
+// direction, the one where a blow grows long enough to knock the neighbouring
+// part off the plate. On an ACCELERATION the live width is larger, min() keeps
+// the pushed one, and the pulse is short by the speed ratio. Short is the safe
+// direction for the neighbour and the unsafe one for the escape, which is why
+// large changes still drain the pipeline first (see PLATE_FREQ_PENDING) and this
+// only has to be right within the band.
 struct ACT_INFO
 {
   pipeLineInfo *src;
   int info;
-  uint32_t targetPulse;
+  uint32_t gate_pulse;   // where this object was detected -- the anchor
+  uint32_t offset;       // the offset as pushed; a ceiling, never exceeded
 };
 
 
@@ -1244,7 +1280,8 @@ struct ACT_INFO
     _task_ = (rb).getHead();                                          \
     if (_task_)                                                       \
     {                                                               \
-      _task_->targetPulse = (plinfo->gate_pulse + pulseOffset);       \
+      _task_->gate_pulse = (plinfo->gate_pulse);                      \
+      _task_->offset     = (pulseOffset);                             \
       _task_->src = plinfo;                                           \
       _task_->info = _info;                                           \
       cusCode_task                                                  \
@@ -1261,13 +1298,33 @@ struct ACT_INFO
 #define UNSIGNED_NUM_HIGHEST_BIT(num) ( (( ((typeof(num))0)-1 )>>1)+1   )
 
 
-//if targetPulse-cur_pulse <=0
-//=> targetPulse-cur_pulse-1 <0 (in unsigned number the highest bit is 1)
-//return Yes or no
-#define ACT_TRY_RUN_TASK(act_rb, cur_pulse, cmd_task) \ 
+// Fires when the object has travelled `task_off` ticks past its own gate.
+//
+// `live_off` is the offset to use instead of the pushed one -- pass
+// `task->offset` for an edge that is a distance, or the SPO_active field for an
+// edge that is a duration. Whatever is passed, min() is applied: a deadline may
+// move earlier, never later. See ACT_INFO.
+//
+// The subtraction is unsigned and therefore wrap-correct on its own: SYS_STEP_COUNT
+// rolls over every 2^32 ticks (about 50 h at plate_freq 12000) and
+// (cur_pulse - gate_pulse) stays the true elapsed count straight through it, as
+// long as the object is younger than that. The old form compared two absolute
+// counts and needed UNSIGNED_NUM_HIGHEST_BIT to say which side of the wrap it
+// was on.
+//
+// cmd_task can read `task_off` -- the offset actually used -- which is what the
+// lateness diagnostics need now that there is no stored deadline.
+#define ACT_TRY_RUN_TASK(act_rb, cur_pulse, live_off, cmd_task) \ 
   {                                                   \
     ACT_INFO *task = act_rb.getTail();                \
-    if (task && ((task->targetPulse-cur_pulse-1)&UNSIGNED_NUM_HIGHEST_BIT(cur_pulse)))\
+    uint32_t task_off = 0;                            \
+    if (task)                                         \
+    {                                                 \
+      task_off = task->offset;                        \
+      const uint32_t _lv_ = (live_off);               \
+      if(_lv_ < task_off) task_off = _lv_;            \
+    }                                                 \
+    if (task && ((uint32_t)((cur_pulse) - task->gate_pulse) >= task_off))\
     {                                                 \
       {cmd_task }                                     \
       act_rb.consumeTail();                           \
@@ -1481,7 +1538,7 @@ static inline void pushLog(ACT_INFO *t)
   PushLogEnt &e = PUSHLOG[PUSHLOG_I];
   e.tid    = t->src->tid;
   e.gate   = t->src->gate_pulse;
-  e.target = t->targetPulse;
+  e.target = t->gate_pulse + t->offset;   // the deadline as pushed; see ACT_INFO
   e.at     = SYS_STEP_COUNT;
   PUSHLOG_I = (uint8_t)((PUSHLOG_I+1) % PUSHLOG_N);
   PUSHLOG_SEEN++;
@@ -2082,7 +2139,12 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
   GEN_ERROR_CODE ecode=GEN_ERROR_CODE::NOP;
 
+  // One snapshot for the whole tick. Every queue reads a live OFF offset now,
+  // not just the SWITCH branch, and they must all agree with each other.
+  volatile stagePulseOffset* spo = SPO_active;
+
   ACT_TRY_RUN_TASK(acts->ACT_L1A, cur_pulse,
+                   task->info ? task->offset : spo->L1A_off,
                    if(task->info)
                    {
                     IO_ON(PIN_O_L1A,IOI_L1A);
@@ -2103,6 +2165,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_CAM1, cur_pulse,
+                   task->info ? task->offset : spo->CAM1_off,
 
                   if(task->info)
                   {
@@ -2116,13 +2179,14 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     // counted it, so this must not be conditional on either.
                     task->src->cam_pcnt = ++CAM_PULSE_N;
                     {
-                      uint32_t late = cur_pulse - task->targetPulse;
+                      const uint32_t _deadline = task->gate_pulse + task_off;
+                      uint32_t late = cur_pulse - _deadline;
                       if(late < 0x80000000u && late > ACT_LATE_MAX)
                       {
                         ACT_LATE_MAX  = late;
                         LATE_TID      = task->src->tid;
                         LATE_GATE     = task->src->gate_pulse;
-                        LATE_TARGET   = task->targetPulse;
+                        LATE_TARGET   = _deadline;
                         LATE_CUR      = cur_pulse;
                         LATE_QDEPTH   = acts->ACT_CAM1.size();
                         LATE_PREV_TARGET = LATE_LAST_TARGET;
@@ -2131,7 +2195,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                         LATE_PREV_SYNC= LATE_LAST_SYNC;
                         if(late>1000) PUSHLOG_FROZEN=1;   // keep the window
                       }
-                      LATE_LAST_TARGET = task->targetPulse;
+                      LATE_LAST_TARGET = _deadline;
                       LATE_LAST_SYNC   = task->src->sync;
                     }
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
@@ -2171,6 +2235,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_L2A, cur_pulse,
+                   task->info ? task->offset : spo->L2A_off,
                    if(task->info)
                    {
                     IO_ON(PIN_O_L2A,IOI_L2A);
@@ -2185,6 +2250,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_CAM2, cur_pulse,
+                   task->info ? task->offset : spo->CAM2_off,
 
                   if(task->info)
                   {
@@ -2227,13 +2293,13 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
   ACT_TRY_RUN_TASK(
       acts->ACT_SWITCH, cur_pulse,
+      task->offset,     // a position, not a duration -- nothing to re-derive
 
 
       pipeLineInfo *pli = task->src;
 
       IO_TRACE_LOG(IOT_PIN_SWITCH,pli->insp_status,cur_pulse,pli->tid);
 
-      volatile stagePulseOffset* spo = SPO_active;
       switch (pli->insp_status)
       {
         case 1:
@@ -2333,6 +2399,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL1, cur_pulse,
+                   task->info ? task->offset : spo->SEL1_off,
                    if(task->info)
                    {
 
@@ -2361,6 +2428,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL2, cur_pulse,
+                   task->info ? task->offset : spo->SEL2_off,
                   
                   if(task->info)
                   {
@@ -6912,7 +6980,40 @@ void firmwareLoop()
       // are not used, and the first pass of the next spin-up re-derives them.
       // The gate stays shut through that spin-up anyway -- admission needs
       // INSPECTION_MODE_READY, which is only reached at speed.
-      (void)lastApplyFreq; (void)f;
+      // Re-derive against the speed the plate is ACTUALLY running.
+      //
+      // This is what ACT_INFO's live OFF offsets read. Without it SPO_active only
+      // ever changes on a set_setup, the live offset always equals the pushed one,
+      // and the whole anchor+offset scheme does nothing during a ramp.
+      //
+      // This was removed once, on the theory that turning a rare publish into a
+      // continuous one was what hung the machine on 2026-08-11. That theory was
+      // disproven the same day -- the second attempt hung identically with no
+      // publishing at all -- and the real cause has since been found and fixed
+      // (the step ISR ran 79.7us against a 62.5us tick out of cold flash; it is
+      // 31.7us in IRAM now, with zero overruns). The publish itself is a
+      // double-buffer fill plus one atomic pointer swap, which a reader either
+      // sees whole or not at all.
+      //
+      // Guarded by a relative threshold: below ~0.4% the derived tick counts do
+      // not move at all (they round up to whole ticks), so re-deriving would burn
+      // seven divides to write back what is already there.
+      //
+      // The TARGET guard is not about ramp direction, it is about small speeds: a
+      // plate ramping down to a stop walks through arbitrarily small f, and
+      // deriving there leaves every window at us2t's one-tick floor -- 50 ms of
+      // blow stored as 1 tick, which is 0 to anything that reads it. Observed on a
+      // real stop, so this is not hypothetical.
+      if(PLATE_FREQ_TARGET > 0.0f && f >= PLATE_FREQ_TARGET*0.25f)
+      {
+        const float d = f - lastApplyFreq;
+        const float thr = lastApplyFreq*0.004f;
+        if(lastApplyFreq == 0.0f || d > thr || d < -thr)
+        {
+          lastApplyFreq = f;
+          STAGE_PULSE_WIDTH_apply(f);
+        }
+      }
       // Keep the ISR budget in integers for onTimer, which cannot do this.
       ISR_BUDGET_CY = (f > 0.0f) ? (uint32_t)(240000000.0f/(2.0f*f)) : 0;
       // Same reason, same pattern: the gate's band test is three float compares
