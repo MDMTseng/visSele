@@ -793,6 +793,12 @@ volatile int host_timeout_ms=0;
 
 // Health high-water marks (reset with reset_running_stat).
 volatile uint32_t ISR_GAP_MAX_CY=0;   // max inter-tick gap, CPU cycles
+// Step-ISR DURATION, the other half of the tick budget. See onTimer.
+volatile uint32_t ISR_DUR_MAX_CY=0, ISR_DUR_LAST_CY=0, ISR_OVERRUN_N=0, ISR_DUR_N=0;
+volatile uint64_t ISR_DUR_SUM_CY=0;
+// The tick the step ISR must fit inside, in CPU cycles. Computed in the ramp
+// service (main loop) because the ISR must not touch the FPU -- see onTimer.
+volatile uint32_t ISR_BUDGET_CY=0;
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
 // Why a detection was turned away at the gate. Incremented from the timer ISR
@@ -2881,16 +2887,18 @@ void IRAM_ATTR onTimer()
 
 
 
+  // Entry stamp, kept for the DURATION measurement at the bottom. The gap
+  // high-water below wants the same read, so take it once.
+  const uint32_t _isr_cc0 = XTHAL_GET_CCOUNT();
   {
     // Inter-tick gap high-water: field evidence of ISR jitter/stalls without
     // a scope. A gap over 1s is a timer stop/start seam, not jitter.
     static uint32_t last_cc=0;
-    uint32_t cc=XTHAL_GET_CCOUNT();
     if(last_cc){
-      uint32_t d=cc-last_cc;
+      uint32_t d=_isr_cc0-last_cc;
       if(d<240000000u && d>ISR_GAP_MAX_CY) ISR_GAP_MAX_CY=d;
     }
-    last_cc=cc;
+    last_cc=_isr_cc0;
   }
 
   ISRTRIGQ_THIS=0;      // per-call push counter; see ISRTRIGQ_BURST
@@ -2909,6 +2917,46 @@ void IRAM_ATTR onTimer()
   phantomServiceISR();
 
   Run_ACTS(SYS_STEP_COUNT);
+
+  // How much of its own tick this ISR just spent.
+  //
+  // ISR_GAP_MAX_CY above measures the gap BETWEEN ticks, which is the timer
+  // doing its job; this measures the work INSIDE one, which is the thing that
+  // can outgrow it. The two together are the budget: at plate_freq f the tick
+  // is 1e6/(2f) us, so at 10500 there are 47.6us to fit in.
+  //
+  // Added to test one hypothesis. Admitting parts while the plate was ramping
+  // hung the machine twice (2026-08-11), and the surviving suspicion is that a
+  // ramp had never before coincided with a NON-EMPTY act queue -- the gate's
+  // stability check is exactly what kept parts out -- so Run_ACTS's expensive
+  // path and a shrinking alarm period never met. An ISR that outruns its alarm
+  // starves the main loop, and a starved main loop is a board that stops
+  // answering its UART without ever rebooting. Which is the symptom, twice.
+  //
+  // Measured rather than argued, and measured FIRST with the gate still
+  // closed: if the steady-state ISR already fills most of its tick, the
+  // hypothesis needs no reproduction.
+  {
+    const uint32_t d = XTHAL_GET_CCOUNT() - _isr_cc0;
+    if(d < 240000000u)                      // ignore a counter wrap
+    {
+      ISR_DUR_LAST_CY = d;
+      if(d > ISR_DUR_MAX_CY) ISR_DUR_MAX_CY = d;
+      ISR_DUR_SUM_CY += d;
+      ISR_DUR_N++;
+      // INTEGER compare against a budget computed elsewhere.
+      //
+      // The first version of this read PLATE_FREQ_CURRENT (a float) and did
+      // 240000000.0f/(2.0f*f) right here. The board went silent the instant
+      // the plate was told to turn -- which is exactly when this ISR starts
+      // running -- and stayed silent until a reset. Floating point in this ISR
+      // is not free: see the "Restore FPU / and turn it back off" note at the
+      // bottom of onTimer. So the division lives in the ramp service now and
+      // this only compares two uint32s.
+      const uint32_t b = ISR_BUDGET_CY;
+      if(b && d >= b) ISR_OVERRUN_N++;
+    }
+  }
 
   //sensor detection
   //Try run task
@@ -4328,6 +4376,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(hwm_only)
     {
       ISR_GAP_MAX_CY=0;
+      ISR_DUR_MAX_CY=0; ISR_OVERRUN_N=0; ISR_DUR_SUM_CY=0; ISR_DUR_N=0;
       RBUF_PEAK=0;
       ISRTRIGQ_HWM=0; ISRTRIGQ_BURST=0;
       ACT_LATE_MAX=0;
@@ -4357,6 +4406,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     UNANSWERED_Count=0;
     CONSEC_UNANSWERED=0;
     ISR_GAP_MAX_CY=0;
+    ISR_DUR_MAX_CY=0; ISR_OVERRUN_N=0; ISR_DUR_SUM_CY=0; ISR_DUR_N=0;
     RBUF_PEAK=0;
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
@@ -4626,6 +4676,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["max_block"]=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
       jHl["stack_hwm"]=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
       jHl["isr_gap_max_us"]=ISR_GAP_MAX_CY/240;   // 240MHz CPU
+      jHl["isr_dur_max_us"]=ISR_DUR_MAX_CY/240;
+      jHl["isr_dur_last_us"]=ISR_DUR_LAST_CY/240;
+      jHl["isr_dur_avg_us"]=ISR_DUR_N ? (uint32_t)(ISR_DUR_SUM_CY/ISR_DUR_N/240) : 0;
+      jHl["isr_overrun_n"]=ISR_OVERRUN_N;
+      jHl["isr_ticks"]=ISR_DUR_N;
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
@@ -6648,6 +6703,8 @@ void firmwareLoop()
       // The gate stays shut through that spin-up anyway -- admission needs
       // INSPECTION_MODE_READY, which is only reached at speed.
       (void)lastApplyFreq; (void)f;
+      // Keep the ISR budget in integers for onTimer, which cannot do this.
+      ISR_BUDGET_CY = (f > 0.0f) ? (uint32_t)(240000000.0f/(2.0f*f)) : 0;
       // Deliberately NOT re-derived here any more. See STAGE_PULSE_WIDTH_apply:
       // the windows are converted once, for the speed the plate is being sent
       // to, and the gate is what keeps the plate near that speed while parts
