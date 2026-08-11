@@ -1579,25 +1579,61 @@ So there are two correct options, and only one of them is cheap:
   `ISR_BUDGET_CY` does, and it is the default answer here precisely because the
   tick budget has no room to spend.
 
-### Where the 77 us goes: not yet known
+### Where the 77 us went: cold flash, not expensive work (2026-08-11)
 
-Established: per tick each queue runs AT MOST ONE task (`ACT_TRY_RUN_TASK`
-takes the tail, runs it, consumes it -- no loop), so the spike is one expensive
-task body, not a backlog draining. `IO_TRACE_LOG` early-returns when unarmed,
-so it is free by default. The error path already defers `SYS_STATE_Transfer`
-to `firmwareLoop`, so that is not it either.
+It was never `Run_ACTS`. The table above compares an empty act queue against a
+loaded one, but the queue was loaded with `virt_pulse`, which also switches on
+`phantomServiceISR` and its `newPulseEvent` -- object admission. One experiment
+moved two things and the write-up blamed one of them. A `trig_report on/off`
+bisect built on that reading was also VOID for an unrelated reason (see below),
+so nothing contradicted it.
 
-Remaining candidates: the CAM1 branch (pushes an announcement onto ISRTrigQ)
-and the SWITCH branch (verdict dispatch plus two `ACT_PUSH_TASK`).
+`onTimer` now stamps `XTHAL_GET_CCOUNT` at four points and reports both each
+segment's high-water (`health.isr_seg_max_cy`) and the breakdown OF THE TICK
+that set the overall record (`health.isr_worst_seg_cy`), in CYCLES because
+`StepGo` is under a microsecond. The second array is the one that answers the
+question: 63 overruns in 1.37M ticks is a rare event, and a rare event does not
+have to live where the averages do.
 
-A `trig_report on/off` bisect was attempted and is VOID -- do not repeat it the
-same way. With `virt_pulse` running, the 4099 console is flooded with `cam_trig`
-lines, and a probe that returns the first reply containing "health" picks a
-queued older one. Eight samples came back byte-identical, including a frozen
-`isr_ticks` while the plate was demonstrably turning. Any bisect here needs the
-probe to match a reply to its request (an id echo) before its numbers mean
-anything.
+At pf 8000 (tick 62.5 us), worst-tick breakdown in us:
 
-Next step: attribute the duration per branch in the ISR itself -- a second
-CCOUNT read around the SWITCH body, into its own high-water -- rather than
-inferring it from the outside.
+| build | step | gate | phantom | acts | total | overruns / ticks |
+|---|---|---|---|---|---|---|
+| all in flash | 1.5 | 60.3 | 0.2 | 17.7 | **79.7** | 291 / 946k |
+| admission in IRAM | 0.4 | 25.8 | 0.2 | 10.9 | 37.3 | 0 / 946k |
+| whole ISR path in IRAM | 0.3 | 0.4 | 23.1 | 7.9 | **31.7** | 0 / 946k |
+
+`acts` never exceeded 27 us even in the worst build. The spike alternates
+between `gate` and `phantom` and is never in both on the same tick, because
+those are the two callers of `newPulseEvent` and only one of them admits on any
+given tick. So the cost is admission, and it is once per object -- which is
+exactly the rarity that was mistaken for a rare expensive task body.
+
+It is not computation. Admission runs once per ~1200 ticks, so every line of it
+was a cold instruction-cache miss against flash. `IRAM_ATTR` on `newPulseEvent`
+and `ActRegister_pipeLineInfo` alone took the worst tick from 79.7 to 37.3 us
+and the overruns to zero; `StepGo`, `GateSensing`, `phantomServiceISR` and
+`Run_ACTS` followed. Note that the empty-queue case improved too (18.2 -> 6.8 us)
+and so did segments that were not touched -- keeping admission out of the cache
+stops it evicting everyone else's code.
+
+What is left is real work: ~22 us inside `newPulseEvent`, in IRAM, per admitted
+object. Budget now: 51% of the tick at 8000, 67% at the production 10500, 95% at
+15000. It no longer overruns at any speed the machine runs, but 15000 is the
+wall, and the next place to look is the `double` divide in `_PLAT_DIST_step` and
+the two `esp_timer_get_time()` calls.
+
+**The measurement rule this establishes:** on this chip, "is this code slow" and
+"is this code cold" are different questions, and for anything that runs rarely
+inside an ISR the second one is usually the answer. Measure with segments, not
+with feature on/off -- a feature toggle moves cache locality too.
+
+#### The VOID bisect, kept as a warning
+
+A `trig_report on/off` bisect was attempted and proved nothing -- do not repeat
+it the same way. With `virt_pulse` running, the 4099 console is flooded with
+`cam_trig` lines, and a probe that returns the first reply containing "health"
+picks a queued older one. Eight samples came back byte-identical, including a
+frozen `isr_ticks` while the plate was demonstrably turning. Any probe used
+under a console flood needs to match a reply to its request (an id echo) before
+its numbers mean anything.

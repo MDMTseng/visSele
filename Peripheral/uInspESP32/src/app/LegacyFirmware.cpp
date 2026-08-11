@@ -799,6 +799,23 @@ volatile uint64_t ISR_DUR_SUM_CY=0;
 // The tick the step ISR must fit inside, in CPU cycles. Computed in the ramp
 // service (main loop) because the ISR must not touch the FPU -- see onTimer.
 volatile uint32_t ISR_BUDGET_CY=0;
+// Where the duration goes, split four ways: StepGo / GateSensing /
+// phantomServiceISR / Run_ACTS.
+//
+// The first duration measurement compared an idle act queue (33us max) against
+// a loaded one (77us max) and the loaded number was read as "Run_ACTS is
+// expensive". It does not say that. The queue was loaded with virt_pulse, which
+// also turns on phantomServiceISR and its newPulseEvent -- object admission --
+// so the same experiment moved two segments at once and attributed both to one.
+//
+// Two views, because they answer different questions. SEG_MAX is each segment's
+// own high-water, which finds a segment that is slow often. WORST_SEG is the
+// breakdown OF THE SINGLE TICK that set the overall high-water, which is the
+// only thing that says what the 77us actually was -- 63 overruns in 1.37M ticks
+// is a rare event, and a rare event does not have to live where the averages do.
+#define ISR_SEG_N 4
+volatile uint32_t ISR_SEG_MAX_CY[ISR_SEG_N]={0,0,0,0};
+volatile uint32_t ISR_WORST_SEG_CY[ISR_SEG_N]={0,0,0,0};
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
 // Why a detection was turned away at the gate. Incremented from the timer ISR
@@ -1863,7 +1880,7 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
 
 
 
-int ActRegister_pipeLineInfo(pipeLineInfo *pli);
+int IRAM_ATTR ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
 
 uint32_t _prePulse=0;
@@ -1875,7 +1892,7 @@ static uint8_t SYNC_MARK_NEXT = 0;
 // of production -- see syncPulseService.
 static int64_t REAL_ACCEPT_MS = 0;
 
-int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
+int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
   static uint32_t tid_counter=1;
   uint32_t _prePulse_BK=_prePulse;
@@ -1934,7 +1951,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   tid_counter++;
   return 0;
 }
-int ActRegister_pipeLineInfo(pipeLineInfo *pli)
+int IRAM_ATTR ActRegister_pipeLineInfo(pipeLineInfo *pli)
 {
 
 
@@ -1965,7 +1982,7 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
 
 
-int Run_ACTS(uint32_t cur_pulse)
+int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 {
   bool time_us_fetched=false;
   uint64_t time_us=0;
@@ -2525,7 +2542,7 @@ int  DEBOUNCE_L_THRES = 2;
 int  DEBOUNCE_H_THRES = 2;
 
 
-void GateSensing()
+void IRAM_ATTR GateSensing()
 {
   uint8_t new_Sense = GPIOLS32_GET(PIN_I_GATE);
   if(_senseInv_)new_Sense=!new_Sense;
@@ -2694,7 +2711,7 @@ void GateSensing()
 
 
 
-void StepGo()
+void IRAM_ATTR StepGo()
 {
   // Held at whatever level it had; a static pin is not a step.
   if(DRY_RUN) return;
@@ -2801,7 +2818,7 @@ static volatile uint32_t VIRT_JITTER_TICKS = 0;   // +/- this many, uniform
 static volatile uint32_t VIRT_EMIT_N       = 0;   // ISR writes
 static volatile uint32_t VIRT_DROP_N       = 0;   // ISR writes: gate refused it
 
-static inline void phantomServiceISR()
+static inline void IRAM_ATTR phantomServiceISR()
 {
   // A host request wins the tick; the virtual train takes the next one. Same
   // discipline as the sensor-vs-phantom ordering above, and it keeps the "at
@@ -2904,19 +2921,32 @@ void IRAM_ATTR onTimer()
   ISRTRIGQ_THIS=0;      // per-call push counter; see ISRTRIGQ_BURST
   SYS_STEP_COUNT++;
 
+  // Segment stopwatch. The deltas stay in locals -- four subtractions and four
+  // compares, all integer -- and only the high-waters touch memory. See the
+  // ISR_SEG_MAX_CY comment for why the split exists.
+  uint32_t _seg[ISR_SEG_N];
+  uint32_t _seg_cc = _isr_cc0;
+  #define ISR_SEG_MARK(i) { const uint32_t _n=XTHAL_GET_CCOUNT(); \
+                            const uint32_t _d=_n-_seg_cc; _seg_cc=_n; _seg[i]=_d; \
+                            if(_d<240000000u && _d>ISR_SEG_MAX_CY[i]) ISR_SEG_MAX_CY[i]=_d; }
+
   //Step adv
   StepGo();
-
+  ISR_SEG_MARK(0);
 
 
   GateSensing();
+  ISR_SEG_MARK(1);
 
   // After the sensor, so a real detection always wins the tick it arrived on
   // and an injected one takes the next. At most one per tick, the same
   // discipline ACT_TRY_RUN_TASK uses.
   phantomServiceISR();
+  ISR_SEG_MARK(2);
 
   Run_ACTS(SYS_STEP_COUNT);
+  ISR_SEG_MARK(3);
+  #undef ISR_SEG_MARK
 
   // How much of its own tick this ISR just spent.
   //
@@ -2941,7 +2971,13 @@ void IRAM_ATTR onTimer()
     if(d < 240000000u)                      // ignore a counter wrap
     {
       ISR_DUR_LAST_CY = d;
-      if(d > ISR_DUR_MAX_CY) ISR_DUR_MAX_CY = d;
+      // Snapshot the breakdown of the tick that set the record, not of four
+      // unrelated ticks. This is the line that answers "where did the 77us go".
+      if(d > ISR_DUR_MAX_CY)
+      {
+        ISR_DUR_MAX_CY = d;
+        for(int i=0;i<ISR_SEG_N;i++) ISR_WORST_SEG_CY[i]=_seg[i];
+      }
       ISR_DUR_SUM_CY += d;
       ISR_DUR_N++;
       // INTEGER compare against a budget computed elsewhere.
@@ -4380,6 +4416,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     {
       ISR_GAP_MAX_CY=0;
       ISR_DUR_MAX_CY=0; ISR_OVERRUN_N=0; ISR_DUR_SUM_CY=0; ISR_DUR_N=0;
+      for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
       RBUF_PEAK=0;
       ISRTRIGQ_HWM=0; ISRTRIGQ_BURST=0;
       ACT_LATE_MAX=0;
@@ -4410,6 +4447,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     CONSEC_UNANSWERED=0;
     ISR_GAP_MAX_CY=0;
     ISR_DUR_MAX_CY=0; ISR_OVERRUN_N=0; ISR_DUR_SUM_CY=0; ISR_DUR_N=0;
+      for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
     RBUF_PEAK=0;
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
@@ -4684,6 +4722,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["isr_dur_avg_us"]=ISR_DUR_N ? (uint32_t)(ISR_DUR_SUM_CY/ISR_DUR_N/240) : 0;
       jHl["isr_overrun_n"]=ISR_OVERRUN_N;
       jHl["isr_ticks"]=ISR_DUR_N;
+      // In CPU CYCLES, not us: StepGo is under a microsecond and integer-
+      // dividing by 240 here would report it as 0 and make the split unreadable.
+      // Order is [step, gate, phantom, acts]; the reader divides.
+      {
+        JsonArray a=jHl.createNestedArray("isr_seg_max_cy");
+        JsonArray w=jHl.createNestedArray("isr_worst_seg_cy");
+        for(int i=0;i<ISR_SEG_N;i++){ a.add(ISR_SEG_MAX_CY[i]); w.add(ISR_WORST_SEG_CY[i]); }
+      }
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
