@@ -816,6 +816,13 @@ volatile uint32_t ISR_BUDGET_CY=0;
 #define ISR_SEG_N 4
 volatile uint32_t ISR_SEG_MAX_CY[ISR_SEG_N]={0,0,0,0};
 volatile uint32_t ISR_WORST_SEG_CY[ISR_SEG_N]={0,0,0,0};
+// Inside newPulseEvent, the same way and for the same reason. Admission is what
+// the four-way split above narrowed the spike down to, and ~23us of it survived
+// moving the whole path into IRAM -- so that part is real work, and this says
+// which work. Order is [pre, ringhead, fill, actreg, tail].
+#define NPE_SEG_N 5
+volatile uint32_t NPE_MAX_CY=0;
+volatile uint32_t NPE_WORST_SEG_CY[NPE_SEG_N]={0,0,0,0,0};
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
 // Why a detection was turned away at the gate. Incremented from the timer ISR
@@ -1911,6 +1918,10 @@ static int64_t REAL_ACCEPT_MS = 0;
 int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
   static uint32_t tid_counter=1;
+  const uint32_t _npe_cc0=XTHAL_GET_CCOUNT();
+  uint32_t _npe[NPE_SEG_N]={0,0,0,0,0};
+  uint32_t _npe_cc=_npe_cc0;
+  #define NPE_MARK(i) { const uint32_t _n=XTHAL_GET_CCOUNT(); _npe[i]=_n-_npe_cc; _npe_cc=_n; }
   uint32_t _prePulse_BK=_prePulse;
   _prePulse=middle_pulse;
   // 2mm, not 3.5mm: parts are specified 3mm apart, and with the plate geometry
@@ -1925,6 +1936,7 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
   if(curTime-_preTime<GATE_SEP_EFF_us){GATE_REJ_RATE++;return -8;}
   _preTime=curTime;
+  NPE_MARK(0);
 
 
   if(blockNewDetectedObject){ GATE_REJ_BLOCKED++; return -1; }
@@ -1934,6 +1946,7 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
     GATE_REJ_BUSY++;
     return -1;
   }
+  NPE_MARK(1);
 
   //get a new object and find a space to log it
   head->w = pulse_width;
@@ -1953,11 +1966,13 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   head->sync = SYNC_MARK_NEXT;
   if(SYNC_MARK_NEXT==0) REAL_ACCEPT_MS = (int64_t)(esp_timer_get_time()/1000);
   SYNC_MARK_NEXT = 0;
+  NPE_MARK(2);
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
     GATE_REJ_BUSY++;
     return -2;
   }
+  NPE_MARK(3);
   RBuf.pushHead();
   GATE_ACCEPT++;
   {
@@ -1965,6 +1980,16 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
     if(sz>RBUF_PEAK) RBUF_PEAK=sz;
   }
   tid_counter++;
+  NPE_MARK(4);
+  {
+    const uint32_t d=_npe_cc-_npe_cc0;
+    if(d<240000000u && d>NPE_MAX_CY)
+    {
+      NPE_MAX_CY=d;
+      for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=_npe[i];
+    }
+  }
+  #undef NPE_MARK
   return 0;
 }
 int IRAM_ATTR ActRegister_pipeLineInfo(pipeLineInfo *pli)
@@ -4453,6 +4478,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       ISR_GAP_MAX_CY=0;
       ISR_DUR_MAX_CY=0; ISR_OVERRUN_N=0; ISR_DUR_SUM_CY=0; ISR_DUR_N=0;
       for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
+      NPE_MAX_CY=0;
+      for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=0;
       RBUF_PEAK=0;
       ISRTRIGQ_HWM=0; ISRTRIGQ_BURST=0;
       ACT_LATE_MAX=0;
@@ -4484,6 +4511,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     ISR_GAP_MAX_CY=0;
     ISR_DUR_MAX_CY=0; ISR_OVERRUN_N=0; ISR_DUR_SUM_CY=0; ISR_DUR_N=0;
       for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
+      NPE_MAX_CY=0;
+      for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=0;
     RBUF_PEAK=0;
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
@@ -4765,6 +4794,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         JsonArray a=jHl.createNestedArray("isr_seg_max_cy");
         JsonArray w=jHl.createNestedArray("isr_worst_seg_cy");
         for(int i=0;i<ISR_SEG_N;i++){ a.add(ISR_SEG_MAX_CY[i]); w.add(ISR_WORST_SEG_CY[i]); }
+        jHl["isr_npe_max_cy"]=NPE_MAX_CY;
+        JsonArray n=jHl.createNestedArray("isr_npe_worst_cy");
+        for(int i=0;i<NPE_SEG_N;i++) n.add(NPE_WORST_SEG_CY[i]);
       }
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
