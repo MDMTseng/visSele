@@ -1040,6 +1040,53 @@ stagePulseCenter STAGE_PULSE_CENTER = {0,0,0,0,0,0,0};
 // narrowing it.
 uint32_t SPEED_BAND_PCT = 10;
 
+// A speed change large enough to leave the band is a TRANSACTION, not a write.
+//
+// set_setup used to mutate three things at once -- setpoint, the derived station
+// windows, and the ramp target -- while parts were already in the pipeline. Those
+// parts were registered against the old windows and are judged against the new
+// ones, and worse, PLATE_IN_BAND goes false the instant the setpoint jumps, so
+// SEL1/SEL2 do not fire at all for the whole ramp. Measured on the machine: a
+// user change from 8000 to 12000 took 2.2s with 26-39 parts in flight the entire
+// time. Every NG among them is judged and NOT ejected, which means it leaves in
+// the OK stream. Nothing counted it.
+//
+// (That hole predates the band: the gate used to require SYS_FREQ_STABLE, which
+// is also false through any ramp. Widening admission to the band did not create
+// it, it just made it worth fixing.)
+//
+// So a large change is staged instead: the gate closes, the plate holds its old
+// speed until the pipeline is empty, and only then do setpoint, windows and
+// target move together. Nothing is ever in flight across the change. A change
+// INSIDE the band needs none of this -- being inside the band is exactly the
+// statement that the old windows still mean what they say.
+//
+// -1 means nothing staged. Written by set_setup and by the service below, both
+// in the main loop.
+volatile float    PLATE_FREQ_PENDING   = -1.0f;
+volatile uint32_t FREQ_TXN_N           = 0;    // staged changes committed
+volatile uint32_t FREQ_TXN_DRAIN_MAX_MS= 0;    // worst drain seen
+volatile uint32_t FREQ_TXN_TIMEOUT_N   = 0;    // committed on the timeout, not empty
+// A stuck part must not strand the operator's speed change for ever. This is a
+// safety net against a pipeline that never empties, NOT a schedule -- so it is
+// deliberately far longer than a real drain.
+//
+// A real drain is the transit time of the last admitted part, which scales as
+// 1/plate_freq: measured 1874 ms at plate_freq 8000. The first value here was
+// 3000 ms, which passes at 8000 and would silently trip below about 5000 --
+// committing the change with parts still in flight, which is the exact failure
+// this exists to prevent, while reporting a clean transaction. Timing out is
+// counted (FREQ_TXN_TIMEOUT_N) and said out loud, but a number that trips in
+// normal operation would make the counter meaningless.
+#define FREQ_TXN_DRAIN_TIMEOUT_MS 10000
+volatile uint32_t FREQ_TXN_T0_MS = 0;
+
+// An actuation that was asked for and did not happen because the plate was out
+// of band. This is the escape above, counted -- a verdict was reached, a task
+// was scheduled, and no air came out. Silence here is the whole problem, so it
+// is reported next to SEL1_Count rather than buried in health.
+volatile uint32_t SEL_SUPPRESSED_N = 0;
+
 // The band test's answer, published for the step ISR.
 //
 // The test itself is floating point and GateSensing runs inside onTimer, whose
@@ -2295,6 +2342,8 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     // stops ejecting -- every NG judged during the ramp rides on.
                     // That is a worse failure than not inspecting at all, because
                     // nothing about it looks wrong.
+                    if(!(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
+                      SEL_SUPPRESSED_N++;   // asked for, not delivered -- see SEL_SUPPRESSED_N
                     if(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
@@ -2316,6 +2365,8 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
+                  if(!(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
+                    SEL_SUPPRESSED_N++;
                   if(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
                   {
                     SEL2_Count++;
@@ -3652,6 +3703,40 @@ static void spinupService()
   }
 }
 
+// Commit a staged speed change once nothing is in flight. See PLATE_FREQ_PENDING.
+//
+// Reopening the gate here is safe without any further test: the plate now starts
+// ramping to the new setpoint, so PLATE_IN_BAND is false until it arrives and
+// the gate stays shut on its own. Admission resumes exactly when the windows
+// become true again, which is the same rule as everywhere else.
+static void freqTxnService()
+{
+  if(PLATE_FREQ_PENDING < 0.0f) return;
+  const uint32_t waited  = millis() - FREQ_TXN_T0_MS;
+  const bool drained     = (RBuf.size() == 0);
+  const bool left_ready  = (sysinfo.state != SYS_STATE::INSPECTION_MODE_READY);
+  const bool timedout    = (waited >= FREQ_TXN_DRAIN_TIMEOUT_MS);
+  if(!drained && !left_ready && !timedout) return;
+
+  // A drain that timed out means parts WERE still in flight across the change --
+  // the thing this exists to prevent. Counted separately so it can never be
+  // mistaken for a clean commit.
+  if(timedout && !drained && !left_ready)
+  {
+    FREQ_TXN_TIMEOUT_N++;
+    djrl.dbg_printf("speed change committed with %d parts still in flight "
+                    "(drain timed out after %d ms)", (int)RBuf.size(), (int)waited);
+  }
+  if(waited > FREQ_TXN_DRAIN_MAX_MS) FREQ_TXN_DRAIN_MAX_MS = waited;
+
+  PLATE_FREQ_SETPOINT = PLATE_FREQ_PENDING;
+  PLATE_FREQ_PENDING  = -1.0f;
+  STAGE_PULSE_WIDTH_apply(stageWidthRefFreq());
+  FREQ_TXN_N++;
+  if(sysinfo.state == SYS_STATE::INSPECTION_MODE_READY)
+    blockNewDetectedObject = false;
+}
+
 static void syncPulseService()
 {
   // Phantom pulses exist only to calibrate. Once READY, the offset is
@@ -4505,6 +4590,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["clock_reset"]=true;
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
+    SEL_SUPPRESSED_N=0; FREQ_TXN_N=0; FREQ_TXN_TIMEOUT_N=0; FREQ_TXN_DRAIN_MAX_MS=0;
     SKIP_Count=0;
     UNANSWERED_Count=0;
     CONSEC_UNANSWERED=0;
@@ -4715,6 +4801,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     JsonObject jCountInfo  = retdoc.createNestedObject("count");
     jCountInfo["SEL1"]=SEL1_Count;
+    // Verdicts that scheduled an actuation which never happened. Non-zero means
+    // parts were judged and not sorted -- see SEL_SUPPRESSED_N.
+    jCountInfo["SEL_SUPPRESSED"]=SEL_SUPPRESSED_N;
+    jCountInfo["FREQ_TXN"]=FREQ_TXN_N;
+    jCountInfo["FREQ_TXN_TIMEOUT"]=FREQ_TXN_TIMEOUT_N;
+    jCountInfo["FREQ_TXN_DRAIN_MAX_MS"]=FREQ_TXN_DRAIN_MAX_MS;
     jCountInfo["SEL2"]=SEL2_Count;
     jCountInfo["SEL3"]=SEL3_Count;
     jCountInfo["NA"]=NA_Count;
@@ -6522,6 +6614,7 @@ void firmwareLoop()
   { SEG_BEGIN();
   syncPulseService();
   spinupService();
+  freqTxnService();
   recalService();
   phantomTrainService();
   SEG_END(SEG_SVC_US); }
@@ -7016,6 +7109,7 @@ void genMachineSetup(JsonDocument &jdoc)
     jP["stepper_en_active"]=stepper_en_active;
     jP["stepper_dir"]=stepper_dir_level;
     jP["speed_band_pct"]=SPEED_BAND_PCT;
+    jP["freq_pending"]=(PLATE_FREQ_PENDING<0.0f)?0:PLATE_FREQ_PENDING;
   }
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
@@ -7289,6 +7383,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   JsonObject jGT = jdoc["gate"];
   JsonObject jCM = jdoc["cam"];
 
+  const float _freq_before = PLATE_FREQ_SETPOINT;
   JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jP,"freq");
   JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jP,"accel");
   JSON_SETIF_ABLE(SPEED_BAND_PCT,jP,"speed_band_pct");
@@ -7316,6 +7411,31 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(PLATE_FREQ_SETPOINT > 60000.0f) PLATE_FREQ_SETPOINT = 60000.0f;
   if(SYS_FREQ_ACCEL <= 0.0f)         SYS_FREQ_ACCEL = 2000.0f;
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
+
+  // Stage a large change instead of applying it, if anything is in flight.
+  // See PLATE_FREQ_PENDING for what this is protecting and what it measured.
+  //
+  // Ordering matters: this restores the setpoint BEFORE the unconditional
+  // STAGE_PULSE_WIDTH_apply at the end of this function, so the windows keep
+  // describing the speed the plate is actually running and the parts already in
+  // the pipeline stay correct all the way to the chute.
+  //
+  // Only in READY. Anywhere else there is nothing in flight to protect, and a
+  // spin-up that had to drain a pipeline it has not filled yet would never start.
+  if(PLATE_FREQ_SETPOINT != _freq_before &&
+     sysinfo.state == SYS_STATE::INSPECTION_MODE_READY &&
+     RBuf.size() > 0)
+  {
+    const float tol = _freq_before * (float)SPEED_BAND_PCT * 0.01f;
+    const float d   = PLATE_FREQ_SETPOINT - _freq_before;
+    if(d > tol || d < -tol)
+    {
+      PLATE_FREQ_PENDING     = PLATE_FREQ_SETPOINT;
+      PLATE_FREQ_SETPOINT    = _freq_before;
+      blockNewDetectedObject = true;    // stop admitting, let the pipeline empty
+      FREQ_TXN_T0_MS         = millis();
+    }
+  }
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   // Changing the configured rate always resets the live one: the operator asked
   // for a rate, not for whatever the loop had crept to.
