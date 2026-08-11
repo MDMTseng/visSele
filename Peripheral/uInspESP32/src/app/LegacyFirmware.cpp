@@ -791,6 +791,32 @@ uint32_t EVENT_SEQ=0;
 // (a hung vision process must stop the line without host cooperation).
 volatile int host_timeout_ms=0;
 
+// Attack instantly, decay slowly: a maximum that FOLLOWS THE ENVELOPE instead of
+// latching on one event and then saying nothing.
+//
+// Every max in this firmware is a since-reset high-water, and over a long run
+// they all latch onto whatever happened at spin-up: a 3 h soak reported
+// isr_gap_max 12720 us and lat_max 366984 us from t+136 s onward, both set by
+// the entry seam, with the running values invisible underneath them. Resetting
+// periodically is not a fix either -- it throws away the record and, for some of
+// these, is not safe mid-run.
+//
+// So keep both. MAX answers "worst ever", ENV answers "worst lately", and the
+// two disagreeing is itself the signal that something was transient.
+//
+// K is the decay shift; the time constant is 2^K updates. The forced minimum
+// decay of 1 matters: with pure integer shifting, (env - x) >> K is zero once
+// they are close and the envelope would stick a few counts above the signal for
+// ever.
+#define ENV_UPDATE(env, x, K)                                   \
+  do {                                                          \
+    const uint32_t _x_ = (x);                                   \
+    if(_x_ > (env)) (env) = _x_;                                \
+    else { uint32_t _d_ = ((env) - _x_) >> (K);                 \
+           if(!_d_) _d_ = 1;                                    \
+           (env) -= _d_; }                                      \
+  } while(0)
+
 // Health high-water marks (reset with reset_running_stat).
 volatile uint32_t ISR_GAP_MAX_CY=0;   // max inter-tick gap, CPU cycles
 // Step-ISR DURATION, the other half of the tick budget. See onTimer.
@@ -832,6 +858,36 @@ volatile uint32_t NPE_WORST_SEG_CY[NPE_SEG_N]={0,0,0,0,0};
 // is on CAM1 rather than SEL1 because CAM1 fires for every part, so it is
 // observable on a bench with no verdicts; the physics is identical.
 volatile uint32_t CAM1_PW_MIN_US=0xFFFFFFFFu, CAM1_PW_MAX_US=0, CAM1_PW_LAST_US=0;
+// The single number that says whether the pulse was ever wrong: the worst
+// |delivered - asked| ever seen, with the pair that produced it. min/max alone
+// cannot answer it, because the asked value moves too (it is a config field),
+// so a wide max may be a correctly-served wide request.
+volatile uint32_t CAM1_PW_ERR_MAX_US=0, CAM1_PW_ERR_AT_US=0, CAM1_PW_ERR_ASK_US=0;
+// How often a live offset came out LATER than the one pushed (the acceleration
+// path), and how often the next-task cap actually had to clamp it. ACT_CAP_N > 0
+// is the FIFO inversion the cap exists to prevent, caught in the act; if it
+// stays 0 over a long run with the speed moving, the guard is costing nothing
+// and protecting against nothing observed, which is worth knowing either way.
+volatile uint32_t ACT_GROW_N=0, ACT_CAP_N=0, ACT_CAP_MAX_T=0;
+// Envelope followers. Decay shifts differ because the UPDATE RATES differ: the
+// ISR duration updates every tick (16 kHz at plate_freq 8000, so K=14 is about
+// a second), the pulse-width error updates once per part (~35 Hz, so K=5 is
+// about a second too).
+volatile uint32_t ISR_DUR_ENV_CY=0;      // K=14, per tick
+volatile uint32_t CAM1_PW_ERR_ENV_US=0;  // K=5,  per part
+// Mean delivered pulse, so a small persistent bias is visible where a max
+// cannot show it. uint64 because 35/s * 3300 us overflows 32 bits in ~10 hours.
+volatile uint64_t CAM1_PW_SUM_US=0;
+volatile uint32_t CAM1_PW_N=0;
+// |delivered - asked| distribution. A mean and a max together still cannot say
+// whether the error is a constant small bias or a rare large excursion, and
+// those want different fixes. Edges in us: 50 100 200 500 1000 2000 5000 inf.
+#define PW_HIST_N 8
+volatile uint32_t CAM1_PW_ERR_HIST[PW_HIST_N]={0,0,0,0,0,0,0,0};
+// Cumulative ms spent out of band while in READY -- i.e. how long admission and
+// actuation were held off. A polled sample every 1-2 s cannot see a 1.9 s drain
+// reliably; this is monotonic and cannot be missed.
+volatile uint32_t BAND_OUT_MS=0;
 static uint64_t CAM1_PW_T0=0;
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
@@ -1371,12 +1427,19 @@ struct ACT_INFO
       task_off = (live_off);                          \
       if(task_off > task->offset)                     \
       {                                               \
+        ACT_GROW_N++;                                 \
         ACT_INFO *_nx_ = act_rb.getTail(1);           \
         if(_nx_)                                      \
         {                                             \
           const uint32_t _cap_ =                      \
             (uint32_t)(_nx_->gate_pulse - task->gate_pulse) + _nx_->offset; \
-          if(task_off > _cap_) task_off = _cap_;      \
+          if(task_off > _cap_)                        \
+          {                                           \
+            const uint32_t _by_ = task_off - _cap_;   \
+            if(_by_ > ACT_CAP_MAX_T) ACT_CAP_MAX_T = _by_; \
+            ACT_CAP_N++;                              \
+            task_off = _cap_;                         \
+          }                                           \
         }                                             \
       }                                               \
     }                                                 \
@@ -2297,6 +2360,20 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                         CAM1_PW_LAST_US=pw;
                         if(pw>CAM1_PW_MAX_US) CAM1_PW_MAX_US=pw;
                         if(pw<CAM1_PW_MIN_US) CAM1_PW_MIN_US=pw;
+                        CAM1_PW_SUM_US += pw;
+                        CAM1_PW_N++;
+                        const uint32_t ask=STAGE_PULSE_WIDTH_US.CAM1;
+                        if(ask)
+                        {
+                          const uint32_t er=(pw>ask)?(pw-ask):(ask-pw);
+                          if(er>CAM1_PW_ERR_MAX_US)
+                          { CAM1_PW_ERR_MAX_US=er; CAM1_PW_ERR_AT_US=pw;
+                            CAM1_PW_ERR_ASK_US=ask; }
+                          ENV_UPDATE(CAM1_PW_ERR_ENV_US, er, 5);
+                          uint8_t b = (er<50)?0:(er<100)?1:(er<200)?2:(er<500)?3
+                                     :(er<1000)?4:(er<2000)?5:(er<5000)?6:7;
+                          CAM1_PW_ERR_HIST[b]++;
+                        }
                       }
                     }
                   }
@@ -3222,6 +3299,7 @@ void IRAM_ATTR onTimer()
     if(d < 240000000u)                      // ignore a counter wrap
     {
       ISR_DUR_LAST_CY = d;
+      ENV_UPDATE(ISR_DUR_ENV_CY, d, 14);
       // Snapshot the breakdown of the tick that set the record, not of four
       // unrelated ticks. This is the line that answers "where did the 77us go".
       if(d > ISR_DUR_MAX_CY)
@@ -4705,6 +4783,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       NPE_MAX_CY=0;
       for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=0;
       CAM1_PW_MIN_US=0xFFFFFFFFu; CAM1_PW_MAX_US=0;
+      CAM1_PW_ERR_MAX_US=0; CAM1_PW_ERR_AT_US=0; CAM1_PW_ERR_ASK_US=0;
+      ACT_GROW_N=0; ACT_CAP_N=0; ACT_CAP_MAX_T=0; BAND_OUT_MS=0;
+      ISR_DUR_ENV_CY=0; CAM1_PW_ERR_ENV_US=0;
+      CAM1_PW_SUM_US=0; CAM1_PW_N=0;
+      for(int i=0;i<PW_HIST_N;i++) CAM1_PW_ERR_HIST[i]=0;
       RBUF_PEAK=0;
       ISRTRIGQ_HWM=0; ISRTRIGQ_BURST=0;
       ACT_LATE_MAX=0;
@@ -4740,6 +4823,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       NPE_MAX_CY=0;
       for(int i=0;i<NPE_SEG_N;i++) NPE_WORST_SEG_CY[i]=0;
       CAM1_PW_MIN_US=0xFFFFFFFFu; CAM1_PW_MAX_US=0;
+      CAM1_PW_ERR_MAX_US=0; CAM1_PW_ERR_AT_US=0; CAM1_PW_ERR_ASK_US=0;
+      ACT_GROW_N=0; ACT_CAP_N=0; ACT_CAP_MAX_T=0; BAND_OUT_MS=0;
+      ISR_DUR_ENV_CY=0; CAM1_PW_ERR_ENV_US=0;
+      CAM1_PW_SUM_US=0; CAM1_PW_N=0;
+      for(int i=0;i<PW_HIST_N;i++) CAM1_PW_ERR_HIST[i]=0;
     RBUF_PEAK=0;
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
@@ -5030,6 +5118,21 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         jHl["cam1_pw_min_us"]=(CAM1_PW_MIN_US==0xFFFFFFFFu)?0:CAM1_PW_MIN_US;
         jHl["cam1_pw_max_us"]=CAM1_PW_MAX_US;
         jHl["cam1_pw_last_us"]=CAM1_PW_LAST_US;
+        jHl["isr_dur_env_us"]=ISR_DUR_ENV_CY/240;
+        jHl["cam1_pw_mean_us"]=CAM1_PW_N?(uint32_t)(CAM1_PW_SUM_US/CAM1_PW_N):0;
+        jHl["cam1_pw_n"]=CAM1_PW_N;
+        jHl["cam1_pw_err_env_us"]=CAM1_PW_ERR_ENV_US;
+        {
+          JsonArray hh=jHl.createNestedArray("cam1_pw_err_hist");
+          for(int i=0;i<PW_HIST_N;i++) hh.add(CAM1_PW_ERR_HIST[i]);
+        }
+        jHl["cam1_pw_err_max_us"]=CAM1_PW_ERR_MAX_US;
+        jHl["cam1_pw_err_at_us"]=CAM1_PW_ERR_AT_US;
+        jHl["cam1_pw_err_ask_us"]=CAM1_PW_ERR_ASK_US;
+        jHl["act_grow_n"]=ACT_GROW_N;
+        jHl["act_cap_n"]=ACT_CAP_N;
+        jHl["act_cap_max_t"]=ACT_CAP_MAX_T;
+        jHl["band_out_ms"]=BAND_OUT_MS;
         jHl["isr_npe_max_cy"]=NPE_MAX_CY;
         JsonArray n=jHl.createNestedArray("isr_npe_worst_cy");
         for(int i=0;i<NPE_SEG_N;i++) n.add(NPE_WORST_SEG_CY[i]);
@@ -7099,6 +7202,14 @@ void firmwareLoop()
       // silent without rebooting, and what it did. Evaluate it here and hand the
       // ISR a bool.
       PLATE_IN_BAND = plateInSpeedBand();
+      {
+        static uint32_t _band_last_ms = 0;
+        const uint32_t _nowms = millis();
+        if(_band_last_ms && !PLATE_IN_BAND &&
+           sysinfo.state == SYS_STATE::INSPECTION_MODE_READY)
+          BAND_OUT_MS += (_nowms - _band_last_ms);
+        _band_last_ms = _nowms;
+      }
       // And the last floating point left anywhere in the step ISR.
       //
       // newPulseEvent tested the gate's minimum spacing with
