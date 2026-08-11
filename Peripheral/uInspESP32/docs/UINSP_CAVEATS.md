@@ -2160,3 +2160,90 @@ the assumption the whole scheme rests on. That number is not in any log here. To
 find it, ramp hard at increasing accel with REAL parts and watch the gate edge
 spacing and `rej_dist`; sliding shows up as the spacing distribution changing.
 `virt_pulse` cannot see it.
+
+
+## Holding an object rate: feedforward beats the loop, on this plant (2026-08-12)
+
+First run of speed control against a target rate, with REAL parts, target
+15 obj/s. Result: **do the division, do not close a loop.**
+
+### The plant
+
+The parts on this plate are a FIXED set riding a rotating disc, so
+
+```
+rate = N_parts * revs_per_second,   revs_per_second = plate_freq / 30000
+```
+
+`N` is a constant and the correct speed is a division, not a control problem.
+Measured open-loop at 7800 Hz: 15.215 obj/s, so **N = 58.52 parts per
+revolution**, and 15.0/s wants `15 * 30000 / 58.52 = 7690`.
+
+### Measured, same parts, same session
+
+| approach | rate error | per-window sd |
+|---|---|---|
+| **feedforward, 7690 Hz, no loop** | **+0.29%** | **1.56%** |
+| P + I loop | -1.3% | ~3% |
+| P only, 8% deadband | +5.3% | ~3% |
+
+The feedforward cumulative mean walked to 15.00 within 3 minutes and held.
+**Both closed loops made the rate about three times noisier than leaving it
+alone**, because they were correcting a plant with nothing to correct: every
+speed change is a disturbance, and the measurement noise gets fed back as one.
+
+### The noise model was wrong by 7x, and it cost a tuning cycle
+
+The first loop limit-cycled and it was blamed on Poisson counting noise -- 60
+parts in a 4 s window, sigma 1/sqrt(60) = 12.9%, against a 3% deadband. The
+deadband was widened to 8%. That stopped the oscillation and parked the loop
+5.3% high; a deadband cannot correct what it is busy ignoring.
+
+**Arrivals here are not Poisson.** A fixed set of parts at fixed angular spacing
+is quasi-periodic. Measured open-loop at a fixed 7800 Hz for 6.2 minutes, 12 s
+windows: **sd 1.06% against the 7.40% Poisson prediction.** The entire
+justification for that deadband was a distribution that does not apply here.
+
+Keep the Poisson reasoning anyway: if the feeder ever runs continuously,
+arrivals become much closer to random and it applies again. The two regimes want
+different tuning, and one open-loop run tells you which you are in.
+
+### How to tell a drifting plant from an oscillating controller
+
+The P+I run held the rate at 15 while the SPEED wandered 7158 -> 8182 -> 7365
+with a ~340 s period. That fits "the density is drifting and the loop is
+tracking it" exactly as well as "the integral is oscillating". **Open the loop.**
+At a fixed speed `rate = density * speed`, so rate drift IS density drift. Six
+minutes at a fixed 7800 gave a cumulative mean flat at 15.22 from t=100 s
+onward, so the density was constant and the wander was the controller.
+
+### What should actually be built
+
+Feedforward on `N` with a slow trim, not a fast loop:
+
+* estimate `N` from one open-loop window at any speed, `N = rate * 30000 / freq`
+* set `plate_freq = target_rate * 30000 / N`
+* trim only for a CHANGE in N -- parts ejected to a chute, added, or lost. That
+  is slow and monotone, so the trim wants a long time constant and a deadband
+  above the measured 1.06%.
+
+The delivered CAM1 pulse held 3378-3382 us against 3333 asked for the whole
+feedforward run, with zero ISR overruns across every run above.
+
+### What still bounds a correction when one is needed
+
+A correction must COMPLETE before the part reaches the camera, which is 9315
+ticks from the gate -- not SEL1's 30000, where an earlier version of this note
+wrongly put it. Solving "ramp finished before arrival":
+
+```
+delta_f_max = sqrt(f^2 + 9315 * accel) - f
+```
+
+At the production 10500, accel 2000 buys only 853 Hz (8.1%); 10% needs 2485,
+30% needs 10000, 64% needs 20000. The firmware charges nothing for accel up to
+its 100000 clamp -- a sweep of 2000/10000/50000/100000 moved the delivered-pulse
+error not at all. The remaining limit is mechanical and still unmeasured: the
+acceleration at which parts SLIDE, which would break "one tick is a fixed
+distance". With a fixed part set that is now easy to test, because N is a
+constant: a step in `rate * 30000 / freq` after a hard ramp IS parts moving.
