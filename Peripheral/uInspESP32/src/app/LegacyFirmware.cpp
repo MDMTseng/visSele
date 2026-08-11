@@ -3321,8 +3321,23 @@ static void syncPulseService()
   {
     pipeLineInfo *p=RBuf.getTail(i);
     if(p==NULL) break;
+    // Braces, and they are load-bearing: without them `p->retired=1` ran for
+    // EVERY object in RBuf, including the sync pulse fired 300ms ago that was
+    // still waiting for its answer. The drain reads only `retired`, so that
+    // object was freed before its report could arrive -- insp_status stayed
+    // UNSET, but the slot was gone, so the `outstanding` guard below saw
+    // nothing, fired another pulse, and repeated.
+    //
+    // It hid because it is a race against the round trip. With the camera ROI
+    // cropped the report comes back in ~10ms, inside a single main-loop pass,
+    // so the object was almost always answered before this sweep saw it. Take
+    // the crop away and the round trip never fits: measured 2026-08-11 at full
+    // frame as CAL FAILED after 30001ms with learned=0, boot_n=0 and
+    // cal_pulse_lost=0 -- the last of those being the tell, since a pulse that
+    // was fired and unanswered increments it. Nothing was timing out. The
+    // pulses were being deleted.
     if(p->sync && p->insp_status!=insp_status_UNSET)
-      p->insp_status=insp_status_DEL; p->retired=1;
+    { p->insp_status=insp_status_DEL; p->retired=1; }
   }
 
   // One at a time, so the returning frame has exactly one candidate by
