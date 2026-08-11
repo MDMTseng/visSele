@@ -1025,8 +1025,16 @@ stagePulseCenter STAGE_PULSE_CENTER = {0,0,0,0,0,0,0};
 // narrowing it.
 uint32_t SPEED_BAND_PCT = 10;
 
+// The band test's answer, published for the step ISR.
+//
+// The test itself is floating point and GateSensing runs inside onTimer, whose
+// FPU registers are not saved -- so the ISR reads this and never calls the
+// function. Written once per ramp-service pass; a stale-by-one-pass bool is
+// harmless here because the band is 10% wide and a pass is sub-millisecond.
+volatile bool PLATE_IN_BAND = false;
+
 // True when the plate is close enough to its setpoint for the derived windows
-// to still mean what they say.
+// to still mean what they say. MAIN LOOP ONLY -- see PLATE_IN_BAND.
 static inline bool plateInSpeedBand()
 {
   const float sp = PLATE_FREQ_SETPOINT;
@@ -2248,7 +2256,13 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                    if(task->info)
                    {
 
-                    if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
+                    // PLATE_IN_BAND, not SYS_FREQ_STABLE, and for the same reason the gate
+                    // uses it: if admission keeps running through a ramp while
+                    // actuation does not, the machine inspects normally and quietly
+                    // stops ejecting -- every NG judged during the ramp rides on.
+                    // That is a worse failure than not inspecting at all, because
+                    // nothing about it looks wrong.
+                    if(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
                       SEL1_Count++;
@@ -2269,7 +2283,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
-                  if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false && DRY_RUN==false)
+                  if(PLATE_IN_BAND && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
                   {
                     SEL2_Count++;
                     IO_ON(PIN_O_SEL2,IOI_SEL2);
@@ -2679,10 +2693,24 @@ void IRAM_ATTR GateSensing()
         // is exactly a machine that stops answering its UART without ever
         // rebooting.
         //
-        // If that is right, the fix has nothing to do with pulse widths, and
-        // testing it needs a way that does not involve wedging the production
-        // machine a third time.
-        const bool speed_ok = SYS_FREQ_STABLE;
+        // ATTEMPT 3 (2026-08-11, live). That suspicion was right, and it was
+        // measured rather than argued -- see UINSP_CAVEATS, "the 77us was cold
+        // flash". At pf 8000 the worst tick was 79.7us against a 62.5us budget,
+        // 291 overruns in 946k ticks, and the cost was admission running once
+        // per ~1200 ticks entirely out of cold flash. With the admission path
+        // and the rest of the ISR in IRAM the worst tick is 31.7us and the
+        // overrun count is zero, at 67% of the tick at the production 10500.
+        //
+        // Both hangs also did floating point in this ISR: attempt 2 called
+        // plateInSpeedBand() from right here, and onTimer does not save the FPU
+        // registers. That is now evaluated in the ramp service and published as
+        // PLATE_IN_BAND, so this reads a bool.
+        //
+        // Two independent causes, both removed. If it hangs a third time, do
+        // NOT re-relax anything: read health.isr_overrun_n and
+        // health.isr_worst_seg_cy first -- they now say which of the two came
+        // back.
+        const bool speed_ok = PLATE_IN_BAND;
         if(SYS_STEPPER_DISABLED==false && speed_ok && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
@@ -6754,6 +6782,13 @@ void firmwareLoop()
       (void)lastApplyFreq; (void)f;
       // Keep the ISR budget in integers for onTimer, which cannot do this.
       ISR_BUDGET_CY = (f > 0.0f) ? (uint32_t)(240000000.0f/(2.0f*f)) : 0;
+      // Same reason, same pattern: the gate's band test is three float compares
+      // and GateSensing runs in the step ISR. Attempt 2 called plateInSpeedBand()
+      // straight from there, which is floating point in an ISR whose FPU
+      // registers are not saved -- the documented way to make this board go
+      // silent without rebooting, and what it did. Evaluate it here and hand the
+      // ISR a bool.
+      PLATE_IN_BAND = plateInSpeedBand();
       // Deliberately NOT re-derived here any more. See STAGE_PULSE_WIDTH_apply:
       // the windows are converted once, for the speed the plate is being sent
       // to, and the gate is what keeps the plate near that speed while parts
