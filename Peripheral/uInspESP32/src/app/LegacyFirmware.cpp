@@ -2950,8 +2950,11 @@ void IRAM_ATTR onTimer()
       // 240000000.0f/(2.0f*f) right here. The board went silent the instant
       // the plate was told to turn -- which is exactly when this ISR starts
       // running -- and stayed silent until a reset. Floating point in this ISR
-      // is not free: see the "Restore FPU / and turn it back off" note at the
-      // bottom of onTimer. So the division lives in the ramp service now and
+      // needs the FPU registers saved and restored around it, or it corrupts
+      // whatever the interrupted code had in them -- that is what the
+      // "Restore FPU / and turn it back off" note at the bottom of onTimer is
+      // about. Saving them is correct but costs cycles in an ISR that already
+      // does not fit its tick, so the division lives in the ramp service and
       // this only compares two uint32s.
       const uint32_t b = ISR_BUDGET_CY;
       if(b && d >= b) ISR_OVERRUN_N++;

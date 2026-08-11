@@ -1559,13 +1559,22 @@ on margin. Two things push it over:
 climbing fast, or at a speed where `isr_dur_max_us` exceeds `1e6/(2*plate_freq)`
 by much, is how far in it is.
 
-## Nothing in the step ISR may touch floating point
+## Floating point in the step ISR needs the FPU registers saved first
 
 The first version of the measurement above read `PLATE_FREQ_CURRENT` (a float)
 and computed `240000000.0f/(2.0f*f)` inside `onTimer`. The board went silent the
 instant the plate was told to turn -- which is exactly when this ISR begins
 running -- and stayed silent until a reset.
 
-The "Restore FPU / and turn it back off" note at the bottom of `onTimer` is
-about this. Compute anything that needs an FPU in the main loop and hand the
-ISR an integer; `ISR_BUDGET_CY` is the worked example.
+Not because floating point is forbidden there, but because using it without
+saving and restoring the FPU registers corrupts whatever the interrupted code
+had in them. That is what the "Restore FPU / and turn it back off" note at the
+bottom of `onTimer` is about.
+
+So there are two correct options, and only one of them is cheap:
+
+* Save the FPU state around the arithmetic. Correct, and it costs cycles in an
+  ISR that already does not fit its tick (see above).
+* Do the arithmetic in the main loop and hand the ISR an integer. This is what
+  `ISR_BUDGET_CY` does, and it is the default answer here precisely because the
+  tick budget has no room to spend.
