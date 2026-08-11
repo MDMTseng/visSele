@@ -1679,3 +1679,74 @@ picks a queued older one. Eight samples came back byte-identical, including a
 frozen `isr_ticks` while the plate was demonstrably turning. Any probe used
 under a console flood needs to match a reply to its request (an id echo) before
 its numbers mean anything.
+
+
+## A task is an anchor plus a live offset (2026-08-11)
+
+`ACT_INFO` stores `gate_pulse` (where the object was detected) and the `offset`
+it was pushed with. `ACT_TRY_RUN_TASK` fires on
+`(cur_pulse - gate_pulse) >= offset`. It used to store a baked
+`targetPulse = gate_pulse + offset`, which froze an object's windows at the
+moment it was admitted.
+
+Why that mattered: a window is a tick count, ticks are distance, so a window is
+an ARC and its duration is arc/speed. Frozen at one speed it tells the wrong
+time at another, and the numbers are not small -- gate-to-chute transit is
+1874 ms at plate_freq 8000 while an 8000 -> 12000 ramp is 2000 ms, so a part
+admitted anywhere near a speed change spends most of its journey at a speed its
+own windows never knew about. Re-deriving the windows in the main loop could not
+reach it, because its arcs were already baked into absolute counts.
+
+The two kinds of offset are not the same thing:
+
+* **ON offsets are DISTANCES.** The part has to be under the nozzle. A fixed arc
+  is already right at any speed, so these are used exactly as pushed.
+* **OFF offsets are DURATIONS.** These are read live from `SPO_active` at fire
+  time, so the pulse lasts the right number of microseconds for the speed the
+  plate is at now.
+
+**The invariant, and do not break it: A DEADLINE MAY MOVE EARLIER, NEVER LATER.**
+`ACT_TRY_RUN_TASK` takes `min(pushed, live)`. The act queues are FIFO and only
+the tail is ever examined, so a deadline that moved LATER would sit in front of
+the next object's ON edge and delay it. That inversion is impossible while
+widths are frozen; `min()` is what keeps it impossible now that they are not.
+
+The cost is asymmetric on purpose:
+
+| | live width vs pushed | min() takes | result |
+|---|---|---|---|
+| decelerating | smaller | live | pulse exactly right |
+| accelerating | larger | pushed | pulse short by the speed ratio |
+
+Deceleration is the dangerous direction -- that is where a blow grows long
+enough to knock the neighbouring part off the plate -- and it is the one that
+comes out exact. Acceleration leaves the pulse short, which risks an NG not
+being ejected, and that is why a large speed change still drains the pipeline
+first rather than relying on this.
+
+Measured in-band with parts flowing, 8000 -> 8700 -> 8000: SEL1 tracked
+798 -> 865 -> 870 -> 813 -> 800 ticks while the duration held at 49.0-50.4 ms.
+ISR max 32 us and overruns 0, unchanged -- the live read is one volatile load
+from a pointer `Run_ACTS` already held.
+
+### Editing station geometry mid-run may mis-actuate, and that is accepted
+
+An object's ON edges are the ones current when it was admitted; its SEL offsets
+are read later, in the SWITCH branch. Edit `stage_pulse_offset` while parts are
+on the plate and the ones past SWITCH keep the old geometry while the ones
+behind them get the new -- two parts, two behaviours, one of them wrong. Unlike
+a speed change this is unbounded: a position can be dragged from 800 to 3000 in
+one gesture.
+
+Decided 2026-08-11: **acceptable.** Editing station positions IS the deliberate
+setup, the machine is not producing while somebody dials a position in by eye,
+and a few mis-sorted parts there cost nothing worth engineering against.
+
+The fix was designed and priced before being declined, so that it does not get
+re-derived: defer the whole `set_setup` document and replay it after the
+pipeline drains, reusing `PLATE_FREQ_PENDING`'s machinery. Rejected because it
+makes `set_setup` ack a change it has not applied, which the WebUI reads back as
+"the setting did not take" -- worse, for this case, than the thing it fixes.
+
+This does NOT extend to speed. A speed change happens during production, so a
+large one drains first and a small one is bounded by `speed_band_pct`.

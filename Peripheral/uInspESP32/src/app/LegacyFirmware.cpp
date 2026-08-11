@@ -952,21 +952,41 @@ stagePulseOffset STAGE_PULSE_OFFSET={
 // extractions) and commits with a single atomic pointer swap. A read of
 // SPO_active therefore sees one buffer or the other, whole, never a mix.
 //
-// Note this does not, and need not, make an object's whole lifecycle coherent:
-// ACT_PUSH_TASK bakes gate_pulse+offset into targetPulse at registration, so
-// CAM/L/SWITCH offsets are captured then, while the SEL offsets are read later
-// in the SWITCH branch. A config change between those two moments gives that one
-// object new SEL timing with old CAM timing -- an inherent property of reading
-// SEL late, unrelated to tearing.
+// Note this does not, and need not, make an object's whole lifecycle coherent.
+// A task carries its anchor and the offset it was pushed with (see ACT_INFO), so
+// an object's ON edges are the ones that were current when it was admitted,
+// while its SEL offsets are read later, in the SWITCH branch. A config change
+// between those two moments gives that one object new SEL geometry with old CAM
+// geometry -- an inherent property of reading SEL late, unrelated to tearing.
 //
-// It is harmless because config only changes during deliberate setup, and that
-// property is now LOad-BEARING rather than incidental.
+// A GEOMETRY EDIT MID-RUN MAY THEREFORE MIS-ACTUATE, AND THAT IS ACCEPTED.
 //
-// It was briefly given up: STAGE_PULSE_WIDTH_apply() was moved into the ramp
-// service so the derived *_off fields would follow the live speed, which made
-// publishes continuous instead of rare. Paired with admitting parts during a
-// ramp, the machine hung on the first speed change -- twelve seconds of UART
-// silence, cleared only by a DTR reset. Both were reverted the same day.
+// This used to be justified as "harmless because config only changes during
+// deliberate setup", which is an assumption about operators and reads as
+// something to be nervous about. It is not an assumption, it is the intent,
+// stated 2026-08-11: editing station positions IS the deliberate setup, the
+// machine is not producing while it happens, and a few mis-sorted parts while
+// somebody dials in a position by eye cost nothing worth engineering against.
+//
+// Recorded because the alternative was designed and priced and then declined,
+// and without this note the next reader will re-derive it. The alternative was
+// to defer the whole set_setup document and replay it after the pipeline drains
+// (the machinery exists -- see PLATE_FREQ_PENDING). It was rejected because it
+// would make set_setup ack a change it has not applied, which the WebUI would
+// read back as "the setting did not take" -- worse, for this case, than the
+// thing it fixes.
+//
+// The SPEED case is not the same and is not covered by this: a speed change is
+// not deliberate setup, it happens during production, and a large one drains the
+// pipeline first. See PLATE_FREQ_PENDING.
+//
+// Publishing was briefly given up entirely: STAGE_PULSE_WIDTH_apply() had been
+// moved into the ramp service so the derived *_off fields would follow the live
+// speed, and paired with admitting parts during a ramp the machine hung -- twelve
+// seconds of UART silence, cleared only by a DTR reset. Both were reverted the
+// same day. Both are back now, because the cause was neither of them: the step
+// ISR was running 79.7us against a 62.5us tick out of cold flash. It is 31.7us in
+// IRAM, with zero overruns.
 //
 // So: readers are Run_ACTS and ActRegister_pipeLineInfo, both inside onTimer(),
 // holding the pointer for a handful of instructions. With publishes confined to
