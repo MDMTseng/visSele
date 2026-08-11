@@ -325,6 +325,42 @@ Producing a real refused trigger therefore still has no vehicle. The knee is
 somewhere between 200 Hz (clean) and 400 Hz (53% refused), and reaching it
 needs the firmware-side burst generator that "Still open" already calls for.
 
+### The two pairings are not peers (2026-08-11, measured)
+
+The dual mode was built treating `cam_ts` and `pcnt` as independent second
+opinions -- "neither can hide the other's failure". That framing is wrong and
+the flash-identity measurement says so (UINSP_CAVEATS, same date).
+
+`cam_ts` is a measurement OF the imaging event: it is latched by the camera and
+tracks the trigger edge to within 15 us at 150 Hz. It can be checked against
+where an object actually was, so it can **abstain** -- and when it abstains,
+that is information.
+
+`pcnt` is bookkeeping OF the request. It always returns a number. Above the
+camera's frame floor (184.5 fps at this crop) it returns a number that is
+WRONG: the camera keeps exposing at its own cadence while the counter advances
+1:1, so a frame slides ~420 us per frame away from the pulse it is labelled
+with. 3 of 96 frames caught their own backlight; the pattern match fell to
+chance. Nothing inside the count can detect this.
+
+So the policy should not be symmetric, and today's is:
+
+| situation | today | what the measurement argues for |
+|---|---|---|
+| both name the same object | proceed | proceed |
+| both name different objects (`mismatch`) | halt | halt |
+| `cam_ts` blind, `pcnt` names one (`ts_blind`) | halt | halt -- and do NOT fall back to pcnt. Only mechanism that can be checked has declined |
+| `pcnt` blind, `cam_ts` names one (`pcnt_blind`) | **halt** | judge on `cam_ts`, count a refusal, re-learn the count offset. Nothing dangerous has happened |
+
+Only the last row changes behaviour: a refused trigger currently stops the
+line, when it is a condition the machine can absorb and resync from. The other
+rows keep their behaviour and change their justification -- a halt on
+`ts_blind` is not "the two disagreed", it is "the only checkable mechanism
+refused to place this frame".
+
+Not implemented yet; this is the decision the measurement supports, not a
+change that has been made.
+
 ## Tomorrow, in order
 
 1. ~~One BOOT press, flash everything.~~ **Done 2026-08-05.**

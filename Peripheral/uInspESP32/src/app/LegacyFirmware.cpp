@@ -659,10 +659,27 @@ struct CamPulseSync
   uint32_t learned = 0;         // unambiguous samples seen
   uint32_t slip = 0;            // samples that disagreed with the offset
   uint32_t hit = 0, miss = 0;   // reports this named / could not name an object
+  // WHICH side failed, split out because `miss` alone cannot say -- and the
+  // answer is the whole diagnosis. A halt on CAM_PAIRING_DISAGREE has three
+  // distinct causes and they call for opposite responses:
+  //
+  //   ts_blind    the timestamp could not place the frame, the count could.
+  //               The report arrived outside the match window -- latency, not
+  //               pairing. Widen the window or make the report faster.
+  //   pcnt_blind  the count could not, the timestamp could. A trigger the
+  //               camera did not count, i.e. the refusal case.
+  //   mismatch    both placed it, on DIFFERENT objects. The serious one:
+  //               two independent mechanisms actively contradicting.
+  //
+  // The board already prints this at the halt, but a printed line has to be
+  // caught as it goes past and the log ring has blocked that four times. A
+  // counter is readable afterwards, which is when the question gets asked.
+  uint32_t ts_blind = 0, pcnt_blind = 0, mismatch = 0;
   int64_t  last_sample = 0;     // most recent pcnt - cam_pcnt
   int64_t  last_pcnt = 0;
 
   void reset(){ valid=false; offset=0; learned=slip=hit=miss=0;
+                ts_blind=pcnt_blind=mismatch=0;
                 last_sample=0; last_pcnt=0; }
 
   void observe(int64_t pcnt, uint32_t cam_pcnt)
@@ -3716,6 +3733,44 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       const bool want_offsets = (total<=120);
       JsonArray offs = want_offsets ? retdoc.createNestedArray("offsets_us") : JsonArray();
 
+      // Backlight identity pattern. "prbs" or "alt"; absent = off (the plain
+      // train this command has always emitted).
+      //
+      // Two patterns because they fail to see different things, and the one
+      // that matters here is a slip that CORRECTS ITSELF:
+      //
+      //   alt (010101)  a single slip inverts the phase, and a slip back
+      //                 inverts it again -- so a transient shows up as a BAND
+      //                 of inverted parity with a readable start and end.
+      //                 Blind to slips of an even number of pulses, which is
+      //                 the price of a period-2 pattern.
+      //   prbs          sees a slip of any size, but a transient appears as a
+      //                 short loss of alignment rather than as a band, which
+      //                 takes correlation to read rather than an eye.
+      //
+      // Run both. Neither alone is a complete instrument, and the 2026-08-08
+      // slip that a regular pattern concealed is why "just use a pattern" is
+      // not good enough on its own.
+      const char *pat = doc["pattern"].is<const char*>() ? (const char*)doc["pattern"] : NULL;
+      const bool  prbs_on = (pat && strcmp(pat,"prbs")==0);
+      const bool  alt_on  = (pat && strcmp(pat,"alt")==0);
+      uint32_t prbs_state = doc["seed"].is<uint32_t>() ? (uint32_t)doc["seed"] : 0xACE1u;
+      if(prbs_state==0) prbs_state=0xACE1u;
+      const uint32_t seed0 = prbs_state;
+      // The emitted sequence, echoed back so the host compares against what
+      // was ACTUALLY driven rather than against what it asked for.
+      // The dim level, and it has to be SHORTER THAN THE EXPOSURE to be dim at
+      // all. The sensor integrates only during its exposure window -- 50us on
+      // this station -- so 400us and 100us of light produce identical frames.
+      // Measured: means 157..161 across a whole 010101 train, no two levels at
+      // all, and the pattern was unreadable. 10us against a 50us exposure is
+      // roughly a fifth of the photons, which separates cleanly.
+      int dim_us = doc["dim_us"].is<int>() ? (int)doc["dim_us"] : 10;
+      if(dim_us<1) dim_us=1;
+      uint8_t pat_bits[32]; memset(pat_bits,0,sizeof(pat_bits));
+      int pat_n=0;
+      int alt_i=0;
+
       int64_t main_next=esp_timer_get_time();
       const int64_t t_first=main_next;
       int64_t prev_rise=0, sum_us=0, min_us=INT64_MAX, max_us=0;
@@ -3730,10 +3785,49 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
         const int64_t rise=esp_timer_get_time();
         if(cam_PIN==PIN_O_CAM1) CAM_PULSE_N++;   // see trig_cam_pulse
+        // Per-pulse backlight, so the IMAGE says which pulse exposed it.
+        //
+        // Neither pairing mechanism can arbitrate itself: cam_ts is a claim
+        // about when the frame was exposed and pcnt is a claim about which
+        // trigger asked for it, and when they disagree there has been nothing
+        // to appeal to. Varying the light per pulse puts the answer in the
+        // frame -- brightness is a measurement OF the exposure, not a claim
+        // about it -- so whichever mechanism agrees with the picture is right.
+        //
+        // A PRBS and not a repeating cycle, deliberately: a regular pattern
+        // hides a slip of exactly its period. That is not hypothetical, it is
+        // the measured 2026-08-08 result -- 510 parts passed a regular-pattern
+        // check that was concealing a real 10-part slip. Both ends regenerate
+        // the sequence from `seed`, which is echoed in the reply.
+        //
+        // The bit chooses the DURATION rather than switching the light off:
+        // a dark frame and a dropped frame look identical, and telling those
+        // two apart is the whole exercise. Two bright levels always mean a
+        // frame arrived, and the level says which pulse it was.
+        int _lit = Light_Duration;
+        if(alt_on)
+        {
+          const bool bit = ((alt_i++) & 1) != 0;
+          if(pat_n < (int)(sizeof(pat_bits)*8) && bit)
+            pat_bits[pat_n>>3] |= (uint8_t)(1u<<(pat_n&7));
+          pat_n++;
+          _lit = bit ? Light_Duration : dim_us;
+        }
+        else if(prbs_on)
+        {
+          prbs_state = (uint32_t)((prbs_state<<1) |
+                       (((prbs_state>>31)^(prbs_state>>21)^
+                         (prbs_state>>1)^prbs_state) & 1u));
+          const bool bit = (prbs_state & 1u) != 0;
+          if(pat_n < (int)(sizeof(pat_bits)*8) && bit)
+            pat_bits[pat_n>>3] |= (uint8_t)(1u<<(pat_n&7));
+          pat_n++;
+          _lit = bit ? Light_Duration : dim_us;
+        }
         io_drive(cam_PIN,cam_idx,true);
         delayMicroseconds(Light_Delay);
         io_drive(light_PIN,light_idx,true);
-        delayMicroseconds(Light_Duration);
+        delayMicroseconds(_lit);
         io_drive(light_PIN,light_idx,false);
         io_drive(cam_PIN,cam_idx,false);
         emitted++;
@@ -3763,6 +3857,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
       const int gaps=emitted-1;
       retdoc["emitted"]=emitted;
+      if(pat)
+      {
+        retdoc["pattern"]=pat;
+        retdoc["seed"]=seed0;
+        retdoc["pat_n"]=pat_n;
+        // Hex, most significant nibble first per byte, bit i of the sequence
+        // living at byte i/8 bit i%8 -- the same order the host rebuilds it in.
+        char hex[sizeof(pat_bits)*2+1];
+        const int nb=(pat_n+7)/8;
+        for(int b=0;b<nb && b<(int)sizeof(pat_bits);b++)
+          snprintf(hex+b*2,3,"%02x",pat_bits[b]);
+        hex[(nb<(int)sizeof(pat_bits)?nb:(int)sizeof(pat_bits))*2]=0;
+        retdoc["pat_hex"]=hex;
+      }
       retdoc["period_us"]=period_us;
       retdoc["span_us"]=(int32_t)(prev_rise-t_first);
       retdoc["mean_us"]=gaps>0?(int32_t)(sum_us/gaps):0;
@@ -4451,6 +4559,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jP["slip"]=CAM_PCNT.slip;
       jP["hit"]=CAM_PCNT.hit;
       jP["miss"]=CAM_PCNT.miss;
+      // Which side went blind. See the declaration for why miss alone is not
+      // an answer.
+      jP["ts_blind"]=CAM_PCNT.ts_blind;
+      jP["pcnt_blind"]=CAM_PCNT.pcnt_blind;
+      jP["mismatch"]=CAM_PCNT.mismatch;
       jP["last_sample"]=(double)CAM_PCNT.last_sample;
       jP["last_pcnt"]=(double)CAM_PCNT.last_pcnt;
       jP["dev_pulses"]=(uint32_t)CAM_PULSE_N;
@@ -4689,10 +4802,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       if(byTs!=NULL && byPcnt!=NULL)
       {
         if(byTs==byPcnt){ CAM_PCNT.hit++; byDev=byTs; }
-        else            { CAM_PCNT.miss++; pairConflict=true; }
+        else { CAM_PCNT.miss++; CAM_PCNT.mismatch++; pairConflict=true; }
       }
       else if(byTs!=NULL || byPcnt!=NULL)
-      { CAM_PCNT.miss++; pairConflict=true; }
+      {
+        CAM_PCNT.miss++;
+        if(byPcnt!=NULL) CAM_PCNT.ts_blind++;   // count placed it, clock did not
+        else             CAM_PCNT.pcnt_blind++; // clock placed it, count did not
+        pairConflict=true;
+      }
     }
     else if(REPORT_MATCH_TS)   byDev = byTs;
     else if(REPORT_MATCH_PCNT)

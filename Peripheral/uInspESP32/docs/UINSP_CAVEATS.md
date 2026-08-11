@@ -1410,3 +1410,52 @@ camera ROI, and to the watermark decode -- all of which read as broken because
 nothing was being inspected. Note also that `n_valid 0` on `cam_trig` does NOT
 mean "the watermark is off": it is equally consistent with no frames at all,
 and it was read the wrong way here.
+
+## 2026-08-11 — over the camera's floor, pcnt is not merely blind, it is wrong
+
+Measured with a per-pulse backlight pattern, so the IMAGE says which pulse
+exposed each frame and neither pairing mechanism has to be taken on trust.
+Plate stopped, production crop, `trig_cam_burst` driving the train directly.
+
+| | 150 Hz | 200 Hz |
+|---|---|---|
+| inter-frame `cam_ts` | 6666 us = the fired period | **5420 us = 184.5 fps, the camera's own floor** |
+| `ext` step, median | 1.0 | 1.0 |
+| exposure vs its own trigger, spread | **15 us** | **4966 us — 99% of one period** |
+| flash pattern correct | 104/104 | 53/92 (chance) |
+| frames that caught their own light | 48 of 104 | **3 of 96** |
+
+Below the floor the camera exposes on the trigger edge and everything agrees.
+Above it the camera keeps producing frames **at its own cadence** while the
+counter keeps advancing roughly 1:1, so each frame slides ~420 us further from
+the pulse it is labelled with and wraps a whole period every ~12 frames. 14 of
+110 triggers also produced no frame at all, so BOTH failure modes are present
+at once.
+
+The consequence is the one that matters: **a frame's `pcnt` can name a trigger
+it was not exposed with.** This is worse than the mechanism being unable to
+detect its own failure -- it returns a confident, plausible, wrong answer, and
+nothing inside the count can tell. `cam_ts` catches it, because the deviation
+from the claimed trigger grows without bound.
+
+So the two mechanisms are NOT peers. `cam_ts` is a measurement of the imaging
+event and can abstain; `pcnt` is bookkeeping of the request and cannot.
+Anything that treats them as interchangeable second opinions is wrong -- see
+the dual-mode policy note in PAIRING_MIGRATION_STATUS.
+
+### Two ways this measurement lied before it was believed
+
+Both were defects in the instrument, and both produced confident nonsense:
+
+- **A period-2 flash pattern cannot name a shift.** 010101 agrees with itself
+  at every even offset, so scanning shifts and taking the best picks between
+  ties on noise. It reported "SLIP of -4" on a run where all 240 triggers
+  produced a frame and nothing had moved. Use a PRBS to measure a shift; the
+  alternating pattern can only decide phase.
+- **Median-centering hides a uniform spread.** Deviations spread over a whole
+  trigger period, once centred on their median, all land within +/- half a
+  period -- so a window test at half a period declares every one of them
+  "inside". That is how the 200 Hz run first read as "96 usable frames,
+  behaviour 2 (skip)" when the exposures had no relationship to their triggers
+  at all. Judge the SPREAD, not the centred magnitude.
+

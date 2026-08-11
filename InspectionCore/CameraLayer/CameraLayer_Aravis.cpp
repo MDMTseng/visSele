@@ -3,10 +3,15 @@
 #include "logctrl.h"
 #include <arv.h>
 #include <stdexcept>
+#include <cstdio>
 
 // Set by the acquisition setup from INSP_CAM_TRIG_WATERMARK, read in the frame
 // callback. Written once before streaming starts, so no synchronisation.
 static bool g_trigWatermark = false;
+// INSP_CAM_FRAME_TRACE: per-frame CSV for the flash-identity test. Opened once
+// at acquisition setup, so the callback only ever writes. NULL = off, which is
+// the normal state -- this exists for a bench measurement, not for running.
+static FILE *g_frameTrace = NULL;
 LOG_MODULE("cam.aravis");
 
 using namespace std;
@@ -599,6 +604,56 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
       }
     }
 
+    // INSP_CAM_FRAME_TRACE=<path>: one line per frame, for the flash-identity
+    // test.
+    //
+    // The point of that test is that neither pairing mechanism is ground
+    // truth. cam_ts says when the frame was exposed and pcnt says which
+    // trigger asked for it; when they disagree, nothing so far can say which
+    // is right, because both are claims ABOUT the frame rather than
+    // measurements OF it. The image is the arbiter: drive the backlight with a
+    // per-pulse pattern and the brightness of the frame identifies which pulse
+    // actually exposed it, independently of both.
+    //
+    // So this records, per frame, the three things that have to be lined up --
+    // the count the camera stamped in, the timestamp it latched, and how
+    // bright the frame came out.
+    //
+    // Brightness is sampled from rows 8..24 and NOT row 0: the watermark
+    // overwrites the start of row 0, so a mean that included it would be
+    // partly a reading of the counter rather than of the light.
+    if (g_frameTrace != NULL)
+    {
+      size_t _bsz = 0;
+      const uint8_t *px = (const uint8_t *)arv_buffer_get_data(buffer, &_bsz);
+      uint64_t sum = 0; uint32_t n = 0;
+      if (px != NULL && h > 40)
+      {
+        const size_t stride = (size_t)_bsz / (size_t)h;      // bytes per row
+        // The MIDDLE of the frame, not the top. Rows 8..24 are only the lit
+        // region when the ROI is the production crop; at full frame they are
+        // in an unilluminated corner of the sensor and the mean reads ~1
+        // whatever the backlight does -- measured, and it made the first run
+        // of this test unreadable.
+        const int y0 = h/2 - 8, y1 = h/2 + 8;
+        for (int y = y0; y < y1; y++)
+        {
+          const uint8_t *row = px + (size_t)y * stride;
+          for (size_t x = 0; x + 16 <= stride; x += 16) { sum += row[x]; n++; }
+        }
+      }
+      fprintf(g_frameTrace, "%llu,%u,%d,%u,%d,%.2f\n",
+              (unsigned long long)_fi.timeStamp_us,
+              (unsigned)_fi.extTrigCount, (int)_fi.extTrigCountValid,
+              (unsigned)_fi.frameNum, (int)_fi.frameNumValid,
+              n ? (double)sum / (double)n : -1.0);
+      // Flushed per line. The tail of the file is the part a burst test cares
+      // about, and it is exactly the part that sits in the stdio buffer when
+      // the process is stopped -- the first run lost 97 of 240 rows that way
+      // and looked like the camera had stopped delivering.
+      fflush(g_frameTrace);
+    }
+
     // Exposure-floor watch. The interval is taken from the DEVICE timestamp,
     // not the host clock: host arrival is smeared by transport and scheduling,
     // while the device stamp is when the sensor actually exposed -- which is
@@ -860,7 +915,48 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     // Preference unchanged (colour -> BGR8, mono stays Mono8); the difference
     // is that it is now chosen from what the camera actually advertises rather
     // than set blind. Must happen before arv_camera_create_stream.
-    if (has_bgr8)
+    // INSP_CAM_PIXEL_FORMAT overrides the preference: "mono8", "bgr8", or
+    // unset for the rule above.
+    //
+    // The rule costs three bytes per pixel on a camera that has one. The
+    // MV-CA050-11UM is a MONOCHROME body and still advertises BGR8 -- it
+    // converts internally -- so "prefer BGR8 where offered" picks a format
+    // whose extra two channels are copies. That is invisible at the production
+    // crop and decisive at full frame:
+    //
+    //   560x452  BGR8   759 KB/frame x 37/s =  28 MB/s   fine
+    //   2448x2048 BGR8 15.04 MB/frame x 37/s = 556 MB/s   impossible on USB3
+    //   2448x2048 Mono8 5.01 MB/frame x 37/s = 185 MB/s   measured achievable
+    //
+    // The last line is not a calculation: arv-camera-test on this body, with
+    // this core stopped, sustained 35 frame/s at 175 MiB/s free-running at
+    // full frame. What happens when the link is over-demanded is documented
+    // above at AcquisitionBurstFrameCount and was reproduced here on
+    // 2026-08-11 -- the camera refuses triggers silently, with no error and no
+    // frames, and does NOT recover when the ROI is put back. It took a
+    // physical replug.
+    const char *_pfEnv = getenv("INSP_CAM_PIXEL_FORMAT");
+    const bool  _wantMono = (_pfEnv && strcmp(_pfEnv, "mono8") == 0);
+    const bool  _wantBgr  = (_pfEnv && strcmp(_pfEnv, "bgr8")  == 0);
+    if (_pfEnv) LOGI("INSP_CAM_PIXEL_FORMAT=%s", _pfEnv);
+
+    if (_wantMono && has_mono8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_MONO_8, &err);
+    }
+    else if (_wantBgr && has_bgr8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
+    }
+    else if (_pfEnv)
+    {
+      LOGE("INSP_CAM_PIXEL_FORMAT=%s but the camera does not advertise it "
+           "(mono8:%d bgr8:%d) -- falling back to the default preference",
+           _pfEnv, (int)has_mono8, (int)has_bgr8);
+      if (has_bgr8)      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
+      else if (has_mono8) arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_MONO_8, &err);
+    }
+    else if (has_bgr8)
     {
       arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
     }
@@ -1084,6 +1180,23 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
   
   
+  // Per-frame trace for the flash-identity test. Opened here, beside the
+  // watermark enable, because the two are read together: the trace is only
+  // meaningful when the count it records is real.
+  {
+    const char *tp = getenv("INSP_CAM_FRAME_TRACE");
+    if (tp && *tp && g_frameTrace == NULL)
+    {
+      g_frameTrace = fopen(tp, "w");
+      if (g_frameTrace)
+      {
+        fprintf(g_frameTrace, "cam_ts_us,ext,ext_valid,frame_num,frame_valid,mean\n");
+        LOGI("INSP_CAM_FRAME_TRACE -> %s", tp);
+      }
+      else LOGE("INSP_CAM_FRAME_TRACE: cannot open %s", tp);
+    }
+  }
+
   // INSP_CAM_TRIG_WATERMARK: have the camera stamp its trigger count into the
   // image so a report can carry it.
   //
