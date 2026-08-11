@@ -1605,8 +1605,18 @@ At pf 8000 (tick 62.5 us), worst-tick breakdown in us:
 
 `acts` never exceeded 27 us even in the worst build. The spike alternates
 between `gate` and `phantom` and is never in both on the same tick, because
-those are the two callers of `newPulseEvent` and only one of them admits on any
-given tick. So the cost is admission, and it is once per object -- which is
+those are the two callers of `newPulseEvent`.
+
+**Correction (2026-08-11, from soak analysis).** The reason first written here
+-- "only one of them admits on any given tick" because of the sensor/phantom
+ordering -- is WRONG. There is no interlock: `GateSensing()` and
+`phantomServiceISR()` both call `newPulseEvent` unconditionally, in the same
+tick. What actually keeps them apart is the fire-rate limiter at the top of
+`newPulseEvent`, `if(curTime-_preTime < GATE_SEP_EFF_us) return -8;` -- the
+second caller short-circuits after ~169 cycles. The conclusion holds and the
+stated reason did not, which matters because it makes the guarantee CONDITIONAL
+on `GATE_SEP_EFF_us` being non-zero. Both paths were genuinely active during the
+soak (~17.5 real sensor edges/s plus ~12 injected/s). So the cost is admission, and it is once per object -- which is
 exactly the rarity that was mistaken for a rare expensive task body.
 
 It is not computation. Admission runs once per ~1200 ticks, so every line of it
@@ -1960,3 +1970,108 @@ teardown that cannot confirm the plate stopped must not report success.
 
 Worth generalising: on this link an `ack` is cheap to read and every script here
 had been throwing it away.
+
+
+## What a 31-minute speed soak found, and what it could not (2026-08-11)
+
+`tools/speed_soak.py`, 1846 s, 81 speed changes (108 including retargets), 53
+transactions, 30787 measured pulses, 30.7M ISR ticks, plate random-walking
+3337..14003. Four independent analyses over the same log.
+
+### Clean, with the numbers that make it a real check
+
+* **Zero ISR overruns**, and the counter is arithmetically consistent, not
+  broken: the record tick was 7772 cycles against a budget of 8980 at the speed
+  it occurred, and 8569 at the fastest speed reached.
+* **Zero device-side stalls.** Steady-state inter-tick gap high-water grew only
+  124 -> 232 us over the whole run, i.e. the worst stall in 31 minutes was one
+  deferred alarm. **The 12696 us `isr_gap_max` is a teardown artifact** -- it
+  appears only in the post-stop sample, and at `PLATE_FREQ_CURRENT` walking down
+  to the 10 Hz cutoff a "gap" of 12.7 ms is definitional. Read `isr_gap_max`
+  from the last IN-RUN sample or it will report a fake 12.7 ms stall on every
+  stop.
+* **No heap movement at all.** `free_heap` was bit-identical in 534 of 535
+  samples. This is `free_heap`, not `min_heap` -- the instantaneous value never
+  moved, so no extrapolation is needed and none is offered.
+* **Speed changes leave no signature in ISR duration.** Rows within 4 s of a
+  change: mean 19.7 us, max 28. Rows more than 10 s away: mean 21.6, max 26. 81
+  changes with parts admitted throughout is the exact scenario that hung the
+  board twice; it did not recur.
+* **Every admitted part got a verdict.** `accept - verdicts - pipe_registered`
+  was 0 or 1 in every sample of the running phase, for 31 minutes.
+* **Transactions reconcile exactly**: 41 primary out-of-band changes + 12
+  retarget commands that arrived after the prior transaction had already
+  committed = 53 = `FREQ_TXN`. Zero timeouts, worst drain 4474 ms against a
+  10 s limit.
+
+### Found and fixed
+
+* `stageWidthRefFreq()` returned the SETPOINT -- see the commit and the
+  `stageWidthRefFreq` comment. Every delivered-width extreme in the run was this.
+
+### Found, NOT fixed -- these are real and open
+
+**1. `GATE_EDGES` counts only real sensor edges, but injected pulses land in the
+same outcome counters.** `phantomServiceISR` and `virt_pulse` call
+`newPulseEvent` directly and never touch `GATE_EDGES`, so with the injector
+armed `edges != accept + sum(rejections)`: 32639 versus 61121 here, and
+`d_accept > d_edges` in 278 of 534 intervals. The firmware publishes
+`yield_.gate.pct = 100*accept/edges` and `overall_pct = 100*acted/edges`, both
+of which are then unbounded above 100% -- this run peaked at 96.3% by luck. The
+comment calling edges "the honest denominator" is false whenever the injector is
+on. **Production is unaffected (no injector), but every soak number derived from
+`edges` is.**
+
+**2. The injected path bypasses the band test.** `PLATE_IN_BAND` is checked in
+`GateSensing`, not in `newPulseEvent`, so injected pulses are admitted while the
+plate is out of band -- the one condition the design says must not admit.
+`blockNewDetectedObject` IS inside `newPulseEvent`, so the drain still blocks
+both paths and the transaction results stand. But any claim of the form
+"admission paused because the plate left the band", measured with `virt_pulse`,
+is only evidence about the sensor path.
+
+**3. `rej_width` has a 5x speed dependence** -- 3.27% of edges at 2000-4000 Hz
+falling monotonically to 0.61% at 12000-14000, and it is not a ramp artifact
+(1.18% steady versus 0.87% while ramping). Pulse width is measured in step
+ticks and a fixed part subtends a fixed number of steps, so first principles
+predict NO speed dependence. Something real-time is leaking into a step-domain
+measurement; the sensor's fixed electrical edge rate smearing across more ticks
+when each tick is shorter is the obvious suspect. Small (378 parts in 31 min)
+but systematic, and it grows as production speed rises.
+
+**4. Roughly one pipeline-depth of parts is discarded unattributed at every
+stop** (22 here): admitted, never given a verdict, counted in no rejection
+bucket.
+
+### What this run could NOT test -- do not read these zeros as passes
+
+* **`SEL_SUPPRESSED` is vacuous here.** All 30951 verdicts were NA; SEL1/2/3
+  never fired, so the branch that increments it was never entered.
+* **The `act_cap` guard is untested where it matters.** `act_cap_n` is 0 across
+  195733 grow events, but CAM1's window is 0.12 of the part pitch -- it cannot
+  bind at any speed in range. SEL1's is up to **1.80**, which is exactly the
+  inversion the cap exists to prevent, and the SEL queues were never populated.
+  **Do not conclude from this run that the cap is dead code.**
+* **The retarget branch got one sample.** The harness aimed to land a second
+  change 0.4-1.5 s into a drain; measured delays were 2.92-3.93 s, because
+  `peek.cmd` blocked its full window on every command. Mean drain is ~1.13 s
+  (2088 blocked / 53 transactions / 35 per s), so 26 of 27 "retargets" hit a
+  closed transaction. `cmd` now returns on the id match in ~7 ms, so a rerun
+  will actually reach the branch.
+* **`FREQ_TXN_TIMEOUT` never ran** -- worst drain was 4474 ms against 10000.
+* **The slowest condition was never reached**: the walk bottomed at 3337, not
+  the intended 3000, so the longest drain is extrapolated.
+* **Nothing camera.** `sync_disagree`, `sync_rejected`, `sync_rebuilds`,
+  `sync_cal_fails` are all zero because nothing ever challenged the clock model.
+* **`act_late_max` was null in all 535 samples** -- the firmware emits it from
+  the `poll` handler, and the harness only sent status commands. The whole
+  `LATE_*` diagnostic bundle went unread.
+
+### The margin that is actually tight
+
+Worst tick 32 us against a 35.7 us budget at 14000 -- **3.3 us of headroom, and
+it was reached, not extrapolated.** ISR duration is driven by part rate, not
+plate speed: work per tick is flat at ~21 us envelope across 3000-14000 while
+only the budget shrinks (env/tick correlates with speed at r=0.94, env itself at
+r=0.03). An empty pipeline halves it; beyond ~20 objects in flight there is no
+further growth. Anything added to the ISR path spends that 3.3 us directly.
