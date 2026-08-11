@@ -6126,6 +6126,25 @@ int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t c
   // independent ways to place the report -- a hardware counter and two clocks --
   // and can require them to agree. Omitted entirely when the watermark is off,
   // so the device can tell "no counter" from "counter zero".
+  // Fault injection: INSP_PERIF_PCNT_SLIP=N shifts pcnt by +1 from the Nth
+  // report onward. That is exactly the shape of a trigger the camera refused
+  // -- a permanent step of one, not a transient -- and it is the failure the
+  // device's dual-mode pairing exists to catch. A mechanism that has only ever
+  // been observed agreeing has not been tested; this is how the disagreeing
+  // half gets exercised without waiting for a real refusal.
+  //
+  // Deliberately on the wire and not in the pairing: the point is to lie to
+  // the device in the one field under test and watch it refuse to sort.
+  if (pcnt >= 0)
+  {
+    static const int64_t _slipAt = []{ const char *e = getenv("INSP_PERIF_PCNT_SLIP");
+                                       return e ? atoll(e) : 0; }();
+    if (_slipAt > 0)
+    {
+      static std::atomic<int64_t> _n{0};
+      if (++_n >= _slipAt) pcnt += 1;
+    }
+  }
   if (pcnt >= 0)
     return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
       "{"
