@@ -919,8 +919,24 @@ stagePulseOffset STAGE_PULSE_OFFSET={
 // CAM/L/SWITCH offsets are captured then, while the SEL offsets are read later
 // in the SWITCH branch. A config change between those two moments gives that one
 // object new SEL timing with old CAM timing -- an inherent property of reading
-// SEL late, unrelated to tearing, and harmless because config only changes
-// during deliberate setup.
+// SEL late, unrelated to tearing.
+//
+// This used to be dismissed as harmless "because config only changes during
+// deliberate setup". That is NO LONGER TRUE: STAGE_PULSE_WIDTH_apply() now runs
+// from the ramp service, so the derived *_off fields move continuously while
+// the plate changes speed, and publishes are frequent rather than rare.
+//
+// The split stopped being a wart and became the mechanism. A window fixed early
+// has to be conservative about a speed it cannot yet know, so CAM/L convert
+// against max(CURRENT,TARGET) and come out long; the blow is read late enough
+// that CURRENT is the speed it will actually fire at, so it converts against
+// that and keeps its DURATION. See STAGE_PULSE_WIDTH_apply's two parameters.
+//
+// What still holds is the tearing guarantee, which is what this snapshot is
+// for: a reader sees one whole buffer. Readers are Run_ACTS and
+// ActRegister_pipeLineInfo, both inside onTimer(), and they hold the pointer
+// for a handful of instructions -- publishes are 256 loop passes apart, so a
+// reader cannot span two of them and meet its own buffer being rewritten.
 static stagePulseOffset SPO_snap[2] = { STAGE_PULSE_OFFSET, STAGE_PULSE_OFFSET };
 static volatile stagePulseOffset* volatile SPO_active = &SPO_snap[0];
 
@@ -983,17 +999,56 @@ bool STAGE_CENTER_CLAMP_WARN = false;
 // than asked for -- which is the safe side. (SETPOINT / TARGET / CURRENT are
 // three different variables here; using the wrong one is a mistake this
 // codebase has already made once, in the host panel.)
-void STAGE_PULSE_WIDTH_apply()
+// pf is the speed the pulse will actually be traversed at, NOT the setpoint.
+//
+// It used to be PLATE_FREQ_SETPOINT, converted once per set_setup, which makes
+// every window a fixed ARC -- and an arc is a fixed distance, so the TIME it
+// takes scales with 1/speed. That is invisible while speed only ever changes
+// through set_setup (which re-runs this), and wrong the moment anything else
+// moves the plate: at half speed the blow lasts twice as long.
+//
+// "Twice as long" is not the benign direction the width comment above assumes.
+// It is benign for the camera and the light -- more exposure, more LED duty.
+// It is not benign for a nozzle: what dislodges a neighbouring part is
+// IMPULSE, force times dwell, and dwell scales with 1/speed. Dislodging is a
+// threshold, not a proportion, so a neighbour that sits still at full speed
+// can be ejected at reduced speed. A blow has to be a fixed TIME.
+//
+// Which means the arc has to breathe as the speed changes -- and that is only
+// safe because the nozzles can now be CENTRED (stage_pulse_center). Around a
+// centre the window expands and contracts symmetrically about the part; from a
+// fixed start it would move only the trailing edge, walking the part's position
+// within its own window as the speed changed.
+// TWO speeds, because the two kinds of station have their offsets read at
+// different moments and therefore need different answers.
+//
+//   pf_early  CAM / L. ACT_PUSH_TASK bakes offset+gate_pulse into targetPulse
+//             at REGISTRATION, so this window is fixed while the part still has
+//             most of a revolution to travel. If the plate is accelerating, the
+//             part crosses it faster than the speed it was computed at, and the
+//             window comes out SHORT -- the camera misses the trigger, or the
+//             light is still dark during exposure. So this one is converted
+//             against the fastest the part might see: max(CURRENT, TARGET).
+//
+//   pf_late   SEL. The blow offsets are read late, in the SWITCH branch, a few
+//             thousand ticks before the nozzle fires. The speed then IS the
+//             speed at blow time, so converting against CURRENT gives the blow
+//             the duration it was asked for -- which is the whole point, since
+//             what dislodges a neighbour is impulse and impulse follows dwell.
+//
+// Reading SEL late used to be documented as a harmless quirk. It is what makes
+// a constant blow time possible.
+void STAGE_PULSE_WIDTH_apply(float pf_early, float pf_late)
 {
-  const float pf = PLATE_FREQ_SETPOINT;
-  if(!(pf > 0)) return;                 // no speed, no conversion
+  if(!(pf_early > 0) || !(pf_late > 0)) return;   // no speed, no conversion
   // ticks = us * (2*pf) / 1e6, rounded up, never zero.
-  auto us2t = [pf](uint32_t us) -> uint32_t {
+  auto us2t_at = [](uint32_t us, float pf) -> uint32_t {
     if(us == 0) return 0;
     double t = ((double)us * 2.0 * (double)pf) / 1000000.0;
     uint32_t r = (uint32_t)(t + 0.999999);
     return r ? r : 1;
   };
+  auto us2t = [&](uint32_t us) -> uint32_t { return us2t_at(us, pf_late); };
 
   // The SEL blow is the one width that must ALSO respect distance: a fixed time
   // covers more plate as speed rises, and a blow wide enough to still be open
@@ -1013,7 +1068,7 @@ void STAGE_PULSE_WIDTH_apply()
   for(auto &m : M)
   {
     if(m.us == 0) continue;             // not configured -> leave *_off alone
-    uint32_t t = us2t(m.us);
+    uint32_t t = us2t_at(m.us, m.is_sel ? pf_late : pf_early);
     // WARN, do not clamp.
     //
     // A blow wider than half the admission spacing is still open when the next
@@ -1394,7 +1449,23 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 // The calibration phase is documented where it is implemented, far below; the
 // state machine that drives it lives up here.
 static void calibrationBegin(bool full);
-void STAGE_PULSE_WIDTH_apply();
+void STAGE_PULSE_WIDTH_apply(float pf_early, float pf_late);
+// The speed a window fixed NOW must survive: the fastest the part might be
+// moving by the time it gets there. During a ramp that is where it is heading,
+// not where it is. A stopped machine still needs a derivation so the panel and
+// the persisted config show something real, hence the setpoint fallback.
+static inline float stageWidthEarlyFreq()
+{
+  float f = (PLATE_FREQ_CURRENT > PLATE_FREQ_TARGET) ? PLATE_FREQ_CURRENT
+                                                     : PLATE_FREQ_TARGET;
+  return (f > 0.0f) ? f : PLATE_FREQ_SETPOINT;
+}
+// The speed the blow will actually happen at: SEL offsets are read a few
+// thousand ticks before the nozzle fires, so now is close enough to then.
+static inline float stageWidthLateFreq()
+{
+  return (PLATE_FREQ_CURRENT > 0.0f) ? PLATE_FREQ_CURRENT : PLATE_FREQ_SETPOINT;
+}
 static void calibrationCleanup();
 static void spinupBegin();
 // Verdict trace: the last N (object, verdict) pairs, in application order.
@@ -6446,6 +6517,34 @@ void firmwareLoop()
       }
       else if(meas_us==0){ meas_step=SYS_STEP_COUNT; meas_us=nowUs; }
     }
+    // Re-derive the station windows against the speed the plate is ACTUALLY
+    // running at, so a width in microseconds stays that many microseconds while
+    // the speed moves. Without this the windows are a fixed arc pinned to
+    // whatever speed the last set_setup happened to see.
+    //
+    // Here rather than in the step ISR: this does seven divides and a publish,
+    // and the ISR's whole discipline is that it reads one pointer and touches
+    // nothing else. The publish is a double-buffer swap, so a reader either
+    // sees the old set or the new one, never a mix.
+    //
+    // Guarded by a relative threshold, not run every pass. Below ~0.4% the
+    // derived tick counts do not change (they are rounded up to whole ticks),
+    // so re-deriving would burn the divides to write back what is already
+    // there. During a ramp this still fires many times; that is the point.
+    {
+      static float lastApplyFreq = 0.0f;
+      const float f = PLATE_FREQ_CURRENT;
+      if(f > 0.0f)
+      {
+        const float d = f - lastApplyFreq;
+        if(lastApplyFreq <= 0.0f || d > f*0.004f || d < -f*0.004f)
+        {
+          lastApplyFreq = f;
+          STAGE_PULSE_WIDTH_apply(stageWidthEarlyFreq(), f);
+        }
+      }
+      else lastApplyFreq = 0.0f;   // stopped: next spin-up re-derives from scratch
+    }
     if(PLATE_FREQ_CURRENT==PLATE_FREQ_TARGET)
     {
       if(PLATE_FREQ_TARGET==0 && SYS_FREQ_STABLE==false)//just stable
@@ -7210,7 +7309,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // may have changed in this same set_setup, and every configured width is a
   // function of it. Cheap, and it removes an ordering dependency between two
   // keys in one message.
-  STAGE_PULSE_WIDTH_apply();
+  STAGE_PULSE_WIDTH_apply(stageWidthEarlyFreq(),stageWidthLateFreq());
   if(STAGE_WIDTH_SEL_WARN)
   {
     STAGE_WIDTH_SEL_WARN = false;
