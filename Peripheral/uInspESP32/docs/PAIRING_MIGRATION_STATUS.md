@@ -59,8 +59,13 @@ Host: `PerifTriggerPairing.hpp` (timestamp matching), gate throttle UI, pairing
 stats in the panel, link RESYNC, idle heartbeat, and the dev console
 (`INSP_PERIF_CONSOLE`, with `!pd` injection).
 
-**Still off:** `report_match_ts`. The device computes the timestamp match on
-every report and compares it against the tid match, but acts on the tid.
+**Still off:** `report_match_ts` and `report_match_pcnt`, both default false.
+With neither on, the device computes the timestamp match on every report and
+compares it against the tid match, but acts on the tid. See 2026-08-11 below
+for what turning both on does and what it has been measured doing.
+
+`report_match_pcnt` additionally needs `INSP_CAM_TRIG_WATERMARK` on the host:
+without `pcnt` in the report it can never learn its offset and stays inert.
 
 ---
 
@@ -222,6 +227,67 @@ induced loss", which is the one case still unproven.
   the log, deliberately -- `get_running_stat` is ~1kB and the log transport
   corrupts records that long.
 - **The BOOT press is not solvable in software on this chip.** See below.
+
+## 2026-08-11: the second pairing, and the first test that made it fail
+
+The device now places a frame two ways at once and refuses to sort when they
+disagree.
+
+`report_match_ts` answers **when** the frame was taken: two free-running
+crystals, an offset, a tolerance window. `report_match_pcnt` answers **which
+pulse** it was: the camera counts triggers on the CAM1 wire (`ExtTriggerCount`,
+watermarked into row 0 and returned in the report as `pcnt`), the board counts
+the pulses it puts on that same wire, and the difference is a constant fixed at
+the camera's power-on. Exact arithmetic, no window, nothing to re-measure.
+
+They are worth running together because they fail differently. A clock
+mispairing is continuous — drift, latency, a window slightly too wide — so it
+can be off by one object and still look reasonable. A count mispairing is
+discrete: exactly right, or off by a whole pulse. For both to name the same
+wrong object, the clock would have to be off by precisely the object the count
+is off by, which is not a way either of them fails.
+
+With both on, they must name the SAME object or the machine stops
+(`CAM_PAIRING_DISAGREE`, error 16). **"One found an object and the other did
+not" counts as a disagreement**, not a fallback — accepting the survivor gives
+back exactly the single-mechanism confidence the dual mode exists to refuse.
+Both silent is different and is not a conflict: that is a report neither can
+place yet, during CAL before either offset exists, and it falls through to
+`bySync`/`byTid` as before.
+
+The count offset is learned **once**, from a calibration pulse fired with
+nothing else outstanding, and never quietly re-learned. A trigger the camera
+refuses advances this board's counter and not the camera's, so the offset steps
+by one permanently — and that step is the diagnostic, not a defect to absorb. A
+recal drops it along with the clock estimate.
+
+`CAM_PULSE_N` is incremented at all three places that drive CAM1: the stage
+ISR, `calFireNow`, and the `trig_cam_*` commands. A pulse fired without being
+counted shifts the offset exactly as a refused trigger does and looks identical
+in the counters.
+
+### Both halves measured
+
+Virtual train, plate at freq 26000, ~39 objects/s, trigger announcements OFF
+(`trig_report` false) so the timestamp and the count were the only two
+mechanisms in play — no tid to fall back on.
+
+| | result |
+|---|---|
+| agreement, 12.5 min | 18 samples, `slip 0`, `miss 0`, `hit` 29431 tracking NA 29596 one-for-one, offset 0, 0 halts |
+| disagreement, injected | halts on the **first** affected frame, `error_hist [16]`, `miss 1`, `hit` frozen |
+
+The second row is the one that matters. 30k frames of agreement tests one
+branch; a mechanism that has only ever been seen agreeing has not been tested.
+`INSP_PERIF_PCNT_SLIP=N` (core) shifts `pcnt` by +1 from the Nth report onward,
+which is the shape of a refused trigger — a permanent step of one — and the
+board stopped at the first frame it reached, not the second and not after a
+threshold.
+
+What this does NOT show: a real refusal has not been produced. The injection
+lies to the device in one field; it does not make the camera drop a pulse. The
+knee is known to be between 200 Hz (clean) and 400 Hz (53% refused), so
+producing one is a firmware-side burst away.
 
 ## Tomorrow, in order
 
