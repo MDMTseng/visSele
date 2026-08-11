@@ -151,7 +151,20 @@ bool SYS_STEPPER_DISABLED=false;
 // trusting the driver to honour an enable pin.
 volatile bool DRY_RUN=false;
 
-uint32_t SYS_MIN_PULSE_TIME_SEP_us=4000;
+// 30000us = 33/s. This was 4000us (250/s), which is faster than ANY camera
+// configuration measured on this machine -- 5420us (184.5 fps) at the
+// production crop, 28425us (~35 fps) at full frame. A compiled default that
+// exceeds the frame floor admits a trigger density the camera cannot take, and
+// what that produces is not a dropped part: it is triggers with no frames, so
+// the host's pairing walks off by one and STAYS off.
+//
+// Defaulted slow rather than fast because the two errors are not symmetric.
+// Too slow costs throughput, which is visible on the panel and fixed by typing
+// a number. Too fast mis-sorts, and looks healthy while doing it. 33/s sits
+// under both measured floors, so a board that comes up with no NVS config is
+// safe whatever ROI it is pointed at -- and slow enough that nobody ships it
+// by accident.
+uint32_t SYS_MIN_PULSE_TIME_SEP_us=30000;
 
 // ---------------------------------------------------------------------------
 // Automatic trigger rate
