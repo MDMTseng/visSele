@@ -956,7 +956,13 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
         <Why>位置 = 從閘門登記算起走了多少 tick,1 tick = {MM_PER_PULSE.toFixed(4)} mm,
           與轉速無關。寬度 = 該站點持續開啟的 tick 數。括號中的時間是
           {isRef(plate_freq) ? `plate_freq ${REF_FREQ} 參考值` : '目前轉速'}下換算的。
-          改完要按「存入 NVS」才會在重開機後存活。</Why></span>}
+          改完要按「存入 NVS」才會在重開機後存活。
+
+          跑機中改位置,盤上的料會有一部分用舊值、一部分用新值 —— 已經過
+          SWITCH 的料用舊的,還沒到的用新的,所以會有幾顆分錯。這是刻意接受
+          的:調位置本來就是停產調機在做的事,不值得為它多做一套排空流程。
+          韌體那邊同樣標註在 STAGE_PULSE_OFFSET_publish 的註解裡。
+          (轉速不適用這條 —— 轉速是生產中會動的,大幅變速會先把管線排空。)</Why></span>}
         extra={<span style={{ fontSize: 11, whiteSpace: 'nowrap',
                               color: spoUnlock ? '#c60' : '#888' }}>
           {spoUnlock ? '可編輯' : '唯讀'}{' '}
