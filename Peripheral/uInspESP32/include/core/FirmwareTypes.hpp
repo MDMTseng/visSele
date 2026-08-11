@@ -141,6 +141,11 @@ struct PulseTimeSyncInfo
   /* The plate never reached its target speed. The ramp is deterministic   */ \
   /* arithmetic, so this means the machine is not doing what it was told.  */ \
   MACROX(PLATE_SPINUP_TIMEOUT,                15, "plate never reached target speed") \
+  /* Two independent pairings -- camera timestamp and camera trigger count  */ \
+  /* -- named different objects for one frame, or only one of them could    */ \
+  /* name an object at all. Either way the machine cannot say which part a  */ \
+  /* verdict belongs to, and that is the one thing it must never guess.     */ \
+  MACROX(CAM_PAIRING_DISAGREE,                16, "timestamp and pulse-count pairing disagree") \
   MACROX(SEL_ACT_LIMIT_REACHES,             0xff, "SEL actuation limit reached")
 
 #define GEN_ERROR_CODE_ENUM_X(NAME,VALUE,TEXT) NAME = VALUE ,
