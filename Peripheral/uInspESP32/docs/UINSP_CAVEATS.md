@@ -1530,3 +1530,42 @@ is the case for timestamp as the authority stated as strongly as this rig can
 state it: both failure modes present at once, and it still separated usable
 from unusable without a single error.
 
+
+## The step ISR does not fit in its own tick when the act queue is loaded (2026-08-11)
+
+`onTimer` runs at `2 * plate_freq`. Measured with `health.isr_dur_max_us`:
+
+| act queue | ISR avg | ISR max | tick at pf 8000 | overruns |
+|---|---|---|---|---|
+| empty (plate turning, no inspection) | 2 us | 33 us | 62.5 us | 0 |
+| loaded (virtual train, inspection on) | 3 us | **77 us** | 62.5 us | 3 -> 63 and climbing |
+
+77 us does not fit in a tick above ~6500. At the production 10500 the tick is
+47.6 us, so the peak is 162% of it; at 15000, 231%.
+
+It survives on rarity -- 63 overruns in 1.37M ticks, against a 3 us mean -- not
+on margin. Two things push it over:
+
+* **Ramping with parts in the pipeline.** The tick shrinks while the queue
+  stays loaded. Admitting parts mid-ramp was tried twice on 2026-08-11 and hung
+  the board both times: complete UART silence, no boot banner, cleared only by
+  a DTR reset. A starved main loop is exactly that symptom. The gate's
+  `SYS_FREQ_STABLE` check is what has always kept the queue empty during a
+  ramp, so the two had never met.
+* **Higher speed.** The budget shrinks linearly with `plate_freq` while the
+  ISR's work does not.
+
+`health.isr_overrun_n` is the number to watch. Non-zero is not yet a failure;
+climbing fast, or at a speed where `isr_dur_max_us` exceeds `1e6/(2*plate_freq)`
+by much, is how far in it is.
+
+## Nothing in the step ISR may touch floating point
+
+The first version of the measurement above read `PLATE_FREQ_CURRENT` (a float)
+and computed `240000000.0f/(2.0f*f)` inside `onTimer`. The board went silent the
+instant the plate was told to turn -- which is exactly when this ISR begins
+running -- and stayed silent until a reset.
+
+The "Restore FPU / and turn it back off" note at the bottom of `onTimer` is
+about this. Compute anything that needs an FPU in the main loop and hand the
+ISR an integer; `ISR_BUDGET_CY` is the worked example.
