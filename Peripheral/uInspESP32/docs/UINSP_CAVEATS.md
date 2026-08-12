@@ -2927,3 +2927,32 @@ one:
 Read it. And widen the capture window: four of ten announcements were missed
 here simply by not listening long enough, which costs objects rather than
 correctness but makes the arithmetic harder to check.
+
+---
+
+## The pairing migration is promoted; the host has not been told
+
+2026-08-12, closing A6's first two steps and correcting the checklist that
+carried them.
+
+The board runs `report_match_ts: true`, out of NVS, and has been. The checklist
+still said "still false" and planned a re-soak to justify promoting it — the
+promotion had already happened. The evidence that supports it is the 8-hour soak
+taken with the flag OFF, which is the harder test: the device computed the
+timestamp match on every report and compared it against the tid match, and
+across 337826 reports they never once disagreed, with `delta_max_us` 121 against
+a 5000 µs tolerance.
+
+`report_match_pcnt` is false on purpose. The camera's own trigger count was the
+third candidate and was measured unreliable (`6c88be34`, "ask the picture which
+mechanism is right, and it says pcnt is not"), so trigger-count figures are not
+a second opinion worth taking.
+
+**What is still true is the part nobody did:** the host still compiles its own
+pairing. `PERIF_CORE_PAIRING` is `1`, `PerifTriggerPairing.hpp` is 645 lines,
+and `wiringPanel.cpp` has 21 conditional sites — `tap_trigger_info`,
+`keep_clock_warm`, the trigger wait, the early dump — all reconstructing a value
+the device now announces outright.
+
+Two implementations of one decision is the shape a mis-sort hides in. Deleting
+them is not tidying.

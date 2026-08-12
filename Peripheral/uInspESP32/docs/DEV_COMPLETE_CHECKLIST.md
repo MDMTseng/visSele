@@ -226,26 +226,32 @@ timeout cannot reach it.
 - decide whether an idle period should resync on its own; the argument against
   is that a latch you can silently leave is a latch that hides corruption
 
-### A6. Promote `report_match_ts`, then delete the host's 450 lines
+### A6. `report_match_ts` PROMOTED — the host's 450 lines are what is left
 
-`report_match_ts` is still **false**. The device computes the timestamp match on
-every report and compares it against the tid match, then acts on the tid.
+**Steps 1 and 2 are done.** The paragraph that stood here said "`report_match_ts`
+is still false", and that was stale: the board reads `report_match_ts: true`
+from NVS with `cfg_from_nvs: true`, and has been running that way. The timestamp
+match is the authority, not a shadow calculation compared against the tid.
 
-The evidence for promotion is overwhelming and now includes the soak:
+The evidence that justified it, from the 8-hour soak with the flag OFF:
 `agree` 337826, `disagree` **0**, `rejected` 0, `rebuilds` 0, `cal_fails` 0,
-`delta_max_us` 121 against a 5000 µs tolerance.
+`delta_max_us` 121 against a 5000 µs tolerance — a long run on real parts at
+production settings, which is the condition `PAIRING_MIGRATION_STATUS.md` set.
 
-`PAIRING_MIGRATION_STATUS.md` set the promotion condition as "a long run on real
-parts at production settings, not a rig". **The 8-hour soak is that run, with
-the flag off.** So the remaining work is small and specific:
+**`report_match_pcnt` is false, deliberately.** The camera's own trigger count
+was the third candidate mechanism and it was measured unreliable — see
+`6c88be34`, "ask the picture which mechanism is right, and it says pcnt is not".
+Trigger-count numbers are not a second opinion worth having; the timestamp is.
 
-1. Re-run the same soak with `report_match_ts: true`.
-2. Promote.
-3. Delete from the host: `PerifTriggerPairing.hpp`, `tap_trigger_info`,
-   `keep_clock_warm`, the trigger wait, the early dump. ~450 lines that exist
-   only to reconstruct a value the device already announces.
+**Step 3 is untouched and is now the whole item.** The host still compiles its
+own pairing: `PerifTriggerPairing.hpp` is 645 lines and `PERIF_CORE_PAIRING` is
+still `1`, with 21 conditional sites in `wiringPanel.cpp` — `tap_trigger_info`,
+`keep_clock_warm`, the trigger wait, the early dump. All of it exists to
+reconstruct a value the device now announces outright.
 
-Step 3 is the actual payoff and it should not be left dangling after step 2.
+This is the payoff, and leaving it in place costs more than the lines: every one
+of those sites is a second implementation of the thing that was just promoted,
+so the two can disagree and the disagreement will look like a machine fault.
 
 ---
 
@@ -351,10 +357,9 @@ here so that when one does bite, the diagnosis is already written down.
    HOST's: the core reads the peripheral line with `if (line.size() < 4096)`
    (`wiringPanel.cpp:6703`) and truncates past that with no device-side guard
    able to see it. The next few diagnostics fit; a batch does not.
-3. **`report_match_ts` is `true` in the board's NVS** (read 08-12,
-   `cfg_from_nvs: true`), while A6 below is written on it being false. One of
-   the two is stale. A6's plan — re-soak, promote, delete the host's 450 lines —
-   does not survive that being unresolved, so resolve it before starting A6.
+3. ~~**`report_match_ts` is `true` in the board's NVS** while A6 is written on
+   it being false.~~ RESOLVED 08-12: the board was right and the checklist was
+   stale. A6 is rewritten; only its step 3 remains.
 
 ## Not yet measured
 
