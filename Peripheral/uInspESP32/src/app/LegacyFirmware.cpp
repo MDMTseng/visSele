@@ -991,6 +991,22 @@ volatile uint32_t GATE_DISCARD_STOP = 0;
 // as the plate slows. The width sums make the drift itself measurable rather
 // than inferred -- mean width per run, against the configured window.
 volatile uint32_t GATE_REJ_WIDTH_LO=0, GATE_REJ_WIDTH_HI=0;
+// The width DISTRIBUTION, not just its mean and extremes.
+//
+// A2 is diagnosed -- the drift is a fixed sensor time, t0*f -- but the fix was
+// deliberately not written, because correcting the threshold only helps if the
+// population near it is parts. w_min of 44-75 says part of the low tail is not
+// (debris, a noise edge), and lowering the threshold would admit those too.
+//
+// 32 linear bins of GATE_W_HIST_BIN ticks. Every edge is counted, accepted or
+// rejected -- the rejected tail is the half being asked about. Integer, one
+// shift and one array write, in the sensor path.
+//
+// Its own command rather than get_running_stat: that document is a few hundred
+// bytes from the host's 4096 truncation limit and 32 more numbers do not fit.
+#define GATE_W_HIST_N   32
+#define GATE_W_HIST_BIN 20
+volatile uint32_t GATE_W_HIST[GATE_W_HIST_N];
 volatile uint32_t GATE_W_MIN=0xFFFFFFFFu, GATE_W_MAX=0;
 volatile uint64_t GATE_W_SUM=0;
 volatile uint32_t GATE_W_N=0;
@@ -3255,6 +3271,11 @@ void IRAM_ATTR GateSensing()
       // Measured on EVERY edge, accepted or not: the rejected tail is the half
       // that carries the speed dependence, so a distribution over survivors only
       // would hide exactly what is being looked for. See GATE_REJ_WIDTH_LO.
+      {
+        uint32_t _b = diff/GATE_W_HIST_BIN;
+        if(_b>=GATE_W_HIST_N) _b=GATE_W_HIST_N-1;   // top bin is "and above"
+        GATE_W_HIST[_b]++;
+      }
       if(diff<GATE_W_MIN) GATE_W_MIN=diff;
       if(diff>GATE_W_MAX) GATE_W_MAX=diff;
       GATE_W_SUM+=diff; GATE_W_N++;
@@ -5302,6 +5323,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     GATE_DISCARD_STOP=0;
     GATE_REJ_WIDTH_LO=GATE_REJ_WIDTH_HI=0;
+    for(int i=0;i<GATE_W_HIST_N;i++) GATE_W_HIST[i]=0;
     GATE_W_MIN=0xFFFFFFFFu; GATE_W_MAX=0; GATE_W_SUM=0; GATE_W_N=0;
     // The clock model too. Leaving it out made every segmented experiment
     // read the previous segment's numbers: an A/B control appeared to show 12
@@ -6687,6 +6709,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
 
   // --- station placement: jog_arm -> jog -> jog_end. See the JOG_STATE block. --
+  else if(strcmp(type,"get_width_hist")==0)
+  {
+    retdoc["type"]="get_width_hist";
+    retdoc["bin"]=GATE_W_HIST_BIN;
+    retdoc["n"]=GATE_W_HIST_N;
+    retdoc["min_width"]=minWidth;      // the threshold the bins are read against
+    retdoc["max_width"]=maxWidth;
+    retdoc["edges"]=GATE_EDGES;
+    JsonArray h=retdoc.createNestedArray("hist");
+    for(int i=0;i<GATE_W_HIST_N;i++) h.add(GATE_W_HIST[i]);
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"jog_arm")==0)
   {
     retdoc["type"]="jog_arm";
