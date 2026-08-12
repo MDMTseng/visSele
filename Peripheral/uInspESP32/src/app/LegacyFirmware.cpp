@@ -5388,6 +5388,39 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // Everything else has a compiled default and is therefore optional; the
     // key list for those is get_setup's own document.
     retdoc["optional"]="every other key in get_setup; absent keeps its default";
+
+    // The settings that came up on compiled defaults because the stored config
+    // did not carry them. This is the RIGHT column of a migration view -- what
+    // to set -- and the stale list in get_setup is the left one, what was
+    // carried and is no longer read. Everything in neither list has the same
+    // name and shape as before and can be copied across without asking; asking
+    // about forty unchanged keys is how the three that changed get buried.
+    //
+    // Emitted here rather than in get_setup: that reply is already the largest
+    // thing this board sends and the host drops any line past 4096 bytes.
+    {
+      const uint32_t *m=MachineConfig::defaultedMask();
+      retdoc["defaulted_n"]=MachineConfig::defaultedCount();
+      JsonArray jD=retdoc.createNestedArray("defaulted");
+      const char *grp; const char *k;
+      for(int i=0;(k=cfgKeyAt(i,&grp))!=NULL && i<128;i++)
+      {
+        if(!((m[i>>5]>>(i&31))&1u)) continue;
+        char dotted[48];
+        if(grp) snprintf(dotted,sizeof(dotted),"%s.%s",grp,k);
+        else    snprintf(dotted,sizeof(dotted),"%s",k);
+        // String, not the char buffer: add(const char*) stores the POINTER
+        // and copies nothing, so every entry would end up aliasing this
+        // stack buffer -- reused each iteration and gone at the brace.
+        jD.add(String(dotted));
+      }
+    }
+    // Said out loud, because the count is right and the name list may not be.
+    retdoc["stale_n"]=MachineConfig::staleKeyCount();
+    if(CFG_STALE_TRUNC) retdoc["stale_truncated"]=true;
+    // Whether this reply itself fitted. A schema that silently lost half its
+    // answer would be the same failure it exists to report.
+    retdoc["doc_full"]=retdoc.overflowed();
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"get_setup")==0)
@@ -8594,6 +8627,38 @@ static const char *const K_TOP[] =
    "io_armed","io_safe_why",                    // ditto
    NULL};
 
+// Set when a name did not fit. The COUNT is still right, so a caller comparing
+// the two can tell -- but nothing said so out loud, and a migration UI that
+// silently shows a subset is how somebody migrates half a config and believes
+// they are finished.
+int CFG_STALE_TRUNC = 0;
+
+// The groups, as data rather than as a chain of strcmp.
+//
+// One table, walked in both directions: cfgUnknownKeys asks "is this stored key
+// in the schema", cfgKeyAt asks "is this schema key in the stored config". The
+// second question is the one that used to have no answer, and it is the
+// dangerous one -- an unknown key is named back and ignored, while a MISSING
+// key does not fail at all, it takes its compiled default.
+static const struct { const char *group; const char *const *keys; } K_GROUPS[] = {
+  {"plate",                K_PLATE},
+  {"gate",                 K_GATE},
+  {"cam",                  K_CAM},
+  {"skip_policy",          K_SKIP},
+  {"stage_pulse_offset",   K_SPO},
+  {"stage_pulse_width_us", K_WIDTH},
+  {"stage_pulse_center",   K_CENTER},
+};
+// Top-level keys that are real configuration, as opposed to the command
+// envelope (type/id/persist) or things get_setup reports back.
+static const char *const K_TOPCFG[] =
+  {"machine_id","host_timeout_ms","CAM1_ID","CAM2_ID","CAM1_Tags","CAM2_Tags",NULL};
+// In the K_ tables because a UI echoing get_setup back must not be told they
+// are unknown, but they are not settings: they are computed and reported. Their
+// absence from a stored config means nothing, so they are not "defaulted".
+static const char *const K_REPORTED[] =
+  {"match_tolerance_mm_eff","unsafe",NULL};
+
 static bool cfgKeyKnown(const char *const *tab, const char *k)
 {
   for(int i=0;tab[i];i++) if(strcmp(tab[i],k)==0) return true;
@@ -8604,10 +8669,44 @@ static void cfgNoteUnknown(const char *grp,const char *k,char *out,size_t outN,i
 {
   (*n)++;
   size_t used=strlen(out);
-  if(used+strlen(k)+strlen(grp?grp:"")+4 >= outN) return;   // truncate, keep counting
+  if(used+strlen(k)+strlen(grp?grp:"")+4 >= outN)
+  { CFG_STALE_TRUNC=1; return; }                           // truncate, keep counting
   if(used) { strcat(out,","); }
   if(grp){ strcat(out,grp); strcat(out,"."); }
   strcat(out,k);
+}
+
+// Every configuration key this firmware accepts, enumerated in a stable order,
+// so a caller can ask about them by index. Returns NULL past the end; *grp is
+// the group name, or NULL for a top-level key.
+//
+// The index is positional, so inserting a key shifts every one after it. That
+// is fine and deliberately not versioned: the only consumer is a bitmask
+// computed at boot and read during the same boot. It is never stored.
+const char *cfgKeyAt(int idx, const char **grp)
+{
+  for(unsigned g=0; g<SARRL(K_GROUPS); g++)
+    for(int i=0; K_GROUPS[g].keys[i]; i++)
+    {
+      if(cfgKeyKnown(K_REPORTED,K_GROUPS[g].keys[i])) continue;
+      if(idx--==0){ if(grp) *grp=K_GROUPS[g].group; return K_GROUPS[g].keys[i]; }
+    }
+  for(unsigned i=0; i<SARRL(IO_POL_TAB); i++)
+    if(idx--==0){ if(grp) *grp="io_on_level"; return IO_POL_TAB[i].name; }
+  for(int i=0; K_TOPCFG[i]; i++)
+    if(idx--==0){ if(grp) *grp=NULL; return K_TOPCFG[i]; }
+  return NULL;
+}
+
+// Was this key absent from the document -- i.e. would it come up on its
+// compiled default? Asked of the STORED document, at boot, once.
+bool cfgKeyAbsent(JsonObject in, const char *grp, const char *key)
+{
+  if(in.isNull()) return true;
+  if(grp==NULL) return in[key].isNull();
+  JsonVariantConst g = in[grp];
+  if(g.isNull() || !g.is<JsonObjectConst>()) return true;
+  return g[key].isNull();
 }
 
 // Returns the count; `out` gets the names, comma separated, truncated if long.
@@ -8615,6 +8714,7 @@ int cfgUnknownKeys(JsonObject in, char *out, size_t outN)
 {
   int n=0;
   out[0]='\0';
+  CFG_STALE_TRUNC=0;
   if(in.isNull()) return 0;
   for(JsonPair kv : in)
   {

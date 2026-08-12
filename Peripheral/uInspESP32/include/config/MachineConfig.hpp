@@ -114,6 +114,15 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
 // Defined beside setMachineSetup; used at boot to report what a stored
 // config carries that this firmware no longer understands.
 int cfgUnknownKeys(JsonObject in, char *out, size_t outN);
+// The same schema, walked the other way. cfgKeyAt enumerates every
+// configuration key this firmware accepts (NULL past the end; *grp is the group
+// or NULL for top level); cfgKeyAbsent asks whether a document carried one.
+// Together they answer "which settings came up on compiled defaults", which is
+// the silent half -- a missing key does not fail, it defaults.
+const char *cfgKeyAt(int idx, const char **grp);
+bool cfgKeyAbsent(JsonObject in, const char *grp, const char *key);
+// Set when the stale-key name list did not fit. The count stays right.
+extern int CFG_STALE_TRUNC;
 
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
 // volatile: shared between the main loop (set_setup) and the step ISR
@@ -183,6 +192,12 @@ namespace MachineConfig
   // Whether begin() found an io_on_level it could believe. Read once, by
   // firmwareSetup, to decide whether to arm the outputs at all.
   bool ioConfigValid();
+  // Bit per cfgKeyAt() index: set = the stored config did not carry that key,
+  // so it is running on its compiled default. A mask rather than a name list
+  // because a list would truncate, and a migration UI that shows a subset is
+  // how somebody migrates half a config and believes they are finished.
+  const uint32_t *defaultedMask();
+  int defaultedCount();
 
   // Commits the globals' current values to NVS. Returns false if the write
   // failed; the in-RAM values are untouched either way.

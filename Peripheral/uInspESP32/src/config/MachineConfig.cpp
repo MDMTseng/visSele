@@ -105,6 +105,26 @@ namespace
   // when a key is absent is the compiled default -- which is the failure being
   // guarded against, not evidence against it.
   bool ioCfgValid = false;
+
+  // 128 bits: cfgKeyAt currently enumerates ~68 keys. Computed at boot from the
+  // stored document and read during the same boot -- never stored, so the
+  // positional index needs no version.
+  uint32_t defaulted[4] = {0,0,0,0};
+  int defaultedN = 0;
+
+  void computeDefaulted(JsonObject in)
+  {
+    defaulted[0]=defaulted[1]=defaulted[2]=defaulted[3]=0;
+    defaultedN = 0;
+    const char *grp; const char *k;
+    for (int i = 0; (k = cfgKeyAt(i, &grp)) != NULL; i++)
+    {
+      if (i >= 128) break;      // the mask is the limit, and it is not close
+      if (!cfgKeyAbsent(in, grp, k)) continue;
+      defaulted[i>>5] |= (1u << (i & 31));
+      defaultedN++;
+    }
+  }
   // Keys the stored config carries that this firmware no longer knows, and
   // what they were set to. Filled at begin(), never acted on, reported so a
   // person can decide. See begin() for why this is not migrated.
@@ -291,6 +311,11 @@ namespace MachineConfig
       // output? If not, the outputs are never armed and the machine sits in
       // safe mode. The rest of the config is still applied -- a machine that
       // cannot actuate should still show the operator its own settings.
+      // Which settings this document did NOT carry, and are therefore about to
+      // run on compiled defaults. The opposite question to staleKeys, and the
+      // one nothing used to ask.
+      computeDefaulted(jdoc.as<JsonObject>());
+
       ioCfgValid = ioConfigCheck(jdoc.as<JsonObject>(),
                                  IO_SAFE_WHY, sizeof(IO_SAFE_WHY)) != 0;
 
@@ -346,6 +371,8 @@ namespace MachineConfig
   }
 
   bool ioConfigValid() { return ioCfgValid; }
+  const uint32_t *defaultedMask() { return defaulted; }
+  int defaultedCount() { return defaultedN; }
 
   bool save()
   {
