@@ -2541,3 +2541,67 @@ Dry run is unaffected by the guard, which is the thing worth knowing before
 touching this again: a dry run has `PLATE_FREQ_CURRENT > 0` with `StepGo` muted,
 so the plate stands still while `PLATE_RUNNING` reads true. Every phantom rig
 that relies on injection keeps working.
+
+---
+
+## The all-NA soak was a headless core, not a blind inspection
+
+2026-08-12. The 8-hour soak's 393537 `NA` with SEL1/SEL2/SEL3 all zero was read
+as "the sorting half never moved". True, but the cause was upstream of the
+machine entirely, and the core says so itself (`wiringPanel.cpp`, the perif
+console): **a headless core loads no def, so it answers NA to every part.**
+
+Nothing was wrong with the gate, the pairing, or the selectors. The run simply
+had no recipe. `act_cap`, `SEL_SUPPRESSED` and `FREQ_TXN` sitting at zero
+coverage is a direct consequence, not an independent finding.
+
+With a def loaded from the WebUI the machine produces real verdicts within
+seconds: SEL3 234 / NA 121 on a first look, and NG -> SEL1 on a deliberately
+out-of-tolerance part (D2.438mm).
+
+### `!ld` and `!st` do not exist in the shipped binary
+
+The perif console's `!` injection was generalised in source to any two-letter
+BPG type, so a rig can send `!ld` (load def) or `!st` (settings) without a
+browser. **The binary in `build/mac-arm64/` at the time of writing (Aug 7) only
+has the hardcoded `!pd`.**
+
+The failure mode is the dangerous kind. An unrecognised `!xx` line does not
+error -- it falls through to the else branch and is **forwarded verbatim to the
+ESP32** as if it were a device command. Check the binary before relying on any
+injection other than `!pd`:
+
+```
+strings build/mac-arm64/visSele | grep injected     # "pd injected" == old
+```
+
+That binary was ~20 InspectionCore commits behind source. A stale core is worth
+ruling out first whenever behaviour disagrees with the code being read.
+
+### NG snapshots are switched OFF at the start of every session
+
+`data/SAMPLE/` has been empty for a week, including across the 8-hour soak, even
+though `machine_setting.json` sets `FI_INSP_NG_SNAP: true`.
+
+Every CI/FI session start does `saveInspFailSnap = false; saveInspNASnap =
+false` (`wiringPanel.cpp:3784`) unconditionally, and the only thing that turns
+them back on is the `ST` handler's `INSP_NG_SNAP` / `INSP_NA_SNAP`. So the
+machine_setting value is overridden at every session start, and an
+`INSP_NG_SNAP` sent BEFORE the session is wiped by it. It has to be sent after.
+
+The cost is that no NG has left an image behind, so nothing can be re-inspected
+offline against a def afterwards.
+
+### A stopped plate cannot produce an FI frame
+
+FI runs `camera->TriggerMode(2)` -- hardware trigger, and on this machine the
+trigger rides the backlight line and is produced by plate motion. Plate stopped
+means no trigger, no frame, and an FI session that looks hung when it is
+correctly waiting.
+
+CI runs `TriggerMode(0)` (free run), which is why the setup view has a live
+picture with the plate at rest. So any "static shot" is necessarily a CI result,
+and CI also turns station-region enforcement OFF (`insp session: CI -- station
+region off`). A verdict seen in the setup view is the core's category mapping;
+the board's SEL counters only move with the peripheral channel open and parts
+actually passing the gate.
