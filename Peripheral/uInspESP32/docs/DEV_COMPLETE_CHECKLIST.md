@@ -71,7 +71,7 @@ stop (full numbers in `UINSP_CAVEATS.md`):
 |---|---|---|
 | `act_cap` | **202** ✅ | NOT the tight window this table predicted — one 9000→13000 ramp did all of it, `act_cap_max_t` 586 |
 | `FREQ_TXN` | **still 0** | 44% changes in both directions with real verdicts. The deletion condition below is now MET |
-| `SEL_SUPPRESSED` | still 0 | unreachable by stopping the plate — see below. Needs B6 |
+| `SEL_SUPPRESSED` | **4** ✅ | covered 08-12 with B6's `sel_suppress` + phantom objects + injected verdicts. No parts, no camera, no driver cut at speed. `tools/fault_sel_test.py` |
 
 **`FREQ_TXN`: delete it.** The condition this checklist set — "if a real-verdict
 soak also leaves it at zero, the honest outcome is to delete the transaction

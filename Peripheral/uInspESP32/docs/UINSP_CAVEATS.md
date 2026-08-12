@@ -2843,3 +2843,52 @@ What this costs in production: any line noise, any partial write, any host that
 dies mid-frame takes the machine deaf, silently, until someone power-cycles it.
 The framing/CRC half of B4 is proven (0 failures in 426840 frames) -- but that
 is the happy path, and this is what happens the first time it is not.
+
+---
+
+## SEL_SUPPRESSED covered, with virtual objects and two failed attempts
+
+2026-08-12. A1's last uncovered mechanism, exercised without parts, without the
+camera, and without de-energising the driver at speed (the only path a real
+machine offers, and it throws parts off a loaded plate).
+
+```
+trig_phantom_pulse   one object per request; the board ANNOUNCES its tid
+report tid cat:1     that exact object gets an NG verdict
+SWITCH               schedules its SEL1 actuation
+fault sel_suppress:M fails the guard for M of them
+```
+
+Result, `tools/fault_sel_test.py`:
+
+```
+6 NG verdicts reported
+  SEL1              = 2   (6 - 4)
+  SEL_SUPPRESSED    = 4
+  sel_suppress_used = 4
+  UNANSWERED 0   NA 6   SKIP 0
+```
+
+Three numbers that have to agree and do.
+
+### Both wrong turns are worth keeping
+
+**Dry run is one of the three things the guard tests.** The first attempt used
+it to keep the plate still while injecting. Every actuation was therefore
+suppressed by the harness itself, SEL_SUPPRESSED came out exactly equal to the
+armed count, and it read as a pass. `sel_suppress_used` was 0 -- the injected
+fault had never been consumed -- and that is the only reason it was caught. A
+counter that says "the instrument fired" is worth as much as the instrument.
+
+**Do not guess a tid.** `tid_counter` is not reset by `reset_running_stat` and
+CAL consumes tids of its own, so 1..N is a guess that silently reports verdicts
+against objects that do not exist. The `cam_trig` announcement carries the real
+one:
+
+```
+{"type":"cam_trig","tid":2,"cam":1,"t_us":19160985,"gate_pulse":32640,"w":20}
+```
+
+Read it. And widen the capture window: four of ten announcements were missed
+here simply by not listening long enough, which costs objects rather than
+correctness but makes the arithmetic harder to check.
