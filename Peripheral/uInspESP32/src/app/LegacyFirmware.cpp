@@ -462,6 +462,10 @@ struct CamClockSync
   // gaps of tens of ms, where there is nothing for a slope to correct. The case
   // this is FOR is a slow line -- parts minutes apart -- and it was never tested
   // there. Retest with a known long idle before concluding anything.
+  // Where the inverse-variance weight crosses half. At the reference gap a
+  // sample carries half the old fixed rate; well above it, nearly all of it.
+  // 2s because the useful traffic on this machine sits between 1 and 8s.
+  static const int32_t SLOPE_GAP_REF_MS = 2000;
   int32_t  slope_ppb = 0;
   uint32_t slope_n = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
@@ -659,7 +663,32 @@ struct CamClockSync
     // Short gaps are skipped: resid/gap at 55ms is dominated by the ~1us
     // sample noise (1us/55ms = 18000ppb of pure noise), and the slope does not
     // need them -- it is constant, so the long gaps measure it far better.
-    if(last_gap_us >= 1000000 && llabs(last_resid_us) <= TOL_US)
+    // Weight each sample by how much it actually knows, instead of a threshold.
+    //
+    // This used to learn only from gaps >= 1s, on the sound observation that
+    // inst_ppb = resid/gap and resid is quantised at 1us, so a short gap is
+    // mostly noise. But a threshold is a cliff, and traffic sitting just under
+    // it teaches nothing at all: measured 2026-08-12 with virt_pulse at a 0.94s
+    // period, 90 of 91 samples fell below, the estimate stayed at a stale
+    // -25567 against the correct -21750, and |delta| came out 8x worse than
+    // every other spacing. A machine running about one part per second lands
+    // there with traffic that looks perfectly healthy.
+    //
+    // The noise is KNOWN rather than estimated: sigma(inst_ppb) ~ 1e9/gap_us,
+    // so inverse-variance weighting is weight ~ gap^2. No sigma has to be
+    // tracked and there is no bootstrap problem -- the gap says it outright.
+    //
+    //   alpha = (1/8) * g^2 / (g^2 + GAP_REF^2)
+    //
+    // 8s gets 0.94 of the old rate, 1s gets 0.2, 100ms gets 0.0025. A short
+    // sample still contributes, in proportion to what it is worth, and nothing
+    // is discarded for being on the wrong side of a line.
+    //
+    // The full form of this is a scalar Kalman gain, K = P/(P+R), which also
+    // tracks its own confidence and would damp the 2.09ppm of wander measured
+    // over half an hour. Not done: it needs a P state and a guessed Q, and this
+    // shape had to be shown correct first.
+    if(last_gap_us > 0 && llabs(last_resid_us) <= TOL_US)
     {
       int64_t inst_ppb = (int64_t)last_resid_us * 1000000000LL / last_gap_us;
       // Two crystals cannot differ by more than a few hundred ppm. Anything
@@ -667,9 +696,22 @@ struct CamClockSync
       // steering the prediction into the weeds.
       if(inst_ppb >  200000) inst_ppb =  200000;
       if(inst_ppb < -200000) inst_ppb = -200000;
-      if(slope_n == 0) slope_ppb = (int32_t)inst_ppb;
-      else             slope_ppb += (int32_t)((inst_ppb - slope_ppb) >> 3);
-      slope_n++;
+      const int64_t g_ms = last_gap_us / 1000;
+      const int64_t num  = g_ms * g_ms;
+      const int64_t den  = num + (int64_t)SLOPE_GAP_REF_MS * SLOPE_GAP_REF_MS;
+      // Seed from a sample worth seeding from. A 50ms first gap would set the
+      // whole estimate from almost pure quantisation noise, and everything
+      // after it would spend samples walking that off.
+      if(slope_n == 0)
+      {
+        if(g_ms >= 500) { slope_ppb = (int32_t)inst_ppb; slope_n++; }
+      }
+      else
+      {
+        const int64_t d = inst_ppb - slope_ppb;
+        slope_ppb += (int32_t)((d * num) / (den * 8));
+        slope_n++;
+      }
     }
     offset_us  = (int64_t)cam_ts - (int64_t)nearest_cam_us;   // measured, not blended
     est_cam_us = nearest_cam_us;
