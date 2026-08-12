@@ -784,6 +784,69 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
         </div>
       </Card>
 
+      {/* IO safe mode. Above everything, because nothing below it can run.
+
+          The device leaves the eight actuator pins as inputs until a config
+          says what ON means -- see DEV_COMPLETE_CHECKLIST "IO safe mode". Left
+          unexplained this looks like a machine that refuses to start for no
+          reason, so the reason is the first thing on the panel, and the way
+          out is right under it.
+
+          The switches write polarity, which is a WIRING fact, not a
+          preference: getting one wrong energises that output whenever it
+          should be off. So they are laid out one per output with the actual
+          levels shown, and nothing here guesses a value on the operator's
+          behalf -- a "fix it for me" button would just be the compiled default
+          under a friendlier name, and the compiled default is what put the
+          machine here. */}
+      {dev.io_armed === false && (
+        <Card size="small" style={{ marginBottom: 8, borderColor: '#c33' }}>
+          <b style={{ color: '#c33' }}>輸出未啟用 —— 安全模式</b>
+          <div style={{ marginTop: 4 }}>
+            八個輸出腳位維持高阻抗(不驅動),檢測模式會被拒絕。
+            原因:<b> {dev.io_safe_why || '設定未定義輸出極性'}</b>
+          </div>
+          <div style={{ ...dim, marginTop: 4 }}>
+            韌體不會替沒定義的輸出猜一個預設值:這台機器八個輸出全是低準位導通,
+            而編譯預設有七個是相反的 —— 那正是燈和氣閥自己打開的那次。
+          </div>
+          {(() => {
+            const TAB = ['L1A', 'CAM1', 'L2A', 'CAM2', 'SEL1', 'SEL2', 'SEL3', 'FEEDER'];
+            // io_on_level is in SETTABLE_KEYS, so the read-only sync files it
+            // under machineSetup, not deviceState. io_armed/io_safe_why are not
+            // settable and land in deviceState -- two different objects for two
+            // halves of the same card.
+            const cur = cfg.io_on_level || dev.io_on_level || {};
+            const push = (name, lv) => run('iopol', (api) =>
+              api.machineSetupUpdate({ io_on_level: { ...cur, [name]: lv } },
+                                     false, true));
+            return (
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap',
+                            marginTop: 8 }}>
+                {TAB.map((n) => (
+                  <span key={n} style={{ display: 'flex', alignItems: 'center',
+                                         gap: 4 }}>
+                    <b>{n}</b>
+                    <Switch size="small" loading={busy === 'iopol'}
+                      checkedChildren="HIGH" unCheckedChildren="LOW"
+                      checked={cur[n] === 1}
+                      onChange={(v) => push(n, v ? 1 : 0)} />
+                    {/* A name the device does not drive cannot be set from
+                        here, and saying so beats a control that does nothing. */}
+                    {cur[n] === undefined && (
+                      <span style={{ color: '#c33' }}>缺</span>)}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+          <div style={{ ...dim, marginTop: 6 }}>
+            設定完成後輸出立即啟用,但<b>不會自動存入 NVS</b> —— 重開機會回到安全模式,
+            確認正確後請按存檔。
+          </div>
+        </Card>
+      )}
+
       {stat && stat.error_hist && stat.error_hist.length > 0 && (
         <Card size="small" style={{ marginBottom: 8, borderColor: '#c33' }}>
           <b style={{ color: '#c33' }}>錯誤紀錄</b>
