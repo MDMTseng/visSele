@@ -28,19 +28,23 @@ import log from 'loglevel';
 
 const EMPTY_REGION = { x: 0, y: 0, w: 0, h: 0 };
 
-// localStorage, keyed per browser, is the working copy.
+// There is no local draft. machine_setting.json is the only source.
 //
-// The regions describe THIS machine's station, and the browser is on it, so a
-// half-finished setup surviving an F5 is worth more than it costs. It also
-// decouples authoring from the save round-trip: you can draw the boxes with the
-// core down, or before you are ready to commit them.
+// This used to mirror every edit into localStorage (`visSele.station.draft.v1`)
+// and restore it on mount WITH its dirty flag, and the adopt-from-core effect
+// bails out while dirty. The two together meant a draft outranked the machine
+// indefinitely, across reloads and browser restarts, with nothing on screen
+// saying so except whether a "放棄" button happened to be rendered.
 //
-// machine_setting.json stays authoritative -- it is what the core reads. The
-// local copy only wins while it is DIRTY, i.e. edited and not yet saved; once
-// saved, both agree and the machine setting takes over again. That ordering
-// matters: a stale local draft must never quietly override what the machine is
-// actually running.
-const LS_KEY = 'visSele.station.draft.v1';
+// The cost was not hypothetical. On 2026-08-12 the panel showed no clean
+// regions while the core was enforcing two of them out of the file, and the
+// inspection returned NA for a "dirty" clean region that the operator believed
+// had been deleted. Neither side was lying; they were reading different data.
+//
+// A per-browser copy of a MACHINE setting has no owner. Editing now lives only
+// in React state: it survives until the panel unmounts, and a reload is a
+// discard. That is the honest contract -- what you see is what the machine has,
+// unless you are mid-edit in this very session.
 
 // The camera ROI origin, and why everything here has to know about it.
 //
@@ -56,38 +60,27 @@ const LS_KEY = 'visSele.station.draft.v1';
 // direction. So convert at the boundary: canvas + origin = stored, stored -
 // origin = canvas.
 //
-// The origin comes from the WebUI's own record of the ROI it asked for
-// (LS_INSP_ROI, written as FullSensorROI in InspectionUI). CAVEAT: that is the
-// REQUESTED rectangle. The camera snaps it to its alignment increments -- asked
-// 1017.47,331.94, got 1016,328 -- so a few px of residual remain. The right
-// long-term source is the core's own sampler->getOriginOffset(), which is what
-// the region filter actually compares against; it just is not sent to the UI
-// today.
-// FALLBACK ONLY. The core now sends its own sampler->getOriginOffset() in the
-// report's `station` block -- the exact value the region filter adds -- so the
-// panel and the filter cannot drift apart. This path is what you get before the
-// first report arrives, or against a core too old to send it.
-const LS_ROI_KEY = 'LS_INSP_ROI';
-function roiOriginFromLS() {
-  try {
-    const v = JSON.parse(localStorage.getItem(LS_ROI_KEY) || 'null');
-    if (Array.isArray(v) && v.length >= 2 && isFinite(v[0]) && isFinite(v[1]))
-      return { x: Math.round(v[0]), y: Math.round(v[1]) };
-  } catch (e) { log.warn('[station] LS_INSP_ROI unreadable', e); }
-  return { x: 0, y: 0 };
-}
+// The origin is the core's own `sampler->getOriginOffset()`, sent in every
+// report's `station` block. It is the exact value the region filter adds, so
+// the drawn box and the box being enforced cannot drift apart.
+//
+// It used to fall back to the WebUI's record of the ROI it REQUESTED
+// (localStorage `LS_INSP_ROI`), and that was measurably wrong: the camera snaps
+// a requested rectangle to its alignment increments -- asked 1017.47,331.94,
+// got 1016,428 -- so the panel drew the station a few px off the one the core
+// compares against. A per-browser guess about a machine's geometry has no
+// business overriding the machine's own answer, so it is gone.
+//
+// Before the first report there is no origin to have. {0,0} is the honest
+// answer for that window: the panel has nothing to place a box against yet.
+const ORIGIN_UNKNOWN = { x: 0, y: 0 };
 const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
 const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
   ? { ...r, x: r.x - o.x, y: r.y - o.y } : r;
-const lsLoad = () => {
-  try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; }
-  catch (e) { log.warn('[station] localStorage read failed', e); return null; }
-};
-const lsSave = (v) => {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(v)); }
-  catch (e) { log.warn('[station] localStorage write failed', e); }
-};
-const lsClear = () => { try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ } };
+// One-shot cleanup of the draft key this panel used to write. Without it a
+// browser that has one keeps it forever -- harmless now that nothing reads it,
+// but it would reappear as a mystery in devtools years from now.
+try { localStorage.removeItem('visSele.station.draft.v1'); } catch (e) { /* ignore */ }
 
 // A drag gives two opposite corners in any order; a region is an origin + size.
 function rectFromDrag(info) {
@@ -136,10 +129,11 @@ function RectFields({ rect, onChange, showNumbers }) {
  *   onSave(setting) persist                 (SV data/machine_setting.json)
  */
 export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }) {
-  const draft = useRef(lsLoad());
-  const [region, setRegion] = useState(() => ({ ...EMPTY_REGION, ...((draft.current && draft.current.region) || {}) }));
-  const [clean, setClean]   = useState(() => (draft.current && draft.current.clean) || []);
-  const [dirty, setDirty]   = useState(() => !!(draft.current && draft.current.dirty));
+  // Empty until the core's machine setting arrives. Never pre-seeded from a
+  // stored draft -- see the note at the top of this file.
+  const [region, setRegion] = useState(EMPTY_REGION);
+  const [clean, setClean]   = useState([]);
+  const [dirty, setDirty]   = useState(false);
   const [aiming, setAiming] = useState(null);   // null | 'region' | <clean index>
   const [open, setOpen]     = useState(false);  // collapsed by default: sidebar space
   const [nums, setNums]     = useState(false);  // xywh fields: debugging, not operating
@@ -150,13 +144,17 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     (st && st.UIData && st.UIData.edit_info && st.UIData.edit_info.station) || null);
   const origin = (station && Array.isArray(station.roi_origin))
     ? { x: Math.round(station.roi_origin[0]), y: Math.round(station.roi_origin[1]) }
-    : roiOriginFromLS();
+    : ORIGIN_UNKNOWN;
   // The drag callback is installed once per aiming session, so it must not close
   // over a stale origin.
   const originRef = useRef(origin);
   originRef.current = origin;
 
   // Adopt whatever the core last told us, but never stomp on edits in progress.
+  //
+  // `dirty` now only ever means "edited in THIS mounted session", so the window
+  // in which the panel can disagree with the machine is bounded by the edit
+  // itself -- it cannot outlive a reload the way the stored draft could.
   useEffect(() => {
     if (!machineSetting || dirty) return;
     const sig = JSON.stringify([machineSetting.inspection_region, machineSetting.clean_regions]);
@@ -165,14 +163,6 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     setRegion({ ...EMPTY_REGION, ...(machineSetting.inspection_region || {}) });
     setClean(Array.isArray(machineSetting.clean_regions) ? machineSetting.clean_regions : []);
   }, [machineSetting, dirty]);
-
-  // Mirror every edit to localStorage. Only while dirty -- a clean panel is just
-  // showing what the machine already has, and storing that would resurrect it as
-  // a "draft" that outranks a change made from somewhere else.
-  useEffect(() => {
-    if (dirty) lsSave({ region, clean, dirty: true });
-    else lsClear();
-  }, [region, clean, dirty]);
 
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
@@ -213,11 +203,27 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   }, [aiming, ecCanvas]);
 
   const edit = (fn) => { setDirty(true); fn(); };
+  // "Cleared" has to be a VALUE, not a missing key.
+  //
+  // These two used to emit `undefined` for the empty case, and JSON.stringify
+  // drops an undefined key entirely. That is fine for onApply -- the core reads
+  // a missing key as "clear" (load_clean_regions builds an empty vector and
+  // assigns it unconditionally; load_insp_region likewise) -- but onSave sends
+  // `{ ...machineSetting, ...patch }`, and a key that is not in the patch cannot
+  // override the one already in machineSetting. So deleting the LAST clean
+  // region applied live and then saved the old regions straight back, and the
+  // next core start read them from the file again.
+  //
+  // Deleting the last one was the single state the panel could not persist.
+  // `[]` and `null` both survive the spread and both read as cleared: the core
+  // takes an empty array through the same loop (zero iterations) and a null
+  // through `cJSON_IsObject` == false, and this panel reloads them via
+  // `Array.isArray(...) ? ... : []` and `{ ...EMPTY_REGION, ...(x || {}) }`.
   const built = () => ({
     inspection_region: (region.w > 0 && region.h > 0)
       ? { ...region, fit: region.fit === 'center' ? 'center' : 'contain' }
-      : undefined,
-    clean_regions: clean.length ? clean : undefined,
+      : null,
+    clean_regions: clean,
   });
 
   // Arming without a canvas handle is the worst possible failure here: the
@@ -363,7 +369,10 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
           if (onSave) onSave({ ...(machineSetting || {}), ...patch });
           setDirty(false);
         }}>套用並存檔</Button>
-      {dirty ? <Button size="small" onClick={() => { lsClear(); loadedFrom.current = null; setDirty(false); }}>放棄</Button> : null}
+      {/* Discard = drop the in-session edit and re-adopt the machine's own
+          setting. Clearing loadedFrom is what forces that re-adopt: the effect
+          skips work when the signature is unchanged, and it has not changed. */}
+      {dirty ? <Button size="small" onClick={() => { loadedFrom.current = null; setDirty(false); }}>放棄</Button> : null}
       <Button size="small" type={nums ? 'primary' : 'text'} style={{ padding: '0 6px', marginLeft: 'auto' }}
         onClick={() => setNums(!nums)}>數值</Button>
     </Row>

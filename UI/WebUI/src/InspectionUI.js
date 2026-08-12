@@ -17,7 +17,7 @@ import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
@@ -71,7 +71,6 @@ import {
 } from '@ant-design/icons';
 
 
-const LS_INSP_ROI_KEY="LS_INSP_ROI";
 
 import Divider from 'antd/lib/divider';
 
@@ -1891,14 +1890,18 @@ class APP_INSP_MODE extends React.Component {
         this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
       }
 
-      {
-        let LS_ROI=LocalStorageTools.getobj(LS_INSP_ROI_KEY);
-        
-        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        {CameraSetting: { ROI:LS_ROI}});
-
-      
-      }
+      // The camera ROI is NOT pushed from here any more.
+      //
+      // This used to read localStorage LS_INSP_ROI and send it as
+      // ST {CameraSetting:{ROI}} on every connect, which meant a per-browser
+      // copy decided a MACHINE setting: open the WebUI from a different laptop
+      // and the machine's camera crop changed under it, silently.
+      //
+      // The core already owns this. It persists an ROI change into
+      // data/default_camera_setting.json (wiringPanel.cpp, the ST handler) and
+      // applies that file at startup via CameraSettingFromFile(camera,"data/")
+      // -> CameraSetup, which reads the "ROI" array. So the file is already the
+      // authority; this push could only ever disagree with it.
 
       this.exitGate=false;
 
@@ -2754,12 +2757,13 @@ class APP_INSP_MODE extends React.Component {
         onClick={() => {
 
 
+        // Open the sensor fully so the whole field is visible to drag on. The
+        // core persists whatever ROI it is given; nothing is mirrored locally
+        // any more (see the note where the connect-time push used to be).
         let FullSensorROI=[0,0,99999,99999];
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:FullSensorROI } });
 
-        LocalStorageTools.setobj(LS_INSP_ROI_KEY,FullSensorROI);
-        
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
           let x = ROI_setting.start.pix.x;
@@ -2787,9 +2791,8 @@ class APP_INSP_MODE extends React.Component {
           
           this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {CameraSetting: { ROI}});
-          LocalStorageTools.setobj(LS_INSP_ROI_KEY,ROI);
 
-        
+
           this.setState({onROISettingCallBack:undefined});
         }})
       }} ><ExpandOutlined />
