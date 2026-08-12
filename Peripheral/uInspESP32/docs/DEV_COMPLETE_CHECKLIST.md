@@ -171,6 +171,44 @@ the drain). Reported as `gate.discard_stop`.
 Confirmed on the 08-12 sweep: **17** at teardown, previously invisible. The
 identity is now `accept − judged − discard_stop == what is in RBuf`.
 
+### A7. One malformed frame makes the machine deaf until a power cycle
+
+Promoted from B5 on the strength of the measurement, 2026-08-12. Full method and
+numbers in `UINSP_CAVEATS.md`, "B5 answered".
+
+Provoked with the core stopped and bytes written straight down the UART, so
+there is no ambiguity about which end broke:
+
+```
+healthy baseline            ANSWERS
+right after garbage         silent
+after 8 newlines            silent
+after 64 more newlines      silent
+after 5 s idle              silent
+PING while wedged           silent
+clear_error while wedged    silent
+after a DTR reset           ANSWERS
+```
+
+It does not resync, no delimiter helps, and it is **not** the documented
+`SERIAL_PROTOCOL_ERROR` latch — a latched error would still answer
+`clear_error`. The RX parser itself is stuck.
+
+And it is silent at both ends: `error_hist` empty, `rx_crc_fail` 0 (the reset
+that recovers it also clears them), nothing in the core's log. A machine that
+has gone deaf this way is indistinguishable from one that is idle.
+
+Why this is Tier A and not B: the soak's 0 CRC failures in 426840 frames says
+the happy path is solid, and this is what happens the first time it is not — any
+line noise, any partial write, any host that dies mid-frame. The cost is the
+whole machine, silently, until someone power-cycles it. B4 (host heartbeat →
+safe state) does not cover it either: the board is the deaf end, so a host-side
+timeout cannot reach it.
+
+**Action:** make the RX path recover. A frame delimiter that resynchronises, a
+bounded parse that gives up rather than blocking, and a counter that says it
+happened — the silence is as bad as the deafness.
+
 ### A6. Promote `report_match_ts`, then delete the host's 450 lines
 
 `report_match_ts` is still **false**. The device computes the timestamp match on
@@ -235,18 +273,23 @@ cooperation. `max_duration` on the link, every output with a declared safe
 default. Layer 3 item 2 in the roadmap; the framing/CRC half of that item is
 already done and proven (0 failures in 426840 frames).
 
-### B5. The framing resync path is still untested
+### B5. ~~The framing resync path is still untested~~ — TESTED 08-12, FAILS.
+### Promoted to A7.
 
-`PAIRING_MIGRATION_STATUS.md` records it plainly: "Untested: no framing error has
-occurred since." The soak's 0 CRC failures is good news that also means this
-path still has not been walked. It needs **fault injection**, not more uptime —
-which is the same tool B6 needs.
+### B6. Device-side fault injection hooks — DONE 08-12
 
-### B6. Device-side fault injection hooks
+`{"type":"fault", ...}`, all bounded at 1000, all reported in
+`get_running_stat.fault` (absent when nothing is armed — an invisible armed
+injector is what A3 was), none cleared by `reset_running_stat`.
 
-Skip a trigger, corrupt a tid, drop a frame. Mutation testing for the pipeline.
-Roadmap item; it is the instrument B5 and A1's negative cases both depend on, so
-it is worth building before them rather than after.
+| knob | what it does | what it is for |
+|---|---|---|
+| `sel_suppress:N` | fails the ACT_SEL guard for N actuations | `SEL_SUPPRESSED`, A1's last uncovered mechanism. The only path a real machine offers is de-energising the driver at speed, which throws parts |
+| `skip_trig:N` | swallows a trigger whole — no pulse, no `CAM_PULSE_N`, no announcement | a part that never produced a frame |
+| `tid_n:N` + `tid_offset:X` | lies about the tid **in the announcement only** | the pairing mutation. `disagree` has read 0 for want of any way to move it |
+
+It found A7 the day it was built. Still to run with parts flowing:
+`sel_suppress` against `SEL_SUPPRESSED`, and `tid_offset` against `disagree`.
 
 ---
 
@@ -319,9 +362,13 @@ here so that when one does bite, the diagnosis is already written down.
 
 ## Suggested order
 
-1. **B6** (fault injection) — it is the instrument the rest needs. Start by
-   making `INSPECTION_MODE_TEST` reachable (parked item 1): it is a rig that
-   needs no camera and no core, and A3/A4's verification wants exactly that.
+1. ~~**B6** (fault injection)~~ — DONE 08-12, and it answered B5 immediately.
+   Its remaining runs need parts flowing.
+
+0. **A7** — one malformed frame takes the machine deaf until a power cycle, and
+   nothing anywhere records it. This is now the first thing on the list: it is
+   cheap to trigger, impossible to diagnose from outside, and costs the whole
+   machine.
 
    Placement is no longer part of this: `jog_arm` / `jog offset:N` / `jog_end`
    turn the plate into a positioner and hand back the number to paste into a
