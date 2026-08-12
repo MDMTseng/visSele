@@ -925,6 +925,17 @@ uint32_t REP_LAT_MAX_US=0;
 uint32_t REP_CAMLAT_N=0;
 uint64_t REP_CAMLAT_SUM_US=0;
 uint32_t REP_CAMLAT_MAX_US=0;
+// How big AND how often. A single high-water answers the first question only,
+// and "the feedback sometimes jumps past 100ms" is a question about the second:
+// a 115ms spike once an hour and one every second are the same max_us and are
+// not the same machine.
+//
+// Edges in ms, chosen around what the mechanism can do rather than round
+// numbers: the CAM->SWITCH budget is tens of ms, one get_running_stat reply
+// occupies the 230400-baud link for ~113ms, and anything past 320ms is not
+// latency any more, it is a stall.
+static const uint32_t REP_CAMLAT_EDGE_MS[7] = {5,10,20,40,80,160,320};
+uint32_t REP_CAMLAT_HIST[8]={0,0,0,0,0,0,0,0};
 
 // Incremented from the ISR (Run_ACTS' SWITCH branch), read and zeroed from the
 // main loop (get_running_stat / reset_running_stat). Were uint64_t, which on a
@@ -5361,6 +5372,19 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     doRsp=rspAck=true;
   }
+  else if(strcmp(type,"reset_latency_stat")==0)
+  {
+    // reset_running_stat also calls CAM_SYNC.reset(), which throws away the
+    // clock model and costs ~10s of reports that cannot be placed -- measured
+    // as a halt at state 112. That makes it useless for comparing two
+    // conditions, which is the only reason to zero a counter. This touches the
+    // latency counters and nothing else.
+    REP_LAT_N=0; REP_LAT_SUM_US=0; REP_LAT_MAX_US=0;
+    REP_CAMLAT_N=0; REP_CAMLAT_SUM_US=0; REP_CAMLAT_MAX_US=0;
+    for(int i=0;i<8;i++) REP_CAMLAT_HIST[i]=0;
+    retdoc["type"]="reset_latency_stat";
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_schema")==0)
   {
     // What a config MUST define, as opposed to what it may.
@@ -6158,6 +6182,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jL["cam_n"]=REP_CAMLAT_N;
       jL["cam_avg_us"]=REP_CAMLAT_N ? (uint32_t)(REP_CAMLAT_SUM_US/REP_CAMLAT_N) : 0;
       jL["cam_max_us"]=REP_CAMLAT_MAX_US;
+      {
+        // Counts per bucket, edges in ms alongside so the reader needs no
+        // second copy of the table to drift from.
+        JsonArray jH=jL.createNestedArray("cam_hist");
+        for(int i=0;i<8;i++) jH.add(REP_CAMLAT_HIST[i]);
+      }
     }
 
     doRsp=rspAck=true;
@@ -6451,6 +6481,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
           REP_CAMLAT_N++;
           REP_CAMLAT_SUM_US+=clat;
           if(clat>REP_CAMLAT_MAX_US)REP_CAMLAT_MAX_US=clat;
+          {
+            const uint32_t ms=clat/1000;
+            int b=0; while(b<7 && ms>=REP_CAMLAT_EDGE_MS[b]) b++;
+            REP_CAMLAT_HIST[b]++;
+          }
         }
       }
       // A second report for an object that already has a verdict: keep the
