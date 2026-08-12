@@ -98,6 +98,13 @@ namespace
   // the first ask is always a real one.
   uint32_t hashCached = 0;
   bool     hashDirty  = true;
+
+  // Whether the config that was actually LOADED defines output polarity for
+  // every output. Deliberately answered from the stored document rather than
+  // from the globals: the globals always hold something, and what they hold
+  // when a key is absent is the compiled default -- which is the failure being
+  // guarded against, not evidence against it.
+  bool ioCfgValid = false;
   // Keys the stored config carries that this firmware no longer knows, and
   // what they were set to. Filled at begin(), never acted on, reported so a
   // person can decide. See begin() for why this is not migrated.
@@ -280,6 +287,13 @@ namespace MachineConfig
       }
 
       // Variables only -- pinMode has not run yet.
+      // Before applying: does this document say what ON means for every
+      // output? If not, the outputs are never armed and the machine sits in
+      // safe mode. The rest of the config is still applied -- a machine that
+      // cannot actuate should still show the operator its own settings.
+      ioCfgValid = ioConfigCheck(jdoc.as<JsonObject>(),
+                                 IO_SAFE_WHY, sizeof(IO_SAFE_WHY)) != 0;
+
       setMachineSetup(jdoc, /*apply_hw=*/false);
       loadedFromNVS = true;
     hashDirty = true;
@@ -317,10 +331,21 @@ namespace MachineConfig
     prefs.end();
 
     applyToGlobals(cfg);
+    // The blob does carry output polarity -- io_inv_mask, added in v4 -- as a
+    // bitmask, so every output is defined by construction and a v4-or-later
+    // blob can arm. Older than that the field sits outside the trusted prefix,
+    // so the mask in hand is the compiled default, which is precisely what
+    // safe mode exists to refuse.
+    ioCfgValid = (raw.version >= 4);
+    if (!ioCfgValid)
+      snprintf(IO_SAFE_WHY, sizeof(IO_SAFE_WHY),
+               "legacy config v%u predates io_inv_mask", (unsigned)raw.version);
     loadedFromNVS = true;
     legacyBlob = true;      // this board has not been saved by a JSON firmware
     hashDirty = true;
   }
+
+  bool ioConfigValid() { return ioCfgValid; }
 
   bool save()
   {

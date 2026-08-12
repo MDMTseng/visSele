@@ -255,6 +255,62 @@ so the two can disagree and the disagreement will look like a machine fault.
 
 ---
 
+## IO safe mode — the outputs have no default
+
+Added 2026-08-13. The eight actuator pins are **not** configured as outputs at
+boot. They are left as inputs until a config has been read that says what ON
+means on this machine.
+
+**Why there is no default.** The compiled default is `IO_INV_MASK =
+1<<IOI_FEEDER` — FEEDER active-low, the other seven active-high — and this
+machine is active-low on all eight. So a board on compiled defaults has seven of
+its eight outputs inverted, and inverted means energised. That is exactly how
+the light and the air blow once switched themselves on with parts on the plate.
+
+Storing the config as wire JSON fixed the version bump that caused it, but not
+the shape of the failure: JSON's rule is that an **absent key keeps its compiled
+default**, and for output polarity the compiled default is the opposite of the
+truth. A renamed key, a dropped key, a future firmware whose table has nine
+entries — all land back on the same defaults, and all look like a working
+machine.
+
+**Why high impedance is the safe state, measured 2026-08-13.** The driver inputs
+are common-anode opto: the GPIO must sink for the output to energise, so an
+input pin is no path and no actuation. Confirmed on the SEL valves rather than
+assumed — an undriven pin reads inconsistently (`[0,0,0]` at boot, `[1,0,1]`
+later, which is what floating looks like), but `INPUT_PULLUP` takes all three to
+1 through the internal ~45kΩ. Nothing external holds them low; a conducting opto
+could not be pulled up by 45kΩ. None of the eight is a strapping pin, so this is
+also the state every reset already passes through.
+
+**The rules.**
+
+| | |
+|---|---|
+| checked | `io_on_level` present, all 8 names from `IO_POL_TAB`, each 0 or 1, no extras |
+| against | the stored/incoming **document**, never the globals — the globals always hold a mask, and what they hold when a key is absent is the failure being guarded |
+| on fail | pins stay inputs; `enter_insp_mode` refused with `io_not_configured`; `get_setup` reports `io_armed:false` and `io_safe_why` |
+| way out | a `set_setup` carrying a complete valid `io_on_level`. Not persisted — a reboot returns to safe mode unless the operator also saves |
+| legacy blob | armed if `version >= 4`, when `io_inv_mask` is inside the trusted prefix; older is refused |
+
+`get_schema` reports the required block. It answers the direction
+`cfgUnknownKeys` cannot: that one says "you sent me keys I do not recognise",
+which is the harmless case, since an unknown key is named back and ignored. The
+dangerous direction is silent — a key this firmware expects that the stored
+config does not carry does not fail, it defaults.
+
+**Verified by simulating the real failure.** A test build renamed `SEL3` to
+`SEL3B` in `IO_POL_TAB` — a key rename, the failure mode that defaults
+silently — and the board came up `io_armed:false`, `io_safe_why:
+"io_on_level.SEL3B missing"`, with `get_setup` showing `SEL3B: 1` in plain
+sight: the renamed output sitting at the compiled default, which on this machine
+is inverted. `enter_insp_mode` was refused. A `set_setup` with a conforming
+`io_on_level` armed it and the machine ran. Note that a broken stored config
+**cannot be produced through the API** — the firmware always writes a complete
+`io_on_level` — so the firmware side is what has to be simulated.
+
+---
+
 ## Tier B — should land with dev complete
 
 ### B1. `match_window_us` is a position tolerance wearing a time unit

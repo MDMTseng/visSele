@@ -79,6 +79,81 @@ static const struct { const char *name; int pin; int idx; } IO_POL_TAB[] = {
   {"FEEDER",FEEDER_PIN, IOI_FEEDER},
 };
 
+// Whether the eight actuator pins have been configured as outputs at all.
+//
+// They are not, until a config has been read that says what ON means on this
+// machine. The compiled default is IO_INV_MASK = 1<<IOI_FEEDER -- FEEDER
+// active-low, everything else active-high -- and on this machine every one of
+// the eight is active-low. So a board that comes up on defaults has SEVEN of
+// its eight outputs inverted, and inverted means energised: that is exactly
+// how the light and the air blow once switched themselves on with parts on the
+// plate.
+//
+// Storing the config as wire JSON fixed the version-bump that caused it, but
+// not the shape of the failure. JSON's rule is that an absent key keeps its
+// compiled default, and for output polarity the compiled default is the
+// opposite of the truth. A renamed key, a dropped key, a future firmware whose
+// table has nine entries -- all of them land back on the same defaults, and all
+// of them look like a working machine.
+//
+// So there is no default. Until the polarity is known the pins stay as inputs,
+// which on this machine's common-anode opto inputs means no sink path and no
+// energised output -- the wiring makes high impedance the safe state, and it is
+// the state every reset already passes through, since none of the eight is a
+// strapping pin.
+volatile bool IO_ARMED = false;
+char IO_SAFE_WHY[96] = "no config loaded";
+
+// Does a stored/incoming setup document say what ON means, for every output
+// this firmware drives, unambiguously?
+//
+// Checked against IO_POL_TAB rather than a second name list, so a firmware that
+// gains an output cannot silently accept a config written before it existed.
+// An entry count that does not match is a failure for the same reason: the
+// table that wrote the config is not the table reading it, and which of the two
+// is right is not something the firmware can decide.
+int ioConfigCheck(JsonObject in, char *why, size_t whyN)
+{
+  const int N=(int)(sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]));
+  if(!in["io_on_level"].is<JsonObject>())
+  { snprintf(why,whyN,"io_on_level missing"); return 0; }
+  JsonObject j=in["io_on_level"];
+  for(int i=0;i<N;i++)
+  {
+    JsonVariant v=j[IO_POL_TAB[i].name];
+    if(v.isNull())
+    { snprintf(why,whyN,"io_on_level.%s missing",IO_POL_TAB[i].name); return 0; }
+    if(!v.is<int>())
+    { snprintf(why,whyN,"io_on_level.%s is not 0 or 1",IO_POL_TAB[i].name); return 0; }
+    int lv=v.as<int>();
+    if(lv!=0 && lv!=1)
+    { snprintf(why,whyN,"io_on_level.%s=%d, must be 0 or 1",IO_POL_TAB[i].name,lv); return 0; }
+  }
+  int have=0; for(JsonPair kv : j){ (void)kv; have++; }
+  if(have!=N)
+  { snprintf(why,whyN,"io_on_level has %d entries, this firmware drives %d",have,N); return 0; }
+  return 1;
+}
+
+// Configure the eight actuator pins as outputs, resting at OFF.
+//
+// Latch first, THEN switch to output. pinMode(OUTPUT) publishes whatever the
+// output register already holds, and after reset that is LOW -- energised, on
+// active-low wiring. Writing the OFF level while the pin is still an input sets
+// the latch without driving anything, so the first level the pin ever drives is
+// already correct. The old order was pinMode for all seven and then rest them,
+// which left a real if short window with every active-low output on.
+void ioArm()
+{
+  for(unsigned i=0;i<sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]);i++)
+  {
+    io_drive(IO_POL_TAB[i].pin, IO_POL_TAB[i].idx, false);
+    pinMode(IO_POL_TAB[i].pin, OUTPUT);
+  }
+  IO_ARMED=true;
+  IO_SAFE_WHY[0]='\0';
+}
+
 // Single place that drives every actuator to its inactive level. Used on the
 // error path, on reset, and once the plate has coasted to a stop, so a selector
 // can never be left energised by a state transition that forgot one pin.
@@ -2246,8 +2321,13 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         blockNewDetectedObject=true;
         PLATE_FREQ_TARGET=0;
 
-        pinMode(FEEDER_PIN, OUTPUT);
-        io_drive(FEEDER_PIN, IOI_FEEDER, false);
+        // Only if armed: unarmed, this pin is deliberately an input and
+        // driving it here would undo the whole point of safe mode.
+        if(IO_ARMED)
+        {
+          io_drive(FEEDER_PIN, IOI_FEEDER, false);
+          pinMode(FEEDER_PIN, OUTPUT);
+        }
       } //exit
       break;
       
@@ -5281,6 +5361,35 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     doRsp=rspAck=true;
   }
+  else if(strcmp(type,"get_schema")==0)
+  {
+    // What a config MUST define, as opposed to what it may.
+    //
+    // cfgUnknownKeys already answers the other direction -- "you sent me keys I
+    // do not recognise" -- and that is the harmless one: an unknown key is
+    // named back and ignored. The dangerous direction is the silent one, a key
+    // this firmware expects that the stored config does not carry, because
+    // that key does not fail. It takes its compiled default, and for output
+    // polarity the compiled default is the opposite of this machine.
+    //
+    // So this reports the required block explicitly, and a UI diffing a stored
+    // config against it can show what would silently be defaulted rather than
+    // only what would be dropped.
+    retdoc["type"]="get_schema";
+    JsonObject jIO=retdoc.createNestedObject("io_on_level");
+    jIO["required"]=true;
+    jIO["values"]="0 or 1 -- the level on the pin that turns the output ON";
+    JsonArray jK=jIO.createNestedArray("keys");
+    for(size_t i=0;i<SARRL(IO_POL_TAB);i++) jK.add(IO_POL_TAB[i].name);
+    jIO["all_or_nothing"]=true;
+    jIO["on_fail"]="outputs stay high-impedance; enter_insp_mode is refused";
+    retdoc["io_armed"]=(bool)IO_ARMED;
+    if(!IO_ARMED) retdoc["io_safe_why"]=IO_SAFE_WHY;
+    // Everything else has a compiled default and is therefore optional; the
+    // key list for those is get_setup's own document.
+    retdoc["optional"]="every other key in get_setup; absent keeps its default";
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_setup")==0)
   {
     retdoc["ver"]="0.0.0 Alpha";
@@ -6635,7 +6744,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // And that is the state every stop leaves behind, because stopping must
     // write plate_freq:0 (CAVEATS B). The WebUI refuses to start from it; the
     // firmware did not, so any script or a mis-fired RUN barrier got here.
-    if(PLATE_FREQ_SETPOINT<=0.0f)
+    if(!IO_ARMED)
+    {
+      // Refused rather than run blind. Nothing would actually actuate -- the
+      // pins are inputs -- so the machine would sort a whole batch by doing
+      // nothing to any of it, and every part would land in the OK bin.
+      retdoc["type"]="enter_insp_mode";
+      retdoc["err"]="io_not_configured";
+      retdoc["why"]=IO_SAFE_WHY;
+      retdoc["hint"]="set_setup a complete io_on_level (see get_schema)";
+      doRsp=true; rspAck=false;
+    }
+    else if(PLATE_FREQ_SETPOINT<=0.0f)
     {
       retdoc["type"]="enter_insp_mode";
       retdoc["err"]="plate_freq_is_zero";
@@ -7645,26 +7765,13 @@ void firmwareSetup()
 
 
 
-  pinMode(PIN_O_L1A, OUTPUT);
-  pinMode(PIN_O_CAM1, OUTPUT);
-
-  pinMode(PIN_O_L2A, OUTPUT);
-  pinMode(PIN_O_CAM2, OUTPUT);
-
-
-  pinMode(PIN_O_SEL1, OUTPUT);
-  pinMode(PIN_O_SEL2, OUTPUT);
-  pinMode(PIN_O_SEL3, OUTPUT);
-
-  // Rest every actuator at its logical OFF level -- with an active-low output
-  // the reset-default LOW would otherwise mean "energised" until first use.
-  io_drive(PIN_O_L1A,IOI_L1A,false);
-  io_drive(PIN_O_CAM1,IOI_CAM1,false);
-  io_drive(PIN_O_L2A,IOI_L2A,false);
-  io_drive(PIN_O_CAM2,IOI_CAM2,false);
-  io_drive(PIN_O_SEL1,IOI_SEL1,false);
-  io_drive(PIN_O_SEL2,IOI_SEL2,false);
-  io_drive(PIN_O_SEL3,IOI_SEL3,false);
+  // The actuator pins are configured as outputs HERE and nowhere else, and
+  // only if MachineConfig::begin() found a config that says what ON means.
+  // Otherwise they stay inputs and the machine sits in safe mode until someone
+  // sets a valid io_on_level over set_setup -- see IO_ARMED.
+  if(MachineConfig::ioConfigValid()) ioArm();
+  else djrl.dbg_printf("IO SAFE MODE: %s -- outputs left high-impedance, "
+                       "set io_on_level to arm",IO_SAFE_WHY);
 
   pinMode(PIN_I_GATE, INPUT_PULLUP);
 
@@ -8396,9 +8503,14 @@ void genMachineSetup(JsonDocument &jdoc)
   }
 
   {
+  // Said out loud in the document that carries the thing it is about.
+  jdoc["io_armed"]=(bool)IO_ARMED;
+  if(!IO_ARMED) jdoc["io_safe_why"]=IO_SAFE_WHY;
+  {
     JsonObject jIO = jdoc.createNestedObject("io_on_level");
     for(size_t i=0;i<SARRL(IO_POL_TAB);i++)
       jIO[IO_POL_TAB[i].name]=IO_IS_INV(IO_POL_TAB[i].idx)?0:1;
+  }
   }
 
   // Lets the host tell the two machines apart and see whether what it is
@@ -8479,6 +8591,7 @@ static const char *const K_TOP[] =
    "CAM1_ID","CAM2_ID","CAM1_Tags","CAM2_Tags",
    "cfg_from_nvs",                              // reported, harmless to echo back
    "cfg_legacy_blob",                           // ditto
+   "io_armed","io_safe_why",                    // ditto
    NULL};
 
 static bool cfgKeyKnown(const char *const *tab, const char *k)
@@ -8930,8 +9043,31 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
                     "no longer centred on it");
   }
 
-
-
-
+  // Leaving safe mode. The only way out, and it is deliberately a whole
+  // io_on_level rather than a flag: the way back in is a config that does not
+  // define polarity, so the way out has to be one that does.
+  //
+  // Tested against the INCOMING document rather than the globals. The globals
+  // always hold a mask -- the question is whether anyone said what it should
+  // be, and only the document can answer that.
+  //
+  // Not persisted here. A reboot returns to safe mode unless the operator also
+  // saves, which is the honest behaviour: what is armed is what was configured,
+  // and what survives a power cut is what was written down.
+  // Into a scratch buffer, NOT IO_SAFE_WHY. Every set_setup runs this check,
+  // including the ones that carry no io_on_level at all, so writing the result
+  // straight to IO_SAFE_WHY replaced the boot-time diagnosis with "io_on_level
+  // missing" the moment anything else was set -- measured: the panel said which
+  // key was renamed, and one {"plate":{"freq":3000}} later it did not. The
+  // reason the machine is in safe mode is a fact about the config it BOOTED
+  // with, and nothing else may overwrite it.
+  char why_scratch[sizeof(IO_SAFE_WHY)];
+  if(apply_hw && !IO_ARMED &&
+     ioConfigCheck(jdoc.as<JsonObject>(),why_scratch,sizeof(why_scratch)))
+  {
+    ioArm();
+    djrl.dbg_printf("IO ARMED by set_setup -- outputs are now driven "
+                    "(save_setup to keep it across a reboot)");
+  }
 }
 

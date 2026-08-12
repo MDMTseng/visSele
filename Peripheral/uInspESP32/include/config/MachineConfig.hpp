@@ -135,6 +135,16 @@ extern float plate_diameter_mm;   // 0 = not configured
 // Per-output ON polarity mask, bit=IO_IDX in LegacyFirmware.cpp (set = ON is
 // LOW, for common-anode driver inputs). volatile: read by the step ISR.
 extern volatile uint32_t IO_INV_MASK;
+// false = the eight actuator pins are still inputs (high impedance) because no
+// config has said what ON means on this machine. See IO_ARMED in
+// LegacyFirmware.cpp for why there is no default.
+extern volatile bool IO_ARMED;
+extern char IO_SAFE_WHY[96];
+// Does this setup document define ON for every output, unambiguously?
+// 1 = yes; 0 = no, and `why` says which key and how.
+int ioConfigCheck(JsonObject in, char *why, size_t whyN);
+// Rest the actuator pins at OFF and configure them as outputs.
+void ioArm();
 // Plate ramp acceleration, Hz of plate_freq per second (<=0 = instant).
 extern float SYS_FREQ_ACCEL;
 // Gate edge debounce thresholds (samples) -- see GateSensing().
@@ -170,6 +180,9 @@ namespace MachineConfig
   // Reads NVS into the globals above. Call once, early in firmwareSetup(),
   // before anything derives timing from them.
   void begin();
+  // Whether begin() found an io_on_level it could believe. Read once, by
+  // firmwareSetup, to decide whether to arm the outputs at all.
+  bool ioConfigValid();
 
   // Commits the globals' current values to NVS. Returns false if the write
   // failed; the in-RAM values are untouched either way.
