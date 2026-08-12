@@ -3110,6 +3110,14 @@ bool _senseInv_=true;
 
 // Written by set_setup (main loop), read by GateSensing (ISR). Aligned int so
 // the access is atomic; volatile so the ISR does not cache a stale threshold.
+// Where the object's zero sits inside the gate pulse: trailing edge (false,
+// historical and what every shipped stage_pulse_offset was calibrated against)
+// or the pulse centre (true, immune to the sensor's fixed time response and
+// half as sensitive to part length/orientation -- see gate_ref_pulse).
+//
+// Runtime and persisted, so it can be A/B'd on the machine instead of being a
+// one-way build-time decision. Changing it moves every station by half a part.
+volatile bool GATE_REF_CENTER = false;
 volatile int  minWidth = 0;
 volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 
@@ -3192,11 +3200,31 @@ void IRAM_ATTR GateSensing()
       // can position a station against -- refusing it here would make the aid
       // useless exactly when the width window is what is being set up.
       //
-      // end_pulse, not middle: the same reference the stage offsets use, so the
-      // number read off at the end can be pasted into one without conversion.
+      // The object's zero, computed once and used by everything below.
+      //
+      // TRAILING is the historical reference and every calibrated
+      // stage_pulse_offset on a shipped machine was measured against it, so it
+      // stays the default. CENTRE is the better one and the reason is in this
+      // firmware's own measurements:
+      //
+      //   * the sensor has a fixed TIME response -- the A2 fit put it at
+      //     t0 = 3.52 ms, which inflates the measured width by t0*f ticks (21
+      //     ticks between plate 3000 and 9000). That inflation is shared by the
+      //     two edges, so the trailing edge carries it and the centre cancels
+      //     it. A zero that moves with plate speed is exactly what a station
+      //     offset must not have.
+      //   * the trailing edge is a point on the PART, so it moves with the
+      //     part's length and its orientation on the plate. The centre halves
+      //     that sensitivity.
+      //
+      // Switching costs a recalibration of every station: the two references
+      // differ by half a part, ~142 ticks at the measured w_mean of 285.
+      const uint32_t _mid_pulse = gateInfo.start_pulse + (diff>>1);
+      const uint32_t gate_ref_pulse = GATE_REF_CENTER ? _mid_pulse
+                                                      : gateInfo.end_pulse;
       if(JOG_STATE==1)
       {
-        JOG_ORIGIN=gateInfo.end_pulse;
+        JOG_ORIGIN=gate_ref_pulse;
         JOG_DISP=0;
         JOG_TARGET=0;
         JOG_REV=false;
@@ -3218,12 +3246,10 @@ void IRAM_ATTR GateSensing()
       }
       else
       {
-        uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
-        (void)middle_pulse;
-        // Reference the object off its TRAILING edge (end_pulse), as the
-        // pre-debounce code did, so the calibrated stage_pulse_offset values
-        // still line up. (Switching to the object centre -- middle_pulse -- is
-        // checklist 5.3's separate, calibration-affecting change.)
+        // gate_ref_pulse above: trailing by default, centre when gate_ref says
+        // so. Everything downstream -- the object's gate_pulse, the minimum
+        // distance test, the jog origin -- reads that one value, so the two
+        // references cannot drift apart within a run.
         // Changing speed used to stop the machine detecting.
         //
         // SYS_FREQ_STABLE is only "CURRENT == TARGET", so ANY speed change --
@@ -3320,7 +3346,7 @@ void IRAM_ATTR GateSensing()
         const bool speed_ok = PLATE_RUNNING;   // the band is gone; see PLATE_RUNNING
         if(SYS_STEPPER_DISABLED==false && speed_ok && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
-                        gateInfo.end_pulse,diff);
+                        gate_ref_pulse,diff);
         else
           // Not an error, but not free either: a spin-up, a CAL, or a stop
           // holds this closed, and the parts on the plate during it are simply
@@ -4651,14 +4677,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     {
       light_PIN=doc["lpin"];
     }
-    int Light_Delay=100;
+    int Light_Delay=500;    // backlight rise; ~300us measured, rounded up
     if(doc["light_delay"].is<int>()==true)
     {
       Light_Delay=doc["light_delay"];
     }
 
 
-    int Light_Duration=100;
+    int Light_Duration=15000;  // must cover the camera's exposure, not ours
     if(doc["light_duration"].is<int>()==true)
     {
       Light_Duration=doc["light_duration"];
@@ -4696,12 +4722,27 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // would move the pcnt offset by one for the rest of the run, and it would
     // be indistinguishable from a trigger the camera refused.
     if(cam_PIN==PIN_O_CAM1) CAM_PULSE_N++;
-    io_drive(cam_PIN,cam_idx,true);
-    delayMicroseconds(Light_Delay);
+    // LIGHT FIRST, then the trigger. The order used to be the other way round
+    // -- camera, wait light_delay, light -- and that cannot work for a short
+    // exposure: the camera starts integrating on the CAM edge, so it spent the
+    // whole exposure in the dark and returned an almost black frame. Asking for
+    // a longer light_duration did not help, because the light was still arriving
+    // after the shutter had closed.
+    //
+    // The backlight needs ~300us to reach full brightness (measured; see the
+    // 100us trigger floor / 300us full brightness note), so light_delay is the
+    // time it is given to get there BEFORE the camera is triggered. The light
+    // then stays on for the rest of light_duration, which has to cover the
+    // camera's exposure -- it is the camera's number, not ours, so the default
+    // is generous rather than tight.
     io_drive(light_PIN,light_idx,true);
-    delayMicroseconds(Light_Duration);
-    io_drive(light_PIN,light_idx,false);
+    delayMicroseconds(Light_Delay);
+    io_drive(cam_PIN,cam_idx,true);
+    delayMicroseconds(100);              // the trigger pulse itself
     io_drive(cam_PIN,cam_idx,false);
+    if(Light_Duration>Light_Delay+100)
+      delayMicroseconds(Light_Duration-Light_Delay-100);
+    io_drive(light_PIN,light_idx,false);
 
 
 
@@ -6705,7 +6746,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         const float d = (float)(delta<0 ? -delta : delta);
         const float a = (SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL : 2000.0f;
         float f = sqrtf(a*d*0.5f);
-        if(f>JOG_FREQ) f=JOG_FREQ;
+        // The caller may ask for a slower ceiling, never a faster one than the
+        // distance allows: the sqrt above is what keeps a short move from being
+        // pure braking, so a requested speed can only lower it.
+        float cap = doc["freq"].is<float>() ? (float)doc["freq"] : JOG_FREQ;
+        if(cap<=0) cap=JOG_FREQ;
+        if(f>cap) f=cap;
         if(f<60.0f)    f=60.0f;      // slower than this the ramp is all there is
         PLATE_FREQ_TARGET = f;
         retdoc["speed"]=f;
@@ -7967,6 +8013,7 @@ void genMachineSetup(JsonDocument &jdoc)
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
     jGT["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+    jGT["gate_ref"]=GATE_REF_CENTER?"center":"trailing";
     jGT["pulse_min_width"]=minWidth;
     jGT["pulse_max_width"]=maxWidth;
     jGT["debounce_rise"]=DEBOUNCE_H_THRES;
@@ -8117,7 +8164,7 @@ static const char *const K_PLATE[] =
    "stepper_dir",NULL};
 static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
-   "debounce_fall","min_detect_dist_um",NULL};
+   "debounce_fall","min_detect_dist_um","gate_ref",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -8466,6 +8513,13 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
                       (long)CamClockSync::TOL_US);
   }
 
+  if(jGT["gate_ref"].is<const char*>())
+  {
+    const char* gr=jGT["gate_ref"];
+    // Anything unrecognised keeps the safe historical reference rather than
+    // silently moving every station by half a part.
+    GATE_REF_CENTER = (strcmp(gr,"center")==0 || strcmp(gr,"centre")==0);
+  }
   JSON_SETIF_ABLE(minWidth,jGT,"pulse_min_width");
   JSON_SETIF_ABLE(maxWidth,jGT,"pulse_max_width");
   // Compared against a uint32 width, so a negative converts to ~4.29e9:
