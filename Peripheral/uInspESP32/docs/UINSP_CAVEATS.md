@@ -2524,3 +2524,20 @@ The real ceiling is the HOST's: the core reads the peripheral line with
 `if (line.size() < 4096) line += c` (`wiringPanel.cpp:6703`), so a reply past
 4096 bytes is silently truncated upstream, where no device-side guard can see
 it. Anything wanting more room has to raise the host's limit first.
+
+### The injected path's PLATE_RUNNING guard is unreachable
+
+Verified 2026-08-12 while checking A3/A4. `PLATE_RUNNING` is
+`PLATE_FREQ_CURRENT > 0`, and the step timer's alarm is disabled at zero. The
+injector runs inside that ISR, so the one state where the guard is false is the
+one state where the injector never executes. "Injection is not gated on
+PLATE_RUNNING" was true in the code and could not happen on the machine.
+
+The `GATE_EDGES` half of the same fix is NOT cosmetic and was measured: dry run
+plus `virt_pulse` in IDLE, 671 injected edges, `accept + Sigma rej == edges`
+with a residual of exactly 0. Before the fix that residual would have been -671.
+
+Dry run is unaffected by the guard, which is the thing worth knowing before
+touching this again: a dry run has `PLATE_FREQ_CURRENT > 0` with `StepGo` muted,
+so the plate stands still while `PLATE_RUNNING` reads true. Every phantom rig
+that relies on injection keeps working.

@@ -103,17 +103,33 @@ inspected; it does not get a guess.
 train). It increments `GATE_EDGES`, so `edges == accept + Σrej` holds
 unconditionally and a residual means what it should mean again.
 
-Not yet exercised: the sweep that validated A2 injected nothing. Verify with
-`virt_pulse` armed.
+**Verified 08-12**, dry run + `virt_pulse` in IDLE (blocked path, no camera
+needed): 671 injected edges, all counted, `accept + Σrej == edges` with a
+residual of exactly **0**. Before the fix that residual would have been −671.
 
-### A4. The injected path bypasses `PLATE_RUNNING` — DONE 08-12
+### A4. The injected path bypasses `PLATE_RUNNING` — guard added, but it is
+### unreachable, and that is the real finding
 
 Same helper gates injection on `PLATE_RUNNING`, attributing a block the way the
 sensor path does (`stepper_off` / `dryrun` / `unstable`, in that order).
 `GATE_DISABLED` is deliberately still not tested — injecting while the real
 sensor is ignored is that flag's whole purpose.
 
-Verify alongside A3.
+**The guard cannot fire today.** `PLATE_RUNNING` is `PLATE_FREQ_CURRENT > 0`,
+and the step timer's alarm is disabled at zero — so the only state in which the
+guard is false is the state in which `phantomServiceISR`, which lives inside
+that ISR, never executes. The original defect is real in the code and
+unreachable in practice.
+
+Kept anyway: it costs one bool, it makes the injected path state the same
+precondition the sensor path states, and it becomes live the moment anything
+decouples the tick source from plate speed. But it fixed no live behaviour, and
+recording that is worth more than the line of code.
+
+Note this also means **dry run is not affected** — a dry run has
+`PLATE_FREQ_CURRENT > 0` with `StepGo` muted, so the plate stands still while
+`PLATE_RUNNING` is true and injection proceeds. Every phantom rig keeps working;
+that was checked before the guard went in, not after.
 
 ### A5. Parts discarded unattributed at stop — DONE 08-12
 
