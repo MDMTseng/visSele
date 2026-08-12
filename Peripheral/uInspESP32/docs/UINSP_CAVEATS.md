@@ -3033,3 +3033,42 @@ fine. The envelope takes a new peak instantly and forgets an old one over about
 a thousand samples, which is the "worst of the recent past" the number is
 actually read as. `max_resid_us` keeps the SIGN of the peak it holds, because
 the sign is the whole tell for a drift.
+
+### delta does not scale with the gap, so the joint estimator has nothing to win
+
+`virt_pulse` at exact tick periods, four blocks of 150 s, drift_comp on:
+
+```
+nominal gap   n    |delta| mean  median  max   slope_ppb settled
+   1.0 s      91        3.84     4.0      5    -25567   (never learned)
+   2.0 s      63        0.54     1.0      2    -21749
+   4.0 s      36        0.39     0.0      2    -21760
+   8.0 s      22        0.59     1.0      2    -21752
+```
+
+Flat across 2 s to 8 s. If the residual were a fractional error in the slope it
+would grow with the gap; it does not, so what is left is a per-sample constant
+at the timestamp granularity — 1 us is the quantisation, and the medians are
+0 and 1.
+
+That is the measurement the Tier C alpha-beta item was waiting for. Its premise
+is that estimating offset and slope separately leaves recoverable error because
+the two chase each other. There is no recoverable error at 0.5 us. **Closed, not
+deferred** — reopen it only if B1 tightens the window far enough for a
+microsecond to matter.
+
+### The slope's 1-second learning threshold is a cliff, and ~1 part/s sits in it
+
+The slope only learns from samples with `last_gap_us >= 1000000`. The 1.0 s
+block above measured 0.94 s — just under — so 90 of its 91 samples taught it
+nothing, the estimate stayed at a stale -25567 against the correct -21750, and
+|delta| was **8x worse** than every other block.
+
+The threshold has a real reason: `resid/gap` at short gaps is dominated by the
+1 us quantisation (1 us / 55 ms is 18000 ppb of pure noise). But placing it at
+exactly one second makes a cliff rather than a taper, and a machine running at
+about one part per second lands in it — traffic that is regular, plausible, and
+silently stops maintaining the clock model.
+
+Not urgent: the cost measured 3.84 us against a 5000 us window. Worth fixing as
+a taper (weight by gap) rather than a threshold if this is ever revisited.

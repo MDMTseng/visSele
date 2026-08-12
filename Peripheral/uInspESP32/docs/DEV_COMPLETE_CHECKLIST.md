@@ -331,12 +331,18 @@ Listed so they are not silently dropped, and so nobody re-litigates them.
   quarters. That is a counter-measurement. Ordinary cleanup now, not a risk.
 - **Power-cut injection rig, NVS wear counter, flash temperature telemetry,
   emulator in CI** — roadmap items 3–5, all real, none blocking.
-- **Alpha-beta joint clock estimator** (`LegacyFirmware.cpp:415`) — offset and
-  slope are estimated separately today, which lets them chase each other. The
-  A/B showed the slope estimated correctly (−17.5 µs/s vs −20.6 actual) while
-  `delta_max` did not improve, consistent with exactly that. But `delta_max_us`
-  is 121 against a 5000 µs tolerance, so the error budget is not close to
-  binding. Revisit if B1 tightens the window enough to make it bind.
+- ~~**Alpha-beta joint clock estimator**~~ — **CLOSED 08-12, measured.** The
+  premise was that estimating offset and slope separately leaves recoverable
+  error. `virt_pulse` at exact 2/4/8 s periods gives |delta| mean 0.54 / 0.39 /
+  0.59 us — flat, so the residual is a per-sample constant at the 1 us timestamp
+  granularity, not a fractional slope error. There is nothing for a joint
+  estimator to recover. Reopen only if B1 tightens the window enough for a
+  microsecond to matter.
+- **The slope's 1-second learning threshold is a cliff** (new, 08-12). It only
+  learns from gaps >= 1 s, so traffic at just under that never teaches it: a
+  0.94 s block left the estimate stale and |delta| 8x worse. About one part per
+  second lands in the hole. Cost measured at 3.84 us against a 5000 us window,
+  so not urgent — but it wants a taper, not a threshold.
 
 ---
 
