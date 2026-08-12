@@ -98,13 +98,32 @@ def say(*a):
     print(*a, flush=True)
 
 
+def verdicts(ct):
+    """Parts that got an answer -- reconstructed, because no counter holds it.
+
+    The five counters are not the same KIND of number, and adding them as if
+    they were is the easy mistake here:
+
+      SEL3_Count / NA_Count      incremented at SWITCH  -> VERDICTS
+      SEL1_Count / SEL2_Count    incremented in the ACT_SEL stage -> ACTUATIONS
+
+    SWITCH's case 1 and case 2 only push the actuation tasks; they count
+    nothing. So an ejecting verdict is counted where the air fires, and if the
+    conditions there fail it is counted in SEL_SUPPRESSED instead. Adding
+    SEL1+SEL2+SEL3+NA therefore UNDER-counts verdicts by exactly the suppressed
+    ones -- invisible while suppression is zero, which is every run so far.
+    """
+    return (ct["SEL1"] + ct["SEL2"] + ct["SEL_SUPPRESSED"]
+            + ct["SEL3"] + ct["NA"])
+
+
 def show(j, tag):
     """One line per sample. The verdict mix is the point of this run."""
     if not j:
         say("  %-9s NO STAT" % tag)
         return
     g, ct, h = j["gate"], j["count"], j["health"]
-    judged = ct["NA"] + ct["SEL1"] + ct["SEL2"] + ct["SEL3"]
+    judged = verdicts(ct)
     say("  %-9s state=%-4s accept=%-6s judged=%-6s | SEL1=%-5s SEL2=%-5s "
         "SEL3=%-5s NA=%-6s | SKIP=%-4s UNANS=%s"
         % (tag, j.get("state"), g["accept"], judged, ct["SEL1"], ct["SEL2"],
@@ -151,8 +170,19 @@ def main(a):
 
     # The whole point. Without it every verdict is NA and the run measures
     # nothing the 08-11 soak did not already measure.
-    say("loading def: %s" % a.definition)
-    send(s, "!ld " + json.dumps({"filename": a.definition}), gap=1.0)
+    #
+    # FI, not LD. `!ld` loads a def and stops there -- it does not open an
+    # inspection session, so the camera is never put in trigger mode and no
+    # frame is ever inspected. `!fi` is the packet the WebUI's "full inspection"
+    # sends: it loads the same def AND starts the session.
+    #
+    # FI rather than CI is not a detail either. FI is TriggerMode(2) --
+    # hardware-triggered, one frame per registered part, station region
+    # ENFORCED. CI free-runs the camera and turns the region filter off, which
+    # is right for authoring and wrong for a run that claims to measure sorting.
+    say("starting FI on def: %s" % a.definition)
+    send(s, "!fi " + json.dumps({"deffile": a.definition, "frame_count": -1}),
+         gap=1.0)
     time.sleep(3.0)
 
     send(s, {"type": "clear_error"},
@@ -206,7 +236,7 @@ def teardown(s, rc, attached=False):
             return rc
         show(j, "final")
         g, ct = j["gate"], j["count"]
-        judged = ct["NA"] + ct["SEL1"] + ct["SEL2"] + ct["SEL3"]
+        judged = verdicts(ct)
         inflight = g["accept"] - judged - (g.get("discard_stop") or 0)
         say("")
         say("conservation:")
@@ -215,6 +245,15 @@ def teardown(s, rc, attached=False):
                g["edges"] - g["accept"] - sum(g.get(k, 0) for k in REJ)))
         say("  accept %d - judged %d - discard_stop %d  =  %d still in RBuf"
             % (g["accept"], judged, g.get("discard_stop") or 0, inflight))
+        # A NEGATIVE remainder is not a leak, and reading it as one wastes an
+        # afternoon. reset_running_stat zeroes `accept` wherever the pipeline
+        # happens to be, so any part admitted BEFORE the reset still increments
+        # a verdict counter after it. The excess is exactly the in-flight
+        # population at reset time -- one or two parts when reset at READY,
+        # more if reset mid-run. Reset with the plate stopped to avoid it.
+        if inflight < 0:
+            say("  (negative: %d part(s) were admitted before the counter reset "
+                "and judged after it -- not a leak)" % (-inflight))
         say("")
         acted = ct["SEL1"] + ct["SEL2"] + ct["SEL3"]
         if acted == 0:
