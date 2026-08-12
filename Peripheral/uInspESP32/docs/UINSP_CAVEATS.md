@@ -2605,3 +2605,69 @@ and CI also turns station-region enforcement OFF (`insp session: CI -- station
 region off`). A verdict seen in the setup view is the core's category mapping;
 the board's SEL counters only move with the peripheral channel open and parts
 actually passing the gate.
+
+---
+
+## The sorting half finally moved, and what moved it was not what we expected
+
+2026-08-12, first real-verdict runs. Two things had to be fixed before the
+machine could produce a non-NA verdict at all: the core must have a def loaded
+(`!fi`, not `!ld` -- the latter loads a recipe and never opens a session), and
+the backlight must be on (it is driven by the board's stage tasks, so a headless
+rig sees black frames and a def that matches nothing).
+
+60 s, FI, plate 10000:
+
+```
+SEL1 245   SEL3 643   NA 204   SEL2 0     UNANSWERED 0   SKIP 0
+edges 1380 == accept 1091 + Sigma rej 289      residual 0
+discard_stop 19 at teardown
+```
+
+That is A1's headline gap closed for the positive cases, and A3/A5 confirmed
+under a real run rather than an injector.
+
+### act_cap fires on a SPEED CHANGE, not on a tight window
+
+`DEV_COMPLETE_CHECKLIST` predicted `act_cap` would need "a tight SEL1 window
+(win/pitch 1.80)". It does not. A single large speed change is enough:
+
+```
+steady   9000            act_cap 0
+9000 -> 13000            act_cap 202     <- all of it, here
+13000 -> 9000            act_cap 202     <- nothing further
+```
+
+202 actuations capped by one ramp, `act_cap_max_t` 586. Whatever tightens during
+a ramp reaches the cap far more easily than the window geometry does, and any
+run that changes speed is already exercising this.
+
+### FREQ_TXN stayed zero through 44% speed changes, in both directions
+
+9000 -> 13000 -> 9000 with real verdicts flowing: `FREQ_TXN`,
+`FREQ_TXN_TIMEOUT` and `FREQ_TXN_DRAIN_MAX_MS` all remained 0.
+
+This is the condition the checklist set for deciding its fate: "if a real-verdict
+soak also leaves it at zero, the honest outcome is to DELETE the transaction
+machinery". Nothing stages because `speed_band_pct` is 0 and the band itself was
+removed (`3becdfd6 gate: remove the speed band`), so the staging path has no
+trigger left. The evidence for deletion is now in hand.
+
+### SEL_SUPPRESSED cannot be reached by stopping the plate
+
+Stopping the plate with judged parts in flight produced **no** suppression, and
+the reason is the same unreachability found in A4:
+
+`ACT_SEL` requires `PLATE_RUNNING && !SYS_STEPPER_DISABLED && !DRY_RUN`, and
+`PLATE_RUNNING` is `PLATE_FREQ_CURRENT > 0` -- but the step timer's alarm is
+disabled at zero, so `Run_ACTS` does not execute at all. Those blows were never
+suppressed; they were never *reached*, and the teardown discarded them
+(`discard_stop` 34).
+
+The one reachable path is `SYS_STEPPER_DISABLED` going true while the plate is
+still turning: the ISR keeps running, the condition fails, the counter moves.
+That means de-energising the driver at speed, which lets a loaded plate coast
+and can throw parts -- the same hazard the `pin_on` guard already warns about.
+So this belongs to **B6 (device-side fault injection)**, as a hook that makes the
+condition false without touching the driver. Do not cover it by pulling ENABLE
+on a running machine.

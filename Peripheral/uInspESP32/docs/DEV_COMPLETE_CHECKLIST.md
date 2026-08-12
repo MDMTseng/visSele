@@ -51,13 +51,44 @@ not move once. Three mechanisms are consequently at zero coverage:
 | `SEL_SUPPRESSED` | 0 | same |
 | `FREQ_TXN` / `_TIMEOUT` | 0 / 0 | nothing stages since the band was removed — the whole transaction path is now effectively dead code |
 
-**Action:** repeat the soak with the core attached and a def that produces real
-`SEL1`/`SEL2` verdicts. Not more NA hours. Until this runs, "the machine sorts
-correctly for eight hours" is an untested claim.
+**The all-NA was never the machine.** A headless core loads no def, so it answers
+NA to every part — the sorting half was not broken, it was never asked. Load the
+recipe with `!fi` (`!ld` loads a def and never opens a session) and the backlight
+must be on (it is driven by the board's stage tasks, so a headless rig sees black
+frames). `tools/soak_verdicts.py` does both.
 
-Note on `FREQ_TXN`: if a real-verdict soak also leaves it at zero, the honest
-outcome is to **delete the transaction machinery**, not to leave unreachable
-code carrying a maintenance cost. Decide it deliberately.
+**Status 08-12 — the positive cases are covered.** 60 s, FI, plate 10000:
+
+```
+SEL1 245   SEL3 643   NA 204   SEL2 0    UNANSWERED 0   SKIP 0
+edges 1380 == accept 1091 + Sigma rej 289     residual 0
+```
+
+The remaining three, after a run that deliberately drove speed changes and a
+stop (full numbers in `UINSP_CAVEATS.md`):
+
+| mechanism | now | what it took / what is left |
+|---|---|---|
+| `act_cap` | **202** ✅ | NOT the tight window this table predicted — one 9000→13000 ramp did all of it, `act_cap_max_t` 586 |
+| `FREQ_TXN` | **still 0** | 44% changes in both directions with real verdicts. The deletion condition below is now MET |
+| `SEL_SUPPRESSED` | still 0 | unreachable by stopping the plate — see below. Needs B6 |
+
+**`FREQ_TXN`: delete it.** The condition this checklist set — "if a real-verdict
+soak also leaves it at zero, the honest outcome is to delete the transaction
+machinery" — has been tested and met. Nothing stages because `speed_band_pct` is
+0 and the band was removed (`3becdfd6`), so the staging path has no trigger left.
+This is now a deliberate decision with evidence behind it, not an omission.
+
+**`SEL_SUPPRESSED` is not reachable the obvious way.** Stopping the plate does
+not suppress anything: `ACT_SEL` needs `PLATE_RUNNING`, which is
+`PLATE_FREQ_CURRENT > 0`, and the step timer's alarm is off at zero — so
+`Run_ACTS` never runs and the blows are not suppressed, they are never reached
+(the teardown discards them; `discard_stop` 34). Same unreachability as A4.
+
+The only reachable path is `SYS_STEPPER_DISABLED` going true while the plate
+still turns, which means de-energising the driver at speed — a loaded plate then
+coasts and can throw parts. **Do not cover it that way.** It belongs to B6 as a
+hook that makes the condition false without touching the driver.
 
 ### A2. `rej_width` is a function of plate speed — DIAGNOSED 08-12, fix open
 
@@ -288,8 +319,9 @@ Two numbers nobody has, both cheap now:
    needs no camera and no core, and A3/A4's verification wants exactly that.
 2. ~~**A2, A3, A4, A5**~~ — A3/A4/A5 landed 08-12; A2 is diagnosed and its fix
    is waiting on one histogram. A3/A4 still need an injection run to confirm.
-3. **A1** — real-verdict soak. Now it can cover the negative cases too, because
-   B6 exists. Decide `FREQ_TXN`'s fate from the result.
+3. ~~**A1** — real-verdict soak.~~ Positive cases done 08-12 (`SEL1` 245 in 60 s);
+   `act_cap` covered too. `FREQ_TXN`'s fate is **decided: delete**.
+   `SEL_SUPPRESSED` is the one negative case left and it waits on B6.
 4. **A6** — flip `report_match_ts`, re-soak, promote, delete the host's 450
    lines.
 5. **B1, B2, B3, B4** — tolerance, visibility, and the two link guards.
