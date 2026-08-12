@@ -63,6 +63,7 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 配對到底被證明了什麼(證據等級) | `Peripheral/uInspESP32/docs/PAIRING_VALIDATION_2026-08-06.md` | 現行 |
 | 併發 / thread safety | `Peripheral/uInspESP32/docs/CONCURRENCY_ANALYSIS.md` | 靜態分析 |
 | 可靠性的長期規劃 | `Peripheral/uInspESP32/docs/RELIABILITY_ROADMAP.md` | 規劃 |
+| **韌體還差什麼才算 dev complete(接手先讀這份)** | `Peripheral/uInspESP32/docs/DEV_COMPLETE_CHECKLIST.md` | **現行,2026-08-12** |
 | 量測引擎(caliper / search point / 定位) | `InspectionCore/docs/measurement_pipeline_and_caveats.md` | 現行 |
 | 影像傳輸 / JPEG 線路格式 | `InspectionCore/docs/IMG_TRANSFER_JPEG.md` | 現行 |
 | 日誌系統與 WebUI 整合 | `InspectionCore/docs/LOGGING_WEBUI.md` | 部分未實作 |

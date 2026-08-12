@@ -399,7 +399,49 @@ Still worth fixing regardless: `SYS_MIN_PULSE_TIME_SEP_us` defaults to 4000 us
 (250/s), which is FASTER than the measured camera floor of 5420 us at the
 production crop. The default admits a trigger density the camera cannot take.
 
+#### What closed-loop speed exposes to the operator
+
+Three settings, and the split matters:
+
+| setting | meaning |
+|---|---|
+| **max plate speed** | the ceiling. The loop never goes above it; with auto off, this IS the speed (today's behaviour, `PLATE_FREQ_SETPOINT`) |
+| **target max fps** | what the loop aims the *imaging rate* at. Must sit below the camera's frame floor -- 184.5 fps measured at the production crop, 34.4 at full frame |
+| **auto speed on/off** | off = fixed at the ceiling, which is exactly what the machine does now, so this ships without changing any existing behaviour |
+
+The reason target fps is a separate number from plate speed, rather than being
+derived from it: plate speed sets how fast parts ARRIVE, and the camera floor
+sets how fast they can be IMAGED. Those are different quantities and the
+mismatch between them is the whole problem -- at 200 Hz against a 184.5 fps
+floor the camera does not simply fall behind, it exposes frames that no longer
+correspond to their triggers.
+
+**The machine must NOT auto-detect the camera's ceiling.** The operator
+measures it and enters it.
+
+`cam_max_fps` exists and is cheap, so deriving the limit from it is the
+tempting design -- and it is wrong for the same reason the wedge cost most of a
+day: a camera can report a perfectly healthy configuration while delivering
+nothing, and an observed rate is only as good as the conditions it was observed
+under. A limit derived from a bad window would be applied silently, and the
+machine would look correctly configured while running at the wrong ceiling.
+An operator-entered number is wrong loudly, in one place, and can be checked
+against a test anyone can repeat.
+
+`cam_max_fps` stays as an instrument to run that test with and to display
+beside the entered value, so "what I set" and "what this run observed" can be
+compared. It does not feed the limit.
+
 ## Tomorrow, in order
+
+> **2026-08-12 update — step 6's condition is now met.** The promotion criterion
+> written in step 5 was "a long run on real parts at production settings, not a
+> rig". The 8-hour endurance soak of 2026-08-12 is that run, with the flag still
+> off: `agree` 337826, `disagree` **0**, `rejected` 0, `rebuilds` 0,
+> `cal_fails` 0, `delta_max_us` 121 against a 5000 us tolerance, across 394040
+> reports. So steps 6-8 are no longer blocked on evidence — re-run the same soak
+> with `report_match_ts: true` and then promote and delete. Tracked as A6 in
+> [`DEV_COMPLETE_CHECKLIST.md`](DEV_COMPLETE_CHECKLIST.md).
 
 1. ~~One BOOT press, flash everything.~~ **Done 2026-08-05.**
 2. ~~Watch `cam_sync.agree` / `cam_sync.disagree`.~~ **Done: 6237 / 0.**

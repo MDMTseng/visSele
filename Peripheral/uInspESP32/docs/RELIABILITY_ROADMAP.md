@@ -1,5 +1,9 @@
 # 可靠性路線圖 —— 對照業界正典的差距分析與實施計畫
 
+> **這份是長期規劃,不是待辦清單。** 要知道「還差什麼才能收工」,先讀
+> [`DEV_COMPLETE_CHECKLIST.md`](DEV_COMPLETE_CHECKLIST.md)(2026-08-12)——
+> 它從本檔挑出哪些項目卡 dev complete、哪些明確不卡,並排了順序。
+
 2026-08-01,基於七份平行研究(四份現況體檢 + 三份參考架構:商用分選機、
 Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是業界正典**,
 三個獨立傳統都收斂到同一個模式,而本機全部具備 ——
@@ -92,6 +96,10 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
 
 1. **Framing**:brace-counting → NDJSON + CRC16 + 序號(`{...}*HHHH\n`),
    一壞字元不再無限失步;掉幀可偵測。保留 RESET 逃生門於其下。
+   —— **CRC16 已實作**(`Data_JsonRaw_Layer::crc16_ccitt`,`rx_crc_fail`
+   進遙測),8 小時 soak 426840 幀 **0 失敗**。但**壞位元組之後的 resync
+   路徑仍未被走過**:零失敗代表它沒被測到,不代表它會動。要故障注入
+   (本檔「韌體體質」的注入鉤子),不是再多跑幾小時。
 2. **統一 fault→安全態狀態機**:每個輸出宣告 safe default;host 心跳
    `max_duration` 逾期即進安全態(視覺程式 hang 不需 host 配合也停線)。
 3. **連線 config hash 核對**:host 啟動時比對設定雜湊,不符拒絕進 READY
@@ -116,7 +124,11 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
       無 WiFi、無 flash 日誌,cache-disable 條件已封死。全鏈 IRAM 化的
       維護成本(巨集鏈、漏標即炸)高於殘餘風險;`isr_gap_max_us` 遙測
       持續實證。**翻案條件**:未來引入 OTA / WiFi / flash 日誌任一者。
-- [ ] 清 comm 路徑 std::string(長月運轉頭號殺手 = 堆碎片)
+- [~] **清 comm 路徑 std::string** —— **降級,而且是有反證的降級**(2026-08-12)。
+      原本列為「長月運轉頭號殺手 = 堆碎片」。8 小時 soak 的 `free_heap` /
+      `min_heap` / `stack_hwm` / `rbuf_peak` 在四個兩小時區間**逐位相同**
+      (190688 / 184120 / 4020 / 45)。這是一個量測,不是「還沒出事」。
+      改列為一般整理,不再是風險項。見 UINSP_CAVEATS「An 8-hour soak」。
 - [ ] device 端故障注入鉤子(跳 trigger / 竄改 tid⋯)= pipeline 的 mutation testing
 - [x] **resetchaos 子命令**(2026-08-02 完成,12/12):RTS→EN 硬重啟於
       四種時點(閒置/加速/分選/NVS 寫入中),每輪斷言 POWERON、cfg_crc

@@ -2452,3 +2452,11 @@ and worth re-checking rather than assuming 300 is the ceiling.
 the 1.2 s poll window. 0.023%, no correlation with a speed change, and the very
 next poll was normal. Recorded because a poller with a tighter timeout and no
 retry would read this as a dead board.
+
+### The largest thing this soak did NOT cover
+
+Every verdict in eight hours was `NA` — `SEL1`/`SEL2`/`SEL3` all zero. The
+inspection half ran for eight hours; the **sorting half never moved once**, and
+`act_cap`, `SEL_SUPPRESSED` and `FREQ_TXN` are at zero coverage as a direct
+consequence. Do not read "8 hours clean" as covering the machine. What is left,
+and in what order, is in `DEV_COMPLETE_CHECKLIST.md`.
