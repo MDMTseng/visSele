@@ -1217,6 +1217,64 @@ volatile uint32_t FREQ_TXN_T0_MS = 0;
 // of band. This is the escape above, counted -- a verdict was reached, a task
 // was scheduled, and no air came out. Silence here is the whole problem, so it
 // is reported next to SEL1_Count rather than buried in health.
+// --- station placement aid: catch a part at the gate, then jog it by hand ---
+//
+// Setting a station offset used to be trial and error: guess a number, run,
+// watch where the blow lands, guess again. This makes the plate a positioner.
+//
+//   jog_arm         the next gate edge captures the origin and stops the plate
+//   jog offset:N    put the part AT offset N; repeat until it looks right
+//   jog_end         release
+//
+// The command is ABSOLUTE and the device computes the move. The caller never
+// has to know where the plate stopped -- which it cannot know, since braking
+// distance is not predictable from outside -- it just names a position in the
+// same units as stage_pulse_offset and the firmware turns that into a
+// direction and a distance.
+//
+// The number to read off at the end is `disp`: the SIGNED net displacement of
+// that part from the gate edge, which is exactly the unit stage_pulse_offset is
+// in. Copy it into SEL1_on / CAM1_on / whatever station is being placed.
+//
+// The direction is a PIN, not a sign on the position counter. Two machine facts
+// forced that shape:
+//
+//   * Going the "long way" forward to move backwards does not work here -- a
+//     full revolution takes the part past the NA station, which ejects it. The
+//     part is gone before it arrives.
+//   * The plate cannot be guaranteed to stop before the first station after a
+//     gate edge; braking distance is not bounded by the gate->station gap. So
+//     an absolute "park at offset N from the gate" cannot be honoured as an
+//     interface, while "you are here, now move N" always can.
+//
+// SYS_STEP_COUNT is left strictly monotonic. It is what every other position in
+// this firmware is reckoned in, and making it signed to serve a setup aid would
+// put a direction test in the hottest path in the machine. JOG_DISP is a
+// separate signed accumulator that only moves while jogging.
+//
+// And the accumulator is not in onTimer either. Jogging swaps the timer onto
+// its OWN handler (onTimerJog) for the duration, so the production ISR -- the
+// one whose worst tick is 31.7us against a 62.5us budget, and which has twice
+// hung this machine when something was added to it -- is not touched at all.
+// The jog handler does one job: emit steps and count them.
+//
+// The ESP32 owns the arithmetic. The UI sends relative moves and reads back a
+// displacement; it never has to know where the plate stopped, which it cannot
+// know -- braking distance is not something a browser can predict.
+volatile uint8_t  JOG_STATE   = 0;      // 0 off, 1 armed (waiting for a gate edge), 2 holding
+volatile uint32_t JOG_ORIGIN  = 0;      // SYS_STEP_COUNT at the capturing gate edge
+volatile int32_t  JOG_DISP    = 0;      // signed net travel since that edge, in ticks
+volatile int32_t  JOG_TARGET  = 0;      // where the current move wants JOG_DISP to end
+volatile bool     JOG_REV     = false;  // this move runs the plate backwards
+volatile bool     JOG_MOVING  = false;  // a move is in progress (main loop owns the ramp)
+volatile bool     JOG_STOP_REQ= false;  // ISR -> main loop: stop now
+volatile bool     JOG_ATTACHED= false;  // the timer is currently on onTimerJog
+// Jog speed. Low on purpose: parts sit ON the plate and are carried by
+// friction, and the acceleration at which they start to slide is one of the two
+// numbers DEV_COMPLETE_CHECKLIST lists as never measured. A placement aid that
+// shifts the part it is placing against would be worse than useless.
+float JOG_FREQ = 600;
+
 volatile uint32_t SEL_SUPPRESSED_N = 0;
 // NG verdicts the actuation quota ate. See where this is incremented: the guard
 // passed, so it is not "suppressed", but SEL1_ACT_COUNTDOWN was spent, so no
@@ -1849,6 +1907,74 @@ void STAGE_PULSE_WIDTH_apply(float pf);
 // to see. Steady-state residual after removing tick quantisation was -0.5 us
 // with a 4.3 us sigma, so this transient was the ONLY thing left.
 //
+// Both defined further down; jogService is placed here because it belongs with
+// the ramp it drives, not with the ISR it hands the timer to.
+extern hw_timer_t *timer;
+void IRAM_ATTR onTimerJog();
+
+// Everything the jog mode does that needs a float, in one place in the main
+// loop. The ISR side is five lines and integer; see onTimerJog.
+//
+// Three jobs:
+//   1. honour a stop the ISR asked for (target reached, or the gate caught a
+//      part while armed)
+//   2. brake EARLY, so a move lands near its target instead of overshooting by
+//      the whole stopping distance. f^2/(2a) ticks, from the live speed.
+//   3. hand the timer between onTimer and onTimerJog at the two moments that is
+//      safe: with the plate proven stopped.
+static void jogService()
+{
+  if(JOG_STATE==0) return;
+
+  if(JOG_STOP_REQ)
+  {
+    JOG_STOP_REQ=false;
+    PLATE_FREQ_TARGET=0;
+  }
+
+  const bool stopped = (PLATE_FREQ_CURRENT==0.0f);
+
+  // The capture completed under the PRODUCTION ISR -- the gate edge is sensed
+  // there and the plate coasts to a halt there. Only once it is stopped is it
+  // safe to swap handlers, and only then is the coast a settled number:
+  // SYS_STEP_COUNT has advanced from the edge by exactly the stopping distance.
+  if(JOG_STATE==2 && !JOG_ATTACHED && stopped)
+  {
+    JOG_DISP  = (int32_t)(SYS_STEP_COUNT - JOG_ORIGIN);
+    JOG_TARGET= JOG_DISP;
+    timerAttachInterrupt(timer, &onTimerJog, true);
+    JOG_ATTACHED=true;
+  }
+
+  if(JOG_MOVING)
+  {
+    // "Arrived" is asked-to-stop AND stopped, never stopped alone.
+    //
+    // This tested `stopped` by itself and it cost a runaway: the jog command
+    // sets PLATE_FREQ_TARGET, but PLATE_FREQ_CURRENT is still 0 until the ramp
+    // has had a pass to move it, so the very next service call read "not
+    // moving" as "arrived", cleared JOG_MOVING, and left the plate accelerating
+    // with nothing watching it. The plate ran 3.9 revolutions on a 200 tick
+    // request before it was stopped by hand.
+    if(stopped && PLATE_FREQ_TARGET==0.0f)
+    {
+      JOG_MOVING=false;             // arrived; JOG_DISP is where it truly is
+    }
+    else if(!stopped)
+    {
+      // Brake early. SYS_FREQ_ACCEL is in freq units per second and the plate
+      // runs at 2 ticks per freq unit, so the stopping distance in ticks is
+      // 2 * f^2 / (2a) = f^2/a.
+      const float f = PLATE_FREQ_CURRENT;
+      const float a = (SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL : 1e9f;
+      const int32_t brake = (int32_t)(f*f/a) + 2;
+      const int32_t remain = JOG_REV ? (JOG_DISP - JOG_TARGET)
+                                     : (JOG_TARGET - JOG_DISP);
+      if(remain <= brake) PLATE_FREQ_TARGET=0;
+    }
+  }
+}
+
 // Fallback order matters: a stopped plate has CURRENT == 0 and must convert
 // against the setpoint, or every window lands on us2t's one-tick floor.
 static inline float stageWidthRefFreq()
@@ -1936,7 +2062,11 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //enter
       else if (i == 1)
       {
-        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
+        // IDLE re-asserts the setpoint every pass, which is right for IDLE and
+        // fatal to a jog: the stop the jog just commanded would be undone on the
+        // next loop and the plate would run away with a part under someone's
+        // hand. The jog owns the ramp for its duration.
+        if(JOG_STATE==0) PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
       } //loop
@@ -3056,6 +3186,24 @@ void IRAM_ATTR GateSensing()
     if(!new_Sense)
     {//a pulse is completed -- end_pulse is the last HIGH sample (true edge)
       uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
+      // Catch the part for placement, BEFORE the width filter and before
+      // admission. The whole point is to hold whatever the operator just
+      // dropped in, and a part that fails the width test is still a part they
+      // can position a station against -- refusing it here would make the aid
+      // useless exactly when the width window is what is being set up.
+      //
+      // end_pulse, not middle: the same reference the stage offsets use, so the
+      // number read off at the end can be pasted into one without conversion.
+      if(JOG_STATE==1)
+      {
+        JOG_ORIGIN=gateInfo.end_pulse;
+        JOG_DISP=0;
+        JOG_TARGET=0;
+        JOG_REV=false;
+        JOG_MOVING=false;
+        JOG_STATE=2;
+        JOG_STOP_REQ=true;    // main loop drops the ramp; the coast is counted
+      }
       GATE_EDGES++;
       // Measured on EVERY edge, accepted or not: the rejected tail is the half
       // that carries the speed dependence, so a distribution over survivors only
@@ -3197,6 +3345,43 @@ void IRAM_ATTR GateSensing()
 
 
 
+
+// The jog handler. The timer is swapped onto this while placing a station, and
+// back to onTimer afterwards -- so none of what follows costs the production
+// path anything, and nothing production does can surprise a jog.
+//
+// It emits steps and counts them. That is all. No gate sensing, no stage tasks,
+// no admission: the pipeline is empty in this mode by construction and a part
+// under an operator's eye must not be actuated at.
+//
+// Direction is the DIR pin, set by the command before the move starts and never
+// changed while moving. The counting here is unconditional forward -- JOG_REV
+// only decides which way JOG_DISP goes, because the plate is physically running
+// backwards. Keeping the step generation direction-blind is what let this stay
+// a five-line ISR.
+//
+// SYS_STEP_COUNT is deliberately NOT advanced. It is the production position
+// and it is frozen for the duration; JOG_DISP is the only thing that moves.
+void IRAM_ATTR onTimerJog()
+{
+  static uint32_t phase = 0;
+  // Braced, like StepGo: GPIOLS32_SET/CLR are not statement-safe macros.
+  if(++phase & 1) { GPIOLS32_SET(STEPPER_PLS_PIN); }
+  else            { GPIOLS32_CLR(STEPPER_PLS_PIN); }
+
+  if(JOG_REV) JOG_DISP--; else JOG_DISP++;
+
+  if(JOG_MOVING)
+  {
+    // Signed remaining, in the direction of travel. Reaching zero only ASKS to
+    // stop -- the main loop owns the ramp, and the deceleration that follows is
+    // still counted above, so the reported displacement is where the part
+    // actually ended up rather than where the stop was requested.
+    const int32_t remain = JOG_REV ? (JOG_DISP - JOG_TARGET)
+                                   : (JOG_TARGET - JOG_DISP);
+    if(remain <= 0) JOG_STOP_REQ = true;
+  }
+}
 
 void IRAM_ATTR StepGo()
 {
@@ -5253,6 +5438,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // NG verdicts the quota ate -- see SEL1_NO_QUOTA_N. Non-zero means the
     // SEL1 bin is short by this many against what was judged NG.
     jCountInfo["SEL1_NO_QUOTA"]=SEL1_NO_QUOTA_N;
+    {
+      // Station placement aid. `disp` is the signed travel of the held part from
+      // its gate edge, in stage_pulse_offset units -- the number to paste into a
+      // station once it looks right.
+      JsonObject jJ = retdoc.createNestedObject("jog");
+      jJ["state"]=JOG_STATE;      // 0 off, 1 armed, 2 holding
+      jJ["disp"]=JOG_DISP;
+      jJ["target"]=JOG_TARGET;
+      jJ["moving"]=(bool)JOG_MOVING;
+      jJ["rev"]=(bool)JOG_REV;
+      jJ["freq"]=JOG_FREQ;
+    }
     jCountInfo["FREQ_TXN"]=FREQ_TXN_N;
     jCountInfo["FREQ_TXN_TIMEOUT"]=FREQ_TXN_TIMEOUT_N;
     jCountInfo["FREQ_TXN_DRAIN_MAX_MS"]=FREQ_TXN_DRAIN_MAX_MS;
@@ -6418,6 +6615,133 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
   }
 
+  // --- station placement: jog_arm -> jog -> jog_end. See the JOG_STATE block. --
+  else if(strcmp(type,"jog_arm")==0)
+  {
+    retdoc["type"]="jog_arm";
+    // IDLE only. In INSPECTION the stage tasks are driving the outputs and the
+    // pipeline is full; catching a part and stopping under an operator's hand is
+    // not something to allow while the machine is sorting.
+    if(sysinfo.state!=SYS_STATE::IDLE)
+    {
+      retdoc["err"]="jog needs IDLE";
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      JOG_DISP=0; JOG_TARGET=0; JOG_REV=false;
+      JOG_MOVING=false; JOG_STOP_REQ=false;
+      JOG_STATE=1;                       // the next gate edge captures and stops
+      // Arming has to START the plate, not just wait for it.
+      //
+      // IDLE re-asserts PLATE_FREQ_TARGET from the setpoint every pass, and the
+      // jog guard stops that -- correctly, or the stop this mode commands would
+      // be undone next loop. But it also means that once armed, nothing else
+      // will ever spin the plate up, so an arm issued before the speed was set
+      // waits forever for a gate edge that cannot happen. Set it here, once, and
+      // the guard keeps it from being fought over afterwards.
+      const float f = doc["freq"].is<float>() ? (float)doc["freq"]
+                                              : PLATE_FREQ_SETPOINT;
+      PLATE_FREQ_TARGET = (f>0) ? f : 3000.0f;
+      digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);   // forward for the catch
+      retdoc["armed"]=true;
+      retdoc["freq"]=PLATE_FREQ_TARGET;
+      retdoc["hint"]="drop a part in; the plate stops on the gate edge";
+      doRsp=rspAck=true;
+    }
+  }
+  else if(strcmp(type,"jog")==0)
+  {
+    retdoc["type"]="jog";
+    // ABSOLUTE. The caller says where the part should be -- in the same units
+    // and from the same origin as stage_pulse_offset -- and the device works
+    // out which way to turn and how far. A UI that had to send a relative move
+    // would first have to know where the plate stopped, and braking distance is
+    // not something it can predict; it would have to read back, subtract, and
+    // race the machine to stay correct. The device already knows.
+    if(JOG_STATE!=2 || !JOG_ATTACHED)
+    {
+      retdoc["err"]="not holding a part -- jog_arm first";
+      retdoc["state"]=JOG_STATE;
+      doRsp=true; rspAck=false;
+    }
+    else if(JOG_MOVING)
+    {
+      retdoc["err"]="still moving";
+      doRsp=true; rspAck=false;
+    }
+    else if(!doc["offset"].is<int>())
+    {
+      retdoc["disp"]=JOG_DISP;          // a query, not a move
+      doRsp=rspAck=true;
+    }
+    else
+    {
+      const int32_t want  = (int32_t)doc["offset"];
+      const int32_t delta = want - JOG_DISP;     // the relative move, computed here
+      if(delta==0)
+      {
+        retdoc["disp"]=JOG_DISP;
+        retdoc["moved"]=0;
+        doRsp=rspAck=true;
+      }
+      else
+      {
+        // Direction is a pin, and it is only ever changed with the plate
+        // stopped -- flipping DIR mid-motion is a step the driver may or may
+        // not take.
+        JOG_REV = (delta<0);
+        digitalWrite(STEPPER_DIR_PIN,
+                     JOG_REV ? !stepper_dir_level : stepper_dir_level);
+        JOG_TARGET = want;
+        JOG_MOVING = true;
+        JOG_STOP_REQ = false;
+        // Speed follows the DISTANCE. Braking takes f^2/a ticks, so a move
+        // shorter than twice that never reaches cruise and spends the whole
+        // trip decelerating -- 600 Hz needs 180 ticks to stop, which makes a
+        // 200 tick move a coast with no control in it. Cap the speed so the
+        // brake is at most half the move: f <= sqrt(a*d/2).
+        const float d = (float)(delta<0 ? -delta : delta);
+        const float a = (SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL : 2000.0f;
+        float f = sqrtf(a*d*0.5f);
+        if(f>JOG_FREQ) f=JOG_FREQ;
+        if(f<60.0f)    f=60.0f;      // slower than this the ramp is all there is
+        PLATE_FREQ_TARGET = f;
+        retdoc["speed"]=f;
+        retdoc["from"]=JOG_DISP;
+        retdoc["offset"]=want;
+        retdoc["moved"]=delta;          // what the device decided to do
+        doRsp=rspAck=true;
+      }
+    }
+  }
+  else if(strcmp(type,"jog_end")==0)
+  {
+    retdoc["type"]="jog_end";
+    PLATE_FREQ_TARGET=0;
+    JOG_MOVING=false; JOG_STOP_REQ=false;
+    // Only safe stopped, same as the swap in. If a move is still coasting the
+    // caller is refused rather than having the handler pulled out from under a
+    // turning plate.
+    if(JOG_ATTACHED && PLATE_FREQ_CURRENT!=0.0f)
+    {
+      retdoc["err"]="plate still moving -- retry once stopped";
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      if(JOG_ATTACHED)
+      {
+        timerAttachInterrupt(timer, &onTimer, true);
+        JOG_ATTACHED=false;
+      }
+      digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);
+      retdoc["disp"]=JOG_DISP;           // the number to paste into a station
+      JOG_STATE=0;
+      doRsp=rspAck=true;
+    }
+  }
   else if(strcmp(type,"set_dry_run")==0)
   {
     // Only from a standstill, in both directions. Muting mid-spin is an abrupt
@@ -7348,6 +7672,11 @@ void firmwareLoop()
 
   static int subDiv=0;
   static int64_t lastRampUs=0;
+  // OUTSIDE the 1/256 divider below. The ramp can afford to be serviced every
+  // 256th pass -- it is integrating an acceleration and dt carries the gap --
+  // but the jog's braking decision is a POSITION test, and a position test that
+  // runs 1/256 as often overshoots by whatever the plate covered meanwhile.
+  jogService();
   do{//timer freq ctrl
     subDiv=(subDiv+1)&(0xFF);
     if(subDiv!=0)break;
