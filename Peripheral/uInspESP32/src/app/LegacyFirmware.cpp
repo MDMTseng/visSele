@@ -940,6 +940,44 @@ volatile uint32_t GATE_MIN_DIST_um = 2000;
 // what a distance too small to be one tick used to mean, so the guard is
 // unchanged in behaviour.
 volatile uint32_t GATE_MIN_DIST_STEPS = 0;
+// Objects admitted, never judged, and thrown away by RESET_ALL_PIPELINE_QUEUE.
+//
+// The 8-hour soak ended 393865 admitted against 393537 judged. The 328 missing
+// were almost certainly the in-flight population dropped at teardown -- and
+// "almost certainly" is not a counter, which is the whole complaint: the books
+// did not close, and nothing said whether the gap was a stop or a leak.
+//
+// Counted where they die, so accept == judged + discarded_at_stop + in-flight
+// holds and a residual means something again.
+volatile uint32_t GATE_DISCARD_STOP = 0;
+// Which EDGE of the width window rejected, and how wide the pulses actually are.
+//
+// rej_width is a function of plate speed -- 5.10% at 3000-3999 against 1.83% at
+// 9000-9999 over the 8-hour soak, monotone, 2.8x across the range. A test that
+// decides whether a gate pulse is a part at all cannot depend on how fast the
+// plate is turning, so this is the one defect that changes which parts get
+// inspected.
+//
+// It cannot be FIXED from the ratio alone, because two models predict it and
+// they want opposite corrections:
+//
+//   additive time   the sensor has a fixed response time in us, so the pulse
+//                   measures WIDER in ticks the faster the plate turns. Slow
+//                   plate -> pulses fall under minWidth. Correction: subtract a
+//                   constant time, or scale the window by the live frequency the
+//                   way stageWidthRefFreq() scales the station windows.
+//   geometric       the shadow is a fixed distance and therefore a fixed tick
+//                   count, and the drift is something else entirely (debounce
+//                   at speed, part bounce, a sampling artefact). Scaling the
+//                   window would then be wrong in the dangerous direction.
+//
+// lo vs hi separates them in one run: the additive model rejects at the LOW edge
+// as the plate slows. The width sums make the drift itself measurable rather
+// than inferred -- mean width per run, against the configured window.
+volatile uint32_t GATE_REJ_WIDTH_LO=0, GATE_REJ_WIDTH_HI=0;
+volatile uint32_t GATE_W_MIN=0xFFFFFFFFu, GATE_W_MAX=0;
+volatile uint64_t GATE_W_SUM=0;
+volatile uint32_t GATE_W_N=0;
 
 
 volatile uint32_t ERR_CTX_TID=0;
@@ -1501,7 +1539,16 @@ struct ACT_SCH act_S;
 
 void RESET_ALL_PIPELINE_QUEUE()
 {
-  
+  // Name the parts that die here, before they are gone.
+  //
+  // retired==1 means SWITCH already ran and the object has its verdict counted;
+  // it is only waiting for the drain to free the slot, so it is not a loss.
+  // Everything else was admitted and will never be judged. See GATE_DISCARD_STOP.
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p=RBuf.getTail(i);
+    if(p && !p->retired) GATE_DISCARD_STOP++;
+  }
   RBuf.clear();
   // SWITCH first: it is the stage that PUSHES into ACT_SEL1/ACT_SEL2, so
   // clearing it last left a window where a tick between the SEL clears and
@@ -2950,7 +2997,17 @@ void IRAM_ATTR GateSensing()
     {//a pulse is completed -- end_pulse is the last HIGH sample (true edge)
       uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
       GATE_EDGES++;
-      if( !(diff>minWidth && diff<maxWidth) ) GATE_REJ_WIDTH++;
+      // Measured on EVERY edge, accepted or not: the rejected tail is the half
+      // that carries the speed dependence, so a distribution over survivors only
+      // would hide exactly what is being looked for. See GATE_REJ_WIDTH_LO.
+      if(diff<GATE_W_MIN) GATE_W_MIN=diff;
+      if(diff>GATE_W_MAX) GATE_W_MAX=diff;
+      GATE_W_SUM+=diff; GATE_W_N++;
+      if( !(diff>minWidth && diff<maxWidth) )
+      {
+        GATE_REJ_WIDTH++;
+        if(diff<=(uint32_t)minWidth) GATE_REJ_WIDTH_LO++; else GATE_REJ_WIDTH_HI++;
+      }
       else
       {
         uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
@@ -3188,6 +3245,45 @@ static volatile uint32_t VIRT_JITTER_TICKS = 0;   // +/- this many, uniform
 static volatile uint32_t VIRT_EMIT_N       = 0;   // ISR writes
 static volatile uint32_t VIRT_DROP_N       = 0;   // ISR writes: gate refused it
 
+// The injected path's entry test, so that it is one.
+//
+// Both injectors used to call newPulseEvent() directly, which skipped the two
+// things the sensor path does around it:
+//
+//   GATE_EDGES     never incremented, so `edges != accept + Sigma rej` with the
+//                  injector armed and the yield percentages ran above 100%. The
+//                  cost is not the injected objects; it is that the MAIN
+//                  INTEGRITY CHECK becomes unusable for every later run too,
+//                  because the residual is silent and constant and reads as an
+//                  accounting leak when it is not. The 8-hour soak carried an
+//                  inherited 716 for exactly this reason.
+//
+//   PLATE_RUNNING  real edges are admitted only while the plate is turning; the
+//                  injected ones were admitted regardless. An object registered
+//                  with the plate stopped is scheduled against a step clock that
+//                  is not advancing, so it never reaches a station and never
+//                  gets a verdict -- it just sits in RBuf until a teardown drops
+//                  it (see GATE_DISCARD_STOP).
+//
+// GATE_DISABLED is deliberately NOT tested here -- see GATE_DISABLED: ignoring
+// the real sensor while still injecting is the entire point of that flag.
+//
+// Attribution follows the sensor path's ordering, so "unstable" keeps only the
+// meaning its name claims.
+static inline int IRAM_ATTR injectPulseEvent(uint32_t start_pulse, uint32_t end_pulse,
+                                             uint32_t middle_pulse, uint32_t pulse_width)
+{
+  GATE_EDGES++;
+  if(!PLATE_RUNNING)
+  {
+    if(SYS_STEPPER_DISABLED)  GATE_REJ_STEPPER_OFF++;
+    else if(DRY_RUN)          GATE_REJ_DRYRUN++;
+    else                      GATE_REJ_UNSTABLE++;
+    return -3;
+  }
+  return newPulseEvent(start_pulse, end_pulse, middle_pulse, pulse_width);
+}
+
 static inline void IRAM_ATTR phantomServiceISR()
 {
   // A host request wins the tick; the virtual train takes the next one. Same
@@ -3199,7 +3295,7 @@ static inline void IRAM_ATTR phantomServiceISR()
     // Same shape a real detection presents: a narrow pulse centred on now. The
     // width is nominal -- the gate's width filter is what it has to satisfy.
     const uint32_t at = SYS_STEP_COUNT;
-    if(newPulseEvent(at-10, at+10, at, 20) != 0) PHANTOM_DROP_N++;
+    if(injectPulseEvent(at-10, at+10, at, 20) != 0) PHANTOM_DROP_N++;
     return;
   }
 
@@ -3249,7 +3345,7 @@ static inline void IRAM_ATTR phantomServiceISR()
     if(w < 2)   w = 2;
   }
   const uint32_t at = now;
-  if(newPulseEvent(at - w/2, at + w/2, at, w) != 0) VIRT_DROP_N++;
+  if(injectPulseEvent(at - w/2, at + w/2, at, w) != 0) VIRT_DROP_N++;
   else VIRT_EMIT_N++;
 
   uint32_t step = period;
@@ -3383,7 +3479,17 @@ StaticJsonDocument<3072> ret_doc;
 
 
 StaticJsonDocument <3072>doc;
-StaticJsonDocument <3072>retdoc;
+// 3584, not 3072: get_running_stat serialised to 2864 bytes before the width
+// diagnostics went in, so the document pool was ~200 bytes from its ceiling and
+// the next four keys added to it overflowed -- which the guard reports as
+// stat_doc_overflow and NOT as a truncated reply, deliberately (see there).
+//
+// The real ceiling is the HOST's, not this one: the core reads the peripheral
+// line with `if (line.size() < 4096) line += c` (wiringPanel.cpp:6703), so a
+// reply past 4096 bytes is silently truncated upstream where no device-side
+// guard can see it. 3584 keeps a margin under that. Anything wanting more room
+// has to raise the host's limit first.
+StaticJsonDocument <3584>retdoc;
 
 
 
@@ -4888,6 +4994,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
+    GATE_DISCARD_STOP=0;
+    GATE_REJ_WIDTH_LO=GATE_REJ_WIDTH_HI=0;
+    GATE_W_MIN=0xFFFFFFFFu; GATE_W_MAX=0; GATE_W_SUM=0; GATE_W_N=0;
     // The clock model too. Leaving it out made every segmented experiment
     // read the previous segment's numbers: an A/B control appeared to show 12
     // disagreements that were entirely leftovers, which nearly produced the
@@ -5055,6 +5164,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         // selector unjudged and raises no error, so it under-reports as err=2.
         v["unanswered"]=UNANSWERED_Count;
         v["skip"]=SKIP_Count;
+        // The third way in can fail to produce an out is a teardown while parts
+        // were still in flight: acc - judged - discarded == what is in RBuf
+        // right now. Reported once, as gate.discard_stop -- this document is
+        // close enough to its ceiling that a duplicate is not free.
         v["loss"]= (UNANSWERED_Count>=SKIP_Count) ? "unanswered" : "skip";
       }
 
@@ -5223,11 +5336,27 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // unless the auto-rate loop has backed off.
       jG["edges"]=GATE_EDGES;
       jG["rej_width"]=GATE_REJ_WIDTH;
+      // lo/hi says WHICH edge, and w_mean/w_min/w_max say where the population
+      // sits relative to the configured window. See GATE_REJ_WIDTH_LO.
+      jG["rej_width_lo"]=GATE_REJ_WIDTH_LO;
+      jG["rej_width_hi"]=GATE_REJ_WIDTH_HI;
+      // 64-bit, written in the step ISR, read here: a plain read can be torn in
+      // half by an edge landing between the two words. Re-read until the count
+      // is stable, so a torn sum is discarded rather than reported as a mean.
+      uint32_t w_n; uint64_t w_sum;
+      do { w_n=GATE_W_N; w_sum=GATE_W_SUM; } while(w_n!=GATE_W_N);
+      // w_n is not reported: every edge is measured, so it equals `edges`.
+      jG["w_mean"]= w_n ? (double)((double)w_sum/w_n) : 0.0;
+      jG["w_min"]= GATE_W_N ? GATE_W_MIN : 0;
+      jG["w_max"]=GATE_W_MAX;
       jG["rej_unstable"]=GATE_REJ_UNSTABLE;   // now ONLY "not at speed"
       jG["rej_stepper_off"]=GATE_REJ_STEPPER_OFF;
       jG["rej_gate_off"]=GATE_REJ_GATE_OFF;
       jG["rej_dryrun"]=GATE_REJ_DRYRUN;
       jG["rej_blocked"]=GATE_REJ_BLOCKED;
+      // Admitted, never judged, dropped by a teardown. Not a rejection -- it is
+      // on the far side of the gate -- so it is not in the edges identity.
+      jG["discard_stop"]=GATE_DISCARD_STOP;
       jG["min_dist_um"]=GATE_MIN_DIST_um;
       jG["eff_sep_us"]=GATE_SEP_EFF_us;
       jG["eff_hz"]=GATE_SEP_EFF_us ? (uint32_t)(1000000UL/GATE_SEP_EFF_us) : 0;
@@ -6405,7 +6534,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     
     // Static, not stack: this is the largest response the device produces and
     // stack_hwm has been as low as 2500 bytes.
-    static uint8_t buff[3072];
+    static uint8_t buff[3584];   // matches retdoc; see the host's 4096 cap there
     // Never fail silently. get_running_stat outgrew a 2048 byte buffer once the
     // clock diagnostics went in, and the symptom was simply no reply at all --
     // which reads as a dead link and cost an hour of looking in the wrong place.

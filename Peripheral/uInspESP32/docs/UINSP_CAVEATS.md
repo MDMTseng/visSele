@@ -2460,3 +2460,67 @@ inspection half ran for eight hours; the **sorting half never moved once**, and
 `act_cap`, `SEL_SUPPRESSED` and `FREQ_TXN` are at zero coverage as a direct
 consequence. Do not read "8 hours clean" as covering the machine. What is left,
 and in what order, is in `DEV_COMPLETE_CHECKLIST.md`.
+
+---
+
+## The width test rejects at the LOW edge, and the drift is a fixed TIME
+
+2026-08-12, three speeds, 60 s each, real parts, through the core.
+
+```
+ freq   edges  rej_width      lo   hi   w_mean   w_min  w_max
+ 3000     409   19  4.65%     19    0   262.67     44    611
+ 6000     789   34  4.31%     34    0   275.12     67    638
+ 9000    1163   32  2.75%     32    0   283.81     75    642
+```
+
+**`rej_width_hi` is 0 at every speed.** Nothing is ever rejected for being too
+wide, so half of the "which edge" question is closed and stays closed.
+
+`w_mean` fits `w = W_geom + t0*f` with residuals of ±1.25 ticks over the three
+points:
+
+```
+t0      = 3.52 ms      a fixed sensor response, in TIME
+W_geom  = 252.7 ticks  = 3.177 mm
+```
+
+The intercept is the part of this worth trusting. 3.18 mm is a real part's
+shadow -- parts are specified 3 mm apart -- so the model lands on a physical
+number rather than an arbitrary one. A tick-domain measurement of a
+fixed-distance shadow cannot depend on speed; a fixed response time in µs
+becomes more ticks the faster the plate turns, and that is what is seen.
+
+**Do not implement the correction from this alone.** `t0*f` is 10.6 ticks at
+3000 against 35.2 at 10000 -- a ~25 tick swing on a 120 tick threshold. Whether
+that accounts for a 2.8x change in rejection rate depends on how dense the low
+tail is right at 120, which was NOT measured. `w_min` of 44-75 says there is a
+population far below the threshold that is probably not parts at all (debris, a
+noise edge), and lowering the threshold at low speed admits those too. The
+rejection percentages here are also weakly powered -- 19/34/32 events, Poisson
+±1.07 / ±0.74 / ±0.49 -- and only reproduce the soak's DIRECTION, not its 2.8x.
+
+What is missing before the fix: a width histogram near the threshold.
+
+### Serial-direct cannot run inspection mode, by design
+
+The first attempt drove the board over the UART with no core attached and
+halted immediately: `CAM_CLOCK_CAL_FAILED` (err 14). CAL needs the host to
+report frame timestamps, so a headless board can never converge and refusing to
+start is correct.
+
+`INSPECTION_MODE_TEST` (state 140) is exactly the camera-free rig that would
+have worked -- it opens the gate and turns the plate with no CAL -- but **no
+command can reach it**. Nothing in the firmware emits
+`ENTER_INSPECTION_TEST_MODE`; the state and its transition are dead code.
+Making it reachable is the cheapest first step B6 has.
+
+### get_running_stat was ~200 bytes from its ceiling
+
+Adding four keys overflowed it (`stat_doc_overflow`). The old response
+serialised to 2864 bytes against a `StaticJsonDocument<3072>`. Raised to 3584.
+
+The real ceiling is the HOST's: the core reads the peripheral line with
+`if (line.size() < 4096) line += c` (`wiringPanel.cpp:6703`), so a reply past
+4096 bytes is silently truncated upstream, where no device-side guard can see
+it. Anything wanting more room has to raise the host's limit first.

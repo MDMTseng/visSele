@@ -59,7 +59,7 @@ Note on `FREQ_TXN`: if a real-verdict soak also leaves it at zero, the honest
 outcome is to **delete the transaction machinery**, not to leave unreachable
 code carrying a maintenance cost. Decide it deliberately.
 
-### A2. `rej_width` is a function of plate speed
+### A2. `rej_width` is a function of plate speed — DIAGNOSED 08-12, fix open
 
 | plate freq | edges | rej_width |
 |---|---|---|
@@ -77,30 +77,52 @@ station windows now are (`stageWidthRefFreq`, 08-11).
 This is the one functional defect that changes which parts get inspected, so it
 ranks above the rest of Tier A on severity.
 
-### A3. `GATE_EDGES` is not incremented on the injected path
+**Measured 2026-08-12** (full numbers in `UINSP_CAVEATS.md`, "The width test
+rejects at the LOW edge"). `rej_width_lo` / `rej_width_hi` and the width
+distribution went in as instruments; three speeds, 60 s each, real parts:
 
-`virt_pulse` calls `newPulseEvent` directly. With it armed,
-`edges != accept + Σrej` and the yield percentages are unbounded above 100%.
+- **`rej_width_hi` is 0 at every speed.** The "too wide" branch is closed.
+- `w_mean` fits `w = W_geom + t0*f` to ±1.25 ticks: **t0 = 3.52 ms** fixed
+  sensor response, **W_geom = 252.7 ticks = 3.177 mm** — a real part's shadow.
 
-It is a diagnostic path, but the cost is that the **main integrity check is
-unusable** unless the counters were reset after the last injection — and the
-residual is silent and constant, so it reads as an accounting leak when it is
-not. The soak carried an inherited 716 for exactly this reason.
+So the additive-time model is the one standing, and the correction is to take
+`t0*f` off the measured width (or add it to the threshold) rather than to scale
+the window proportionally.
 
-Fix: increment `GATE_EDGES` on the injected path too, so the identity holds
-unconditionally and a non-zero residual means what it should mean.
+**Still open, and deliberately not implemented yet:** `t0*f` is 10.6 ticks at
+3000 against 35.2 at 10000, a ~25 tick swing on a 120 tick threshold. Whether
+that accounts for a 2.8× rejection change depends on the density of the low tail
+right at 120, which is not measured — and `w_min` of 44-75 says part of that
+tail is probably not parts at all. **Needs a width histogram near the threshold
+before the criterion is changed.** This is the item that decides which parts get
+inspected; it does not get a guess.
 
-### A4. The injected path bypasses `PLATE_RUNNING`
+### A3. `GATE_EDGES` is not incremented on the injected path — DONE 08-12
 
-Same path, second defect: injection admits regardless of whether the plate is
-turning. Real gate edges are gated on `PLATE_RUNNING`; injected ones are not.
+`injectPulseEvent()` now wraps both injectors (host phantom and the virtual
+train). It increments `GATE_EDGES`, so `edges == accept + Σrej` holds
+unconditionally and a residual means what it should mean again.
 
-### A5. Parts discarded unattributed at stop
+Not yet exercised: the sweep that validated A2 injected nothing. Verify with
+`virt_pulse` armed.
 
-The soak ended 393865 admitted against 393537 judged — 328 parts, roughly the
-pipeline depth, that left no counter behind. They are almost certainly the
-in-flight population being dropped at teardown, but "almost certainly" is not a
-counter. Name them (a `DISCARDED_AT_STOP` or equivalent) so the books close.
+### A4. The injected path bypasses `PLATE_RUNNING` — DONE 08-12
+
+Same helper gates injection on `PLATE_RUNNING`, attributing a block the way the
+sensor path does (`stepper_off` / `dryrun` / `unstable`, in that order).
+`GATE_DISABLED` is deliberately still not tested — injecting while the real
+sensor is ignored is that flag's whole purpose.
+
+Verify alongside A3.
+
+### A5. Parts discarded unattributed at stop — DONE 08-12
+
+`RESET_ALL_PIPELINE_QUEUE()` counts live RBuf entries into `GATE_DISCARD_STOP`
+before clearing (`retired==1` excluded — those are judged and merely awaiting
+the drain). Reported as `gate.discard_stop`.
+
+Confirmed on the 08-12 sweep: **17** at teardown, previously invisible. The
+identity is now `accept − judged − discard_stop == what is in RBuf`.
 
 ### A6. Promote `report_match_ts`, then delete the host's 450 lines
 
@@ -205,6 +227,28 @@ Listed so they are not silently dropped, and so nobody re-litigates them.
 
 ---
 
+## Parked — known, low confidence of biting, fix when it does
+
+Found on 2026-08-12 while doing A2-A5. None of them blocks anything; they are
+here so that when one does bite, the diagnosis is already written down.
+
+1. **`INSPECTION_MODE_TEST` (state 140) is unreachable.** It opens the gate and
+   turns the plate with **no CAL**, which is exactly the camera-free rig B6
+   wants — and nothing in the firmware emits `ENTER_INSPECTION_TEST_MODE`, so
+   the state and its transition are dead code. Serial-direct runs cannot enter
+   inspection mode at all today: they halt on `CAM_CLOCK_CAL_FAILED` (err 14),
+   correctly, because CAL needs a host to report frame timestamps. Making this
+   state reachable is the cheapest first step B6 has.
+2. **`get_running_stat` sits near a silent host-side ceiling.** Raised device
+   side 3072 → 3584 after four new keys overflowed it. The binding limit is the
+   HOST's: the core reads the peripheral line with `if (line.size() < 4096)`
+   (`wiringPanel.cpp:6703`) and truncates past that with no device-side guard
+   able to see it. The next few diagnostics fit; a batch does not.
+3. **`report_match_ts` is `true` in the board's NVS** (read 08-12,
+   `cfg_from_nvs: true`), while A6 below is written on it being false. One of
+   the two is stale. A6's plan — re-soak, promote, delete the host's 450 lines —
+   does not survive that being unresolved, so resolve it before starting A6.
+
 ## Not yet measured
 
 Two numbers nobody has, both cheap now:
@@ -223,9 +267,11 @@ Two numbers nobody has, both cheap now:
 
 ## Suggested order
 
-1. **B6** (fault injection) — it is the instrument the rest needs.
-2. **A2, A3, A4, A5** — four contained firmware fixes, all in
-   `LegacyFirmware.cpp`, no new mechanism.
+1. **B6** (fault injection) — it is the instrument the rest needs. Start by
+   making `INSPECTION_MODE_TEST` reachable (parked item 1): it is a rig that
+   needs no camera and no core, and A3/A4's verification wants exactly that.
+2. ~~**A2, A3, A4, A5**~~ — A3/A4/A5 landed 08-12; A2 is diagnosed and its fix
+   is waiting on one histogram. A3/A4 still need an injection run to confirm.
 3. **A1** — real-verdict soak. Now it can cover the negative cases too, because
    B6 exists. Decide `FREQ_TXN`'s fate from the result.
 4. **A6** — flip `report_match_ts`, re-soak, promote, delete the host's 450
