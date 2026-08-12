@@ -1218,6 +1218,12 @@ volatile uint32_t FREQ_TXN_T0_MS = 0;
 // was scheduled, and no air came out. Silence here is the whole problem, so it
 // is reported next to SEL1_Count rather than buried in health.
 volatile uint32_t SEL_SUPPRESSED_N = 0;
+// NG verdicts the actuation quota ate. See where this is incremented: the guard
+// passed, so it is not "suppressed", but SEL1_ACT_COUNTDOWN was spent, so no
+// blow happened and SEL1_Count did not move either. Without this the part left
+// no trace at all, and SEL1_Count is the number a bin count is reconciled
+// against -- an untraced loss there is a discrepancy with no explanation.
+volatile uint32_t SEL1_NO_QUOTA_N = 0;
 
 // Is the plate turning? Published for the step ISR, which must not touch the
 // FPU (GateSensing runs inside onTimer and its registers are not saved).
@@ -1531,7 +1537,8 @@ struct ACT_SCH
 
       ACT_SWITCH,
       ACT_SEL1,
-      ACT_SEL2;
+      ACT_SEL2,
+      ACT_SEL3;
 };
 
 struct ACT_SCH act_S;
@@ -1562,6 +1569,7 @@ void RESET_ALL_PIPELINE_QUEUE()
   act_S.ACT_L2A.clear();
   act_S.ACT_SEL1.clear();
   act_S.ACT_SEL2.clear();
+  act_S.ACT_SEL3.clear();
 }
 
 
@@ -2554,10 +2562,23 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
         case 3:
           CONSEC_UNANSWERED=0;
           autoRateOk();   // a part was judged
-          SEL3_Count++;
-          // SEL3 has no actuator. These were SEL2's tasks copy-pasted, which
-          // would have ejected every OK part into the NG chute; left commented
-          // rather than deleted, which is why cat=3 is documented as a trap.
+          // SEL3 now actuates, on its OWN queue and its OWN offsets.
+          //
+          // It used to count here and fire nothing, and the counter was
+          // therefore a VERDICT count while SEL1/SEL2 were BLOW counts. That
+          // asymmetry cannot be reconciled with what is physically in the bin:
+          // the OK number said "judged OK", the NG number said "air fired", and
+          // only one of those is a part you can go and count.
+          //
+          // The previous attempt was SEL2's tasks copy-pasted, which pushed OK
+          // parts into the NG queue and would have ejected every good part into
+          // the wrong chute. That is why it was commented out rather than
+          // deleted, and why cat=3 was documented as a trap. The fix is not to
+          // un-comment it -- it is to give SEL3 its own queue (ACT_SEL3) and
+          // its own stage offsets (SEL3_on/SEL3_off), which already existed in
+          // STAGE_PULSE_OFFSET and were simply never consumed.
+          ACT_PUSH_TASK(act_S.ACT_SEL3, pli, spo->SEL3_on, 1, _task_->src =NULL; );
+          ACT_PUSH_TASK(act_S.ACT_SEL3, pli, spo->SEL3_off, 0, _task_->src =NULL; );
           break;
         case 0xFFFF:
           CONSEC_UNANSWERED=0;
@@ -2648,6 +2669,16 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     // nothing about it looks wrong.
                     if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
                       SEL_SUPPRESSED_N++;   // asked for, not delivered -- see SEL_SUPPRESSED_N
+                    // The quota case used to fall between the two counters.
+                    //
+                    // Guard passes, SEL1_ACT_COUNTDOWN is 0: no blow, no
+                    // SEL1_Count, and no SEL_SUPPRESSED either -- an NG verdict
+                    // that ejected nothing and left no trace. SEL_ACT_LIMIT
+                    // reports the moment the quota runs out, but every part
+                    // eaten after that was silent, and SEL1_Count is what the
+                    // bin is reconciled against.
+                    else if(SEL1_ACT_COUNTDOWN==0)
+                      SEL1_NO_QUOTA_N++;
                     if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
@@ -2684,8 +2715,37 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     IO_OFF(PIN_O_SEL2,IOI_SEL2);
                     IO_TRACE_LOG(PIN_O_SEL2,0,cur_pulse,0);
                   }
-                
-                  
+
+
+                  );
+
+
+  // SEL3: the OK outlet. Same shape as SEL1/SEL2 and same guard, deliberately.
+  //
+  // SEL3_Count is incremented HERE and not at SWITCH, which is the whole point
+  // of the change: every SEL counter now means "air fired", so the three of them
+  // add up to what is physically in the bins. A verdict that was judged but not
+  // delivered lands in SEL_SUPPRESSED, exactly as it does for the other two,
+  // instead of inflating the OK number.
+  ACT_TRY_RUN_TASK(acts->ACT_SEL3, cur_pulse,
+                   task->info ? task->offset : spo->SEL3_off,
+
+                  if(task->info)
+                  {
+                  if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
+                    SEL_SUPPRESSED_N++;
+                  if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
+                  {
+                    SEL3_Count++;
+                    IO_ON(PIN_O_SEL3,IOI_SEL3);
+                    IO_TRACE_LOG(PIN_O_SEL3,1,cur_pulse,0);
+                  }
+                  }
+                  else
+                  {
+                    IO_OFF(PIN_O_SEL3,IOI_SEL3);
+                    IO_TRACE_LOG(PIN_O_SEL3,0,cur_pulse,0);
+                  }
                   );
 
 
@@ -4963,6 +5023,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
     SEL_SUPPRESSED_N=0; FREQ_TXN_N=0; FREQ_TXN_TIMEOUT_N=0; FREQ_TXN_DRAIN_MAX_MS=0;
+    SEL1_NO_QUOTA_N=0;
     SKIP_Count=0;
     UNANSWERED_Count=0;
     CONSEC_UNANSWERED=0;
@@ -5189,6 +5250,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // Verdicts that scheduled an actuation which never happened. Non-zero means
     // parts were judged and not sorted -- see SEL_SUPPRESSED_N.
     jCountInfo["SEL_SUPPRESSED"]=SEL_SUPPRESSED_N;
+    // NG verdicts the quota ate -- see SEL1_NO_QUOTA_N. Non-zero means the
+    // SEL1 bin is short by this many against what was judged NG.
+    jCountInfo["SEL1_NO_QUOTA"]=SEL1_NO_QUOTA_N;
     jCountInfo["FREQ_TXN"]=FREQ_TXN_N;
     jCountInfo["FREQ_TXN_TIMEOUT"]=FREQ_TXN_TIMEOUT_N;
     jCountInfo["FREQ_TXN_DRAIN_MAX_MS"]=FREQ_TXN_DRAIN_MAX_MS;
