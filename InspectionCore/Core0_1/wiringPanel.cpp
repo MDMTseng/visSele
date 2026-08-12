@@ -6384,6 +6384,70 @@ void PerifConsoleThread(bool *terminationflag)
         int n = snprintf(ack, sizeof(ack), "{\"core\":\"%s injected\"}\n", tl);
         ::write(cli, ack, n);
       }
+      // '?lat' -- the same stage histograms the GS reply carries, as text.
+      //
+      // lat_hist rides on the perif_pairing GS item, which means reading it
+      // needs a BPG websocket client, which means a browser or 200 lines of
+      // framing. That is a silly price for the one measurement that says which
+      // stage owns the tail, and it is the reason the device side got measured
+      // three times this week while the core side got read out of a report from
+      // three days ago.
+      else if (line == "?lat")
+      {
+        struct { const char *k; LatHist *h; } hs[] = {
+          { "queue",     &g_histQueue    },
+          { "match",     &g_histMatch    },
+          { "match_cpu", &g_histMatchCpu },
+          { "rep_json",  &g_histRepJson  },
+          { "eng_lock",  &g_histEngLock  },
+          { "insp_off",  &g_histInspOff  },
+          { "inspect",   &g_histInspect  },
+          { "wait",      &g_histWait     },
+          { "tx_lock",   &g_histTxLock   },
+          { "tx_wire",   &g_histTxWire   },
+          { "write",     &g_histWrite    },
+          { "log",       &g_histLog      },
+          { "dog",       &g_histDog      },
+          { "e2e",       &g_histE2E      } };
+        char b[512];
+        int n = snprintf(b, sizeof(b), "%-10s %9s %9s %9s\n",
+                         "stage", "n", "avg_ms", "max_ms");
+        ::write(cli, b, n);
+        for (size_t i = 0; i < sizeof(hs) / sizeof(hs[0]); i++)
+        {
+          LatHist *h = hs[i].h;
+          n = snprintf(b, sizeof(b), "%-10s %9llu %9.3f %9.3f\n", hs[i].k,
+                       (unsigned long long)h->n,
+                       h->n ? h->sum_ms / (double)h->n : 0.0, h->max_ms);
+          ::write(cli, b, n);
+        }
+        // Inside the match, by engine stage. Wall AND process cpu side by side:
+        // a stage whose wall exceeds its cpu is waiting, one whose cpu exceeds
+        // its wall is fanning out across cores, and only the pair can tell
+        // those apart. The engine carries no human names for them, so the
+        // index is what the code shows.
+        for (int si = 0; si < MatchingEngine::lastStageN; si++)
+        {
+          LatHist *w = &g_histStage[si], *c = &g_histStageCpu[si];
+          n = snprintf(b, sizeof(b),
+                       "stage%-5d %9llu %9.3f %9.3f   cpu %9.3f %9.3f\n", si,
+                       (unsigned long long)w->n,
+                       w->n ? w->sum_ms / (double)w->n : 0.0, w->max_ms,
+                       c->n ? c->sum_ms / (double)c->n : 0.0, c->max_ms);
+          ::write(cli, b, n);
+        }
+        // The buckets for e2e alone: how OFTEN, which no max can say.
+        n = snprintf(b, sizeof(b), "e2e buckets (edges ms):");
+        ::write(cli, b, n);
+        for (int i = 0; i < PERIF_HIST_NB - 1; i++)
+        { n = snprintf(b, sizeof(b), " %g", PERIF_HIST_EDGES_MS[i]); ::write(cli, b, n); }
+        n = snprintf(b, sizeof(b), "\ne2e counts           :");
+        ::write(cli, b, n);
+        for (int i = 0; i < PERIF_HIST_NB; i++)
+        { n = snprintf(b, sizeof(b), " %llu",
+                       (unsigned long long)g_histE2E.bucket[i]); ::write(cli, b, n); }
+        ::write(cli, "\n", 1);
+      }
       else if (!line.empty())
       {
         PerifChannel *pc = bpg_pi.perifCH;
@@ -7543,6 +7607,32 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     g_lastMatchUs = perif_now_us() - _mT0;
     g_histMatch.add(g_lastMatchUs / 1000.0);
     {
+      // This block used to sit AFTER the slow-frame saver, which meant the
+      // saver stamped each file with g_lastMatchProcCpuUs from the PREVIOUS
+      // frame. Every name in data/slowframes is wrong by one frame: 60 files
+      // reading 4-9ms of cpu against 50-1594ms of wall, which says "blocked,
+      // not computing" and is simply the ordinary frame before each spike.
+      // Snapping right after the match is also where it belonged anyway.
+      const RUSnap _ru1 = rusnap();
+      // Process-wide, so other threads contribute -- but a spike of thousands
+      // over an 11ms window is still unambiguous, and that is the only size
+      // that could explain the missing tens of milliseconds.
+      g_lastMinflt = _ru1.minflt - _ru0.minflt;
+      g_lastMajflt = _ru1.majflt - _ru0.majflt;
+      g_histFaults.add((double)g_lastMinflt);
+      // Process CPU burned across the match, against its wall time.
+      //   ~= wall (or more)  -> the work IS running, on some thread
+      //   ~= 0               -> nothing in this process ran: a real block
+      g_lastMatchProcCpuUs = (_ru1.cpu_us > _ru0.cpu_us)
+                           ? (_ru1.cpu_us - _ru0.cpu_us) : 0;
+      g_histMatchCpu.add(g_lastMatchProcCpuUs / 1000.0);
+      for (int _si = 0; _si < MatchingEngine::lastStageN; _si++)
+      {
+        g_histStage[_si].add(MatchingEngine::lastStageMs[_si]);
+        g_histStageCpu[_si].add(MatchingEngine::lastStageCpuMs[_si]);
+      }
+    }
+    {
       // Threshold, cap and queue depth are all bounded so a bad run cannot
       // fill the disk or stall inspection: over the cap it simply stops, and a
       // full queue drops rather than waits.
@@ -7584,26 +7674,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         sf.match_cpu_ms = g_lastMatchProcCpuUs / 1000.0;
         sf.seq = (uint64_t)g_slowSaved.fetch_add(1);
         if (!slowFrameQueue.push(sf)) g_slowDropped.fetch_add(1);
-      }
-    }
-    {
-      const RUSnap _ru1 = rusnap();
-      // Process-wide, so other threads contribute -- but a spike of thousands
-      // over an 11ms window is still unambiguous, and that is the only size
-      // that could explain the missing tens of milliseconds.
-      g_lastMinflt = _ru1.minflt - _ru0.minflt;
-      g_lastMajflt = _ru1.majflt - _ru0.majflt;
-      g_histFaults.add((double)g_lastMinflt);
-      // Process CPU burned across the match, against its wall time.
-      //   ~= wall (or more)  -> the work IS running, on some thread
-      //   ~= 0               -> nothing in this process ran: a real block
-      g_lastMatchProcCpuUs = (_ru1.cpu_us > _ru0.cpu_us)
-                           ? (_ru1.cpu_us - _ru0.cpu_us) : 0;
-      g_histMatchCpu.add(g_lastMatchProcCpuUs / 1000.0);
-      for (int _si = 0; _si < MatchingEngine::lastStageN; _si++)
-      {
-        g_histStage[_si].add(MatchingEngine::lastStageMs[_si]);
-        g_histStageCpu[_si].add(MatchingEngine::lastStageCpuMs[_si]);
       }
     }
     const FeatureReport *report = skip_inspection() ? NULL
