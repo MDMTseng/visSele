@@ -190,9 +190,22 @@ clear_error while wedged    silent
 after a DTR reset           ANSWERS
 ```
 
-It does not resync, no delimiter helps, and it is **not** the documented
-`SERIAL_PROTOCOL_ERROR` latch — a latched error would still answer
-`clear_error`. The RX parser itself is stuck.
+**Corrected the same day:** it IS the documented `SERIAL_PROTOCOL_ERROR` latch,
+and the latch has exactly one escape — `{"type":"RESET"}`, matched out of the
+raw buffer because no frame is delivered once the parser has latched. The first
+conclusion ("no way back") came from trying `PING` and `clear_error`, neither of
+which is the one that works.
+
+What is actually wrong is narrower and still worth Tier A:
+
+1. **`clear_error` cannot work here** — it is the command an operator or a
+   generic host will reach for, and its handler sits downstream of the latched
+   parser.
+2. **Nothing recovers on its own.** No idle timeout, no resync on a delimiter.
+   The core sends RESET on CONNECT, which is why a reconnect fixes it — so the
+   machine stays deaf until a human reconnects.
+3. **It is silent.** `error_hist` empty, `rx_crc_fail` 0, nothing in the core's
+   log.
 
 And it is silent at both ends: `error_hist` empty, `rx_crc_fail` 0 (the reset
 that recovers it also clears them), nothing in the core's log. A machine that
@@ -205,9 +218,13 @@ whole machine, silently, until someone power-cycles it. B4 (host heartbeat →
 safe state) does not cover it either: the board is the deaf end, so a host-side
 timeout cannot reach it.
 
-**Action:** make the RX path recover. A frame delimiter that resynchronises, a
-bounded parse that gives up rather than blocking, and a counter that says it
-happened — the silence is as bad as the deafness.
+**Action:** three small things, not a rewrite.
+- let `clear_error` out of the latch too, by matching it the same way `RESET` is
+  matched — it is the command people actually send
+- count the latch, and keep the count across it, so `error_hist` or a
+  `rx_latched` counter says it happened
+- decide whether an idle period should resync on its own; the argument against
+  is that a latch you can silently leave is a latch that hides corruption
 
 ### A6. Promote `report_match_ts`, then delete the host's 450 lines
 

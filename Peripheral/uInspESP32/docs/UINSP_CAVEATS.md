@@ -2824,10 +2824,30 @@ clear_error while wedged    silent
 after a DTR reset           ANSWERS
 ```
 
-**One malformed frame silences the device link until a hardware reset.** It does
-not recover on its own, no amount of delimiter helps, and it is not the
-documented `SERIAL_PROTOCOL_ERROR` latch either -- a latched error would still
-answer `clear_error`, and it does not. The RX parser itself is stuck.
+**One malformed frame silences the device link.** It does not recover on its
+own and no amount of delimiter helps.
+
+**CORRECTED the same day.** The paragraph that stood here said it was not the
+documented `SERIAL_PROTOCOL_ERROR` latch, on the reasoning that a latched error
+would still answer `clear_error`. That reasoning was wrong, and so was the
+conclusion. It IS the latch, and the latch has an escape hatch -- exactly one:
+
+```
+after garbage:            silent
+PING:                     silent
+clear_error:              silent
+{"type":"RESET"}:         ANSWERS
+```
+
+`Data_Layer_Protocol.cpp` says so plainly at `matchResetKeyAt`: once the parser
+is in `RTYPE::ERROR` no frame is delivered, so the ordinary command handler is
+unreachable, and the raw buffer is scanned for `"type":"RESET"` alone. The
+tolerant match was itself a fix -- a host whose `json.dumps` emitted
+`{"type": "RESET"}` with a space used to have no way back at all.
+
+The test tried the two commands an operator would try and neither is the one
+that works, so "no way back" was concluded from two data points that were never
+going to be it.
 
 Worse, it is silent at both ends. `error_hist` is empty and `rx_crc_fail` is 0
 afterwards (a reset clears them, and the reset is the only way back), and the
@@ -2839,8 +2859,23 @@ and `!pd CONNECT` recovered it -- which rebuilds the core's channel AND resets
 the board, so it proved nothing about which end had wedged. Stopping the core
 first is what made the answer unambiguous.
 
-What this costs in production: any line noise, any partial write, any host that
-dies mid-frame takes the machine deaf, silently, until someone power-cycles it.
+What this costs in production, with the correction applied: any line noise, any
+partial write, any host that dies mid-frame takes the machine deaf until
+something sends it a RESET. The core does that on CONNECT, which is why
+`!pd CONNECT` recovered it -- but nothing sends one on its own, so the link
+stays dead until a human reconnects.
+
+Three things are wrong with that, and none of them is "unrecoverable":
+
+1. `clear_error` is the command an operator or a generic host will try, and it
+   is the one command that cannot work here, because the handler it would reach
+   is downstream of the parser that is latched.
+2. Nothing recovers automatically. There is no idle timeout, no resync on a
+   delimiter, no retry.
+3. It is silent. `error_hist` empty, `rx_crc_fail` 0, nothing in the core's log.
+   A machine that has gone deaf this way is indistinguishable from one that is
+   idle -- and that part of the original finding stands unchanged.
+
 The framing/CRC half of B4 is proven (0 failures in 426840 frames) -- but that
 is the happy path, and this is what happens the first time it is not.
 
