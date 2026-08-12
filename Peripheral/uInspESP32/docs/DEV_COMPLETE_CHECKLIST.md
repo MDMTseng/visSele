@@ -298,13 +298,18 @@ here so that when one does bite, the diagnosis is already written down.
 
 ## Not yet measured
 
-Two numbers nobody has, both cheap now:
-
 1. **The acceleration at which parts slide.** This is the mechanical limit on
    `Δf_max = √(f² + 9315·accel) − f`, and it breaks the "one tick is a fixed
    distance" assumption the whole position clock rests on. With a fixed part
-   set it is easy: N is constant, so a step in `edges·60000/ticks` after a hard
-   ramp **is** parts moving.
+   set it is easy: N is constant, so a step in `edges·pulses_per_rev/ticks`
+   after a hard ramp **is** parts moving.
+
+   **Still open.** An arm-speed sweep on 08-12 looked like it had measured this
+   and had not: no repeatability baseline (n=1 per speed), stepper step-loss
+   never ruled out, and the plate itself turned out to be loose. See
+   `UINSP_CAVEATS.md`, "Three claims from this afternoon that did NOT survive".
+   Whatever measures this needs a fiducial fixed to the PLATE, so the part and
+   the plate can be told apart.
 2. **Why `cam_max_us` drifted 211 → 300 ms** over the soak's last two hours. It
    is a since-boot high-water on the host path and well inside the
    CAM1→SWITCH budget (1029 ms at 10000), but it is moving, and 300 should not
@@ -317,6 +322,12 @@ Two numbers nobody has, both cheap now:
 1. **B6** (fault injection) — it is the instrument the rest needs. Start by
    making `INSPECTION_MODE_TEST` reachable (parked item 1): it is a rig that
    needs no camera and no core, and A3/A4's verification wants exactly that.
+
+   Placement is no longer part of this: `jog_arm` / `jog offset:N` / `jog_end`
+   turn the plate into a positioner and hand back the number to paste into a
+   station (0.05 mm for the move, 0.21 mm including the catch). It needs no
+   camera and no core either, so it is also the cheapest existing example of
+   the rig B6 wants.
 2. ~~**A2, A3, A4, A5**~~ — A3/A4/A5 landed 08-12; A2 is diagnosed and its fix
    is waiting on one histogram. A3/A4 still need an injection run to confirm.
 3. ~~**A1** — real-verdict soak.~~ Positive cases done 08-12 (`SEL1` 245 in 60 s);

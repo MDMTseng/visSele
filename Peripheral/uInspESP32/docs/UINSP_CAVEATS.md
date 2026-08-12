@@ -2671,3 +2671,132 @@ and can throw parts -- the same hazard the `pin_on` guard already warns about.
 So this belongs to **B6 (device-side fault injection)**, as a hook that makes the
 condition false without touching the driver. Do not cover it by pulling ENABLE
 on a running machine.
+
+---
+
+## Station placement: the plate as a positioner, and what it measured
+
+2026-08-12 afternoon. Setting a station offset was trial and error -- guess a
+number, run, watch where the blow lands, guess again -- so the plate was made a
+positioner instead: `jog_arm` catches the next part at the gate and stops,
+`jog offset:N` puts it AT N, `jog_end` hands back the number to paste into
+`SEL1_on` / `CAM1_on`. Absolute, because a UI cannot know where the plate
+stopped; braking distance is not predictable from outside.
+
+Building it turned up more about the machine than about itself.
+
+### pulses_per_rev is 70400, not 60000
+
+The configured value was documented as a rough estimate and every mm<->tick
+conversion went through it.
+
+```
+2816001 ticks over 40 revolutions -> 70400.025 ticks/rev, +-0.07
+70400 / 2 ticks-per-step = 35200 steps = 3200 microsteps x 11:1
+```
+
+One tick of residual across forty laps. Method: one part on the plate, the gate
+edge as the lap marker (`jog.origin` is the absolute tick of that edge, and the
+braking coast happens after it, so it cancels), laps counted by `GATE_EDGES`.
+Measuring one long interval rather than averaging single laps divides the ~3
+ticks of edge noise by the lap count.
+
+The estimate was **17.3% out**, and the visible consequence was invisible:
+`min_detect_dist_um` 2000 enforced 159 ticks, which is 1.70 mm, not the 2.00 mm
+it claimed. The request was reported; the ticks it resolved to were not. They
+are now (`gate.min_dist_ticks`).
+
+Geometry is a per-machine SETTING now, not a `#define`. `pulses_per_rev` and
+`diameter_mm` were already set_setup keys and already persisted -- they were
+simply never consumed by the arithmetic. Left with `min_detect_dist_um`
+compensated to 1703 so the enforced distance is the same 159 ticks it always
+was: the change is in the honesty of the numbers, not in what the machine does.
+
+**`diameter_mm` 240 is still an assumption.** Parts do not ride at the plate's
+rim, so micrometres-per-tick for a PART is smaller than the firmware computes.
+The tick count per revolution is exact; the millimetres are not.
+
+### The gate zero was the trailing edge; centre is available now
+
+`middle_pulse` was computed and thrown away with a `(void)` cast. Trailing is
+the worst available reference and this firmware's own measurements say why: the
+sensor has a fixed TIME response (the A2 fit, t0 = 3.52 ms) which inflates the
+measured width by `t0*f` -- 21 ticks between plate 3000 and 9000 -- and that
+inflation lands on the edges, so the trailing edge carries it and the centre
+cancels it. A zero that moves with plate speed is what a station offset must not
+have. The trailing edge is also a point on the PART, so it moves with the part's
+length and orientation; the centre halves that too.
+
+`gate.gate_ref` = `trailing` (default, what every shipped offset was calibrated
+against) or `center`. Switching moves every station by half a part, ~142 ticks
+at the measured `w_mean` of 285.
+
+### Accuracy, measured
+
+Same part, same speeds, gate_ref=center, n=5:
+
+```
+jog landing      -7..-4 ticks      band of 4 ticks, ~0.05 mm
+catch + jog      15.3 px = 0.212 mm   (scale 0.0138859 mm/px)
+```
+
+Removing the landing error from the cx spread only takes it from 15.3 to 12.8
+px, so **the catch dominates and the motion barely contributes**. To do better,
+do not re-catch: catch once and drive the same part to every station in turn.
+
+### Three claims from this afternoon that did NOT survive
+
+Recorded because the reasoning looked sound each time.
+
+1. **"The parts slide on the plate."** An arm-speed sweep showed cx spreading
+   1.77 mm across 3000-9000, and it was attributed to the part sliding during
+   the long coast. That attribution was unfounded: stepper step-loss produces an
+   identical signature and was never ruled out, and the sweep had **no
+   repeatability baseline** -- four speeds, n=1 each, so nothing separated a
+   speed effect from the catch's own spread. The operator then also found the
+   plate itself had been loose. Do not cite that 1.77 mm as evidence of
+   anything.
+2. **"The part track radius is ~108 mm."** Derived from a measured 0.01135
+   mm/tick against the nominal 0.01257. Both terms were wrong -- the tick
+   conversion used the 60000 estimate, and the measurement predated the guide
+   plate being moved.
+3. **"3.18 mm is a real part's shadow"** (the A2 intercept). With 70400 the same
+   intercept is 2.71 mm. The A2 model itself is unaffected -- it is a fit in
+   ticks -- but the millimetre coincidence that made it persuasive is not there.
+
+### A manual light hold does not survive a peripheral-channel rebuild
+
+Symptom: the backlight dies a few seconds after `light on`, with a 30 s hold
+requested, `state` IDLE and the plate stopped throughout. With the core stopped
+it holds for as long as asked.
+
+Cause: any BPG client joining or leaving makes the core rebuild the peripheral
+channel, `CONNECT` sends `RESET`, and the board's `handleResetCommand()` calls
+`ALL_OUTPUTS_SAFE()`. So the act of connecting a client to take a photograph
+turned the light off, and the photograph came out black.
+
+Consequences worth knowing:
+- do not churn BPG clients around anything holding an output
+- a snapshot tool should stay connected (see `tools/webctl/snapd.mjs`)
+
+### trig_cam_pulse strobed the light AFTER the trigger
+
+It always was the one-packet snap -- light and camera in a single command,
+board-timed -- but the order was camera, wait `light_delay`, light. The camera
+starts integrating on the CAM edge, so it spent the exposure in the dark and
+returned an almost black frame, and a longer `light_duration` could not help
+because the light was still arriving after the shutter closed. That is why the
+WebUI grew a separate three-round-trip `camSnapWithLight` to hold the light
+steady instead.
+
+Light first now, 500 us for the backlight to reach brightness (~300 us
+measured), then the trigger, then the light held through the exposure. Defaults
+were 100/100, tuned for the broken order; now 500/15000.
+
+### `!sv {"type":"__CACHE_IMG__"}` through the perif console writes zeros
+
+It looks like the WebUI's save and it ACKs. The SV handler picks between "dump
+the cache image" and "write these raw bytes" on
+`dat->size - strlen(json) - 1 == 0`, and a console-injected packet cannot
+satisfy that, so it takes the raw branch and writes ~16 MB of whatever was in
+the buffer to a file named `.png`. Silently, with `ack: true`.
