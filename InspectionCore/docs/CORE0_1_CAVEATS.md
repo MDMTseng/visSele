@@ -1257,3 +1257,30 @@ again:
   decoded, so it reads 0 whenever the watermark is off regardless of how many
   frames arrive. Count `INSP_CAM_FRAME_TRACE` lines instead.
 
+
+## `data/slowframes` 的檔名 CPU 欄位在 2026-08-13 之前全是錯的
+
+存慢幀的地方讀 `g_lastMatchProcCpuUs`,而計算它的區塊排在存圖之後,所以每個
+`slow_XXXX_<wall>ms_cpu<cpu>ms.png` 蓋的是**前一幀**的 CPU。既有的 60 個檔案
+讀起來像「牆鐘 1594ms / CPU 4ms = 被擋住」,那是假的——前一幀是正常幀。已修
+(`ff752c10`),但**舊檔案要重收才有意義**。聚合直方圖 (`match` / `match_cpu`)
+從來沒有這個問題,它們加在賦值之後。
+
+## `get_running_stat` 的裝置回覆已經在溢位邊緣
+
+跑 30 秒後就序列化到 2886 / 3072 bytes,而裡面的計數器只會變大。加六列各五個
+數字的表格會直接把 `StaticJsonDocument<3072>` 撐爆,結果**不是報錯,是安靜地
+掉欄位**,整包變成無法解析的截斷 JSON。長時間跑之後讀不到 `free_heap` 就是這個
+原因。任何新欄位都應該另開命令(如 `get_spikes` / `get_schema`),直到這包被
+瘦身為止。
+
+## 核心在 perif `DISCONNECT` 之後沒有關掉 tty fd
+
+`delete_PeripheralChannel()` 之後 `lsof` 仍看得到核心持有
+`/dev/cu.usbserial-0001`,所以燒錄韌體前必須整個重啟核心,光送 DISCONNECT 不夠。
+
+## `?lat`:不用 BPG client 就能讀核心的分段延遲
+
+`lat_hist` 掛在 `perif_pairing` GS 項目上。設 `INSP_PERIF_CONSOLE=<port>` 後,
+在該 socket 上送 `?lat` 會直接印出分段表(queue/match/inspect/wait/write/e2e,
+加引擎自己的 stage 拆解,牆鐘與行程 CPU 並排)以及 `e2e` 的桶。
