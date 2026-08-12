@@ -1699,6 +1699,22 @@ class APPMasterX extends React.Component {
       stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
       stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
 
+      // Station placement. Catch the next part at the gate, then drive it to an
+      // absolute offset until it sits where the station should be; the number
+      // that comes back is in stage_pulse_offset units and goes straight into
+      // SEL1_on / CAM1_on / whatever is being placed.
+      //
+      // jogGoto is ABSOLUTE on purpose: the device computes the relative move.
+      // A browser cannot know where the plate stopped -- braking distance is not
+      // predictable from here -- so anything relative would have to read back,
+      // subtract, and race the machine.
+      jogArm(freq){ return this.sendP({type:"jog_arm", ...(freq?{freq}:{})}); }
+      // freq is a CEILING, not a demand: the device still lowers it for a short
+      // move, because braking takes f^2/a ticks and a move shorter than twice
+      // that would be all deceleration.
+      jogGoto(offset,freq){ return this.sendP({type:"jog", offset, ...(freq?{freq}:{})}); }
+      jogEnd(){ return this.sendP({type:"jog_end"}); }
+
       resetRunningStat(){ return this.sendP({type:"reset_running_stat"}); }
       getRunningStat()
       {

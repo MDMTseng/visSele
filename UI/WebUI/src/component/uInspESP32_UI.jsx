@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Input from 'antd/lib/input';
+import InputNumber from 'antd/lib/input-number';
 import Tag from 'antd/lib/tag';
 import Card from 'antd/lib/card';
 import Collapse from 'antd/lib/collapse';
@@ -338,6 +339,24 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // Set by nudge(), consumed by the effect that pushes the change. setSpoEdit
   // is async, so committing inside nudge() would send the PREVIOUS value.
   const [nudged, setNudged] = useState(false);
+  // Station placement (jog). Only the arm speed is UI state -- everything else
+  // is read from the device, because the device is the one that knows where the
+  // plate actually stopped.
+  // 1000, not 3000. Measured 2026-08-12: the catch is where the accuracy is
+  // lost, and it is lost to the COAST, which grows as f^2 (496 ticks at 1000,
+  // 40530 at 9000 -- 0.68 of a revolution). Over that distance the part does
+  // not stay put on the plate: driving the same offset after catching at 3000
+  // vs 9000 put it 1.77 mm apart, ~141 ticks. The sensor's own lag accounts for
+  // 0.13 mm of that, so the rest is the part sliding.
+  //
+  // The jog MOVE is speed-independent (+-6 ticks at every arm speed). Only the
+  // catch degrades, so this is the one speed worth keeping low.
+  const [jogArmFreq, setJogArmFreq] = useState(1000);
+  // The goto target and its speed ceiling. jogGo is seeded from whichever
+  // station is selected -- picking a station and then asking "where is that?"
+  // is the whole workflow, so retyping the number it already knows is friction.
+  const [jogGo, setJogGo] = useState(0);
+  const [jogGoFreq, setJogGoFreq] = useState(600);
 
   const [commDiag, setCommDiag] = useState(null);
   const [pairing, setPairing] = useState(null);   // core-side frame<->object pairing health
@@ -574,6 +593,28 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const inError = stat && stat.state === 112;
   const running = stat && stat.state === 101;
   const cnt = (stat && stat.count) || {};
+  // jog, straight from get_running_stat. `disp` is the signed travel of the
+  // held part from its gate edge -- the same units and origin as
+  // stage_pulse_offset, which is what makes "設為此站" a copy and not a
+  // conversion.
+  const jogInfo   = (stat && stat.jog) || {};
+  const jogState  = jogInfo.state || 0;
+  const jogDisp   = Number(jogInfo.disp) || 0;
+  const jogMoving = !!jogInfo.moving;
+  const jogHold   = jogState === 2;
+  const jogOn     = jogState !== 0;
+  // Selecting a station fills in where it fires, so "show me this station" is
+  // one click instead of reading a number out of the table and typing it back.
+  // Only on the SELECTION changing -- not on every spoEdit keystroke, or the
+  // field could not be typed into.
+  const selPosKey = (sel && sel.which === 'pos'
+    && (STATIONS.find((x) => x.key === sel.key) || {}).on) || null;
+  useEffect(() => {
+    if (!selPosKey) return;
+    const v = Number(spoEdit[selPosKey] ?? (spo || {})[selPosKey]);
+    if (isFinite(v)) setJogGo(v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selPosKey]);
   const lat = (stat && stat.report_latency) || {};
   const health = (stat && stat.health) || {};
   const pipe = (stat && stat.pipe) || {};
@@ -968,6 +1009,72 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           {spoUnlock ? '可編輯' : '唯讀'}{' '}
           <Switch size="small" checked={spoUnlock} onChange={setSpoUnlock} />
         </span>}>
+
+        {/* Station placement. Turns "guess an offset, run, watch where the blow
+            lands, guess again" into a measurement: catch a part at the gate,
+            drive it to an offset, look at it, and take the number.
+
+            Every move is sent ABSOLUTE and the device computes the relative
+            one. This panel cannot know where the plate stopped -- braking
+            distance is not predictable from here -- so the +/- buttons send
+            disp+d, not d. */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 8,
+          flexWrap: 'wrap', padding: '4px 6px', borderRadius: 4,
+          background: jogOn ? '#fff7e6' : '#fafafa',
+          border: jogOn ? '1px solid #ffd591' : '1px solid #eee' }}>
+          <span style={{ fontSize: 11, color: '#888', width: 34 }}>對位</span>
+          {jogState === 0 ? (
+            <Button size="small" type="primary" ghost disabled={!spoUnlock}
+              onClick={() => run('jog', (api) => api.jogArm(jogArmFreq))}>
+              放料抓取
+            </Button>
+          ) : (
+            <Button size="small" danger
+              onClick={() => run('jog', (api) => api.jogEnd())}>釋放</Button>
+          )}
+          <InputNumber size="small" style={{ width: 76 }} controls={false}
+            value={jogArmFreq} min={300} max={15000} step={250}
+            disabled={jogState !== 0}
+            onChange={(v) => setJogArmFreq(Number(v) || 3000)} />
+          <span style={{ fontSize: 11, color: '#aaa' }}>抓取轉速</span>
+
+          {jogHold ? <>
+            <span style={{ fontSize: 12, fontWeight: 600, marginLeft: 8 }}>
+              {jogDisp} tick
+            </span>
+            <span style={{ fontSize: 11, color: '#888' }}>
+              ({(jogDisp * MM_PER_PULSE).toFixed(2)} mm){jogMoving ? ' · 移動中' : ''}
+            </span>
+
+            <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>前往</span>
+            <InputNumber size="small" style={{ width: 92 }} controls={false}
+              value={jogGo} step={10} disabled={jogMoving}
+              onChange={(v) => setJogGo(Number(v))}
+              onPressEnter={() => run('jog', (api) => api.jogGoto(jogGo, jogGoFreq))} />
+            <InputNumber size="small" style={{ width: 68 }} controls={false}
+              value={jogGoFreq} min={60} max={15000} step={100} disabled={jogMoving}
+              onChange={(v) => setJogGoFreq(Number(v) || 600)} />
+            <span style={{ fontSize: 11, color: '#aaa' }}>速度</span>
+            <Button size="small" type="primary" disabled={jogMoving || !isFinite(jogGo)}
+              onClick={() => run('jog', (api) => api.jogGoto(jogGo, jogGoFreq))}>前往</Button>
+
+            {/* The payoff: the measured position becomes the station's offset.
+                Same units, same origin (the gate edge), so no conversion. */}
+            <Button size="small" type="primary" ghost
+              disabled={jogMoving || !spoUnlock || !sel || sel.which !== 'pos'}
+              title={sel && sel.which === 'pos'
+                ? `把 ${jogDisp} 寫進 ${sel.label} 的觸發位置` : '先點一個站點的「觸發位置」欄位'}
+              onClick={() => {
+                const st = STATIONS.find((x) => x.key === sel.key);
+                setSpoEdit({ ...spoEdit, [st.on]: String(jogDisp) });
+                setNudged(true);   // same commit path the fine-adjust bar uses
+              }}>設為 {sel && sel.which === 'pos' ? sel.label : '此站'}</Button>
+          </> : (
+            <span style={{ fontSize: 11, color: '#c60' }}>
+              {jogState === 1 ? '盤轉動中,等待料通過閘門…' : '需先解鎖'}
+            </span>
+          )}
+        </div>
 
         {/* One fine-adjust bar for the whole table, acting on whichever field
             was last focused. A slider cannot land on a single tick and one tick
