@@ -2354,3 +2354,101 @@ remaining limit is mechanical and still unmeasured: the acceleration at which
 parts SLIDE, which breaks "one tick is a fixed distance". With a fixed part set
 that is now easy to test, because N is constant -- a step in
 `edges * 60000 / ticks` after a hard ramp IS parts moving.
+
+## An 8-hour soak on real parts, with the speed never still (2026-08-12)
+
+Everything before this was measured one condition at a time, and the longest
+run on the new firmware was 31 minutes on virtual parts. This is the endurance
+check for the three changes made on 08-11 -- the band removed, a task as an
+anchor plus a live offset, and the station windows re-derived continuously from
+`PLATE_FREQ_CURRENT`. Real material, no `virt_pulse`, plate speed walked at
+random for eight hours.
+
+```
+01:56:44 -> 09:56:29   8689 samples
+1992 speed changes + 226 accel changes   (498 of them double-tapped <1.2 s apart)
+speed 2998 .. 10003 Hz    accel 1000 / 2000 / 5000 / 10000
+364465 gate edges         412.8 M step ticks
+```
+
+### What it proved
+
+| | |
+|---|---|
+| `isr_overrun_n` | **0** over 412.8 M ticks (max 38 us, env 9, avg 2) |
+| `pending > 0` | **0** of 8689 samples -- no change ever staged or drained |
+| `FREQ_TXN` / `_TIMEOUT` | 0 / 0 |
+| `band_out_ms`, `SEL_SUPPRESSED` | 0, 0 |
+| `UNANSWERED` / `SKIP` | 0 / 0 |
+| `rx_crc_fail` | 0 of 426840 frames |
+| `free_heap` / `min_heap` / `stack_hwm` / `rbuf_peak` | 190688 / 184120 / 4020 / 45 -- **identical in all four quarters** |
+| counter regressions | none |
+
+The heap figures being bit-identical across four two-hour quarters is the
+strongest single line here: there is no leak and no fragmentation drift, and
+`min_heap` never moved below its first-quarter value.
+
+### Conservation holds exactly, once you notice the offset is inherited
+
+`accept + sum(rej) - edges` sat at a constant **716** for the entire run,
+oscillating 715<->716 only because `edges` and `accept` are sampled at slightly
+different instants while the reply document is built. Constant means it was
+accrued BEFORE the soak: the soak does not call `reset_running_stat`, and the
+716 is left over from the earlier `virt_pulse` work, whose injector calls
+`newPulseEvent` without touching `GATE_EDGES`. Over the soak's own 364465
+edges the identity is **exact**.
+
+Read a non-zero residual as "an injected-path pulse happened at some point
+since the last reset", not as an ongoing accounting leak. To check
+conservation, reset the counters first.
+
+### `act_cap` still has never fired
+
+`act_grow_n` 2324809, `act_cap_n` **0**. The deadline grew on essentially every
+task -- expected, since the live offset is read at fire time -- and it never
+once grew past the next queued task's deadline. The cap is correct-by-
+construction and remains **unexercised**; it needs a run with real SEL verdicts
+and a tight SEL1 window (win/pitch 1.80) before it can be called tested.
+
+### `rej_width` is a function of plate speed, and that is still unfixed
+
+| plate freq | edges | rej_width |
+|---|---|---|
+| 3000-3999 | 36449 | **5.10%** |
+| 5000-5999 | 61209 | 3.53% |
+| 7000-7999 | 53247 | 2.26% |
+| 9000-9999 | 45635 | **1.83%** |
+
+A monotone 2.8x across the range. The width test is what decides whether a gate
+pulse is a part, so a criterion that rejects 5% at 3000 and 1.8% at 9000 is not
+measuring the part. Slower plate -> longer shadow -> more pulses land outside a
+window that is not being scaled the same way the station windows now are. This
+is the obvious next fix and it was NOT touched by the 08-11 work.
+
+### Latency, and which number is the design number
+
+```
+gate   -> verdict   avg 767 ms   max 1750 ms
+camera -> verdict   avg 19.8 ms  max  300 ms      (394040 reports)
+```
+
+`avg_us` / `max_us` are dominated by TRANSIT -- the part must travel 9315 ticks
+to reach the camera, which is 1.55 s at 3000 and 0.47 s at 10000. They measure
+the plate, not the system, and they are easy to misread as a system latency.
+
+**`cam_*` is the design number.** Its budget is CAM1 -> SWITCH,
+`29900 - 9315 = 20585` ticks, which at the 10000 ceiling is 1029 ms. A 300 ms
+worst case is 29% of that. And it need not be argued from the margin:
+`UNANSWERED` and `SKIP` were both 0 across 394040 reports, so no verdict was
+ever late to the switch.
+
+Note `cam_max_us` grew 211 -> 300 ms over the last two hours of the run. It is a
+since-boot high-water on the HOST path, well inside budget, but it is drifting
+and worth re-checking rather than assuming 300 is the ceiling.
+
+### Two polls in 8689 went unanswered
+
+`sample_partial` twice (08:08:06, 09:55:20): neither document came back inside
+the 1.2 s poll window. 0.023%, no correlation with a speed change, and the very
+next poll was normal. Recorded because a poller with a tighter timeout and no
+retry would read this as a dead board.
