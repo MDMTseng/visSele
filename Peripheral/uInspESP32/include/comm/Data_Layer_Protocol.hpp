@@ -91,8 +91,18 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   void clearProtocolError();
   bool tryRecoverResetFromErrorBuffer();
   void handleResetRecovery();
+  void handleClearErrorRecovery();
   
   virtual int recv_RESET()=0;
+  // The other way out of a latched parser. RESET was the only one, and
+  // clear_error -- the command an operator and a generic host actually send --
+  // could not work, because its handler is downstream of the parser that is
+  // latched. Not pure: a link that does not care about the distinction can
+  // ignore it and keep RESET as its only escape.
+  virtual int recv_CLEAR_ERROR(){ return 0; }
+  // How many times the parser has latched. Survives the recovery on purpose:
+  // the whole complaint about this failure is that nothing recorded it.
+  uint32_t rx_latch_n = 0;
   virtual int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0)=0;
   
   // int send_data(int head_room,uint8_t *data,int len,int leg_room)

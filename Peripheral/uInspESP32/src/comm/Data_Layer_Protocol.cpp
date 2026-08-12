@@ -38,6 +38,9 @@ void Data_JsonRaw_Layer::enterProtocolError(ERROR_TYPE err,uint8_t *recv_data,si
   if(protocolErrorActive==false)
   {
     protocolErrorActive=true;
+    // Counted on the transition, not per byte. Nothing recorded this before, so
+    // a link that had gone deaf looked exactly like one that was idle.
+    rx_latch_n++;
     recv_ERROR(err,recv_data,dataL);
   }
 }
@@ -52,7 +55,7 @@ void Data_JsonRaw_Layer::clearProtocolError()
   jlevel=0;
 }
 
-// Whitespace-tolerant match for `"type" : "RESET"` starting at `at`.
+// Whitespace-tolerant match for `"type" : "<value>"` starting at `at`.
 // Returns the length matched, or 0.
 //
 // This used to be a memcmp against the exact bytes `"type":"RESET"`, and it is
@@ -61,7 +64,7 @@ void Data_JsonRaw_Layer::clearProtocolError()
 // can never be reached. Python's json.dumps emits `{"type": "RESET"}` with a
 // space after the colon by default, so a host using the obvious call had no
 // escape hatch at all and the board could only be recovered by power-cycling.
-static int matchResetKeyAt(const uint8_t *b,int at,int n)
+static int matchTypeValueAt(const uint8_t *b,int at,int n,const char *quoted)
 {
   int i=at;
   const char *k="\"type\"";
@@ -70,8 +73,7 @@ static int matchResetKeyAt(const uint8_t *b,int at,int n)
   if(i>=n||b[i]!=':') return 0;
   i++;
   while(i<n && (b[i]==' '||b[i]=='\t')) i++;
-  const char *v="\"RESET\"";
-  for(int j=0;v[j];j++,i++){ if(i>=n||b[i]!=v[j]) return 0; }
+  for(int j=0;quoted[j];j++,i++){ if(i>=n||b[i]!=quoted[j]) return 0; }
   return i-at;
 }
 
@@ -86,7 +88,16 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
     {
       firstBrace=i;
     }
-    const int mlen = (i+keyLen<=buffIdx) ? matchResetKeyAt(dataBuff,i,buffIdx) : 0;
+    // Two escapes, not one. RESET is the historical hatch; clear_error is the
+    // command a person actually sends when a machine has stopped answering, and
+    // it used to be the one thing that could not work.
+    bool viaClear=false;
+    int mlen = (i+keyLen<=buffIdx) ? matchTypeValueAt(dataBuff,i,buffIdx,"\"RESET\"") : 0;
+    if(mlen==0)
+    {
+      mlen = matchTypeValueAt(dataBuff,i,buffIdx,"\"clear_error\"");
+      if(mlen>0) viaClear=true;
+    }
     if(mlen>0)
     {
       int endIdx=i+mlen;
@@ -96,7 +107,8 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
       }
       if(endIdx<buffIdx)
       {
-        handleResetRecovery();
+        if(viaClear) handleClearErrorRecovery();
+        else         handleResetRecovery();
         int shift=endIdx+1;
         if(shift<buffIdx)
         {
@@ -126,6 +138,16 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
     buffIdx=0;
   }
   return false;
+}
+
+// Same unlatch as RESET, but it delivers clear_error's own intent instead of a
+// RESET's -- otherwise the command that got us out would be swallowed and the
+// machine would stay in its error state with a healthy link.
+void Data_JsonRaw_Layer::handleClearErrorRecovery()
+{
+  recv_CLEAR_ERROR();
+  clearProtocolError();
+  recvType=RTYPE::RESYNC;
 }
 
 void Data_JsonRaw_Layer::handleResetRecovery()

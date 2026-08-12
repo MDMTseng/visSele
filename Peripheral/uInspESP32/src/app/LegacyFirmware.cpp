@@ -3092,6 +3092,17 @@ class MData_JR:public Data_JsonRaw_Layer
   {
     handleResetCommand();
     return msg_printf("RESET_OK","");
+  }
+  // Reached only from a latched parser, where the ordinary clear_error handler
+  // is unreachable. Same intent as that handler: empty the pipeline and leave
+  // the error state. NOT handleResetCommand() -- a clear_error is a request to
+  // continue, not to tear the link down.
+  int recv_CLEAR_ERROR()
+  {
+    RESET_ALL_PIPELINE_QUEUE();
+    SEL_SAFE_AT_MS = millis() + selHoldMs();   // a blow already out still finishes
+    SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
+    return msg_printf("CLEAR_ERROR_OK","");
   } 
   int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
@@ -5764,6 +5775,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
       jHl["rx_crc_fail"]=djrl.rx_crc_fail;
+      // How many times the RX parser has latched on a malformed frame. Not
+      // cleared by reset_running_stat: the failure it describes is one nothing
+      // used to record at all, and a machine that has gone deaf this way is
+      // otherwise indistinguishable from one that is idle.
+      jHl["rx_latch_n"]=djrl.rx_latch_n;
       // Why the chip last booted: lets a host that finds the board freshly in
       // IDLE tell a panic/watchdog/brownout from a plain power cycle. Moved
       // here from get_setup, beside the other once-per-boot facts.
