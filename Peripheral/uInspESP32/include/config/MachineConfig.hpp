@@ -116,9 +116,6 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
 int cfgUnknownKeys(JsonObject in, char *out, size_t outN);
 
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
-extern volatile bool AUTO_RATE;
-extern uint32_t AUTO_RATE_FLOOR_us;
-extern uint32_t AUTO_RATE_RECOVER_N;
 // volatile: shared between the main loop (set_setup) and the step ISR
 // (GateSensing) -- see LegacyFirmware.cpp.
 extern volatile int minWidth;

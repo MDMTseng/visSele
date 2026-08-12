@@ -181,50 +181,23 @@ volatile bool DRY_RUN=false;
 // by accident.
 uint32_t SYS_MIN_PULSE_TIME_SEP_us=30000;
 
-// ---------------------------------------------------------------------------
-// Automatic trigger rate
-// ---------------------------------------------------------------------------
-// SKIP is the machine telling us it admitted more parts than it could judge.
-// Backing the gate off when that happens, and easing it forward when it does
-// not, keeps the machine at the fastest rate it can actually sustain instead of
-// at whatever rate somebody typed once.
+// The automatic trigger rate (AIMD on the gate separation) was removed on
+// 2026-08-12. It backed the gate off 12.5% on every SKIP and eased it forward
+// 3% per 50 clean parts, on the reasoning that SKIP means "admitted more parts
+// than could be judged, so admit fewer".
 //
-// AIMD, the congestion-control shape, because the problem has the same
-// structure: the cost of being slightly too slow is small and linear, the cost
-// of being too fast is parts passing unjudged. So retreat fast, return slowly.
+// It could not do that. Widening the gate separation does not reduce the load:
+// the feed rate is set by the vibratory bowl, and a part refused at the gate is
+// not removed, it stays on the plate and comes back on the next lap. So the
+// loop shed nothing -- it deferred the same parts, at the cost of a second,
+// drifting rate that the operator had not typed and could not see.
 //
-// SYS_MIN_PULSE_TIME_SEP_us stays the CONFIGURED value -- the fastest the
-// operator is willing to run and the thing save_setup persists. The loop only
-// ever moves GATE_SEP_EFF_us, between that and a floor. Without this split a
-// save_setup during a backoff would write a transient into NVS and the machine
-// would come back permanently slow.
-uint32_t GATE_SEP_EFF_us      = 4000;    // what newPulseEvent actually enforces
-uint32_t AUTO_RATE_FLOOR_us   = 200000;  // slowest it may go (5/s)
-volatile bool AUTO_RATE       = false;
-uint32_t AUTO_RATE_OK_RUN     = 0;       // consecutive judged parts with no SKIP
-uint32_t AUTO_RATE_RECOVER_N  = 50;      // clean parts before easing forward
-uint32_t AUTO_RATE_BACKOFFS   = 0, AUTO_RATE_RECOVERS = 0;
-
-// Called from the report handler when a part is swept into SKIP.
-static inline void autoRateBackoff()
-{
-  if(!AUTO_RATE) return;
-  AUTO_RATE_OK_RUN=0;
-  uint32_t s = GATE_SEP_EFF_us + (GATE_SEP_EFF_us>>3);   // +12.5%
-  if(s>AUTO_RATE_FLOOR_us) s=AUTO_RATE_FLOOR_us;
-  if(s!=GATE_SEP_EFF_us){ GATE_SEP_EFF_us=s; AUTO_RATE_BACKOFFS++; }
-}
-
-// Called when a part is judged normally.
-static inline void autoRateOk()
-{
-  if(!AUTO_RATE) return;
-  if(++AUTO_RATE_OK_RUN < AUTO_RATE_RECOVER_N) return;
-  AUTO_RATE_OK_RUN=0;
-  uint32_t s = GATE_SEP_EFF_us - (GATE_SEP_EFF_us>>5);   // -3%
-  if(s<SYS_MIN_PULSE_TIME_SEP_us) s=SYS_MIN_PULSE_TIME_SEP_us;
-  if(s!=GATE_SEP_EFF_us){ GATE_SEP_EFF_us=s; AUTO_RATE_RECOVERS++; }
-}
+// The half of the skip policy that reacts to CONSECUTIVE skips is untouched and
+// remains the guard: ten in a row means the host or the camera stopped
+// answering, and neither a slower gate nor a faster one can fix that.
+//
+// The gate now enforces SYS_MIN_PULSE_TIME_SEP_us directly. There is one rate,
+// it is the configured one, and it is the one on the panel.
 
 // Promote the camera-timestamp match from observer to decider. Default off: the
 // first flash must behave exactly as before, and the agree/disagree counters in
@@ -2631,7 +2604,7 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // SWITCH task, so it simply recirculates for another pass. Letting it through
   // instead would ask the camera for a frame it cannot deliver, and a trigger
   // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
-  if(curTime-_preTime<GATE_SEP_EFF_us){GATE_REJ_RATE++;return -8;}
+  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us){GATE_REJ_RATE++;return -8;}
   _preTime=curTime;
   NPE_MARK(0);
 
@@ -2939,19 +2912,16 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
       {
         case 1:
           CONSEC_UNANSWERED=0;
-          autoRateOk();   // a part was judged
           ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_on, 1, _task_->src =NULL;);//the src will be cleaned up right after
           ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_off, 0, _task_->src =NULL; );
           break;
         case 2:
           CONSEC_UNANSWERED=0;
-          autoRateOk();   // a part was judged
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_on, 1, _task_->src =NULL; );
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_off, 0, _task_->src =NULL; );
           break;
         case 3:
           CONSEC_UNANSWERED=0;
-          autoRateOk();   // a part was judged
           // SEL3 now actuates, on its OWN queue and its OWN offsets.
           //
           // It used to count here and fire nothing, and the counter was
@@ -2972,7 +2942,6 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
           break;
         case 0xFFFF:
           CONSEC_UNANSWERED=0;
-          autoRateOk();   // a part was judged
           NA_Count++;
           break;
 
@@ -2993,8 +2962,6 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
         // the first one.
         case insp_status_SKIP:
           SKIP_Count++;
-          // The machine just told us it admitted a part it could not judge.
-          autoRateBackoff();
           CONSEC_UNANSWERED++;
           if(UNANSWERED_POLICY==1 && CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
             break;   // fail-to-reject: no actuation -> part recirculates
@@ -5935,13 +5902,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // was reported the 17.3% error in pulses_per_rev was invisible from
       // outside -- 2000um asked, 159 ticks enforced, 1.70mm delivered.
       jG["min_dist_ticks"]=GATE_MIN_DIST_STEPS;
-      jG["eff_sep_us"]=GATE_SEP_EFF_us;
-      jG["eff_hz"]=GATE_SEP_EFF_us ? (uint32_t)(1000000UL/GATE_SEP_EFF_us) : 0;
-      jG["auto_rate"]=(bool)AUTO_RATE;
-      jG["auto_floor_hz"]=AUTO_RATE_FLOOR_us ?
-                     (uint32_t)(1000000UL/AUTO_RATE_FLOOR_us) : 0;
-      jG["auto_backoffs"]=AUTO_RATE_BACKOFFS;
-      jG["auto_recovers"]=AUTO_RATE_RECOVERS;
     }
     {
       // The migration's evidence. agree/disagree is the whole argument for
@@ -7646,11 +7606,6 @@ void firmwareSetup()
   }
 
   MachineConfig::begin();
-  // The gate enforces GATE_SEP_EFF_us, not the configured value, so it has to be
-  // seeded from whatever begin() just restored. Without this a reboot left it at
-  // its 4000us initialiser -- a wide-open 250/s gate on a machine configured for
-  // 35/s, which is precisely the overload the rate limit exists to prevent.
-  GATE_SEP_EFF_us = SYS_MIN_PULSE_TIME_SEP_us;
 
   // Task watchdog on the main loop: a wedged parser/deadlock must reboot
   // (and leave TASK_WDT in reset_reason), not spin the ISR blind forever.
@@ -8415,36 +8370,29 @@ void genMachineSetup(JsonDocument &jdoc)
 
   // What the machine does about a part that reached the selector unjudged.
   //
-  // These were three separate flat keys (auto_rate, unanswered_policy,
-  // unanswered_stop_after) plus two more for tuning, and nothing said they
-  // were one decision -- so the combination that reacts to nothing at all
-  // (auto_rate off, policy 0: unjudged parts pass forever, silently) was
-  // reachable by setting two unrelated-looking values.
+  // This had two halves, "slow" and "stop", and grouping them was what made it
+  // clear they answered different questions: slow reacted to the RATE of skips,
+  // stop to CONSECUTIVE skips. The slow half was removed on 2026-08-12 -- it
+  // could not actually shed load, see the note by SYS_MIN_PULSE_TIME_SEP_us --
+  // so what is left is the stop half, and mode is now just whether it is armed.
   //
-  // The two halves are NOT alternatives, which is why the default arms both:
-  //   slow  reacts to the RATE of skips -- scattered ones mean "a bit fast",
-  //         and the answer is to admit fewer parts and keep running.
-  //   stop  reacts to CONSECUTIVE skips -- ten in a row means the host or the
-  //         camera stopped answering, and slowing down cannot fix that; it
-  //         would only pass unjudged parts more slowly.
+  // Kept as a group rather than flattened back to a key. It was five flat keys
+  // once, and nothing said they were one decision, so the combination that
+  // reacts to nothing at all was reachable by setting two unrelated-looking
+  // values. That is also why "none" still says unsafe out loud.
   //
-  // The only representation. The five flat keys this replaced were migrated
-  // out on 2026-08-08 by persisting the group with the firmware that still
-  // emitted both, then dropping them -- an NVS image older than that has no
-  // skip_policy and comes up on the compiled defaults (AUTO_RATE off). This
-  // machine's image was saved through the transition; backup in
+  // An NVS image older than 2026-08-08 has no skip_policy and comes up on the
+  // compiled defaults; one written between then and now says slow_and_stop or
+  // slow_only, which parse to their stop half. Backup in
   // tools/machine_config_backup_2026-08-08.json.
   {
     JsonObject jSP = jdoc.createNestedObject("skip_policy");
-    jSP["mode"] = AUTO_RATE ? (UNANSWERED_POLICY==1 ? "slow_and_stop" : "slow_only")
-                            : (UNANSWERED_POLICY==1 ? "stop_only"     : "none");
-    jSP["stop_after"]    = UNANSWERED_STOP_AFTER;
-    jSP["rate_floor_us"] = AUTO_RATE_FLOOR_us;
-    jSP["recover_n"]     = AUTO_RATE_RECOVER_N;
+    jSP["mode"] = UNANSWERED_POLICY==1 ? "stop_only" : "none";
+    jSP["stop_after"] = UNANSWERED_STOP_AFTER;
     // Said out loud rather than refused: "none" is a legitimate thing to ask
     // for on a bench, and a machine that silently declines a setting is worse
     // than one that tells you what you chose.
-    if(!AUTO_RATE && UNANSWERED_POLICY!=1) jSP["unsafe"]=true;
+    if(UNANSWERED_POLICY!=1) jSP["unsafe"]=true;
   }
 
   {
@@ -8513,7 +8461,7 @@ static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
 static const char *const K_SKIP[] =
-  {"mode","stop_after","rate_floor_us","recover_n","unsafe",NULL};
+  {"mode","stop_after","unsafe",NULL};
 static const char *const K_SPO[] =
   {"L1A_on","L1A_off","CAM1_on","CAM1_off","L2A_on","L2A_off","CAM2_on",
    "CAM2_off","SWITCH","SEL1_on","SEL1_off","SEL2_on","SEL2_off","SEL3_on",
@@ -8658,11 +8606,6 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
-  // Changing the configured rate always resets the live one: the operator asked
-  // for a rate, not for whatever the loop had crept to.
-  if(jGT["min_detect_sep_us"].is<int>()) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
-  if(GATE_SEP_EFF_us<SYS_MIN_PULSE_TIME_SEP_us)
-    GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
   JSON_SETIF_ABLE(REPORT_MATCH_TS,jCM,"report_match_ts");
   JSON_SETIF_ABLE(REPORT_MATCH_PCNT,jCM,"report_match_pcnt");
   JSON_SETIF_ABLE(CamClockSync::TOL_US,jCM,"match_window_us");
@@ -8862,21 +8805,19 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     if(jSP["mode"].is<const char*>())
     {
       const char* m=jSP["mode"];
-      bool ar=AUTO_RATE; int up=UNANSWERED_POLICY;
-      if(strcmp(m,"slow_and_stop")==0){ ar=true;  up=1; }
-      else if(strcmp(m,"slow_only")==0){ ar=true;  up=0; }
-      else if(strcmp(m,"stop_only")==0){ ar=false; up=1; }
-      else if(strcmp(m,"none")==0)     { ar=false; up=0; }
-      if(ar!=AUTO_RATE){ AUTO_RATE=ar; AUTO_RATE_OK_RUN=0;
-                         if(!ar) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us; }
-      UNANSWERED_POLICY=up;
+      // "slow_and_stop" and "slow_only" are the pre-2026-08-12 spellings and
+      // are still accepted, because a saved NVS image has them -- this
+      // machine's did. The slow half no longer exists, so what carries over is
+      // the stop half, exactly as it was set. slow_only therefore becomes
+      // "none", which is a real thing to be running and is flagged unsafe
+      // rather than silently upgraded: quietly arming a stop the operator did
+      // not ask for is a worse surprise than telling them what they have.
+      if(strcmp(m,"stop_only")==0 || strcmp(m,"slow_and_stop")==0)
+        UNANSWERED_POLICY=1;
+      else if(strcmp(m,"none")==0 || strcmp(m,"slow_only")==0)
+        UNANSWERED_POLICY=0;
     }
     if(jSP["stop_after"].is<int>()){ int v=jSP["stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
-    JSON_SETIF_ABLE(AUTO_RATE_FLOOR_us,jSP,"rate_floor_us");
-    JSON_SETIF_ABLE(AUTO_RATE_RECOVER_N,jSP,"recover_n");
-    if(AUTO_RATE_RECOVER_N<1) AUTO_RATE_RECOVER_N=1;
-    if(AUTO_RATE_FLOOR_us<SYS_MIN_PULSE_TIME_SEP_us)
-      AUTO_RATE_FLOOR_us=SYS_MIN_PULSE_TIME_SEP_us;
   }
   JSON_SETIF_ABLE(host_timeout_ms,jdoc,"host_timeout_ms");
   JSON_SETIF_ABLE(pulses_per_rev,jP,"pulses_per_rev");

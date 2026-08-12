@@ -173,9 +173,13 @@ namespace
     cfg.unanswered_policy = UNANSWERED_POLICY;
     cfg.unanswered_stop_after = UNANSWERED_STOP_AFTER;
     cfg.host_timeout_ms = host_timeout_ms;
-    cfg.auto_rate = AUTO_RATE ? 1 : 0;
-    cfg.auto_rate_floor_us = AUTO_RATE_FLOOR_us;
-    cfg.auto_rate_recover_n = AUTO_RATE_RECOVER_N;
+    // The automatic trigger rate is gone (2026-08-12). The FIELDS stay: this
+    // struct is a byte layout that older images are read through, and
+    // trustedPrefix() measures the v<=8 boundary with offsetof(auto_rate).
+    // Removing them would silently re-point every offset in the tail.
+    cfg.auto_rate = 0;
+    cfg.auto_rate_floor_us = 0;
+    cfg.auto_rate_recover_n = 0;
     memcpy(cfg.machine_id, machine_id, MACHINE_ID_MAX_LEN);
     cfg.machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
@@ -198,9 +202,6 @@ namespace
     UNANSWERED_POLICY = cfg.unanswered_policy == 1 ? 1 : 0;
     UNANSWERED_STOP_AFTER = cfg.unanswered_stop_after < 1 ? 1 : cfg.unanswered_stop_after;
     host_timeout_ms = cfg.host_timeout_ms < 0 ? 0 : cfg.host_timeout_ms;
-    AUTO_RATE = cfg.auto_rate == 1;
-    AUTO_RATE_FLOOR_us = cfg.auto_rate_floor_us;
-    AUTO_RATE_RECOVER_N = cfg.auto_rate_recover_n < 1 ? 1 : cfg.auto_rate_recover_n;
     memcpy(machine_id, cfg.machine_id, MACHINE_ID_MAX_LEN);
     machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }

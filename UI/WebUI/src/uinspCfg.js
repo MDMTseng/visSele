@@ -42,14 +42,12 @@ export const CFG_GROUP = {
   cal_pulse_us:          ["cam", "cal_pulse_us"],
   cam_drift_comp:        ["cam", "drift_comp"],
 
-  // The ON/OFF switch for the whole skip policy, and the only way to reach
-  // AUTO_RATE. It had no flat name at all, so the two tuning knobs below were
-  // settable while the thing they tune could not be turned on -- and set_setup
-  // answered ack:true to every attempt.
+  // The ON/OFF switch for the whole skip policy. It had no flat name at all,
+  // so its tuning values were settable while the thing they tune could not be
+  // turned on -- and set_setup answered ack:true to every attempt.
+  // "stop_only" | "none"; the firmware still parses the older names.
   skip_policy_mode:      ["skip_policy", "mode"],
   unanswered_stop_after: ["skip_policy", "stop_after"],
-  auto_rate_floor_us:    ["skip_policy", "rate_floor_us"],
-  auto_rate_recover_n:   ["skip_policy", "recover_n"],
 };
 
 // [group, key] -> flat name

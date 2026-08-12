@@ -268,20 +268,33 @@ In use: **5000 µs = 1.26 mm at 10000, six times looser than intended.** Measure
 residual across the soak was 121 µs. There is a lot of room to tighten and no
 measurement arguing against it.
 
-### B2. The auto-rate ratchet is silent
+### ~~B2. The auto-rate ratchet is silent~~ — CLOSED 2026-08-12, feature removed
 
-`RELIABILITY_ROADMAP.md` §"auto-rate 棘輪". Above a SKIP density of 1/50 the
-recovery branch never executes and `GATE_SEP_EFF_us` walks monotonically to the
-`AUTO_RATE_FLOOR_us` floor — 5/s — **with no fault, no `error_hist`, and state
-`READY` throughout**. From outside, the machine is merely "slow today".
+The ratchet was real: above a SKIP density of 1/50 the recovery branch never
+executed and `GATE_SEP_EFF_us` walked monotonically to its 5/s floor with no
+fault and state `READY` throughout. Three ways to make it visible were open.
 
-The design (fast backoff, slow recovery) is deliberate and stays. Three things
-make it visible, and all three are still open:
+None were built, because the feature could not do its job. It backed the gate
+off to "admit fewer parts than we can judge" — but **the feed rate is set by
+the vibratory bowl, and a part refused at the gate is not removed**. It stays on
+the plate and returns next lap. So the loop shed no load; it deferred the same
+parts while running the machine at a second, drifting rate the operator never
+typed and could not see. The silent ratchet was the visible symptom of that.
 
-1. alarm when `eff_sep_us` deviates from the configured value by more than X%
-2. WebUI surfaces `auto_backoffs` / `auto_recovers` — the first rising while the
-   second is flat is the signature of falling toward the floor
-3. decide whether hitting the floor escalates to a fault (today it is silent)
+Removed: `AUTO_RATE*`, `GATE_SEP_EFF_us`, both AIMD functions, six `get_running_stat`
+keys, two `skip_policy` tuning keys, and the "自動放慢進料" switch. The gate now
+enforces `SYS_MIN_PULSE_TIME_SEP_us` directly — one rate, the configured one.
+
+The **stop** half is untouched and remains the guard: it reacts to CONSECUTIVE
+skips, which is the failure slowing down could never fix. `skip_policy.mode` is
+now `stop_only` | `none`; the firmware still parses the four older spellings, so
+an existing NVS image carries its stop setting across (verified on this machine:
+`slow_and_stop` → `stop_only`, `stop_after` 10 preserved).
+
+Verified after removal: the rate gate still refuses at the configured threshold
+(28.2 ms offered against a 28.571 ms gate → `rej_rate` 29 vs `accept` 28, exact
+alternation, since a refused pulse does not advance `_preTime`), and 30 s at
+35.2 ms ran 1056 edges / 758 accepted with `error_hist` empty and state 101.
 
 ### B3. The host does not verify `cfg_crc`
 
@@ -410,5 +423,7 @@ here so that when one does bite, the diagnosis is already written down.
    `SEL_SUPPRESSED` is the one negative case left and it waits on B6.
 4. **A6** — flip `report_match_ts`, re-soak, promote, delete the host's 450
    lines.
-5. **B1, B2, B3, B4** — tolerance, visibility, and the two link guards.
+5. **B1, B3, B4** — tolerance and the two link guards. (**B2** closed by
+   deleting the feature: the bowl feeder sets the rate, so the gate could not
+   shed load. Operator decision, 08-12.)
 6. **B5** falls out of B6 for free once the injector can corrupt a byte.

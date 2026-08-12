@@ -1589,8 +1589,8 @@ class APPMasterX extends React.Component {
         // dropped both flat keys on 2026-08-08 when the decision was collapsed
         // into ONE name -- so the UI kept writing two keys that no longer
         // existed and was told ack:true both times. skip_policy_mode is that
-        // one name: "none" | "slow_only" | "stop_only" | "slow_and_stop".
-        "skip_policy_mode","auto_rate_floor_us","auto_rate_recover_n",
+        // one name, now "stop_only" | "none" after the slow half was removed.
+        "skip_policy_mode",
         "machine_id","CAM1_Tags","CAM2_Tags","persist",
       ];
 
