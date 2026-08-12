@@ -1110,14 +1110,16 @@ stagePulseOffset STAGE_PULSE_OFFSET={
 // Recorded because the alternative was designed and priced and then declined,
 // and without this note the next reader will re-derive it. The alternative was
 // to defer the whole set_setup document and replay it after the pipeline drains
-// (the machinery exists -- see PLATE_FREQ_PENDING). It was rejected because it
+// (the machinery for that existed once -- see the staged-speed-change tombstone
+// near SPEED_BAND_PCT -- and has since been deleted). It was rejected because it
 // would make set_setup ack a change it has not applied, which the WebUI would
 // read back as "the setting did not take" -- worse, for this case, than the
 // thing it fixes.
 //
 // The SPEED case is not the same and is not covered by this: a speed change is
-// not deliberate setup, it happens during production, and a large one drains the
-// pipeline first. See PLATE_FREQ_PENDING.
+// not deliberate setup, it happens during production. It used to drain the
+// pipeline first; that machinery was unreachable and is gone -- see the
+// staged-speed-change tombstone near SPEED_BAND_PCT.
 //
 // Publishing was briefly given up entirely: STAGE_PULSE_WIDTH_apply() had been
 // moved into the ramp service so the derived *_off fields would follow the live
@@ -1205,6 +1207,11 @@ stagePulseCenter STAGE_PULSE_CENTER = {0,0,0,0,0,0,0};
 // protecting. Kept rather than deleted because draining first is still the
 // right thing if a reason to want it appears; set a percentage to turn it back
 // on and the transaction machinery below wakes up unchanged.
+// NO CONSUMER as of 2026-08-12. The gate stopped using it in 3becdfd6 and the
+// staged speed change -- its last reader -- is deleted. Kept only because it is
+// in the persisted config: dropping it from the schema would make every existing
+// NVS blob fail the unknown-keys check on load. Remove it with a config
+// migration, not as a rider on something else.
 uint32_t SPEED_BAND_PCT = 0;
 
 // A speed change large enough to leave the band is a TRANSACTION, not a write.
@@ -1230,23 +1237,23 @@ uint32_t SPEED_BAND_PCT = 0;
 //
 // -1 means nothing staged. Written by set_setup and by the service below, both
 // in the main loop.
-volatile float    PLATE_FREQ_PENDING   = -1.0f;
-volatile uint32_t FREQ_TXN_N           = 0;    // staged changes committed
-volatile uint32_t FREQ_TXN_DRAIN_MAX_MS= 0;    // worst drain seen
-volatile uint32_t FREQ_TXN_TIMEOUT_N   = 0;    // committed on the timeout, not empty
-// A stuck part must not strand the operator's speed change for ever. This is a
-// safety net against a pipeline that never empties, NOT a schedule -- so it is
-// deliberately far longer than a real drain.
+// The staged speed change is GONE. Deleted 2026-08-12, deliberately.
 //
-// A real drain is the transit time of the last admitted part, which scales as
-// 1/plate_freq: measured 1874 ms at plate_freq 8000. The first value here was
-// 3000 ms, which passes at 8000 and would silently trip below about 5000 --
-// committing the change with parts still in flight, which is the exact failure
-// this exists to prevent, while reporting a clean transaction. Timing out is
-// counted (FREQ_TXN_TIMEOUT_N) and said out loud, but a number that trips in
-// normal operation would make the counter meaningless.
-#define FREQ_TXN_DRAIN_TIMEOUT_MS 10000
-volatile uint32_t FREQ_TXN_T0_MS = 0;
+// It closed the gate, held the old speed until the pipeline emptied, then moved
+// setpoint, windows and target together, so nothing was ever in flight across a
+// large change. Sound, and unreachable: staging only ever fired when
+// SPEED_BAND_PCT was non-zero, and the band itself was removed in 3becdfd6.
+//
+// DEV_COMPLETE_CHECKLIST set the condition -- "if a real-verdict soak also
+// leaves FREQ_TXN at zero, the honest outcome is to delete the transaction
+// machinery, not to leave unreachable code carrying a maintenance cost". Tested
+// 08-12 with real verdicts and 44% speed changes in both directions: FREQ_TXN,
+// FREQ_TXN_TIMEOUT and FREQ_TXN_DRAIN_MAX_MS all stayed 0. So it goes.
+//
+// If a future change makes large speed changes need draining again, this is the
+// shape it had: PLATE_FREQ_PENDING held the new setpoint, freqTxnService()
+// committed it once RBuf emptied or a 10s safety timeout expired, and a change
+// arriving mid-drain retargeted the pending value rather than the setpoint.
 
 // An actuation that was asked for and did not happen because the plate was out
 // of band. This is the escape above, counted -- a verdict was reached, a task
@@ -1343,18 +1350,8 @@ volatile bool PLATE_RUNNING = false;
 // True when the plate is close enough to its setpoint for the derived windows
 // to still mean what they say. MAIN LOOP ONLY, and now used only to decide
 // whether a large change drains first; see SPEED_BAND_PCT.
-static inline bool plateInSpeedBand()
-{
-  const float sp = PLATE_FREQ_SETPOINT;
-  if(!(sp > 0.0f)) return false;
-  const float tol = sp * (float)SPEED_BAND_PCT * 0.01f;
-  const float dc = PLATE_FREQ_CURRENT - sp;
-  const float dt = PLATE_FREQ_TARGET  - sp;
-  // BOTH, not just current: heading out of the band is as disqualifying as
-  // being out of it, or a large change would keep admitting parts for the
-  // whole first tenth of its ramp.
-  return (dc <= tol && dc >= -tol) && (dt <= tol && dt >= -tol);
-}
+// plateInSpeedBand() lived here. Its only caller was the staged speed change,
+// and it had already been reduced to comments before that went.
 
 // A configured centre sat closer to the gate than half its own window, so the
 // leading edge was clamped to 0 instead of wrapping a uint32_t. Reported the
@@ -4379,41 +4376,6 @@ static void spinupService()
   }
 }
 
-// Commit a staged speed change once nothing is in flight. See PLATE_FREQ_PENDING.
-//
-// Reopening the gate here is safe without any further test: the plate now starts
-// ramping to the new setpoint, and admission used to be held off until it
-// arrived -- it no longer is, because
-// the gate stays shut on its own. Admission resumes exactly when the windows
-// become true again, which is the same rule as everywhere else.
-static void freqTxnService()
-{
-  if(PLATE_FREQ_PENDING < 0.0f) return;
-  const uint32_t waited  = millis() - FREQ_TXN_T0_MS;
-  const bool drained     = (RBuf.size() == 0);
-  const bool left_ready  = (sysinfo.state != SYS_STATE::INSPECTION_MODE_READY);
-  const bool timedout    = (waited >= FREQ_TXN_DRAIN_TIMEOUT_MS);
-  if(!drained && !left_ready && !timedout) return;
-
-  // A drain that timed out means parts WERE still in flight across the change --
-  // the thing this exists to prevent. Counted separately so it can never be
-  // mistaken for a clean commit.
-  if(timedout && !drained && !left_ready)
-  {
-    FREQ_TXN_TIMEOUT_N++;
-    djrl.dbg_printf("speed change committed with %d parts still in flight "
-                    "(drain timed out after %d ms)", (int)RBuf.size(), (int)waited);
-  }
-  if(waited > FREQ_TXN_DRAIN_MAX_MS) FREQ_TXN_DRAIN_MAX_MS = waited;
-
-  PLATE_FREQ_SETPOINT = PLATE_FREQ_PENDING;
-  PLATE_FREQ_PENDING  = -1.0f;
-  STAGE_PULSE_WIDTH_apply(stageWidthRefFreq());
-  FREQ_TXN_N++;
-  if(sysinfo.state == SYS_STATE::INSPECTION_MODE_READY)
-    blockNewDetectedObject = false;
-}
-
 static void syncPulseService()
 {
   // Phantom pulses exist only to calibrate. Once READY, the offset is
@@ -5288,7 +5250,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["clock_reset"]=true;
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
-    SEL_SUPPRESSED_N=0; FREQ_TXN_N=0; FREQ_TXN_TIMEOUT_N=0; FREQ_TXN_DRAIN_MAX_MS=0;
+    SEL_SUPPRESSED_N=0;
     SEL1_NO_QUOTA_N=0;
     SKIP_Count=0;
     UNANSWERED_Count=0;
@@ -5538,9 +5500,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jJ["rev"]=(bool)JOG_REV;
       jJ["freq"]=JOG_FREQ;
     }
-    jCountInfo["FREQ_TXN"]=FREQ_TXN_N;
-    jCountInfo["FREQ_TXN_TIMEOUT"]=FREQ_TXN_TIMEOUT_N;
-    jCountInfo["FREQ_TXN_DRAIN_MAX_MS"]=FREQ_TXN_DRAIN_MAX_MS;
     jCountInfo["SEL2"]=SEL2_Count;
     jCountInfo["SEL3"]=SEL3_Count;
     jCountInfo["NA"]=NA_Count;
@@ -7531,7 +7490,6 @@ void firmwareLoop()
   { SEG_BEGIN();
   syncPulseService();
   spinupService();
-  freqTxnService();
   recalService();
   phantomTrainService();
   SEG_END(SEG_SVC_US); }
@@ -8082,7 +8040,6 @@ void genMachineSetup(JsonDocument &jdoc)
     jP["stepper_en_active"]=stepper_en_active;
     jP["stepper_dir"]=stepper_dir_level;
     jP["speed_band_pct"]=SPEED_BAND_PCT;
-    jP["freq_pending"]=(PLATE_FREQ_PENDING<0.0f)?0:PLATE_FREQ_PENDING;
   }
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
@@ -8386,46 +8343,6 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL <= 0.0f)         SYS_FREQ_ACCEL = 2000.0f;
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
-  // Stage a large change instead of applying it, if anything is in flight.
-  // See PLATE_FREQ_PENDING for what this is protecting and what it measured.
-  //
-  // Ordering matters: this restores the setpoint BEFORE the unconditional
-  // STAGE_PULSE_WIDTH_apply at the end of this function, so the windows keep
-  // describing the speed the plate is actually running and the parts already in
-  // the pipeline stay correct all the way to the chute.
-  //
-  // Only in READY. Anywhere else there is nothing in flight to protect, and a
-  // spin-up that had to drain a pipeline it has not filled yet would never start.
-  if(PLATE_FREQ_SETPOINT != _freq_before)
-  {
-    if(PLATE_FREQ_PENDING >= 0.0f)
-    {
-      // A change arriving while one is already staged retargets the staged one.
-      //
-      // Without this, a SMALL change during a drain writes the setpoint (it is
-      // small, so it is not staged) and the drain then commits the OLD pending
-      // value on top of it -- the operator's most recent instruction is silently
-      // overwritten by one they have already superseded. Size does not matter
-      // here: while a transaction is open, the setpoint is not the operator's
-      // to write, the pending value is.
-      PLATE_FREQ_PENDING  = PLATE_FREQ_SETPOINT;
-      PLATE_FREQ_SETPOINT = _freq_before;
-      FREQ_TXN_T0_MS      = millis();   // the drain restarts with the new order
-    }
-    else if(SPEED_BAND_PCT &&
-            sysinfo.state == SYS_STATE::INSPECTION_MODE_READY && RBuf.size() > 0)
-    {
-      const float tol = _freq_before * (float)SPEED_BAND_PCT * 0.01f;
-      const float d   = PLATE_FREQ_SETPOINT - _freq_before;
-      if(d > tol || d < -tol)
-      {
-        PLATE_FREQ_PENDING     = PLATE_FREQ_SETPOINT;
-        PLATE_FREQ_SETPOINT    = _freq_before;
-        blockNewDetectedObject = true;  // stop admitting, let the pipeline empty
-        FREQ_TXN_T0_MS         = millis();
-      }
-    }
-  }
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   // Changing the configured rate always resets the live one: the operator asked
   // for a rate, not for whatever the loop had crept to.
