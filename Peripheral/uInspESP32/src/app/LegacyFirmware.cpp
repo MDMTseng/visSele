@@ -937,6 +937,20 @@ uint32_t REP_CAMLAT_MAX_US=0;
 static const uint32_t REP_CAMLAT_EDGE_MS[7] = {5,10,20,40,80,160,320};
 uint32_t REP_CAMLAT_HIST[8]={0,0,0,0,0,0,0,0};
 
+// The histogram says a tail exists. It cannot say WHOSE tail it is.
+//
+// clat spans camera trigger -> core grabs -> core inspects -> UART -> this loop
+// parses the reply. Only the last leg is ours, and it is the one leg that can
+// be caught red-handed: when a spike lands, record how long the current loop
+// pass had already been running before it reached the report, and how long the
+// PREVIOUS pass took. If the report was processed the instant its bytes landed
+// -- both numbers small -- the delay happened upstream of the ESP32 entirely
+// and no amount of shrinking our messages will touch it.
+static const uint32_t REP_SPIKE_TRIG_US = 60000;
+struct RepSpike { uint32_t clat_us, inpass_us, prevgap_us, tx_us, rx_us; };
+RepSpike REP_SPIKE[6];
+uint32_t REP_SPIKE_N=0;                 // total seen; index is N%6
+
 // Incremented from the ISR (Run_ACTS' SWITCH branch), read and zeroed from the
 // main loop (get_running_stat / reset_running_stat). Were uint64_t, which on a
 // 32-bit core is two loads -> get_running_stat could read a half-updated value
@@ -1989,6 +2003,7 @@ RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
 extern volatile uint32_t LOOP_N;        // defined beside firmwareLoop()
 extern volatile uint32_t LOOP_MAX_US;
 extern volatile uint32_t SEG_SVC_US, SEG_ST_US, SEG_RX_US, SEG_TX_US;
+extern volatile uint32_t LOOP_PASS_T0_US, LOOP_PREV_GAP_US;
 volatile uint8_t  ISRTRIGQ_HWM = 0;    // deepest seen since the last reset
 volatile uint32_t ISRTRIGQ_OVF = 0;    // pushes that found it full
 
@@ -5382,7 +5397,42 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     REP_LAT_N=0; REP_LAT_SUM_US=0; REP_LAT_MAX_US=0;
     REP_CAMLAT_N=0; REP_CAMLAT_SUM_US=0; REP_CAMLAT_MAX_US=0;
     for(int i=0;i<8;i++) REP_CAMLAT_HIST[i]=0;
+    REP_SPIKE_N=0;
+    // The loop/segment maxima are high-waters too, and a spike that turns out
+    // to be ours has to be readable in the same window as the spike itself.
+    LOOP_N=0; LOOP_MAX_US=0;
+    SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
     retdoc["type"]="reset_latency_stat";
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"get_spikes")==0)
+  {
+    // Which side of the UART lost the time. See REP_SPIKE.
+    retdoc["type"]="get_spikes";
+    retdoc["n"]=REP_SPIKE_N;
+    retdoc["loop_max_us"]=LOOP_MAX_US;
+    retdoc["loop_n"]=LOOP_N;
+    retdoc["trig_us"]=REP_SPIKE_TRIG_US;
+    // The histogram lives here too. get_running_stat serialises to 2886 of its
+    // 3072 bytes after 30s of traffic and the counters only grow -- reading a
+    // latency measurement out of a reply that is one wide field away from
+    // silently dropping members is not a measurement.
+    retdoc["cam_n"]=REP_CAMLAT_N;
+    retdoc["cam_avg_us"]=REP_CAMLAT_N ? (uint32_t)(REP_CAMLAT_SUM_US/REP_CAMLAT_N) : 0;
+    retdoc["cam_max_us"]=REP_CAMLAT_MAX_US;
+    {
+      JsonArray jH=retdoc.createNestedArray("cam_hist");
+      for(int i=0;i<8;i++) jH.add(REP_CAMLAT_HIST[i]);
+    }
+    JsonArray jS=retdoc.createNestedArray("spikes");
+    const uint32_t k=REP_SPIKE_N<6?REP_SPIKE_N:6;
+    for(uint32_t i=0;i<k;i++)
+    {
+      const RepSpike &s=REP_SPIKE[i];
+      JsonArray e=jS.createNestedArray();
+      e.add(s.clat_us); e.add(s.inpass_us); e.add(s.prevgap_us);
+      e.add(s.tx_us);   e.add(s.rx_us);
+    }
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"get_schema")==0)
@@ -6188,6 +6238,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         JsonArray jH=jL.createNestedArray("cam_hist");
         for(int i=0;i<8;i++) jH.add(REP_CAMLAT_HIST[i]);
       }
+      // Just the count here. The spike table itself is get_spikes: this reply
+      // was already 2609 of the 3072-byte document, and adding six five-number
+      // rows overflowed it -- the whole get_running_stat came back truncated
+      // and unparseable, which is a far worse failure than not having the
+      // detail. Anything new goes in its own command until this one is cut down.
+      jL["spike_n"]=REP_SPIKE_N;
     }
 
     doRsp=rspAck=true;
@@ -6485,6 +6541,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
             const uint32_t ms=clat/1000;
             int b=0; while(b<7 && ms>=REP_CAMLAT_EDGE_MS[b]) b++;
             REP_CAMLAT_HIST[b]++;
+          }
+          if(clat>=REP_SPIKE_TRIG_US)
+          {
+            RepSpike &s=REP_SPIKE[REP_SPIKE_N%6];
+            s.clat_us   = clat;
+            s.inpass_us = (uint32_t)now64-LOOP_PASS_T0_US;
+            s.prevgap_us= LOOP_PREV_GAP_US;
+            s.tx_us     = SEG_TX_US;
+            s.rx_us     = SEG_RX_US;
+            REP_SPIKE_N++;
           }
         }
       }
@@ -7906,6 +7972,9 @@ volatile uint32_t LOOP_MAX_US=0;
 //         written here, so a 1174-byte get_setup lands in this segment
 //   tx    the announce drain: ISRTrigQ first, then the other queues
 volatile uint32_t SEG_SVC_US=0, SEG_ST_US=0, SEG_RX_US=0, SEG_TX_US=0;
+// Not maxima: the CURRENT pass's start, and how long the pass before it took.
+// Read at the moment a latency spike is recorded, to place the blame.
+volatile uint32_t LOOP_PASS_T0_US=0, LOOP_PREV_GAP_US=0;
 #define SEG_BEGIN() uint32_t _seg_t0=(uint32_t)esp_timer_get_time()
 #define SEG_END(V) do{ uint32_t _d=(uint32_t)esp_timer_get_time()-_seg_t0; \
                        if(_d>(V)) (V)=_d; }while(0)
@@ -7919,8 +7988,10 @@ void firmwareLoop()
     {
       uint32_t d=now-loop_last_us;
       if(d>LOOP_MAX_US) LOOP_MAX_US=d;
+      LOOP_PREV_GAP_US=d;
     }
     loop_last_us=now;
+    LOOP_PASS_T0_US=now;
     LOOP_N++;
   }
   esp_task_wdt_reset();
