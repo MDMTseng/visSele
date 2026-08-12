@@ -2956,3 +2956,80 @@ the device now announces outright.
 
 Two implementations of one decision is the shape a mis-sort hides in. Deleting
 them is not tidying.
+
+---
+
+## drift_comp: 80x better, and the A/B that said otherwise measured a high-water
+
+2026-08-12. `cam_drift_comp` was opt-in, on the strength of an A/B that "showed
+no improvement". That A/B compared `delta_max_us`, which is a SINCE-BOOT
+high-water and was never reset between arms — so the first arm's worst case was
+simply inherited by the second, and the comparison could not have shown a
+difference whatever the truth was. The same trap caught this session twice
+before the number was read properly.
+
+Per-sample `|delta_last_us|`, same traffic, ~2.6 s spacing:
+
+```
+drift_comp OFF   mean 74.5 us   median 74.0   p90 79.0   max 197
+drift_comp ON    mean  0.9 us   median  1.0   p90  2.0   max   3
+```
+
+`delta` is what places a frame on an object. `resid_us` barely moves between the
+two and never will: it is computed against the UNPROJECTED offset, so it is by
+definition the raw drift since the last sample, compensated or not. Reading it
+as the score is what made this look like a no-op — and it is also why the
+residual is "always negative", which is not a calibration fault. Two crystals
+differ at a fixed rate, so the accumulation between samples has a fixed sign.
+The magnitude checks out: slope 22.7 ppm x 2.6 s gap = 59 us, measured -59.5.
+
+Default is now ON.
+
+### 30 minutes with it on
+
+369 samples, phantom objects, a 90 s idle every 5 minutes:
+
+```
+ALL      mean 1.53   median 1.0   p90 2.0   p99 26.0   max 31
+STEADY   mean 1.19   median 1.0   p90 2.0   p99 26.0   max 31   (t > 60 s)
+slope    converged -23770..-21683 ppb over the half hour (2.09 ppm of wander)
+rejected 0   recals 16   error_hist []
+```
+
+Every sample above 6 us after the first minute — 11 of 354, 3.1% — is an idle
+recovery, at 6.6, 13.1, 19.6 and 26.1 minutes. Each costs one sample at 26-31 us
+and is back to 1 us within two or three. Nothing else in half an hour exceeded
+5 us.
+
+The first minute is the slope converging, visibly: |delta| 23 -> 20 -> 14 -> 7
+as slope_ppb walks -27347 -> -23449. It learns, and it learns the right thing.
+
+### The long-idle case is held by RECAL, not by the slope
+
+The firmware's own note worried that the slope was only ever tested over burst
+gaps "of tens of ms" and that the case it is FOR — a slow line, parts minutes
+apart — was never tested. Tested here, and the worry does not apply: with
+`recal_idle_ms` at 10 s, a 90 s idle triggers a recal that re-measures the
+offset outright, so the gap the slope is ever asked to extrapolate over stays
+small. 90 s at 22 ppm would be 2000 us of accumulated error; the measurement
+after each idle is 31.
+
+So the slope's job is the gaps BELOW the recal threshold. That is a narrower job
+than the comment assumed, and it is doing it at 1 us.
+
+### Decaying peaks instead of since-boot maxima
+
+`delta_max_us`, `miss_delta_max_us` and `max_resid_us` now decay:
+
+```
+max = (delta > max) ? delta : max*0.999
+```
+
+A plain maximum never forgets, which breaks both things it gets used for: it
+cannot compare two conditions, because the first one's worst case is inherited
+by the second (exactly how drift_comp was dismissed), and on a running machine
+one outlier from an hour ago stays the headline long after the machine has been
+fine. The envelope takes a new peak instantly and forgets an old one over about
+a thousand samples, which is the "worst of the recent past" the number is
+actually read as. `max_resid_us` keeps the SIGN of the peak it holds, because
+the sign is the whole tell for a drift.

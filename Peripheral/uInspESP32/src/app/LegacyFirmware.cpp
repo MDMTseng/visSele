@@ -577,7 +577,13 @@ struct CamClockSync
     {
       rejected++;
       miss_delta_last_us = nearest_delta;
+      // Same envelope as delta_max_us, and for the same reason -- see there.
       if(nearest_delta > miss_delta_max_us) miss_delta_max_us = nearest_delta;
+      else if(miss_delta_max_us > 0)
+      {
+        int64_t d2 = miss_delta_max_us - (miss_delta_max_us / 1000) - 1;
+        miss_delta_max_us = d2 > 0 ? d2 : 0;
+      }
       if(++consec_reject >= LOST_N)
       {
         valid = false;
@@ -590,7 +596,26 @@ struct CamClockSync
     }
     consec_reject = 0;
     delta_last_us = nearest_delta;
+    // A DECAYING peak, not a since-boot high-water.
+    //
+    // A plain max never forgets, which makes it useless for the two things it
+    // gets used for. It cannot compare two conditions -- the first arm's worst
+    // case is simply inherited by the second, which is exactly how "drift_comp
+    // makes no difference" was concluded twice from a number that could not
+    // have moved. And on a running machine one outlier from an hour ago is
+    // still the headline while the machine has been fine since.
+    //
+    // max = max(delta, max*0.999): a new peak is taken instantly, and an old
+    // one fades with a ~1000-sample time constant. What it reports is "the
+    // worst of the recent past", which is the question being asked of it.
+    // Integer, and the -1 floor stops it from sticking one count above zero
+    // forever on the way down.
     if(nearest_delta > delta_max_us) delta_max_us = nearest_delta;
+    else if(delta_max_us > 0)
+    {
+      int64_t decayed = delta_max_us - (delta_max_us / 1000) - 1;
+      delta_max_us = decayed > 0 ? decayed : 0;
+    }
     // Distribution, not just the high-water mark.
     //
     // delta_max over a four-minute run says nothing about the tail a machine
@@ -611,7 +636,16 @@ struct CamClockSync
       delta_hist[b]++;
     }
     last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
+    // Decaying too, keeping the SIGN of the peak it is holding -- the sign is
+    // the whole tell for a drift, and an envelope that forgets it would report
+    // a magnitude with no direction.
     if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
+    else if(max_resid_us != 0)
+    {
+      int64_t m = llabs(max_resid_us);
+      m = m - (m / 1000) - 1;
+      max_resid_us = (m > 0) ? ((max_resid_us < 0) ? -m : m) : 0;
+    }
     last_gap_us = est_cam_us ? ((int64_t)nearest_cam_us - (int64_t)est_cam_us) : 0;
 
     // Learn the slope, but only from samples that already passed the window.
@@ -663,7 +697,22 @@ struct CamClockSync
   static bool DRIFT_COMP;
 };
 int32_t CamClockSync::TOL_US = 5000;
-bool    CamClockSync::DRIFT_COMP = false;   // opt-in, set_setup cam_drift_comp
+// ON by default since 2026-08-12. It was opt-in because an A/B "showed no
+// improvement" -- and that A/B compared delta_max_us, a SINCE-BOOT high-water
+// that was never reset between arms, so the first arm's worst case was simply
+// inherited by the second and the comparison could not have shown anything.
+//
+// Measured properly, per-sample |delta| at ~2.6s spacing:
+//
+//   drift_comp OFF   mean 74.5us  median 74.0  p90 79.0  max 197
+//   drift_comp ON    mean  0.9us  median  1.0  p90  2.0  max   3
+//
+// Eighty times better on the number that actually places a frame on an object.
+// resid_us barely moves between the two and never will: it is defined against
+// the UNPROJECTED offset, so it measures the raw drift since the last sample
+// whether or not that drift is being compensated. Reading it as the score is
+// what made this look like a no-op.
+bool    CamClockSync::DRIFT_COMP = true;    // set_setup cam_drift_comp
 CamClockSync CAM_SYNC;
 
 // ---------------------------------------------------------------------------
