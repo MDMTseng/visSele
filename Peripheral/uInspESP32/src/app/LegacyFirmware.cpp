@@ -82,6 +82,21 @@ static const struct { const char *name; int pin; int idx; } IO_POL_TAB[] = {
 // Single place that drives every actuator to its inactive level. Used on the
 // error path, on reset, and once the plate has coasted to a stop, so a selector
 // can never be left energised by a state transition that forgot one pin.
+// Everything except the selector valves. Used by the stop paths, which must
+// drop the light and the camera at once but must NOT cut a blow that is already
+// out: SELn_Count is incremented when the blow STARTS, so truncating it makes
+// the counter claim an ejection that may not have happened -- and the bin then
+// disagrees with the count for a reason nobody can reconstruct afterwards.
+//
+// The valves are released by SEL_SAFE_AT_MS instead, within one blow width.
+#define OUTPUTS_SAFE_EXCEPT_SEL() \
+  { \
+    IO_OFF(PIN_O_L1A,IOI_L1A); \
+    IO_OFF(PIN_O_L2A,IOI_L2A); \
+    IO_OFF(PIN_O_CAM1,IOI_CAM1); \
+    IO_OFF(PIN_O_CAM2,IOI_CAM2); \
+  }
+
 #define ALL_OUTPUTS_SAFE() \
   { \
     IO_OFF(PIN_O_L1A,IOI_L1A); \
@@ -1345,6 +1360,17 @@ float JOG_FREQ = 600;
 // and a trigger that never went out is not one -- incrementing it would move
 // the pcnt offset for the rest of the run and be indistinguishable from a
 // trigger the camera refused.
+// Release the selector valves at this time, or 0 for "nothing held".
+//
+// A stop clears the ACT queues, which throws away the OFF half of a blow that is
+// currently ON. That used to be handled by clearing twice and dropping the
+// outputs three times -- which narrows the window without closing it, since the
+// tick can land inside the first clear, and which also cuts a legitimate blow
+// short. This closes it from the other side: whatever happens to the queues, the
+// valves come down within one blow width, and a blow already out is allowed to
+// finish so the counter and the bin agree.
+volatile uint32_t SEL_SAFE_AT_MS = 0;
+
 volatile uint32_t FAULT_SKIP_TRIG_N = 0;
 volatile uint32_t FAULT_SKIP_TRIG_USED = 0;
 
@@ -2023,6 +2049,28 @@ void IRAM_ATTR onTimerJog();
 //      the whole stopping distance. f^2/(2a) ticks, from the live speed.
 //   3. hand the timer between onTimer and onTimerJog at the two moments that is
 //      safe: with the plate proven stopped.
+// Drop the selector valves once any blow in progress has had its full width.
+// See SEL_SAFE_AT_MS -- this is the only thing that guarantees an air valve
+// cannot be left energised by a queue clear.
+static void selSafeService()
+{
+  if(SEL_SAFE_AT_MS == 0) return;
+  if((int32_t)(millis() - SEL_SAFE_AT_MS) < 0) return;
+  SEL_SAFE_AT_MS = 0;
+  IO_OFF(PIN_O_SEL1,IOI_SEL1);
+  IO_OFF(PIN_O_SEL2,IOI_SEL2);
+  IO_OFF(PIN_O_SEL3,IOI_SEL3);
+}
+
+// The longest a blow can still be out, in ms, from the configured widths.
+static inline uint32_t selHoldMs()
+{
+  uint32_t w = STAGE_PULSE_WIDTH_US.SEL1;
+  if(STAGE_PULSE_WIDTH_US.SEL2 > w) w = STAGE_PULSE_WIDTH_US.SEL2;
+  if(STAGE_PULSE_WIDTH_US.SEL3 > w) w = STAGE_PULSE_WIDTH_US.SEL3;
+  return (w / 1000u) + 5u;          // +5ms of slack for the queue and the loop
+}
+
 static void jogService()
 {
   if(JOG_STATE==0) return;
@@ -2157,9 +2205,14 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // clear), which leaves its own window: the ISR can fire a pending SEL
         // ON between them and have its OFF cleared underneath it. Fixed there
         // too.
-        ALL_OUTPUTS_SAFE();
+        // Same as the ERROR path: a blow already out is allowed to finish, or
+        // the count claims an ejection the bin never received. exit_insp_mode
+        // landing inside a 50ms blow is not a corner case at 39/s with 10%
+        // rejects -- it is what a normal stop looks like.
+        OUTPUTS_SAFE_EXCEPT_SEL();
         RESET_ALL_PIPELINE_QUEUE();
-        ALL_OUTPUTS_SAFE();
+        SEL_SAFE_AT_MS = millis() + selHoldMs();
+        OUTPUTS_SAFE_EXCEPT_SEL();
       } //enter
       else if (i == 1)
       {
@@ -2321,21 +2374,23 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         PLATE_FREQ_TARGET=0;
         blockNewDetectedObject=true;
 
-        // Drop every actuator immediately. The plate still has to ramp down, so
-        // waiting for the freq-stable path below would leave a selector held on
-        // for the whole deceleration.
-        ALL_OUTPUTS_SAFE();
+        // Light and camera go now. The AIR does not, if it is already out.
+        //
+        // SELn_Count is incremented when a blow STARTS, so cutting one short
+        // makes the counter claim an ejection that may not have happened -- the
+        // part is half-blown, stays on the plate, and the bin disagrees with the
+        // count with nothing to explain it. A blow is 50ms and air is the safe
+        // direction to err in; the plate is already shutting down around it.
+        OUTPUTS_SAFE_EXCEPT_SEL();
 
         RESET_ALL_PIPELINE_QUEUE();
 
-        RESET_ALL_PIPELINE_QUEUE();
-        // Again, after the queues are empty. Safe-then-clear leaves a window:
-        // the ISR can execute a pending SEL ON between the two, and its OFF is
-        // then thrown away by the clear -- valve energised with nothing left to
-        // release it. The double RESET narrows that but cannot close it, since
-        // the tick can land in the first one. Dropping the outputs once more at
-        // the end is what actually closes it, and it costs nothing.
-        ALL_OUTPUTS_SAFE();
+        // The clear throws away the OFF half of any blow in progress. This is
+        // what releases it -- unconditionally, within one blow width -- and it
+        // closes the window the old double-RESET could only narrow, because it
+        // does not depend on where the tick landed.
+        SEL_SAFE_AT_MS = millis() + selHoldMs();
+        OUTPUTS_SAFE_EXCEPT_SEL();
 
         // targetPulse=get_Stepper_pulse_count()+perRevPulseCount/3;//in jail for a bit
         ERROR_LOG_PUSH((GEN_ERROR_CODE)sysinfo.extra_code);
@@ -7890,6 +7945,7 @@ void firmwareLoop()
   // but the jog's braking decision is a POSITION test, and a position test that
   // runs 1/256 as often overshoots by whatever the plate covered meanwhile.
   jogService();
+  selSafeService();
   do{//timer freq ctrl
     subDiv=(subDiv+1)&(0xFF);
     if(subDiv!=0)break;
