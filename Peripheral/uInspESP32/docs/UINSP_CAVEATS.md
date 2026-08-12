@@ -2800,3 +2800,46 @@ the cache image" and "write these raw bytes" on
 `dat->size - strlen(json) - 1 == 0`, and a console-injected packet cannot
 satisfy that, so it takes the raw branch and writes ~16 MB of whatever was in
 the buffer to a file named `.png`. Silently, with `ack: true`.
+
+---
+
+## B5 answered: the framing layer does not resync, and nothing records it
+
+2026-08-12. `PAIRING_MIGRATION_STATUS.md` recorded the resync path as "Untested:
+no framing error has occurred since", and the 8-hour soak's 0 CRC failures meant
+it still had not been walked. Provoked deliberately, it fails.
+
+Method, isolated so there is no ambiguity about which end broke: core stopped,
+serial port opened directly, board confirmed healthy, then malformed bytes
+written straight down the UART.
+
+```
+healthy baseline            ANSWERS
+right after garbage         silent
+after 8 newlines            silent
+after 64 more newlines      silent
+after 5 s idle              silent
+PING while wedged           silent
+clear_error while wedged    silent
+after a DTR reset           ANSWERS
+```
+
+**One malformed frame silences the device link until a hardware reset.** It does
+not recover on its own, no amount of delimiter helps, and it is not the
+documented `SERIAL_PROTOCOL_ERROR` latch either -- a latched error would still
+answer `clear_error`, and it does not. The RX parser itself is stuck.
+
+Worse, it is silent at both ends. `error_hist` is empty and `rx_crc_fail` is 0
+afterwards (a reset clears them, and the reset is the only way back), and the
+core logged nothing. From outside, a machine that has gone deaf this way looks
+exactly like a machine that is idle.
+
+The first attempt at this went through the perif console with the core running,
+and `!pd CONNECT` recovered it -- which rebuilds the core's channel AND resets
+the board, so it proved nothing about which end had wedged. Stopping the core
+first is what made the answer unambiguous.
+
+What this costs in production: any line noise, any partial write, any host that
+dies mid-frame takes the machine deaf, silently, until someone power-cycles it.
+The framing/CRC half of B4 is proven (0 failures in 426840 frames) -- but that
+is the happy path, and this is what happens the first time it is not.

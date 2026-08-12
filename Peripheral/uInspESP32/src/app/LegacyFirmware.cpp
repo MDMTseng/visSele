@@ -1337,10 +1337,47 @@ float JOG_FREQ = 600;
 // Reported in get_running_stat under `fault` and NOT cleared by
 // reset_running_stat. An armed injector that is invisible is exactly the defect
 // A3 was -- the machine's own books quietly stop meaning what they say.
+// Swallow a camera trigger whole: no pulse, no pulse count, no announcement.
+// From the host that is a part that never produced a frame, which is the
+// UNANSWERED path and the one B5's framing work has never been able to provoke.
+//
+// CAM_PULSE_N is deliberately NOT incremented. It is what the CAMERA counted,
+// and a trigger that never went out is not one -- incrementing it would move
+// the pcnt offset for the rest of the run and be indistinguishable from a
+// trigger the camera refused.
+volatile uint32_t FAULT_SKIP_TRIG_N = 0;
+volatile uint32_t FAULT_SKIP_TRIG_USED = 0;
+
+// Lie about which object a frame belongs to, in the announcement only: the
+// pulse, the timestamp and the object's own record stay correct. That is the
+// mutation the pairing is supposed to survive -- with report_match_ts
+// authoritative the timestamp match should disagree with the tid match, and
+// `disagree` is exactly the counter that has been 0 for want of a way to make
+// it move.
+volatile int32_t  FAULT_TID_OFFSET = 0;
+volatile uint32_t FAULT_TID_N = 0;
+volatile uint32_t FAULT_TID_USED = 0;
+
 volatile uint32_t FAULT_SEL_SUPPRESS_N = 0;   // suppress the next N actuations
 volatile uint32_t FAULT_SEL_SUPPRESS_USED = 0;
 
 // True once, consuming one shot. Call EXACTLY once per actuation decision.
+static inline bool IRAM_ATTR faultSkipTrig()
+{
+  if(FAULT_SKIP_TRIG_N == 0) return false;
+  FAULT_SKIP_TRIG_N--;
+  FAULT_SKIP_TRIG_USED++;
+  return true;
+}
+
+static inline int32_t IRAM_ATTR faultTidOffset()
+{
+  if(FAULT_TID_N == 0) return 0;
+  FAULT_TID_N--;
+  FAULT_TID_USED++;
+  return FAULT_TID_OFFSET;
+}
+
 static inline bool IRAM_ATTR faultSuppressSel()
 {
   if(FAULT_SEL_SUPPRESS_N == 0) return false;
@@ -2579,7 +2616,15 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
                   if(task->info)
                   {
-
+                    // B6: swallow this trigger entirely. Nothing below runs --
+                    // no pin, no count, no announcement -- so the host sees an
+                    // object that never produced a frame.
+                    if(faultSkipTrig())
+                    {
+                      IO_TRACE_LOG(PIN_O_CAM1,0,cur_pulse,task->src->tid);
+                    }
+                    else
+                    {
                     IO_ON(PIN_O_CAM1,IOI_CAM1);
                     IO_TRACE_LOG(PIN_O_CAM1,1,cur_pulse,task->src->tid);
                     // Count the edge, and stamp the object with the count --
@@ -2620,7 +2665,11 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                       }
                       commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=1;
-                      commInfo->trig_id=task->src->tid;
+                      // The announcement only. task->src->tid, cam_us and
+                      // cam_pcnt are untouched, so the object still knows the
+                      // truth and only the host is misled.
+                      commInfo->trig_id=(uint32_t)((int32_t)task->src->tid
+                                                   + faultTidOffset());
                       commInfo->gate_pulse=task->src->gate_pulse;
                       commInfo->sync=task->src->sync;
                       ISRTrigQ.pushHead();
@@ -2636,6 +2685,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                       ISRTRIGQ_OVF++;
                       ecode=GEN_ERROR_CODE::INSP_CAM_TRIG_INFO_CANNOT_BE_SENT;
                     }
+                    }   // end of the not-skipped branch
                   }
                   else
                   {
@@ -5521,11 +5571,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // An armed fault injector is never invisible. Deliberately NOT cleared by
     // reset_running_stat: the counters it distorts are, so a reset that also
     // disarmed it would hide the one thing that explains them.
-    if(FAULT_SEL_SUPPRESS_N || FAULT_SEL_SUPPRESS_USED)
+    if(FAULT_SEL_SUPPRESS_N || FAULT_SEL_SUPPRESS_USED ||
+       FAULT_SKIP_TRIG_N   || FAULT_SKIP_TRIG_USED ||
+       FAULT_TID_N         || FAULT_TID_USED)
     {
       JsonObject jF = retdoc.createNestedObject("fault");
       jF["sel_suppress"]=FAULT_SEL_SUPPRESS_N;
       jF["sel_suppress_used"]=FAULT_SEL_SUPPRESS_USED;
+      jF["skip_trig"]=FAULT_SKIP_TRIG_N;
+      jF["skip_trig_used"]=FAULT_SKIP_TRIG_USED;
+      jF["tid_n"]=FAULT_TID_N;
+      jF["tid_offset"]=FAULT_TID_OFFSET;
+      jF["tid_used"]=FAULT_TID_USED;
     }
     {
       // Station placement aid. `disp` is the signed travel of the held part from
@@ -6721,18 +6778,39 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(doc["clear"].is<bool>() && doc["clear"].as<bool>())
     {
       FAULT_SEL_SUPPRESS_N=0;
+      FAULT_SKIP_TRIG_N=0;
+      FAULT_TID_N=0;
+      FAULT_TID_OFFSET=0;
     }
-    else if(doc["sel_suppress"].is<uint32_t>())
+    else
     {
-      // Bounded. An injector armed with a huge count and then forgotten is a
-      // machine that quietly stops ejecting -- the exact failure SEL_SUPPRESSED
-      // exists to make loud.
-      uint32_t n=doc["sel_suppress"];
-      if(n>1000) n=1000;
-      FAULT_SEL_SUPPRESS_N=n;
+      // Bounded, all of them. An injector armed with a huge count and then
+      // forgotten is a machine that quietly misbehaves, which is the exact
+      // failure these counters exist to make loud.
+      if(doc["sel_suppress"].is<uint32_t>())
+      {
+        uint32_t v=doc["sel_suppress"]; if(v>1000) v=1000;
+        FAULT_SEL_SUPPRESS_N=v;
+      }
+      if(doc["skip_trig"].is<uint32_t>())
+      {
+        uint32_t v=doc["skip_trig"]; if(v>1000) v=1000;
+        FAULT_SKIP_TRIG_N=v;
+      }
+      if(doc["tid_n"].is<uint32_t>())
+      {
+        uint32_t v=doc["tid_n"]; if(v>1000) v=1000;
+        FAULT_TID_N=v;
+      }
+      if(doc["tid_offset"].is<int>()) FAULT_TID_OFFSET=(int32_t)doc["tid_offset"];
     }
     retdoc["sel_suppress"]=FAULT_SEL_SUPPRESS_N;
     retdoc["sel_suppress_used"]=FAULT_SEL_SUPPRESS_USED;
+    retdoc["skip_trig"]=FAULT_SKIP_TRIG_N;
+    retdoc["skip_trig_used"]=FAULT_SKIP_TRIG_USED;
+    retdoc["tid_n"]=FAULT_TID_N;
+    retdoc["tid_offset"]=FAULT_TID_OFFSET;
+    retdoc["tid_used"]=FAULT_TID_USED;
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"get_width_hist")==0)
