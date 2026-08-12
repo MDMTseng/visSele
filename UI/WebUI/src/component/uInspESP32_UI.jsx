@@ -104,14 +104,21 @@ const LIGHT_HOLD_MS = 300000;
 const refFreq = (plate_freq) => (plate_freq > 0 ? plate_freq : REF_FREQ);
 const isRef = (plate_freq) => !(plate_freq > 0);
 
-// Plate geometry, measured on the machine (_PLAT_PULSE_PER_TURN in the
-// firmware): 60000 stage pulses per revolution of a 240mm plate, so one pulse
-// is 0.0126 mm of travel. The stage timer ticks at 2x plate_freq, which makes
+// Plate geometry, must match _PLAT_PULSE_PER_TURN in the firmware.
+//
+// 70400, MEASURED 2026-08-12 -- 2816001 ticks over 40 revolutions, one tick of
+// residual, and 70400/2 = 35200 steps = 3200 microsteps x 11:1. The 60000 that
+// stood here (and in the firmware) was a rough estimate 17.3% out, so every mm
+// and every rpm this panel showed was wrong by that much.
+//
+// The 240mm is still an assumption: parts do not ride at the plate's rim, so
+// mm-per-pulse for a PART is smaller than this. The pulse count is exact now;
+// the millimetres are as good as that diameter. The stage timer ticks at 2x plate_freq, which makes
 // plate_freq the only speed the board exposes -- and a bare "15000" tells an
 // operator nothing. rpm and mm/s are the same fact in units someone can act on,
 // and mm/s is the one that sets the exposure budget: 0.01 mm of smear at
 // 377 mm/s is 26 us, which is a decision, not a statistic.
-const PULSES_PER_REV = 60000;
+const PULSES_PER_REV = 70400;
 const MM_PER_PULSE = (240 * Math.PI) / PULSES_PER_REV;
 const plateRpm = (pf) => (pf > 0 ? (2 * pf * 60) / PULSES_PER_REV : 0);
 const plateMmS = (pf) => (pf > 0 ? 2 * pf * MM_PER_PULSE : 0);

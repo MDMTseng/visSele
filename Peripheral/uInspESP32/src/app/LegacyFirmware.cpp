@@ -220,16 +220,32 @@ int SEL1_ACT_COUNTDOWN=-1;
 // Plate geometry for the distance gate. These were the OLD machine's numbers
 // (350mm plate, 28800 pulses/turn), which made every mm<->pulse conversion here
 // off by a factor of ~2: 3.5mm resolved to 91 pulses instead of 278.
-#define _PLAT_DIAMITER_mm 240
-#define _PLAT_CIRC_um (_PLAT_DIAMITER_mm*3.14159*1000)
-#define _PLAT_PULSE_PER_TURN 60000
+// Plate geometry is a per-MACHINE setting, not a build constant.
+//
+// These were #defines, and both were wrong: 60000 pulses/turn was documented as
+// a rough estimate and measured 2026-08-12 at 70400 (2816001 ticks over 40
+// revolutions, one tick of residual; 70400/2 = 35200 steps = 3200 microsteps
+// x 11:1). Every mm<->tick conversion went through it, 17.3% out -- visibly,
+// min_detect_dist_um 2000 enforced 159 ticks, which is 1.70mm not 2.00mm.
+//
+// Baking a measured, machine-specific number into a #define just moves the
+// problem to the next machine. pulses_per_rev and diameter_mm already existed
+// as set_setup keys and were already persisted to NVS; they were simply never
+// consumed by the arithmetic. Now they are, and the values below are only the
+// defaults for a board that has never been told.
+//
+// Guarded because a zero here divides: a bad set_setup should not take the gate
+// with it.
+extern uint32_t pulses_per_rev;
+extern float    plate_diameter_mm;
+#define _PLAT_DIAMITER_mm  ((double)(plate_diameter_mm>0.0f?plate_diameter_mm:240.0f))
+#define _PLAT_CIRC_um      (_PLAT_DIAMITER_mm*3.14159*1000.0)
+#define _PLAT_PULSE_PER_TURN ((double)(pulses_per_rev?pulses_per_rev:70400u))
 #define _PLAT_DIST_um_PER_STEP ((int)(_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
-
-#define _PLAT_DIST_um(stepCount) ((int)(stepCount*_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
-// (double) first: dist_um is uint32 and the multiply by 60000 wraps above
-// 71582 um, so min_detect_dist_um 100000 silently resolved to 2261 ticks
-// (28.4mm) instead of 7958 (100mm) -- a gate an order of magnitude looser
-// than configured, with nothing saying so.
+#define _PLAT_DIST_um(stepCount) ((int)((double)(stepCount)*_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
+// (double) first: dist_um is uint32 and the multiply wraps above 71582 um, so
+// min_detect_dist_um 100000 silently resolved to 2261 ticks (28.4mm) instead of
+// 7958 (100mm) -- a gate an order of magnitude looser than configured.
 #define _PLAT_DIST_step(dist_um) ((int)((double)(dist_um)*_PLAT_PULSE_PER_TURN/_PLAT_CIRC_um))
 
 //disk D=350 circumference 350*Pi
@@ -1002,7 +1018,10 @@ int stepper_dir_level = 0;
 // These are the REAL machine's numbers, not a placeholder: a config-version
 // bump discards the stored blob and falls back here, which happens on every
 // firmware change, so wrong defaults silently re-arrive after each flash.
-uint32_t pulses_per_rev = 60000;      // measured on the machine
+// The conversions read this directly (see _PLAT_PULSE_PER_TURN). Default is
+// the value measured on this machine 2026-08-12; set_setup + save_setup is how
+// another machine gets its own.
+uint32_t pulses_per_rev = 70400;      // measured, 2816001 ticks / 40 revolutions
 float plate_diameter_mm = 240.0f;     // glass plate diameter
 
 // stagePulseOffset now lives in config/MachineConfig.hpp so the NVS layer can
@@ -5485,6 +5504,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // station once it looks right.
       JsonObject jJ = retdoc.createNestedObject("jog");
       jJ["state"]=JOG_STATE;      // 0 off, 1 armed, 2 holding
+      // The absolute SYS_STEP_COUNT of the capturing gate edge. Two catches of
+      // the same single part differ by exactly one revolution -- the coast
+      // happens after the edge, so it cancels -- which is the only direct way
+      // to measure pulses_per_rev on this machine. The configured 60000 is a
+      // rough estimate and every mm conversion rests on it.
+      jJ["origin"]=JOG_ORIGIN;
       jJ["disp"]=JOG_DISP;
       jJ["target"]=JOG_TARGET;
       jJ["moving"]=(bool)JOG_MOVING;
@@ -5660,6 +5685,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // on the far side of the gate -- so it is not in the edges identity.
       jG["discard_stop"]=GATE_DISCARD_STOP;
       jG["min_dist_um"]=GATE_MIN_DIST_um;
+      // What the gate ACTUALLY enforces. The micrometres are the request; this
+      // is the request after the plate geometry has been applied, and until it
+      // was reported the 17.3% error in pulses_per_rev was invisible from
+      // outside -- 2000um asked, 159 ticks enforced, 1.70mm delivered.
+      jG["min_dist_ticks"]=GATE_MIN_DIST_STEPS;
       jG["eff_sep_us"]=GATE_SEP_EFF_us;
       jG["eff_hz"]=GATE_SEP_EFF_us ? (uint32_t)(1000000UL/GATE_SEP_EFF_us) : 0;
       jG["auto_rate"]=(bool)AUTO_RATE;
@@ -7835,12 +7865,22 @@ void firmwareLoop()
       //
       // Recomputed from the value rather than hooked onto the setter, so it
       // cannot go stale if another write site for GATE_MIN_DIST_um appears.
+      // The GEOMETRY is part of the input now, not just the distance. It used
+      // to be a build constant, so watching the micrometres alone was enough;
+      // with pulses_per_rev and diameter_mm settable, a set_setup that changes
+      // either would otherwise leave the gate enforcing a tick count derived
+      // from the old plate -- silently, and only until the next reboot.
       {
         static uint32_t lastMinDistUm = 0xFFFFFFFFu;
+        static uint32_t lastPPR       = 0;
+        static float    lastDia       = 0.0f;
         const uint32_t um = GATE_MIN_DIST_um;
-        if(um != lastMinDistUm)
+        if(um != lastMinDistUm || pulses_per_rev != lastPPR
+           || plate_diameter_mm != lastDia)
         {
           lastMinDistUm = um;
+          lastPPR = pulses_per_rev;
+          lastDia = plate_diameter_mm;
           GATE_MIN_DIST_STEPS = um ? (uint32_t)_PLAT_DIST_step(um) : 0;
         }
       }
