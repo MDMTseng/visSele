@@ -1317,6 +1317,38 @@ volatile bool     JOG_ATTACHED= false;  // the timer is currently on onTimerJog
 // shifts the part it is placing against would be worse than useless.
 float JOG_FREQ = 600;
 
+// --- B6: device-side fault injection ---------------------------------------
+//
+// Some paths cannot be reached by running the machine correctly, and the
+// obvious ways to reach them are worse than not testing them.
+//
+// SEL_SUPPRESSED is the case in hand. It counts a verdict whose actuation was
+// scheduled and not delivered, and the guard it fails is
+// PLATE_RUNNING && !SYS_STEPPER_DISABLED && !DRY_RUN. Stopping the plate does
+// not reach it -- PLATE_RUNNING is PLATE_FREQ_CURRENT > 0 and the step timer's
+// alarm is off at zero, so Run_ACTS never executes and the blow is never
+// reached rather than suppressed (measured: discard_stop 34, SEL_SUPPRESSED 0).
+// The only reachable path on a real machine is de-energising the driver while
+// the plate turns, which lets a loaded plate coast and throw parts.
+//
+// So: make the condition false from here instead. One counter, consumed per
+// actuation, integer, in the ISR.
+//
+// Reported in get_running_stat under `fault` and NOT cleared by
+// reset_running_stat. An armed injector that is invisible is exactly the defect
+// A3 was -- the machine's own books quietly stop meaning what they say.
+volatile uint32_t FAULT_SEL_SUPPRESS_N = 0;   // suppress the next N actuations
+volatile uint32_t FAULT_SEL_SUPPRESS_USED = 0;
+
+// True once, consuming one shot. Call EXACTLY once per actuation decision.
+static inline bool IRAM_ATTR faultSuppressSel()
+{
+  if(FAULT_SEL_SUPPRESS_N == 0) return false;
+  FAULT_SEL_SUPPRESS_N--;
+  FAULT_SEL_SUPPRESS_USED++;
+  return true;
+}
+
 volatile uint32_t SEL_SUPPRESSED_N = 0;
 // NG verdicts the actuation quota ate. See where this is incremented: the guard
 // passed, so it is not "suppressed", but SEL1_ACT_COUNTDOWN was spent, so no
@@ -2829,7 +2861,9 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     // stops ejecting -- every NG judged during the ramp rides on.
                     // That is a worse failure than not inspecting at all, because
                     // nothing about it looks wrong.
-                    if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
+                    const bool sel_ok = PLATE_RUNNING && SYS_STEPPER_DISABLED==false
+                                        && DRY_RUN==false && !faultSuppressSel();
+                    if(!sel_ok)
                       SEL_SUPPRESSED_N++;   // asked for, not delivered -- see SEL_SUPPRESSED_N
                     // The quota case used to fall between the two counters.
                     //
@@ -2839,9 +2873,9 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     // reports the moment the quota runs out, but every part
                     // eaten after that was silent, and SEL1_Count is what the
                     // bin is reconciled against.
-                    else if(SEL1_ACT_COUNTDOWN==0)
+                    else if(sel_ok && SEL1_ACT_COUNTDOWN==0)
                       SEL1_NO_QUOTA_N++;
-                    if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
+                    if(sel_ok && SEL1_ACT_COUNTDOWN)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
                       SEL1_Count++;
@@ -2863,9 +2897,10 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
-                  if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
-                    SEL_SUPPRESSED_N++;
-                  if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
+                  const bool sel_ok = PLATE_RUNNING && SYS_STEPPER_DISABLED==false
+                                      && DRY_RUN==false && !faultSuppressSel();
+                  if(!sel_ok) SEL_SUPPRESSED_N++;
+                  if(sel_ok)                                              // see SEL1
                   {
                     SEL2_Count++;
                     IO_ON(PIN_O_SEL2,IOI_SEL2);
@@ -2894,9 +2929,10 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
                   if(task->info)
                   {
-                  if(!(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false))
-                    SEL_SUPPRESSED_N++;
-                  if(PLATE_RUNNING && SYS_STEPPER_DISABLED==false && DRY_RUN==false)   // see SEL1
+                  const bool sel_ok = PLATE_RUNNING && SYS_STEPPER_DISABLED==false
+                                      && DRY_RUN==false && !faultSuppressSel();
+                  if(!sel_ok) SEL_SUPPRESSED_N++;
+                  if(sel_ok)                                              // see SEL1
                   {
                     SEL3_Count++;
                     IO_ON(PIN_O_SEL3,IOI_SEL3);
@@ -5482,6 +5518,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // NG verdicts the quota ate -- see SEL1_NO_QUOTA_N. Non-zero means the
     // SEL1 bin is short by this many against what was judged NG.
     jCountInfo["SEL1_NO_QUOTA"]=SEL1_NO_QUOTA_N;
+    // An armed fault injector is never invisible. Deliberately NOT cleared by
+    // reset_running_stat: the counters it distorts are, so a reset that also
+    // disarmed it would hide the one thing that explains them.
+    if(FAULT_SEL_SUPPRESS_N || FAULT_SEL_SUPPRESS_USED)
+    {
+      JsonObject jF = retdoc.createNestedObject("fault");
+      jF["sel_suppress"]=FAULT_SEL_SUPPRESS_N;
+      jF["sel_suppress_used"]=FAULT_SEL_SUPPRESS_USED;
+    }
     {
       // Station placement aid. `disp` is the signed travel of the held part from
       // its gate edge, in stage_pulse_offset units -- the number to paste into a
@@ -6668,6 +6713,28 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
 
   // --- station placement: jog_arm -> jog -> jog_end. See the JOG_STATE block. --
+  // B6. Arm a fault, let the machine run into it, read the counter it was meant
+  // to move. {"type":"fault","sel_suppress":N} or {"clear":true}.
+  else if(strcmp(type,"fault")==0)
+  {
+    retdoc["type"]="fault";
+    if(doc["clear"].is<bool>() && doc["clear"].as<bool>())
+    {
+      FAULT_SEL_SUPPRESS_N=0;
+    }
+    else if(doc["sel_suppress"].is<uint32_t>())
+    {
+      // Bounded. An injector armed with a huge count and then forgotten is a
+      // machine that quietly stops ejecting -- the exact failure SEL_SUPPRESSED
+      // exists to make loud.
+      uint32_t n=doc["sel_suppress"];
+      if(n>1000) n=1000;
+      FAULT_SEL_SUPPRESS_N=n;
+    }
+    retdoc["sel_suppress"]=FAULT_SEL_SUPPRESS_N;
+    retdoc["sel_suppress_used"]=FAULT_SEL_SUPPRESS_USED;
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_width_hist")==0)
   {
     retdoc["type"]="get_width_hist";
@@ -8149,6 +8216,11 @@ void genMachineSetup(JsonDocument &jdoc)
   // reading came from NVS or is just the compiled fallback.
   jdoc["machine_id"]=MachineConfig::machineId();
   jdoc["cfg_from_nvs"]=MachineConfig::isLoadedFromNVS();
+  // Only when true, so it is a finding rather than noise. A board reporting this
+  // still holds a config written by pre-JSON firmware and has never been saved
+  // since; the packed struct cannot be deleted while any board still answers
+  // yes. See MachineConfig::isLegacyBlob.
+  if(MachineConfig::isLegacyBlob()) jdoc["cfg_legacy_blob"]=true;
   // cfg_crc is NOT added here. MachineConfig::hash() fingerprints the image
   // this function produces, so calling it from inside would recurse -- and
   // each frame carries a 3KB document, so it overflows the stack rather than
@@ -8217,6 +8289,7 @@ static const char *const K_TOP[] =
    "machine_id","host_timeout_ms",
    "CAM1_ID","CAM2_ID","CAM1_Tags","CAM2_Tags",
    "cfg_from_nvs",                              // reported, harmless to echo back
+   "cfg_legacy_blob",                           // ditto
    NULL};
 
 static bool cfgKeyKnown(const char *const *tab, const char *k)

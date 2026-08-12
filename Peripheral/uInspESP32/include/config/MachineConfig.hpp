@@ -185,6 +185,10 @@ namespace MachineConfig
 
   // True if begin() found a usable stored config.
   bool isLoadedFromNVS();
+  // True when begin() loaded the legacy packed struct rather than the JSON.
+  // Reported as cfg_legacy_blob so the fleet can be audited before the struct
+  // and its append-only discipline are deleted.
+  bool isLegacyBlob();
   // Stored keys this firmware does not recognise, with their old values.
   // Never migrated and never re-saved: only an explicit save_setup or
   // set_setup persist:true may write NVS, so an upgrade cannot rewrite an

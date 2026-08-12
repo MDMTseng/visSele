@@ -30,7 +30,10 @@ namespace
   // Runtime state that genMachineSetup reports but nobody should persist.
   const char *kVolatileKeys[] = {
     "cur_state","step_count","error_hist","reset_reason","reset_reason_name",
-    "xtal_mhz","cfg_from_nvs","cfg_crc","ver","name","id","ack"
+    "xtal_mhz","cfg_from_nvs","cfg_crc","ver","name","id","ack",
+    // Reported, never stored: it describes where this boot's config CAME FROM,
+    // and persisting it would make the answer permanent.
+    "cfg_legacy_blob"
   };
 
   // One blob rather than a key per field: a partial write can then never leave
@@ -75,6 +78,14 @@ namespace
 
   Preferences prefs;
   bool loadedFromNVS = false;
+  // Set when begin() had to fall back to the packed struct. The struct exists
+  // ONLY for that migration -- save() writes JSON and deletes the blob -- so
+  // this is the flag that says whether the migration is finished across the
+  // fleet, and therefore whether ~150 lines of append-only-struct discipline
+  // (and the trap that once inverted io_on_level) can be deleted.
+  //
+  // Reported as cfg_legacy_blob. Clears on the next save.
+  bool legacyBlob = false;
   // cfg_crc, cached. poll() asks for it every call and poll() exists to be the
   // CHEAP one: canonicalImage() declares a local StaticJsonDocument<3072>, runs
   // the whole of genMachineSetup into it, and serialises through an Arduino
@@ -119,7 +130,17 @@ namespace
   // One producer, so the stored bytes and the reported CRC can never disagree.
   bool canonicalImage(String &out)
   {
-    StaticJsonDocument<3072> jdoc;
+    // STATIC, not a local. This is 3KB and the loop task's stack high-water has
+    // been measured with as little as 2500 bytes free -- the note below about
+    // caching the hash describes the same document as something that "overflows
+    // the stack rather than merely being slow", and then mitigates it by calling
+    // it less often. Calling it less often is not the same as not putting 3KB on
+    // the stack.
+    //
+    // Not reentrant, which it never was: both callers are the main loop, and it
+    // is cleared on entry so a previous image cannot leak into this one.
+    static StaticJsonDocument<3072> jdoc;
+    jdoc.clear();
     genMachineSetup(jdoc);
     // genMachineSetup also reports live state, which has no business in a
     // configuration store -- persisting cur_state or an error history would
@@ -191,6 +212,7 @@ namespace MachineConfig
   void begin()
   {
     loadedFromNVS = false;
+    legacyBlob = false;
 
     if (!prefs.begin(kNamespace, /*readOnly=*/true))
     {
@@ -295,6 +317,7 @@ namespace MachineConfig
 
     applyToGlobals(cfg);
     loadedFromNVS = true;
+    legacyBlob = true;      // this board has not been saved by a JSON firmware
     hashDirty = true;
   }
 
@@ -315,6 +338,7 @@ namespace MachineConfig
       return false;
 
     loadedFromNVS = true;
+    legacyBlob = false;     // migrated: the blob above was just removed
     hashDirty = true;
     return true;
   }
@@ -365,6 +389,11 @@ namespace MachineConfig
   bool isLoadedFromNVS()
   {
     return loadedFromNVS;
+  }
+
+  bool isLegacyBlob()
+  {
+    return legacyBlob;
   }
 
   const char *machineId()
