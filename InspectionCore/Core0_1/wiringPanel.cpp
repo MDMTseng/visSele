@@ -5753,8 +5753,17 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
   return -1;
 }
 
+// host_us: how long this frame spent inside the core, from the moment the
+// camera layer handed it over to the moment this report was built.
+//
+// It exists so the DEVICE can subtract it. The device measures camera trigger
+// -> verdict in hand, the core measures frame received -> written, and the
+// difference between those two is the acquisition leg -- camera exposure,
+// readout and transport -- which neither side can see on its own and which came
+// out around 8ms on the bench. Sending it costs ~12 bytes and turns a
+// subtraction between two reports into a per-frame number on one clock.
 int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t cam_ts_us,
-                         int64_t pcnt)
+                         int64_t pcnt, uint64_t host_us)
 {
   uint8_t buffx[200];
 
@@ -5802,11 +5811,15 @@ int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t c
     return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
       "{"
       "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu,\"pcnt\":%lld"
-      "}", (long long)tid, cat, (unsigned long long)cam_ts_us, (long long)pcnt);
+      ",\"hus\":%llu"
+      "}", (long long)tid, cat, (unsigned long long)cam_ts_us, (long long)pcnt,
+      (unsigned long long)host_us);
   return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
     "{"
     "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu"
-    "}", (long long)tid, cat, (unsigned long long)cam_ts_us);
+    ",\"hus\":%llu"
+    "}", (long long)tid, cat, (unsigned long long)cam_ts_us,
+    (unsigned long long)host_us);
 }
 
 // Inspection verdict -> selector category.
@@ -6799,9 +6812,10 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
               }
               else
               {
-                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt);
+                const uint64_t _hostUs = msg.rx_us ? (perif_now_us() - msg.rx_us) : 0;
+                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt, _hostUs);
                 if (tx_twice)
-                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt);
+                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt, _hostUs);
               }
               // The announcement side is traced ([perif RX] cam_trig) but the
               // verdict side was not, so "did tid N ever get answered, and

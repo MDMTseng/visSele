@@ -946,6 +946,23 @@ uint32_t REP_CAMLAT_HIST[8]={0,0,0,0,0,0,0,0};
 // PREVIOUS pass took. If the report was processed the instant its bytes landed
 // -- both numbers small -- the delay happened upstream of the ESP32 entirely
 // and no amount of shrinking our messages will touch it.
+// The acquisition leg: camera trigger -> the frame reaching the core.
+//
+// Nothing measured it. cam_lat spans trigger -> verdict processed here, and the
+// core's own e2e starts where the camera layer hands the frame over, so the
+// exposure, readout and transport between them fall in the gap between two
+// instruments. Subtracting the core's own "hus" from cam_lat leaves exactly
+// that leg plus the wire, on this board's clock, per frame. On the bench it was
+// about 8ms of a 14.1ms average -- the largest single term, and the only one
+// still unattributed.
+uint32_t REP_ACQLAT_N=0, REP_ACQLAT_MAX_US=0;
+uint64_t REP_ACQLAT_SUM_US=0;
+uint32_t REP_ACQLAT_HIST[8]={0,0,0,0,0,0,0,0};   // REP_CAMLAT_EDGE_MS edges
+// Reports from a core too old to send it. Not folded into the histogram: a
+// missing field read as zero would move the whole distribution toward zero and
+// look like good news.
+uint32_t REP_ACQLAT_NOHUS=0;
+
 static const uint32_t REP_SPIKE_TRIG_US = 60000;
 struct RepSpike { uint32_t clat_us, inpass_us, prevgap_us, tx_us, rx_us; };
 RepSpike REP_SPIKE[6];
@@ -5398,6 +5415,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     REP_CAMLAT_N=0; REP_CAMLAT_SUM_US=0; REP_CAMLAT_MAX_US=0;
     for(int i=0;i<8;i++) REP_CAMLAT_HIST[i]=0;
     REP_SPIKE_N=0;
+    REP_ACQLAT_N=0; REP_ACQLAT_SUM_US=0; REP_ACQLAT_MAX_US=0; REP_ACQLAT_NOHUS=0;
+    for(int i=0;i<8;i++) REP_ACQLAT_HIST[i]=0;
     // The loop/segment maxima are high-waters too, and a spike that turns out
     // to be ours has to be readable in the same window as the spike itself.
     LOOP_N=0; LOOP_MAX_US=0;
@@ -5423,6 +5442,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     {
       JsonArray jH=retdoc.createNestedArray("cam_hist");
       for(int i=0;i<8;i++) jH.add(REP_CAMLAT_HIST[i]);
+    }
+    // cam_lat minus the core's own time: the acquisition leg.
+    retdoc["acq_n"]=REP_ACQLAT_N;
+    retdoc["acq_avg_us"]=REP_ACQLAT_N ? (uint32_t)(REP_ACQLAT_SUM_US/REP_ACQLAT_N) : 0;
+    retdoc["acq_max_us"]=REP_ACQLAT_MAX_US;
+    retdoc["acq_nohus"]=REP_ACQLAT_NOHUS;
+    {
+      JsonArray jA=retdoc.createNestedArray("acq_hist");
+      for(int i=0;i<8;i++) jA.add(REP_ACQLAT_HIST[i]);
     }
     JsonArray jS=retdoc.createNestedArray("spikes");
     const uint32_t k=REP_SPIKE_N<6?REP_SPIKE_N:6;
@@ -6305,6 +6333,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     else if(doc["pcnt"].is<double>()==true) pcnt=(int64_t)(double)doc["pcnt"];
     if(pcnt>=0) CAM_PCNT.last_pcnt=pcnt;
 
+    // How long the frame spent inside the core, sent by the core itself.
+    // Subtracting it from cam_lat leaves the one leg neither side can see --
+    // see REP_ACQLAT_HIST. Absent from older cores, and 0 then, which the
+    // accounting below treats as "unknown" rather than "instant".
+    uint32_t host_us = 0;
+    if(doc["hus"].is<uint32_t>()==true)     host_us=(uint32_t)doc["hus"];
+    else if(doc["hus"].is<double>()==true)  host_us=(uint32_t)(double)doc["hus"];
+
     pipeLineInfo *tarP=NULL;
 
     // --- find the object, both ways, before touching anything ------------
@@ -6541,6 +6577,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
             const uint32_t ms=clat/1000;
             int b=0; while(b<7 && ms>=REP_CAMLAT_EDGE_MS[b]) b++;
             REP_CAMLAT_HIST[b]++;
+          }
+          if(host_us==0) REP_ACQLAT_NOHUS++;
+          else if(clat>host_us)
+          {
+            const uint32_t acq=clat-host_us;
+            REP_ACQLAT_N++; REP_ACQLAT_SUM_US+=acq;
+            if(acq>REP_ACQLAT_MAX_US) REP_ACQLAT_MAX_US=acq;
+            const uint32_t ams=acq/1000;
+            int ab=0; while(ab<7 && ams>=REP_CAMLAT_EDGE_MS[ab]) ab++;
+            REP_ACQLAT_HIST[ab]++;
           }
           if(clat>=REP_SPIKE_TRIG_US)
           {
