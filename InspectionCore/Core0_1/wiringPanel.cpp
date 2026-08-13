@@ -6449,6 +6449,21 @@ void PerifConsoleThread(bool *terminationflag)
                        c->n ? c->sum_ms / (double)c->n : 0.0, c->max_ms);
           ::write(cli, b, n);
         }
+        // Why the verdicts are NA, which no latency number can say. These are
+        // the three outcomes at the reducer: nothing located at the station,
+        // more than one, or it reached the judges (and NA then came from the
+        // judges themselves, not from a guard).
+        n = snprintf(b, sizeof(b),
+                     "verdict    no_object=%llu multi_object=%llu judged=%llu\n"
+                     "           no_report=%llu wrong_type=%llu no_reports=%llu no_labeled=%llu\n",
+                     (unsigned long long)g_naNoObject.load(),
+                     (unsigned long long)g_naMultiObject.load(),
+                     (unsigned long long)g_naJudged.load(),
+                     (unsigned long long)g_naNoReport.load(),
+                     (unsigned long long)g_naWrongType.load(),
+                     (unsigned long long)g_naNoReports.load(),
+                     (unsigned long long)g_naNoLabeled.load());
+        ::write(cli, b, n);
         // The buckets for e2e alone: how OFTEN, which no max can say.
         n = snprintf(b, sizeof(b), "e2e buckets (edges ms):");
         ::write(cli, b, n);
