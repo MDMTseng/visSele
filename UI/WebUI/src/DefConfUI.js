@@ -1448,7 +1448,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
-  const ACT_Obj_Detect_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Obj_Detect_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>
@@ -1609,13 +1608,22 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       text="measure"
       onClick={() => ACT_Measure_Add_Mode()}>
     </BASE_COM.IconButton>,
-    <BASE_COM.IconButton
-      addClass="layout palatte-cyan-7 btn-swipe"
-      key="OBJDETECT"
-      dict={DICT}
-      text="物件偵測"
-      onClick={() => ACT_Obj_Detect_Add_Mode()}>
-    </BASE_COM.IconButton>]);
+    // 物件偵測 (obj_detect) is no longer offered.
+    //
+    // The check it was for -- "this space must be clean" -- is done at MACHINE
+    // level by clean_regions in machine_setting.json (eval_clean_regions),
+    // which is where it belongs: it describes the station, not the product, so
+    // it does not want re-drawing per def. The def-level feature duplicated
+    // that against the def's own frame, and its own design doc records the
+    // half that was never finished ("P2 ... OBJ_DETECT is declared in the
+    // FEATURETYPE enum and has no users").
+    //
+    // Only the CREATE path is gone. Drawing, editing and deleting stay: a def
+    // in the field may still carry obj_detect regions, and those fold into the
+    // part verdict (UINSP_VERDICT_PATH 3.5). Removing the shape module too
+    // would leave them invisible on the canvas while still condemning parts,
+    // which is worse than leaving them visible and removable.
+    ]);
       
 
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
