@@ -26,6 +26,7 @@ import Tooltip from 'antd/lib/tooltip';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 import CaretRightOutlined from '@ant-design/icons/CaretRightOutlined';
+import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -1578,11 +1579,22 @@ export function UINSP_ESP32_MINI() {
   // rather than a timestamp.
   const doReset = () => {
     if (rstHits + 1 < 3) { setRstHits(rstHits + 1); return; }
+    // Refuse rather than guess. Zeroing the device destroys the counts, so this
+    // row is the only surviving record of the batch -- and it used to be filed
+    // under a hardcoded NG=SEL2/OK=SEL3 that is wrong on a cat_ng 1 machine.
+    // A wrong archived batch is worse than a delayed reset, and the wiring
+    // arrives within seconds of the panel opening.
+    if (!selOK || !selNG) { setRstHits(0); setWhy('尚未取得分料口接線,無法歸零'); return; }
     setRstHits(0); setRsting(true); setWhy('');
     const prev = hist[0];
+    // Whichever selector the wiring does not name travels with the batch under
+    // its own name -- a count there means a part went to a bin this machine
+    // does not have, and which bin that is matters when you go looking.
+    const oth = ['SEL1', 'SEL2', 'SEL3'].find((s) => s !== selOK && s !== selNG);
     const snap = {
       t: Date.now(), since: prev ? prev.t : null,
-      NG: n0(cnt.SEL2), OK: n0(cnt.SEL3), NA: n0(cnt.NA), SEL1: n0(cnt.SEL1),
+      NG: n0(cnt[selNG]), OK: n0(cnt[selOK]), NA: n0(cnt.NA),
+      OTH: oth ? { s: oth, n: n0(cnt[oth]) } : null,
       SKIP: n0(cnt.SKIP), UNANS: n0(cnt.UNANSWERED), feed: n0(gate && gate.accept),
     };
     dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
@@ -1601,11 +1613,16 @@ export function UINSP_ESP32_MINI() {
   // flex:1 + minWidth:0 on the Tag, and margin:0 to kill antd's default 8px
   // right margin, which otherwise fights the flex gap and pushes the last tag
   // out of a sidebar that has no room to give.
-  const tag = (name, v, color) => (
+  // `named` is for the fallback case only. Once the wiring is known the colour
+  // carries the meaning -- red is the reject, green is the pass -- and the word
+  // in front of the number was costing ~30px of a box that four digits already
+  // overflow. Raw SEL1/2/3 keep their names: nothing distinguishes those but
+  // the name.
+  const tag = (name, v, color, named) => (
     <Tag key={name} color={color}
          style={{ flex: 1, minWidth: 0, margin: 0, padding: '0 4px',
-                  textAlign: 'center', lineHeight: '22px' }}>
-      <span style={{ fontSize: 10, opacity: 0.8, marginRight: 4 }}>{name}</span>
+                  textAlign: 'center', lineHeight: '22px', overflow: 'hidden' }}>
+      {named ? <span style={{ fontSize: 10, opacity: 0.8, marginRight: 4 }}>{name}</span> : null}
       <span style={{ fontSize: 15, fontWeight: 600 }}>{v ?? '—'}</span>
     </Tag>
   );
@@ -1795,17 +1812,21 @@ export function UINSP_ESP32_MINI() {
           {tag('NG', cnt[selNG], 'red')}
           {tag('OK', cnt[selOK], 'green')}
         </>) : (<>
-          {tag('SEL1', cnt.SEL1)}
-          {tag('SEL2', cnt.SEL2)}
-          {tag('SEL3', cnt.SEL3)}
+          {tag('SEL1', cnt.SEL1, undefined, true)}
+          {tag('SEL2', cnt.SEL2, undefined, true)}
+          {tag('SEL3', cnt.SEL3, undefined, true)}
         </>)}
         {tag('NA', cnt.NA)}
         {/* Not a reset button. Reset is something that happens inside the
             history, because the history is what a reset produces. */}
-        <Button size="small" type="text"
-          style={{ padding: '0 6px', height: 22, fontSize: 11, flexShrink: 0 }}
+        {/* An icon, so the counts get the width. It is the only affordance on
+            this row, so losing the word costs nothing -- and the title keeps
+            it for anyone who hovers. */}
+        <Button size="small" type="text" title="歷史"
+          icon={<HistoryOutlined />}
+          style={{ padding: '0 4px', height: 22, fontSize: 12, flexShrink: 0 }}
           onClick={() => setHistOpen(true)}
-        >歷史</Button>
+        />
       </div>
       {/* The selectors conn_info does NOT name get no column: they read 0
           forever on a given machine and a permanent 0 teaches people to stop
@@ -1887,10 +1908,15 @@ export function UINSP_ESP32_MINI() {
                   {h.since ? fmtDur(h.t - h.since) : ''}
                   {/* The quiet ones travel with the batch they happened in --
                       they are the reason to keep a record at all. */}
-                  {(h.SKIP > 0 || h.UNANS > 0 || h.SEL1 > 0) && (
+                  {/* h.SEL1 is how rows written before the wiring was known
+                      recorded the same thing -- kept so old batches still
+                      show it, even though what they called SEL1 was only ever
+                      assumed to be the spare one. */}
+                  {(h.SKIP > 0 || h.UNANS > 0 || (h.OTH && h.OTH.n > 0) || h.SEL1 > 0) && (
                     <span style={{ color: '#c60' }}>
                       {h.SKIP > 0 ? ` SKIP${h.SKIP}` : ''}
                       {h.UNANS > 0 ? ` UNANS${h.UNANS}` : ''}
+                      {h.OTH && h.OTH.n > 0 ? ` ${h.OTH.s}${h.OTH.n}` : ''}
                       {h.SEL1 > 0 ? ` SEL1${h.SEL1}` : ''}
                     </span>
                   )}
