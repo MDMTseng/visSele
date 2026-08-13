@@ -17,7 +17,7 @@ import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,defFileGeneration,stampRefImagePath,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
@@ -1826,6 +1826,20 @@ class APP_INSP_MODE extends React.Component {
     {
       // console.log("defFileGeneration>>>>>>>>");
       let deffile = defFileGeneration(this.props.edit_info);
+      // Shape-based matching needs its template, and the def carries only a
+      // POINTER to it. Every other sender stamps that pointer (DefConfUI's
+      // four, SBMStudio's two); this one did not, so a def authored with
+      // shape_based matching trained fine in the editor and then, on entering
+      // inspection, logged
+      //   [shape] no template path (set def "reference_image" ...)
+      //   [shape] training failed; falling back to sig360 for this def
+      // -- a SILENT downgrade to the old locator, with the def unchanged and
+      // the editor still showing it working.
+      //
+      // The path cannot come from the core here: FI is given the def inline
+      // (definfo), not as a file, so there is no def path for the core to
+      // resolve the sibling <base>.png against.
+      stampRefImagePath(deffile, this.props.edit_info);
 
       this.props.ACT_WS_Define_File_Update_EXPRESS(deffile,true)
       console.log("deffile",JSON.parse(JSON.stringify(deffile)));
