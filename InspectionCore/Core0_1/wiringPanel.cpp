@@ -6553,6 +6553,26 @@ void PerifConsoleThread(bool *terminationflag)
       }
       else if (!line.empty())
       {
+        // Only JSON goes on the wire.
+        //
+        // Everything not matched above is forwarded verbatim to the device, and
+        // the device's parser LATCHES on bytes it cannot frame: one stray word
+        // makes the machine deaf, `error_hist` stays empty, and until 08-13
+        // even clear_error could not get it back (see A7). Typing `?` at this
+        // console to ask for help wedged a live machine exactly that way.
+        //
+        // A console whose typo stops the production line is the console's bug,
+        // not the operator's, and the guard is one character.
+        {
+          size_t b = line.find_first_not_of(" \t");
+          if (b == std::string::npos || line[b] != '{')
+          {
+            ::write(cli, "{\"err\":\"not JSON -- raw text latches the device "
+                         "parser; use {\\\"type\\\":...}, !TL, or ?lat\"}\n", 100);
+            line.clear();
+            continue;
+          }
+        }
         PerifChannel *pc = bpg_pi.perifCH;
         if (pc == NULL)
           ::write(cli, "{\"err\":\"no perif channel\"}\n", 27);
@@ -7251,7 +7271,18 @@ void PerifPingThread(bool *terminationflag)
     beat++;
     const bool arm = (beat > 20) && ((beat % 20) == 0);
     static const char pingMsg[] = "{\"type\":\"ping\"}";
-    static const char armMsg[]  = "{\"type\":\"comm_lost_backup\",\"on\":true}";
+    // The timeout travels with the arming: the host owns both halves of this
+    // watchdog, so there is one place to change it and no way for a stored
+    // device value to be quietly in charge.
+    //
+    // 1000ms is deliberately loose for a feature this young. Against a 10/s
+    // heartbeat it is 10 missed beats, and the cost asymmetry is stark: a false
+    // trip stops the production line, while detecting a dead host half a second
+    // later costs nothing -- the race this feeds is against a core RESTART,
+    // which takes tens of seconds. Tighten it once a full shift has run
+    // without a spurious HOST_LINK_TIMEOUT in error_hist.
+    static const char armMsg[]  =
+        "{\"type\":\"comm_lost_backup\",\"on\":true,\"host_timeout_ms\":1000}";
     const char *ping = arm ? armMsg : pingMsg;
     std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
     // Re-checked under the lock: a DISCONNECT can delete the channel between

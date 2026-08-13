@@ -226,8 +226,16 @@ safe state) does not cover it either: the board is the deaf end, so a host-side
 timeout cannot reach it.
 
 **Action:** three small things, not a rewrite.
-- let `clear_error` out of the latch too, by matching it the same way `RESET` is
-  matched — it is the command people actually send
+- ~~let `clear_error` out of the latch too~~ — DONE 2026-08-13, and it was
+  half-done before in a way that read as working. `clear_error` already escaped
+  the PARSER latch (matched from the raw buffer beside `RESET`), but
+  `commsErrorLatched` lives in LegacyFirmware and was cleared only by
+  `handleResetCommand` — so a `clear_error` while wedged answered
+  `CLEAR_ERROR_OK` and every command after it was still refused with
+  `serial_error_locked`. Worse than not working: it looked like it worked.
+  Both latches now clear. **Verified against a real latch**, not a contrived
+  one: the device wedged during a firmware upload and `clear_error` brought it
+  back, follow-up commands and the PONG stream included.
 - ~~count the latch, and keep the count across it~~ — DONE. `rx_latch_n` is
   incremented on the transition (not per byte) and survives `RESET`.
 - decide whether an idle period should resync on its own; the argument against

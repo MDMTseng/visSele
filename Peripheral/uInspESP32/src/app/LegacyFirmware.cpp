@@ -3431,6 +3431,15 @@ class MData_JR:public Data_JsonRaw_Layer
   // continue, not to tear the link down.
   int recv_CLEAR_ERROR()
   {
+    // The other latch. clear_error already escapes the PARSER latch (matched
+    // out of the raw buffer beside RESET), but commsErrorLatched lives up here
+    // and was cleared only by handleResetCommand -- so a clear_error while
+    // wedged answered CLEAR_ERROR_OK and then every following command was
+    // still refused with serial_error_locked.
+    //
+    // That is worse than not working: it looks like it worked. Measured
+    // 2026-08-13 on the real machine.
+    commsErrorLatched=false;
     RESET_ALL_PIPELINE_QUEUE();
     SEL_SAFE_AT_MS = millis() + selHoldMs();   // a blow already out still finishes
     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
@@ -7638,6 +7647,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // Absent "on" means true: the only caller is a host announcing itself, and
     // the safe reading of a malformed announcement is that a host is there.
     COMM_LOST_BACKUP = doc["on"].is<bool>() ? (bool)doc["on"] : true;
+    // The timeout rides with the arming, and the host's value wins.
+    //
+    // It is also a config key, and that copy is now vestigial FOR THIS
+    // PURPOSE: the watchdog cannot act until COMM_LOST_BACKUP is set, and only
+    // a host sets that -- so the stored number can no longer make a board stop
+    // itself on the bench. Applied to RAM only; persisting it here would put
+    // the host's operational choice into the operator's saved calibration.
+    if(doc["host_timeout_ms"].is<int>())
+      host_timeout_ms = (int)doc["host_timeout_ms"];
     retdoc["type"]="comm_lost_backup";
     retdoc["on"]=COMM_LOST_BACKUP;
     retdoc["host_timeout_ms"]=host_timeout_ms;

@@ -3149,3 +3149,20 @@ ERROR/FATAL 排除(已經停了)。
 所以 `countersNvsService()` 會先跟 `CNT_LAST_SAVED`(RAM 裡的「flash 現況」)比對,
 相同就跳過,只累加 `cnt_nvs_skipped`。開機還原時 `CNT_LAST_SAVED` 由還原出來的
 記錄填入,`countersClear()` 成功後歸零——否則清空之後的第一次存檔會誤判成相同。
+
+### 燒錄後裝置可能是 latch 住的,而心跳救不回來
+
+實測 2026-08-13:`pio run -t upload` 之後啟動核心,裝置持續送 `SYSTIME` 除錯訊息
+但**完全不回任何命令、一個 PONG 也沒有**——parser latch 的樣子(latch 之後不會有
+frame 被交付,所以連錯誤回覆都沒有,跟 `serial_error_locked` 那種「會回但拒絕」
+不同)。最可能的成因是燒錄寫入與核心開啟 port(那會重開板子)撞在一起,開機 ROM
+的輸出混進我們的位元組,餵給 parser 就是垃圾。
+
+**平常的核心重啟不會這樣**——單獨測過一輪,回覆正常、PONG 正常。所以這是開發
+路徑上的事,不是產線路徑上的。
+
+要注意的是 **ping train 救不了它**:它送的是 `ping`,而 latch 只認 `RESET` 和
+`clear_error`(從原始緩衝區比對)。所以一顆 latch 住的板子不會被自動武裝,
+`comm_lost_backup` 永遠是 false,B4 那套完全不會啟動——A7 早就預告過這件事。
+
+復原:送 `{"type":"clear_error"}`。
