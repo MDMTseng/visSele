@@ -3433,6 +3433,47 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       neutral_bacpac.sampler->ignoreCalib(true);
       FeatureManager_BacPac *select_bacpac = &neutral_bacpac;
 
+      // The working area comes from the REQUEST, and defaults to none.
+      //
+      // This is an authoring path: II inspects an image the editor hands it,
+      // and "is the part standing where the machine expects it" is not a
+      // question about the def. It used to inherit the station from a startup
+      // assignment on the shared neutral_bacpac -- so a def-editor CHECK
+      // enforced a production filter, dropped every object that was not at the
+      // station before any measurement ran, and returned an empty report. The
+      // symptom is that CHECK's snap "does nothing", with the reason visible
+      // only in a log line.
+      //
+      // Stated per request rather than inferred from the code path, for the
+      // same reason calibInfo already is: the caller knows whether it is
+      // authoring or judging, and nothing else does.
+      {
+        neutral_bacpac.insp_region_x = neutral_bacpac.insp_region_y = 0;
+        neutral_bacpac.insp_region_w = neutral_bacpac.insp_region_h = 0;
+        cJSON *wa = json ? cJSON_GetObjectItem(json, "work_region") : NULL;
+        if (wa && cJSON_IsObject(wa))
+        {
+          cJSON *jx = cJSON_GetObjectItem(wa, "x"), *jy = cJSON_GetObjectItem(wa, "y");
+          cJSON *jw = cJSON_GetObjectItem(wa, "w"), *jh = cJSON_GetObjectItem(wa, "h");
+          if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy) &&
+              cJSON_IsNumber(jw) && cJSON_IsNumber(jh))
+          {
+            neutral_bacpac.insp_region_x = (float)jx->valuedouble;
+            neutral_bacpac.insp_region_y = (float)jy->valuedouble;
+            neutral_bacpac.insp_region_w = (float)jw->valuedouble;
+            neutral_bacpac.insp_region_h = (float)jh->valuedouble;
+            cJSON *jf = cJSON_GetObjectItem(wa, "fit");
+            neutral_bacpac.insp_region_fit =
+                (cJSON_IsString(jf) && strcmp(jf->valuestring, "center") == 0)
+                    ? FeatureManager_BacPac::INSP_FIT_CENTRE
+                    : FeatureManager_BacPac::INSP_FIT_CONTAIN;
+            LOGI("II work_region [%.0f,%.0f %.0fx%.0f]",
+                 neutral_bacpac.insp_region_x, neutral_bacpac.insp_region_y,
+                 neutral_bacpac.insp_region_w, neutral_bacpac.insp_region_h);
+          }
+        }
+      }
+
       if (json == NULL)
       {
         snprintf(err_str, sizeof(err_str), "JSON parse failed LINE:%04d", __LINE__);
@@ -9143,32 +9184,37 @@ int cp_main(int argc, char **argv)
   calib_bacpac.sampler->RESET();
   neutral_bacpac.sampler->RESET();
 
-  // The station, for the headless paths too. mainLoop() loads machine_setting
-  // much later, so without this --insp would run with no inspection_region and
-  // silently disagree with the live pipeline -- which would make the offline
-  // harness useless for exactly the feature it is best placed to test.
-  // Missing file or missing key = no region = old behaviour.
-  //
-  // Unconditional here, unlike the live path, which enables it for FI only:
-  // --insp IS a full inspection of one frame. There is no editor to get in the
-  // way of and nothing to preview, so the CI exemption has nothing to exempt.
-  if (cJSON *ms_json = ReadJson("data/machine_setting.json"))
-  {
-    load_insp_region(ms_json);
-    cJSON_Delete(ms_json);
-  }
-  neutral_bacpac.insp_region_x = g_insp_region.x;
-  neutral_bacpac.insp_region_y = g_insp_region.y;
-  neutral_bacpac.insp_region_w = g_insp_region.w;
-  neutral_bacpac.insp_region_h = g_insp_region.h;
-  neutral_bacpac.insp_region_fit = g_insp_region.fit;
-
   // Headless golden-sample inspection loopback (for caliper-vs-contour testing
   // without the WebUI):  visSele --insp <image.png> <def.hydef> <out.json>
   // Runs the def on the image and writes the report JSON, then exits.
   for (int ai = 1; ai + 3 < argc + 1 && ai < argc; ai++)
   {
     if (strcmp(argv[ai], "--insp") != 0) continue;
+    // The station, for THIS path only.
+    //
+    // --insp is a full inspection of one frame, so it should agree with the
+    // live pipeline; mainLoop() loads machine_setting much later, hence the
+    // early load here.
+    //
+    // It used to be done unconditionally at startup, and neutral_bacpac is not
+    // only the headless bacpac -- it is also the one the II handler uses, which
+    // is the def editor's CHECK. So authoring a def enforced a PRODUCTION
+    // filter: an object anywhere but the station was dropped before any
+    // measurement, the report came back empty, and CHECK's snap had nothing to
+    // apply. It looked like the snap was broken. The live CI preview is
+    // deliberately exempt (it publishes the region as zero-size); CHECK was
+    // exempt from nothing, purely because a startup line reached further than
+    // its comment claimed.
+    if (cJSON *ms_json = ReadJson("data/machine_setting.json"))
+    {
+      load_insp_region(ms_json);
+      cJSON_Delete(ms_json);
+    }
+    neutral_bacpac.insp_region_x = g_insp_region.x;
+    neutral_bacpac.insp_region_y = g_insp_region.y;
+    neutral_bacpac.insp_region_w = g_insp_region.w;
+    neutral_bacpac.insp_region_h = g_insp_region.h;
+    neutral_bacpac.insp_region_fit = g_insp_region.fit;
     if (ai + 3 >= argc) { LOGE("--insp needs <image> <def> <out.json>"); return 2; }
     char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
     // Reject non-regular def files (FIFO/socket/dir/char-device). ReadText() on
