@@ -1826,31 +1826,41 @@ class APP_INSP_MODE extends React.Component {
     {
       // console.log("defFileGeneration>>>>>>>>");
       let deffile = defFileGeneration(this.props.edit_info);
-      // Shape-based matching needs its template, and the def carries only a
-      // POINTER to it. Every other sender stamps that pointer (DefConfUI's
-      // four, SBMStudio's two); this one did not, so a def authored with
-      // shape_based matching trained fine in the editor and then, on entering
-      // inspection, logged
-      //   [shape] no template path (set def "reference_image" ...)
-      //   [shape] training failed; falling back to sig360 for this def
-      // -- a SILENT downgrade to the old locator, with the def unchanged and
-      // the editor still showing it working.
-      //
-      // The path cannot come from the core here: FI is given the def inline
-      // (definfo), not as a file, so there is no def path for the core to
-      // resolve the sibling <base>.png against.
-      stampRefImagePath(deffile, this.props.edit_info);
 
       this.props.ACT_WS_Define_File_Update_EXPRESS(deffile,true)
       console.log("deffile",JSON.parse(JSON.stringify(deffile)));
       deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
 
 
+      // Shape-based matching needs its template, and the def carries only a
+      // POINTER to it. Every other sender stamps that pointer (DefConfUI's
+      // four, SBMStudio's two); this one did not, so a def authored with
+      // shape_based matching trained fine in the editor and then, on entering
+      // inspection, logged "[shape] no template path" and fell back to sig360
+      // -- a SILENT downgrade, with the def unchanged and the editor still
+      // showing it working. The core cannot fill it in: FI/CI get the def
+      // inline as definfo, so there is no def path to resolve <base>.png
+      // against.
+      //
+      // Stamped onto a COPY, at the moment of sending. _ref_image_path is a
+      // single underscore and the def hash only strips DOUBLE-underscore
+      // keys, so it counts toward featureSet_sha1 -- put it on the shared
+      // object and the def that gets persisted no longer matches its own
+      // recorded hash, and the next load is refused outright by the
+      // integrity guard. It belongs on the wire and nowhere else.
+      const wireDef = { ...deffile,
+        featureSet: deffile.featureSet.map((f, i) => (i === 0 ? { ...f } : f)) };
+      stampRefImagePath(wireDef, this.props.edit_info);
+
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
-        deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
-        deffile.featureSet[0].matching_face=0;//By default, match two sides
+        // On wireDef, not deffile: the copy is taken above, so mutating the
+        // shared object here would leave these overrides out of what is
+        // actually sent -- and would keep scribbling on the def the rest of
+        // the app holds.
+        wireDef.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
+        wireDef.featureSet[0].matching_face=0;//By default, match two sides
 
 
 
@@ -1859,7 +1869,7 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-        this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}
+        this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef}
         , undefined,{ 
           resolve:insp_resolve, 
           reject:(e)=>{
@@ -1885,7 +1895,7 @@ class APP_INSP_MODE extends React.Component {
 
 
         // deffile.featureSet[0].single_result_area_ratio=0.9;
-        this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
+        this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef
         }, undefined, { 
           resolve:insp_resolve, 
           reject:(e)=>{
