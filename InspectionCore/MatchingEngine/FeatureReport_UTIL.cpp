@@ -517,6 +517,12 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
 
+      // Say so when the working region is why the object list is short or
+      // empty. Otherwise "the region rejected everything" and "nothing was
+      // found" are the same reply.
+      cJSON_AddNumberToObject(report_jobj, "region_dropped",
+                              report->data.sig360_circle_line.region_dropped);
+
       if(report->bacpac!=NULL)
       {
         cJSON* cam_param = cJSON_CreateObject();

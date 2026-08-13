@@ -566,3 +566,31 @@ restarting.
 The counter backup (B4) exists because of this last bullet: the machine cannot
 prevent the reset, so it saves before it. See UINSP_CAVEATS for why the save
 hangs off state entry rather than the comm timeout.
+
+## Future work — an NA must say why
+
+Noted 2026-08-13, not scheduled.
+
+Today an NA is a verdict with no reason attached, at every level, and the
+cost is that diagnosing one is guesswork. Found the hard way twice in one
+session:
+
+- The def editor's CHECK "did not snap". The object had been dropped by the
+  working region before any measurement ran, and the only evidence anywhere
+  was one `LOGI` line that happened to be read. Fixed by reporting
+  `region_dropped` — but that is one reason out of many, added because
+  somebody hit it.
+- A whole eight-hour soak came back 393537 NA and it took a separate
+  investigation to learn the def had never loaded (`!ld` silently does
+  nothing). `match ~0.004ms` was the only hint, and it reads as "cheap
+  inspection" rather than "no inspection".
+
+The shape of the fix: every path that produces NA already knows why it did --
+outside the region, no object found, fit below min_inliers, edge below
+min_strength, no def, unanswered at the selector. That reason should ride
+with the verdict to the report and to the UI, not be reconstructible only
+from logs that are off by default (see the logging defects in
+CORE0_1_CAVEATS).
+
+Worth doing when NA rates next need explaining on a live line, which is
+where the guessing is most expensive.

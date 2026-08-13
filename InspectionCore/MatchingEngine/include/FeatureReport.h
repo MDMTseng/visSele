@@ -416,6 +416,14 @@ typedef FeatureReport_sig360_circle_line_single FeatureReport_SCLS;
 typedef struct FeatureReport_sig360_circle_line{
   vector<FeatureReport_sig360_circle_line_single> *reports;
   FeatureReport_ERROR error;
+  // Objects the working region threw away before any measurement ran.
+  //
+  // It lives on the CONTAINER because it is the one number still meaningful
+  // when `reports` is empty -- and empty is exactly the case that needs
+  // explaining. Without it, "the region rejected everything" and "nothing was
+  // found" are the same reply, and the difference was visible only in a log
+  // line nobody reads until they already suspect it.
+  int region_dropped;
 };
 
 

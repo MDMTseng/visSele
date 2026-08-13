@@ -2301,6 +2301,20 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   search_far:false,
                   margin: mmpp_round*3,
                   width: mmpp_round*10,
+                  // Caliper, and stated HERE rather than as the schema default.
+                  //
+                  // The core reads a missing `locating` as contour, so flipping
+                  // the schema default would make the editor show caliper for
+                  // an old def that runs as contour -- and then write that
+                  // change into the def the next time it was saved. A new
+                  // point can be born caliper; an existing one must not change
+                  // its mind because somebody opened it.
+                  locating: 'caliper',
+                  // min_strength 0 accepts any edge, which is the setting that
+                  // makes caliper look unreliable on a first try: it will lock
+                  // onto noise as readily as onto the part. 60 is what the line
+                  // primitives on this machine run at.
+                  edge: { method: 'first', polarity: 'any', nth: 0, min_strength: 60 },
                   ref: [{
                     id: this.CandEditPointInfo.shape.id,
                     element: this.CandEditPointInfo.shape.type

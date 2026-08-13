@@ -2460,6 +2460,7 @@ void FeatureManager_sig360_circle_line::ClearReport()
 {
 
   report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
+  report.data.sig360_circle_line.region_dropped = 0;
   reports.resize(0);
   report.data.sig360_circle_line.reports = &reports;
   FeatureManager_binary_processing::ClearReport();
@@ -6176,7 +6177,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       float rx = ldData[i].RBBound.x * dsampLevel + sOff.x;
       float ry = ldData[i].RBBound.y * dsampLevel + sOff.y;
       if (!bacpac->objInInspRegion(fx, fy, lx, ly, rx, ry))
-      { in_region[i] = 0; region_dropped++; }
+      { in_region[i] = 0; region_dropped++; report.data.sig360_circle_line.region_dropped++; }
     }
     if (region_dropped)
       LOGI("insp_region [%.0f,%.0f %.0fx%.0f] fit=%s: dropped %d of %d labels outside the station",
@@ -7268,6 +7269,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       // the centre rule rather than inventing a radius from the template.
       if (!bacpac->objInInspRegion(m.x + sOff.x, m.y + sOff.y, 0,0,0,0, false))
       {
+        report.data.sig360_circle_line.region_dropped++;
         LOGI("insp_region: shape match %d at (%.1f,%.1f) outside the station "
              "(centre test -- the shape locator reports no extent) -- dropped",
              mi, m.x + sOff.x, m.y + sOff.y);
