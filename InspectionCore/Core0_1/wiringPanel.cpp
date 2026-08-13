@@ -921,6 +921,17 @@ class PerifChannel:public Data_JsonRaw_Layer
   // queue grow at twice the frame rate and hands every frame the previous
   // part's tid. Overridable via "cam_idx" for a second-camera setup.
   int cam_idx = 1;
+  // What this channel is physically attached to -- "uart:<dev>:<baud>:<mode>"
+  // or "tcp:<ip>:<port>", built from the CONNECT packet.
+  //
+  // It exists so a CONNECT naming the SAME device can be recognised as the
+  // client reconnecting rather than as a new machine. That distinction is not
+  // cosmetic: reopening the port pulses DTR/RTS, and on an ESP32 dev board
+  // that is wired to EN -- so tearing the channel down power-cycles the
+  // machine. Refreshing the operator's browser rebooted the sorter mid-run,
+  // dropping the plate, every object in flight and every count (measured:
+  // uptime 611s -> 1s, reset_reason POWERON, on one browser refresh).
+  char conn_desc[160] = "";
   PerifChannel():Data_JsonRaw_Layer()// throw(std::runtime_error)
   {
   }
@@ -4765,8 +4776,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             break;
           }
 
-          
-          delete_PeripheralChannel();
           // char *conn_type = JFetch_STRING(json, "type");
 
           // if(strcmp(conn_type, "uart") == 0)
@@ -4781,8 +4790,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           int avail_CONN_ID=714;
           Data_Layer_IF *PHYLayer=NULL;
           char *uart_name = NULL;
-          
+
           char *IP = NULL;
+          // The connection is described first and opened second, because the
+          // description is what decides whether opening it is necessary.
+          char desc[160] = "";
+          char modebuf[40] = "";
+          int  baud_i = 0, port_i = 0;
           if ( (uart_name=JFetch_STRING(json, "uart_name")) !=NULL)
           {
             double *baudrate = JFetch_NUMBER(json, "baudrate");
@@ -4797,7 +4811,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // simple_uart. Accepted: none | rtscts | xonxoff (also hw | sw).
             char *flow = JFetch_STRING(json, "flow_control");
             if(flow==NULL) flow="none";
-            char modebuf[40];
             snprintf(modebuf,sizeof(modebuf),"%s %s",mode,flow);
 
             if(baudrate==NULL)
@@ -4805,19 +4818,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               sprintf(err_str, "baudrate is not defined");
               break;
             }
-
-
-
-            try{
-
-              PHYLayer=new Data_UART_Layer(uart_name,(int)*baudrate, modebuf);
-
-
-            }
-            catch(std::runtime_error &e){
-             
-            }
-
+            baud_i=(int)*baudrate;
+            snprintf(desc,sizeof(desc),"uart:%s:%d:%s",uart_name,baud_i,modebuf);
           }
           else if( (IP=JFetch_STRING(json, "ip"))!=NULL)
           {
@@ -4828,27 +4830,70 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
               break;
             }
-          
-
-            try{
-              
-              PHYLayer=new Data_TCP_Layer(IP,(int)*port_number);
-
-            }
-            catch(std::runtime_error &e){
-            }
-
-
-
+            port_i=(int)*port_number;
+            snprintf(desc,sizeof(desc),"tcp:%s:%d",IP,port_i);
           }
 
-          if(PHYLayer!=NULL)
+          // Same device, already open: this is the client coming back, not a
+          // different machine being attached. Keep the channel.
+          //
+          // The old code tore it down unconditionally, and reopening the port
+          // pulses DTR/RTS -- wired to EN on an ESP32 dev board. So refreshing
+          // the operator's browser rebooted the sorter: plate stopped, every
+          // object in flight lost, every count zeroed, clock model gone.
+          // Measured as uptime 611s -> 1s, reset_reason POWERON, on one
+          // refresh.
+          //
+          // conn_info is re-read below on both paths, so a changed
+          // cat_ok/cat_ng still takes effect without a reopen. To genuinely
+          // re-open -- a wedged link, a swapped board -- DISCONNECT first;
+          // that path still does the full teardown.
+          const bool reuse = (perifCH != NULL && desc[0] != '\0' &&
+                              strcmp(perifCH->conn_desc, desc) == 0);
+          if(reuse)
           {
-            perifCH=new PerifChannel();
-            perifCH->ID=avail_CONN_ID;
+            LOGI("perif CONNECT reuses the open channel to %s "
+                 "(no port reopen, no device reset)", desc);
+            avail_CONN_ID = perifCH->ID;
+          }
+          else
+          {
+            delete_PeripheralChannel();
+            if(uart_name != NULL)
+            {
+              try{
+
+                PHYLayer=new Data_UART_Layer(uart_name,baud_i, modebuf);
+
+
+              }
+              catch(std::runtime_error &e){
+
+              }
+            }
+            else if(IP != NULL)
+            {
+              try{
+
+                PHYLayer=new Data_TCP_Layer(IP,port_i);
+
+              }
+              catch(std::runtime_error &e){
+              }
+            }
+          }
+
+          if(reuse || PHYLayer!=NULL)
+          {
+            if(!reuse)
+            {
+              perifCH=new PerifChannel();
+              perifCH->ID=avail_CONN_ID;
+              perifCH->setDLayer(PHYLayer);
+              snprintf(perifCH->conn_desc,sizeof(perifCH->conn_desc),"%s",desc);
+            }
             perifCH->conn_pgID=dat->pgID;
             perifCH->conn_peer=peer;   // async device replies go back to this client
-            perifCH->setDLayer(PHYLayer);
 
             // Which result dialect this peripheral speaks. Rides along in the
             // CONNECT packet because the WebUI spreads the whole conn_info
@@ -4911,14 +4956,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
 
 
+            // Only on a channel that was actually just opened. RESET empties
+            // the device's object ring, so sending it to a machine that is
+            // mid-run throws away every part already on the plate -- which is
+            // exactly what a browser refresh must not do. A reused channel is
+            // by definition already in sync; nothing about the link changed.
+            if(!reuse)
             {
-              // Also under the TX lock: a RESET spliced by a report or a
-              // phantom pulse is the same broken frame as any other.
-              std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
-              perifCH->send_RESET();
-              perifCH->send_RESET();
+              {
+                // Also under the TX lock: a RESET spliced by a report or a
+                // phantom pulse is the same broken frame as any other.
+                std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
+                perifCH->send_RESET();
+                perifCH->send_RESET();
+              }
+              perifCH->RESET();
             }
-            perifCH->RESET();
 
 
             session_ACK = true;
@@ -7129,6 +7182,44 @@ void PerifWatchdogThread(bool *terminationflag)
   }
 }
 
+// The idle half of the host heartbeat.
+//
+// The device has always had a host-link watchdog (host_timeout_ms): no valid
+// inbound frame for that long while inspecting means the vision host is dead,
+// so stop the line rather than let parts pile past an unmanned selector. It
+// shipped disabled, because on a quiet link there was nothing to distinguish a
+// healthy idle host from a dead one -- this thread is that something.
+//
+// Sent ONLY when the link has been quiet. During a run the reports are already
+// dense traffic and a ping would be pure overhead; the watchdog cannot fire
+// then anyway.
+static const uint64_t PING_PERIOD_US   = 100000;   // 10/s
+static const uint64_t PING_QUIET_US    = 100000;   // nothing sent for this long
+
+void PerifPingThread(bool *terminationflag)
+{
+  while (terminationflag && *terminationflag == false)
+  {
+    struct timespec ts;
+    ts.tv_sec = 0; ts.tv_nsec = (long)(PING_PERIOD_US * 1000ull);
+    nanosleep(&ts, NULL);
+
+    if (bpg_pi.perifCH == NULL) continue;
+    const uint64_t now = perif_now_us();
+    const uint64_t last = bpg_pi.perifCH->last_tx_us;
+    if (last != 0 && (now - last) < PING_QUIET_US) continue;
+
+    static const char ping[] = "{\"type\":\"ping\"}";
+    std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
+    // Re-checked under the lock: a DISCONNECT can delete the channel between
+    // the test above and here, and this thread would be writing to freed
+    // memory on a machine that is mid-run.
+    if (bpg_pi.perifCH == NULL) continue;
+    bpg_pi.perifCH->last_tx_us = perif_now_us();
+    bpg_pi.perifCH->send_json_string(0, (uint8_t *)ping, (int)strlen(ping), 0);
+  }
+}
+
 void PerifSendThread(bool *terminationflag)
 {
   // This thread is nearly always idle and does almost no work -- 0.43ms of
@@ -8471,6 +8562,7 @@ int mainLoop(bool realCamera = false)
   setThreadPriority(_inspSnapSaveThread, TP_BULK, "snapshot-save");
 
   std::thread _perifSendThread(PerifSendThread, &terminationFlag);
+  std::thread _perifPingThread(PerifPingThread, &terminationFlag);
   // INSP_CV_THREADS: pin OpenCV's internal thread pool.
   //
   // This is the A/B for what insp_off actually means. That instrument is wall
@@ -8501,6 +8593,10 @@ int mainLoop(bool realCamera = false)
   std::thread _slowFrameSaveThread(SlowFrameSaveThread, &terminationFlag);
   setThreadPriority(_slowFrameSaveThread, TP_BULK, "slow-frame-save");
   setThreadPriority(_perifSendThread, TP_DEADLINE, "perif-send");
+  // DEADLINE, and not because the work is urgent -- it is one 15-byte write
+  // every 100ms. It is because being LATE is indistinguishable, at the far
+  // end, from being dead: a starved ping thread stops the production line.
+  setThreadPriority(_perifPingThread, TP_DEADLINE, "perif-ping");
   // Same priority as the thread it vouches for, for the reason in its comment.
   setThreadPriority(_perifWatchdogThread, TP_DEADLINE, "perif-watchdog");
 
