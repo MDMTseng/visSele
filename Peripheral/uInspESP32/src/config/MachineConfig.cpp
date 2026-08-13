@@ -450,6 +450,7 @@ namespace MachineConfig
     out.sel1_no_quota  = j["noq"]   | 0u;
     out.gate_accept    = j["gacc"]  | 0u;
     out.save_lat_ms    = j["lat"]   | 0u;
+    out.save_seq       = j["seq"]   | 0u;
     return true;
   }
 
@@ -466,6 +467,7 @@ namespace MachineConfig
     j["noq"]   = c.sel1_no_quota;
     j["gacc"]  = c.gate_accept;
     j["lat"]   = c.save_lat_ms;
+    j["seq"]   = c.save_seq;
     String txt;
     serializeJson(j, txt);
 

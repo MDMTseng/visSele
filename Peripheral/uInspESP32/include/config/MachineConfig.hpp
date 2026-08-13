@@ -246,6 +246,12 @@ namespace MachineConfig
     // exists for destroys every RAM copy of it -- the number would otherwise
     // be unobservable in exactly the case it describes.
     uint32_t save_lat_ms = 0;
+    // Increments once per save, carried in the record. The latency above
+    // cannot answer "did a NEW save happen": it measures selHoldMs(), which is
+    // a fixed function of the configured blow widths, so every save reports
+    // very nearly the same number and an old record is indistinguishable from
+    // a fresh one. This is the field that tells them apart.
+    uint32_t save_seq = 0;
   };
   // false = nothing stored (out is zeroed). A absent record is not an error:
   // it is a board that has never had to save.

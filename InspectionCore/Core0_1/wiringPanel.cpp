@@ -4973,6 +4973,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               perifCH->RESET();
             }
 
+            // The device's comm-loss backup is NOT armed from here.
+            //
+            // It was, and it never worked: opening the port reboots the board,
+            // so the message arrived while the device was still booting and
+            // was simply dropped. (The two consecutive send_RESET calls above
+            // look like an older attempt to paper over the same race.)
+            //
+            // It is armed by PerifPingThread once the heartbeat has been
+            // running for ~2s, which is the correct order anyway -- arming a
+            // watchdog before the traffic that feeds it exists is arming it
+            // against yourself.
 
             session_ACK = true;
 
@@ -7209,7 +7220,39 @@ void PerifPingThread(bool *terminationflag)
     const uint64_t last = bpg_pi.perifCH->last_tx_us;
     if (last != 0 && (now - last) < PING_QUIET_US) continue;
 
-    static const char ping[] = "{\"type\":\"ping\"}";
+    // Every 20th beat carries the arming instead of a bare ping.
+    //
+    // The one-shot sent from the CONNECT handler is not enough and cannot be:
+    // opening the port reboots the board, so that message arrives while the
+    // device is still booting and is simply lost. (The two consecutive
+    // send_RESET calls in that same handler look like an older attempt to
+    // paper over the same thing.) A device that reboots for any other reason
+    // has the same problem and no CONNECT to fix it.
+    //
+    // Carrying it on the heartbeat makes the arming self-healing: whatever
+    // reboots the board, it is re-armed within ~2s, by the same traffic whose
+    // absence is what the flag governs. Idempotent, so re-sending costs
+    // nothing.
+    // Not on the first beat. Arming a watchdog before the traffic that feeds
+    // it is established is how you get a machine that stops itself the moment
+    // it is told to start watching -- so the train runs for ~2s first, and the
+    // arming is then something the heartbeat has already earned.
+    //
+    // The one-shot this replaces was sent from the CONNECT handler, which is
+    // strictly worse than useless: opening the port reboots the board, so it
+    // arrived while the device was still booting and was lost. (The two
+    // consecutive send_RESET calls in that handler look like an older attempt
+    // to paper over the same race.)
+    //
+    // Repeating it makes the arming self-healing -- whatever reboots the
+    // board, it is re-armed within ~2s by the same traffic whose absence the
+    // flag governs. Idempotent, so re-sending costs nothing.
+    static uint32_t beat = 0;
+    beat++;
+    const bool arm = (beat > 20) && ((beat % 20) == 0);
+    static const char pingMsg[] = "{\"type\":\"ping\"}";
+    static const char armMsg[]  = "{\"type\":\"comm_lost_backup\",\"on\":true}";
+    const char *ping = arm ? armMsg : pingMsg;
     std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
     // Re-checked under the lock: a DISCONNECT can delete the channel between
     // the test above and here, and this thread would be writing to freed

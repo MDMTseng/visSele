@@ -1002,6 +1002,15 @@ uint32_t EVENT_SEQ=0;
 // without any valid inbound frame is treated as host death -> fail-safe stop
 // (a hung vision process must stop the line without host cooperation).
 volatile int host_timeout_ms=0;
+// Is the host-link watchdog allowed to act? Armed by the HOST, never by the
+// board, and deliberately NOT persisted -- it is false on every boot.
+//
+// host_timeout_ms alone was the wrong gate: it lives in NVS, so a board that
+// has never spoken to a core still carried a configured timeout and would stop
+// the line the moment somebody ran it on the bench. What licenses the watchdog
+// is not a stored number, it is a host having actually connected and said so.
+// The core sends comm_lost_backup on every CONNECT.
+volatile bool COMM_LOST_BACKUP=false;
 
 // Attack instantly, decay slowly: a maximum that FOLLOWS THE ENVELOPE instead of
 // latching on one event and then saying nothing.
@@ -2261,6 +2270,7 @@ uint32_t CNT_NVS_WRITES = 0, CNT_NVS_FAILS = 0;
 // whole design is a race against the host coming back and rebooting this
 // board, so the one number that says whether it is winning has to be visible.
 uint32_t CNT_NVS_REQ_MS = 0, CNT_NVS_LAT_MS = 0;
+uint32_t CNT_NVS_SEQ = 0;
 
 static void countersNvsService()
 {
@@ -2305,6 +2315,7 @@ static void countersNvsService()
     c.sel_suppressed=SEL_SUPPRESSED_N; c.sel1_no_quota=SEL1_NO_QUOTA_N;
     c.gate_accept=GATE_ACCEPT;
     c.save_lat_ms=millis()-CNT_NVS_REQ_MS;
+    c.save_seq=++CNT_NVS_SEQ;
     ok = MachineConfig::countersSave(c);
   }
   if(ok) CNT_NVS_WRITES++; else CNT_NVS_FAILS++;
@@ -2467,6 +2478,34 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         RESET_ALL_PIPELINE_QUEUE();
         SEL_SAFE_AT_MS = millis() + selHoldMs();
         OUTPUTS_SAFE_EXCEPT_SEL();
+
+        // A stop is a save point, and it has to be -- otherwise the commonest
+        // sequence there is loses the shift: run, stop, close the host. The
+        // watchdog cannot cover that one. It is deliberately blind in IDLE (a
+        // stopped plate needs no host, and firing there would turn an operator
+        // closing the host into an error), so with the save tied only to the
+        // watchdog, the counts would sit in RAM until the next core start
+        // reopened the port and rebooted the board out from under them.
+        //
+        // So the save is tied to the machine coming to rest, not to the host
+        // dying. Between this and the watchdog the three cases are covered:
+        // stopped normally -> saved here; host died mid-run -> saved by the
+        // watchdog; host died after a stop -> already saved here.
+        //
+        // Only when arriving from a state that was running. Boot enters IDLE
+        // from INIT, and arming there would rewrite the record with the values
+        // just restored from it -- a flash write on every power-up, for
+        // nothing.
+        if(sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_READY  ||
+           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_RECAL  ||
+           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_SPINUP ||
+           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_CAL    ||
+           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_TEST   ||
+           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_ERROR)
+        {
+          CNT_NVS_REQ_MS = millis();
+          CNT_NVS_REQ = CNT_NVS_SAVE;
+        }
       } //enter
       else if (i == 1)
       {
@@ -6174,14 +6213,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
-      // Whether the counts on display were carried across a reboot, and how
-      // the flash writes behind that have gone. A restore nobody can see is a
-      // number the operator has no reason to believe.
-      jHl["cnt_restored"]=CNT_RESTORED;
-      jHl["cnt_nvs_writes"]=CNT_NVS_WRITES;
-      jHl["cnt_nvs_fails"]=CNT_NVS_FAILS;
-      jHl["cnt_nvs_pending"]=(int)CNT_NVS_REQ;
-      jHl["cnt_nvs_lat_ms"]=CNT_NVS_LAT_MS;
+
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
       jHl["rx_crc_fail"]=djrl.rx_crc_fail;
@@ -7546,6 +7578,40 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
 
+  else if(strcmp(type,"get_backup_stat")==0)
+  {
+    // Its own command, not part of get_running_stat.
+    //
+    // That reply was measured at 2886 of its 3072 bytes before these fields;
+    // adding them took it over and it began answering stat_doc_overflow --
+    // losing the ENTIRE machine status, not just the new fields. Growing the
+    // document is not the fix either: it is a StaticJsonDocument on the loop
+    // task, whose stack high-water has been seen at 2052 bytes.
+    retdoc["type"]="get_backup_stat";
+    // Did this boot come up on restored counts, and is the watchdog that
+    // produces them actually armed?
+    retdoc["cnt_restored"]=CNT_RESTORED;
+    retdoc["comm_lost_backup"]=(bool)COMM_LOST_BACKUP;
+    retdoc["host_timeout_ms"]=host_timeout_ms;
+    // seq distinguishes a fresh save from an old record; lat cannot, because
+    // it measures selHoldMs() and is therefore near-constant.
+    retdoc["cnt_nvs_seq"]=CNT_NVS_SEQ;
+    retdoc["cnt_nvs_lat_ms"]=CNT_NVS_LAT_MS;
+    retdoc["cnt_nvs_writes"]=CNT_NVS_WRITES;
+    retdoc["cnt_nvs_fails"]=CNT_NVS_FAILS;
+    retdoc["cnt_nvs_pending"]=(int)CNT_NVS_REQ;
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"comm_lost_backup")==0)
+  {
+    // Absent "on" means true: the only caller is a host announcing itself, and
+    // the safe reading of a malformed announcement is that a host is there.
+    COMM_LOST_BACKUP = doc["on"].is<bool>() ? (bool)doc["on"] : true;
+    retdoc["type"]="comm_lost_backup";
+    retdoc["on"]=COMM_LOST_BACKUP;
+    retdoc["host_timeout_ms"]=host_timeout_ms;
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"sel_act")==0)
   {
     // Blocking the main loop is only safe with the plate stopped, which is the
@@ -8031,6 +8097,7 @@ void firmwareSetup()
       SEL_SUPPRESSED_N=c.sel_suppressed; SEL1_NO_QUOTA_N=c.sel1_no_quota;
       GATE_ACCEPT=c.gate_accept;
       CNT_NVS_LAT_MS=c.save_lat_ms;
+      CNT_NVS_SEQ=c.save_seq;
       CNT_RESTORED=true;
     }
   }
@@ -8188,7 +8255,28 @@ void firmwareLoop()
       LIGHT_HOLD_deadline_ms=0; LIGHT_HOLD_pin=-1; LIGHT_HOLD_idx=-1;
     }
   }
-  if(host_timeout_ms>0 && sysinfo.state==SYS_STATE::INSPECTION_MODE_READY)
+  // Every state in which the plate can be turning and parts can be moving --
+  // not just READY.
+  //
+  // This used to test READY alone, and that left the watchdog blind during
+  // the machine's own normal cycle: RECAL is entered automatically whenever
+  // the pipeline goes briefly empty (recalService, ~every recal_idle_ms), and
+  // SPINUP/CAL are passed through on the way in. Caught in the act -- the host
+  // was killed while the machine sat in 104, and nothing fired: no stop, no
+  // counter save, the plate just kept turning past an unmanned selector for as
+  // long as the host stayed dead. Which is the exact failure this watchdog
+  // exists to prevent, occurring in the state the machine visits most often
+  // after READY.
+  //
+  // IDLE is excluded because a stopped plate needs no host, and ERROR/FATAL
+  // because they have already stopped.
+  const bool hostNeeded =
+      (sysinfo.state==SYS_STATE::INSPECTION_MODE_READY  ||
+       sysinfo.state==SYS_STATE::INSPECTION_MODE_RECAL  ||
+       sysinfo.state==SYS_STATE::INSPECTION_MODE_SPINUP ||
+       sysinfo.state==SYS_STATE::INSPECTION_MODE_CAL    ||
+       sysinfo.state==SYS_STATE::INSPECTION_MODE_TEST);
+  if(host_timeout_ms>0 && COMM_LOST_BACKUP && hostNeeded)
   {
     uint32_t last=djrl.last_rx_ms;
     if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
