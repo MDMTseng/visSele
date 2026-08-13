@@ -2257,6 +2257,10 @@ volatile uint8_t CNT_NVS_REQ = CNT_NVS_NONE;
 // operator has no reason to trust.
 bool     CNT_RESTORED = false;
 uint32_t CNT_NVS_WRITES = 0, CNT_NVS_FAILS = 0;
+// When the request was armed, and how long it then took to reach flash. The
+// whole design is a race against the host coming back and rebooting this
+// board, so the one number that says whether it is winning has to be visible.
+uint32_t CNT_NVS_REQ_MS = 0, CNT_NVS_LAT_MS = 0;
 
 static void countersNvsService()
 {
@@ -2265,14 +2269,27 @@ static void countersNvsService()
 
   // The last blow must be finished. SELn_Count is incremented when a blow
   // STARTS, so saving mid-blow stores a count whose part has not landed yet.
+  // This is a bounded wait -- one blow width, ~50ms.
   if(SEL_SAFE_AT_MS != 0) return;
 
-  // And the step ISR must be stopped. An NVS write disables the flash cache;
-  // an ISR that is not in IRAM faults the instant it is entered from flash
-  // that is no longer mapped. This is the hazard cfgPersistDeny() exists for
-  // -- but NOT its state check, which is about not reconfiguring mid-run and
-  // would refuse here, because the machine is in ERROR precisely as intended.
-  if(PLATE_FREQ_CURRENT != 0) return;
+  // Deliberately NOT waiting for the plate to stop.
+  //
+  // An NVS write disables the flash cache, so an ISR living in flash would
+  // fault the instant it is entered -- that is the hazard cfgPersistDeny()
+  // exists for. It does not apply to the step path: onTimer and everything it
+  // reaches (StepGo, GateSensing, Run_ACTS, phantomServiceISR,
+  // ActRegister_pipeLineInfo) are all IRAM_ATTR, and stay mapped.
+  //
+  // Waiting was the expensive kind of caution. Deceleration is plate_freq /
+  // plate_accel: at 26.5rpm (~31100Hz) and accel 2000Hz/s that is ~15s of
+  // standing still with the counts only in RAM, racing a host that may be
+  // restarted automatically -- and the reopen reboots this board. Losing the
+  // save to a decel ramp is the failure this whole path exists to prevent.
+  //
+  // The CLEAR path keeps the conservative wait below: reset_running_stat is
+  // accepted mid-run and is not an emergency, so it has nothing to buy by
+  // touching flash early.
+  if(req == CNT_NVS_CLEAR && PLATE_FREQ_CURRENT != 0) return;
 
   CNT_NVS_REQ = CNT_NVS_NONE;
   bool ok;
@@ -2287,9 +2304,11 @@ static void countersNvsService()
     c.skip=SKIP_Count; c.unanswered=UNANSWERED_Count;
     c.sel_suppressed=SEL_SUPPRESSED_N; c.sel1_no_quota=SEL1_NO_QUOTA_N;
     c.gate_accept=GATE_ACCEPT;
+    c.save_lat_ms=millis()-CNT_NVS_REQ_MS;
     ok = MachineConfig::countersSave(c);
   }
   if(ok) CNT_NVS_WRITES++; else CNT_NVS_FAILS++;
+  CNT_NVS_LAT_MS = millis() - CNT_NVS_REQ_MS;
 }
 
 // The longest a blow can still be out, in ms, from the configured widths.
@@ -2640,7 +2659,10 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // Only for this error. Every other one leaves the host alive and able
         // to read the counters over the wire, which is better than flash.
         if((GEN_ERROR_CODE)sysinfo.extra_code == GEN_ERROR_CODE::HOST_LINK_TIMEOUT)
+        {
+          CNT_NVS_REQ_MS = millis();
           CNT_NVS_REQ = CNT_NVS_SAVE;
+        }
       } //enter
       else if (i == 1)
       {
@@ -5779,6 +5801,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // zeroed. Queued rather than written here: this command is accepted
     // mid-run, and a flash write with the step ISR live is the one thing
     // countersNvsService() exists to prevent.
+    CNT_NVS_REQ_MS = millis();
     CNT_NVS_REQ = CNT_NVS_CLEAR;
     CNT_RESTORED = false;
     SEL_SUPPRESSED_N=0;
@@ -6158,6 +6181,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["cnt_nvs_writes"]=CNT_NVS_WRITES;
       jHl["cnt_nvs_fails"]=CNT_NVS_FAILS;
       jHl["cnt_nvs_pending"]=(int)CNT_NVS_REQ;
+      jHl["cnt_nvs_lat_ms"]=CNT_NVS_LAT_MS;
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
       jHl["rx_crc_fail"]=djrl.rx_crc_fail;
@@ -8006,6 +8030,7 @@ void firmwareSetup()
       SKIP_Count=c.skip; UNANSWERED_Count=c.unanswered;
       SEL_SUPPRESSED_N=c.sel_suppressed; SEL1_NO_QUOTA_N=c.sel1_no_quota;
       GATE_ACCEPT=c.gate_accept;
+      CNT_NVS_LAT_MS=c.save_lat_ms;
       CNT_RESTORED=true;
     }
   }
