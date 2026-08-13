@@ -15,15 +15,23 @@ typedef struct FeatureManager_BacPac
 {
   ImageSampler *sampler;
   CameraLayer *cam;
-  // Lens calibration (telecentric/perspective). When applyLensCalib is true the
-  // measurement path undistorts extracted feature points via lensCalib. Default
-  // OFF -> no behaviour change until enabled + validated on the rig.
-  bool applyLensCalib = false;
+  // Lens calibration (telecentric/perspective). The measurement path
+  // undistorts extracted feature points through this whenever it is present
+  // and valid -- caliper edge points and the search-point centroid.
+  //
+  // There is NO separate enable flag. There used to be an `applyLensCalib`
+  // bool here, documented as "default OFF -> no behaviour change until enabled
+  // + validated on the rig", and nothing ever read it: the call sites gate on
+  // `lensCalib->ok` alone. So loading a calibration has always taken effect
+  // immediately, and the field promised an opt-in that did not exist. Removed
+  // rather than wired, because wiring it would turn calibration off on
+  // machines currently relying on it.
+  //
+  // A calibration you do not want applied must not be loaded.
   LensCalibResult *lensCalib = 0;
   // Bright/Dark field calibration. Persisted as data/field_calib.json and
-  // loaded at startup. applyFieldCal default OFF -- consumer (e.g.
-  // FeatureManager_sig360_circle_line) decides when to gate on it.
-  bool applyFieldCal = false;
+  // loaded at startup; consumed by the group adaptive threshold, gated on
+  // `fieldCal->ok`. Had an `applyFieldCal` bool with the same story as above.
   FieldCalibResult *fieldCal = 0;
   // Phase 2: sub-features that need the raw binary (CV_8UC1, bg=255/fg=0)
   // -- e.g. matching_version=2 sig360 doing morph-boundary signature build --
