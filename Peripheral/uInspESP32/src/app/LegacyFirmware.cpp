@@ -2271,6 +2271,21 @@ uint32_t CNT_NVS_WRITES = 0, CNT_NVS_FAILS = 0;
 // board, so the one number that says whether it is winning has to be visible.
 uint32_t CNT_NVS_REQ_MS = 0, CNT_NVS_LAT_MS = 0;
 uint32_t CNT_NVS_SEQ = 0;
+// What is already in flash. An error arms a save, and errors can repeat -- a
+// clear_error/REDEEM loop against a persistent fault would write once per
+// cycle, each write stalling the loop task for tens of ms, for bytes identical
+// to the ones already stored. The write rate should follow the COUNTING, not
+// the faulting.
+MachineConfig::Counters CNT_LAST_SAVED;
+static bool cntSame(const MachineConfig::Counters &a,
+                    const MachineConfig::Counters &b)
+{
+  return a.sel1==b.sel1 && a.sel2==b.sel2 && a.sel3==b.sel3 && a.na==b.na &&
+         a.skip==b.skip && a.unanswered==b.unanswered &&
+         a.sel_suppressed==b.sel_suppressed &&
+         a.sel1_no_quota==b.sel1_no_quota && a.gate_accept==b.gate_accept;
+}
+uint32_t CNT_NVS_SKIPPED = 0;
 
 static void countersNvsService()
 {
@@ -2306,6 +2321,7 @@ static void countersNvsService()
   if(req == CNT_NVS_CLEAR)
   {
     ok = MachineConfig::countersClear();
+    if(ok) CNT_LAST_SAVED=MachineConfig::Counters();
   }
   else
   {
@@ -2314,9 +2330,18 @@ static void countersNvsService()
     c.skip=SKIP_Count; c.unanswered=UNANSWERED_Count;
     c.sel_suppressed=SEL_SUPPRESSED_N; c.sel1_no_quota=SEL1_NO_QUOTA_N;
     c.gate_accept=GATE_ACCEPT;
+    if(cntSame(c, CNT_LAST_SAVED))
+    {
+      // Nothing has been counted since the stored record. Skipping is not an
+      // optimisation -- it is what keeps a repeating fault from writing flash
+      // once per cycle.
+      CNT_NVS_SKIPPED++;
+      return;
+    }
     c.save_lat_ms=millis()-CNT_NVS_REQ_MS;
     c.save_seq=++CNT_NVS_SEQ;
     ok = MachineConfig::countersSave(c);
+    if(ok) CNT_LAST_SAVED=c;
   }
   if(ok) CNT_NVS_WRITES++; else CNT_NVS_FAILS++;
   CNT_NVS_LAT_MS = millis() - CNT_NVS_REQ_MS;
@@ -7604,6 +7629,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["cnt_nvs_lat_ms"]=CNT_NVS_LAT_MS;
     retdoc["cnt_nvs_writes"]=CNT_NVS_WRITES;
     retdoc["cnt_nvs_fails"]=CNT_NVS_FAILS;
+    retdoc["cnt_nvs_skipped"]=CNT_NVS_SKIPPED;
     retdoc["cnt_nvs_pending"]=(int)CNT_NVS_REQ;
     doRsp=rspAck=true;
   }
@@ -8103,6 +8129,7 @@ void firmwareSetup()
       GATE_ACCEPT=c.gate_accept;
       CNT_NVS_LAT_MS=c.save_lat_ms;
       CNT_NVS_SEQ=c.save_seq;
+      CNT_LAST_SAVED=c;
       CNT_RESTORED=true;
     }
   }

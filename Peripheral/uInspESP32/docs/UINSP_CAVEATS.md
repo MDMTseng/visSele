@@ -3139,3 +3139,13 @@ ERROR/FATAL 排除(已經停了)。
 2886),裝置開始回 `stat_doc_overflow`——丟掉的**不是新欄位,是整包機器狀態**。
 放大那個 document 也不是選項:它是 loop task 上的 static 文件,而 `stack_hwm`
 實測低到 2052。
+
+### 沒有變化就不寫:讓寫入頻率跟著「計數」走,而不是跟著「故障」走
+
+任何錯誤都會武裝存檔(那是刻意的,見上),但錯誤是會重複的:對著一個持續存在的
+故障做 `clear_error → REDEEM → CAL → READY → 又錯`,每一圈都會武裝一次,每次寫入
+都把 loop task 擋住數十毫秒,而寫進去的位元組跟已經存著的一模一樣。
+
+所以 `countersNvsService()` 會先跟 `CNT_LAST_SAVED`(RAM 裡的「flash 現況」)比對,
+相同就跳過,只累加 `cnt_nvs_skipped`。開機還原時 `CNT_LAST_SAVED` 由還原出來的
+記錄填入,`countersClear()` 成功後歸零——否則清空之後的第一次存檔會誤判成相同。
