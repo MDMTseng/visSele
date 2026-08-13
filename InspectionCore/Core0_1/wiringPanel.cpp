@@ -2016,6 +2016,24 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
     return -1;
   }
 
+  // "InspectionROI" outranks "ROI".
+  //
+  // Two keys, because two different things were sharing one. "ROI" is what any
+  // mode may set at runtime -- DefConf, the backlight calib and MAINUI all open
+  // the sensor fully on purpose, so they can show the whole field. The crop
+  // INSPECTION runs at is a machine fact chosen once by an operator, and it has
+  // its own key so that none of those gestures can reach it, structurally
+  // rather than by remembering a flag.
+  //
+  // Applied here, at load, so a headless run still comes up cropped -- that was
+  // the property the file was made the authority for in the first place.
+  cJSON *insp_roi = cJSON_GetObjectItem(json, "InspectionROI");
+  if (insp_roi && cJSON_IsArray(insp_roi) && cJSON_GetArraySize(insp_roi) == 4)
+  {
+    cJSON_DeleteItemFromObject(json, "ROI");
+    cJSON_AddItemToObject(json, "ROI", cJSON_Duplicate(insp_roi, 1));
+    LOGI("camera ROI from InspectionROI");
+  }
   int ret = CameraSetup(camera, *json);
   cJSON_Delete(json);
   return ret;
@@ -4610,8 +4628,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         // Writing it to the file makes that file the single source of truth:
         // the core already applies it at startup, so a headless soak needs
         // nothing extra, and the UI keeps working unchanged.
+        //
+        // Written by ONE gesture only: an operator finishing a crop in the
+        // Inspection UI, which says so with save_insp_roi. It lands under
+        // "InspectionROI", not "ROI".
+        //
+        // Persisting every ROI moved the old localStorage bug into the file
+        // instead of fixing it. The "設定ROI" button opens the sensor fully
+        // first so the operator can see the field to drag on, and that gesture
+        // was writing full-sensor into the machine's own authority: abandon the
+        // selection -- click away, reload, change page -- and the crop is gone
+        // permanently, on every future boot. Found exactly that, ROI
+        // [0,0,99999,99999] in the live file on a machine whose rate depends on
+        // being cropped, with the real value unrecoverable from any log.
+        //
+        // A separate key is what makes the other full-frame gestures safe by
+        // construction: they set "ROI", they cannot reach "InspectionROI".
         cJSON *roi = cJSON_GetObjectItem(camSettingObj, "ROI");
-        if (roi && cJSON_IsArray(roi) && cJSON_GetArraySize(roi) == 4)
+        cJSON *saveIt = cJSON_GetObjectItem(camSettingObj, "save_insp_roi");
+        const bool doPersist = saveIt && cJSON_IsTrue(saveIt);
+        if (doPersist && roi && cJSON_IsArray(roi) && cJSON_GetArraySize(roi) == 4)
         {
           const char *fp = "data/default_camera_setting.json";
           char *cur = ReadText((char *)fp);
@@ -4619,8 +4655,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           if (cur) free(cur);
           if (doc)
           {
-            cJSON_DeleteItemFromObject(doc, "ROI");
-            cJSON_AddItemToObject(doc, "ROI", cJSON_Duplicate(roi, 1));
+            cJSON_DeleteItemFromObject(doc, "InspectionROI");
+            cJSON_AddItemToObject(doc, "InspectionROI", cJSON_Duplicate(roi, 1));
             char *outStr = cJSON_Print(doc);
             if (outStr)
             {

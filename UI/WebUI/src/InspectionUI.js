@@ -1890,6 +1890,17 @@ class APP_INSP_MODE extends React.Component {
         this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
       }
 
+      // Re-apply the machine's own camera settings on the way in.
+      //
+      // This carries no VALUE from the browser -- it asks the core to reload
+      // the file it already treats as the authority. That distinction is the
+      // whole reason the old push was removed (see below), and it is also why
+      // its removal left a hole: the core applied that file at STARTUP only,
+      // while DefConf, the backlight calib and MAINUI all open the sensor fully
+      // at runtime for their own reasons and never put it back. Coming back
+      // here then inspected on the full frame, at a lower rate, silently.
+      this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSettingFile: "data/" });
+
       // The camera ROI is NOT pushed from here any more.
       //
       // This used to read localStorage LS_INSP_ROI and send it as
@@ -2789,8 +2800,14 @@ class APP_INSP_MODE extends React.Component {
           }
 
           
+          // The ONLY write to the machine's stored crop, and it lands under
+          // its own key (InspectionROI). The full-sensor open above says
+          // nothing: that is the UI looking at the frame, not an operator
+          // picking a crop. DefConf and the backlight calib open the sensor
+          // fully too, for the same reason -- with a separate key none of them
+          // can reach this value even by accident.
           this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-          {CameraSetting: { ROI}});
+          {CameraSetting: { ROI, save_insp_roi:true }});
 
 
           this.setState({onROISettingCallBack:undefined});
