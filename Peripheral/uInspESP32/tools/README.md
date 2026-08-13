@@ -1,5 +1,9 @@
 # uInspESP32 測試工具
 
+> **接 core 的整機工具在 [`TESTS.md`](TESTS.md)。** 這一份只講不經 core 的韌體直測。
+> 要量檢驗延遲、跑 soak、驗配對正確性，都在那邊——連同八條會給你「看起來合理的錯
+> 數字」的共用陷阱。
+
 `uinsp_test.py` —— 直接對韌體下 JSON 命令，協助跑 `docs/HW_VERIFICATION_CHECKLIST.md`。
 
 **不需要 core、不需要 WebUI。** 這是刻意的：階段 0–3 出問題時，唯一可能出錯的

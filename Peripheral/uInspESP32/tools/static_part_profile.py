@@ -341,7 +341,13 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=60.0)
     ap.add_argument("--rate", type=float, default=30.0, help="virtual objects per second")
-    ap.add_argument("--plate-freq", type=int, default=3000)
+    # 10000, not 3000. rej_busy is not a throughput ceiling, it is
+    #   rate x (SWITCH_offset / (2*plate_freq)) > PIPE_INFO_LEN (100)
+    # -- objects queue up on a slow plate until the in-flight ring cannot hold
+    # them. At 3000 the gate->SWITCH trip is 4.98s, so 30/s puts 149 objects in
+    # flight and a third are refused; at 10000 it is 1.50s, 45 in flight, and
+    # rej_busy measures 0. Verified both ways.
+    ap.add_argument("--plate-freq", type=int, default=10000)
     ap.add_argument("--deffile", default="data/test1.hydef",
                     help="path RELATIVE TO THE CORE's cwd, not this script's")
     ap.add_argument("--no-jog", action="store_true",
