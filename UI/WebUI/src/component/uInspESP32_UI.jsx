@@ -1382,6 +1382,7 @@ export default UINSP_ESP32_UI;
 export function UINSP_ESP32_MINI() {
   const dispatch = useDispatch();
   const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
+  const CORE_ID = useSelector((s) => s.ConnInfo.CORE_ID);
   const CONN = useSelector((s) => s.ConnInfo.uInspESP32_API_ID_CONN_INFO);
   const withApi = (cb) => dispatch(UIAct.EV_WS_GET_OBJ(API_ID, cb));
 
@@ -1403,6 +1404,32 @@ export function UINSP_ESP32_MINI() {
   const [histOpen, setHistOpen] = useState(false);
   const [hist, setHist] = useState(recallHist);
   const [rsting, setRsting] = useState(false);
+  // Which outlet is OK and which is NG, from the core's conn_info.
+  //
+  // Asked rarely rather than per poll: the wiring cannot change without a
+  // reconnect, and this strip is deliberately frugal. It retries while the
+  // answer is missing and then stops, so a core that is not up yet still
+  // resolves once it is. It goes to the CORE over the websocket and never
+  // touches the device's serial link, so it costs nothing the strip was
+  // protecting.
+  const [outlets, setOutlets] = useState(null);
+  useEffect(() => {
+    let live = true;
+    const ask = () => {
+      dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "GS", 0, { items: ["perif_pairing"] },
+        undefined, {
+          resolve: (pkts) => {
+            const gs = pkts.find((p) => p.type === "GS");
+            const pv = gs && gs.data && gs.data.perif_pairing;
+            if (live && pv && pv.cat_ok && pv.cat_ng) setOutlets(pv);
+          },
+          reject: () => {},
+        }));
+    };
+    ask();
+    const h = setInterval(() => { if (!outlets) ask(); }, 10000);
+    return () => { live = false; clearInterval(h); };
+  }, [outlets]);
   // Presses on the reset button, within a 5s window. Three, because inside a
   // modal the risk is no longer a stray click (you had to open it) -- it is
   // pressing the wrong button while looking at the history you came to read.
@@ -1514,6 +1541,12 @@ export function UINSP_ESP32_MINI() {
 
   const st = stat ? stat.state : undefined;
   const cnt = (stat && stat.count) || {};
+  // Which outlet is OK and which is NG, from the core's conn_info -- never
+  // assumed here. Undefined until the first GS answers, and the counters render
+  // as raw selectors until then, because a mislabelled NG is worse than an
+  // unlabelled one.
+  const selOK = outlets ? `SEL${outlets.cat_ok}` : undefined;
+  const selNG = outlets ? `SEL${outlets.cat_ng}` : undefined;
   const gate = stat ? stat.gate : undefined;
   const inError = st === 112 || st === 113;
   const starting = st === 102 || st === 103 || st === 104;
@@ -1750,12 +1783,22 @@ export function UINSP_ESP32_MINI() {
           {stat.error_hist.map((e, i) => <div key={i}>⚠ {errName(e)}</div>)}
         </div>
       )}
-      {/* The verdict, in the operator's words. SEL2/SEL3 are which air valve
-          fired -- that is wiring, and it belongs in the setup panel where the
-          wiring is chosen. Out here the only useful reading is NG / OK / NA. */}
+      {/* The verdict, in the operator's words. WHICH air valve fires is wiring,
+          and this panel must not guess it: it used to read NG=SEL2 / OK=SEL3,
+          and on a machine wired cat_ng 1 / cat_ok 3 that put every real reject
+          under a warning saying "not wired on this machine" while the NG column
+          showed 0. The mapping now comes from conn_info via the core, and when
+          the core has not answered yet the raw selectors are shown rather than
+          labelled wrongly. */}
       <div style={{ display: 'flex', gap: 4 }}>
-        {tag('NG', cnt.SEL2, 'red')}
-        {tag('OK', cnt.SEL3, 'green')}
+        {selOK && selNG ? (<>
+          {tag('NG', cnt[selNG], 'red')}
+          {tag('OK', cnt[selOK], 'green')}
+        </>) : (<>
+          {tag('SEL1', cnt.SEL1)}
+          {tag('SEL2', cnt.SEL2)}
+          {tag('SEL3', cnt.SEL3)}
+        </>)}
         {tag('NA', cnt.NA)}
         {/* Not a reset button. Reset is something that happens inside the
             history, because the history is what a reset produces. */}
@@ -1764,15 +1807,20 @@ export function UINSP_ESP32_MINI() {
           onClick={() => setHistOpen(true)}
         >歷史</Button>
       </div>
-      {/* SEL1 has no column: nothing is wired to it on this machine, so it
-          reads 0 forever and a permanent 0 teaches people to stop looking. It
-          is not unwatched though -- a count there means a part was sorted into
-          a bin this machine does not have, which is worth a line of its own. */}
-      {cnt.SEL1 > 0 && (
-        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}>
-          ⚠ SEL1 {cnt.SEL1}(此機未接線)
-        </div>
-      )}
+      {/* The selectors conn_info does NOT name get no column: they read 0
+          forever on a given machine and a permanent 0 teaches people to stop
+          looking. They are not unwatched though -- a count on one of them means
+          a part was sorted into a bin this machine does not have.
+          Which ones those are is read from the wiring, never assumed: the
+          hardcoded "SEL1 is unwired" that stood here was wrong on this very
+          machine and hid 106 real rejects behind a warning. */}
+      {selOK && selNG && ['SEL1', 'SEL2', 'SEL3']
+        .filter((s) => s !== selOK && s !== selNG && cnt[s] > 0)
+        .map((s) => (
+          <div key={s} style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}>
+            ⚠ {s} {cnt[s]}(此機未接線)
+          </div>
+        ))}
       {/* SKIP and UNANSWERED lost their columns -- they read 0 all day and were
           costing two of six slots. They are NOT dropped: both mean a part went
           past with nobody's judgement on it, and SKIP does that without the

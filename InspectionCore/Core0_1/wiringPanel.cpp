@@ -2900,6 +2900,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON *robj = cJSON_CreateObject();
             cJSON_AddItemToObject(retArr, itemType, robj);
 
+            // Which outlet is OK and which is NG, from conn_info. The UI had no
+            // way to know and hardcoded NG=SEL2 / OK=SEL3 with SEL1 labelled
+            // "not wired on this machine" -- but this machine is cat_ng 1 /
+            // cat_ok 3, so every real reject was counted under a warning that
+            // said it should not exist while the NG column sat at 0. Wiring is
+            // a property of the station, so the station has to say it.
+            if (bpg_pi.perifCH != NULL)
+            {
+              cJSON_AddNumberToObject(robj, "cat_ok", bpg_pi.perifCH->cat_ok);
+              cJSON_AddNumberToObject(robj, "cat_ng", bpg_pi.perifCH->cat_ng);
+            }
             cJSON_AddNumberToObject(robj, "trig_wait_max_ms", g_perifTrigWaitMaxMs);
             // Nonzero skipped is the signature of the 2026-08-10 collapse, and
             // the only way to tell "the link went quiet" apart from "the plate
