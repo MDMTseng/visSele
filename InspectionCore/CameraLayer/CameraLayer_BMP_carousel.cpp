@@ -81,6 +81,26 @@ CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderNam
         while ((dir = readdir(d)) != NULL) {
             if(dir->d_name[0]=='.')continue;
             std::string str(dir->d_name);
+            // Only what imread can decode.
+            //
+            // The list used to be every entry in the directory, so pointing
+            // the carousel at a folder that also holds a .json, a .hydef or a
+            // README put those in the rotation, imread returned empty, and the
+            // frame path had to cope with "no image" on a file the UI was
+            // happily listing as frame 3 of 12. Filtering here means the list
+            // the operator sees IS the list that can be shown.
+            {
+                size_t dot = str.find_last_of('.');
+                if(dot == std::string::npos) continue;
+                std::string ext = str.substr(dot+1);
+                for(auto &ch : ext) ch = (char)tolower((unsigned char)ch);
+                static const char *kImgExt[] = {
+                    "bmp","png","jpg","jpeg","tif","tiff","pgm","ppm","webp",NULL };
+                bool ok=false;
+                for(int e=0; kImgExt[e]; e++)
+                    if(ext == kImgExt[e]) { ok=true; break; }
+                if(!ok) continue;
+            }
             str = folderName+"/"+str;
             //LOGV("FILE::%s",str.c_str());
             files_in_folder.push_back(str);
