@@ -2695,13 +2695,18 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // while there is still a machine to ask. countersNvsService() holds
         // the write until the plate has stopped and the last blow is out.
         //
-        // Only for this error. Every other one leaves the host alive and able
-        // to read the counters over the wire, which is better than flash.
-        if((GEN_ERROR_CODE)sysinfo.extra_code == GEN_ERROR_CODE::HOST_LINK_TIMEOUT)
-        {
-          CNT_NVS_REQ_MS = millis();
-          CNT_NVS_REQ = CNT_NVS_SAVE;
-        }
+        // On EVERY error, not just the host one. It was only the host error,
+        // and that left a real gap: any other fault stops the machine and
+        // parks it in ERROR, and if the host then dies before the operator
+        // clears it, the counts from that run are gone -- the restart reopens
+        // the port and reboots this board.
+        //
+        // An error is a state entry, so this fires once. That is what makes it
+        // preferable to watching the comm timeout in every state: THAT needs a
+        // latch, or it re-arms a flash write on every pass of the loop for as
+        // long as the host stays away.
+        CNT_NVS_REQ_MS = millis();
+        CNT_NVS_REQ = CNT_NVS_SAVE;
       } //enter
       else if (i == 1)
       {
@@ -8281,10 +8286,14 @@ void firmwareLoop()
     uint32_t last=djrl.last_rx_ms;
     if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
     {
+      // Parts are moving with nobody answering for them. Stopping is the whole
+      // job here; the counter save rides on the way into ERROR, which is also
+      // where every OTHER way of coming to rest saves.
       SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
                          (int)GEN_ERROR_CODE::HOST_LINK_TIMEOUT);
     }
   }
+
   if(WDT_TEST_REQ)
   {
     delay(200);              // let the ack out
