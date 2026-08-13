@@ -325,6 +325,20 @@ function CalibrationUI(props) {
       { CameraSetting: { [key]: val } });
   };
 
+  // Calibration is a SENSOR measurement, so it needs the whole sensor.
+  //
+  // Focus, distortion and the field/brightness grids describe the optics, not
+  // the product: measured through the inspection crop they would be valid only
+  // inside that crop, and silently wrong the moment it moved. The frame this
+  // page wants was already described as "the real 2448x2048" below -- the ROI
+  // was simply never stated, because until InspectionROI existed the stored
+  // setting was full-sensor anyway.
+  //
+  // Nothing restores this on the way out, deliberately: entering InspectionUI
+  // reloads the machine's camera file, so there is ONE place that puts the crop
+  // back rather than one per page that ever opened the sensor.
+  const FULL_SENSOR_ROI = [0, 0, 99999, 99999];
+
   const saveCameraSetting = () => {
     // Read-modify-write: pull the current file, override only the four fields
     // this UI manages, write back. Any other keys (ROI, trigger_mode, vendor
@@ -361,7 +375,8 @@ function CalibrationUI(props) {
     // encode, against ~3.3ms at DL:4 -- but this page never runs during
     // production, so the frame rate it costs buys nothing back elsewhere.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0, down_samp_level: 1 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 1,
+                         ROI: FULL_SENSOR_ROI } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID,
       _PGINFO_: { keep: true },
@@ -544,7 +559,8 @@ function CalibrationUI(props) {
     // that another page (or a lens-calibration run) may have moved since the
     // mount effect set it.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0, down_samp_level: 1 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 1,
+                         ROI: FULL_SENSOR_ROI } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID, _PGINFO_: { keep: true },
       definfo: { type: "stage_light_report", grid_size: [10, 10],
