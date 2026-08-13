@@ -2016,21 +2016,25 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
     return -1;
   }
 
-  // "InspectionROI" outranks "ROI".
+  // The stored crop lives under "InspectionROI", and ONLY there.
   //
-  // Two keys, because two different things were sharing one. "ROI" is what any
-  // mode may set at runtime -- DefConf, the backlight calib and MAINUI all open
-  // the sensor fully on purpose, so they can show the whole field. The crop
-  // INSPECTION runs at is a machine fact chosen once by an operator, and it has
-  // its own key so that none of those gestures can reach it, structurally
-  // rather than by remembering a flag.
+  // "ROI" is a runtime word: any mode may send it in an ST to change the live
+  // crop, and DefConf, the calibration pages and MAINUI all do, on purpose, to
+  // see the whole field. It used to be a stored word as well, and sharing one
+  // name between "what the camera is doing right now" and "the crop this
+  // machine inspects at" is what let a passing full-frame view overwrite the
+  // machine's own setting permanently.
   //
-  // Applied here, at load, so a headless run still comes up cropped -- that was
-  // the property the file was made the authority for in the first place.
+  // So a stored "ROI" is dropped rather than honoured -- otherwise a file
+  // written by an older core would quietly keep deciding the crop, and the two
+  // keys would disagree with no way to tell which one was in force.
+  //
+  // Applied at load, so a headless run comes up cropped too. That was the
+  // property this file was made the authority for.
+  cJSON_DeleteItemFromObject(json, "ROI");
   cJSON *insp_roi = cJSON_GetObjectItem(json, "InspectionROI");
   if (insp_roi && cJSON_IsArray(insp_roi) && cJSON_GetArraySize(insp_roi) == 4)
   {
-    cJSON_DeleteItemFromObject(json, "ROI");
     cJSON_AddItemToObject(json, "ROI", cJSON_Duplicate(insp_roi, 1));
     LOGI("camera ROI from InspectionROI");
   }
