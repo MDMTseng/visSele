@@ -2503,6 +2503,8 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
   int _ch = (finfo.channelCount == 1) ? 1 : 3;
   raw.create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
   auto ret = cl_obj.ExtractFrame(raw.data, _ch, finfo.width * finfo.height);
+  // Same as the acquisition path: a refused frame must not be converted.
+  if (ret != CameraLayer::ACK || raw.empty()) return CameraLayer::NAK;
 
   if (img_transpose) cv::transpose(raw, oriented);
   else oriented = raw;
@@ -5649,6 +5651,23 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   int _ch = (finfo.channelCount == 1) ? 1 : 3;
   tmp_img->create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
   auto ret=cl_obj.ExtractFrame(tmp_img->data, _ch, finfo.width*finfo.height);
+
+  // A refused frame is not a frame. ExtractFrame's status was ignored here, so
+  // an unfilled -- or zero-sized -- buffer went straight on to be converted
+  // and inspected: cvtColor asserts !_src.empty() and takes the process with
+  // it. Reached by a file the fake camera could not decode (a .png imread
+  // returns empty on), which is a routine thing to point a folder at, not a
+  // fault worth dying for. Hand the pool slot back and wait for the next one,
+  // the same way an empty pool is handled just above.
+  if (ret != CameraLayer::ACK || tmp_img->empty())
+  {
+    static int badFrameN = 0;
+    if ((++badFrameN % 50) == 1)
+      LOGE("camera returned no frame (ret:%d %dx%d) -> dropped (cumulative: %d)",
+           (int)ret, finfo.width, finfo.height, badFrameN);
+    bpg_pi.resPool.retResrc(headImgPipe);
+    return CameraLayer::ACK;
+  }
 
   // acvImage *tmp_img=img_transpose?new acvImage():&(headImgPipe->img);
 
