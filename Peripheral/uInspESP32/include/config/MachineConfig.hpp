@@ -222,6 +222,34 @@ namespace MachineConfig
   // Call after anything changes the live config, so the next cfg_crc is
   // recomputed. hash() is otherwise cached: it builds a 3KB document and a
   // heap String, and poll() -- the cheap one -- asks for it every call.
+  // The sorting counters, kept across a reboot.
+  //
+  // They exist because the counters live only in RAM, and the board is
+  // rebooted by something nobody asks for: opening the serial port pulses
+  // DTR/RTS, which on this dev board is wired to EN. A core restart therefore
+  // power-cycles the machine and a shift's counts vanish. The firmware cannot
+  // see that reset coming -- it is a hardware EN pulse, no code runs -- so the
+  // save has to happen EARLIER, at the last moment the machine knows something
+  // is wrong: the host-link watchdog firing.
+  //
+  // Written only then, never periodically: a flash write with the step ISR
+  // live is the hazard cfgPersistDeny() exists for, and writing per-part would
+  // wear the flash out for a number nobody reads between parts.
+  struct Counters
+  {
+    uint32_t sel1 = 0, sel2 = 0, sel3 = 0, na = 0;
+    uint32_t skip = 0, unanswered = 0;
+    uint32_t sel_suppressed = 0, sel1_no_quota = 0;
+    uint32_t gate_accept = 0;
+  };
+  // false = nothing stored (out is zeroed). A absent record is not an error:
+  // it is a board that has never had to save.
+  bool countersLoad(Counters &out);
+  bool countersSave(const Counters &c);
+  // Called by reset_running_stat: zeroing the counters must zero the thing
+  // they would otherwise be restored from, or the next boot undoes the reset.
+  bool countersClear();
+
   void invalidateHash();
   int staleKeyCount();
   const char* staleKeyNames();

@@ -2244,6 +2244,54 @@ static void selSafeService()
   IO_OFF(PIN_O_SEL3,IOI_SEL3);
 }
 
+// Counter persistence, and the only flash write this firmware does outside an
+// explicit operator save. See MachineConfig::Counters for why it exists.
+//
+// Everything goes through one request + one service, so there is exactly one
+// place that decides when touching flash is safe. reset_running_stat can be
+// sent mid-run, so even the CLEAR has to queue here rather than write inline.
+enum CNT_NVS_REQ_T { CNT_NVS_NONE=0, CNT_NVS_SAVE=1, CNT_NVS_CLEAR=2 };
+volatile uint8_t CNT_NVS_REQ = CNT_NVS_NONE;
+// Reported in get_running_stat: whether this boot came up on restored counts,
+// and how the last write went. A restore nobody can see is a number the
+// operator has no reason to trust.
+bool     CNT_RESTORED = false;
+uint32_t CNT_NVS_WRITES = 0, CNT_NVS_FAILS = 0;
+
+static void countersNvsService()
+{
+  const uint8_t req = CNT_NVS_REQ;
+  if(req == CNT_NVS_NONE) return;
+
+  // The last blow must be finished. SELn_Count is incremented when a blow
+  // STARTS, so saving mid-blow stores a count whose part has not landed yet.
+  if(SEL_SAFE_AT_MS != 0) return;
+
+  // And the step ISR must be stopped. An NVS write disables the flash cache;
+  // an ISR that is not in IRAM faults the instant it is entered from flash
+  // that is no longer mapped. This is the hazard cfgPersistDeny() exists for
+  // -- but NOT its state check, which is about not reconfiguring mid-run and
+  // would refuse here, because the machine is in ERROR precisely as intended.
+  if(PLATE_FREQ_CURRENT != 0) return;
+
+  CNT_NVS_REQ = CNT_NVS_NONE;
+  bool ok;
+  if(req == CNT_NVS_CLEAR)
+  {
+    ok = MachineConfig::countersClear();
+  }
+  else
+  {
+    MachineConfig::Counters c;
+    c.sel1=SEL1_Count; c.sel2=SEL2_Count; c.sel3=SEL3_Count; c.na=NA_Count;
+    c.skip=SKIP_Count; c.unanswered=UNANSWERED_Count;
+    c.sel_suppressed=SEL_SUPPRESSED_N; c.sel1_no_quota=SEL1_NO_QUOTA_N;
+    c.gate_accept=GATE_ACCEPT;
+    ok = MachineConfig::countersSave(c);
+  }
+  if(ok) CNT_NVS_WRITES++; else CNT_NVS_FAILS++;
+}
+
 // The longest a blow can still be out, in ms, from the configured widths.
 static inline uint32_t selHoldMs()
 {
@@ -2581,6 +2629,18 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
         // targetPulse=get_Stepper_pulse_count()+perRevPulseCount/3;//in jail for a bit
         ERROR_LOG_PUSH((GEN_ERROR_CODE)sysinfo.extra_code);
+
+        // The host is gone -- and this is the LAST moment the machine knows
+        // anything, because what usually follows is the host coming back and
+        // reopening the serial port, which pulses EN and reboots this board
+        // with no warning and no code running. So the counts go to flash now,
+        // while there is still a machine to ask. countersNvsService() holds
+        // the write until the plate has stopped and the last blow is out.
+        //
+        // Only for this error. Every other one leaves the host alive and able
+        // to read the counters over the wire, which is better than flash.
+        if((GEN_ERROR_CODE)sysinfo.extra_code == GEN_ERROR_CODE::HOST_LINK_TIMEOUT)
+          CNT_NVS_REQ = CNT_NVS_SAVE;
       } //enter
       else if (i == 1)
       {
@@ -4984,6 +5044,17 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     handleResetCommand();
     return msg_printf("RESET_OK","");
   }
+  else if(strcmp(type,"ping")==0)
+  {
+    // The host's idle heartbeat, and it does its whole job before reaching
+    // here: any valid frame stamps last_rx_ms, which is what host_timeout_ms
+    // watches. Without it a quiet link is indistinguishable from a dead host,
+    // which is why that watchdog shipped disabled.
+    //
+    // Answered so the heartbeat runs both ways on one exchange -- the host
+    // learns the device is alive without a second mechanism.
+    return msg_printf("PONG","");
+  }
   else if(strcmp(type,"get_version")==0)
   {
     
@@ -5704,6 +5775,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["clock_reset"]=true;
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
+    // The stored copy goes too, or the next boot restores what was just
+    // zeroed. Queued rather than written here: this command is accepted
+    // mid-run, and a flash write with the step ISR live is the one thing
+    // countersNvsService() exists to prevent.
+    CNT_NVS_REQ = CNT_NVS_CLEAR;
+    CNT_RESTORED = false;
     SEL_SUPPRESSED_N=0;
     SEL1_NO_QUOTA_N=0;
     SKIP_Count=0;
@@ -6074,6 +6151,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
+      // Whether the counts on display were carried across a reboot, and how
+      // the flash writes behind that have gone. A restore nobody can see is a
+      // number the operator has no reason to believe.
+      jHl["cnt_restored"]=CNT_RESTORED;
+      jHl["cnt_nvs_writes"]=CNT_NVS_WRITES;
+      jHl["cnt_nvs_fails"]=CNT_NVS_FAILS;
+      jHl["cnt_nvs_pending"]=(int)CNT_NVS_REQ;
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
       jHl["rx_crc_fail"]=djrl.rx_crc_fail;
@@ -7907,6 +7991,25 @@ void firmwareSetup()
 
   MachineConfig::begin();
 
+  // Counts carry across the reboot the host-link watchdog saw coming.
+  //
+  // Restored unconditionally, including after a deliberate power-off: the
+  // counter means "since the last time somebody zeroed it", not "since this
+  // board last booted". That is what makes a shift total trustworthy, and it
+  // is why reset_running_stat has to clear the stored copy too -- otherwise
+  // the next boot would quietly undo the operator's reset.
+  {
+    MachineConfig::Counters c;
+    if(MachineConfig::countersLoad(c))
+    {
+      SEL1_Count=c.sel1; SEL2_Count=c.sel2; SEL3_Count=c.sel3; NA_Count=c.na;
+      SKIP_Count=c.skip; UNANSWERED_Count=c.unanswered;
+      SEL_SUPPRESSED_N=c.sel_suppressed; SEL1_NO_QUOTA_N=c.sel1_no_quota;
+      GATE_ACCEPT=c.gate_accept;
+      CNT_RESTORED=true;
+    }
+  }
+
   // Task watchdog on the main loop: a wedged parser/deadlock must reboot
   // (and leave TASK_WDT in reset_reason), not spin the ISR blind forever.
   esp_task_wdt_init(5, true);
@@ -8300,6 +8403,8 @@ void firmwareLoop()
   // runs 1/256 as often overshoots by whatever the plate covered meanwhile.
   jogService();
   selSafeService();
+  // Immediately after, because it waits on exactly what that just cleared.
+  countersNvsService();
   do{//timer freq ctrl
     subDiv=(subDiv+1)&(0xFF);
     if(subDiv!=0)break;

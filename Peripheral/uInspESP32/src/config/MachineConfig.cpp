@@ -414,6 +414,74 @@ namespace MachineConfig
     return ok;
   }
 
+  // ---- sorting counters ---------------------------------------------------
+  //
+  // Stored under their own key, NOT inside the config document, and that is
+  // deliberate. The config JSON is policed by cfgUnknownKeys(): anything this
+  // firmware does not recognise is reported as stale and never read again.
+  // Counters are not settings -- they change constantly, they are written by a
+  // different path at a different time, and mixing them in would mean every
+  // counter write rewrites the operator's calibration too.
+  //
+  // A missing or unreadable record reads as all-zero, which is the safe
+  // direction: a lost count under-reports, it never invents parts.
+
+  static constexpr const char *kCntKey = "cnt_json";
+
+  bool countersLoad(Counters &out)
+  {
+    out = Counters();
+    if (!prefs.begin(kNamespace, /*readOnly=*/true)) return false;
+    if (!prefs.isKey(kCntKey)) { prefs.end(); return false; }
+    String txt = prefs.getString(kCntKey, "");
+    prefs.end();
+    if (txt.length() == 0) return false;
+
+    StaticJsonDocument<384> j;
+    if (deserializeJson(j, txt) != DeserializationError::Ok) return false;
+
+    out.sel1           = j["sel1"]  | 0u;
+    out.sel2           = j["sel2"]  | 0u;
+    out.sel3           = j["sel3"]  | 0u;
+    out.na             = j["na"]    | 0u;
+    out.skip           = j["skip"]  | 0u;
+    out.unanswered     = j["unans"] | 0u;
+    out.sel_suppressed = j["supp"]  | 0u;
+    out.sel1_no_quota  = j["noq"]   | 0u;
+    out.gate_accept    = j["gacc"]  | 0u;
+    return true;
+  }
+
+  bool countersSave(const Counters &c)
+  {
+    StaticJsonDocument<384> j;
+    j["sel1"]  = c.sel1;
+    j["sel2"]  = c.sel2;
+    j["sel3"]  = c.sel3;
+    j["na"]    = c.na;
+    j["skip"]  = c.skip;
+    j["unans"] = c.unanswered;
+    j["supp"]  = c.sel_suppressed;
+    j["noq"]   = c.sel1_no_quota;
+    j["gacc"]  = c.gate_accept;
+    String txt;
+    serializeJson(j, txt);
+
+    if (!prefs.begin(kNamespace, /*readOnly=*/false)) return false;
+    size_t written = prefs.putString(kCntKey, txt);
+    prefs.end();
+    return written == txt.length();
+  }
+
+  bool countersClear()
+  {
+    if (!prefs.begin(kNamespace, /*readOnly=*/false)) return false;
+    bool ok = true;
+    if (prefs.isKey(kCntKey)) ok = prefs.remove(kCntKey);
+    prefs.end();
+    return ok;
+  }
+
   void invalidateHash() { hashDirty = true; }
 
   uint32_t hash()
