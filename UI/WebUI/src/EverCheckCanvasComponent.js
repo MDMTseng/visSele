@@ -2314,7 +2314,15 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   // makes caliper look unreliable on a first try: it will lock
                   // onto noise as readily as onto the part. 60 is what the line
                   // primitives on this machine run at.
-                  edge: { method: 'first', polarity: 'any', nth: 0, min_strength: 60 },
+                  //
+                  // include_range is a perpendicular band in def-mm; 0 means
+                  // "unset" and the core substitutes 2px, which is a pixel
+                  // quantity leaking into a mm field and therefore moves with
+                  // the lens. 0.01mm states it in the field's own unit.
+                  edge: {
+                    method: 'first', polarity: 'any', nth: 0,
+                    min_strength: 60, include_range: 0.01, manual_offset: 0,
+                  },
                   ref: [{
                     id: this.CandEditPointInfo.shape.id,
                     element: this.CandEditPointInfo.shape.type

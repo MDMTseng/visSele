@@ -35,9 +35,14 @@ export function SearchPointPropertySheet({
   const flipLocating = (next) => {
     const patch = { locating: next };
     if (next === 'caliper' && !shape.edge) {
+      // Same seed as a freshly created search_point (see
+      // EverCheckCanvasComponent's create block). Switching an existing point
+      // to caliper is the other way to arrive at caliper for the first time,
+      // and arriving there with min_strength 0 / include_range 0 is what makes
+      // caliper look unreliable on first contact.
       patch.edge = {
-        method: 'first', polarity: 'any', nth: 0, min_strength: 0,
-        include_range: 0, manual_offset: 0,
+        method: 'first', polarity: 'any', nth: 0,
+        min_strength: 60, include_range: 0.01, manual_offset: 0,
       };
     }
     update(patch);
