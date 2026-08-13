@@ -3072,3 +3072,70 @@ silently stops maintaining the clock model.
 
 Not urgent: the cost measured 3.84 us against a 5000 us window. Worth fixing as
 a taper (weight by gap) rather than a threshold if this is ever revisited.
+
+## 計數器的斷線備份:存檔點是「機器停下來」,不是「通訊斷掉」
+
+SEL/NA 計數只活在 RAM,而板子會被一件沒人要求的事重開:主機開啟序列埠會拉
+DTR/RTS,那接在 EN 上。所以核心重啟 = 整班計數消失。韌體**看不到那個復位**——
+它是硬體 EN 脈衝,沒有任何一行程式碼有機會執行——所以存檔必須更早發生。
+
+存檔點是兩個**狀態進入事件**,不是通訊狀態:
+
+- **進 ERROR**(任何原因,不只 `HOST_LINK_TIMEOUT`)。原本只掛 host 錯誤,
+  結果任何其他故障把機器停在 ERROR 之後,主機若先死掉,那一輪的計數就沒了。
+- **進 IDLE**,而且只在 `pre_state` 是執行中狀態時。開機是從 INIT 進 IDLE,
+  在那裡武裝會用剛剛還原出來的值再寫一次 flash,毫無意義。
+
+**不要改成「comm timeout 就存」。** 失去主機是一個*條件*不是*事件*:放在狀態機
+外面每一圈迴圈都成立,必須加 latch,而 latch 寫錯就是在主機離開期間持續寫
+flash——對一個下班關掉核心的操作員來說就是寫到隔天。而且在 IDLE 它寫的位元組
+跟進 IDLE 時存過的一模一樣:IDLE 設 `blockNewDetectedObject`,沒有物件會被收進
+管線,所以沒有 SEL、沒有 NA、`GATE_ACCEPT` 也不動。
+
+### 存檔不等盤面停,而且不該等
+
+`countersNvsService()` 只等**最後一發 SEL 打完**(`SEL_SAFE_AT_MS==0`,有界,
+約一個吹氣寬度)。`SELn_Count` 是在吹氣**開始**時加的,吹到一半存檔會記下一個
+零件還沒落袋的計數——這一段是正確性,不是保守。
+
+刻意**不**等 `PLATE_FREQ_CURRENT==0`。`cfgPersistDeny()` 防的是 flash cache 被
+關掉時、住在 flash 裡的 ISR 被進入就 fault——step 路徑不在此列:`onTimer` 及它
+所觸及的 `StepGo` / `GateSensing` / `Run_ACTS` / `phantomServiceISR` /
+`ActRegister_pipeLineInfo` 全是 `IRAM_ATTR`,始終有映射。等待的代價則是實打實
+的:減速時間是 `plate_freq / plate_accel`,實測 15571Hz、accel 2000Hz/s 就是
+**約 7.8 秒**計數只在 RAM 裡,而主機可能被自動重啟——重啟就重開板子。實測拿掉
+等待後是 **55ms**。
+
+(`CNT_NVS_CLEAR` 仍然等盤面停:`reset_running_stat` 允許跑批中下達,而且它不是
+急救,提早碰 flash 沒有任何好處。)
+
+### `comm_lost_backup` 由主機武裝,開機必定關閉
+
+看門狗原本只看 `host_timeout_ms`,而那是存在 NVS 的數字——一顆從沒接過核心的
+板子只要 NVS 有殘留設定,就會在工作台上把自己停掉。決定看門狗該不該生效的不是
+一個存起來的數字,是**有沒有主機真的在**。`COMM_LOST_BACKUP` 因此是執行期旗標、
+不持久化、每次開機都是 false,由核心的心跳每約 2 秒送一次來武裝。
+
+### 看門狗要涵蓋所有「零件在動」的狀態,不只 READY
+
+原本只測 `INSPECTION_MODE_READY`,於是在機器自己的常態循環裡是瞎的:管線一空就
+會自動進 **RECAL**(`recalService`),SPINUP/CAL 則是進場必經。實測抓到:在 104
+殺掉主機,什麼都沒發生——不停線、不存檔,盤面繼續轉過一個無人應答的分選器。
+現在涵蓋 READY / RECAL / SPINUP / CAL / TEST;IDLE 排除(盤面停了不需要主機),
+ERROR/FATAL 排除(已經停了)。
+
+注意 `INSPECTION_MODE_TEST` 在轉移表裡**沒有** `INSPECTION_ERROR` 這條邊,所以
+在 TEST 觸發時 `SYS_STATE_Transfer` 是靜默的 no-op。
+
+### `cnt_nvs_lat_ms` 不能拿來判斷「有沒有發生新的存檔」
+
+它量的是 `selHoldMs()`——由設定的吹氣寬度算出的固定值——所以**每次存檔都回報幾乎
+同一個數字**(這台機器是 55)。舊記錄和新記錄長得一模一樣。我曾據此下過「這次沒
+存成」的錯誤結論。要分辨請用 **`cnt_nvs_seq`**,它每次存檔遞增並寫進記錄本身。
+
+### 這些欄位在 `get_backup_stat`,不在 `get_running_stat`
+
+把它們加進 `get_running_stat` 會撐爆 `StaticJsonDocument<3072>`(加之前實測
+2886),裝置開始回 `stat_doc_overflow`——丟掉的**不是新欄位,是整包機器狀態**。
+放大那個 document 也不是選項:它是 loop task 上的 static 文件,而 `stack_hwm`
+實測低到 2052。

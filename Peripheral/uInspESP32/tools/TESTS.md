@@ -215,3 +215,38 @@ plate 10000 → 在飛 45 顆 → `rej_busy` 0。看到它要調的是**盤速�
 - **印一個自洽檢查**（像 `static_part_profile.py` 的 `acquisition + e2e vs cam_lat`），
   讓讀的人不用讀完全部才發現這輪是壞的
 - **把限制寫在檔案裡**，不要留給下一個人重新發現
+
+## 斷線備份（comm-lost backup）怎麼測
+
+要驗的是:主機死掉之後,SEL/NA 計數有沒有進 flash,並在板子被重開之後回來。
+
+**先把儀器搞對,不然結論會是錯的。** `cnt_nvs_lat_ms` 量的是 `selHoldMs()`,
+一個由吹氣寬度算出的固定值,所以每次存檔都回報同一個數字(這台是 55)。舊記錄和
+新記錄長得一模一樣。**用 `cnt_nvs_seq`**——它每次存檔遞增,而且寫進記錄本身。
+
+欄位在 `get_backup_stat`,不在 `get_running_stat`(後者已在溢位邊緣)。
+
+```
+{"type":"get_backup_stat"}
+  -> cnt_restored / comm_lost_backup / host_timeout_ms
+     cnt_nvs_seq / cnt_nvs_lat_ms / cnt_nvs_writes / cnt_nvs_fails
+```
+
+流程:
+
+1. `get_backup_stat` 記下 `cnt_nvs_seq`,並確認 `comm_lost_backup` 是 **true**
+   (核心的心跳約 2 秒武裝一次;開機時必定是 false)
+2. 讓機器跑起來、把計數推上去
+3. `kill -9` 掉核心
+4. 等 20 秒,重新啟動核心
+5. 再讀 `get_backup_stat`:`cnt_nvs_seq` 應該 **+1**,`cnt_restored` 應該 true,
+   計數應該回到主機死亡當下的值
+
+**第 4 步一定會重開板子**(開 port 拉 DTR/RTS,見 UINSP_CAVEATS),所以任何只存在
+RAM 的證據——`error_hist`、`cnt_nvs_writes`——都會在這一步消失。這正是那個延遲數字
+被存進 NVS 記錄裡的原因:否則它在唯一需要它的情境下不可觀測。
+
+**記得測 RECAL。** 看門狗曾經只認 `READY`,而機器管線一空就會自己進 RECAL(104)——
+在那裡殺主機,原本什麼都不會發生。輪詢 `get_running_stat` 的 `state` 直到讀到
+104 再殺,不要假設它待在 101。用 `stepper_disable` 可以讓盤面只在邏輯上轉,
+狀態機行為完全相同而工件不會被轉走。

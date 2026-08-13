@@ -1284,3 +1284,37 @@ again:
 `lat_hist` 掛在 `perif_pairing` GS 項目上。設 `INSP_PERIF_CONSOLE=<port>` 後,
 在該 socket 上送 `?lat` 會直接印出分段表(queue/match/inspect/wait/write/e2e,
 加引擎自己的 stage 拆解,牆鐘與行程 CPU 並排)以及 `e2e` 的桶。
+
+## 開啟序列埠會把 ESP32 整台重開(DTR/RTS → EN)
+
+任何**開啟** `/dev/cu.usbserial-0001` 的動作都會 power-cycle 分料機:open 時拉起
+的 DTR/RTS 接在開發板的 auto-reset 電路上。特徵是 `reset_reason_name` 讀到
+`POWERON`、`uptime_s` 從頭開始。
+
+實測 2026-08-13:
+
+- 重整瀏覽器 → WebUI 送 PD CONNECT → 核心重開 port → **uptime 611s → 1s**。
+  盤面停、在飛的物件全丟、計數歸零。
+- **關閉** port 無害(`c_cflag &= ~HUPCL`)。核心被 `kill -9` 之後,板子在沒人
+  持有 port 的 12 秒間活得好好的。
+- **核心重啟仍然會重開板子,而且使用者空間修不掉。** 在 `open()` 之後立刻
+  `TIOCMBIC` 掉 DTR|RTS 做過也量過,完全沒有效果——脈衝發生在 open() 內部,
+  ioctl 來不及。已退回。只有硬體改動(EN 對地加電容 / 切掉復位走線)能根除。
+
+CONNECT 因此改成:同一台裝置且通道還開著就**沿用**,不關不開也不送 RESET
+(`PerifChannel::conn_desc` 比對)。要真的重開請先送 DISCONNECT。
+
+推論任何「板子自己重開了」的問題,先在可疑動作前後各讀一次 `uptime_s`。
+
+## perif 心跳:`ping` 只在鏈路安靜時發,而且它負責武裝裝置的看門狗
+
+`PerifPingThread` 每 100ms 檢查一次,只有在 `last_tx_us` 超過 100ms 沒動時才送
+`{"type":"ping"}`。省的不是頻寬(10/s × 15 bytes 在 230400 baud 上約 1.7%,
+不值一提),是 **`perif_tx_lock`**——那把鎖與報告路徑共用,實測有 140–215ms 的
+等待,跑批時多塞一個定期寫入者會把報告排在 ping 後面。
+
+每 20 拍(約 2 秒)其中一拍改送 `{"type":"comm_lost_backup","on":true}`,這是裝置
+端 host-link 看門狗的武裝開關。**不要改回從 CONNECT handler 送一次**:開 port
+會重開板子,那則訊息落進正在開機的裝置直接消失(同一個 handler 裡連送兩次
+`send_RESET()`,看起來就是這個競態的舊補丁)。掛在心跳上才會自我修復,而且順序
+才對——先讓餵食看門狗的流量跑起來,再武裝它。
