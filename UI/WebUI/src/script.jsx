@@ -33,6 +33,7 @@ import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 // import LocaleProvider from 'antd/lib/locale-provider';
 
 import Modal from "antd/lib/modal";
+import SettingOutlined from "@ant-design/icons/SettingOutlined";
 import Divider from 'antd/lib/divider';
 import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
@@ -351,6 +352,30 @@ function BMPCarouselAugPanel({ aug, send }) {
       <Row enKey="y_offset_en" en={eff.y_offset_en}
            valKey="y_offset_r" val={eff.y_offset_r}
            label="y-wobble radius px" min={0} max={500} step={1}/>
+
+      {/* Exposure simulation. Off by default and driven from HERE, not from
+          the shared camera settings: those belong to the real camera, and
+          feeding its 50us against this simulator's 5000us reference rendered
+          every loaded BMP at 1% brightness -- "the image is super dark" with
+          nothing in the fake-camera UI to explain it. A file already has its
+          exposure in its pixels; simulating another is opt-in. */}
+      <div style={{opacity:0.7, fontSize:12, margin:'6px 0 2px'}}>
+        Exposure simulation <span style={{opacity:0.7}}>(100% = {5000}us)</span>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6}}>
+        <Switch size="small" checked={!!eff.expo_sim_en}
+          onChange={(v)=>set({expo_sim_en:v})}/>
+        <span style={{minWidth:140}}>exposure us</span>
+        <InputNumber size="small" disabled={!eff.expo_sim_en}
+          value={eff.expo_us} min={0} max={20000} step={100}
+          onChange={(v)=>set({expo_us:v})}/>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6}}>
+        <span style={{minWidth:160, marginLeft:34}}>gain x</span>
+        <InputNumber size="small" disabled={!eff.expo_sim_en}
+          value={eff.expo_gain} min={0} max={64} step={0.1}
+          onChange={(v)=>set({expo_gain:v})}/>
+      </div>
     </div>
   );
 }
@@ -361,6 +386,7 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
     { target: "bmp_carousel", action, ...extra }, undefined, {
       resolve: () => {}, reject: () => {},
     });
+  const [augOpen, setAugOpen] = React.useState(false);
   const [folderInput, setFolderInput] = React.useState(
     () => localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || (car?.folder ?? ""));
   // Auto-apply the saved folder once when the drawer mounts, but only if it
@@ -417,7 +443,14 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
         <Button onClick={()=>send("pause")}>⏸ Pause</Button>
         <Button onClick={()=>send("resume")}>▶ Resume</Button>
       </div>
-      <BMPCarouselAugPanel aug={car.aug} send={send} />
+      <div style={{display:'flex', justifyContent:'flex-end'}}>
+        <Button size="small" icon={<SettingOutlined />} title="模擬參數 / simulation"
+          onClick={()=>setAugOpen(true)}>模擬參數</Button>
+      </div>
+      <Modal title="Fake camera — 模擬參數 / simulation" open={augOpen}
+        onCancel={()=>setAugOpen(false)} footer={null} destroyOnClose={false}>
+        <BMPCarouselAugPanel aug={car.aug} send={send} />
+      </Modal>
       <div style={{maxHeight:'40vh', overflowY:'auto', border:'1px solid #333', padding:6}}>
         {files.map((f, i) => (
           <div key={f}

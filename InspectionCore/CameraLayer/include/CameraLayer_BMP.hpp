@@ -15,7 +15,8 @@ class CameraLayer_BMP : public CameraLayer{
     protected:
     int cacheUseCounter=0;
     cv::Mat img_load;
-    const float exp_time_100ExpUs=5000;
+    static constexpr float exp_time_100ExpUs_v=5000;
+    const float exp_time_100ExpUs=exp_time_100ExpUs_v;
     float exp_time_us=1000;
     float a_gain=1;
     float ROI_X=0,ROI_Y=0,ROI_W=9999999,ROI_H=9999999;
@@ -32,6 +33,15 @@ class CameraLayer_BMP : public CameraLayer{
       int   noise_range = 15;              // ±pixel value
       bool  y_offset_en = true;
       float y_offset_r = 50.0f;            // px, wobble amplitude (tied to rotate)
+      // Exposure simulation. OFF by default, which is a deliberate change of
+      // behaviour: this used to be unconditional and driven by the SHARED
+      // camera settings, so a real machine's exposure (50us against a 5000us
+      // reference) rendered every loaded BMP at 1% brightness. A file already
+      // has its exposure baked in; simulating a second one is a thing you opt
+      // into, with the fake camera's own numbers, not the real camera's.
+      bool  expo_sim_en = false;
+      float expo_us = exp_time_100ExpUs_v;  // 100% by definition
+      float expo_gain = 1.0f;
     };
     Augment aug;
     void SetAugment(const Augment &a) { aug = a; }

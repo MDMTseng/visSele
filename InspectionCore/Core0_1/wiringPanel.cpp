@@ -3195,6 +3195,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddNumberToObject(aj, "noise_range",           a.noise_range);
               cJSON_AddBoolToObject  (aj, "y_offset_en",           a.y_offset_en);
               cJSON_AddNumberToObject(aj, "y_offset_r",            a.y_offset_r);
+              cJSON_AddBoolToObject  (aj, "expo_sim_en",           a.expo_sim_en);
+              cJSON_AddNumberToObject(aj, "expo_us",               a.expo_us);
+              cJSON_AddNumberToObject(aj, "expo_gain",             a.expo_gain);
               cJSON_AddItemToObject(cinfo, "aug", aj);
               cJSON_AddItemToObject(cam_1, "carousel", cinfo);
             }
@@ -4311,6 +4314,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             if ((v = cJSON_GetObjectItem(o, "noise_range")))           a.noise_range           = (int)v->valuedouble;
             if ((v = cJSON_GetObjectItem(o, "y_offset_en")))           a.y_offset_en           = cJSON_IsTrue(v);
             if ((v = cJSON_GetObjectItem(o, "y_offset_r")))            a.y_offset_r            = (float)v->valuedouble;
+            if ((v = cJSON_GetObjectItem(o, "expo_sim_en")))           a.expo_sim_en           = cJSON_IsTrue(v);
+            if ((v = cJSON_GetObjectItem(o, "expo_us")))               a.expo_us               = (float)v->valuedouble;
+            if ((v = cJSON_GetObjectItem(o, "expo_gain")))             a.expo_gain             = (float)v->valuedouble;
             car->SetAugment(a);
           }
           // "list" needs no state change; reply built below.

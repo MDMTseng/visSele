@@ -61,7 +61,12 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         brightnessMult = r * (aug.brightness_jitter_pct/100.0f) + 1.0f;
       }
 
-      int tExp=(1<<13)*brightnessMult*exp_time_us*a_gain/exp_time_100ExpUs;
+      // Full brightness unless exposure simulation is asked for. The file's
+      // own exposure is already in its pixels; the real camera's exposure has
+      // nothing to say about it.
+      const float expoMult = aug.expo_sim_en
+          ? (aug.expo_us * aug.expo_gain / exp_time_100ExpUs) : 1.0f;
+      int tExp=(1<<13)*brightnessMult*expoMult;
       LOGI("tExp:%d",tExp);
 
 
