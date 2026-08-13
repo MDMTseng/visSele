@@ -37,7 +37,7 @@ defects**.
 
 ## Tier A — blocks dev complete
 
-### A1. The entire sort path has never been exercised
+### A1. The entire sort path has never been exercised — PENDING
 
 This is the largest hole and everything else is smaller than it.
 
@@ -50,6 +50,13 @@ not move once. Three mechanisms are consequently at zero coverage:
 | `act_cap` | 2324809 grows, **0** caps | needs real verdicts and a tight SEL1 window (win/pitch 1.80) |
 | `SEL_SUPPRESSED` | 0 | same |
 | `FREQ_TXN` / `_TIMEOUT` | 0 / 0 | nothing stages since the band was removed — the whole transaction path is now effectively dead code |
+
+**"All zero" is no longer true, 2026-08-13.** Short operator-driven runs moved
+SEL1 108 -> 191 and SEL3 423 -> 717 against NA 445, so the sort path does
+actuate and the three mechanisms above are no longer at structurally zero
+coverage. This is minutes, not the eight-hour soak, so A1 stays open — but it is
+now "not soaked" rather than "never fired", and the next attempt has no reason
+to expect all-NA.
 
 **The all-NA was never the machine.** A headless core loads no def, so it answers
 NA to every part — the sorting half was not broken, it was never asked. Load the
@@ -90,7 +97,7 @@ still turns, which means de-energising the driver at speed — a loaded plate th
 coasts and can throw parts. **Do not cover it that way.** It belongs to B6 as a
 hook that makes the condition false without touching the driver.
 
-### A2. `rej_width` is a function of plate speed — DIAGNOSED 08-12, fix open
+### A2. `rej_width` is a function of plate speed — DIAGNOSED 08-12, PENDING
 
 | plate freq | edges | rej_width |
 |---|---|---|
@@ -221,10 +228,38 @@ timeout cannot reach it.
 **Action:** three small things, not a rewrite.
 - let `clear_error` out of the latch too, by matching it the same way `RESET` is
   matched — it is the command people actually send
-- count the latch, and keep the count across it, so `error_hist` or a
-  `rx_latched` counter says it happened
+- ~~count the latch, and keep the count across it~~ — DONE. `rx_latch_n` is
+  incremented on the transition (not per byte) and survives `RESET`.
 - decide whether an idle period should resync on its own; the argument against
   is that a latch you can silently leave is a latch that hides corruption
+
+**Updated 2026-08-13.**
+
+The asymmetry is the thing to argue from: a bad CRC is ALREADY forgiven — the
+frame is dropped, `rx_crc_fail` counts it, the machine keeps running (0 in
+426840). The latch is the path taken when the parser cannot frame the bytes at
+all. On the wire those are the same event, garbage, and it is hard to defend one
+of them resyncing while the other goes deaf until a human intervenes. So:
+resync, in line with the CRC path.
+
+But resync ALONE converts this from a visible failure into an invisible one,
+which is the corruption-hiding objection landing rather than being answered.
+Forgiveness plus a counter nobody reads IS the hidden corruption. It needs a
+threshold that escalates: one latch in a window is line noise, a run of them is
+hardware, and those two must not look alike. `rx_latch_n` exists to build that
+on; nothing consumes it yet.
+
+Also: this item's "silent at both ends" is partly an artefact of something else.
+`rx_latch_n` survives `RESET` — but the recovery people actually used was a
+reconnect, and until 08-13 a reconnect reopened the serial port, which pulses
+DTR/RTS and rebooted the board, zeroing every RAM counter including this one.
+Now that CONNECT reuses a live channel, the evidence survives the recovery. A7
+should be easier to observe than the original write-up implies.
+
+Reproduced independently 2026-08-13, by accident: a bare `?` typed at the perif
+console is forwarded verbatim to the device, latched it (`serial_error_locked`),
+and `clear_error` did not clear it — only `{"type":"RESET"}` did. Exactly as
+described, including the part where the obvious command is the wrong one.
 
 ### A6. `report_match_ts` PROMOTED — the host's 450 lines are what is left
 
@@ -358,12 +393,26 @@ The firmware reports it in `get_setup`. Nothing checks it at connect. This is
 the guard against NVS and host drifting apart, and the NVS version-bump incident
 that wiped `io_on_level` is exactly the failure it prevents. Cheap.
 
-### B4. Host heartbeat → safe state
+### B4. ~~Host heartbeat → safe state~~ — DONE 2026-08-13
 
 A hung vision program should stop the line without needing the host's
-cooperation. `max_duration` on the link, every output with a declared safe
-default. Layer 3 item 2 in the roadmap; the framing/CRC half of that item is
-already done and proven (0 failures in 426840 frames).
+cooperation. Built: the core sends a 10/s idle ping (only when the link is
+quiet), `host_timeout_ms` (500 here) turns its absence into
+`HOST_LINK_TIMEOUT`, and that stops the plate and saves the counters to NVS.
+
+Two things it needed that were not obvious:
+
+- The watchdog is licensed by an explicit runtime flag (`comm_lost_backup`),
+  false on every boot and armed by the host's own heartbeat — not by the stored
+  `host_timeout_ms`, or a board that had never met a core would stop itself on
+  the bench.
+- It had to cover every state where parts move, not just READY. RECAL is
+  entered automatically whenever the pipeline empties, and killing the host
+  there did nothing at all until 08-13.
+
+**A7 still is not covered by this, exactly as A7 predicted**: if the parser has
+latched, the ping cannot get in either, so the arming never happens and the
+timeout never fires. The deaf-board case needs A7's own fix.
 
 ### B5. ~~The framing resync path is still untested~~ — TESTED 08-12, FAILS.
 ### Promoted to A7.
@@ -483,3 +532,29 @@ here so that when one does bite, the diagnosis is already written down.
    deleting the feature: the bowl feeder sets the rate, so the gate could not
    shed load. Operator decision, 08-12.)
 6. **B5** falls out of B6 for free once the injector can corrupt a byte.
+
+## A8. Opening the serial port reboots the board — half fixed, half cannot be
+
+Added 2026-08-13. Not on this list before, and it belongs in Tier A on severity
+alone: an everyday action power-cycles a running machine.
+
+Anything that **opens** `/dev/cu.usbserial-0001` pulses DTR/RTS, which on this
+dev board is wired to EN. Signature: `reset_reason_name` `POWERON`, `uptime_s`
+restarting.
+
+- **Browser refresh** — the WebUI sends PD `CONNECT`, the core tore the channel
+  down and reopened the port: **uptime 611s -> 1s**, plate stopped, everything
+  in flight lost. **Fixed** — CONNECT now reuses a channel whose `conn_desc`
+  matches, and sends no RESET on that path.
+- **Closing** the port is harmless (`c_cflag &= ~HUPCL`); a `kill -9` core left
+  the board running for the 12s nobody held the port.
+- **Core restart still reboots it, and userspace cannot stop it.** Clearing
+  DTR|RTS immediately after `open()` was implemented and measured to change
+  nothing — the pulse is inside `open()`, before any ioctl lands. Reverted; do
+  not spend the afternoon on it again. Only a hardware change (cap on EN, or
+  cutting the auto-reset traces) removes it, at the cost of manual BOOT for
+  flashing.
+
+The counter backup (B4) exists because of this last bullet: the machine cannot
+prevent the reset, so it saves before it. See UINSP_CAVEATS for why the save
+hangs off state entry rather than the comm timeout.
