@@ -1159,7 +1159,9 @@ class APPMasterX extends React.Component {
         StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
         this.connInfo=connInfo;
         this.inReconnection=true;
-        this.LoadFileToMachine();
+        // Not every machine keeps its configuration on the host. See
+        // loadSettingFileOnConnect.
+        if(this.loadSettingFileOnConnect()) this.LoadFileToMachine();
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
         {
           resolve: (stacked_pkts,action_channal) => {
@@ -1241,6 +1243,14 @@ class APPMasterX extends React.Component {
           }
         )
       }
+
+      // Does connect() push the host-side settings file INTO the machine?
+      //
+      // LoadFileToMachine is not a read: it ends in machineSetupUpdate(...,true)
+      // -> set_setup, so the file becomes the machine's configuration. That is
+      // right for a device whose settings live on the host, and wrong for one
+      // that owns its own -- which is why it is a question and not a constant.
+      loadSettingFileOnConnect(){ return true; }
 
       LoadFileToMachine(filename = this.settingFilePath) {
         new Promise((resolve, reject) => {
@@ -1547,6 +1557,22 @@ class APPMasterX extends React.Component {
         this._resyncTries=0;
         this._linkResyncTries=0;
       }
+
+      // The v2 board owns its configuration in NVS -- reading is free, writing
+      // is not (see the note at the top of uInspESP32_UI.jsx). So connect()
+      // must NOT push a host-side file into it.
+      //
+      // data/uInspESP32Setting.json has never existed on this machine, so every
+      // connect logged "Cannot read file from: data/uInspESP32Setting.json" and
+      // the push failed harmlessly. That failure was the only thing preventing
+      // it: had the file been created -- the obvious "fix" for the log spam --
+      // each connect would have overwritten the board's live NVS config with
+      // whatever the host file happened to hold. That is the io_on_level wipe,
+      // and on an active-low machine it inverts every output.
+      //
+      // The board is the source of truth. get_setup already syncs the host copy
+      // from it, and the operator writes back deliberately via 存入 NVS.
+      loadSettingFileOnConnect(){ return false; }
 
       resyncRequiresAck(){ return true; }
 
