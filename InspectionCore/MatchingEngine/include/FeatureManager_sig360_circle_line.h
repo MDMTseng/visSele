@@ -294,6 +294,26 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // (the def's own frame, same as localization_include). Populated by trainShapeMatcher.
   std::vector<acv_XY> shape_feat_mm;   // line2Dup gradient features (finest pyramid level)
   std::vector<acv_XY> shape_roi_mm;    // ROI refine sample points
+  // Serialised training result, carried in the def as "__shape_cache".
+  //
+  // The features are a deterministic function of (reference image, extraction
+  // params). Recomputing them on every def load costs the Otsu + connected-
+  // components + extractFeatures pass, and -- worse -- silently re-derives the
+  // template if the extractor ever changes behaviour. Storing them makes a def
+  // describe its own localiser instead of a recipe for rebuilding it.
+  //
+  // The reference IMAGE is deliberately NOT stored: ROI refine reads it from the
+  // sidecar, so the def stays small and the picture stays a picture. That means
+  // the sidecar imread still happens on load -- but a def is loaded once per
+  // inspection session, so it costs nothing per part.
+  //
+  // __ prefix: double-underscore keys are stripped from featureSet_sha1, so a
+  // cached def still hashes identically to the same def without a cache.
+  // (_ref_image_path's single underscore was the bug this avoids.)
+  cJSON *shape_cache_in = NULL;        // borrowed from `root`, valid while root is
+  std::string shape_cache_fp;          // fingerprint of what produced the live set
+  cv::Rect    shape_crop;              // crop of the sidecar that IS the template
+  cv::Point2f shape_origin_in_crop{0, 0};
   std::string reference_image_name;   // optional explicit sidecar PNG (relative)
   std::string def_path;               // full path of the .hydef (for <base>.png)
   std::string ref_image_path;         // transient FULL path to the reference image,

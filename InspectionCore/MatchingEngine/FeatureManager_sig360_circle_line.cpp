@@ -2084,6 +2084,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     // Explicit ROI refine points (object-frame mm flat array). Presence of the key
     // (even an empty array) switches the localizer to user-points mode; absence keeps
     // the legacy auto-selection.
+    // The serialised training result, if this def carries one. Borrowed from
+    // `root` -- valid for as long as the def JSON is, which covers the
+    // trainShapeMatcher() call at the end of parse.
+    this->shape_cache_in = cJSON_GetObjectItem(root, "__shape_cache");
+
     this->roi_pts_mm.clear();
     cJSON *roi_pts = cJSON_GetObjectItem(root, "roi_refine_points");
     this->roi_pts_set = (roi_pts != NULL && cJSON_IsArray(roi_pts));
@@ -6629,6 +6634,152 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 // anchor-morph + caliper measurement as the sig360 path.
 // ===========================================================================
 
+
+// ---------------------------------------------------------------------------
+// __shape_cache: the trained FeatureSet, serialised into the def.
+//
+// What is stored is exactly what extractFeatures produced plus the crop it was
+// produced from -- NOT the reference image. On load we still imread the sidecar
+// (ROI refine needs the pixels) but skip Otsu + connectedComponents + the
+// feature extraction itself, and, more importantly, we get the SAME features
+// every time instead of whatever the current extractor would derive.
+//
+// Flat number arrays rather than packed base64: 218 features is ~12KB of JSON,
+// which is cheap enough that being readable and endian-free wins.
+// ---------------------------------------------------------------------------
+
+// Everything that would change the extracted features. If any of it moves, the
+// cache is stale and we re-extract -- loudly, never silently.
+static std::string shape_cache_fingerprint(const cv::Mat &templ,
+                                           int num_features, const std::vector<int> &pyrT,
+                                           float weak, float strong,
+                                           const std::vector<acv_XY> &roi_pts, bool roi_set,
+                                           float angle_offset_deg)
+{
+  // Image identity: dimensions plus a cheap content sum. Not cryptographic --
+  // it only has to notice "somebody swapped the reference picture".
+  double sum = (templ.empty() ? 0.0 : cv::sum(templ)[0]);
+  char buf[512];
+  std::string pyr;
+  for (size_t i = 0; i < pyrT.size(); i++) pyr += std::to_string(pyrT[i]) + ",";
+  snprintf(buf, sizeof(buf), "v1|%dx%d|%.0f|nf%d|T%s|w%.2f|s%.2f|roi%d:%zu|ao%.4f",
+           templ.cols, templ.rows, sum, num_features, pyr.c_str(), weak, strong,
+           roi_set ? 1 : 0, roi_pts.size(), angle_offset_deg);
+  std::string fp(buf);
+  // The ROI points participate: they change which refine samples are chosen.
+  for (const acv_XY &p : roi_pts)
+  {
+    snprintf(buf, sizeof(buf), "|%.4f,%.4f", p.x, p.y);
+    fp += buf;
+  }
+  return fp;
+}
+
+static cJSON *shape_cache_serialise(const sbm::FeatureSet &fs, const cv::Rect &crop,
+                                    const cv::Point2f &origin_in_crop,
+                                    const std::string &fingerprint)
+{
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "ver", 1);
+  cJSON_AddStringToObject(o, "fp", fingerprint.c_str());
+  cJSON *c = cJSON_AddArrayToObject(o, "crop");
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.x));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.y));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.width));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.height));
+  cJSON *og = cJSON_AddArrayToObject(o, "origin");
+  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.x));
+  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.y));
+  cJSON_AddNumberToObject(o, "tw", fs.templ_width);
+  cJSON_AddNumberToObject(o, "th", fs.templ_height);
+
+  cJSON *lv = cJSON_AddArrayToObject(o, "levels");
+  for (const auto &L : fs.levels)
+  {
+    cJSON *e = cJSON_CreateObject();
+    cJSON_AddNumberToObject(e, "level", L.level);
+    cJSON_AddNumberToObject(e, "tl_x",  L.tl_x);
+    cJSON_AddNumberToObject(e, "tl_y",  L.tl_y);
+    cJSON_AddNumberToObject(e, "w",     L.width);
+    cJSON_AddNumberToObject(e, "h",     L.height);
+    // Flat [x,y,label,theta,cornerness] * n
+    cJSON *f = cJSON_AddArrayToObject(e, "f");
+    for (const auto &ft : L.features)
+    {
+      cJSON_AddItemToArray(f, cJSON_CreateNumber(ft.x));
+      cJSON_AddItemToArray(f, cJSON_CreateNumber(ft.y));
+      cJSON_AddItemToArray(f, cJSON_CreateNumber(ft.label));
+      cJSON_AddItemToArray(f, cJSON_CreateNumber(ft.theta));
+      cJSON_AddItemToArray(f, cJSON_CreateNumber(ft.cornerness));
+    }
+    cJSON_AddItemToArray(lv, e);
+  }
+  return o;
+}
+
+// Returns true only when the cache is present, well-formed AND its fingerprint
+// matches what this def+image would produce now.
+static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
+                             sbm::FeatureSet &fs, cv::Rect &crop,
+                             cv::Point2f &origin_in_crop)
+{
+  if (cache == NULL || !cJSON_IsObject(cache)) return false;
+  cJSON *v = cJSON_GetObjectItem(cache, "ver");
+  if (!v || v->valuedouble != 1) { LOGW("[shape] cache ver mismatch; re-extracting"); return false; }
+  cJSON *fp = cJSON_GetObjectItem(cache, "fp");
+  if (!fp || !cJSON_IsString(fp) || fingerprint != fp->valuestring)
+  {
+    LOGW("[shape] cache stale (reference image or extraction params changed); re-extracting");
+    return false;
+  }
+  cJSON *c = cJSON_GetObjectItem(cache, "crop");
+  cJSON *og = cJSON_GetObjectItem(cache, "origin");
+  cJSON *lv = cJSON_GetObjectItem(cache, "levels");
+  if (!cJSON_IsArray(c) || cJSON_GetArraySize(c) != 4 ||
+      !cJSON_IsArray(og) || cJSON_GetArraySize(og) != 2 ||
+      !cJSON_IsArray(lv) || cJSON_GetArraySize(lv) == 0)
+  { LOGW("[shape] cache malformed; re-extracting"); return false; }
+
+  crop = cv::Rect((int)cJSON_GetArrayItem(c,0)->valuedouble, (int)cJSON_GetArrayItem(c,1)->valuedouble,
+                  (int)cJSON_GetArrayItem(c,2)->valuedouble, (int)cJSON_GetArrayItem(c,3)->valuedouble);
+  origin_in_crop = cv::Point2f((float)cJSON_GetArrayItem(og,0)->valuedouble,
+                               (float)cJSON_GetArrayItem(og,1)->valuedouble);
+  fs.levels.clear();
+  fs.templ_width  = (int)JFetch_NUMBER_ex(cache, "tw", 0);
+  fs.templ_height = (int)JFetch_NUMBER_ex(cache, "th", 0);
+  int nf_total = 0;
+  cJSON *e = NULL;
+  cJSON_ArrayForEach(e, lv)
+  {
+    sbm::FeatureSet::PyramidLevel L;
+    L.level = (int)JFetch_NUMBER_ex(e, "level", 0);
+    L.tl_x  = (int)JFetch_NUMBER_ex(e, "tl_x", 0);
+    L.tl_y  = (int)JFetch_NUMBER_ex(e, "tl_y", 0);
+    L.width = (int)JFetch_NUMBER_ex(e, "w", 0);
+    L.height= (int)JFetch_NUMBER_ex(e, "h", 0);
+    cJSON *f = cJSON_GetObjectItem(e, "f");
+    if (!cJSON_IsArray(f) || (cJSON_GetArraySize(f) % 5) != 0)
+    { LOGW("[shape] cache level malformed; re-extracting"); return false; }
+    int n = cJSON_GetArraySize(f) / 5;
+    L.features.reserve(n);
+    for (int i = 0; i < n; i++)
+    {
+      sbm::FeatureSet::Feature ft;
+      ft.x          = (int)  cJSON_GetArrayItem(f, i*5+0)->valuedouble;
+      ft.y          = (int)  cJSON_GetArrayItem(f, i*5+1)->valuedouble;
+      ft.label      = (int)  cJSON_GetArrayItem(f, i*5+2)->valuedouble;
+      ft.theta      = (float)cJSON_GetArrayItem(f, i*5+3)->valuedouble;
+      ft.cornerness = (float)cJSON_GetArrayItem(f, i*5+4)->valuedouble;
+      L.features.push_back(ft);
+    }
+    nf_total += n;
+    fs.levels.push_back(std::move(L));
+  }
+  if (nf_total < 16) { LOGW("[shape] cache has only %d features; re-extracting", nf_total); return false; }
+  LOGI("[shape] loaded %d features from def cache (no re-extraction)", nf_total);
+  return true;
+}
+
 int FeatureManager_sig360_circle_line::trainShapeMatcher()
 {
   shape_ready = false;
@@ -6949,6 +7100,78 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     fprintf(stderr, "[SHAPE_DBG] crop: [%d,%d %dx%d] origin_in_crop=(%.1f,%.1f)\n",
             cropRect.x, cropRect.y, cropRect.width, cropRect.height, origin_use.x, origin_use.y);
 
+  // Cache hit? Then the crop and the features are already known: take the crop
+  // straight out of the sidecar and skip Otsu + connectedComponents +
+  // extractFeatures entirely. The sidecar imread above still had to happen --
+  // ROI refine matches against those pixels -- but a def is loaded once per
+  // inspection session, so that read costs nothing per part.
+  {
+    const std::string fp = shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
+                                                   shape_weak_thres, shape_strong_thres,
+                                                   roi_pts_mm, roi_pts_set, angle_offset_deg);
+    sbm::FeatureSet cached;
+    cv::Rect ccrop; cv::Point2f corg;
+    if (shape_cache_load(shape_cache_in, fp, cached, ccrop, corg))
+    {
+      // The crop must still be inside this image; a cache whose geometry does
+      // not fit the sidecar is stale in a way the fingerprint cannot see.
+      cv::Rect fitted = ccrop & cv::Rect(0, 0, templ.cols, templ.rows);
+      if (fitted != ccrop || ccrop.width < 16 || ccrop.height < 16)
+      {
+        LOGW("[shape] cached crop [%d,%d %dx%d] does not fit %dx%d image; re-extracting",
+             ccrop.x, ccrop.y, ccrop.width, ccrop.height, templ.cols, templ.rows);
+      }
+      else
+      {
+        cached.templ_image = templ(ccrop).clone();   // ROI refine reads this
+        cached.setOrigin(corg.x, corg.y);
+        cached.setAngleOffset(angle_offset_deg);
+
+        // The user's ROI refine points are NOT part of the cached feature set --
+        // they are a def field, and the def may have been edited since. Rebuild
+        // them here exactly as the extraction path does, from the crop geometry
+        // the cache carries: originPx = crop.tl() + origin_in_crop.
+        //
+        // Skipping this was a real defect, not a cosmetic one: without the
+        // explicit points the matcher silently fell back to auto-selected ones
+        // and the located centre moved 2px (0.028mm) against the extraction
+        // path. A cache that changes the answer is worse than no cache.
+        if (roi_pts_set && def_mmpp > 0)
+        {
+#ifdef SBM_HAS_USER_OPT_POINTS
+          const cv::Point2f orgFull(ccrop.x + corg.x, ccrop.y + corg.y);
+          const float tcx = ccrop.width / 2.0f, tcy = ccrop.height / 2.0f;
+          cached.user_opt_points.clear();
+          cached.user_opt_points.reserve(roi_pts_mm.size());
+          for (const acv_XY &q : roi_pts_mm)
+          {
+            acv_XY full = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
+                                                      acv_XY(orgFull.x, orgFull.y), def_mmpp);
+            cached.user_opt_points.push_back(cv::Point2f(full.x - ccrop.x - tcx,
+                                                         full.y - ccrop.y - tcy));
+          }
+          cached.user_opt_points_set = true;
+          LOGI("[shape] cache + %d explicit ROI refine points (user)",
+               (int)cached.user_opt_points.size());
+#else
+          LOGW("[shape] this build lacks sbm user_opt_points; cached def's explicit "
+               "ROI points IGNORED (auto-selection used)");
+#endif
+        }
+        shapeFeatureSet = std::make_shared<sbm::FeatureSet>(cached);
+        shape_crop = ccrop;
+        shape_origin_in_crop = corg;
+        shape_cache_fp = fp;
+        int nv = buildShapeMatcher(1.0f);
+        if (nv <= 0) { LOGE("[shape] addModel from cache failed (%d)", nv); return -1; }
+        shape_ready = true;
+        LOGI("[shape] from def cache: crop [%d,%d %dx%d] origin(%.1f,%.1f) variants=%d",
+             ccrop.x, ccrop.y, ccrop.width, ccrop.height, corg.x, corg.y, nv);
+        return 0;
+      }
+    }
+  }
+
   try
   {
     sbm::FeatureSet fset = sbm::extractFeatures(templ_use, mask_use, shape_num_features,
@@ -6999,6 +7222,12 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     }
 
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
+    // Remember what produced this set so it can be written into the def.
+    shape_crop = cropRect;
+    shape_origin_in_crop = origin_use;
+    shape_cache_fp = shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
+                                             shape_weak_thres, shape_strong_thres,
+                                             roi_pts_mm, roi_pts_set, angle_offset_deg);
 
     // Build the matcher at teach pixel scale (1.0). FeatureMatching_shape rescales it
     // to def_mmpp/current_mmpp on the first frame for cross-magnification portability.
@@ -7178,6 +7407,12 @@ cJSON *FeatureManager_sig360_circle_line::getShapeFeaturePointsJson()
     cJSON_AddNumberToObject(o, "y", p.y);
     cJSON_AddItemToArray(feats, o);
   }
+  // The cache the UI should persist into the def. Emitted from the live feature
+  // set, so what gets saved is exactly what just ran.
+  if (shapeFeatureSet && !shape_cache_fp.empty())
+    cJSON_AddItemToObject(root, "shape_cache",
+      shape_cache_serialise(*shapeFeatureSet, shape_crop, shape_origin_in_crop, shape_cache_fp));
+
   cJSON *rois = cJSON_AddArrayToObject(root, "roi");
   for (const acv_XY &p : shape_roi_mm)
   {

@@ -387,6 +387,16 @@ export function defFileGeneration(edit_info)
 
   let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
   report.featureSet[0]["__decorator"] = edit_info.__decorator;
+  // 訓練好的 shape 特徵: 由 SBMStudio「生成特徵點」從核心取回, 存進 def 之後載入
+  // 就不必再從參考影像重抽 -- 更重要的是每次載入拿到同一組特徵, 不隨抽取演算法或
+  // 參數變動。參考影像本身仍是 sidecar 沒有內嵌 (ROI refine 會去讀), def 只多幾 KB。
+  // 核心用指紋驗證, 影像或抽取參數變了會自動重抽並記 log, 不會靜默用舊的。
+  //
+  // 必須放在 sha1 之後 -- 跟 __decorator 同樣理由。雙底線鍵不是被 JSum 過濾掉的,
+  // 而是「算完 hash 才加進去」; 放在上面 roi_refine_points 旁邊會讓帶 cache 的 def
+  // 算出不同的 featureSet_sha1, 也就是同一份 def 因為多了快取而被當成另一份。
+  if (edit_info.__shape_cache)
+    report.featureSet[0]["__shape_cache"] = edit_info.__shape_cache;
 
 
 
