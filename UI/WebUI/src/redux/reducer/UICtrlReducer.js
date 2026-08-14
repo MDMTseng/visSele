@@ -179,6 +179,11 @@ function StateReducer(newState, action) {
 
                   newState.edit_info.inspReport = inspReport;
                   inspReport.time_ms = currentTime_ms;
+                  // How long the core took on this frame. It rides on the
+                  // TOP-LEVEL report (action.data) because it describes the
+                  // whole inspection, not one feature set -- but the canvas
+                  // reads reports[0], so carry it across the same way
+                  // subFeatureDefSha1/machine_hash are pulled out above.
                   // Snapshot per-shape def-relevant fields so the def-conf
                   // cal_hits overlay can detect when the user has edited the
                   // def since this inspection ran (stale → don't show hits).
@@ -695,8 +700,24 @@ function StateReducer(newState, action) {
               // it does not belong in the per-object sig360 sub-report that
               // becomes edit_info.inspReport. Keep it where the panel can find
               // it. Undefined against a core that does not send it.
+              // Same reasoning for the timing: how long the core took is a
+              // property of the FRAME, not of any one located object, so it
+              // rides top-level next to station rather than inside the sig360
+              // sub-report. Putting it on inspReport was the first attempt and
+              // it silently never appeared on the live path -- that sub-report
+              // is only built on some branches, while this one runs for every
+              // report from both the editor's II and the live CI/FI stream.
+              //
+              // build_ms is undefined on the live path by design: CI/FI build
+              // the engine once at session open, so there is no per-frame def
+              // build to report.
               newState.edit_info = { ...newState.edit_info,
-                station: GetObjElement(action,["data","station"]) };
+                station: GetObjElement(action,["data","station"]),
+                insp_timing: {
+                  wall_ms:  GetObjElement(action,["data","insp_wall_ms"]),
+                  cpu_ms:   GetObjElement(action,["data","insp_cpu_ms"]),
+                  build_ms: GetObjElement(action,["data","def_build_ms"]),
+                } };
 
               //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
               //is NA/UNSET(may caused by dirty image/ non-single object...), when means to tell insp mach skip this one

@@ -29,6 +29,85 @@ import renderUTIL from './canvas/renderUTIL';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './canvas/renderConst';
 export { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR };
 
+// How long the core took on this frame, drawn just above the image's top-left
+// corner. Shared by the inspection view and the def editor -- one function
+// because it is the same claim about the same number, and two copies would
+// drift the moment one of them gained a field.
+//
+// `imgTopLeft_dev` is the SCREEN position of image pixel (0,0), captured by the
+// caller inside the image's own transform. It has to be taken there: the def
+// editor rectifies the image into the object frame, so by the time the caller
+// is back in world space the origin is the part, not the picture -- drawing at
+// world (0,-y) put this caption straight across the object being measured.
+//
+// Drawn in screen space so it stays upright and one size at every zoom, rather
+// than rotating with a rectified image or growing as you zoom out.
+//
+// Wall AND cpu, never wall alone. The core's own log prints only cpu and says
+// "(CPU time, not wall)" because reading one as the other has caused wrong
+// conclusions here; they differ by roughly the thread count on the parallel
+// stages (measured ~9ms wall against ~34ms cpu).
+function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
+  // edit_DB_info.insp_timing -- top-level on the report, set by the
+  // Inspection_Report reducer next to `station`. Read from the image-paired
+  // snapshot so the number belongs to the frame under it, the same way the
+  // station overlay does.
+  const rp = self.edit_DB_info && self.edit_DB_info.insp_timing;
+  const wall = rp && rp.wall_ms;
+  if (!imgTopLeft_dev || typeof wall !== 'number' || !isFinite(wall)) return;
+
+  const cpu = rp.cpu_ms;
+  let txt = (typeof cpu === 'number' && isFinite(cpu))
+    ? ('檢測 ' + wall.toFixed(1) + ' ms  (CPU ' + cpu.toFixed(1) + ' ms)')
+    : ('檢測 ' + wall.toFixed(1) + ' ms');
+
+  // The def build, appended but NEVER added in. It is the def parse plus the
+  // shape-template train, and on a shape-based def it dwarfs the inspection
+  // (measured 79 ms build against 11 ms inspect) -- which is exactly why it
+  // cannot be folded into a number labelled 檢測. Only the editor ever sends
+  // this: the live path loads the def once per session, so the key is absent
+  // there and the caption correctly says nothing about it.
+  const build = rp.build_ms;
+  if (typeof build === 'number' && isFinite(build) && build >= 5)
+    txt += '   ＋建構 ' + build.toFixed(0) + ' ms/次';
+
+  ctx.save();
+  // setTransform directly, NOT self.setMatrix(): that helper is defined on some
+  // canvas subclasses and not others (the inspection view has no such method),
+  // so calling it from shared code threw and took the whole draw with it --
+  // which in InspectionUI means the frame stops rendering, not just the
+  // caption. identityMat does live on the shared prototype; fall back to the
+  // identity anyway so this can never be the thing that breaks a draw.
+  const I = self.identityMat;
+  if (I) ctx.setTransform(I.a, I.b, I.c, I.d, I.e, I.f);
+  else   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = '600 14px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+
+  // Clamped into the viewport.
+  //
+  // The corner is the anchor, not the rule: you are usually zoomed into the
+  // part, and then the image's top-left is far off-screen -- the caption
+  // tracked it faithfully and was never once visible. Clamping keeps the
+  // intent (top-left, above the content) while keeping the number readable.
+  // The left inset clears the side panel, which is an overlay on top of a
+  // full-width canvas; clamping to the canvas edge put the caption underneath
+  // it, visible as a sliver. Only applies when the corner is off-screen left.
+  const pad = 6, safeLeft = 216;
+  const x = Math.min(Math.max(imgTopLeft_dev.x, safeLeft),
+                     Math.max(safeLeft, self.canvas.width - ctx.measureText(txt).width - pad));
+  const y = Math.min(Math.max(imgTopLeft_dev.y - 4, 18), self.canvas.height - pad);
+
+  // Readable over both the pale plate and whatever falls outside it.
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeText(txt, x, y);
+  ctx.fillStyle = '#00b0ff';
+  ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+
 class EverCheckCanvasComponent_proto {
 
   getMousePos(canvas, evt) {
@@ -1469,6 +1548,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
     
     
+    // Filled in inside the image's own transform below; used by the timing
+    // caption after the restore.
+    let imgTopLeft_dev = null;
     {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
@@ -1489,9 +1571,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
         // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
         ctx.drawImage(this.secCanvas, 0, 0);
-        
+
+        // Screen position of image pixel (0,0), for the timing caption below.
+        // Taken here, inside the image's transform, for the same reason the def
+        // editor takes it here -- this is the only place the picture's own
+        // frame exists.
+        imgTopLeft_dev = (() => { const M = ctx.getTransform(); return { x: M.e, y: M.f }; })();
+
         ctx.strokeStyle = "rgba(120, 120, 120,30)";
-        
+
         ctx.lineWidth = 50/curScale;
         this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
   
@@ -1509,6 +1597,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         
       }
       ctx.restore();
+
+      // Same caption as the def editor, same keys. On this path the core sends
+      // no def_build_ms -- CI/FI build the engine once at session open -- so it
+      // shows the per-frame inspection cost alone, which is the number that
+      // decides whether the line keeps up.
+      drawInspTimingCaption(this, ctx, imgTopLeft_dev);
 
       if(false && this.db_obj.cameraParam && this.db_obj.cameraParam.mask_radius!==undefined)
       {
@@ -1965,6 +2059,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           if (o && o.id !== undefined) this.rUtil.objDetect_by_id[o.id] = o;
     }
 
+    // Filled in below, inside the image's own transform: the screen position of
+    // image pixel (0,0). Declared out here because the caption that uses it is
+    // drawn after the block, in screen space.
+    let imgTopLeft_dev = null;
     {
       let center = this.db_obj.getsig360infoCenter();
       ctx.save();
@@ -2020,13 +2118,24 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       
       ctx.drawImage(this.secCanvas, 0, 0);
 
-      
+      // Where the image's top-left corner ends up on screen.
+      //
+      // Grabbed HERE, inside the block, because this is the only place the
+      // image's own transform exists: by the time we are past the restore()
+      // below, the world origin is the OBJECT origin (the rectify above
+      // rotates and translates into the def's frame), not the picture's
+      // corner. Transforming image pixel (0,0) is just the matrix's (e,f).
+      imgTopLeft_dev = (() => { const M = ctx.getTransform(); return { x: M.e, y: M.f }; })();
+
       ctx.strokeStyle = "rgba(120, 120, 120,30)";
       let curScale=this.camera.GetCameraScale();
       ctx.lineWidth = 200/curScale/scale;
       this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
       ctx.restore();
     }
+
+    // The timing caption (shared with draw_INSP). See drawInspTimingCaption.
+    drawInspTimingCaption(this, ctx, imgTopLeft_dev);
 
     let unitConvert = {
       unit: "mm",//"μm",
