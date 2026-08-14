@@ -1161,15 +1161,20 @@ volatile uint32_t GATE_MIN_DIST_um = 2000;
 // what a distance too small to be one tick used to mean, so the guard is
 // unchanged in behaviour.
 volatile uint32_t GATE_MIN_DIST_STEPS = 0;
-// Objects admitted, never judged, and thrown away by RESET_ALL_PIPELINE_QUEUE.
+// Objects admitted, never inspected, and NA'd by RESET_ALL_PIPELINE_QUEUE.
 //
 // The 8-hour soak ended 393865 admitted against 393537 judged. The 328 missing
 // were almost certainly the in-flight population dropped at teardown -- and
 // "almost certainly" is not a counter, which is the whole complaint: the books
 // did not close, and nothing said whether the gap was a stop or a leak.
 //
-// Counted where they die, so accept == judged + discarded_at_stop + in-flight
-// holds and a residual means something again.
+// NOT a bucket of its own any more. These parts are now counted as NA (see
+// RESET_ALL_PIPELINE_QUEUE), so they are inside `judged`, and the identity is
+//
+//     accept == judged + in-flight
+//
+// with this counter saying how many of the NAs were teardown rather than a real
+// NA verdict. Adding it to `judged` as a separate term would double-count them.
 volatile uint32_t GATE_DISCARD_STOP = 0;
 // Which EDGE of the width window rejected, and how wide the pulses actually are.
 //
@@ -1921,15 +1926,34 @@ struct ACT_SCH act_S;
 
 void RESET_ALL_PIPELINE_QUEUE()
 {
-  // Name the parts that die here, before they are gone.
+  // The in-flight population is NA'd here, not silently dropped.
   //
   // retired==1 means SWITCH already ran and the object has its verdict counted;
   // it is only waiting for the drain to free the slot, so it is not a loss.
-  // Everything else was admitted and will never be judged. See GATE_DISCARD_STOP.
+  //
+  // Everything else was admitted and will never be judged -- and on a stop it
+  // never CAN be, because the host tears down its inspection graph, so no
+  // verdict is ever coming for these tids. Leaving them as a bare discard meant
+  // the books recorded parts that entered and then simply stopped existing,
+  // with no verdict of any kind attached to them.
+  //
+  // NA is both the honest verdict and the safe one. It is exactly what the
+  // SWITCH stage applies for cat 0xFFFF: no actuation, the part stays on the
+  // plate and goes round again -- which is literally what happens to a part
+  // sitting on a plate that is spinning down. Ejecting on a teardown would be
+  // the alternative and it would be a guess about a part nobody measured.
   for(int i=0;i<RBuf.size();i++)
   {
     pipeLineInfo *p=RBuf.getTail(i);
-    if(p && !p->retired) GATE_DISCARD_STOP++;
+    if(p && !p->retired)
+    {
+      // Set the status even though the slot is about to be cleared: anything
+      // holding this pointer (IO trace, a late report landing on the tid)
+      // then reads a part that was answered rather than one in limbo.
+      p->insp_status = 0xFFFF;
+      NA_Count++;
+      GATE_DISCARD_STOP++;
+    }
   }
   RBuf.clear();
   // SWITCH first: it is the stage that PUSHES into ACT_SEL1/ACT_SEL2, so
