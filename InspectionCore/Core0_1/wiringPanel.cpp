@@ -9159,57 +9159,6 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
   return 0;
 }
 
-int testCode()
-{
-  {
-
-    CameraLayer *cam = getCamera(0);
-    // Calib comes from data/lens_calib.json (loaded via WebUI's
-    // calib_files_load RPC), not from the legacy default_camera_param.json.
-    LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
-    LOGI("mmpp:%.9f", calib_bacpac.sampler->mmpP_ideal());
-    acv_XY loca = {1000, 10};
-    LOGI("0__ %f  %f ___", loca.x, loca.y);
-    calib_bacpac.sampler->img2ideal(&loca);
-    LOGI("1__ %f  %f ___", loca.x, loca.y);
-    calib_bacpac.sampler->ideal2img(&loca);
-    LOGI("2__ %f  %f ___", loca.x, loca.y);
-    char *string = ReadText("data/FM_gen.json");
-    matchingEng.ResetFeature();
-    {
-      char *injected_ctx = def_stamp_context(string, "data/FM_gen.json");
-      matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : string);
-      if (injected_ctx) free(injected_ctx);
-    }
-
-    cv::Mat bw_img = cv::imread("data/gen_TEST/B.BMP", cv::IMREAD_COLOR);
-    if (!bw_img.isContinuous()) bw_img = bw_img.clone();
-    int ret = bw_img.empty() ? -1 : 0;
-    ret = ImgInspection(matchingEng, bw_img, &calib_bacpac, calib_bacpac.cam, 1);
-    const FeatureReport *report = skip_inspection() ? NULL
-                                : matchingEng.GetReport();
-    delete (string);
-
-    if (report != NULL)
-    {
-      cJSON *jobj = matchingEng.FeatureReport2Json(report);
-      AttachStaticInfo(jobj, &bpg_pi);
-      //cJSON_AddNumberToObject(jobj, "session_id", session_id);
-      char *jstr = cJSON_Print(jobj);
-      cJSON_Delete(jobj);
-
-      LOGI("__\n %s  \n___", jstr);
-
-      delete jstr;
-    }
-
-    return 1;
-  }
-
-  return 0;
-}
-
-
 char* PatternRest(char *str, const char *pattern)
 {
   for(;;str++,pattern++)
@@ -9634,7 +9583,6 @@ int cp_main(int argc, char **argv)
   // float ddd = calib_bacpac.sampler->getStageLightInfo()->factorSampling(xy);
   // LOGI("ddd:%f",ddd);
   // return 0;
-  // if(testCode()!=0)return -1;
 
 /*auto lambda = []() { LOGV("Hello, Lambda"); };
   lambda();*/
@@ -9710,43 +9658,6 @@ int cp_main(int argc, char **argv)
       LOGE("unknown param[%d]:%s", i, argv[i]);
     }
   }
-
-  if (0)
-  {
-
-    cv::Mat calibImage = cv::imread("data/calibImg.BMP", cv::IMREAD_COLOR);
-    if (calibImage.empty()) return -1;
-    if (!calibImage.isContinuous()) calibImage = calibImage.clone();
-    ImgInspection_DefRead(matchingEng, calibImage, 1, "data/cameraCalibration.json", &calib_bacpac);
-
-    const FeatureReport *report = skip_inspection() ? NULL
-                                : matchingEng.GetReport();
-
-    if (report != NULL)
-    {
-      cJSON *jobj = matchingEng.FeatureReport2Json(report);
-      AttachStaticInfo(jobj, &bpg_pi);
-      //cJSON_AddNumberToObject(jobj, "session_id", session_id);
-      char *jstr = cJSON_Print(jobj);
-      cJSON_Delete(jobj);
-
-      LOGI("__\n %s  \n___", jstr);
-
-      delete jstr;
-    }
-    return 0;
-  }
-
-  // if (0)
-  // {
-  //   char *imgName = "data/BMP_carousel_test/01-02-23-18-53-491.bmp";
-  //   char *defName = "data/calib_test_line.hydef";
-
-  //   //char *imgName="data/calib_cam1_surfaceGo.bmp";
-  //   //char *defName = "data/cameraCalibration.json";
-  //   //
-  //   return simpleTest(imgName, defName);
-  // }
 
   if (0) //GenBG map -- experimental background-feature extraction probe.
   {       // dilate (window-max) -> 4 passes of 20x20 box filter to smooth out

@@ -216,19 +216,6 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
           BPG_Channel("ST",0,{CameraSetting:{exposure}});
 
 
-          if(false&&reportInfo!==undefined&&  reportInfo.data.frames_left==0)
-          {
-            //BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
-            // var enc = new TextEncoder();
-            // BPG_Channel("SV",0,
-            //     {filename:"data/stageLightReport.json"},
-            //     enc.encode(JSON.stringify(finalCalibrationReport, null, 2)))
-
-            // if(onCalibFinished!==undefined)
-            // {
-
-            // }
-          }
         },
         reject:(e)=>{
           clearTimeout(c.triggerTimeout);
