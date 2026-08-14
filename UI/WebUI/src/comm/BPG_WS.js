@@ -148,13 +148,22 @@ function urlConcat(base, add) {
               
               {
 
-                this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0, { filename: "data/default_camera_param.json" },
-                undefined,
-                {resolve: (data,action_channal) => {
-                  log.debug("[ld] default_camera_param.json", data);
-                  action_channal(data);
-
-                }});
+                // data/default_camera_param.json is not loaded here any more.
+                //
+                // It was the legacy calibration pair:
+                //   {"type":"binary_processing_group",
+                //    "reports":[{"type":"camera_calibration","mmpb2b":...,"ppb2b":...}]}
+                // The core stopped reading it (calibration comes from
+                // lens_calib.json + field_calib.json via calib_files_load), the
+                // reducer's "camera_calibration" case was removed with
+                // loadCameraCalibParam, and the file itself is long gone. So this
+                // was a file read over the wire on every core connect whose reply
+                // matched no case and was discarded.
+                //
+                // Worth removing rather than leaving inert: the file carried
+                // mmpb2b 0.0088578486, which disagrees with lens_calib.json's
+                // 0.01388594. Re-creating it would have quietly reintroduced a
+                // third source of scale into the UI.
 
                 let machineSettingPath="data/machine_setting.json";
                 this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0,{ filename: machineSettingPath },

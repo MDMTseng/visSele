@@ -1521,12 +1521,10 @@ const MainUI=()=>{
                 target: "camera_setting_refresh"
               });
 
-              
-              ACT_WS_SEND_BPG("LD", 0, { filename: "data/default_camera_param.json" },
-              undefined, 
-              {resolve: (data,action_channal) => {
-                action_channal(data);
-              }});
+              // The default_camera_param.json load that used to follow is gone --
+              // see the note in comm/BPG_WS.js. Nothing consumed the reply, and
+              // the file's mmpb2b disagreed with lens_calib.json. The camera
+              // setting refresh above is the part of this action that does work.
               setUI_state(s_statesTable.RootSelect)
             }
             // subMenu:[]
