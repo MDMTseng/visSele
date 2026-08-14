@@ -22,7 +22,7 @@
 // gain nothing.
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip } from 'antd';
+import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip, Switch } from 'antd';
 import { AimOutlined, DeleteOutlined, SaveOutlined, PlusOutlined } from '@ant-design/icons';
 import log from 'loglevel';
 
@@ -127,8 +127,9 @@ function RectFields({ rect, onChange, showNumbers }) {
  *   machineSetting  state.UIData.machine_custom_setting
  *   onApply(patch)  push live to the core   (ST { MachineSetting })
  *   onSave(setting) persist                 (SV data/machine_setting.json)
+ *   onBypass(bool)  stop/resume enforcing   (ST { InspAreaBypass })
  */
-export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }) {
+export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave, onBypass }) {
   // Empty until the core's machine setting arrives. Never pre-seeded from a
   // stored draft -- see the note at the top of this file.
   const [region, setRegion] = useState(EMPTY_REGION);
@@ -142,6 +143,22 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   // What the core is actually doing, straight from the report it already sends.
   const station = useSelector((st) =>
     (st && st.UIData && st.UIData.edit_info && st.UIData.edit_info.station) || null);
+  // The report is the truth, but it only exists while an inspection is running.
+  //
+  // Reading the switch purely from `station.area_bypass` looked right and was
+  // unusable: with no session there are no reports, so the switch sat at "off"
+  // no matter what the core had been told. The core logged the change; the UI
+  // showed nothing. That is indistinguishable from a dead control.
+  //
+  // So: echo what we asked for until a report can answer, and let the report
+  // win the moment one arrives. `echo` is not a second source of truth -- it is
+  // only consulted when there is no truth to be had, and it never suppresses a
+  // report that disagrees (which is how another browser's change, or a core
+  // restart that cleared the flag, shows up here).
+  const [bypassEcho, setBypassEcho] = useState(false);
+  const reported = station ? !!station.area_bypass : null;
+  const bypassed = reported !== null ? reported : bypassEcho;
+  const bypassUnconfirmed = reported === null;
   const origin = (station && Array.isArray(station.roi_origin))
     ? { x: Math.round(station.roi_origin[0]), y: Math.round(station.roi_origin[1]) }
     : ORIGIN_UNKNOWN;
@@ -167,6 +184,17 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
     if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function') {
+      // Bypassed -> draw nothing. A box on the image is a claim that the core
+      // is selecting by it, and while the bypass is on that claim is false;
+      // leaving it drawn is the same silent-disagreement bug the origin
+      // conversion above exists to prevent, just with the whole gate instead of
+      // a few pixels. `undefined` is the canvas's own "draw nothing" input.
+      //
+      // Except while aiming: the drag-to-set flow needs to show the box being
+      // dragged, or you drag one and nothing appears, which reads as a broken
+      // control. Setting a region up while the bypass is on is a normal thing
+      // to do -- that is when the machine is not there.
+      if (bypassed && aiming === null) { ecCanvas.SetStationOverlay(undefined); return; }
       // Geometry only. The state (verdict, clean/dirty) is read by the canvas
       // straight out of the image-paired snapshot -- pushing it from here raced
       // the image, because a useEffect and a componentWillUpdate do not order.
@@ -180,7 +208,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
                                       name: c.name || ('淨空' + (i + 1)) })),
       });
     }
-  }, [ecCanvas, region, clean, origin.x, origin.y]);
+  }, [ecCanvas, region, clean, origin.x, origin.y, bypassed, aiming]);
 
   // Drag-to-set. The canvas clears its own callback after one drag, so aiming
   // is a one-shot: press the target, drag once, done. That is deliberate --
@@ -257,6 +285,13 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
       <span style={{ color: (region.w > 0 && region.h > 0) ? '#00b0ff' : '#888' }}>{summary}</span>
       {clean.length ? <span style={{ color: '#ffab00' }}>· 淨空 {clean.length}</span> : null}
       {dirty ? <span style={{ color: '#d48806' }}>· 未存檔</span> : null}
+      {/* The panel is collapsed by default, so this has to be legible without
+          opening it. A machine that has quietly stopped enforcing its station
+          is exactly the state nobody should have to expand a panel to find. */}
+      {/* Kept short on purpose: the sidebar is ~225px and the summary already
+          carries the geometry and the clean-region count, so a longer label
+          wraps the header onto a second line. */}
+      {bypassed ? <span style={{ color: '#c33', fontWeight: 'bold' }}>· 判定暫停</span> : null}
     </div>
   );
 
@@ -283,8 +318,47 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     && Math.round(station.region.x) === region.x && Math.round(station.region.y) === region.y
     && Math.round(station.region.w) === region.w && Math.round(station.region.h) === region.h;
 
+  // The bypass control. Its state is read from the REPORT, never from local
+  // state, for the same reason the geometry is: this is a property of the core,
+  // and a switch that remembers what this browser last clicked would say "off"
+  // on a machine that another browser -- or the previous session, since the core
+  // latches it until restart -- left on. The switch shows what is happening.
+  const bypassRow = (
+    <Row>
+      <Switch size="small" checked={bypassed}
+        onChange={(v) => { setBypassEcho(v); if (onBypass) onBypass(v); }} />
+      <span style={{ fontSize: 12, color: bypassed ? '#c33' : '#888' }}>暫停區域判定</span>
+      {/* Says which of the two it is showing. Without this the switch cannot
+          distinguish "the core confirms this" from "nobody has reported yet". */}
+      {bypassUnconfirmed ? (
+        <span style={{ fontSize: 11, color: '#888' }}>(未執行檢測,尚無回報)</span>
+      ) : null}
+      <Q>
+        暫時停用<b>工位框</b>與<b>淨空區域</b>兩項判定,讓不在工位上的影像也能量測。<br/><br/>
+        用於<b>沒有機台</b>時的開發與除錯:存檔影像裡的零件不在工位上,工位框會把每顆都丟掉
+        (報告變空的),淨空區域則因為畫面完全不同而判定有雜物,每一幀都變成 NA。看起來像是
+        規格檔壞了,其實兩項都只是在描述機台本身。<br/><br/>
+        <b>只存在於這次執行</b>:不寫入 machine_setting.json,核心重啟即恢復。但在重啟前會一直
+        維持停用狀態,包含別的瀏覽器連進來的時候。
+      </Q>
+    </Row>
+  );
+
   return <div style={{ padding: '0 8px 4px', textAlign: 'left', whiteSpace: 'normal' }}>
     {header}
+
+    {bypassRow}
+    {/* Stated as a banner and not just a switch position: while this is on the
+        machine is not doing the job the station exists for. It also has to say
+        the overlay is gone -- an empty image is otherwise indistinguishable
+        from a station that was never set up. */}
+    {bypassed ? (
+      <div style={{ fontSize: 11, color: '#c33', border: '1px solid #c33',
+                    borderRadius: 3, padding: '3px 6px', margin: '3px 0' }}>
+        工位框與淨空區域<b>目前不生效</b>,畫面上的框也一併隱藏(設定仍在,按「拉框設定」
+        會暫時顯示)。核心重啟即恢復。
+      </div>
+    ) : null}
 
     <Row>
       <AimBtn target="region">拉框設定</AimBtn>
