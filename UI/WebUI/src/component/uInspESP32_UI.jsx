@@ -257,7 +257,9 @@ const fmtDur = (ms) => {
 //
 // Returns a promise resolving to null on success, or a string saying why it
 // declined -- callers show that, they do not swallow it.
-function runSequence(api, on, speed) {
+// Exported because InspectionUI has to stop the machine on the way out, and the
+// comment above is the reason it must not write its own version of this.
+export function runSequence(api, on, speed) {
   if (!on) {
     api.exitInspMode();
     api.machineSetupUpdate({ plate_freq: 0 }, false, true);

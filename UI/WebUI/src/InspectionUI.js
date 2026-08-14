@@ -11,7 +11,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import dateFormat from "dateformat";
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI ,SLID_UI} from './component/rdxComponent.jsx';
-import { UINSP_ESP32_MINI, UINSP_ESP32_UI } from './component/uInspESP32_UI.jsx';
+import { UINSP_ESP32_MINI, UINSP_ESP32_UI, runSequence } from './component/uInspESP32_UI.jsx';
 import { StationRegionPanel } from './component/StationRegionPanel.jsx';
 import dclone from 'clone';
 import Color from 'color';
@@ -848,6 +848,13 @@ class ObjInfoList extends React.Component {
             this.props.WSCMD_CB("ST", 0,
               { MachineSetting: { ...(this.props.machineSetting||{}), ...patch } });
           }}
+          onBypass={(on) => {
+            // Runtime only, and deliberately NOT part of the MachineSetting
+            // patch above: that one gets written to machine_setting.json by
+            // onSave, and a bypass that persists is a machine that has silently
+            // stopped enforcing its station. The core drops it on restart.
+            this.props.WSCMD_CB("ST", 0, { InspAreaBypass: !!on });
+          }}
           onSave={(setting) => {
             let _s = { ...setting };
             Object.keys(_s).forEach(k => { if (k.startsWith("_")) delete _s[k]; });
@@ -942,7 +949,10 @@ class ObjInfoList extends React.Component {
         {/* The full setup panel, on demand. Mounted only while open so its 1Hz
             poll does not share the serial link with the strip above for the
             whole shift. */}
-        <Modal open={this.state.uInspESP32_popUp === true} title="全檢設備 v2 (uInspESP32)"
+        {/* `visible`, not `open` -- antd 4.22.8 (see the note on the fake-camera
+            modal in script.jsx). This one was dead the same way: 設定/診斷 set
+            the state and no panel ever appeared. */}
+        <Modal visible={this.state.uInspESP32_popUp === true} title="全檢設備 v2 (uInspESP32)"
           onCancel={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
           onOk={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
           footer={null} destroyOnClose width={560}>
@@ -1956,6 +1966,29 @@ class APP_INSP_MODE extends React.Component {
       api.send({type: "exit_inspection"},
       (ret)=>{},(e)=>console.log(e));
     })
+
+    // Stop the v2 board too.
+    //
+    // The line above only reaches uInspMEGA: `exit_inspection` is handled in
+    // MEGA_W5500_FullInsp.cpp and nowhere else, while the v2 board's command is
+    // `exit_insp_mode` on a different API. So on a uInspESP32 machine, leaving
+    // this screen left the PLATE RUNNING while the two lines below tore down
+    // the inspection -- the CI stream closed and the camera went back to
+    // trigger_mode 1. Parts kept being fed and registered with nothing left to
+    // judge them: every one goes SKIP/UNSET, CONSEC_UNANSWERED climbs, and with
+    // UNANSWERED_POLICY==1 the machine faults OBJECT_HAS_NO_INSP_RESULT after
+    // UNANSWERED_STOP_AFTER parts. An operator walking off this screen was
+    // enough to do it.
+    //
+    // runSequence is the SAME stop the sidebar strip and the setup panel use
+    // (exit_insp_mode + plate_freq 0), imported rather than re-written -- a
+    // third copy of this sequence is exactly what its own comment warns about.
+    this.props.ACT_WS_GET_OBJ(this.props.uInspESP32_API_ID,(api)=>{
+      if(api===undefined)return;   // not a v2 machine; nothing to stop
+      try { runSequence(api, false); }
+      catch(e){ log.error("[insp-exit] uInspESP32 stop failed", e); }
+    })
+
     this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: false } });
     // Stop the camera flooding when leaving InspMode.
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
@@ -2990,6 +3023,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
 
     SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
     uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
+    // Needed to reach the v2 board's API on the way out -- see componentWillUnmount.
+    uInspESP32_API_ID:state.ConnInfo.uInspESP32_API_ID,
 
     CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
     
