@@ -447,7 +447,12 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
         <Button size="small" icon={<SettingOutlined />} title="模擬參數 / simulation"
           onClick={()=>setAugOpen(true)}>模擬參數</Button>
       </div>
-      <Modal title="Fake camera — 模擬參數 / simulation" open={augOpen}
+      {/* `visible`, not `open`. antd renamed this prop in 4.23.0 and this
+          project is pinned at 4.22.8, where Modal.js reads props.visible and
+          ignores `open` entirely -- so the button set the state, the state was
+          correct, and nothing appeared. Nothing warns: an unknown prop is just
+          dropped. Every other Modal/Drawer in this codebase uses `visible`. */}
+      <Modal title="Fake camera — 模擬參數 / simulation" visible={augOpen}
         onCancel={()=>setAugOpen(false)} footer={null} destroyOnClose={false}>
         <BMPCarouselAugPanel aug={car.aug} send={send} />
       </Modal>
@@ -890,12 +895,33 @@ class APPMasterX extends React.Component {
 
               let isInOperation=true;
 
-              if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              // A soft camera when soft cameras are not allowed is a POLICY
+              // mismatch, not a fault -- and reconnecting cannot fix it.
+              //
+              // This is what produced the reconnect livelock: the core hands
+              // back the same CameraLayer_BMP_carousel every time (it is what
+              // the machine has, or what FORCE_BMP_CAROUSEL pins), the UI reads
+              // it as "not in operation" again, and asks again. The core's 3s
+              // rate limit turned that into `camera_ez_reconnect: ignored` on a
+              // loop, so the reconnect could never even run, the blocking
+              // 相機重連中 modal never cleared, and the whole UI was unusable
+              // against a fake camera. Retrying a deterministic answer is the
+              // bug; the rate limit was only hiding its cost.
+              //
+              // Kept separate from the fault case below because the two want
+              // opposite handling: a fault should be retried, this should be
+              // shown to a human. The modal already carries the one control
+              // that resolves it -- 跳過相機連線 sets ALLOW_SOFT_CAM.
+              let softCamBlocked = (cam0!==undefined
+                && comp.props.System_Setting.ALLOW_SOFT_CAM==false
+                && cam0.includes("CameraLayer_BMP"));
+
+              if(cam0===undefined || softCamBlocked)
               {
                 isInOperation=false;
               }
 
-              
+
               if(GetObjElement(camInfo,[0,"cam_status"])!=0)
               {
                 isInOperation=false;
@@ -905,10 +931,25 @@ class APPMasterX extends React.Component {
               {
                 this.isConnected=false;
                 StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
-                
+
                 this.camDisconnectionAction();
-                
-                this.reconnection();
+
+                if(softCamBlocked)
+                {
+                  // Say it once per transition, not once per 2s poll.
+                  if(this.softCamWarned!==true)
+                  {
+                    this.softCamWarned=true;
+                    log.warn("[queryCam] soft camera (" + cam0 + ") with ALLOW_SOFT_CAM=false"
+                      + " -- NOT reconnecting: the core would return the same camera."
+                      + " Press 跳過相機連線 to work against it.");
+                  }
+                }
+                else
+                {
+                  this.softCamWarned=false;
+                  this.reconnection();
+                }
                 reject(stacked_pkts,P);
                 // this.queryTimeOut=setTimeout(()=>{
                 //   this.queryCam(timeout_ms);
@@ -917,6 +958,7 @@ class APPMasterX extends React.Component {
               else
               {
                 
+                this.softCamWarned=false;
                 let camName=GetObjElement(camInfo,[0,"name"]);
                 // StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CAM1_ID,data:camInfo});
                 let ev_type=(this.isConnected===false)?"WS_CONNECTED":"WS_UPDATE";
@@ -952,6 +994,23 @@ class APPMasterX extends React.Component {
         {
           return false;
         }
+
+        // Never ask faster than the core will answer.
+        //
+        // wiringPanel's RC handler drops any camera_ez_reconnect inside 3s of
+        // the last one, so a client that retries faster gets nothing but
+        // `ignored, less than 3s since the last one` -- the reconnect it is
+        // waiting for never actually runs. Mirroring the interval here (with a
+        // margin) means every request we send is one the core will act on.
+        // The core's limit stays where it is: it guards against ALL clients,
+        // and this one only governs itself.
+        const RC_MIN_INTERVAL_MS = 3500;
+        const now = Date.now();
+        if(this.lastReconnAt!==undefined && (now-this.lastReconnAt) < RC_MIN_INTERVAL_MS)
+        {
+          return false;
+        }
+        this.lastReconnAt = now;
         this.isInReconn=true;
 
 
@@ -961,15 +1020,18 @@ class APPMasterX extends React.Component {
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "RC", 0, {
           target: "camera_ez_reconnect"
         },
-        undefined, { 
+        undefined, {
           resolve:(ret)=>{
             this.isInReconn=false;
-
-            
-            this._queryCam(
-              ()=>{},
-              ()=>{})
-          }, 
+            // No immediate re-query here.
+            //
+            // It used to call _queryCam() straight from this callback, which
+            // re-entered the not-in-operation branch and fired the next
+            // reconnect with ZERO delay -- the tight half of the livelock, and
+            // the reason requests arrived inside the core's 3s window. The
+            // poll loop in queryCam() already re-queries on its own schedule,
+            // so the reconnect result is picked up there.
+          },
           reject:()=>{
             this.isInReconn=false;
           } })
