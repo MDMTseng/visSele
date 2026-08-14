@@ -7,8 +7,12 @@ import 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+// The device's setup document is grouped (plate/gate/cam/skip_policy); this UI
+// speaks flat. Translating at the wire is the whole fix -- see uinspCfg.js.
+import { regroup as uinspRegroup, flatten as uinspFlatten } from './uinspCfg';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
+import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -29,6 +33,7 @@ import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 // import LocaleProvider from 'antd/lib/locale-provider';
 
 import Modal from "antd/lib/modal";
+import SettingOutlined from "@ant-design/icons/SettingOutlined";
 import Divider from 'antd/lib/divider';
 import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
@@ -78,6 +83,7 @@ import { initLogger, mkLog } from 'UTIL/logger';
 initLogger();
 const log = mkLog('ui.main');
 const dbLog = mkLog('comm.db'); // DB_WS / SLID API queue chatter
+const perifLog = mkLog('ui.uinsp2'); // uInspESP32 link health (2nd-gen sorter only)
 
 // import moment from 'moment';
 // import 'moment/locale/fr';
@@ -202,8 +208,9 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測DB",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
+    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.uInspESP32_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
     ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
+    ["全檢設備v2",     ConnInfo.uInspESP32_API_ID_CONN_INFO, <RobotOutlined />,false],
     ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
     ["CNC設備",       ConnInfo.CNC_API_ID_CONN_INFO,    <RobotOutlined />,false],
     ]
@@ -345,6 +352,30 @@ function BMPCarouselAugPanel({ aug, send }) {
       <Row enKey="y_offset_en" en={eff.y_offset_en}
            valKey="y_offset_r" val={eff.y_offset_r}
            label="y-wobble radius px" min={0} max={500} step={1}/>
+
+      {/* Exposure simulation. Off by default and driven from HERE, not from
+          the shared camera settings: those belong to the real camera, and
+          feeding its 50us against this simulator's 5000us reference rendered
+          every loaded BMP at 1% brightness -- "the image is super dark" with
+          nothing in the fake-camera UI to explain it. A file already has its
+          exposure in its pixels; simulating another is opt-in. */}
+      <div style={{opacity:0.7, fontSize:12, margin:'6px 0 2px'}}>
+        Exposure simulation <span style={{opacity:0.7}}>(100% = {5000}us)</span>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6}}>
+        <Switch size="small" checked={!!eff.expo_sim_en}
+          onChange={(v)=>set({expo_sim_en:v})}/>
+        <span style={{minWidth:140}}>exposure us</span>
+        <InputNumber size="small" disabled={!eff.expo_sim_en}
+          value={eff.expo_us} min={0} max={20000} step={100}
+          onChange={(v)=>set({expo_us:v})}/>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6}}>
+        <span style={{minWidth:160, marginLeft:34}}>gain x</span>
+        <InputNumber size="small" disabled={!eff.expo_sim_en}
+          value={eff.expo_gain} min={0} max={64} step={0.1}
+          onChange={(v)=>set({expo_gain:v})}/>
+      </div>
     </div>
   );
 }
@@ -355,6 +386,7 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
     { target: "bmp_carousel", action, ...extra }, undefined, {
       resolve: () => {}, reject: () => {},
     });
+  const [augOpen, setAugOpen] = React.useState(false);
   const [folderInput, setFolderInput] = React.useState(
     () => localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || (car?.folder ?? ""));
   // Auto-apply the saved folder once when the drawer mounts, but only if it
@@ -411,7 +443,19 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
         <Button onClick={()=>send("pause")}>⏸ Pause</Button>
         <Button onClick={()=>send("resume")}>▶ Resume</Button>
       </div>
-      <BMPCarouselAugPanel aug={car.aug} send={send} />
+      <div style={{display:'flex', justifyContent:'flex-end'}}>
+        <Button size="small" icon={<SettingOutlined />} title="模擬參數 / simulation"
+          onClick={()=>setAugOpen(true)}>模擬參數</Button>
+      </div>
+      {/* `visible`, not `open`. antd renamed this prop in 4.23.0 and this
+          project is pinned at 4.22.8, where Modal.js reads props.visible and
+          ignores `open` entirely -- so the button set the state, the state was
+          correct, and nothing appeared. Nothing warns: an unknown prop is just
+          dropped. Every other Modal/Drawer in this codebase uses `visible`. */}
+      <Modal title="Fake camera — 模擬參數 / simulation" visible={augOpen}
+        onCancel={()=>setAugOpen(false)} footer={null} destroyOnClose={false}>
+        <BMPCarouselAugPanel aug={car.aug} send={send} />
+      </Modal>
       <div style={{maxHeight:'40vh', overflowY:'auto', border:'1px solid #333', padding:6}}>
         {files.map((f, i) => (
           <div key={f}
@@ -851,12 +895,33 @@ class APPMasterX extends React.Component {
 
               let isInOperation=true;
 
-              if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              // A soft camera when soft cameras are not allowed is a POLICY
+              // mismatch, not a fault -- and reconnecting cannot fix it.
+              //
+              // This is what produced the reconnect livelock: the core hands
+              // back the same CameraLayer_BMP_carousel every time (it is what
+              // the machine has, or what FORCE_BMP_CAROUSEL pins), the UI reads
+              // it as "not in operation" again, and asks again. The core's 3s
+              // rate limit turned that into `camera_ez_reconnect: ignored` on a
+              // loop, so the reconnect could never even run, the blocking
+              // 相機重連中 modal never cleared, and the whole UI was unusable
+              // against a fake camera. Retrying a deterministic answer is the
+              // bug; the rate limit was only hiding its cost.
+              //
+              // Kept separate from the fault case below because the two want
+              // opposite handling: a fault should be retried, this should be
+              // shown to a human. The modal already carries the one control
+              // that resolves it -- 跳過相機連線 sets ALLOW_SOFT_CAM.
+              let softCamBlocked = (cam0!==undefined
+                && comp.props.System_Setting.ALLOW_SOFT_CAM==false
+                && cam0.includes("CameraLayer_BMP"));
+
+              if(cam0===undefined || softCamBlocked)
               {
                 isInOperation=false;
               }
 
-              
+
               if(GetObjElement(camInfo,[0,"cam_status"])!=0)
               {
                 isInOperation=false;
@@ -866,10 +931,25 @@ class APPMasterX extends React.Component {
               {
                 this.isConnected=false;
                 StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
-                
+
                 this.camDisconnectionAction();
-                
-                this.reconnection();
+
+                if(softCamBlocked)
+                {
+                  // Say it once per transition, not once per 2s poll.
+                  if(this.softCamWarned!==true)
+                  {
+                    this.softCamWarned=true;
+                    log.warn("[queryCam] soft camera (" + cam0 + ") with ALLOW_SOFT_CAM=false"
+                      + " -- NOT reconnecting: the core would return the same camera."
+                      + " Press 跳過相機連線 to work against it.");
+                  }
+                }
+                else
+                {
+                  this.softCamWarned=false;
+                  this.reconnection();
+                }
                 reject(stacked_pkts,P);
                 // this.queryTimeOut=setTimeout(()=>{
                 //   this.queryCam(timeout_ms);
@@ -878,6 +958,7 @@ class APPMasterX extends React.Component {
               else
               {
                 
+                this.softCamWarned=false;
                 let camName=GetObjElement(camInfo,[0,"name"]);
                 // StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CAM1_ID,data:camInfo});
                 let ev_type=(this.isConnected===false)?"WS_CONNECTED":"WS_UPDATE";
@@ -913,6 +994,23 @@ class APPMasterX extends React.Component {
         {
           return false;
         }
+
+        // Never ask faster than the core will answer.
+        //
+        // wiringPanel's RC handler drops any camera_ez_reconnect inside 3s of
+        // the last one, so a client that retries faster gets nothing but
+        // `ignored, less than 3s since the last one` -- the reconnect it is
+        // waiting for never actually runs. Mirroring the interval here (with a
+        // margin) means every request we send is one the core will act on.
+        // The core's limit stays where it is: it guards against ALL clients,
+        // and this one only governs itself.
+        const RC_MIN_INTERVAL_MS = 3500;
+        const now = Date.now();
+        if(this.lastReconnAt!==undefined && (now-this.lastReconnAt) < RC_MIN_INTERVAL_MS)
+        {
+          return false;
+        }
+        this.lastReconnAt = now;
         this.isInReconn=true;
 
 
@@ -922,15 +1020,18 @@ class APPMasterX extends React.Component {
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "RC", 0, {
           target: "camera_ez_reconnect"
         },
-        undefined, { 
+        undefined, {
           resolve:(ret)=>{
             this.isInReconn=false;
-
-            
-            this._queryCam(
-              ()=>{},
-              ()=>{})
-          }, 
+            // No immediate re-query here.
+            //
+            // It used to call _queryCam() straight from this callback, which
+            // re-entered the not-in-operation branch and fired the next
+            // reconnect with ZERO delay -- the tight half of the livelock, and
+            // the reason requests arrived inside the core's 3s window. The
+            // poll loop in queryCam() already re-queries on its own schedule,
+            // so the reconnect result is picked up there.
+          },
           reject:()=>{
             this.isInReconn=false;
           } })
@@ -1173,7 +1274,7 @@ class APPMasterX extends React.Component {
       {
         this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
         StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
-        this.send({type:"set_setup",...newMachineInfo},
+        this.send(uinspRegroup({type:"set_setup",...newMachineInfo}),
         (ret)=>{
           log.debug("[machine-setup] set_setup ack", ret);
           //HACK: just assume it will work
@@ -1193,7 +1294,10 @@ class APPMasterX extends React.Component {
           delete ret["id"];
           delete ret["st"];
           delete ret["ack"];
-          this.machineSetup=ret;
+          // Flatten before anything downstream looks at it: SETTABLE_KEYS is a
+          // list of flat names, so a grouped reply matched none of them and the
+          // entire configuration was filed as read-only device state.
+          this.machineSetup=uinspFlatten(ret);
           this.machineSetupUpdate(this.machineSetup,true);
         },(e)=>console.log(e));
       }
@@ -1427,15 +1531,213 @@ class APPMasterX extends React.Component {
     // plateFreq rather than pulse_hz, stage_pulse_offset for the per-machine
     // camera/light/selector timing, and an explicit inspection-mode state
     // machine. get_setup answers with ack, so the resync check is worth having.
+    // Consecutive RESET attempts before falling back to a port reopen. Two is
+    // enough for a one-off line glitch; more would just delay the real recovery
+    // when the device is genuinely gone (unplugged, crashed, powered down).
+    const LINK_RESYNC_MAX = 2;
+
     class  uInspESP32_API extends Perif_API_Base
     {
       constructor(id,settingFilePath="data/uInspESP32Setting.json",pg_id_channel=10027)
       {
         super(id,settingFilePath,pg_id_channel);
         this.runningStat=undefined;
+        this.deviceState={};
+        this.cfg={};
+        this._resyncTries=0;
+        this._linkResyncTries=0;
       }
 
       resyncRequiresAck(){ return true; }
+
+      // QA/bring-up: flip the frame<->object pairing algorithm at runtime.
+      // The switch exists so the two can be compared on the same machine with
+      // the same input; reading it only at CONNECT made that comparison cost a
+      // board reset, which is why it had never been run.
+      // Ignore the real gate sensor while phantom pulses still register.
+      // Lets a calibration pulse be fired into a clean lane -- no real part can
+      // land in the middle of the measurement. Parts are not lost; they ride
+      // round again.
+      setGateDisable(on){ return this.sendP({type:"set_gate_disable", on:!!on}); }
+      trigPhantomPulse(){ return this.sendP({type:"trig_phantom_pulse"}); }
+
+      setPairingMode(mode)
+      {
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0,
+          { type:"PAIRING_MODE", mode, CONN_ID:this.CONN_ID },
+          undefined, { resolve:d=>d, reject:d=>d });
+      }
+
+      // Try to un-wedge the serial link before resorting to reopening the port.
+      //
+      // The base watchdog reconnects after two unanswered PINGs, and reconnect
+      // reopens the port, and opening the port toggles DTR, which hard-resets
+      // the ESP32. So one corrupted byte on the wire costs a board reset, every
+      // object in flight, and the whole run. Observed exactly that: a bad frame,
+      // two silent PINGs, channel torn down 9s later, run over at 196 parts.
+      //
+      // The device parser leaves its framing-error state on one thing only --
+      // the RESET_PACKET byte sequence -- which is why a reconnect works: it
+      // sends RESET on the way up. The core can send that alone, without
+      // touching the port, so try that first and give the link a cycle to come
+      // back. Only if it stays silent is the expensive reset justified.
+      //
+      // Overridden here rather than in Perif_API_Base because that watchdog is
+      // shared with the 1st-gen peripherals, whose devices do not necessarily
+      // treat RESET the same way.
+      _sendPing()
+      {
+        if(this.CONN_ID===undefined)return;
+
+        if(this.PINGCount>=2)
+        {
+          if(this._linkResyncTries<LINK_RESYNC_MAX)
+          {
+            this._linkResyncTries++;
+            perifLog.warn("[link] PING unanswered -- trying RESET before reconnect",
+                          { attempt:this._linkResyncTries, max:LINK_RESYNC_MAX });
+            comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0,
+              { type:"RESYNC", CONN_ID:this.CONN_ID },
+              undefined, { resolve:d=>d, reject:d=>d });
+            this.PINGCount=0;      // give the link one more cycle to answer
+            this.triggerPing();
+            return;
+          }
+          perifLog.error("[link] RESET did not recover the link -- reconnecting "
+                         + "(this resets the board and ends the run)");
+          this._linkResyncTries=0;
+        }
+        else if(this.PINGCount===0)
+        {
+          this._linkResyncTries=0;   // link is healthy again
+        }
+
+        super._sendPing();
+      }
+
+      // Opening the serial port toggles DTR, which hard-resets the ESP32. The
+      // host then has a live port to a board that is still booting, and the
+      // first command out of connect() lands in that window: the board reports
+      // it as recv_ERROR:2 with the frame mangled a dozen bytes in
+      // ({'type':'get_s<garbage>), because its UART is not up yet. PING survives
+      // this by accident -- it repeats every 3s, so one eventually lands. The
+      // one-shot config resync does not, which is why the machine panel stayed
+      // blank forever while the link itself looked perfectly healthy.
+      //
+      // So retry until the config actually arrives instead of trusting the first
+      // attempt. Cheap (one small command), bounded, and self-cancelling the
+      // moment cfg is populated.
+      static RESYNC_RETRY_MS=1000;
+      static RESYNC_MAX_TRIES=10;
+
+      machineSetupReSync()
+      {
+        this._resyncTries=0;
+        this._resyncKick();
+      }
+
+      _resyncKick()
+      {
+        if(Object.keys(this.cfg||{}).length>0)return;   // got it, stop
+        if(this.CONN_ID===undefined)return;             // a reconnect will restart this
+        if(this._resyncTries>=uInspESP32_API.RESYNC_MAX_TRIES)
+        {
+          log.warn("[uInspESP32] config resync gave up after",this._resyncTries,"tries");
+          return;
+        }
+        this._resyncTries++;
+        super.machineSetupReSync();
+        setTimeout(()=>this._resyncKick(),uInspESP32_API.RESYNC_RETRY_MS);
+      }
+
+      // Everything the firmware's set_setup handler actually consumes
+      // (LegacyFirmware.cpp, the JSON_SETIF_ABLE block). Anything else in a
+      // get_setup reply is read-only runtime state.
+      static SETTABLE_KEYS=[
+        "plate_freq","plate_accel","speed_band_pct","min_detect_sep_us",
+        "pulse_min_width","pulse_max_width",
+        "gate_debounce_rise","gate_debounce_fall",
+        // The gate's distance rejection. It was mapped in uinspCfg but missing
+        // here, so the panel could display it and never write it.
+        "min_detect_dist_um",
+        "stepper_en_active","stepper_dir",
+        "unanswered_stop_after",
+        "host_timeout_ms","pulses_per_rev","plate_diameter_mm",
+        "stage_pulse_offset","io_on_level",
+        // Per-station widths in MICROSECONDS -- the device converts to ticks
+        // against its own plate_freq, so a recipe survives a speed change.
+        "stage_pulse_width_us",
+        // Window CENTRES in ticks. 0 = that station keeps the forward-only
+        // shape, where the offset is the window's start.
+        "stage_pulse_center",
+        // Calibration trigger pulse width, us.
+        "cal_pulse_us",
+        // The camera clock: match window and the recal/drift settings. All are
+        // JSON_SETIF_ABLE targets in set_setup and none of them were listed, so
+        // the panel could display them and never write one.
+        "cam_match_window_us","cam_recal_idle_ms","cam_drift_comp",
+        // The match window expressed as what it actually is -- a position
+        // tolerance. Settable on the device since 2026-08-11, unreachable here.
+        "cam_match_tolerance_mm",
+        "report_match_ts","report_match_pcnt",
+        // `auto_rate` and `unanswered_policy` used to live here. The firmware
+        // dropped both flat keys on 2026-08-08 when the decision was collapsed
+        // into ONE name -- so the UI kept writing two keys that no longer
+        // existed and was told ack:true both times. skip_policy_mode is that
+        // one name, now "stop_only" | "none" after the slow half was removed.
+        "skip_policy_mode",
+        "machine_id","CAM1_Tags","CAM2_Tags","persist",
+      ];
+
+      // This board owns its own configuration: it keeps a copy in NVS and comes
+      // up on it (cfg_from_nvs), so the host has no business re-pushing settings
+      // just because it connected. Perif_API_Base does exactly that -- it echoes
+      // the whole get_setup reply straight back as set_setup, stripping only the
+      // 4 envelope fields, so ver/name/cur_state/step_count/error_hist/cfg_crc/
+      // reset_reason/xtal_mhz all get sent to a board that has no use for them.
+      //
+      // So this override makes the sync READ-ONLY: values are stored for display
+      // and never echoed. Settable keys land in machineSetup, runtime state in
+      // deviceState (getDeviceState). Writing config is an explicit act --
+      // machineSetupUpdateAndPersist() / setMachineId() -- not a side effect of
+      // connecting, which also means the NVS copy stays authoritative instead of
+      // being silently overwritten by whatever the host happened to cache.
+      //
+      // Bonus: it keeps the wire quiet. A full config push is ~500-670 bytes and
+      // used to arrive corrupted (see the RX-buffer fix in LegacyFirmware.cpp);
+      // not sending it at all is the better answer than sending it carefully.
+      machineSetupUpdate(newMachineInfo,doReplace=false,push=false)
+      {
+        let settable={}, readonly={};
+        Object.keys(newMachineInfo||{}).forEach(k=>{
+          if(uInspESP32_API.SETTABLE_KEYS.indexOf(k)>=0) settable[k]=newMachineInfo[k];
+          else readonly[k]=newMachineInfo[k];
+        });
+        this.deviceState=doReplace?readonly:{...this.deviceState,...readonly};
+        this.cfg=doReplace?settable:{...this.cfg,...settable};
+
+        // Actively clear, not merely "leave unset": machineSetupReSync() assigns
+        // `this.machineSetup = ret` (the whole get_setup reply) BEFORE it calls
+        // this method, so the field is already populated by the time we get here.
+        // Perif_API_Base.connect()
+        // pushes `send({type:"set_setup",...this.machineSetup})` directly -- not
+        // through this method -- whenever the field is set, so the only way to
+        // guarantee a reconnect stays read-only is to keep the field empty. The
+        // UI is unaffected: it reads machineSetup out of redux, which is fed
+        // here, not off the instance.
+        this.machineSetup=undefined;
+
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,
+                         machineSetup:this.cfg,
+                         deviceState:this.deviceState});
+        if(push!==true)return;
+        this.send(uinspRegroup({type:"set_setup",...settable}),
+          (ret)=>log.debug("[machine-setup] set_setup ack",ret),
+          (e)=>log.warn("[machine-setup] set_setup failed",e));
+      }
+
+      getMachineSetup(){ return this.cfg; }
+      getDeviceState(){ return this.deviceState; }
 
       // ---- inspection mode -------------------------------------------------
 
@@ -1457,9 +1759,56 @@ class APPMasterX extends React.Component {
 
       // ---- stepper / diagnostics -------------------------------------------
 
+      // Steady backlight for camera setup (exposure / gain / focus need a stable
+      // image; the stage machine only ever strobes it for ~600us). Polarity-aware
+      // on the firmware side -- do NOT use pin_on/pin_off, those are raw writes
+      // and this machine's io_on_level makes ON active-low, so they invert.
+      // The board auto-drops the hold on timeout or when it leaves IDLE.
+      light(ch,on,timeout_ms){ return this.sendP({type:"light",ch,on,timeout_ms}); }
+
+      // One camera trigger, no pipeline object behind it. This is the shutter,
+      // not the sorter: it fires the camera line directly and does NOT create a
+      // part, so nothing gets counted, tracked or blown.
+      trigCamPulse(){ return this.sendP({type:"trig_cam_pulse"}); }
+
+      // A single lit frame, for setting up on a stopped plate.
+      //
+      // The backlight and the camera trigger are separate things and the stage
+      // machine normally strobes the light for ~600us around each trigger. With
+      // the plate stopped nothing strobes it, so a bare trig_cam_pulse returns a
+      // BLACK frame -- which reads as "the inspection found nothing" and sends
+      // you looking for a fault that is not there.
+      //
+      // Light first, settle, shoot, then drop it. The timeout is a backstop: if
+      // this promise chain dies between on and off, the board drops the hold by
+      // itself rather than leaving the panel lit.
+      camSnapWithLight(ch="L1A", settle_ms=120){
+        return this.light(ch,true,4000)
+          .then(()=> new Promise(r=>setTimeout(r,settle_ms)))
+          .then(()=> this.trigCamPulse())
+          .then((r)=> new Promise(res=>setTimeout(()=>res(r),settle_ms)))
+          .then((r)=> this.light(ch,false,0).then(()=>r),
+                (e)=> this.light(ch,false,0).then(()=>{throw e;}));
+      }
+
       stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
       stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
-      trigPhantomPulse(){ return this.sendP({type:"trig_phamton_pulse"}); }
+
+      // Station placement. Catch the next part at the gate, then drive it to an
+      // absolute offset until it sits where the station should be; the number
+      // that comes back is in stage_pulse_offset units and goes straight into
+      // SEL1_on / CAM1_on / whatever is being placed.
+      //
+      // jogGoto is ABSOLUTE on purpose: the device computes the relative move.
+      // A browser cannot know where the plate stopped -- braking distance is not
+      // predictable from here -- so anything relative would have to read back,
+      // subtract, and race the machine.
+      jogArm(freq){ return this.sendP({type:"jog_arm", ...(freq?{freq}:{})}); }
+      // freq is a CEILING, not a demand: the device still lowers it for a short
+      // move, because braking takes f^2/a ticks and a move shorter than twice
+      // that would be all deceleration.
+      jogGoto(offset,freq){ return this.sendP({type:"jog", offset, ...(freq?{freq}:{})}); }
+      jogEnd(){ return this.sendP({type:"jog_end"}); }
 
       resetRunningStat(){ return this.sendP({type:"reset_running_stat"}); }
       getRunningStat()
@@ -1471,6 +1820,30 @@ class APPMasterX extends React.Component {
         });
       }
 
+      // The enum lives in the firmware, so its text should come from there too.
+      // A copy of the table in the UI is a copy that goes stale, and it did:
+      // the panel knew five of the ten states, so a machine sitting in CAL
+      // showed "state 102". Asked once when the panel opens; old firmware that
+      // does not know the command simply leaves the built-in table in place.
+      getStateNames(){ return this.sendP({type:"get_state_names"}); }
+
+      // Promise flavour of get_setup, for callers that need to CONFIRM a write
+      // landed rather than fire and hope. machineSetupReSync() does the same
+      // round trip but swallows the reply into this.machineSetup, so it cannot
+      // be awaited or checked.
+      //
+      // Worth knowing which plate_freq you are reading: get_setup returns
+      // PLATE_FREQ_SETPOINT (the configuration, what set_setup writes), while
+      // get_running_stat returns PLATE_FREQ_TARGET (the ramp\'s current goal,
+      // which stays 0 in IDLE). They are different variables and only one of
+      // them can confirm a set_setup.
+      // Flattened, like machineSetupReSync's copy. Callers read flat names off
+      // this -- the Inspection UI's start gate checks `s.plate_freq > 0` to
+      // confirm the speed reached the device -- and a grouped reply makes every
+      // one of those checks read undefined. That is the whole of
+      // "轉速沒有寫進裝置,未進入檢測模式": the write had in fact landed.
+      getSetupP(){ return this.sendP({type:"get_setup"}).then(uinspFlatten); }
+
       // ---- persistence -----------------------------------------------------
 
       // The board keeps its own copy in NVS, so a machine that is moved or
@@ -1480,9 +1853,11 @@ class APPMasterX extends React.Component {
       saveSetupToDevice(){ return this.sendP({type:"save_setup"}); }
       clearSavedSetupOnDevice(){ return this.sendP({type:"clear_saved_setup"}); }
 
+      // push=true: this is the explicit write path. Everything else -- connect,
+      // resync, file load -- is read-only, see machineSetupUpdate.
       machineSetupUpdateAndPersist(newMachineInfo)
       {
-        this.machineSetupUpdate(newMachineInfo);
+        this.machineSetupUpdate(newMachineInfo,false,true);
         return this.saveSetupToDevice();
       }
 
@@ -1492,9 +1867,19 @@ class APPMasterX extends React.Component {
       // True when the running config came from the board's NVS rather than the
       // compiled fallback -- an unconfigured board is worth flagging loudly
       // before it starts flinging parts at the wrong bin.
-      isConfigFromNVS(){ return (this.machineSetup||{}).cfg_from_nvs===true; }
+      // cfg_from_nvs is read-only state, so it lives in deviceState now, not in
+      // machineSetup -- see machineSetupUpdate above.
+      isConfigFromNVS(){ return this.deviceState.cfg_from_nvs===true; }
     }
-    this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID,new uInspESP32_API(this.props.uInspESP32_API_ID));
+    {
+      let _uInspESP32 = new uInspESP32_API(this.props.uInspESP32_API_ID);
+      this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID,_uInspESP32);
+      // QA/bring-up handle, same spirit as __GP_MEASURE__/__GP_UTIL__ above.
+      // Driving the board by hand from the console is the only way to probe one
+      // command in isolation -- the periodic PING/resync traffic otherwise makes
+      // it impossible to tell which request a reply (or a silence) belongs to.
+      if(typeof window!=="undefined") window.__GP_PERIF__ = _uInspESP32;
+    }
 
 
     // Generic serial peripheral with no device-specific status handling.
@@ -2047,6 +2432,20 @@ class APPMasterX extends React.Component {
                   break;
                 }
                 
+                case this.props.uInspESP32_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><UINSP_ESP32_UI/>,
+                      title:"全檢設備 v2 (uInspESP32)",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+
                 case this.props.SLID_API_ID:
                 {
                   this.setState({

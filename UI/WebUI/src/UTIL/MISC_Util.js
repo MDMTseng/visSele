@@ -230,7 +230,6 @@ export function defFileGeneration(edit_info)
   let report = {
     ...preloadedDefFile,
     type: "binary_processing_group",
-    intrusionSizeLimitRatio: edit_info.intrusionSizeLimitRatio,
     featureSet: [feature_sig360_circle_line]
   };
   delete report["featureSet_sha1"];
@@ -248,7 +247,7 @@ export function defFileGeneration(edit_info)
   if (typeof edit_info.matching_version === 'number' && edit_info.matching_version === 2)
     report.featureSet[0].matching_version = "v2";
   // downsample: the core reads inspection_downsample as a NUMBER on the GROUP
-  // (top-level) root (FeatureManager_group.cpp), alongside intrusionSizeLimitRatio
+  // (top-level) root (FeatureManager_group.cpp)
   // — NOT inside featureSet[0]. Emit it at the top level so the group picks it up.
   if (typeof edit_info.inspection_downsample === 'number' && edit_info.inspection_downsample !== 1)
     report.inspection_downsample = edit_info.inspection_downsample;
@@ -280,6 +279,31 @@ export function defFileGeneration(edit_info)
   // image is NOT a def-file field (kept path-free / portable): the core gets its path
   // at runtime via "_ref_image_path" (stampRefImagePath, stamped into the def-INFO the
   // WebUI sends), or derives <def>.png from the def path on the --insp path.
+  // loc_include / loc_exclude are localization regions, never measurement
+  // features -- strip them from features[] whatever the locator is.
+  //
+  // This used to happen only in the shape_based branch below, so a def whose
+  // locating_engine was anything else shipped them to the core inside
+  // features[]. sig360's parser rejects an unknown feature type outright, and
+  // it fails the WHOLE def: "feature[7] has unknown type:[loc_include]" then
+  // "cJSON parse failed", leaving the engine with no features at all --
+  // inspection then returns in microseconds and judges everything NA.
+  //
+  // It is not a corner case: loading a def re-creates these shapes from
+  // localization_include/exclude (InspectionEditorLogic), so any def that has
+  // ever used the shape locator carries them in the editor forever, and breaks
+  // the moment locating_engine is not shape_based. The saved file looks clean,
+  // because saving under shape_based did strip them -- which is why the file on
+  // disk and the def pushed over the wire could disagree.
+  const _featsAll = Array.isArray(report.featureSet[0].features)
+    ? report.featureSet[0].features : [];
+  const _locIncl = _featsAll.filter((s) => s && s.type === 'loc_include');
+  const _locExcl = _featsAll.filter((s) => s && s.type === 'loc_exclude');
+  if (_locIncl.length || _locExcl.length) {
+    report.featureSet[0].features = _featsAll.filter(
+      (s) => s && s.type !== 'loc_include' && s.type !== 'loc_exclude');
+  }
+
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
     // Caliper-only: the raw-gray shape path has no contour, so force every line/arc
@@ -305,14 +329,9 @@ export function defFileGeneration(edit_info)
     // (migration default) when the user authored no include region. The signature is
     // already mm, so a bin (R mm, theta rad) -> {x:R*cos, y:R*sin}: the pixel->unit
     // step that makes the locator magnification-portable and sig360-independent.
-    const feats = Array.isArray(report.featureSet[0].features) ? report.featureSet[0].features : [];
-    const inclShapes = feats.filter((s) => s && s.type === 'loc_include');
-    const exclShapes = feats.filter((s) => s && s.type === 'loc_exclude');
-    if (inclShapes.length || exclShapes.length) {
-      // Localization config is NOT a measurement feature — strip from features[].
-      report.featureSet[0].features = feats.filter(
-        (s) => s && s.type !== 'loc_include' && s.type !== 'loc_exclude');
-    }
+    // Already pulled out of features[] above, whatever the locator.
+    const inclShapes = _locIncl;
+    const exclShapes = _locExcl;
     const toPolys = (shapes) => shapes
       .map((s) => (Array.isArray(s.points) ? s.points.map((p) => ({ x: p.x, y: p.y })) : []))
       .filter((p) => p.length >= 3);

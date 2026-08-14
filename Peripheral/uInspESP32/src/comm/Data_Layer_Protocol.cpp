@@ -1,6 +1,9 @@
 #include "comm/Data_Layer_Protocol.hpp"
 #include "string.h"
 #include "stdio.h"
+#include <ctype.h>
+#include <stdlib.h>
+#include <Arduino.h>
 
 
 Data_JsonRaw_Layer::Data_JsonRaw_Layer():Data_Layer_IF()// throw(std::runtime_error)
@@ -35,6 +38,9 @@ void Data_JsonRaw_Layer::enterProtocolError(ERROR_TYPE err,uint8_t *recv_data,si
   if(protocolErrorActive==false)
   {
     protocolErrorActive=true;
+    // Counted on the transition, not per byte. Nothing recorded this before, so
+    // a link that had gone deaf looked exactly like one that was idle.
+    rx_latch_n++;
     recv_ERROR(err,recv_data,dataL);
   }
 }
@@ -49,10 +55,31 @@ void Data_JsonRaw_Layer::clearProtocolError()
   jlevel=0;
 }
 
+// Whitespace-tolerant match for `"type" : "<value>"` starting at `at`.
+// Returns the length matched, or 0.
+//
+// This used to be a memcmp against the exact bytes `"type":"RESET"`, and it is
+// the ONLY way back once the parser has latched into RTYPE::ERROR -- no frame
+// is delivered after that, so the post-parse handler that also accepts RESET
+// can never be reached. Python's json.dumps emits `{"type": "RESET"}` with a
+// space after the colon by default, so a host using the obvious call had no
+// escape hatch at all and the board could only be recovered by power-cycling.
+static int matchTypeValueAt(const uint8_t *b,int at,int n,const char *quoted)
+{
+  int i=at;
+  const char *k="\"type\"";
+  for(int j=0;k[j];j++,i++){ if(i>=n||b[i]!=k[j]) return 0; }
+  while(i<n && (b[i]==' '||b[i]=='\t')) i++;
+  if(i>=n||b[i]!=':') return 0;
+  i++;
+  while(i<n && (b[i]==' '||b[i]=='\t')) i++;
+  for(int j=0;quoted[j];j++,i++){ if(i>=n||b[i]!=quoted[j]) return 0; }
+  return i-at;
+}
+
 bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
 {
-  const char *resetKey="\"type\":\"RESET\"";
-  const int keyLen=strlen(resetKey);
+  const int keyLen=(int)strlen("\"type\":\"RESET\"");   // shortest possible form
 
   int firstBrace=-1;
   for(int i=0;i<buffIdx;i++)
@@ -61,16 +88,27 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
     {
       firstBrace=i;
     }
-    if(i+keyLen<=buffIdx && memcmp(dataBuff+i,resetKey,keyLen)==0)
+    // Two escapes, not one. RESET is the historical hatch; clear_error is the
+    // command a person actually sends when a machine has stopped answering, and
+    // it used to be the one thing that could not work.
+    bool viaClear=false;
+    int mlen = (i+keyLen<=buffIdx) ? matchTypeValueAt(dataBuff,i,buffIdx,"\"RESET\"") : 0;
+    if(mlen==0)
     {
-      int endIdx=i+keyLen;
+      mlen = matchTypeValueAt(dataBuff,i,buffIdx,"\"clear_error\"");
+      if(mlen>0) viaClear=true;
+    }
+    if(mlen>0)
+    {
+      int endIdx=i+mlen;
       while(endIdx<buffIdx && dataBuff[endIdx]!='}')
       {
         endIdx++;
       }
       if(endIdx<buffIdx)
       {
-        handleResetRecovery();
+        if(viaClear) handleClearErrorRecovery();
+        else         handleResetRecovery();
         int shift=endIdx+1;
         if(shift<buffIdx)
         {
@@ -102,10 +140,23 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
   return false;
 }
 
+// Same unlatch as RESET, but it delivers clear_error's own intent instead of a
+// RESET's -- otherwise the command that got us out would be swallowed and the
+// machine would stay in its error state with a healthy link.
+void Data_JsonRaw_Layer::handleClearErrorRecovery()
+{
+  recv_CLEAR_ERROR();
+  clearProtocolError();
+  recvType=RTYPE::RESYNC;
+}
+
 void Data_JsonRaw_Layer::handleResetRecovery()
 {
   recv_RESET();
   clearProtocolError();
+  // The recovering RESET frame carries its own *HHHH trailer; consuming it
+  // as INIT bytes would latch us right back. Skip to the next newline.
+  recvType=RTYPE::RESYNC;
 }
 
 int Data_JsonRaw_Layer::ask_JsonRaw_version(){
@@ -138,8 +189,26 @@ int Data_JsonRaw_Layer::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 }
 
+uint16_t Data_JsonRaw_Layer::crc16_ccitt(const uint8_t *d,int len){
+  uint16_t crc=0xFFFF;
+  for(int i=0;i<len;i++){
+    crc^=(uint16_t)d[i]<<8;
+    for(int b=0;b<8;b++)
+      crc=(crc&0x8000)?(crc<<1)^0x1021:(crc<<1);
+  }
+  return crc;
+}
+
 int Data_JsonRaw_Layer::send_json_string(int head_room,uint8_t *data,int len,int leg_room){
-  return send_data(head_room,data,len,leg_room);
+  int r=send_data(head_room,data,len,leg_room);
+  // Integrity trailer: *HHHH\n (CRC16-CCITT over the JSON bytes). Peers that
+  // predate it ignore stray trailer text via their INIT resync; peers that
+  // know it can drop corrupted frames instead of acting on them.
+  char tr[8];
+  uint16_t crc=crc16_ccitt(data,len);
+  int tl=snprintf(tr,sizeof(tr),"*%04X\n",crc);
+  send_data(0,(uint8_t*)tr,tl,0);
+  return r;
 }
 
 int Data_JsonRaw_Layer::send_raw_data(int opcode,int head_room,uint8_t *data,int len,int leg_room){
@@ -223,6 +292,25 @@ int Data_JsonRaw_Layer::send_data(int head_room,uint8_t *data,int len,int leg_ro
   if(downlayer_df==NULL)return -1;
   return downlayer_df->send_data(head_room,data,len,leg_room);
 }
+void Data_JsonRaw_Layer::finishJsonFrame(bool crc_present,bool crc_ok){
+  rx_frames++;
+  if(crc_present && !crc_ok)
+  {
+    // Corrupted frame: drop it and resync -- acting on it would be worse
+    // than losing it (the sender's timeout/fail-safe paths cover the loss).
+    rx_crc_fail++;
+  }
+  else
+  {
+    if(crc_present)rx_crc_ok++;
+    last_rx_ms=(uint32_t)millis();
+    dataBuff[buffIdx]='\0';
+    recv_jsonRaw_data(dataBuff,buffIdx,1);//opcode 1 is for text
+    if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff,buffIdx,true);
+  }
+  recvType=RTYPE::INIT;
+}
+
 int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
 
@@ -249,10 +337,10 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       {
         recvType=RTYPE::JSONRAW;
       }
-      // else if(c==' '||c=='\t'||c=='\n')
-      // {
-      //   continue;
-      // }
+      else if(c==' '||c=='\t'||c=='\n'||c=='\r')
+      {
+        continue;
+      }
       else
       {
         enterProtocolError(ERROR_TYPE::INIT_CHAR_ERROR,(uint8_t*)data,len);
@@ -311,21 +399,50 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
             if(jlevel==0)
             {
-
-
-
               dataBuff[buffIdx]='\0';
-              // if(uplayer_df!=NULL)
-              //   uplayer_df->recv_data(dataBuff,buffIdx);
-              recv_jsonRaw_data(dataBuff,buffIdx,1);//opcode 1 is for text
-              
-              recvType=RTYPE::INIT;
-              if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff,buffIdx,true);
+              // Defer dispatch until we know whether a CRC trailer follows.
+              recvType=RTYPE::TRAILER;
+              trailerIdx=0;
             }
 
           }
 
         break;
+        }
+        case RTYPE::RESYNC:{
+          buffIdx--;   // not frame content
+          if(c=='\n'||c=='\r') recvType=RTYPE::INIT;
+          break;
+        }
+        case RTYPE::TRAILER:{
+          buffIdx--;   // undo the generic append: trailer bytes are not frame
+          if(trailerIdx==0)
+          {
+            if(c=='*'){ trailerBuf[trailerIdx++]=c; }
+            else if(c=='\n'||c=='\r'){ finishJsonFrame(false,false); }
+            else { finishJsonFrame(false,false); i--; }   // legacy frame; reprocess c
+          }
+          else if(c=='\n'||c=='\r')
+          {
+            bool ok=false;
+            if(trailerIdx==5)
+            {
+              trailerBuf[5]='\0';
+              uint16_t want=(uint16_t)strtoul(trailerBuf+1,NULL,16);
+              ok=(want==crc16_ccitt(dataBuff,buffIdx));
+            }
+            finishJsonFrame(true,ok);
+          }
+          else if(trailerIdx<5 && isxdigit((unsigned char)c))
+          {
+            trailerBuf[trailerIdx++]=c;
+          }
+          else
+          {
+            finishJsonFrame(true,false);   // malformed trailer = corrupt
+            i--;
+          }
+          break;
         }
         case RTYPE::JSONRAW:{
           static int headerLen;

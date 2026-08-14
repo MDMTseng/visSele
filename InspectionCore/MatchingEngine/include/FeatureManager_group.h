@@ -67,7 +67,6 @@ public :
 
 
 protected:
-  double intrusionSizeLimitRatio=0;
   // Pre-binarization downsample (1 = off, 2/4 valid). Threshold + CCL + signature
   // build all run at this reduced resolution; per-label coords get scaled back
   // up via the existing dsampLevel plumbing so sub-features still address

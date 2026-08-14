@@ -58,6 +58,43 @@ class CameraLayer{
       // cannot supply it.
       uint32_t frameNum = 0;
       bool frameNumValid = false;
+
+      // Triggers the CAMERA counted, which is not the same population as
+      // frameNum.
+      //
+      // frameNum counts frames the sensor exposed. A trigger the camera REFUSED
+      // -- arriving inside the exposure floor -- produces no frame, so frameNum
+      // stays contiguous across it and the loss is invisible. ExtTriggerCount
+      // counts the triggers themselves, so `extTrigCount - frameNum` is the
+      // number that were thrown away.
+      //
+      // On the MV-CA050-11UM there is no GenICam chunk for this: the value is
+      // written INTO THE IMAGE, little-endian at the start of row 0, and the
+      // byte offsets are packed by the order the fields were ENABLED rather
+      // than being fixed. Enable exactly one field and the offset is 0; enable
+      // more and a decoder that hardcodes an offset silently reads the wrong
+      // counter. Measured 2026-08-10, see UINSP_CAVEATS.
+      uint32_t extTrigCount = 0;
+      bool extTrigCountValid = false;
+      // Time since the previous frame's exposure, 0 when unknown (first frame,
+      // or a driver with no usable timestamp).
+      uint64_t interval_us = 0;
+      // The camera hit its exposure floor on this frame.
+      //
+      // A sensor cannot start an exposure sooner than 1/ResultingFrameRate
+      // after the previous one. Trigger it faster and the camera does NOT say
+      // so: it delays the exposure to that floor if it has buffer room, and
+      // silently refuses the trigger if it does not -- with no error and with
+      // frameNum staying contiguous, because the refused frames were never
+      // exposed. Measured on a MV-CA050-12UC at full frame (floor 40108us):
+      // triggers 41ms apart are timestamped exactly, 40ms and closer all come
+      // back at the floor, and closer than 20ms also lose a trigger outright.
+      //
+      // So when this is set, timeStamp_us is the truth about the EXPOSURE but
+      // no longer about the trigger that asked for it -- it can sit tens of ms
+      // late, and anything pairing frames to parts by time or by index is
+      // being fed a lie. It is the one warning the camera itself will not give.
+      bool rateSaturated = false;
     }frameInfo;
     /*// Camera's device information
     typedef struct
@@ -119,6 +156,14 @@ class CameraLayer{
     std::vector<uint64_t> error_code_list;
     std::string cam_json_info;
 
+    // Opt-in, and deliberately OFF by default. The reliable trigger accounting
+    // is the camera's own edge count (HikRobot's Line0RisingEdge events) plus
+    // frameNum continuity; this watch is a second opinion for diagnosing a
+    // suspected over-trigger, not a replacement. Leaving it dark by default
+    // also means a machine that legitimately runs at the frame-rate limit does
+    // not spend its life logging that it is doing so.
+    bool _exposure_floor_watch = false;
+
     
     float ROI_x;
     float ROI_y;
@@ -137,13 +182,24 @@ class CameraLayer{
       return "_CameraLayer_";
     }
 
-    FrameExtractPixelFormat GetFrameFormat()
+    // MUST stay virtual. Without it the derived layers' GetFrameFormat() only
+    // hid this one, so every consumer -- which holds cameras as CameraLayer&
+    // or CameraLayer* -- silently got this RGB default no matter what the
+    // sensor was actually delivering.
+    virtual FrameExtractPixelFormat GetFrameFormat()
     {
       return FrameExtractPixelFormat::RGB;
     }
 
     
     static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &dev){return 0;}
+
+    // Turn the exposure-floor watch on for this camera. frameInfo::interval_us
+    // is filled either way (it costs a subtraction); this only controls whether
+    // frameInfo::rateSaturated gets set and whether a sustained episode is
+    // logged. See frameInfo::rateSaturated for what it means.
+    void SetExposureFloorWatch(bool enable){ _exposure_floor_watch = enable; }
+    bool GetExposureFloorWatch() const { return _exposure_floor_watch; }
 
     
     CameraLayer(CameraLayer::BasicCameraInfo connection_data,std::string connection_misc,CameraLayer_Callback cb,void* context)

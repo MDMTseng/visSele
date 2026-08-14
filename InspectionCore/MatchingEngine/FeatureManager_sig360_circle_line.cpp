@@ -1684,6 +1684,18 @@ int FeatureManager_sig360_circle_line::parse_objDetectData(cJSON *obj)
   od.edge_mean_max   = (float)JFetch_NUMBER_ex(obj, "edge_mean_max",   NA);
   od.edge_max_min    = (float)JFetch_NUMBER_ex(obj, "edge_max_min",    NA);
   od.edge_max_max    = (float)JFetch_NUMBER_ex(obj, "edge_max_max",    NA);
+  od.dark_thresh     = (float)JFetch_NUMBER_ex(obj, "dark_thresh",     NA);
+  od.dark_ratio_min  = (float)JFetch_NUMBER_ex(obj, "dark_ratio_min",  NA);
+  od.dark_ratio_max  = (float)JFetch_NUMBER_ex(obj, "dark_ratio_max",  NA);
+  od.dark_area_min   = (float)JFetch_NUMBER_ex(obj, "dark_area_min",   NA);
+  od.dark_area_max   = (float)JFetch_NUMBER_ex(obj, "dark_area_max",   NA);
+  // "ng" = the part is bad, eject it. Anything else (including absent) = NA:
+  // the region says the measurement cannot be trusted, not that the part failed.
+  { char *s = NULL; cJSON *jf = cJSON_GetObjectItem(obj, "on_fail");
+    if (jf && cJSON_IsString(jf)) s = jf->valuestring;
+    od.on_fail = (s && strcmp(s, "ng") == 0)
+               ? FeatureReport_sig360_circle_line_single::STATUS_FAILURE
+               : FeatureReport_sig360_circle_line_single::STATUS_NA; }
   if (od.name[0] == '\0') sprintf(od.name, "@OBJDET_%d", (int)objDetectList.size());
   objDetectList.push_back(od);
   return 0;
@@ -2448,6 +2460,7 @@ void FeatureManager_sig360_circle_line::ClearReport()
 {
 
   report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
+  report.data.sig360_circle_line.region_dropped = 0;
   reports.resize(0);
   report.data.sig360_circle_line.reports = &reports;
   FeatureManager_binary_processing::ClearReport();
@@ -4951,6 +4964,25 @@ FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_Repor
   cv::fillPoly(mask, polys, cv::Scalar(255));
   if (cv::countNonZero(mask) < 1) return rep;
 
+  // --- dark area, measured at FULL resolution and before any downsample ---
+  //
+  // The order matters and it is not an optimisation detail. INTER_AREA averages,
+  // so a 2px speck seen through downsample:4 comes out at 1/16 of its contrast and
+  // walks straight back over the threshold -- the one thing this measurement exists
+  // to catch would be erased by the setting that exists to make it fast. One
+  // threshold + countNonZero over the crop is cheap enough not to need the help.
+  rep.dark_ratio = rep.dark_area_mm2 = std::nanf("");
+  if (!std::isnan(def->dark_thresh))
+  {
+    cv::Mat dark;
+    cv::threshold(crop, dark, (double)def->dark_thresh, 255.0, cv::THRESH_BINARY_INV);
+    cv::bitwise_and(dark, mask, dark);           // only inside the region polygon
+    int dark_px   = cv::countNonZero(dark);
+    int region_px = cv::countNonZero(mask);
+    rep.dark_ratio    = (float)dark_px / (float)region_px;
+    rep.dark_area_mm2 = (float)(dark_px * (double)mmpp * (double)mmpp);
+  }
+
   // Optional region downsample for speed: shrink crop (averaging) + mask before stats.
   // mean stays ~constant; max shrinks and the Sobel scale changes (accepted tradeoff).
   if (def->downsample > 1 && crop.cols > def->downsample && crop.rows > def->downsample)
@@ -4980,16 +5012,26 @@ FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_Repor
   rep.edge_mean = (float)cv::mean(mag, mask)[0];
   rep.edge_max  = (float)emax;
 
-  // Self-judge: FAILURE if any present bound is violated, else SUCCESS.
+  // Self-judge: violated bound -> def->on_fail, else SUCCESS.
+  //
+  // on_fail is NA by default, and that default is the whole point of the region.
+  // A clean-space region that has gone dirty usually means something is lying in
+  // the field of view -- the measurement of THIS part is no longer trustworthy,
+  // which is not the same claim as "this part is bad". NA leaves the part
+  // unactuated so it comes round again and gets measured on a clean field; only a
+  // region the operator explicitly marked on_fail:"ng" ejects.
   int st = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
   auto chk = [&](float v, float lo, float hi) {
-    if (!std::isnan(lo) && v < lo) st = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-    if (!std::isnan(hi) && v > hi) st = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+    if (std::isnan(v)) return;                   // measurement not taken
+    if (!std::isnan(lo) && v < lo) st = def->on_fail;
+    if (!std::isnan(hi) && v > hi) st = def->on_fail;
   };
   chk(rep.bright_mean, def->bright_mean_min, def->bright_mean_max);
   chk(rep.bright_max,  def->bright_max_min,  def->bright_max_max);
   chk(rep.edge_mean,   def->edge_mean_min,   def->edge_mean_max);
   chk(rep.edge_max,    def->edge_max_min,    def->edge_max_max);
+  chk(rep.dark_ratio,  def->dark_ratio_min,  def->dark_ratio_max);
+  chk(rep.dark_area_mm2, def->dark_area_min, def->dark_area_max);
   rep.status = st;
   return rep;
 }
@@ -6102,6 +6144,88 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
                                   /*connectivity=*/8);
   }
 
+  // ---- inspection region: decide WHICH labels are even candidates ----------
+  //
+  // This runs BEFORE single_result_area_ratio on purpose. Put it any later and
+  // the largest-blob heuristic below wins: if the biggest label in the frame is
+  // outside the station, onlyIdx points at it, every other label is skipped,
+  // and the object that IS at the station never gets a report for a later
+  // filter to keep. The region has to be the primary selector, not a
+  // post-hoc filter over whatever the heuristics already chose.
+  //
+  // A separate vector rather than ldData[i].misc because the areaThres loop
+  // further down assigns misc unconditionally and would erase it.
+  //
+  // Nothing is cropped. ldData centres stay in inspection-image pixels at
+  // dsampLevel; only the comparison lifts them to full-sensor pixels. That is
+  // the whole point of doing it here instead of cropping the frame -- every
+  // imgOffset/cropOffset assumption in the measurement code stays exactly as
+  // it was.
+  std::vector<char> in_region(ldData.size(), 1);
+  int region_dropped = 0;
+  if (bacpac && bacpac->hasInspRegion())
+  {
+    acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+    for (size_t i = 2; i < ldData.size(); i++)
+    {
+      float fx = ldData[i].Center.x * dsampLevel + sOff.x;
+      float fy = ldData[i].Center.y * dsampLevel + sOff.y;
+      // The label carries a real bounding box, so the containment test has
+      // something honest to work with -- no radius guessed from an area.
+      float lx = ldData[i].LTBound.x * dsampLevel + sOff.x;
+      float ly = ldData[i].LTBound.y * dsampLevel + sOff.y;
+      float rx = ldData[i].RBBound.x * dsampLevel + sOff.x;
+      float ry = ldData[i].RBBound.y * dsampLevel + sOff.y;
+      if (!bacpac->objInInspRegion(fx, fy, lx, ly, rx, ry))
+      { in_region[i] = 0; region_dropped++; report.data.sig360_circle_line.region_dropped++; }
+    }
+    if (region_dropped)
+      LOGI("insp_region [%.0f,%.0f %.0fx%.0f] fit=%s: dropped %d of %d labels outside the station",
+           bacpac->insp_region_x, bacpac->insp_region_y,
+           bacpac->insp_region_w, bacpac->insp_region_h,
+           bacpac->insp_region_fit == FeatureManager_BacPac::INSP_FIT_CONTAIN ? "contain" : "centre",
+           region_dropped, (int)ldData.size() - 2);
+
+    // Where the real objects actually landed, in the SAME space the test above
+    // uses. Without this the region is a black box: "1899 of 1901 dropped" does
+    // not say whether the part was 10px outside the box or the box is in the
+    // wrong coordinate space entirely.
+    //
+    // Both numbers are printed on purpose. `raw` is what the filter compares --
+    // full-sensor px straight off the labeling. `ideal` is the same point after
+    // sampler->img2ideal(), which is the space the REPORT's cx/cy live in and
+    // therefore the space the WebUI overlay draws the box in. If those two
+    // disagree by more than a pixel or two, the box on screen is not the box the
+    // core is testing against, and that is the bug -- not the filter.
+    //
+    // Only the biggest few labels; the rest are backlight speckle (1900 of them)
+    // and printing those would bury the answer.
+    {
+      std::vector<int> big;
+      for (size_t i = 2; i < ldData.size(); i++)
+        if (ldData[i].area > 200) big.push_back((int)i);
+      std::sort(big.begin(), big.end(),
+                [&](int a, int b){ return ldData[a].area > ldData[b].area; });
+      if (big.size() > 6) big.resize(6);
+      for (size_t k = 0; k < big.size(); k++)
+      {
+        int i = big[k];
+        float rx = ldData[i].Center.x * dsampLevel + sOff.x;
+        float ry = ldData[i].Center.y * dsampLevel + sOff.y;
+        acv_XY ideal = acv_XY(ldData[i].Center.x * dsampLevel, ldData[i].Center.y * dsampLevel);
+        if (bacpac->sampler) bacpac->sampler->img2ideal(&ideal);
+        LOGI("insp_region:   label %d area %d  raw(%.0f,%.0f) ideal(%.0f,%.0f) "
+             "bbox[%.0f,%.0f %.0fx%.0f] -> %s",
+             i, ldData[i].area, rx, ry, ideal.x + sOff.x, ideal.y + sOff.y,
+             ldData[i].LTBound.x * dsampLevel + sOff.x,
+             ldData[i].LTBound.y * dsampLevel + sOff.y,
+             (ldData[i].RBBound.x - ldData[i].LTBound.x) * dsampLevel,
+             (ldData[i].RBBound.y - ldData[i].LTBound.y) * dsampLevel,
+             in_region[i] ? "KEEP" : "drop");
+      }
+    }
+  }
+
   int onlyIdx = -1;
   if (single_result_area_ratio > 0 && ldData.size() >= 3)
   {
@@ -6112,7 +6236,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     int maxArea = 0;
     for (int i = 2; i < ldData.size(); i++)
     {
-
+      if (!in_region[i]) continue;   // outside the station: not a candidate, and
+                                     // not part of the total either -- a blob at
+                                     // the far side of the plate must not shrink
+                                     // this ratio and reject a clean station.
       LOGV("AREA[%d]:%d", i, ldData[i].area);
       totalArea += ldData[i].area;
       if (maxArea < ldData[i].area)
@@ -6191,6 +6318,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   for (int i = 2; i < ldData.size(); i++)
   {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects(with the outter frame)
     if (ldData[i].misc == -1) //the ignore mark
+      continue;
+    if (!in_region[i])        //outside the inspection region (the station)
       continue;
     if (onlyIdx > 0 && i != onlyIdx)
     {
@@ -6848,6 +6977,7 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     // no ROI refine). Absent key (roi_pts_set=false) keeps the legacy auto-selection.
     if (roi_pts_set && def_mmpp > 0)
     {
+#ifdef SBM_HAS_USER_OPT_POINTS
       const float tcx = templ_use.cols / 2.0f, tcy = templ_use.rows / 2.0f;
       fset.user_opt_points.clear();
       fset.user_opt_points.reserve(roi_pts_mm.size());
@@ -6860,6 +6990,12 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       }
       fset.user_opt_points_set = true;
       LOGI("[shape] using %d explicit ROI refine points (user)", (int)fset.user_opt_points.size());
+#else
+      // The submodule predates user_opt_points (reimplemented in a7e8864);
+      // with such a checkout, explicit ROI points fall back to auto-selection.
+      LOGW("[shape] this build lacks sbm user_opt_points; explicit ROI refine "
+           "points IGNORED (auto-selection used)");
+#endif
     }
 
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
@@ -7083,7 +7219,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   std::vector<sbm::MatchResult> ms;
   try { ms = shapeMatcher->match(scene); }
   catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
-  LOGI("[shape] matches=%d", (int)ms.size());
+  { static unsigned _lc = 0; if ((_lc++ % 100) == 0)
+      LOGI("[shape] matches=%d (1 line in 100)", (int)ms.size()); }
   if (dbg)
   {
     fprintf(stderr, "[SHAPE_DBG] scene %dx%d matches=%d mmpp=%.6f\n",
@@ -7120,6 +7257,26 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   for (int mi = 0; mi < (int)ms.size(); mi++)
   {
     sbm::MatchResult &m = ms[mi];
+
+    // Inspection region (the station). m.x/m.y are already full-res scene px, so
+    // only the camera's hardware ROI has to be added to reach full-sensor px.
+    // Dropped before any measurement work, same as the sig360 path.
+    if (bacpac && bacpac->hasInspRegion())
+    {
+      acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+      // have_extent=false: sbm::MatchResult carries a pose (x,y,angle,scale) and
+      // no size, so there is no bounding box to contain. The test degrades to
+      // the centre rule rather than inventing a radius from the template.
+      if (!bacpac->objInInspRegion(m.x + sOff.x, m.y + sOff.y, 0,0,0,0, false))
+      {
+        report.data.sig360_circle_line.region_dropped++;
+        LOGI("insp_region: shape match %d at (%.1f,%.1f) outside the station "
+             "(centre test -- the shape locator reports no extent) -- dropped",
+             mi, m.x + sOff.x, m.y + sOff.y);
+        continue;
+      }
+    }
+
     FeatureReport_sig360_circle_line_single singleReport =
         {
             .detectedCircles      = reportDataPool[reports.size()].detectedCircles,

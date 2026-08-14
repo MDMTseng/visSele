@@ -109,6 +109,20 @@ typedef struct image_pipe_info
   size_t img_jpg_enc_L;
 
   CameraLayer::frameInfo fi;
+
+  // Host-clock stamps for splitting the report latency. The board measures the
+  // whole chain (trigger -> verdict processed) and that is ~479ms; the send
+  // queue and serial write together account for 2.6ms of it, so the remaining
+  // ~476ms is upstream of them and had no breakdown at all. These two turn
+  // "upstream" into two answerable numbers: how long the frame waited to be
+  // inspected, and how long the inspection itself took.
+  uint64_t host_rx_us;     // pushed onto inspQueue (frame in hand)
+  uint64_t host_insp_us;   // entered ImgPipeProcessCenter_imp
+  // Same idea one queue further along, for the preview. The preview costs the
+  // verdict path 66ms that is NOT queue blocking (that was removed) and the
+  // only way to tell CPU contention from wire time is to split the send
+  // itself. Stamped when the pipe is pushed onto datViewQueue.
+  uint64_t dview_enq_us;   // pushed onto datViewQueue
   //acvRadialDistortionParam cam_param;
   FeatureManager_BacPac *bacpac;
 
@@ -148,7 +162,6 @@ public:
 
   m_BPG_Protocol_Interface();
   uint16_t CI_pgID;
-  int cameraFramesLeft = 0;
 
   cv::Mat  tmp_buff;          // phase 3a (3 BPG image members all cv::Mat now)
   cv::Mat  cacheImage;        // phase 3a
@@ -177,6 +190,13 @@ public:
   void unsubscribeStream(void *peer) {
     std::lock_guard<std::mutex> g(subscribersLock);
     stream_subscribers.erase(peer);
+  }
+  // How many peers a pushToSubscribers() call will actually reach. Worth having
+  // at the send sites: the fan-out is silent, so "packet sent" to an empty list
+  // looks exactly like a working stream in the logs.
+  size_t streamSubscriberCount() {
+    std::lock_guard<std::mutex> g(subscribersLock);
+    return stream_subscribers.size();
   }
   // Push one packet to every subscribed peer (routes per-peer so framing stays
   // per-client; bulk image callbacks pick up the active peer under linkLayerLock).

@@ -3,7 +3,7 @@
 
 Runs without hardware by substituting a fake serial port that behaves like the
 firmware: brace-framed JSON in, replies echoing the command id out, plus
-unsolicited bTrigInfo traffic interleaved mid-frame to make sure the reader
+unsolicited cam_trig traffic interleaved mid-frame to make sure the reader
 splits the two streams correctly.
 
     python test_uinsp_test.py
@@ -58,6 +58,13 @@ class FakeSerial:
 
     def write(self, data):
         text = data.decode()
+        # The tool appends a *HHHH\n CRC trailer; the fake models a legacy
+        # peer and just validates/strips it before parsing.
+        if text.endswith("\n") and len(text) > 6 and text[-6] == "*":
+            body, tr = text[:-6], text[-6:-1]
+            assert int(tr[1:], 16) == uinsp_test._crc16_ccitt(body.encode()), \
+                "tool sent a bad CRC trailer"
+            text = body
         self.written.append(text)
         if self.auto_reply:
             try:
@@ -74,20 +81,29 @@ class FakeSerial:
         pass
 
     # -- test-facing API ---------------------------------------------------
-    def feed(self, text):
-        """Push raw bytes toward the tool, in arbitrary fragments."""
+    def feed(self, text, trailer=True):
+        """Push raw bytes toward the tool, in arbitrary fragments.
+
+        Complete JSON frames get the *HHHH CRC trailer the real firmware now
+        appends (without it every frame pays the tool's legacy-peer grace
+        delay); pass trailer=False to model a legacy peer or raw fragments.
+        """
+        raw = text.encode()
+        if (trailer and text.startswith("{") and text.endswith("}")
+                and "}{" not in text):   # exactly one frame
+            raw += b"*%04X\n" % uinsp_test._crc16_ccitt(raw)
         with self._lock:
-            self._out.extend(text.encode())
+            self._out.extend(raw)
 
     def reply_to(self, msg):
         t = msg.get("type")
         rep = {"id": msg.get("id"), "ack": True}
-        if t == "PING":
-            rep["type"] = "PONG"
+        if t == "ping":
+            rep["type"] = "pong"
         elif t == "get_setup":
             rep.update({"type": "get_setup", "machine_id": "M1",
                         "cfg_from_nvs": True, "stage_pulse_offset": {"CAM1_on": 654},
-                        "pulse_minWidth": 0, "pulse_maxWidth": 1000})
+                        "pulse_min_width": 0, "pulse_max_width": 1000})
         else:
             rep["type"] = t
         self.feed(json.dumps(rep))
@@ -97,12 +113,18 @@ def make_link(fake, auto_reconnect=False):
     link = uinsp_test.UInspLink.__new__(uinsp_test.UInspLink)
     link.ser = fake
     link.port = getattr(fake, "port_path", "FAKE")
-    link.baud = 115200
+    link.baud = 230400
     link.verbose = False
     link._id = 1000
     link._pending = {}
     link._lock = threading.Lock()
     link._tx_lock = threading.Lock()
+    link.rx_frames = 0
+    link.rx_crc_ok = 0
+    link.rx_crc_fail = 0
+    link.event_gaps = 0
+    link._last_q = None
+    link.read_errors = 0
     from collections import deque
     link._async = deque(maxlen=1000)
     link._async_ev = threading.Event()
@@ -137,7 +159,7 @@ class TestFraming(unittest.TestCase):
         return got
 
     def test_single_object(self):
-        self.fake.feed('{"type":"bTrigInfo","tid":1}')
+        self.fake.feed('{"type":"cam_trig","tid":1}')
         got = self._wait_async(1)
         self.assertEqual(got[0]["tid"], 1)
 
@@ -209,56 +231,56 @@ class TestReplyMatching(unittest.TestCase):
         time.sleep(0.08)
 
     def test_ping_reply_returned(self):
-        r = self.link.send({"type": "PING"}, timeout=2.0)
+        r = self.link.send({"type": "ping"}, timeout=2.0)
         self.assertIsNotNone(r, "reply was not routed back to send()")
-        self.assertEqual(r["type"], "PONG")
+        self.assertEqual(r["type"], "pong")
 
     def test_id_is_injected_and_unique(self):
-        self.link.send({"type": "PING"}, timeout=2.0)
-        self.link.send({"type": "PING"}, timeout=2.0)
+        self.link.send({"type": "ping"}, timeout=2.0)
+        self.link.send({"type": "ping"}, timeout=2.0)
         ids = [json.loads(w)["id"] for w in self.fake.written]
         self.assertEqual(len(set(ids)), 2)
 
     def test_timeout_returns_none(self):
         self.fake.auto_reply = False
-        self.assertIsNone(self.link.send({"type": "PING"}, timeout=0.3))
+        self.assertIsNone(self.link.send({"type": "ping"}, timeout=0.3))
 
     def test_async_traffic_does_not_steal_a_reply(self):
-        # bTrigInfo arriving between command and reply must not be mistaken for
+        # cam_trig arriving between command and reply must not be mistaken for
         # the reply, and must still be visible to the monitor.
         self.fake.auto_reply = False
 
         def responder():
             time.sleep(0.1)
-            self.fake.feed('{"type":"bTrigInfo","tid":42,"Qs":3}')
+            self.fake.feed('{"type":"cam_trig","tid":42,"Qs":3}')
             time.sleep(0.05)
             sent = json.loads(self.fake.written[-1])
             self.fake.reply_to(sent)
 
         threading.Thread(target=responder, daemon=True).start()
-        r = self.link.send({"type": "PING"}, timeout=3.0)
+        r = self.link.send({"type": "ping"}, timeout=3.0)
         self.assertIsNotNone(r)
-        self.assertEqual(r["type"], "PONG")
+        self.assertEqual(r["type"], "pong")
         asyncs = [m for _, m in self.link.drain_async()]
         self.assertTrue(any(m.get("tid") == 42 for m in asyncs),
-                        "bTrigInfo was swallowed instead of queued")
+                        "cam_trig was swallowed instead of queued")
 
     def test_reply_without_id_goes_to_async(self):
         self.fake.auto_reply = False
-        self.fake.feed('{"type":"systemInfo","state":112}')
+        self.fake.feed('{"type":"system_info","state":112}')
         end = time.time() + 1.0
         seen = []
         while time.time() < end and not seen:
             seen += [m for _, m in self.link.drain_async()]
             time.sleep(0.02)
-        self.assertEqual(seen[0]["type"], "systemInfo")
+        self.assertEqual(seen[0]["type"], "system_info")
 
 
 class FakeFirmware(FakeSerial):
     """Models enough of LegacyFirmware.cpp to exercise bench() offline.
 
     Reproduces the parts the bench actually asserts on: tids are issued per
-    phantom pulse and announced via bTrigInfo, report{tid} only matches an
+    phantom pulse and announced via cam_trig, report{tid} only matches an
     outstanding object, an unmatched tid faults with
     INSP_RESULT_MATCHES_NO_OBJECT(1), and a part that reaches the selector with
     no verdict faults with OBJECT_HAS_NO_INSP_RESULT(2).
@@ -361,13 +383,13 @@ class FakeFirmware(FakeSerial):
             self.counts["NA"] += 1
 
     def _fault(self, code):
-        """Enter ERROR and announce it via async systemInfo, like the real
+        """Enter ERROR and announce it via async system_info, like the real
         firmware's SYS_STATE_Transfer does -- so the tool's live async fault
         detection has something to see."""
         self.state = self.ST_ERROR
         self.errors.append(code)
-        self.feed(json.dumps({"type": "systemInfo", "state": self.ST_ERROR,
-                              "ERROR_HIST": list(self.errors), "log": "fault"}))
+        self.feed(json.dumps({"type": "system_info", "state": self.ST_ERROR,
+                              "error_hist": list(self.errors), "log": "fault"}))
 
     def _tick(self):
         while self._run:
@@ -392,6 +414,13 @@ class FakeFirmware(FakeSerial):
     #    handleResetCommand, so one RESET clears the latch AND redeems. ------
     def write(self, data):
         text = data.decode()
+        # The tool appends a *HHHH\n CRC trailer; the fake models a legacy
+        # peer and just validates/strips it before parsing.
+        if text.endswith("\n") and len(text) > 6 and text[-6] == "*":
+            body, tr = text[:-6], text[-6:-1]
+            assert int(tr[1:], 16) == uinsp_test._crc16_ccitt(body.encode()), \
+                "tool sent a bad CRC trailer"
+            text = body
         self.written.append(text)
         if self.data_latched:
             self._errbuf += text
@@ -428,30 +457,30 @@ class FakeFirmware(FakeSerial):
 
         rep = {"id": msg.get("id"), "ack": True}
 
-        if t == "PING":
-            rep["type"] = "PONG"
+        if t == "ping":
+            rep["type"] = "pong"
         elif t == "get_setup":
             rep.update({"type": "get_setup", "machine_id": "BENCH",
-                        "cfg_from_nvs": True, "plateFreq": self.plate_freq,
-                        "SYS_STEP_COUNT": self.step_count,
+                        "cfg_from_nvs": True, "plate_freq": self.plate_freq,
+                        "step_count": self.step_count,
                         "stage_pulse_offset": dict(self.spo),
-                        "pulse_minWidth": 0, "pulse_maxWidth": 1000})
+                        "pulse_min_width": 0, "pulse_max_width": 1000})
         elif t == "set_setup":
-            if "plateFreq" in msg:
-                self.plate_freq = msg["plateFreq"]
-            if "minDetectTimeSep_us" in msg:
-                self.min_sep_s = msg["minDetectTimeSep_us"] / 1e6
+            if "plate_freq" in msg:
+                self.plate_freq = msg["plate_freq"]
+            if "min_detect_sep_us" in msg:
+                self.min_sep_s = msg["min_detect_sep_us"] / 1e6
             if "stage_pulse_offset" in msg:
                 self.spo.update(msg["stage_pulse_offset"])
             rep["type"] = "set_setup"
             if msg.get("persist"):
-                # Guard: a save is only permitted stopped -- plateFreq 0, in
+                # Guard: a save is only permitted stopped -- plate_freq 0, in
                 # IDLE or a (stopped) READY. Otherwise NAK with a reason; the
                 # RAM update above still applied. (The fake has no coast, so
-                # plate_freq==0 stands in for SYS_CUR_FREQ==0.)
+                # plate_freq==0 stands in for PLATE_FREQ_CURRENT==0.)
                 if self.plate_freq != 0:
                     rep.update({"persisted": False, "ack": False,
-                                "persist_err": "set plateFreq to 0 first",
+                                "persist_err": "set plate_freq to 0 first",
                                 "state": self.state})
                 elif self.state not in (self.ST_IDLE, self.ST_READY):
                     rep.update({"persisted": False, "ack": False,
@@ -475,7 +504,7 @@ class FakeFirmware(FakeSerial):
         elif t == "clear_error_history":
             self.errors.clear()
             rep["type"] = "clear_error_history"
-        elif t == "ask_JsonRaw_version":
+        elif t == "get_version":
             # Real firmware answers with a HARDCODED id (100446), so the reply
             # arrives async rather than matched to the command id.
             self.feed(json.dumps({"type": "rsp_JsonRaw_version", "id": 100446,
@@ -498,15 +527,15 @@ class FakeFirmware(FakeSerial):
                                   "ack": True, "n": len(self.iot),
                                   "emitted": len(self.iot), "ev": self.iot}))
             return
-        elif t == "trigCamPulse":
+        elif t == "trig_cam_pulse":
             # One announcement carrying the caller's trigger_id, no object
             # enqueued (Qs reflects the untouched RBuf depth).
             now = time.time()
-            self.feed(json.dumps({"type": "bTrigInfo", "tidx": 1, "usH": 0,
-                                  "usL": int(now * 1e6) & 0xFFFFFFFF,
+            self.feed(json.dumps({"type": "cam_trig", "cam": 1,
+                                  "t_us": int(now * 1e6),
                                   "tid": msg.get("trigger_id", 924949),
                                   "Qs": self._qdepth()}))
-            rep["type"] = "trigCamPulse"
+            rep["type"] = "trig_cam_pulse"
         elif t == "set_sel1_cd":
             self.sel1_cd = msg.get("count", 0)
             rep["type"] = "set_sel1_cd"
@@ -514,9 +543,9 @@ class FakeFirmware(FakeSerial):
             rep.update({"type": "get_sel1_cd", "sel1_cd": self.sel1_cd})
         elif t == "get_running_stat":
             rep.update({"type": "get_running_stat", "state": self.state,
-                        "count": dict(self.counts), "ERROR_HIST": list(self.errors),
-                        "plateFreq": self.plate_freq, "sel1_cd": self.sel1_cd})
-        elif t == "trig_phamton_pulse":
+                        "count": dict(self.counts), "error_hist": list(self.errors),
+                        "plate_freq": self.plate_freq, "sel1_cd": self.sel1_cd})
+        elif t == "trig_phantom_pulse":
             now = time.time()
             if (self.state == self.ST_READY and
                     now - self._last_pulse_t >= self.min_sep_s):
@@ -527,14 +556,14 @@ class FakeFirmware(FakeSerial):
                     self._iot_lights(self.tid)
                     if not self.drop_announce:
                         # Real firmware announces each object twice: CAM1
-                        # (tidx=1) and CAM2 (tidx=2), same tid, same offset.
-                        for tidx in (1, 2):
-                            self.feed(json.dumps({"type": "bTrigInfo",
-                                                  "tidx": tidx, "usH": 0,
-                                                  "usL": int(now * 1e6) & 0xFFFFFFFF,
+                        # (cam=1) and CAM2 (cam=2), same tid, same offset.
+                        for cam in (1, 2):
+                            self.feed(json.dumps({"type": "cam_trig",
+                                                  "cam": cam,
+                                                  "t_us": int(now * 1e6),
                                                   "tid": self.tid,
                                                   "Qs": self._qdepth()}))
-            rep["type"] = "trig_phamton_pulse"
+            rep["type"] = "trig_phantom_pulse"
         elif t == "report":
             self._report(msg.get("tid"), msg.get("cat"))
             return   # firmware sets doRsp=false for report
@@ -578,7 +607,7 @@ class TestBench(unittest.TestCase):
         rows = self._run_bench(fw, count=4)
         self.assertTrue(rows["B.3"][2], "timer-running check should pass")
         self.assertTrue(rows["B.4"][2], "should reach READY")
-        self.assertTrue(rows["B.5"][2], f"1:1 pulses->bTrigInfo: {rows['B.5'][3]}")
+        self.assertTrue(rows["B.5"][2], f"1:1 pulses->cam_trig: {rows['B.5'][3]}")
         self.assertTrue(rows["B.6"][2], "tid should be contiguous")
         self.assertTrue(rows["B.8"][2], f"SEL1 count: {rows['B.8'][3]}")
 
@@ -596,12 +625,12 @@ class TestBench(unittest.TestCase):
                         f"unjudged part should fault: {rows['B.12'][3]}")
 
     def test_missing_announcement_is_caught(self):
-        # If bTrigInfo never arrives the bench must fail B.5 rather than
+        # If cam_trig never arrives the bench must fail B.5 rather than
         # quietly reporting success on zero parts.
         fw = FakeFirmware(judge_deadline=5.0, drop_announce=True)
         rows = self._run_bench(fw, count=3)
         self.assertFalse(rows["B.5"][2],
-                         "missing bTrigInfo must be reported as a failure")
+                         "missing cam_trig must be reported as a failure")
 
     def test_too_fast_pulses_are_reported_not_hidden(self):
         # Firing faster than SYS_MIN_PULSE_TIME_SEP_us makes the firmware drop
@@ -644,14 +673,14 @@ class FakeFirmwareRateLimited(FakeFirmware):
                         self.errors.append(self.E_NO_RESULT)
 
     def reply_to(self, msg):
-        if msg.get("type") == "trig_phamton_pulse" and self.state == self.ST_READY:
+        if msg.get("type") == "trig_phantom_pulse" and self.state == self.ST_READY:
             now = time.time()
             if now - self._last_pulse_t >= self.min_sep_s:
                 if self.commq >= 20:
                     self.state = self.ST_ERROR
                     self.errors.append(self.E_CANNOT_SEND)
                     self.feed(json.dumps({"id": msg.get("id"), "ack": True,
-                                          "type": "trig_phamton_pulse"}))
+                                          "type": "trig_phantom_pulse"}))
                     return
                 self.commq += 1
         super().reply_to(msg)
@@ -684,10 +713,10 @@ class FakeStalePublish(FakeFirmware):
         if msg.get("type") == "get_setup":
             self.feed(json.dumps({"id": msg.get("id"), "ack": True,
                                   "type": "get_setup", "machine_id": "BENCH",
-                                  "cfg_from_nvs": True, "plateFreq": self.plate_freq,
-                                  "SYS_STEP_COUNT": self.step_count,
+                                  "cfg_from_nvs": True, "plate_freq": self.plate_freq,
+                                  "step_count": self.step_count,
                                   "stage_pulse_offset": dict(self.reported_spo),
-                                  "pulse_minWidth": 0, "pulse_maxWidth": 1000}))
+                                  "pulse_min_width": 0, "pulse_max_width": 1000}))
             return
         super().reply_to(msg)
 
@@ -892,6 +921,13 @@ class FakeFirmwareNoLatch(FakeFirmware):
 
     def write(self, data):
         text = data.decode()
+        # The tool appends a *HHHH\n CRC trailer; the fake models a legacy
+        # peer and just validates/strips it before parsing.
+        if text.endswith("\n") and len(text) > 6 and text[-6] == "*":
+            body, tr = text[:-6], text[-6:-1]
+            assert int(tr[1:], 16) == uinsp_test._crc16_ccitt(body.encode()), \
+                "tool sent a bad CRC trailer"
+            text = body
         self.written.append(text)
         try:
             msg = json.loads(text)
@@ -962,7 +998,7 @@ class TestPersistGuard(unittest.TestCase):
         # READY is fine too, as long as the plate is stopped -- no need to exit
         # inspection mode just to save.
         link = self._link()
-        link.send({"type": "set_setup", "plateFreq": 0}, timeout=2.0)
+        link.send({"type": "set_setup", "plate_freq": 0}, timeout=2.0)
         link.send({"type": "enter_insp_mode"}, timeout=2.0)
         r = link.send({"type": "set_setup", "persist": True}, timeout=2.0)
         self.assertTrue(r and r.get("persisted") is True,
@@ -970,7 +1006,7 @@ class TestPersistGuard(unittest.TestCase):
 
     def test_persist_refused_and_nakked_while_running(self):
         link = self._link()
-        link.send({"type": "set_setup", "plateFreq": 1000}, timeout=2.0)
+        link.send({"type": "set_setup", "plate_freq": 1000}, timeout=2.0)
         link.send({"type": "enter_insp_mode"}, timeout=2.0)
         r = link.send({"type": "set_setup", "persist": True}, timeout=2.0)
         self.assertTrue(r and r.get("persisted") is False,
@@ -1001,19 +1037,19 @@ class TestProbe(unittest.TestCase):
             self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
 
     def test_trigcampulse_single_announcement(self):
-        # A regression that made trigCamPulse announce twice (like a phantom)
+        # A regression that made trig_cam_pulse announce twice (like a phantom)
         # or enqueue an object must trip P.3.
         class DoubleAnnounce(FakeFirmware):
             def reply_to(self, msg):
-                if msg.get("type") == "trigCamPulse":
+                if msg.get("type") == "trig_cam_pulse":
                     now = time.time()
                     for _ in range(2):
-                        self.feed(json.dumps({"type": "bTrigInfo", "tidx": 1,
-                                              "usH": 0, "usL": 0,
+                        self.feed(json.dumps({"type": "cam_trig", "cam": 1,
+                                              "t_us": 0,
                                               "tid": msg.get("trigger_id"),
                                               "Qs": 0}))
                     self.feed(json.dumps({"id": msg.get("id"), "ack": True,
-                                          "type": "trigCamPulse"}))
+                                          "type": "trig_cam_pulse"}))
                     return
                 super().reply_to(msg)
         rows = self._run_probe(DoubleAnnounce(judge_deadline=5.0))
@@ -1110,7 +1146,7 @@ class TestReconnect(unittest.TestCase):
             setattr(link, "reconnects", link.reconnects + 1) or True)
         fake.write = self._boom_writer()
         with self.assertRaises(uinsp_test.LinkReset):
-            link.send_nowait({"type": "PING"})
+            link.send_nowait({"type": "ping"})
         self.assertEqual(link.reconnects, 1)
         link._stop = True
         time.sleep(0.05)
@@ -1121,7 +1157,7 @@ class TestReconnect(unittest.TestCase):
         link = make_link(fake, auto_reconnect=False)
         fake.write = self._boom_writer()
         with self.assertRaises(_serial.SerialException):
-            link.send_nowait({"type": "PING"})
+            link.send_nowait({"type": "ping"})
         link._stop = True
         time.sleep(0.05)
 
@@ -1131,7 +1167,7 @@ class TestReconnect(unittest.TestCase):
         link._reopen_serial = lambda wait_timeout=600.0: False
         fake.write = self._boom_writer()
         with self.assertRaises(uinsp_test.LinkDead):
-            link.send_nowait({"type": "PING"})
+            link.send_nowait({"type": "ping"})
         link._stop = True
         time.sleep(0.05)
 
@@ -1297,6 +1333,149 @@ class TestChaosReconnect(unittest.TestCase):
         self.assertIn("segment", rows["C.2"][3],
                       "C.2 should account for segments after a reconnect")
         self.assertTrue(rows["C.4"][2], "board must answer after the reconnect")
+
+
+
+
+class TestGrillPlan(unittest.TestCase):
+    """grill_plan derives the run plan from the machine parameter file --
+    pure math, no hardware."""
+
+    PARAMS = {
+        "ticks_per_rev": 60000,
+        "gate_to_last_station_ticks": 30000,
+        "plate_diameter_mm": 240.0,
+        "sec_per_rev": 2.0,
+        "min_object_mm": 1.0,
+        "min_gap_mm": 3.0,
+        "plate_accel_hz_s": 20000,
+        "parts_per_second": 5.0,
+        "pattern": {"ok": 2, "ng": 1, "na": 1},
+        "sel_pulse_ms": 10.0,
+        "stage_pulse_offset": None,
+    }
+
+    def test_freq_from_rev_time(self):
+        # 60000 ticks/rev at 2s/rev -> 30000 ticks/s; ISR ticks at 2x
+        # plate_freq, so plate_freq must come out 15000.
+        plan = uinsp_test.grill_plan(self.PARAMS)
+        self.assertEqual(plan["freq"], 15000)
+        self.assertEqual(plan["tick_hz"], 30000)
+
+    def test_station_layout_spans_the_real_geometry(self):
+        plan = uinsp_test.grill_plan(self.PARAMS)
+        spo = plan["spo"]
+        self.assertEqual(spo["CAM1_on"], 1500)      # 5% of 30000
+        self.assertEqual(spo["SWITCH"], 27000)      # 90%
+        self.assertEqual(spo["SEL3_on"], 30000)     # last station = full span
+        # 10ms selector pulse at 30000 ticks/s = 300 ticks
+        self.assertEqual(spo["SEL1_off"] - spo["SEL1_on"], 300)
+        # answer window must be generous at real speed (850ms here)
+        self.assertAlmostEqual(plan["window_ms"], 850.0, delta=1.0)
+
+    def test_pattern_expands_to_cat_sequence(self):
+        plan = uinsp_test.grill_plan(self.PARAMS)
+        self.assertEqual(plan["cats"], [1, 1, 2, 0xFFFF])
+
+    def test_part_geometry_limits(self):
+        plan = uinsp_test.grill_plan(self.PARAMS)
+        # rim = pi*240 = 754mm over 60000 ticks -> 0.0126mm/tick, so a 1mm
+        # object is ~80 ticks wide at the gate.
+        self.assertAlmostEqual(plan["mm_per_tick"], 0.012566, delta=1e-5)
+        self.assertAlmostEqual(plan["min_obj_ticks"], 79.6, delta=0.5)
+        # 3mm gap at 377mm/s rim speed passes the gate in ~8ms: any
+        # min_detect_sep_us above this merges adjacent parts.
+        self.assertAlmostEqual(plan["gap_us"], 7958, delta=30)
+        # and the theoretical pitch limit is ~94 parts/s
+        self.assertAlmostEqual(plan["pitch_rate_hz"], 94.2, delta=1.0)
+
+    def test_explicit_offsets_win(self):
+        p = dict(self.PARAMS)
+        p["stage_pulse_offset"] = {"CAM1_on": 100, "SWITCH": 200}
+        plan = uinsp_test.grill_plan(p)
+        self.assertEqual(plan["spo"]["SWITCH"], 200)
+        self.assertEqual(plan["window_ticks"], 100)
+
+
+
+
+class TestCrcFraming(unittest.TestCase):
+    """The *HHHH\n integrity trailer: TX always stamped, RX verifies when
+    present, drops on mismatch, passes legacy frames through, and the "q"
+    event sequence exposes silent event loss."""
+
+    def _mklink(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        return fake, link
+
+    def test_tx_carries_valid_trailer(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        link.send({"type": "ping"}, timeout=1.0)
+        # FakeSerial.write validates and strips the trailer; reaching a reply
+        # at all proves the trailer parsed and the CRC matched.
+        self.assertTrue(fake.written)
+        link.close()
+
+    def test_rx_good_crc_dispatches(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        body = b'{"type":"cam_trig","q":0,"tid":9}'
+        with fake._lock:
+            fake._out += body + b"*%04X\n" % uinsp_test._crc16_ccitt(body)
+        time.sleep(0.3)
+        msgs = [m for _, m in link.drain_async()]
+        self.assertEqual([m["tid"] for m in msgs if m.get("type") == "cam_trig"],
+                         [9])
+        self.assertEqual(link.rx_crc_ok, 1)
+        self.assertEqual(link.rx_crc_fail, 0)
+        link.close()
+
+    def test_rx_bad_crc_drops_frame(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        body = b'{"type":"cam_trig","q":0,"tid":9}'
+        with fake._lock:
+            fake._out += body + b"*BEEF\n"     # wrong CRC
+            good = b'{"type":"cam_trig","q":1,"tid":10}'
+            fake._out += good + b"*%04X\n" % uinsp_test._crc16_ccitt(good)
+        time.sleep(0.3)
+        msgs = [m for _, m in link.drain_async()]
+        self.assertEqual([m["tid"] for m in msgs if m.get("type") == "cam_trig"],
+                         [10], "the corrupted frame must be dropped")
+        self.assertEqual(link.rx_crc_fail, 1)
+        link.close()
+
+    def test_rx_legacy_frame_without_trailer(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        with fake._lock:
+            fake._out += b'{"type":"cam_trig","tid":3,"Qs":1}'
+            fake._out += b'{"type":"cam_trig","tid":4,"Qs":1}'
+        time.sleep(0.3)
+        msgs = [m for _, m in link.drain_async()]
+        self.assertEqual([m["tid"] for m in msgs if m.get("type") == "cam_trig"],
+                         [3, 4])
+        self.assertEqual(link.rx_crc_fail, 0)
+        link.close()
+
+    def test_event_seq_gap_detection(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        with fake._lock:
+            for q in (0, 1, 4, 5):     # q=2,3 lost
+                fake._out += json.dumps(
+                    {"type": "cam_trig", "q": q, "tid": q}).encode()
+        time.sleep(0.3)
+        self.assertEqual(link.event_gaps, 2)
+        # a reboot (q restarts low) must resync, not count a huge gap
+        with fake._lock:
+            fake._out += b'{"type":"cam_trig","q":0,"tid":99}'
+            fake._out += b'{"type":"cam_trig","q":1,"tid":100}'
+        time.sleep(0.3)
+        self.assertEqual(link.event_gaps, 2)
+        link.close()
 
 
 if __name__ == "__main__":

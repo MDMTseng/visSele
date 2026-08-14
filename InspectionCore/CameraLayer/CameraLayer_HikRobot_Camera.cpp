@@ -6,10 +6,31 @@
 #include <logctrl.h>
 LOG_MODULE("cam.hikrobot");
 
+// Enumeration result, shared between listAddDevices() and every constructor:
+// the constructor does not take a device handle, it re-finds its own device by
+// serial number in here. That makes the call order load-bearing --
+// listAddDevices() must have run, and no other thread may be enumerating,
+// while a camera is being constructed. Both hold today because
+// CameraLayerManager enumerates then constructs on one thread, which is why
+// this is documented rather than restructured; the fix (hand the constructor
+// the MV_CC_DEVICE_INFO it was matched from) is a cross-file change to the
+// manager's protocol, not a local one.
 MV_CC_DEVICE_INFO_LIST s_dev_list;
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
+  // `m` serialises the compound stop-modify-start sequences (this and
+  // SetMirror). Deliberately NOT taken inside Start/StopAquisition themselves:
+  // those are called from in here, and std::mutex is not recursive.
+  std::lock_guard<std::mutex> guard(m);
+
+  // Width/Height/Offset are only writable while grabbing is stopped, but the
+  // camera has to come back on afterwards. SetROI is a live runtime call
+  // (Core0_1/wiringPanel.cpp:1229 drives it from the UI), so leaving it
+  // stopped meant one ROI change silently killed the camera until reconnect.
+  // Restore whatever state we found -- the constructor calls SetROI before
+  // StartAquisition, and that path must stay "not grabbing".
+  const bool was_running = acquisition_started;
   StopAquisition();
   int max_w, max_h;
 
@@ -21,6 +42,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   max_h = HInfo.nCurValue;
   if (x >= max_w || y >= max_h || w < 0 || h < 0)
   {
+    if (was_running) StartAquisition();
     return CameraLayer::NAK;
   }
   if (x < 0)
@@ -62,10 +84,19 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   int xret=SetIntValue_w_Check("OffsetX", (int)x);
   int yret=SetIntValue_w_Check("OffsetY", (int)y);
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d max.wh:%d,%d",x,y,w,h, xret,yret,wret,hret,max_w,max_h);
+  // Checked here, while x/y/w/h still hold what we asked for -- GetROI below
+  // overwrites them with what the camera settled on.
+  const bool roi_rejected =
+      (wret != MV_OK || hret != MV_OK || xret != MV_OK || yret != MV_OK);
+  if (roi_rejected)
+    LOGE("SetROI partially rejected: w=%x h=%x x=%x y=%x (asked %d,%d %dx%d, max %dx%d)",
+         wret, hret, xret, yret, x, y, w, h, max_w, max_h);
+
   GetROI(&x, &y, &w, &h, NULL,NULL);
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d",x,y,w,h, xret,yret,wret,hret);
-  // StartAquisition();
-  return CameraLayer::ACK;
+  if (was_running) StartAquisition();
+
+  return roi_rejected ? CameraLayer::NAK : CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
@@ -119,33 +150,11 @@ void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
 }
 
 
-uint32_t CheckSumPush(uint32_t chSum,uint32_t val)
-{
-  const int shift=2;
-  uint64_t v=(chSum<<shift)+val;
-
-  uint64_t head=v>>32;
-  while(head)
-  {
-    v&=((uint64_t)1<<32)-1;//head cut off
-    v+=head;
-    head=v>>32;
-  }
-
-  return v;
-}
-
-uint32_t pDataCheckSum( unsigned char *pData,size_t length)
-{
-  uint32_t chSum=0;
-  int segs=20;
-  for(int i=0;i<segs;i++)
-  {
-    int idx=i*(length-1)/(segs-1);
-    chSum=CheckSumPush(chSum,pData[idx]);
-  }
-  return chSum;
-}
+// (CheckSumPush/pDataCheckSum lived here: a sampled checksum taken before and
+// after handing a frame over, used to detect that the SDK had recycled the
+// buffer underneath us -- and to drop the frame when it had. The frame-copy
+// pool made that race impossible, which left these dead. They were also
+// non-static, so they leaked into the global namespace.)
 
 void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context)
 {
@@ -205,13 +214,34 @@ CameraLayer::status CameraLayer_HikRobot_Camera::isInOperation()
 CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
 {
 
-  if (_cached_pData == NULL || _cached_frame_info==NULL)
+  if (_cached_pData == NULL || _cached_frame_info==NULL || imgBuffer == NULL)
   {
     return NAK;
   }
-  
+
   MvGvspPixelType pType = _cached_frame_info->enPixelType;
-  LOGI("pType:%X PixelType_Gvsp_BayerGB8:%X", pType,PixelType_Gvsp_BayerGB8);
+
+  // The caller sizes imgBuffer from the frameInfo it was handed, but nothing
+  // forced the two to agree: pixelCount was accepted and then ignored
+  // completely, and every write below is sized from the FRAME instead. A
+  // frame arriving larger than the buffer the caller prepared -- or a caller
+  // asking for fewer channels than the frame carries -- was an unchecked heap
+  // write. Both are cheap to rule out here.
+  const size_t frame_w = (size_t)_cached_frame_info->nWidth;
+  const size_t frame_h = (size_t)_cached_frame_info->nHeight;
+  if (frame_w * frame_h > pixelCount)
+  {
+    LOGE("ExtractFrame: frame %zux%zu exceeds the caller's %zu-pixel buffer -- dropping",
+         frame_w, frame_h, pixelCount);
+    return NAK;
+  }
+  if (channelCount < 1)
+  {
+    return NAK;
+  }
+
+  // (no per-frame logging here -- this runs once per captured frame, so at
+  // production rates it was tens of lines a second of constant text.)
   if(pType == PixelType_Gvsp_Mono8)
   {
 
@@ -222,6 +252,12 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
       // Native gray: copy straight through, no replicate-to-BGR.
       memcpy(imgBuffer, _cached_pData, (size_t)w*h);
       return ACK;
+    }
+    // The replicate-to-BGR loop below writes tar_Pix[0..2] per pixel.
+    if(channelCount < 3)
+    {
+      LOGE("ExtractFrame: Mono8 frame needs channelCount 1 or >=3, got %d", channelCount);
+      return NAK;
     }
     for(int i=0;i<h;i++)
     {
@@ -254,7 +290,17 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
     int w=_cached_frame_info->nWidth;
     int h=_cached_frame_info->nHeight;
 
-    
+    // Each row copies w*3 source bytes into a row whose stride is
+    // w*channelCount; anything under 3 channels overruns by w*(3-channelCount)
+    // bytes per row. The caller wanting gray from a colour frame is a real
+    // case (the pipeline is migrating to 1-channel), so reject it rather than
+    // corrupt the heap -- the caller derives channelCount from frameInfo, so
+    // this should be unreachable in practice.
+    if(channelCount < 3)
+    {
+      LOGE("ExtractFrame: BGR8 frame needs channelCount >=3, got %d", channelCount);
+      return NAK;
+    }
 
     for(int i=0;i<h;i++)
     {
@@ -345,6 +391,41 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   // 1-channel frame (no replicate-to-BGR). Color/Bayer is delivered as BGR8.
   _fi.channelCount = (pType == PixelType_Gvsp_Mono8) ? 1 : 3;
   _fi.pixelBits=8*_fi.channelCount; // CameraLayer::frameInfo uses pixelBits
+
+  // Exposure-floor watch -- see frameInfo::rateSaturated. Mirrors the Aravis
+  // layer. No timestamp calibration is needed here: MV_FRAME_OUT_INFO_EX gives
+  // device ticks in a documented 10ns unit, already divided out above.
+  //
+  // NOTE: this backend links only on Windows, so unlike the Aravis version
+  // this code has been type-checked but never executed. That is also why the
+  // watch is opt-in and off by default -- the trustworthy trigger accounting
+  // on this path remains the Line0RisingEdge event count above.
+  if (_prev_frame_us != 0 && nDevTimeStamp_us > _prev_frame_us)
+  {
+    _fi.interval_us = nDevTimeStamp_us - _prev_frame_us;
+    if (_exposure_floor_watch && _floor_us > 0.0 &&
+        (double)_fi.interval_us <= _floor_us * (1.0 + SATURATION_TOL))
+    {
+      _fi.rateSaturated = true;
+      _saturated_run++;
+      if (_saturated_run >= SATURATION_RUN_ALERT && !_saturation_reported)
+      {
+        _saturation_reported = true;
+        LOGE("camera is being triggered faster than it can expose: %d frames "
+             "in a row at the %.0fus floor (ResultingFrameRate limit). "
+             "Triggers are being delayed or silently dropped -- frame "
+             "timestamps no longer identify the trigger that caused them.",
+             _saturated_run, _floor_us);
+      }
+    }
+    else
+    {
+      _saturated_run = 0;
+      _saturation_reported = false;
+    }
+  }
+  _prev_frame_us = nDevTimeStamp_us;
+
   fi=_fi;
   callback(*this, CameraLayer::EV_IMG, context);
 
@@ -463,7 +544,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
   CameraLayer::BasicCameraInfo camInfo,
   std::string misc,
   CameraLayer_Callback cb, 
-  void *context):CameraLayer(camInfo,misc,cb, context),imgQueue(10)
+  void *context):CameraLayer(camInfo,misc,cb, context),imgQueue(IMG_QUEUE_DEPTH)
 {
   bDevConnected = false;
   _frameBufPool.resize(FRAME_POOL_SIZE);
@@ -564,24 +645,23 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
   {
   }
 
-  if (0)
   {
 
-    MVCC_INTVALUE_EX intValInfo = {0};
-    GetIntValue("OffsetX", &intValInfo);
-    LOGI("%d<[%d]<%d....%d", intValInfo.nMin, intValInfo.nCurValue, intValInfo.nMax, intValInfo.nInc);
-  }
+    // Chunk mode used to be switched on here (Exposure + Timestamp), with all
+    // five return codes assigned to the same `nRet` and never checked. Nothing
+    // in this layer has ever parsed a chunk: the exposure and timestamp we
+    // actually use come from MV_FRAME_OUT_INFO_EX (nDevTimeStampHigh/Low),
+    // which is standard frame info, not chunk payload. So it was pure
+    // per-frame overhead on a link we have measured to be the throughput
+    // ceiling. Turned off explicitly rather than just not-enabled, so a
+    // camera-side saved user set cannot bring it back silently.
+    int chunkRet = MV_CC_SetBoolValue(handle, "ChunkModeActive", false);
+    if (MV_OK != chunkRet)
+      LOGI("ChunkModeActive off: ret=%x (harmless if the node is absent)", chunkRet);
 
-  {
-
-    nRet = MV_CC_SetBoolValue(handle, "ChunkModeActive", true);
-    nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Exposure");
-    nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
-    nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Timestamp");
-    nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
-    
-    SetFrameRate(60);
-    
+    // NOTE: the frame-rate cap that used to be applied here (SetFrameRate(60))
+    // now lives in TriggerMode(), because whether a cap is wanted depends
+    // entirely on the mode -- see the comment there.
   }
 
   // SetROI(1000,1000,200,200,0,0);
@@ -599,20 +679,67 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
   SetROI(0, 0, 999999, 999999, 0, 0);
 
   {
-    MVCC_ENUMVALUE pixFormat={0};
-    int ret = MV_CC_GetPixelFormat(handle,&pixFormat);
-    //1080001 graylevel
-    //108000A GB
+    // ExtractFrame can only decode Mono8 and BGR8_Packed, so the camera has to
+    // end up on one of those or every frame is silently rejected downstream.
+    //
+    // The old code queried the supported formats, threw the answer away, and
+    // blind-set BGR8_Packed -- which the SDK documents as invalid unless the
+    // value appears in nSupportValue. On a mono sensor it "worked" only
+    // because the set failed and left Mono8 in place. Same outcome, chosen on
+    // purpose this time.
+    MVCC_ENUMVALUE pixFormat = {0};
+    int ret = MV_CC_GetPixelFormat(handle, &pixFormat);
 
-    if(pixFormat.nCurValue==PixelType_Gvsp_BayerGB8)
+    bool has_mono8 = false, has_bgr8 = false;
+    if (MV_OK == ret)
     {
+      const unsigned kMax = sizeof(pixFormat.nSupportValue) / sizeof(pixFormat.nSupportValue[0]);
+      unsigned n = (pixFormat.nSupportedNum > kMax) ? kMax : pixFormat.nSupportedNum;
+      for (unsigned i = 0; i < n; i++)
+      {
+        if (pixFormat.nSupportValue[i] == PixelType_Gvsp_Mono8)       has_mono8 = true;
+        if (pixFormat.nSupportValue[i] == PixelType_Gvsp_BGR8_Packed) has_bgr8  = true;
+      }
+    }
+    else
+    {
+      LOGE("could not read PixelFormat (ret=%x) -- leaving the camera on its current format", ret);
     }
 
-    int pixFSetRet=MV_CC_SetPixelFormat(handle,PixelType_Gvsp_BGR8_Packed);
-    ret = MV_CC_GetPixelFormat(handle,&pixFormat);
+    // Preference deliberately unchanged: colour sensors are delivered as
+    // BGR8_Packed (the SDK debayers), mono sensors stay Mono8.
+    // NOT switching colour sensors to Mono8 here, tempting as it is -- it
+    // would be a third of the payload on a link we have measured to be the
+    // throughput ceiling, but it changes what the inspection pipeline sees,
+    // so it wants a bench A/B rather than a quiet default change.
+    if (has_bgr8)
+    {
+      int setRet = MV_CC_SetPixelFormat(handle, PixelType_Gvsp_BGR8_Packed);
+      if (MV_OK != setRet)
+        LOGE("PixelFormat BGR8_Packed advertised but rejected (ret=%x)", setRet);
+    }
+    else if (has_mono8 && pixFormat.nCurValue != PixelType_Gvsp_Mono8)
+    {
+      int setRet = MV_CC_SetPixelFormat(handle, PixelType_Gvsp_Mono8);
+      if (MV_OK != setRet)
+        LOGE("PixelFormat Mono8 advertised but rejected (ret=%x)", setRet);
+    }
 
-    LOGI("pixFSetRet:%d>>nCurValue:%X",pixFSetRet,pixFormat.nCurValue);
-
+    MV_CC_GetPixelFormat(handle, &pixFormat);
+    if (pixFormat.nCurValue != PixelType_Gvsp_Mono8 &&
+        pixFormat.nCurValue != PixelType_Gvsp_BGR8_Packed)
+    {
+      // Loud, because the symptom otherwise is "camera opens fine, every
+      // frame vanishes" -- ExtractFrame NAKs anything else.
+      LOGE("camera settled on PixelFormat %X, which ExtractFrame cannot decode "
+           "(only Mono8 %X / BGR8_Packed %X) -- frames will be rejected",
+           pixFormat.nCurValue, PixelType_Gvsp_Mono8, PixelType_Gvsp_BGR8_Packed);
+    }
+    else
+    {
+      LOGI("PixelFormat: %X (mono8=%d bgr8=%d supported)",
+           pixFormat.nCurValue, (int)has_mono8, (int)has_bgr8);
+    }
   }
 
 
@@ -647,19 +774,23 @@ void CameraLayer_HikRobot_Camera::sEventCallBack(MV_EVENT_OUT_INFO *pEventInfo, 
 
 void CameraLayer_HikRobot_Camera::EventCallBack(MV_EVENT_OUT_INFO *pEventInfo)
 {
-  if (pEventInfo->EventName == NULL) return;
+  // EventName is an inline char[128], never NULL -- the old "== NULL" guard was
+  // always false. What can actually happen is an empty/unterminated name, so
+  // check that instead, and bound the compares to the array.
+  if (pEventInfo->EventName[0] == '\0') return;
+  const size_t kNameMax = sizeof(pEventInfo->EventName);
 
   // Camera-clock timestamp of the edge itself. Survives even when no frame
   // follows, which is exactly the case we cannot see any other way.
   uint64_t tick = (((uint64_t)pEventInfo->nTimestampHigh) << 32) |
                     (uint64_t)pEventInfo->nTimestampLow;
 
-  if (strcmp(pEventInfo->EventName, "Line0RisingEdge") == 0)
+  if (strncmp(pEventInfo->EventName, "Line0RisingEdge", kNameMax) == 0)
   {
     _line0RisingEdges++;
     _line0LastEdgeDevTick = tick;
   }
-  else if (strcmp(pEventInfo->EventName, "Line0FallingEdge") == 0)
+  else if (strncmp(pEventInfo->EventName, "Line0FallingEdge", kNameMax) == 0)
   {
     _line0FallingEdges++;
   }
@@ -739,9 +870,22 @@ void CameraLayer_HikRobot_Camera::CLOSE()
 }
 CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
 {
+  // Teardown order matters. imgQThreadFunc runs ImageCallBack, which touches
+  // the SDK handle and calls out through `callback` into the owner; the old
+  // order (CLOSE then join) let it keep running against a handle that
+  // MV_CC_DestroyHandle had already freed, and against _frameBufPool while
+  // this object was being destroyed.
+  //
+  // 1. stop the camera so sImageCallBack pushes no more frames,
+  // 2. wake the consumer out of pop_blocking,
+  // 3. join it -- after this nothing else touches handle or the frame pool,
+  // 4. only then close and destroy the handle.
+  if (bDevConnected)
+    StopAquisition();
   imgQueue.termination_trigger();
+  if (imgQueueThread.joinable())
+    imgQueueThread.join();
   CLOSE();
-  imgQueueThread.join();
 }
 
 
@@ -762,8 +906,39 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
     takeCount=-1;
     int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF);
     SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_SOFTWARE);
+    // Free-run: a cap is the only thing stopping the sensor from flooding the
+    // link at max fps, so keep the 60 the constructor used to apply globally.
+    SetFrameRate(60);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
+
+  // Triggered: AcquisitionFrameRateEnable is a HARD CEILING ON THE TRIGGER
+  // RATE, not just on free-run output -- triggers arriving faster than the cap
+  // are discarded by the camera, with no error and no frame. That failure looks
+  // exactly like a dead trigger wire or a flaky opto, which is why it has to be
+  // off here. (Confirmed on the bench: the camera-side preset for this rig also
+  // keeps AcquisitionFrameRateEnable false for the same reason.)
+  int fr_ret = MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", false);
+  if (MV_OK != fr_ret)
+    LOGE("could not clear AcquisitionFrameRateEnable (ret=%x) -- trigger rate may be capped", fr_ret);
+
+  // ONE frame per trigger. Measured on the bench: these bodies expose only
+  // TriggerSelector=FrameBurstStart (there is no FrameStart trigger), so
+  // AcquisitionBurstFrameCount *is* the frames-per-trigger control -- and it
+  // defaults to 5. Left alone, every trigger produces five frames: five times
+  // the payload, on a link whose bandwidth is exactly what decides whether the
+  // camera can accept the next trigger at all. The pipeline pairs one frame to
+  // one part, so anything but 1 also desynchronises that pairing.
+  // Acquisition-control nodes are locked while the camera is grabbing --
+  // writing this one mid-stream is rejected by the device. Stop, write, restore.
+  const bool burst_was_running = acquisition_started;
+  if (burst_was_running) StopAquisition();
+
+  int burst_ret = SetIntValue_w_Check("AcquisitionBurstFrameCount", 1);
+  if (MV_OK != burst_ret)
+    LOGI("AcquisitionBurstFrameCount=1: ret=%x (harmless if the node is absent)", burst_ret);
+
+  if (burst_was_running) StartAquisition();
 
   int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_ON);
 
@@ -800,9 +975,11 @@ CameraLayer::status CameraLayer_HikRobot_Camera::Trigger()
     takeCount++;
   // arv_camera_software_trigger (camera,&err);
 
+  // NOT acquisition_started=true here: issuing a software trigger does not
+  // start grabbing, and claiming it does would make SetROI/SetMirror restart
+  // a camera that was deliberately stopped.
   int nRet = CommandExecute("TriggerSoftware");
-  acquisition_started=true;
-  
+
   return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 
@@ -845,8 +1022,14 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
   {
     return CameraLayer::NAK;
   }
-  m.lock();
-  
+  // Was a raw m.lock()/m.unlock() pair -- any throw in between (or the early
+  // return that used to sit inside it) left the mutex held forever.
+  std::lock_guard<std::mutex> guard(m);
+
+  // Same restore-what-we-found rule as SetROI: this used to start grabbing
+  // unconditionally, so toggling a mirror on a stopped camera silently
+  // started it.
+  const bool was_running = acquisition_started;
   StopAquisition();
   bool ben=(en!=0);
   if(Dir==0)
@@ -858,8 +1041,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     SetBoolValue("ReverseY", ben);
   }
   mirrorFlag[Dir] = en;
-  StartAquisition();
-  m.unlock();
+  if (was_running) StartAquisition();
   return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROIMirror(int Dir, int en)
@@ -947,11 +1129,46 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetGamma(float gamma)
 
 
 
+// acquisition_started tracks whether the camera is actually grabbing, so that
+// the settings calls that must briefly stop it (ROI, mirror) can put it back
+// the way they found it instead of guessing.
+// ROI, pixel format and a long exposure all move the floor, so re-read it
+// every time acquisition starts rather than sampling it once.
+void CameraLayer_HikRobot_Camera::refreshExposureFloor()
+{
+  _prev_frame_us = 0;
+  _saturated_run = 0;
+  _saturation_reported = false;
+  _floor_us = 0.0;
+
+  MVCC_FLOATVALUE fv = {0};
+  int ret = MV_CC_GetFloatValue(handle, "ResultingFrameRate", &fv);
+  if (MV_OK != ret || !(fv.fCurValue > 0.0f))
+  {
+    // Not fatal and not guessed at: without the rate there is no floor, so the
+    // check simply stays off.
+    LOGI("ResultingFrameRate unavailable (ret=%d); exposure-floor watch idle", ret);
+    return;
+  }
+  _floor_us = 1000000.0 / (double)fv.fCurValue;
+  LOGI("exposure floor: %.0fus (ResultingFrameRate %.2f fps)",
+       _floor_us, (double)fv.fCurValue);
+}
+
 CameraLayer::status CameraLayer_HikRobot_Camera::StartAquisition()
 {
-  return (MV_OK == MV_CC_StartGrabbing(handle)) ? CameraLayer::ACK : CameraLayer::NAK;
+  int ret = MV_CC_StartGrabbing(handle);
+  if (MV_OK == ret)
+  {
+    acquisition_started = true;
+    refreshExposureFloor();
+  }
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::StopAquisition()
 {
-  return (MV_OK == MV_CC_StopGrabbing(handle)) ? CameraLayer::ACK : CameraLayer::NAK;
+  int ret = MV_CC_StopGrabbing(handle);
+  if (MV_OK == ret)
+    acquisition_started = false;
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
 }

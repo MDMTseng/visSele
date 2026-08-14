@@ -11,14 +11,16 @@ import ReactResizeDetector from 'react-resize-detector';
 import dateFormat from "dateformat";
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI ,SLID_UI} from './component/rdxComponent.jsx';
+import { UINSP_ESP32_MINI, UINSP_ESP32_UI, runSequence } from './component/uInspESP32_UI.jsx';
+import { StationRegionPanel } from './component/StationRegionPanel.jsx';
 import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,defFileGeneration,stampRefImagePath,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
-import { INSPECTION_STATUS, DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -69,7 +71,6 @@ import {
 } from '@ant-design/icons';
 
 
-const LS_INSP_ROI_KEY="LS_INSP_ROI";
 
 import Divider from 'antd/lib/divider';
 
@@ -801,6 +802,76 @@ class ObjInfoList extends React.Component {
     </SubMenu>
 
 
+    // The 2nd-gen board. A SEPARATE block from uInspUI above on purpose: that
+    // one drives uInspMEGA, which speaks a different dialect entirely, and the
+    // 1st-gen panels are not to be touched. Everything here comes out of
+    // uInspESP32_UI.jsx.
+    let uInspESP32UI = this.props.uInspESP32_API_ID_CONN_INFO === undefined ? null :
+    <SubMenu style={{ 'textAlign': 'left' }} key={"uInspESP32"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
+      title={
+      <>
+        <Divider orientation="center" key="divi2" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">全檢設備 v2</Divider>
+        <UINSP_ESP32_MINI/>
+      </>}
+      >
+        <div style={{margin:"15px"}}>
+          <Button key="opt uInspESP32" icon={<SettingOutlined/>}
+            onClick={() => this.setState({ ...this.state, uInspESP32_popUp: true })}
+          >設定 / 診斷</Button>
+        </div>
+    </SubMenu>
+
+
+    // The station -- inspection region + clean-space regions. Another NEW block,
+    // and it lives HERE rather than in the def editor on purpose: these describe
+    // where the part sits when the camera fires and which patch of plate has to
+    // be empty. That is the machine, not the product, so it is authored on the
+    // live image and stored in machine_setting.json. Everything is in
+    // component/StationRegionPanel.jsx.
+    // Everything goes in the TITLE, not the body. The Menu's openKeys is
+    // controlled and only ever contains "sub1"+index from resultMenu, so a
+    // SubMenu keyed anything else can never be expanded -- clicking it does
+    // nothing at all. That is why the v2 block above puts its strip in the
+    // title too. A body here would render and be permanently unreachable.
+    let stationUI =
+    <SubMenu style={{ 'textAlign': 'left' }} key={"station"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
+      title={
+      <>
+        <Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>
+        <StationRegionPanel
+          ecCanvas={this.props.ecCanvas}
+          machineSetting={this.props.machineSetting}
+          onApply={(patch) => {
+            // Live first: setup_machine_setting() on the core re-reads
+            // inspection_region and it takes effect on the very next frame,
+            // with no def reload and no restart.
+            this.props.WSCMD_CB("ST", 0,
+              { MachineSetting: { ...(this.props.machineSetting||{}), ...patch } });
+          }}
+          onBypass={(on) => {
+            // Runtime only, and deliberately NOT part of the MachineSetting
+            // patch above: that one gets written to machine_setting.json by
+            // onSave, and a bypass that persists is a machine that has silently
+            // stopped enforcing its station. The core drops it on restart.
+            this.props.WSCMD_CB("ST", 0, { InspAreaBypass: !!on });
+          }}
+          onSave={(setting) => {
+            let _s = { ...setting };
+            Object.keys(_s).forEach(k => { if (k.startsWith("_")) delete _s[k]; });
+            this.props.WSCMD_CB("SV", 0,
+              { filename: "data/machine_setting.json" },
+              new TextEncoder().encode(JSON.stringify(_s, null, 2)),
+              { resolve: () => {
+                  this.props.ACT_machine_custom_setting_Update(setting);
+                  log.info("[station] regions saved");
+                },
+                reject: (e) => log.error("[station] save failed", e) });
+          }} />
+      </>}
+      >
+    </SubMenu>
+
+
     // console.log(this.state.SLID_EM_STOP_src_list);
     let SLIDUI=this.props.SLID_API_ID_CONN_INFO===undefined? null:
     <div style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
@@ -868,11 +939,25 @@ class ObjInfoList extends React.Component {
           openKeys={openAllsubMenuKeyList}
           mode="inline">
           {uInspUI}
+          {uInspESP32UI}
+          {stationUI}
           {SLIDUI}
 
           {resultMenu}
 
         </Menu>
+        {/* The full setup panel, on demand. Mounted only while open so its 1Hz
+            poll does not share the serial link with the strip above for the
+            whole shift. */}
+        {/* `visible`, not `open` -- antd 4.22.8 (see the note on the fake-camera
+            modal in script.jsx). This one was dead the same way: 設定/診斷 set
+            the state and no panel ever appeared. */}
+        <Modal visible={this.state.uInspESP32_popUp === true} title="全檢設備 v2 (uInspESP32)"
+          onCancel={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
+          onOk={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
+          footer={null} destroyOnClose width={560}>
+          {this.state.uInspESP32_popUp === true ? <UINSP_ESP32_UI/> : null}
+        </Modal>
         {fullScreenMODAL}
         {
           uInspUI===null?null:
@@ -984,9 +1069,27 @@ class CanvasComponent extends React.Component {
       // log.debug("updateCanvas>>");
 
       let cur__surpress_display=props._edit_info.reportStatisticState.__surpress_display;
-      if(cur__surpress_display!=true || this.pre_img!=props.img)
+      // The overlay must belong to the image under it.
+      //
+      // Reports and images are throttled INDEPENDENTLY in the core: images stop
+      // above OK/NG/NA_MAX_FPS (6), reports never do. Measured on this machine,
+      // 870 of 1470 verdicts -- 59% -- were sent with no image behind them. Sync
+      // the report on every one of those and the overlay races ahead of the
+      // picture, which is exactly the "new overlay on an old frame" that only
+      // shows up at speed.
+      //
+      // Dropping the extra reports instead is not an option: the DB upload rides
+      // on them, so it has to be every report and a sampled image.
+      //
+      // Ordering does the pairing for free -- the core sends RP then IM inside
+      // one group, so when a new image arrives the last report IS its report.
+      // updateImgOnly keeps the previous edit_DB_info, i.e. the overlay keeps
+      // matching what is on screen, while statistics and upload still see every
+      // report through redux, untouched.
+      const _imgChanged = (this.pre_img !== props.img);
+      if(cur__surpress_display!=true || _imgChanged)
       {
-        this.ec_canvas.EditDBInfoSync(props._edit_info);
+        this.ec_canvas.EditDBInfoSync(props._edit_info, /*updateImgOnly=*/ !_imgChanged);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         // Mirror System_Setting.SHOW_CALIPER_HITS_INSP to the renderer; per-
@@ -1659,11 +1762,21 @@ class APP_INSP_MODE extends React.Component {
   
   componentDidMount() {
     let DefFileHash=this.props.edit_info.DefFileHash;
-    // Trigger-mode policy: ONLY InspMode runs the camera free-running.
+    // Trigger-mode policy: only CI InspMode runs the camera free-running.
     // Flip to continuous on mount and back to trigger=On on unmount so the
     // camera doesn't flood frames when no one is inspecting.
-    this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
-      { CameraSetting: { trigger_mode: 0 } });
+    //
+    // FI must NOT free-run. It pairs one frame to one part off the machine's
+    // own trigger, so a free-running sensor produces frames no part asked for
+    // -- the core logs them as "frame with no pending trigger -- pairing
+    // desynced?" and drops the results. This mount ran before the FI branch
+    // below armed the hardware trigger, so it silently undid it: entering
+    // InspMode left the camera streaming at the free-run framerate and the
+    // plate's trigger unused.
+    // if (this.props.machine_custom_setting.InspectionMode != "FI") {
+    //   this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+    //     { CameraSetting: { trigger_mode: 0 } });
+    // }
     this.CameraCtrl.setCameraImageTransfer(true);
 
     this.CameraCtrl.setImageCropParam(undefined,1);
@@ -1725,15 +1838,39 @@ class APP_INSP_MODE extends React.Component {
       let deffile = defFileGeneration(this.props.edit_info);
 
       this.props.ACT_WS_Define_File_Update_EXPRESS(deffile,true)
+      console.log("deffile",JSON.parse(JSON.stringify(deffile)));
       deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
 
+
+      // Shape-based matching needs its template, and the def carries only a
+      // POINTER to it. Every other sender stamps that pointer (DefConfUI's
+      // four, SBMStudio's two); this one did not, so a def authored with
+      // shape_based matching trained fine in the editor and then, on entering
+      // inspection, logged "[shape] no template path" and fell back to sig360
+      // -- a SILENT downgrade, with the def unchanged and the editor still
+      // showing it working. The core cannot fill it in: FI/CI get the def
+      // inline as definfo, so there is no def path to resolve <base>.png
+      // against.
+      //
+      // Stamped onto a COPY, at the moment of sending. _ref_image_path is a
+      // single underscore and the def hash only strips DOUBLE-underscore
+      // keys, so it counts toward featureSet_sha1 -- put it on the shared
+      // object and the def that gets persisted no longer matches its own
+      // recorded hash, and the next load is refused outright by the
+      // integrity guard. It belongs on the wire and nowhere else.
+      const wireDef = { ...deffile,
+        featureSet: deffile.featureSet.map((f, i) => (i === 0 ? { ...f } : f)) };
+      stampRefImagePath(wireDef, this.props.edit_info);
 
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
-        //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
-        deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
-        deffile.featureSet[0].matching_face=0;//By default, match two sides
+        // On wireDef, not deffile: the copy is taken above, so mutating the
+        // shared object here would leave these overrides out of what is
+        // actually sent -- and would keep scribbling on the def the rest of
+        // the app holds.
+        wireDef.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
+        wireDef.featureSet[0].matching_face=0;//By default, match two sides
 
 
 
@@ -1742,8 +1879,7 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-
-        this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}
+        this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef}
         , undefined,{ 
           resolve:insp_resolve, 
           reject:(e)=>{
@@ -1769,7 +1905,7 @@ class APP_INSP_MODE extends React.Component {
 
 
         // deffile.featureSet[0].single_result_area_ratio=0.9;
-        this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
+        this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef
         }, undefined, { 
           resolve:insp_resolve, 
           reject:(e)=>{
@@ -1788,14 +1924,29 @@ class APP_INSP_MODE extends React.Component {
         this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
       }
 
-      {
-        let LS_ROI=LocalStorageTools.getobj(LS_INSP_ROI_KEY);
-        
-        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        {CameraSetting: { ROI:LS_ROI}});
+      // Re-apply the machine's own camera settings on the way in.
+      //
+      // This carries no VALUE from the browser -- it asks the core to reload
+      // the file it already treats as the authority. That distinction is the
+      // whole reason the old push was removed (see below), and it is also why
+      // its removal left a hole: the core applied that file at STARTUP only,
+      // while DefConf, the backlight calib and MAINUI all open the sensor fully
+      // at runtime for their own reasons and never put it back. Coming back
+      // here then inspected on the full frame, at a lower rate, silently.
+      this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSettingFile: "data/" });
 
-      
-      }
+      // The camera ROI is NOT pushed from here any more.
+      //
+      // This used to read localStorage LS_INSP_ROI and send it as
+      // ST {CameraSetting:{ROI}} on every connect, which meant a per-browser
+      // copy decided a MACHINE setting: open the WebUI from a different laptop
+      // and the machine's camera crop changed under it, silently.
+      //
+      // The core already owns this. It persists an ROI change into
+      // data/default_camera_setting.json (wiringPanel.cpp, the ST handler) and
+      // applies that file at startup via CameraSettingFromFile(camera,"data/")
+      // -> CameraSetup, which reads the "ROI" array. So the file is already the
+      // authority; this push could only ever disagree with it.
 
       this.exitGate=false;
 
@@ -1815,6 +1966,29 @@ class APP_INSP_MODE extends React.Component {
       api.send({type: "exit_inspection"},
       (ret)=>{},(e)=>console.log(e));
     })
+
+    // Stop the v2 board too.
+    //
+    // The line above only reaches uInspMEGA: `exit_inspection` is handled in
+    // MEGA_W5500_FullInsp.cpp and nowhere else, while the v2 board's command is
+    // `exit_insp_mode` on a different API. So on a uInspESP32 machine, leaving
+    // this screen left the PLATE RUNNING while the two lines below tore down
+    // the inspection -- the CI stream closed and the camera went back to
+    // trigger_mode 1. Parts kept being fed and registered with nothing left to
+    // judge them: every one goes SKIP/UNSET, CONSEC_UNANSWERED climbs, and with
+    // UNANSWERED_POLICY==1 the machine faults OBJECT_HAS_NO_INSP_RESULT after
+    // UNANSWERED_STOP_AFTER parts. An operator walking off this screen was
+    // enough to do it.
+    //
+    // runSequence is the SAME stop the sidebar strip and the setup panel use
+    // (exit_insp_mode + plate_freq 0), imported rather than re-written -- a
+    // third copy of this sequence is exactly what its own comment warns about.
+    this.props.ACT_WS_GET_OBJ(this.props.uInspESP32_API_ID,(api)=>{
+      if(api===undefined)return;   // not a v2 machine; nothing to stop
+      try { runSequence(api, false); }
+      catch(e){ log.error("[insp-exit] uInspESP32 stop failed", e); }
+    })
+
     this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: false } });
     // Stop the camera flooding when leaving InspMode.
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
@@ -1824,7 +1998,6 @@ class APP_INSP_MODE extends React.Component {
   constructor(props) {
     super(props);
     this.ec_canvas = null;
-    this.checkResult2AirAction = { direction: "none", ver: 0 };
 
     // CI auto-exit (power/overheat guard): CI is a STATIONARY inspection -- the
     // user puts objects on the plate and the camera streams + re-inspects the
@@ -2248,53 +2421,6 @@ class APP_INSP_MODE extends React.Component {
     this.notifyPopUp("警告",msg)
   }
   render() {
-    
-    let inspectionReport = undefined;
-    if (this.props.inspectionReport != null) {   // != catches BOTH null and undefined
-      inspectionReport = this.props.inspectionReport;
-      if (inspectionReport.reports && inspectionReport.reports.length > 0) {
-        let groupResult = inspectionReport.reports.map((single_rep) => {
-
-          // [1,2,3,4].reduce((sum,ele)=>{return sum+ele},0);
-          // [1,2,3,4].map((ele)=>2*ele);
-
-          let judgeReports = single_rep.judgeReports;
-          let ret_status = judgeReports.reduce((res, obj) => {
-            if (res == INSPECTION_STATUS.NA) return res;
-            if (res == INSPECTION_STATUS.FAILURE) {
-              if (obj.status == INSPECTION_STATUS.NA)
-                return INSPECTION_STATUS.NA;
-              return res;
-            }
-            return obj.status;
-          }
-            , INSPECTION_STATUS.SUCCESS);
-          return ret_status;
-        });
-
-        let ret_status = groupResult.reduce((gresult, result) => {
-          if (gresult === undefined)
-            return result;
-
-          if (gresult == INSPECTION_STATUS.NA || result == INSPECTION_STATUS.NA)
-            return INSPECTION_STATUS.NA;
-
-          if (gresult != result)
-            return INSPECTION_STATUS.NA;
-
-          return result;
-        }, undefined);
-
-        // if (ret_status == INSPECTION_STATUS.SUCCESS) {
-        //   this.checkResult2AirAction = { direction: "right", ver: this.checkResult2AirAction.ver + 1 };
-        // } else if (ret_status == INSPECTION_STATUS.FAILURE) {
-        //   this.checkResult2AirAction = { direction: "left", ver: this.checkResult2AirAction.ver + 1 };
-        // } else {
-        //   //log.error("result NA...");
-        // }
-        //
-      }
-    }
     let MenuSet = [];
     let menu_height = "HXA";//auto
     log.debug("CanvasComponent render");
@@ -2525,13 +2651,23 @@ class APP_INSP_MODE extends React.Component {
           DICT={this.props.DICT}
           measureDisplayRank={this.state.measureDisplayRank}
           IR_decotrator={this.props.info_decorator}
-          checkResult2AirAction={this.checkResult2AirAction}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
           uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
           SLID_API_ID_CONN_INFO={this.props.SLID_API_ID_CONN_INFO}
+          uInspESP32_API_ID_CONN_INFO={this.props.uInspESP32_API_ID_CONN_INFO}
           ACT_WS_GET_OBJ={this.props.ACT_WS_GET_OBJ}
-          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
+          // promiseCBs was being dropped. Nothing needed it until the station
+          // panel, which has to know whether its save actually landed before it
+          // clears the "unsaved" state -- otherwise a failed write looks saved.
+          WSCMD_CB={(tl, prop, data, uintArr, promiseCBs) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr, promiseCBs); }}
+          // The station panel lives in this list's sidebar, but the canvas and
+          // the machine setting belong to APP_INSP_MODE. Hand them down rather
+          // than reaching for props ObjInfoList never had -- which is what made
+          // the drag button look armed while the canvas never heard about it.
+          ecCanvas={this.ec_canvas}
+          machineSetting={this.props.machine_custom_setting}
+          ACT_machine_custom_setting_Update={this.props.ACT_machine_custom_setting_Update}
         />);
     }
     else
@@ -2689,12 +2825,13 @@ class APP_INSP_MODE extends React.Component {
         onClick={() => {
 
 
+        // Open the sensor fully so the whole field is visible to drag on. The
+        // core persists whatever ROI it is given; nothing is mirrored locally
+        // any more (see the note where the connect-time push used to be).
         let FullSensorROI=[0,0,99999,99999];
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:FullSensorROI } });
 
-        LocalStorageTools.setobj(LS_INSP_ROI_KEY,FullSensorROI);
-        
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
           let x = ROI_setting.start.pix.x;
@@ -2720,11 +2857,16 @@ class APP_INSP_MODE extends React.Component {
           }
 
           
+          // The ONLY write to the machine's stored crop, and it lands under
+          // its own key (InspectionROI). The full-sensor open above says
+          // nothing: that is the UI looking at the frame, not an operator
+          // picking a crop. DefConf and the backlight calib open the sensor
+          // fully too, for the same reason -- with a separate key none of them
+          // can reach this value even by accident.
           this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-          {CameraSetting: { ROI}});
-          LocalStorageTools.setobj(LS_INSP_ROI_KEY,ROI);
+          {CameraSetting: { ROI, save_insp_roi:true }});
 
-        
+
           this.setState({onROISettingCallBack:undefined});
         }})
       }} ><ExpandOutlined />
@@ -2764,7 +2906,15 @@ class APP_INSP_MODE extends React.Component {
                 measureDisplayRank={this.state.measureDisplayRank}
                 ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
                 downSampleFactor={1}
-                onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
+                onCanvasInit={(canvas) => {
+                  this.ec_canvas = canvas;
+                  // ec_canvas is a plain field, so nothing re-renders when it
+                  // arrives -- and it arrives AFTER the sidebar has rendered
+                  // with ecCanvas=undefined. StationRegionPanel's drag button
+                  // would then be permanently dead until some unrelated state
+                  // change happened to repaint it. Nudge once.
+                  this.setState({ ecCanvasReady: true });
+                }}
                 renderObjAlignRotate={this.state.renderObjAlignRotate}
                 camera_calibration_report={this.props.camera_calibration_report} />
             </ComponentBoundary>}
@@ -2840,7 +2990,11 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
-    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback))
+    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback)),
+    // Station regions are edited here, on the live image, so the redux copy has
+    // to be updated from here too -- otherwise the panel would keep re-adopting
+    // the pre-save value the next time machine_custom_setting changed.
+    ACT_machine_custom_setting_Update:(setting)=>dispatch(UIAct.EV_machine_custom_setting_Update(setting)),
   }
 }
 
@@ -2868,6 +3022,9 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
 
     SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
+    uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
+    // Needed to reach the v2 board's API on the way out -- see componentWillUnmount.
+    uInspESP32_API_ID:state.ConnInfo.uInspESP32_API_ID,
 
     CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
     

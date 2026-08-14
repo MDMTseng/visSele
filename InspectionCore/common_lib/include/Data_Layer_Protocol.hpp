@@ -63,7 +63,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     JSON,
     JSONRAW,
     ERROR_SEC,
-
+    TRAILER,   // between a completed JSON frame and its optional *HHHH\n CRC
   };
   
   enum ERROR_TYPE
@@ -76,6 +76,20 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     RAW_DATA_OVERSIZE
   };
   RTYPE recvType=RTYPE::INIT;
+  // Optional per-frame integrity trailer ("{...}*HHHH\n", CRC16-CCITT over
+  // the JSON bytes) -- the uInspESP32 firmware appends it to every frame.
+  // Frames without a trailer pass through (legacy peers); frames with a BAD
+  // trailer are dropped and counted, never latched.
+  // TX side is OPT-IN per channel: legacy peripherals (uInspMEGA...) latch
+  // on stray trailer bytes, so only the ESP32 channel turns this on.
+  bool tx_trailer=false;
+  char trailerBuf[6];
+  int trailerIdx=0;
+  uint32_t rx_frames=0;
+  uint32_t rx_crc_fail=0;
+  uint32_t rx_crc_ok=0;
+  static uint16_t crc16_ccitt(const uint8_t *d,int len);
+  void finishJsonFrame(bool crc_present,bool crc_ok);
   ERROR_TYPE errorCode=ERROR_TYPE::NONE;
   int jsonRawStrL=0;
   int recv_data(uint8_t *data,int len, bool is_a_packet=false);

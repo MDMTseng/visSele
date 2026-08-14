@@ -27,6 +27,16 @@ function urlConcat(base, add) {
         this.pgIDCounter= 0;
         this.websocket=undefined;
         this.isConnected=false;
+        // QA handle, same spirit as __GP_STORE__/__GP_PERIF__. The demux is the
+        // one place where a packet can vanish without a trace, so it needs to be
+        // reachable from devtools: __GP_WS__.rxTally() / .reqWindow.
+        if (typeof window !== "undefined") {
+          window.__GP_WS__ = {
+            inst: this,
+            rxTally: () => ({ ...(this._rxTally || {}) }),
+            reqWindowIDs: () => Object.keys(this.reqWindow),
+          };
+        }
         this.systemStatusPull();
       }
 
@@ -109,6 +119,14 @@ function urlConcat(base, add) {
         // log.info("onMessage:["+header.type+"]");
         let pgID = header.pgID;
 
+        // Inbound tally by pgID+type. Mirror of the core's "img transfer ...
+        // subscribers:N" log: without a count on BOTH ends, "core sent it" and
+        // "the page drew it" have a silent gap between them (socket? demux?
+        // reducer?) that costs hours to bisect. Cheap enough to leave on.
+        if (this._rxTally === undefined) this._rxTally = {};
+        const tkey = pgID + ":" + header.type;
+        this._rxTally[tkey] = (this._rxTally[tkey] || 0) + 1;
+
         let parsed_pkt = undefined;
         let SS_start = false;
 
@@ -177,6 +195,27 @@ function urlConcat(base, add) {
                     else
                     {
                       log.info("[peripheral] uInsp not configured (no uInsp_peripheral_conn_info.url)");
+                    }
+
+
+                    // uInspESP32 -- the 2nd-gen board, a separate block from the
+                    // uInspMEGA one above on purpose. It speaks a different
+                    // dialect (plate_freq/stage_pulse_offset/report{tid,cat}
+                    // rather than pulse_hz/res_count) and rides its own channel
+                    // (10027), so the two can coexist and the MEGA path stays
+                    // untouched. Configure exactly one of the two in
+                    // machine_setting.json -- the core keeps a single global
+                    // perifCH, so a second CONNECT would evict the first.
+                    if(info.uInspESP32_peripheral_conn_info!==undefined)
+                    {
+
+                      this.comp.props.ACT_WS_GET_OBJ(this.comp.props.uInspESP32_API_ID, (obj)=>{
+                        obj.connect( info.uInspESP32_peripheral_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      log.info("[peripheral] uInspESP32 not configured");
                     }
 
 

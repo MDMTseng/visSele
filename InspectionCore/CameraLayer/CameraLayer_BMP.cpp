@@ -46,7 +46,13 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       int newX,newY;
       int newW,newH;
 
-      CalcROI(&newX,&newY,&newW,&newH);
+      // NAK here means there is nothing loaded to extract -- an empty folder,
+      // a file imread could not decode. Returning early keeps the degenerate
+      // geometry out of the pipeline entirely.
+      if(CalcROI(&newX,&newY,&newW,&newH)!=ACK || newW<=0 || newH<=0)
+      {
+        return NAK;
+      }
 
       // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
       if(pixelCount<newW*newH)
@@ -61,7 +67,12 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         brightnessMult = r * (aug.brightness_jitter_pct/100.0f) + 1.0f;
       }
 
-      int tExp=(1<<13)*brightnessMult*exp_time_us*a_gain/exp_time_100ExpUs;
+      // Full brightness unless exposure simulation is asked for. The file's
+      // own exposure is already in its pixels; the real camera's exposure has
+      // nothing to say about it.
+      const float expoMult = aug.expo_sim_en
+          ? (aug.expo_us * aug.expo_gain / exp_time_100ExpUs) : 1.0f;
+      int tExp=(1<<13)*brightnessMult*expoMult;
       LOGI("tExp:%d",tExp);
 
 
@@ -326,7 +337,19 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
 CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
 {
-  
+  // No image, no ROI. Every clamp below is against img_load's size, and with
+  // an empty Mat they compose into a 6x6 window at origin (-6,-6):
+  //   tmpX >= cols-5  ->  0 >= -5   -> tmpX = -6
+  //   tmpW+tmpX > cols -> 99999-6>0 -> tmpW = 0-(-6) = 6
+  // which is not a refusal, it is a plausible-looking frame. It reached
+  // FeatureMatching and killed the core with std::length_error from a vector
+  // sized off it. A missing image must produce no frame, not a small one.
+  if(img_load.empty())
+  {
+    if(X)*X=0; if(Y)*Y=0; if(W)*W=0; if(H)*H=0;
+    return NAK;
+  }
+
   int tmpW=ROI_W;
   int tmpH=ROI_H;
   int tmpX=ROI_X;
