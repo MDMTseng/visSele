@@ -1512,7 +1512,11 @@ static bool load_field_calib(const char *path)
 int CameraSettingFromFile(CameraLayer *camera, char *path);
 
 CameraLayer *getCamera(int initCameraType); //0 for real First, then fake one, 1 for real camera only, 2 for fake only
-int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac);
+// The two phases are timed separately because they answer different questions
+// and only one of them is the def's running cost. See the definition.
+struct InspPhaseMs { double build_ms = 0, insp_ms = 0, build_cpu_ms = 0, insp_cpu_ms = 0; };
+int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac,
+                          InspPhaseMs *phases = NULL);
 
 int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac);
 
@@ -2069,6 +2073,27 @@ static InspRegionCfg g_insp_region;
 // So: filter in FI, show everything in CI. Set by the CI/FI session handler,
 // read by the per-frame code that publishes the region onto the bacpac.
 static bool g_full_inspection = false;
+
+// Temporary bypass of BOTH machine-level area gates: the station
+// `inspection_region` and the `clean_regions`. Off by default.
+//
+// It exists for working without the machine. Both gates describe a physical
+// station -- where the part stands, which patches of plate must be empty -- and
+// neither has any meaning against a folder of saved images: the region drops
+// every object because they are not where the station is, and the clean regions
+// read dirty because the frame is a whole different scene. The result is an
+// empty report or a blanket NA, which looks exactly like a broken def.
+//
+// Deliberately NOT written to machine_setting.json, and deliberately not
+// persisted anywhere else. The lesson is InspectionROI: a "just show me
+// everything" gesture that reached the stored value left the machine at
+// [0,0,99999,99999] with the real crop unrecoverable from any log. A bypass
+// that outlives the session it was flipped in is a machine that silently stops
+// enforcing its station. This one dies with the process.
+//
+// INSP_AREA_BYPASS=1 seeds it at launch, for --insp and headless harnesses that
+// have no wire to flip it over; the ST switch overrides it either way at runtime.
+static bool g_area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
 
 static void load_insp_region(cJSON *json_mac_setting)
 {
@@ -3595,7 +3620,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // Shares matchingEng with the inspection thread -- see the guard in
           // ImgPipeProcessCenter_imp for why this is a scoped lock.
           std::lock_guard<std::mutex> _me_guard(matchingEnglock);
-          int ret = ImgInspection_JSONStr(matchingEng, *srcImg, 1, jsonStr, select_bacpac);
+
+          // Time the INSPECTION PATH ONLY, wall AND cpu.
+          //
+          // The def build (parse + shape-template train) is timed separately
+          // and reported under its own key. It used to be inside this number
+          // and dominated it: on a shape-based def the split is ~73 ms build
+          // against ~10 ms inspect, so "the inspection took 83 ms" was wrong
+          // by 8x about the only part that runs per part on the line.
+          //
+          // Wall vs cpu: ImgInspection's own clock() is CPU time -- it logs
+          // "(CPU time, not wall)" for a reason, and reading one as the other
+          // has produced wrong conclusions here. They diverge by roughly the
+          // thread count on the parallel stages, so both are reported.
+          InspPhaseMs _phases;
+          int ret = ImgInspection_JSONStr(matchingEng, *srcImg, 1, jsonStr, select_bacpac, &_phases);
+          double insp_wall_ms = _phases.insp_ms;
+          double insp_cpu_ms  = _phases.insp_cpu_ms;
           free(jsonStr);
           const FeatureReport *report = skip_inspection() ? NULL
                                 : matchingEng.GetReport();
@@ -3605,6 +3646,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             
             cJSON *jobj = matchingEng.FeatureReport2Json(report);
             AttachStaticInfo(jobj, this);
+            // What this frame cost. The image it was measured on is the one
+            // being returned alongside, so the number and the picture agree.
+            cJSON_AddNumberToObject(jobj, "insp_wall_ms", insp_wall_ms);
+            cJSON_AddNumberToObject(jobj, "insp_cpu_ms",  insp_cpu_ms);
+            // Reported, not folded in. This is real time the editor waits, so
+            // hiding it would make INST_CHECK feel slow with nothing to point
+            // at -- but it is a per-PRESS cost, not a per-part one, and the
+            // two must not be added together and called "the inspection".
+            cJSON_AddNumberToObject(jobj, "def_build_ms",     _phases.build_ms);
+            cJSON_AddNumberToObject(jobj, "def_build_cpu_ms", _phases.build_cpu_ms);
             char *jstr = cJSON_Print(jobj);
             cJSON_Delete(jobj);
 
@@ -3813,7 +3864,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
             LOGE("insp session: %s -- station region %s",
                  g_full_inspection ? "FI" : "CI",
-                 g_full_inspection ? "ENFORCED" : "off (setup view shows everything)");
+                 g_area_gates_bypass
+                   ? "off (InspAreaBypass ON)"
+                   : (g_full_inspection ? "ENFORCED"
+                                        : "off (setup view shows everything)"));
+          // A session starting while the bypass is still latched from earlier
+          // work is the way this ends up on in production. Say so every time,
+          // not just when it is flipped.
+          if (g_area_gates_bypass)
+            LOGE("insp session starting with InspAreaBypass ON -- clean_regions "
+                 "are not being checked and the station filter is off");
           if (dat->tl[0] == 'C')
           {
             camera->TriggerMode(0);
@@ -4542,6 +4602,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       {
         DoImageTransfer = true;
         session_ACK = true;
+      }
+
+      // Temporarily stop enforcing the machine-level area gates (station
+      // inspection_region + clean_regions). Session-lifetime only; see
+      // g_area_gates_bypass. Logged loudly on every change because it changes
+      // which objects are judged and can otherwise only be inferred from a
+      // verdict that quietly stopped being NA.
+      {
+        int t_ab = getDataFromJson(json, "InspAreaBypass", &target);
+        if (t_ab == cJSON_True || t_ab == cJSON_False)
+        {
+          bool want = (t_ab == cJSON_True);
+          if (want != g_area_gates_bypass)
+            LOGE("InspAreaBypass %s -- station region + clean_regions %s "
+                 "(runtime only, machine_setting.json untouched)",
+                 want ? "ON" : "OFF",
+                 want ? "NOT enforced" : "enforced again");
+          g_area_gates_bypass = want;
+          session_ACK = true;
+        }
       }
 
       ImageCropX = 0;
@@ -5517,11 +5597,43 @@ static cJSON *compare_reports(cJSON *oldR, cJSON *newR)
   return diff;
 }
 
-int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac)
+// Two phases, timed apart, because conflating them misreports the def by ~8x.
+//
+//   BUILD  ResetFeature + AddMatchingFeature -- parse the def JSON and build the
+//          feature managers. For a shape-based locator this also TRAINS the
+//          template, which re-decodes the reference PNG from disk. Measured at
+//          73 of 83 ms on a shape-based def, 52 ms of it in cv::imread alone.
+//   INSP   ImgInspection -- the actual inspection of this frame.
+//
+// Only INSP is the per-part cost. BUILD is paid once per session on the live
+// path (CI/FI send `deffile` at session open and reuse the built engine); it is
+// per-press only in the editor, which sends the def inline on every INST_CHECK.
+// Reporting the sum as "how long the inspection took" made a 10 ms def look
+// like an 83 ms one.
+int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac,
+                          InspPhaseMs *phases)
 {
+  auto _w = []{ return std::chrono::steady_clock::now(); };
+  auto _ms = [](std::chrono::steady_clock::time_point a,
+                std::chrono::steady_clock::time_point b){
+    return std::chrono::duration<double, std::milli>(b - a).count();
+  };
+  auto _cpu_ms = []{ return (double)clock() / CLOCKS_PER_SEC * 1000.0; };
+
+  auto t0 = _w();   double c0 = _cpu_ms();
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
+  auto t1 = _w();   double c1 = _cpu_ms();
   ImgInspection(me, test1_cv, bacpac, bacpac->cam, repeatTime);
+  auto t2 = _w();   double c2 = _cpu_ms();
+
+  if (phases)
+  {
+    phases->build_ms     = _ms(t0, t1);
+    phases->insp_ms      = _ms(t1, t2);
+    phases->build_cpu_ms = c1 - c0;
+    phases->insp_cpu_ms  = c2 - c1;
+  }
   return 0;
 }
 
@@ -7832,7 +7944,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   // there is one behaviour to reason about and not two.
   if (bacpac)
   {
-    bool on = g_full_inspection;
+    // Bypass folds in here rather than at load time so the configured geometry
+    // is never lost: flipping it off restores the real region on the next frame
+    // with no reload, and machine_setting.json is never touched.
+    bool on = g_full_inspection && !g_area_gates_bypass;
     bacpac->insp_region_x = on ? g_insp_region.x : 0;
     bacpac->insp_region_y = on ? g_insp_region.y : 0;
     bacpac->insp_region_w = on ? g_insp_region.w : 0;
@@ -8166,7 +8281,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // the part out of the verdict rather than ejecting it -- it goes round again
     // and is measured on a clean field. A region marked on_fail:"ng" reports
     // FAILURE and does eject.
-    if (!g_clean_regions.empty())
+    if (!g_clean_regions.empty() && !g_area_gates_bypass)
     {
       float cr_mmpp = (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : 0.0f;
       acv_XY cr_off = (bacpac && bacpac->sampler) ? bacpac->sampler->getOriginOffset()
@@ -8380,9 +8495,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // cannot be placed -- but only FI filters by it. Saying which is which is
       // the whole point: a box drawn on screen that is not selecting anything
       // looks exactly like a box that is, until a part goes the wrong way.
-      cJSON_AddBoolToObject(rg, "active", g_full_inspection);
+      cJSON_AddBoolToObject(rg, "active", g_full_inspection && !g_area_gates_bypass);
       cJSON_AddItemToObject(st, "region", rg);
     }
+    // Stated at station level, not inside "region", because the bypass also
+    // silences clean_regions -- and a machine with no region configured but
+    // clean regions that are being skipped has nowhere else to say so.
+    // Always emitted: "the field is absent" and "the field is false" have to be
+    // the same claim here, or a reader that predates this key reads a bypassed
+    // run as a normal one.
+    cJSON_AddBoolToObject(st, "area_bypass", g_area_gates_bypass);
     // The verdict AS THE MACHINE RECEIVES IT, not as the inspection produced it.
     // Those differ whenever a clean region or a guard intervenes, and the number
     // that decides where the part goes is this one -- so it is the one to show
@@ -8394,6 +8516,27 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         perif_status_to_cat(bpg_pi.perifCH, imgPipe->datViewInfo.uInspStatus));
     if (station_clean_json) cJSON_AddItemToObject(st, "clean", station_clean_json);
     cJSON_AddItemToObject(imgPipe->datViewInfo.report_json, "station", st);
+  }
+
+  // What this frame's inspection cost, same keys the II path uses so the canvas
+  // reads one shape in both UIs.
+  //
+  // Already measured either side of ImgInspection above -- g_lastMatchUs is the
+  // match's wall time and g_lastMatchProcCpuUs the process cpu across it. They
+  // only ever fed histograms and the slow-frame saver, which are after-the-fact
+  // tools; the number was never put where somebody watching the line could see
+  // it. Nothing new is timed here.
+  //
+  // There is deliberately NO def_build_ms on this path: CI/FI load the def once
+  // at session open and reuse the built engine, so per frame it is zero. That
+  // absence is the honest answer, and it is also what makes the editor's
+  // 建構 figure legible as an editor-only cost.
+  if (imgPipe->datViewInfo.report_json != NULL)
+  {
+    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json,
+                            "insp_wall_ms", g_lastMatchUs / 1000.0);
+    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json,
+                            "insp_cpu_ms",  g_lastMatchProcCpuUs / 1000.0);
   }
   //taking the short cut, perifCH(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
@@ -9235,10 +9378,22 @@ int cp_main(int argc, char **argv)
       load_insp_region(ms_json);
       cJSON_Delete(ms_json);
     }
-    neutral_bacpac.insp_region_x = g_insp_region.x;
-    neutral_bacpac.insp_region_y = g_insp_region.y;
-    neutral_bacpac.insp_region_w = g_insp_region.w;
-    neutral_bacpac.insp_region_h = g_insp_region.h;
+    // INSP_AREA_BYPASS=1 reaches this path too. There is no wire here to flip
+    // the switch on, and this is the harness that most often runs against a
+    // saved image that never stood in the station.
+    if (g_area_gates_bypass)
+    {
+      LOGE("--insp: INSP_AREA_BYPASS -- station region not applied");
+      neutral_bacpac.insp_region_x = neutral_bacpac.insp_region_y =
+      neutral_bacpac.insp_region_w = neutral_bacpac.insp_region_h = 0;
+    }
+    else
+    {
+      neutral_bacpac.insp_region_x = g_insp_region.x;
+      neutral_bacpac.insp_region_y = g_insp_region.y;
+      neutral_bacpac.insp_region_w = g_insp_region.w;
+      neutral_bacpac.insp_region_h = g_insp_region.h;
+    }
     neutral_bacpac.insp_region_fit = g_insp_region.fit;
     if (ai + 3 >= argc) { LOGE("--insp needs <image> <def> <out.json>"); return 2; }
     char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
