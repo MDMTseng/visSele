@@ -165,6 +165,19 @@ function urlConcat(base, add) {
                 // 0.01388594. Re-creating it would have quietly reintroduced a
                 // third source of scale into the UI.
 
+                // The instrument scale, loaded once per core connect so the
+                // whole UI has one mmpp. Consumers used to derive it from the
+                // camera_calibration report, which the core no longer emits.
+                this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0,
+                  { filename: "data/lens_calib.json" }, undefined,
+                  {resolve: (data) => {
+                    if (data && data[0] && data[0].type == "FL")
+                      this.store.dispatch({ type: "FILE_lens_calib", data: data[0].data });
+                    else
+                      log.warn("[ld] lens_calib.json: no FL reply; instrument mmpp stays undefined");
+                  },
+                   reject: (e) => log.warn("[ld] lens_calib.json failed", e)});
+
                 let machineSettingPath="data/machine_setting.json";
                 this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0,{ filename: machineSettingPath },
                 undefined,

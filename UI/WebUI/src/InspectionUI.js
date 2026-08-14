@@ -1020,10 +1020,12 @@ class CanvasComponent extends React.Component {
         // may be missing/empty depending on backend state. R6/R7 found this throws
         // a TypeError caught by RootErrorBoundary on certain core states. Bail
         // gracefully — sending no down-sample update is preferable to a crash.
-        let _ccr = this.props.camera_calibration_report;
-        let rep = _ccr && _ccr.reports && _ccr.reports[0];
-        if (!rep) { log.warn("down_samp_level_update: no camera_calibration_report.reports[0]; skipping"); break; }
-        let mmpp = rep.mmpb2b / rep.ppb2b;
+        // Instrument scale from lens_calib.json (UIData.instrument_mmpp), not
+        // from the camera_calibration report -- the core stopped emitting that
+        // report, so the old path was permanently undefined and this branch
+        // always bailed.
+        let mmpp = this.props.instrument_mmpp;
+        if (!(mmpp > 0)) { log.warn("down_samp_level_update: no instrument mmpp (lens_calib.json not loaded); skipping"); break; }
         // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
         // console.log(this.props.downSampleFactor);
@@ -1140,6 +1142,9 @@ const mapStateToProps_CanvasComponent = (state) => {
     // Mirror the System_Setting overlay flag so updateCanvas can push it
     // onto rUtil before each draw (per-shape drawInspection reads it).
     showCaliperHits: state.UIData.System_Setting?.SHOW_CALIPER_HITS_INSP !== false,
+    // 儀器尺度的單一來源 (data/lens_calib.json)。down_samp_level_update 用它把
+    // mm 換成 px, 舊路徑讀的 camera_calibration report 核心已不再發出。
+    instrument_mmpp: state.UIData.instrument_mmpp,
     //just to trigger update if changed
   }
 }
@@ -1483,14 +1488,11 @@ class AngledCalibrationHelper extends React.Component {
     if (newState.shape_list === undefined) return newState;
 
 
-    if (props.camera_calibration_report != state.camera_calibration_report) {
-      let rep = props.camera_calibration_report.reports[0];
-      let mmpp = rep.mmpb2b / rep.ppb2b;
-      newState = {
-        ...newState
-        , camera_calibration_report: props.camera_calibration_report
-        , mmpp
-      };
+    // Instrument scale straight from lens_calib.json -- see the note on the
+    // other consumer above. Keyed on the mmpp itself now, since the report it
+    // used to watch no longer arrives.
+    if (props.instrument_mmpp !== state.mmpp) {
+      newState = { ...newState, mmpp: props.instrument_mmpp };
     }
 
 
@@ -3029,6 +3031,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
     
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
+    // One instrument scale for the whole UI (data/lens_calib.json).
+    instrument_mmpp: state.UIData.instrument_mmpp,
     DICT:state.UIData.DICT,
     
     System_Setting:state.UIData.System_Setting,

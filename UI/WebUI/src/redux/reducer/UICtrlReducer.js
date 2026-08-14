@@ -91,12 +91,41 @@ function StateReducer(newState, action) {
     break;
 
     case "FILE_default_camera_setting":
-          
+
       newState=
       {
         ...newState,
         FILE_default_camera_setting:action.data
       };
+      break;
+
+    // The instrument scale, from data/lens_calib.json -- ONE source for the
+    // whole UI.
+    //
+    // Every consumer used to compute mmpp as
+    // camera_calibration_report.reports[0].mmpb2b / .ppb2b. That report is
+    // dead: the core stopped emitting it (FeatureReport_UTIL's
+    // camera_calibration case is commented out), so the field is permanently
+    // undefined and each of the five call sites either crashed or bailed --
+    // InspectionUI even carries a defensive "no camera_calibration_report,
+    // skipping" branch for exactly that.
+    //
+    // lens_calib.json is what actually describes this instrument, it is what
+    // the core pushes into the sampler (push_mmpp_to_sampler), and CalibrationUI
+    // already calls it "the authority". So the UI reads the same file, and mmpp
+    // has one definition on both sides instead of two that could disagree.
+    case "FILE_lens_calib":
+      {
+        const lc = action.data;
+        const um = lc && Number(lc.um_per_px);
+        // um_per_px is microns; mmpp is mm. Undefined (not 0, not 1) when the
+        // file is missing or malformed -- callers must be able to tell "no
+        // calibration" from "a scale of 1", which is how a bad number gets
+        // applied as if it were real.
+        const mmpp = (Number.isFinite(um) && um > 0) ? um / 1000 : undefined;
+        log.info("[lens_calib] instrument mmpp =", mmpp);
+        newState = { ...newState, FILE_lens_calib: lc, instrument_mmpp: mmpp };
+      }
       break;
 
     case UISEV.Control_SM_Panel:
