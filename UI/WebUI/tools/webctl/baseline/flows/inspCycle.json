@@ -11,5 +11,6 @@
   "state_in_insp": "{\"INSP_MODE\":\"INSP_MODE_NEUTRAL\"}",
   "usl_after_exit": 8.7,
   "override_applied": true,
-  "restored": true
+  "restored": true,
+  "restore_logged": true
 }

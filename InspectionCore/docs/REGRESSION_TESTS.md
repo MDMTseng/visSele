@@ -42,6 +42,13 @@ the new snapshot by eye before committing it.
 
 ## Known traps
 
+0. **The bench's "1006 disconnect" was never the network** (root-caused
+   2026-08-16): queryCam polls camera_info ~2s; a fake camera that is not
+   acquiring (trigger_mode 1 between sessions) has cam_status != 0, the app
+   dispatches WS_ERROR → NOT_READY → SPLASH, and ALLOW_SOFT_CAM=false blocked
+   the auto-reconnect → a ~5s SPLASH↔MAIN loop forever. Dev builds now set
+   ALLOW_SOFT_CAM=true (info.js debug_SysSetting); production is unchanged.
+   If SPLASH cycling ever returns, check cam_status first, not the network.
 1. **The 10221 golden reads `machine_setting.json`'s `inspection_region`** —
    a leftover uInsp station region silently drops all labels (0 objects, no
    error). Remove `inspection_region`/`clean_regions` for the run, restore

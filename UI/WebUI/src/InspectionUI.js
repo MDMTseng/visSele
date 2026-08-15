@@ -1826,20 +1826,28 @@ class APP_INSP_MODE extends React.Component {
 
         if(curMarginInfo!==undefined)
         {
-          // Remember what the editor held BEFORE the tag overrides, so
-          // unmount can put it back. This dispatch writes the tag's limits
-          // into the EDITOR's shape_list (the canvas overlays and the def
-          // generation below both need them there), but it used to be
-          // one-way: after a single inspection run the editor reported
+          // Remember the ORIGINAL SHAPES the tag overrides touch, keyed by
+          // id, so unmount can put the values back. This dispatch writes the
+          // tag's limits into the EDITOR's shape_list (the canvas overlays
+          // and the def generation below both need them there), but it used
+          // to be one-way: after a single inspection run the editor reported
           // unsaved changes the operator never made, and saving then baked
           // the tag's limits into the base def -- with a recorded def hash
           // that no longer matched any file on disk.
-          this._preInspShapeList = this.props.shape_list;
+          //
+          // By VALUE per overridden id, not by list identity: this very
+          // mount changes the list identity again two dispatches later
+          // (Define_File_Update), so an identity-compared snapshot never
+          // matches at unmount and a restore gated on it silently never
+          // runs (caught by the inspCycle flow's console trace).
+          this._preInspById = {};
+          this._preInspDefName = (this.props.edit_info.loadedDefFile||{}).name;
           let newShapeList = [...this.props.shape_list];
           curMarginInfo.forEach(info=>{
             let cur_shape_idx = newShapeList.findIndex(shape=>shape.id==info.id);
             if(cur_shape_idx!==-1)
             {
+              this._preInspById[info.id] = newShapeList[cur_shape_idx];
               newShapeList[cur_shape_idx]=
               {
                 ...newShapeList[cur_shape_idx],
@@ -1849,7 +1857,6 @@ class APP_INSP_MODE extends React.Component {
 
 
           });
-          this._inspShapeList = newShapeList;
           this.props.ACT_Shape_List_Update_EXPRESS(newShapeList);
 
           // console.log("ACT_Shape_List_Update<<<<<<");
@@ -2037,17 +2044,23 @@ class APP_INSP_MODE extends React.Component {
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
       { CameraSetting: { trigger_mode: 1 } });
 
-    // Undo the tag-limit overrides applied on mount -- but only if the list
-    // is still exactly the one we installed. The editor is locked during
-    // inspection so nothing else should have touched it; if something did,
-    // restoring would clobber that change, so leave it and say so.
-    if (this._inspShapeList !== undefined && this._preInspShapeList !== undefined) {
-      if (this.props.shape_list === this._inspShapeList) {
-        this.props.ACT_Shape_List_Update_EXPRESS(this._preInspShapeList);
+    // Undo the tag-limit overrides applied on mount: put the ORIGINAL shape
+    // objects back for exactly the ids the tag touched, onto whatever list
+    // is current (the mount itself churns the list identity, so an identity
+    // check can never be the gate). Guard on the def still being the one we
+    // overrode -- if a different def was loaded mid-inspection, its shapes
+    // are not ours to rewrite.
+    if (this._preInspById !== undefined && Object.keys(this._preInspById).length > 0) {
+      const curDefName = (this.props.edit_info.loadedDefFile||{}).name;
+      if (curDefName === this._preInspDefName) {
+        const restored = this.props.shape_list.map(s =>
+          this._preInspById[s.id] !== undefined ? this._preInspById[s.id] : s);
+        this.props.ACT_Shape_List_Update_EXPRESS(restored);
+        log.info("[insp-exit] tag-limit overrides restored on", Object.keys(this._preInspById).length, "shapes");
       } else {
-        log.warn("[insp-exit] shape_list changed during inspection; NOT restoring the pre-inspection limits");
+        log.warn("[insp-exit] def changed during inspection (" + this._preInspDefName + " -> " + curDefName + "); NOT restoring tag limits");
       }
-      this._inspShapeList = this._preInspShapeList = undefined;
+      this._preInspById = undefined;
     }
   }
 

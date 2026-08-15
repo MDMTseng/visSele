@@ -318,6 +318,14 @@ async function inspCycle() {
     );
     if (after.usl === before.usl) break;   // restored -- stop before any reload
   }
+  // The USL going back to 8.7 alone cannot tell the unmount RESTORE from the
+  // MAIN machine-def/fixture reload landing first -- the flow was green once
+  // while the restore silently never ran (identity-gated; the console trace
+  // exposed it). Demand the component's own log line as evidence.
+  const logs = await api('/logs').catch(() => null);
+  const logArr = (logs && (logs.logs || logs)) || [];
+  const restoreLogged = logArr.slice(-300).some(l =>
+    String((l && l.text) || '').includes('[insp-exit] tag-limit overrides restored'));
   return {
     c_state: { entered: inInsp },
     shapes: [],   // keep the runner's "captured (N shapes)" line happy
@@ -330,6 +338,7 @@ async function inspCycle() {
     usl_after_exit: after.usl,
     override_applied: during.usl !== null && during.usl !== before.usl,
     restored: after.usl === before.usl,
+    restore_logged: restoreLogged,
   };
 }
 
