@@ -4552,9 +4552,15 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       {
         theta_deg += 360;
       }
+      // A NaN theta_deg (pt == center exactly) makes the (int) conversion UB
+      // and then indexes a stack array with whatever came out. Clamp both
+      // ends; the old code only handled the top.
       int thdegInt = (int)(theta_deg * angleRes / 360);
-      if (thdegInt >= angleRes)
-        thdegInt -= angleRes;
+      if (!(thdegInt >= 0 && thdegInt < angleRes))
+      {
+        if (thdegInt >= angleRes) thdegInt -= angleRes;
+        if (!(thdegInt >= 0 && thdegInt < angleRes)) continue; // NaN or still wild
+      }
 
       float mag = hypot(pt.y, pt.x);
       if (RArray[thdegInt] < mag)
@@ -5974,7 +5980,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 static float graySampleBilinear(const cv::Mat &im, float x, float y)
 {
   const int W = im.cols, H = im.rows;
-  if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return -1;
+  // Written so NaN FAILS: all four of the old comparisons are false for a NaN
+  // coordinate, so it fell through to (int)NaN (UB) and a wild row pointer.
+  if (!(x >= 0 && y >= 0 && x < W - 1 && y < H - 1)) return -1;
   int x0 = (int)x, y0 = (int)y; float fx = x - x0, fy = y - y0;
   const int cn = im.channels();   // 1 (native gray) or 3 (B=G=R, sample ch0)
   const unsigned char *r0 = im.ptr<unsigned char>(y0);

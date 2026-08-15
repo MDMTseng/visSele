@@ -377,7 +377,7 @@ void ContourFetch::getContourPointsWithInLineContour(
 
       if(pt.x < epsilonX && pt.y < epsilonY)
       {
-        if( abs(pti.curvature)>lineCurvatureMax)continue;
+        if( fabsf(pti.curvature)>lineCurvatureMax)continue;
 
         if(flip_f==0)
           ptInSection=true;
@@ -911,7 +911,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       if(pt.y<0)pt.y=-pt.y;
       if(pt.x < epsilonX && pt.y < epsilonY)
       {
-        if( abs(pti.curvature)>lineCurvatureMax)continue;
+        if( fabsf(pti.curvature)>lineCurvatureMax)continue;
 
         //LOGV(">> X:%f<%f  Y:%f<%f",pt.x,epsilonX,pt.y,epsilonY);
         if(flip_f==0)

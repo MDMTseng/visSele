@@ -256,6 +256,10 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
   if (count < 2) count = 2;
   acv_XY lineDir = acvVecNormalize(acvVecSub(p1, p0));
+  // A zero-length line (p1 == p0) or a NaN endpoint from morph normalizes to
+  // NaN, and caliper_measure's sibling check has no counterpart here -- the
+  // NaN used to flow into the band geometry and the (int) conversions below.
+  if (lineDir.x != lineDir.x || lineDir.y != lineDir.y) { r.nValid = 0; return r; }
   acv_XY perp = { -lineDir.y, lineDir.x }; // caliper search direction (across edge)
 
   const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);

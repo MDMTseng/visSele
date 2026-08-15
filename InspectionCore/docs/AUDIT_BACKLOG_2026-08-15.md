@@ -234,23 +234,23 @@ practice on this toolchain). `:345-350` double-unlocks; unreachable today.
 
 ## Tier 3 — bounded / low reachability, cheap to fix
 
-- **`RArray[thdegInt]` clamps only the upper bound** —
+- **FIXED** `RArray[thdegInt]` clamps only the upper bound —
   `FeatureManager_sig360_circle_line.cpp:4541-4548`. A NaN `theta_deg` gives
   `(int)NaN` (UB) then indexes a 360-entry stack array. Reachability
   unconfirmed, fix is one line.
-- **`caliper_locate_line` never checks `lineDir` for NaN** — `Caliper.cpp:240`;
+- **FIXED** `caliper_locate_line` never checks `lineDir` for NaN — `Caliper.cpp:240`;
   `caliper_measure:136` does. Zero-length line (`pt1 == pt2`) or a NaN endpoint
   from morph reaches `(int)` conversion of NaN.
-- **`graySampleBilinear`'s guard misses NaN** —
+- **FIXED** `graySampleBilinear`'s guard misses NaN —
   `FeatureManager_sig360_circle_line.cpp:5963`; four comparisons against NaN are
   all false, so it falls through to `(int)` and a wild row pointer.
-- **`cvUnsignedMap1Sampling` truncates instead of flooring** — `CvBridge.h:41`.
+- **FIXED** (rejects the negative band in float, NaN-safe) `cvUnsignedMap1Sampling` truncates instead of flooring — `CvBridge.h:41`.
   For `-1 < x < 0` it extrapolates with a negative weight instead of returning
   NaN. One-pixel band at the left/top edge, 100% reachable, small error.
-- **`cvUnsignedMap1Sampling_Nearest` converts NaN before bounds-checking** —
+- **FIXED** (float-domain check first) `cvUnsignedMap1Sampling_Nearest` converts NaN before bounds-checking —
   `CvBridge.h:30`. Currently **no callers**; either delete it or reorder the
   check, so it is not a trap for the next user.
-- **`SearchPointCV.cpp:74-76` casts a NaN brightness to `unsigned char`** — the
+- **FIXED** `SearchPointCV.cpp:74-76` casts a NaN brightness to `unsigned char` — the
   coordinate is clamped so the sampler is safe, but the backlight factor can be
   NaN (`ImageSampler.cpp:1033-1035` returns NAN outside the grid).
 - **`contourConcatLastTo` deletes a single self-merged section** —
@@ -258,7 +258,7 @@ practice on this toolchain). `:345-350` double-unlocks; unreachable today.
   endIdx`, it self-merges and the final `erase` removes it. Trigger looks like
   the *good* case (a circular hole entirely inside the epsilon band). Silent
   miss. Unconfirmed whether intentional.
-- **`abs()` on a float curvature** — `ContourGrid.cpp:374`, `:908`. Only
+- **FIXED** (`fabsf`) `abs()` on a float curvature — `ContourGrid.cpp:374`, `:908`. Only
   `<math.h>` is included; if it resolves to `int abs(int)` every `|curvature| <
   1` becomes 0 and the filter silently stops working. Fine on the current
   toolchain, a live risk on the MinGW deployment path. Use `fabsf`.

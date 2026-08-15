@@ -27,9 +27,13 @@ void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
 // CV_8UC* image). Out-of-bounds -> 0.
 inline uint8_t cvUnsignedMap1Sampling_Nearest(const cv::Mat &m, float x, float y, int channel)
 {
+    // Range-check in float BEFORE the (int) conversion: converting a NaN (or
+    // a huge value) to int is UB, so the old order -- convert, then check --
+    // was checking a number the standard says may be anything.
+    if (!(x >= -0.49f && y >= -0.49f && x <= m.cols - 0.51f && y <= m.rows - 0.51f))
+        return 0;
     int rX = (int)std::round(x);
     int rY = (int)std::round(y);
-    if (rX < 0 || rY < 0 || rX > m.cols - 1 || rY > m.rows - 1) return 0;
     return m.ptr<uint8_t>(rY)[rX * m.channels() + channel];
 }
 
@@ -37,12 +41,22 @@ inline uint8_t cvUnsignedMap1Sampling_Nearest(const cv::Mat &m, float x, float y
 // Returns NaN when the 2x2 neighborhood would be out of bounds.
 inline float cvUnsignedMap1Sampling(const cv::Mat &m, float x, float y, int channel)
 {
+    // Bounds-check in FLOAT before any int conversion. Two reasons:
+    //  - (int)NaN and (int)1e10f are UB; the old convert-then-check order was
+    //    checking a value the standard says may be anything.
+    //  - truncation-toward-zero gave rX=0 with a NEGATIVE resX for
+    //    -1 < x < 0, which the int check accepted -- the sampler then
+    //    extrapolated with a negative weight in a one-pixel band along the
+    //    left/top edge instead of reporting off-image.
+    // The comparison is written so NaN fails it (NaN >= 0 is false). The
+    // accepted domain is exactly the old one minus the negative band:
+    // [0, cols-1) x [0, rows-1).
+    if (!(x >= 0.0f && y >= 0.0f && x < (float)(m.cols - 1) && y < (float)(m.rows - 1)))
+        return std::nan("");
     int rX = (int)(x);
     int rY = (int)(y);
     float resX = x - rX;
     float resY = y - rY;
-    if (rX < 0 || rY < 0 || rX + 1 > m.cols - 1 || rY + 1 > m.rows - 1)
-        return std::nan("");
     const int ch = m.channels();
     const uint8_t *r0 = m.ptr<uint8_t>(rY);
     const uint8_t *r1 = m.ptr<uint8_t>(rY + 1);
