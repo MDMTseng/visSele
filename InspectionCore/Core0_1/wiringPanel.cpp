@@ -2307,6 +2307,14 @@ m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
 void m_BPG_Protocol_Interface::delete_PeripheralChannel()
 {
 
+  // Under the TX lock. Three threads write through perifCH -- PerifSendThread,
+  // PerifPingThread, and the WS handlers via sendcJsonTo_perifCH /
+  // printfTo_perifCH -- and they all re-check perifCH for NULL while holding
+  // perif_tx_lock. That check only means anything if the deleter takes the
+  // same lock; it did not, so closing the last browser tab (ws CLOSING ->
+  // delete_PeripheralChannel when peers is empty) could free the channel out
+  // from under a send in flight.
+  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
   if (perifCH)
   {
     LOGI("DELETING");
@@ -2571,7 +2579,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     } _json_guard{json};
     char err_str[1000] = "\0";
     bool session_ACK = false;
-    char tmp[200];    //For string construct json reply
+    // Sized for the worst case, not the typical one: the reply below formats
+    // err_str (1000 bytes, filled from client-supplied strings like
+    // "file:%s File open failed" with a WebUI-supplied path) into tmp with an
+    // unbounded sprintf. At 200 bytes any error message over ~155 chars ran
+    // off the end of a stack buffer sharing a frame with the return address --
+    // a deep data/... path was enough, no hostile client needed.
+    // (err_str is still interpolated raw into the JSON, so a quote in a
+    // filename yields a malformed reply. Knowingly left: that is a broken
+    // reply, not memory corruption, and fixing it means rebuilding this with
+    // cJSON.)
+    char tmp[1100];    //For string construct json reply
     BPG_protocol_data bpg_dat; //Empty
     // {
     //     sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
@@ -3721,15 +3739,24 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         char *jsonStr = (defInfo != NULL) ? cJSON_Print(defInfo) : ReadText(deffile);
         if (jsonStr == NULL) { LOGE("SF: cannot read def"); break; }
 
-        matchingEng.ResetFeature();
+        // Same writer/reader problem as the FI/CI def reload: ResetFeature
+        // deletes the features the inspection thread may be matching against
+        // right now (the SIGSEGV inside sbm::ShapeMatcher::match). SF was the
+        // one path missed when the guards went in. Released before the reply
+        // is sent, like the other sites.
+        cJSON *fp = NULL;
         {
-          char *injected_ctx = def_stamp_context(jsonStr, deffile);
-          matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
-          if (injected_ctx) free(injected_ctx);
+          std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+          matchingEng.ResetFeature();
+          {
+            char *injected_ctx = def_stamp_context(jsonStr, deffile);
+            matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
+            if (injected_ctx) free(injected_ctx);
+          }
+          fp = matchingEng.GetShapeFeaturePoints();
         }
         free(jsonStr);
 
-        cJSON *fp = matchingEng.GetShapeFeaturePoints();
         char *out = fp ? cJSON_PrintUnformatted(fp) : strdup("{\"features\":[],\"roi\":[]}");
         if (fp) cJSON_Delete(fp);
 
@@ -5298,7 +5325,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
 
     }
-    sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+    // Bounded as well as sized (see tmp's declaration): the buffer is big
+    // enough today, and a future err_str growth must truncate instead of
+    // silently smashing the stack again.
+    snprintf(tmp, sizeof(tmp), "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
     bpg_dat = GenStrBPGData("SS", tmp);
     bpg_dat.pgID = dat->pgID;

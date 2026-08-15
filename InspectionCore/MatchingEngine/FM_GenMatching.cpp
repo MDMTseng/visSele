@@ -284,6 +284,15 @@ int FM_GenMatching::SetInspInfo(cJSON *jsonParam)
     return -1;
   }
 
+  // inspType is a fixed 30B member sitting right in front of ROI/downScale and two
+  // std::vectors, so an unchecked copy of a def-supplied string corrupts the heap.
+  // Reject rather than truncate: a truncated name matches no branch below and the
+  // function would still return 0, silently leaving the feature unconfigured.
+  if(strlen(itype)>=sizeof(inspType))
+  {
+    LOGE("insp_type too long:%s",itype);
+    return -1;
+  }
   strcpy(inspType,itype);
 
   if (strcmp(inspType, "image_binarization") == 0)

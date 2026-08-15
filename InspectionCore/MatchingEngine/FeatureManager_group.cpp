@@ -559,7 +559,7 @@ int FeatureManager_binary_processing_group::parse_jobj()
   if(sSet_sha1!=NULL)
   {
     strncpy(subFeatureDefSha1,sSet_sha1,sizeof(subFeatureDefSha1));
-    subFeatureDefSha1[sizeof(subFeatureDefSha1)-1]=='\0';
+    subFeatureDefSha1[sizeof(subFeatureDefSha1)-1]='\0';
   }
 
   return 0;
