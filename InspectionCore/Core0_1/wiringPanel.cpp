@@ -2566,6 +2566,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
     LOG_EVERY(50, "DataType_BPG:[%c%c] pgID:%d", dat->tl[0], dat->tl[1],
          dat->pgID);
+    // The payload is NOT guaranteed to be NUL-terminated.
+    //
+    // dat_raw points straight into the reassembly buffer (BPG_Protocol.cpp:
+    // `bpgdat.dat_raw = &(dat[9])`), so nothing appends a terminator. Both
+    // cJSON_Parse here and the strlen() in the save handler below run until they
+    // happen to find a zero byte -- past the declared payload, into the next
+    // pipelined packet or into the vector's uninitialised capacity.
+    //
+    // Well-behaved clients do terminate (the WebUI allocates body.length + 1 and
+    // leaves the last byte zero), so this is a contract that was assumed and never
+    // checked. Check it once, here, and every consumer below is safe -- including
+    // `dat->size - strinL`, which is unsigned and would underflow to ~4e9 and be
+    // handed to fwrite as a length if strlen ever ran past the payload.
+    if (dat->size > 0 && dat->dat_raw != NULL &&
+        memchr(dat->dat_raw, 0, dat->size) == NULL)
+    {
+      LOGE("[%c%c] payload of %u bytes is not NUL-terminated -- refusing",
+           dat->tl[0], dat->tl[1], (unsigned)dat->size);
+      return -1;
+    }
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
     // RAII cleanup: this BPG message handler is a ~1600-line do/while with
     // 20+ inner `break` paths, none of which previously called
