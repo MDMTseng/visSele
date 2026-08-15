@@ -2737,6 +2737,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         { //No raw data, check "type"
 
           char *type = (char *)JFetch(json, "type", cJSON_String);
+          // JFetch returns NULL for a missing key OR one of the wrong type, and every
+          // branch below starts with strcmp(type, ...). One "FW" packet carrying a
+          // filename but no "type" -- or a numeric one -- dereferenced NULL immediately.
+          // There is no default branch to fall into, so refusing here loses nothing.
+          if (type == NULL)
+          {
+            snprintf(err_str, sizeof(err_str), "no 'type' in a payload-less save request");
+            LOGE("%s", err_str);
+            break;
+          }
           if (strcmp(type, "__CACHE_IMG__") == 0)
           {
             LOGE("__CACHE_IMG__ %d x %d", cacheImage.cols, cacheImage.rows);
@@ -2829,6 +2839,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             char *img_extension = JFetch_STRING(json, "img_extension");
 
 
+            // NULL until the first frame has been through the data-view pipe. The sibling
+            // __LAST_DATA_VIEW_CACHE_IMG__ branch just above checks this, and so does the
+            // preview thread; only this one dereferenced it blind -- saving a sample before
+            // any frame has been previewed read through NULL. Checked BEFORE the lock so
+            // the early exit cannot leave it held.
+            if (lastDatViewCache == NULL)
+            {
+              snprintf(err_str, sizeof(err_str), "no data-view frame yet; nothing to save");
+              LOGE("%s", err_str);
+              session_ACK = false;
+              break;
+            }
             lastDatViewCache_lock.lock();
 
             int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
@@ -4871,6 +4893,19 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       }
 
 
+      // camera is NULL after a reconnect that found no device -- the deliberate
+      // outcome of camera_ez_reconnect ("a failed reconnect leaves no camera at
+      // all"), whose comment then claims every reader below is NULL-guarded. This
+      // one was not. The WebUI keeps pushing settings after a failed reconnect, so
+      // the next ST dereferenced NULL through a virtual call. The sibling guard a
+      // few lines up already does `if (camera && camSettingObj)`.
+      if (camera == NULL)
+      {
+        snprintf(err_str, sizeof(err_str), "no camera (reconnect found no device)");
+        LOGE("%s", err_str);
+        session_ACK = false;
+        break;
+      }
       downSampSetup(*camera, *json);
 
       if (getDataFromJson(json, "CameraTriggerShutter", NULL) == cJSON_True)
