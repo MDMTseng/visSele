@@ -1590,7 +1590,19 @@ static bool load_lens_calib(const char *path)
   if (!f) { LOGE("load_lens_calib: cannot open %s", path); return false; }
   fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
   std::vector<char> buf(n + 1, 0); fread(buf.data(), 1, n, f); fclose(f);
-  g_lens_calib = lens_calib_from_json(buf.data());
+  // Parse into a local first: "the file opened" is not "the calibration is
+  // usable", and a malformed file used to overwrite a good in-memory model AND
+  // report success -- the operator got a green ACK for turning distortion
+  // correction into division by zero. lens_calib_from_json now marks a
+  // degenerate scale not-ok; refuse to install it and keep what we had.
+  LensCalibResult parsed = lens_calib_from_json(buf.data());
+  if (!parsed.ok)
+  {
+    LOGE("load_lens_calib: %s parsed but is NOT usable (ok=%d m=%f) -- "
+         "keeping the previous calibration", path, parsed.ok, parsed.tele.m);
+    return false;
+  }
+  g_lens_calib = parsed;
   calib_bacpac.lensCalib   = &g_lens_calib;
   neutral_bacpac.lensCalib = &g_lens_calib;
   push_mmpp_to_sampler();
@@ -1893,22 +1905,40 @@ void downSampSetup(CameraLayer &camera, cJSON &settingJson)
   }
 }
 
+// What the last CameraSetup failed to apply (backlog 1.11). Every setter's
+// return status used to be discarded and CameraSetup ends in `return 0`, so an
+// unimplemented driver setter (base class defaults to NAK) failed without a
+// trace: the operator changes exposure, the ACK is green, the sensor is
+// unchanged. Names of failed settings accumulate here; camera_info reports
+// them. Written by the WS thread only (all CameraSetup callers), read racily
+// by camera_info -- a stale read is a stale string, not a crash.
+static std::string g_camSetupFailed;
+
 int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 {
+  g_camSetupFailed.clear();
+  auto _chk = [&](const char *name, CameraLayer::status st){
+    if (st != CameraLayer::ACK)
+    {
+      if (!g_camSetupFailed.empty()) g_camSetupFailed += ",";
+      g_camSetupFailed += name;
+      LOGE("CameraSetup: %s NOT applied (driver returned %d)", name, (int)st);
+    }
+  };
   downSampSetup(camera, settingJson);
   camera.StopAquisition();
   double *val = JFetch_NUMBER(&settingJson, "exposure");
   int retV = -1;
   if (val)
   {
-    camera.SetExposureTime(*val);
+    _chk("exposure", camera.SetExposureTime(*val));
     LOGI("SetExposureTime:%f", *val);
     retV = 0;
   }
   val = JFetch_NUMBER(&settingJson, "gain");
   if (val)
   {
-    camera.SetAnalogGain(*val);
+    _chk("gain", camera.SetAnalogGain(*val));
     LOGI("SetAnalogGain:%f", *val);
     retV = 0;
   }
@@ -1918,7 +1948,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     val = JFetch_NUMBER(&settingJson, "trigger_mode");
     if (val)
     {
-      camera.TriggerMode((int)*val);
+      _chk("trigger_mode", camera.TriggerMode((int)*val));
       retV = 0;
     }
   }
@@ -1944,17 +1974,19 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     if (val)
     {
       CameraLayer::status ret=camera.SetBalckLevel(*val);
+      _chk("blacklevel", ret);
       LOGI("SetBalckLevel:%f  ret:%d", *val,ret);
       retV = 0;
     }
   }
 
   {
-    
+
     val = JFetch_NUMBER(&settingJson, "gamma");
     if (val)
     {
       CameraLayer::status ret=camera.SetGamma(*val);
+      _chk("gamma", ret);
       LOGI("SetGamma:%f  ret:%d", *val,ret);
       retV = 0;
     }
@@ -1962,7 +1994,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   val = JFetch_NUMBER(&settingJson, "framerate");
   if (val)
   {
-    camera.SetFrameRate((float)*val);
+    _chk("framerate", camera.SetFrameRate((float)*val));
     LOGI("framerate:%f", *val);
     retV = 0;
   }
@@ -2068,7 +2100,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
         w = *roi_w;
         h = *roi_h;
       }
-      camera.SetROI(x,y,w,h, 0, 0);
+      _chk("ROI", camera.SetROI(x,y,w,h, 0, 0));
       int ox = 0, oy = 0;
       camera.GetROI(&ox, &oy, NULL, NULL, NULL, NULL);
       // The ROI/crop the user just configured shifts the captured image's
@@ -3427,6 +3459,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddBoolToObject(cam_1, "lens_calib_loaded", g_lens_calib.ok);
             cJSON_AddBoolToObject(cam_1, "lens_calib_autoloaded", g_calib_autoloaded);
             cJSON_AddNumberToObject(cam_1, "lens_calib_rms_px", g_lens_calib.overall_rms_px);
+            // Settings the last CameraSetup asked for and the driver refused
+            // (backlog 1.11). Empty string = everything applied. The values in
+            // this reply are what was REQUESTED, not a device read-back, so
+            // this field is the only place a refused setter shows up.
+            cJSON_AddStringToObject(cam_1, "setup_failed", g_camSetupFailed.c_str());
             cJSON_AddNumberToObject(cam_1, "cur_width", calib_bacpac.sampler->getCalibMap()->fullFrameW);
             cJSON_AddNumberToObject(cam_1, "cur_height", calib_bacpac.sampler->getCalibMap()->fullFrameH);
 
@@ -5815,14 +5852,35 @@ static std::string path_basename(const std::string &p)
   return (s == std::string::npos) ? p : p.substr(s + 1);
 }
 
+// Copy a def's cam_param scale into the sampler's calib map -- with the guard.
+// JFetch_NUMBER_ex defaults to NAN, so a def without cam_param used to write
+// NaN straight into the map, and ppb2b of 0 makes mmpP_ideal() return inf;
+// either one quietly turns every millimetre in every later measurement into
+// NaN/inf. The DF handler had this guard; the other three copies of the
+// assignment did not (backlog 1.12).
+static void apply_def_cam_param(FeatureManager_BacPac &bacpac, cJSON *dj, const char *who)
+{
+  double _ppb  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
+  double _mmpb = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+  if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
+  {
+    bacpac.sampler->getCalibMap()->calibPpB  = _ppb;
+    bacpac.sampler->getCalibMap()->calibmmpB = _mmpb;
+  }
+  else
+  {
+    LOGE("%s: def has no usable featureSet[0].cam_param (ppb2b:%f mmpb2b:%f)"
+         " -- keeping the previous scale", who, _ppb, _mmpb);
+  }
+}
+
 // Run a def (JSON string) on an image and return its report as cJSON (caller
 // deletes). defPathCtx (may be NULL) anchors the sidecar/reg stamping.
 static cJSON *run_def_report(MatchingEngine &me, FeatureManager_BacPac &bacpac,
                              const char *defJson, const char *defPathCtx, cv::Mat &img)
 {
   if (cJSON *dj = cJSON_Parse(defJson)) {
-    bacpac.sampler->getCalibMap()->calibPpB  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
-    bacpac.sampler->getCalibMap()->calibmmpB = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+    apply_def_cam_param(bacpac, dj, "run_def_report");
     cJSON_Delete(dj);
   }
   char *injected = def_stamp_context(defJson, defPathCtx);
@@ -8931,8 +8989,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       perifSendQueue.pop(discard);
       perifSendQueue.push(msg);
       int n = ++perifSendDropCount;
+      // Reported in perif_pairing.link.queue_dropped. On a POSITIONAL-pairing
+      // machine (uInspMEGA) any dropped verdict shifts the whole train by one
+      // -- every later part gets its neighbour's verdict. That cannot be fixed
+      // here (a placeholder would need a queue slot, which is what ran out);
+      // it can only be made impossible to miss.
       if ((n % 50) == 1)
-        LOGE("perifSendQueue full -> dropping oldest (cumulative drops: %d)", n);
+        LOGE("perifSendQueue full -> dropping oldest (cumulative drops: %d)%s", n,
+             (bpg_pi.perifCH && bpg_pi.perifCH->machine_type == PERIF_UINSP_MEGA)
+               ? " -- POSITIONAL pairing: the verdict train is now OFF BY ONE" : "");
     }
     }
   }
@@ -9002,6 +9067,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     cJSON_AddBoolToObject(st, "ignore_calib",
       (imgPipe->bacpac && imgPipe->bacpac->sampler)
         ? imgPipe->bacpac->sampler->isCalibIgnored() : false);
+    // INSP_SKIP_INSPECTION passes every part without measuring it. One LOGE at
+    // startup was its only trace; same reasoning as area_bypass -- always
+    // emitted, on every frame, because "the field is absent" must not read as
+    // "inspection is running".
+    cJSON_AddBoolToObject(st, "skip_inspection", skip_inspection());
     // The verdict AS THE MACHINE RECEIVES IT, not as the inspection produced it.
     // Those differ whenever a clean region or a guard intervenes, and the number
     // that decides where the part goes is this one -- so it is the one to show
@@ -9953,8 +10023,7 @@ int cp_main(int argc, char **argv)
       char *ds = ReadText(defPath);
       if (ds) { cJSON *dj = cJSON_Parse(ds);
         if (dj) {
-          neutral_bacpac.sampler->getCalibMap()->calibPpB  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
-          neutral_bacpac.sampler->getCalibMap()->calibmmpB = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+          apply_def_cam_param(neutral_bacpac, dj, "--insp");
           cJSON_Delete(dj);
         }
         free(ds);
@@ -10102,8 +10171,7 @@ int cp_main(int argc, char **argv)
     char *ds = ReadText(defPath);
     if (!ds) { LOGE("--insp-cont: cannot read def %s", defPath); return 3; }
     if (cJSON *dj = cJSON_Parse(ds)) {
-      neutral_bacpac.sampler->getCalibMap()->calibPpB  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
-      neutral_bacpac.sampler->getCalibMap()->calibmmpB = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+      apply_def_cam_param(neutral_bacpac, dj, "--insp-cont");
       cJSON_Delete(dj);
     }
     matchingEng.ResetFeature();

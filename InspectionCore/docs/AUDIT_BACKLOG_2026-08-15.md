@@ -91,7 +91,7 @@ drag line/circle fits and propagate through `contourDir` to neighbours.
 
 Trigger: `inspection_downsample > 1`.
 
-### 1.7 Degenerate fits report the nominal shape as if measured
+### 1.7 Degenerate fits report the nominal shape as if measured — FIXED (fitOk gate on both paths; wlsLine detects zero covariance)
 `MatchingEngine/Caliper.cpp:491-516` (Kasa), `:228-230` (`wlsLine`)
 
 If `kasaCircle` fails on the first iteration the centre/radius stay at the
@@ -103,17 +103,17 @@ when all inliers coincide. Neither flags the degeneracy.
 Reachability: needs near-collinear hits (very short arc) — unconfirmed but the
 failure mode is "always in spec", so it deserves a guard regardless.
 
-### 1.8 `INSP_SKIP_INSPECTION=1` passes every part, and is not in the status
+### 1.8 `INSP_SKIP_INSPECTION=1` passes every part, and is not in the status — FIXED (`station.skip_inspection`, every frame)
 `Core0_1/wiringPanel.cpp:8418` — one LOGE at startup and nothing else. Compare
 `area_bypass`, which is deliberately reported on every frame; the same reasoning
 applies here.
 
-### 1.9 `perifSendQueue` drops the OLDEST on overflow
+### 1.9 `perifSendQueue` drops the OLDEST on overflow — MITIGATED (link.queue_dropped counter + explicit off-by-one LOGE for positional pairing; a real fix needs a protocol placeholder)
 `Core0_1/wiringPanel.cpp:8757-8765` — for the position-based uInspMEGA pairing
 that shifts the whole verdict train by one, and the dropped part gets no NA
 substitute.
 
-### 1.10 Calibration files load "successfully" when malformed
+### 1.10 Calibration files load "successfully" when malformed — FIXED (degenerate scale marks ok=false; load refuses to install and keeps the previous model)
 `Core0_1/wiringPanel.cpp:1518-1531`; `MatchingEngine/LensCalib.cpp:169`
 
 `load_lens_calib` only fails on `fopen`. `lens_calib_from_json` defaults `ok` to
@@ -121,7 +121,7 @@ substitute.
 yields `ok=true, m=0`, and `(u-u0)/m` divides by zero into the coordinate path.
 The operator gets a green ACK.
 
-### 1.11 Camera settings are never verified, and one ACK test is inverted
+### 1.11 Camera settings are never verified, and one ACK test is inverted — PARTLY FIXED (setter returns checked + `camera_info.setup_failed`; device read-back still absent)
 `Core0_1/wiringPanel.cpp:1836/1843/1897/2003`, `:2021`, `:4980`
 
 Every `SetExposureTime`/`SetAnalogGain`/`SetFrameRate`/`SetROI` return status is
@@ -132,7 +132,7 @@ echoes a string cached at construction, not a device read-back.
 
 (The inverted `CameraSettingFile` ACK at `:4971` was fixed in `d51624af`.)
 
-### 1.12 `JFetch_NUMBER_ex(...ppb2b)` unguarded in three more places
+### 1.12 `JFetch_NUMBER_ex(...ppb2b)` unguarded in three more places — FIXED (`apply_def_cam_param` helper at all four sites)
 `Core0_1/wiringPanel.cpp:5680`, `:9738`, `:9887` — the default is NaN, which
 lands straight in the calibration map. `:3751` already has the correct guard to
 copy.

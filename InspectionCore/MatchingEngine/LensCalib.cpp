@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 
 LensModel lens_model_from_string(const std::string &s)
 {
@@ -174,6 +175,11 @@ LensCalibResult lens_calib_from_json(const char *json)
     r.tele.p1 = jget(o,"p1",0); r.tele.p2 = jget(o,"p2",0);
     r.tele.s1 = jget(o,"s1",0); r.tele.s2 = jget(o,"s2",0);
     r.tele.s3 = jget(o,"s3",0); r.tele.s4 = jget(o,"s4",0);
+    // ok defaulted to TRUE while every numeric defaults to 0, so an empty or
+    // truncated file produced ok=true, m=0 -- and (u-u0)/m fed division by
+    // zero into the coordinate path with a green ACK. A calibration whose
+    // scale would divide by zero is not "ok" no matter what the file says.
+    if (!(std::isfinite(r.tele.m) && r.tele.m > 0)) r.ok = false;
   }
   else
   {
@@ -181,6 +187,8 @@ LensCalibResult lens_calib_from_json(const char *json)
     r.cx = jget(o,"cx",0); r.cy = jget(o,"cy",0);
     r.dist[0]=jget(o,"k1",0); r.dist[1]=jget(o,"k2",0);
     r.dist[2]=jget(o,"p1",0); r.dist[3]=jget(o,"p2",0); r.dist[4]=jget(o,"k3",0);
+    // Same reasoning: pinhole normalisation divides by fx/fy.
+    if (!(std::isfinite(r.fx) && r.fx > 0 && std::isfinite(r.fy) && r.fy > 0)) r.ok = false;
   }
   cJSON_Delete(o);
   return r;

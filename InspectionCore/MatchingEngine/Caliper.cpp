@@ -215,19 +215,25 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
 
 // weighted total-least-squares line fit over points with weights w; returns
 // anchor (weighted centroid), unit dir, and fills perpendicular residuals.
-static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
+// Returns false when there is no line to be had: zero total weight, or all
+// inlier points coincident (zero covariance -- atan2(0,0) would "fit" a
+// horizontal line with rms 0, i.e. always in spec, which is the one answer a
+// degenerate input must never produce).
+static bool wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
                     const std::vector<char> &use, acv_XY &anchor, acv_XY &dir)
 {
   double sw = 0, mx = 0, my = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i]) { sw += w[i]; mx += w[i]*pts[i].x; my += w[i]*pts[i].y; }
-  if (sw <= 0) { anchor = {0,0}; dir = {1,0}; return; }
+  if (sw <= 0) return false;
   mx /= sw; my /= sw;
   double a = 0, b = 0, c = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
   { double dx = pts[i].x-mx, dy = pts[i].y-my; a += w[i]*dx*dx; b += w[i]*dx*dy; c += w[i]*dy*dy; }
+  if (a + c < 1e-9) return false;   // all points in one spot
   double theta = 0.5 * atan2(2*b, a - c); // major axis of weighted covariance
   anchor = { (float)mx, (float)my };
   dir = { (float)cos(theta), (float)sin(theta) };
+  return true;
 }
 
 CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
@@ -426,9 +432,14 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
 
   std::vector<char> use(pts.size(), 1);
   acv_XY anchor = {0,0}, dir = {1,0};
+  // If the fit NEVER succeeds, r must not be ok: anchor/dir would still hold
+  // their initialisers and the "measurement" below would be a fabrication with
+  // rms ~0 -- always in spec (backlog 1.7).
+  bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
-    wlsLine(pts, w, use, anchor, dir);
+    if (!wlsLine(pts, w, use, anchor, dir)) break;
+    fitOk = true;
     acv_XY n = { -dir.y, dir.x };
     std::vector<float> res(pts.size());
     std::vector<float> absr;
@@ -455,7 +466,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.confidence = (ni > 0) ? (float)(sumw / ni) : 0;
   const int minInliers = (cal.min_inliers > 0) ? cal.min_inliers : 2;
-  r.ok = (ni >= minInliers);
+  r.ok = fitOk && (ni >= minInliers);
   if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
   return r;
 }
@@ -555,9 +566,15 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
 
   std::vector<char> use(pts.size(), 1);
   acv_XY cen = center0; float rad = radius0;
+  // Same guard as the line path: if Kasa never solves, cen/rad still hold the
+  // def's NOMINAL circle, residuals against it are ~0 (the calipers were
+  // centred on it), and the nominal would be reported as a measurement with
+  // rms 0 (backlog 1.7).
+  bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
     if (!kasaCircle(pts, w, use, cen, rad)) break;
+    fitOk = true;
     std::vector<float> absr;
     for (size_t i = 0; i < pts.size(); i++) if (use[i])
       absr.push_back(fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad));
@@ -580,7 +597,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   r.rms = (ni>0)?sqrtf(sq/ni):0;
   r.confidence = (ni>0)?(float)(sumw/ni):0;
   const int minInliers = (cal.min_inliers > 0) ? cal.min_inliers : 3;
-  r.ok = (ni >= minInliers);
+  r.ok = fitOk && (ni >= minInliers);
   if (dbg)
   {
     caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
