@@ -3297,9 +3297,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             fromUpperLayer(bpg_dat, peer);
             free(fileStr);
           }
-          catch (std::invalid_argument iaex)
+          catch (const std::exception &ex)
           {
-            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d : %s", __LINE__, ex.what());
             LOGE("%s", err_str);
             session_ACK=false;
             break;
@@ -3377,9 +3377,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               break;
             }
           }
-          catch (std::invalid_argument iaex)
+          catch (const std::exception &ex)
           {
-            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d : %s", __LINE__, ex.what());
             LOGE("%s", err_str);
             session_ACK=false;
             break;
@@ -3691,9 +3691,25 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             session_ACK = false;
           }
         }
-        catch (std::invalid_argument iaex)
+        // std::exception, not std::invalid_argument.
+        //
+        // Def parsing throws TWO unrelated types. The FeatureManager constructors
+        // throw std::invalid_argument, which this used to catch -- but JFetEx
+        // (common_lib/Util.c) throws std::runtime_error for any missing required
+        // key, and that is NOT a subclass of invalid_argument. It sailed straight
+        // through this handler, out of the WS thread, and terminated the daemon.
+        // A def missing "margin", "width", "subtype", "name", "ref[].id" or
+        // "pt1.x/y" was enough -- an older def, a hand-edited one, or one carrying
+        // a judge shape this build does not know. That is the population of files
+        // a factory actually has on disk.
+        //
+        // By reference, too: the old catch took std::invalid_argument BY VALUE and
+        // sliced it, and never read what() -- the reason was discarded and the
+        // operator got "Caught an error!" plus a line number. JFetEx's message
+        // names the missing key, so it now travels back to the UI.
+        catch (const std::exception &ex)
         {
-          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d : %s", __LINE__, ex.what());
           LOGE("%s", err_str);
           break;
         }
@@ -3744,7 +3760,19 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         // right now (the SIGSEGV inside sbm::ShapeMatcher::match). SF was the
         // one path missed when the guards went in. Released before the reply
         // is sent, like the other sites.
+        // AddMatchingFeature throws on a def this build cannot fully parse:
+        // std::invalid_argument from the FeatureManager constructors, and
+        // std::runtime_error from JFetEx on a missing required key. This handler
+        // had no try at all, so either one escaped the WS thread and took the
+        // daemon down -- one press of 生成特徵點 on an older def was enough.
+        //
+        // Note this leaves matchingEng EMPTY when it throws: ResetFeature() has
+        // already run. A running CI/FI session then inspects with no features
+        // until the next def load -- the same behaviour the CI/FI handler has
+        // always had, not made worse here, but worth knowing before trusting a
+        // report that arrives right after a failed 生成特徵點.
         cJSON *fp = NULL;
+        try
         {
           std::lock_guard<std::mutex> _me_guard(matchingEnglock);
           matchingEng.ResetFeature();
@@ -3754,6 +3782,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             if (injected_ctx) free(injected_ctx);
           }
           fp = matchingEng.GetShapeFeaturePoints();
+        }
+        catch (const std::exception &ex)
+        {
+          free(jsonStr);      // owned here; the throw would otherwise leak it
+          LOGE("SF: def parse failed: %s", ex.what());
+          break;
         }
         free(jsonStr);
 
@@ -3922,10 +3956,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           session_ACK = true;
         }
-        catch (std::invalid_argument iaex)
+        catch (const std::exception &ex)
         {
 
-          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d : %s", __LINE__, ex.what());
           LOGE("%s", err_str);
         }
 
@@ -4039,9 +4073,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               fromUpperLayer(bpg_dat, peer);
             }
           }
-          catch (std::invalid_argument iaex)
+          catch (const std::exception &ex)
           {
-            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d : %s", __LINE__, ex.what());
             LOGE("%s", err_str);
           }
 
@@ -6265,9 +6299,9 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
 
       delete jstr;
     }
-    catch (std::invalid_argument iaex)
+    catch (const std::exception &ex)
     {
-      LOGE("Caught an error!");
+      LOGE("Caught an error!: %s", ex.what());
     }
   } while (false);
   _wRep = perif_now_us();
@@ -9431,8 +9465,22 @@ int cp_main(int argc, char **argv)
       int n = std::atoi(e);
       if (n > 0) loopN = n;
     }
-    for (int li = 0; li < loopN; ++li) {
-      ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
+    // A def this build cannot fully parse throws, and nothing up the CLI stack
+    // catches it -- the FeatureManager ctors throw std::invalid_argument and
+    // JFetEx throws std::runtime_error for a missing required key. Uncaught,
+    // that is std::terminate: measured exit 134 (SIGABRT) on a def with a judge
+    // missing "subtype". --insp is what the QA harness drives, so a bad def
+    // aborted the run instead of returning the documented "bad def" code.
+    try
+    {
+     for (int li = 0; li < loopN; ++li) {
+       ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
+     }
+    }
+    catch (const std::exception &ex)
+    {
+      LOGE("--insp: def parse failed: %s", ex.what());
+      return 4;   // documented: 4 = bad def
     }
     // Speed profile: INSP_PROF=N times the per-frame INSPECTION only (FeatureMatching:
     // localize + morph + measure), with the def already trained -- the recurring
