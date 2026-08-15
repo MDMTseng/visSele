@@ -885,14 +885,32 @@ acv_XY pointSobel(const cv::Mat &graylevelImg, acv_XY point, int range)
   {
     return acv_XY(0, 0);
   }
-  int I11 = graylevelImg.ptr<uint8_t>(Y-offset)[(X-offset)*3];
-  int I12 = graylevelImg.ptr<uint8_t>(Y-offset)[(X)*3];
-  int I13 = graylevelImg.ptr<uint8_t>(Y-offset)[(X+offset)*3];
-  int I21 = graylevelImg.ptr<uint8_t>(Y)[(X-offset)*3];
-  int I23 = graylevelImg.ptr<uint8_t>(Y)[(X+offset)*3];
-  int I31 = graylevelImg.ptr<uint8_t>(Y+offset)[(X-offset)*3];
-  int I32 = graylevelImg.ptr<uint8_t>(Y+offset)[(X)*3];
-  int I33 = graylevelImg.ptr<uint8_t>(Y+offset)[(X+offset)*3];
+  // Stride by the image's OWN channel count, not a hard-coded 3.
+  //
+  // The bounds check above is in pixels (X+offset >= cols) while the indexing
+  // was in bytes-of-a-3-channel-image, so on a 1-channel frame every sample
+  // past X = cols/3 read from somewhere else entirely -- the same row further
+  // right, or the row below -- and near the bottom-right corner it read past
+  // the allocation by roughly two rows.
+  //
+  // That is the live camera path: a mono sensor stays CV_8UC1 all the way
+  // through (see the ImageDownSampling comment "a mono frame stays CV_8UC1").
+  // Only the offline loaders escaped it, because FI/II use cv::IMREAD_COLOR
+  // and always hand over 3 channels -- which is exactly why replaying a saved
+  // image never reproduced whatever this was doing on the line.
+  //
+  // Every other sampler here already does this (CvBridge.h's
+  // cvUnsignedMap1Sampling, graySampleBilinear's `cn`); pointSobel was the one
+  // left behind when mono frames stopped being expanded to BGR.
+  const int cn = graylevelImg.channels();
+  int I11 = graylevelImg.ptr<uint8_t>(Y-offset)[(X-offset)*cn];
+  int I12 = graylevelImg.ptr<uint8_t>(Y-offset)[(X)*cn];
+  int I13 = graylevelImg.ptr<uint8_t>(Y-offset)[(X+offset)*cn];
+  int I21 = graylevelImg.ptr<uint8_t>(Y)[(X-offset)*cn];
+  int I23 = graylevelImg.ptr<uint8_t>(Y)[(X+offset)*cn];
+  int I31 = graylevelImg.ptr<uint8_t>(Y+offset)[(X-offset)*cn];
+  int I32 = graylevelImg.ptr<uint8_t>(Y+offset)[(X)*cn];
+  int I33 = graylevelImg.ptr<uint8_t>(Y+offset)[(X+offset)*cn];
 
   acv_XY sobel;
   //11 12 13
