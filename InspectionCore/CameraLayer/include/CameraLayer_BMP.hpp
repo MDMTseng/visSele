@@ -5,9 +5,17 @@
 #include "acvImage_BasicTool.hpp"   // acv_XY geometry
 #include <opencv2/core.hpp>
 #include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <vector>
 #include <thread>
 class CameraLayer_BMP : public CameraLayer{
+    // Guards img_load and fileName. Both are replaced by LoadBMP on whichever
+    // thread asked for a new picture (the carousel's own thread, or the WS
+    // thread through the bmp_carousel actions) and read by ExtractFrame /
+    // CalcROI on the consumer's thread. Only the write side used to take it,
+    // so a WS-driven imread could free the pixel buffer that ExtractFrame was
+    // mid-loop over.
     std::mutex m;
     std::string fileName;
     std::vector <int> gaussianNoiseTable_M;
@@ -54,7 +62,9 @@ class CameraLayer_BMP : public CameraLayer{
     CameraLayer_BMP(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context);
     
     status LoadBMP(std::string fileName);
-    std::string GetCurrentFileName(){return this->fileName;}
+    // Read from the WS thread (camera_info) while LoadBMP assigns it -- a
+    // std::string copy out of a string being reassigned is not a benign race.
+    std::string GetCurrentFileName(){std::lock_guard<std::mutex> lk(m); return this->fileName;}
     status SetMirror(int Dir,int en);
     status SetROI(int x, int y, int w, int h,int zw,int zh);
     
@@ -64,6 +74,11 @@ class CameraLayer_BMP : public CameraLayer{
     status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param){return NAK;}
     status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
     status CalcROI(int* X,int* Y,int* W,int* H);
+    // Same computation with `m` assumed already held. ExtractFrame has to hold
+    // the lock across its whole pixel loop AND compute the ROI from the same
+    // img_load, and std::mutex is not recursive, so the two entry points share
+    // one body rather than one of them locking twice.
+    status CalcROI_nolock(int* X,int* Y,int* W,int* H);
     status SetAnalogGain(float gain);
     status SetExposureTime(float time_us);
     status GetExposureTime(float *ret_time_us);
@@ -75,14 +90,31 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
 
     int modeTriggerSim_sleep=0;
     int frameInterval_ms=1000; // 1 fps default for fake-camera testing
-    int ThreadTerminationFlag=0;
+    std::atomic<int> ThreadTerminationFlag{0};
     int imageTakingCount=0;
     int triggerMode=1;
     std::thread *cameraThread;
     std::string folderName;
     std::string fileName;
     std::vector<std::string> files_in_folder;
-    bool isThreadWorking;
+    // folderName + files_in_folder. updateFolder rebuilds the vector from the
+    // acquisition thread (every LoadNext) while the WS thread walks it for
+    // camera_info, which the WebUI polls -- an iteration straight through a
+    // resize(0) and a reallocation.
+    mutable std::mutex files_m;
+    // The thread sleeps on this instead of sleep_for, so a stop request is
+    // seen at once. frameInterval_ms is operator-settable (setfps), so a naked
+    // sleep_for made the worst-case join wait 1000/fps ms -- seconds to
+    // minutes, with camera_lifetime_lock held and inspection stalled behind it.
+    std::mutex stop_m;
+    std::condition_variable stop_cv;
+    // Returns true if a stop was requested during (or before) the wait.
+    bool WaitOrStop(int ms);
+    // The one teardown path, shared by TriggerMode(stop), StopAquisition and
+    // the destructor.
+    void StopThread();
+    // Read by TriggerMode to decide whether a join would return.
+    std::atomic<bool> isThreadWorking{false};
     void ContTriggerThread();
     public:
     
@@ -103,9 +135,18 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status ReloadCurrent(bool call_cb=true);
     int    GetCurrentIndex() const { return fileIdx; }
     float  GetFPS() const { return frameInterval_ms>0 ? 1000.0f/frameInterval_ms : 0.0f; }
-    const std::vector<std::string>& GetFileList(){ updateFolder(folderName); return files_in_folder; }
-    std::string GetFolderName() const { return folderName; }
+    // By value, not by reference: the returned vector is rebuilt by every
+    // LoadNext on the acquisition thread, so a reference handed to the WS
+    // thread is a promise this class cannot keep no matter what it locks.
+    std::vector<std::string> GetFileList();
+    std::string GetFolderName() const { std::lock_guard<std::mutex> lk(files_m); return folderName; }
     status TriggerMode(int mode);
+    // camera_ez_reconnect does StopAquisition() then delete. The base class
+    // returns NAK and does nothing, so this layer's own thread kept running
+    // over the freed object -- LoadNext into a destroyed files_in_folder, and
+    // frames injected into the pipeline from a dead camera.
+    status StopAquisition() override;
+    status StartAquisition() override;
     ~CameraLayer_BMP_carousel();
     static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
 

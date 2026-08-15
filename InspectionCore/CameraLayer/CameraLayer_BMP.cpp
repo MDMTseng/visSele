@@ -42,6 +42,12 @@ CameraLayer_BMP::CameraLayer_BMP(CameraLayer::BasicCameraInfo camInfo,std::strin
 
 CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount)
 {
+      // Held for the whole extraction, not just the ROI calculation: every
+      // read below (img_load.cols, warpAffine's source, the row pointers) has
+      // to see the same image LoadBMP loaded. Without it a `next`/`jump` from
+      // the WebUI reassigns img_load -- freeing the pixel buffer -- while this
+      // loop is still walking it.
+      std::lock_guard<std::mutex> _img_guard(m);
 
       int newX,newY;
       int newW,newH;
@@ -49,7 +55,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       // NAK here means there is nothing loaded to extract -- an empty folder,
       // a file imread could not decode. Returning early keeps the degenerate
       // geometry out of the pipeline entirely.
-      if(CalcROI(&newX,&newY,&newW,&newH)!=ACK || newW<=0 || newH<=0)
+      if(CalcROI_nolock(&newX,&newY,&newW,&newH)!=ACK || newW<=0 || newH<=0)
       {
         return NAK;
       }
@@ -337,6 +343,14 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
 CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
 {
+  // Every clamp below is against img_load's size, so the answer is only
+  // meaningful while img_load is held still.
+  std::lock_guard<std::mutex> _img_guard(m);
+  return CalcROI_nolock(X,Y,W,H);
+}
+
+CameraLayer_BMP::status CameraLayer_BMP::CalcROI_nolock(int* X,int* Y,int* W,int* H)
+{
   // No image, no ROI. Every clamp below is against img_load's size, and with
   // an empty Mat they compose into a 6x6 window at origin (-6,-6):
   //   tmpX >= cols-5  ->  0 >= -5   -> tmpX = -6
@@ -413,10 +427,11 @@ CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
 CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 {
     status ret_status;
-    m.lock();
+    {
+    std::lock_guard<std::mutex> _img_guard(m);
 
     int ret = 0;
-    
+
     //if(img.GetWidth()<100)//Just to skip image loading
     cacheUseCounter++;
     if(this->fileName.compare(fileName)!=0 || cacheUseCounter>20)//check if the name isn't equal
@@ -432,7 +447,6 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     if(ret!=0)
     {
       ret_status=NAK;
-      callback(*this,CameraLayer::EV_ERROR,context);
     }
     else
     {
@@ -453,7 +467,12 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       // callback(*this,CameraLayer::EV_IMG,context);
 
     }
-    m.unlock();
+    }
+    // Outside the lock on purpose: the consumer's callback runs the inspection
+    // pipeline in some configurations, and it calls back into this layer
+    // (ExtractFrame, CalcROI) which now takes the same non-recursive mutex.
+    if(ret_status==NAK)
+      callback(*this,CameraLayer::EV_ERROR,context);
     return ret_status;
 }
 
