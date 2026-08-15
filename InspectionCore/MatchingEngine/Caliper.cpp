@@ -137,8 +137,20 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   acv_XY edgeDir = { -s.y, s.x }; // along the edge (projection direction)
 
   float L = p.length, W = p.width, step = (p.step > 0 ? p.step : 1.0f);
-  int nAcross = (int)(2 * L / step) + 1;
-  if (nAcross < 3) return false;
+  // Size the profile in double BEFORE the int conversion. cal_step is only
+  // checked for <= 0 and is divided by mmpp upstream, so a def value of 0.001
+  // (1 um -- a plausible-looking entry) inflates this ~11x, and small enough
+  // values overflow the (int) conversion, which is UB -- arm64 saturates to
+  // INT_MAX and sails right past the < 3 guard into the allocation.
+  double nAcross_d = 2.0 * L / step + 1.0;
+  if (!(nAcross_d >= 3)) return false;          // also rejects NaN
+  if (nAcross_d > 1e6)
+  {
+    printf("caliper: refusing a %.0f-sample profile -- check that "
+           "caliper step is in mm, not px\n", nAcross_d);
+    return false;
+  }
+  int nAcross = (int)nAcross_d;
   int halfW = (int)(W / 2);
 
   std::vector<float> profile(nAcross, 0);
@@ -258,7 +270,18 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   // caliper. The per-caliper along-edge box average then becomes an O(nAcross) prefix-sum
   // subtraction. Edge picking is identical (profile_to_edge) to caliper_measure.
   float L = cal.length, step = (cal.step > 0 ? cal.step : 1.0f);
-  int nAcross = (int)(2 * L / step) + 1;
+  // Same double-first sizing as caliper_measure: a tiny step overflows the
+  // (int) conversion (UB; arm64 saturates INT_MAX) before the CELL_LIMIT
+  // below ever sees a sane number.
+  double nAcross_d = 2.0 * L / step + 1.0;
+  if (!(nAcross_d >= 3) || nAcross_d > 8e6)
+  {
+    if (nAcross_d > 8e6)
+      printf("caliper: refusing a %.0f-sample band width -- check that "
+             "caliper step is in mm, not px\n", nAcross_d);
+    r.nValid = 0; return r;
+  }
+  int nAcross = (int)nAcross_d;
   // A negative width has no meaning, and it used to KILL THE PROCESS: halfW
   // went negative, nAlong = alongLen + 2*halfW + 1 went negative with it, and
   // (size_t)negative * nAcross is astronomically large -> std::length_error ->

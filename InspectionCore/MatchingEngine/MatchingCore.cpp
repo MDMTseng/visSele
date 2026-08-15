@@ -172,12 +172,25 @@ bool acvOuterContourExtraction(cv::Mat &LabeledPic, acv_LabeledData ldata, int l
   }
   if (ret != 0) return false;
 
+  // Step cap + NULL check, which acvContourExtraction has and this walk did
+  // not. A 1px whisker is enough for a Moore walk to enter a cycle that never
+  // revisits the start pixel, and a NULL from cvContourWalk leaves X/Y
+  // unchanged -- both turn into an infinite loop growing `contour` without
+  // bound, on the TEACHING path (feature_signature / ref_orientation), i.e.
+  // the operator clicks "train" and the core hangs. An 8-connected contour of
+  // one label cannot have more points than the pixels of its bounding box; a
+  // walk that exceeds that is cycling, not tracing.
+  const long bbW = (long)(ldata.RBBound.x - ldata.LTBound.x) + 3;
+  const long bbH = (long)(ldata.RBBound.y - ldata.LTBound.y) + 3;
+  const long stepMax = bbW * bbH + 16;
   int dir = 3;
+  long steps = 0;
   do {
     acv_XY xy = { (float)X, (float)Y };
     contour.push_back(xy);
-    cvContourWalk(LabeledPic, &X, &Y, &dir, 1);
+    if (cvContourWalk(LabeledPic, &X, &Y, &dir, 1) == NULL) return false;
     dir -= 2;
+    if (++steps > stepMax) return false;
   } while (X != startX || Y != startY);
   return true;
 }

@@ -6206,6 +6206,15 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     return CameraLayer::ACK;
   }
 
+  // Everything from here on runs inside the CAMERA SDK's callback thread with
+  // a pool slot checked out. An exception -- cv::Mat::create hitting
+  // bad_alloc, or anything the direct-inspection branch below throws -- used
+  // to escape into the SDK (std::terminate at best, SDK-defined behaviour at
+  // worst) and the slot was lost either way: 30 such frames and acquisition
+  // is permanently dead with the camera still "running". Catch, hand the slot
+  // back unless the queue already owns it, drop the frame.
+  bool _enqueued = false;
+  try {
   headImgPipe->camLayer = &cl_obj;
   headImgPipe->type = type;
   headImgPipe->context = context;
@@ -6313,6 +6322,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
       }
       inspQueue.push(headImgPipe);
     }
+    _enqueued = true;
     if (false)
     {
       LOGE("NO resource can be used.....");
@@ -6356,6 +6366,13 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
     if (!doPassDown)
       bpg_pi.resPool.retResrc(headImgPipe);
+  }
+  } catch (const std::exception &e) {
+    static int cbThrowN = 0;
+    if ((++cbThrowN % 10) == 1)
+      LOGE("acquisition callback threw '%s' -> frame dropped (cumulative: %d)",
+           e.what(), cbThrowN);
+    if (!_enqueued) bpg_pi.resPool.retResrc(headImgPipe);
   }
   return CameraLayer::ACK;
 }
@@ -6764,7 +6781,14 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }
 
     clock_t img_t = clock();
-    static cv::Mat test1_buff;  // phase 3a: was acvImage
+    // thread_local, not static: this function runs on the ActionThread (live
+    // preview) AND on the WS thread (LAST_FRAME_RESEND), and a shared buffer
+    // meant one thread's ImageDownSampling could reallocate the Mat while the
+    // other's SEND_acvImage was encoding from it -- image_send_lock only
+    // covers the send, not this write. Same shape as the bug fixed in
+    // 138790f3, different buffer. Costs one small downsampled buffer per
+    // thread instead of a lock with ordering obligations.
+    static thread_local cv::Mat test1_buff;  // phase 3a: was acvImage
 
     BPG_protocol_data_acvImage_Send_info iminfo;
     bool sendJpg = false;

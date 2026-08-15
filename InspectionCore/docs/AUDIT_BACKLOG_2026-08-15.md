@@ -158,7 +158,7 @@ def clamps (`count<=512, width<=64, length<=256`) are in **millimetres** and are
 applied before `/= mmpp`, so at 72–135 px/mm they do not bound anything in
 pixels. `caliper.step` has the same problem and is **not** fixed — see 2.3.
 
-### 2.3 `caliper.step` has no lower bound
+### 2.3 `caliper.step` has no lower bound — FIXED (double-first sizing + 1e6/8e6 sample caps on both paths)
 `MatchingEngine/Caliper.cpp:140`, `:255` — `nAcross = (int)(2*L/step) + 1`.
 `cal_step` is only checked for `<= 0`, then divided by mmpp. `step: 0.001` (1 µm
 — a perfectly reasonable-looking entry) inflates `nAcross` ~11×; small enough
@@ -190,7 +190,7 @@ layer's `RESET()` all run outside it, under `MT_LOCK` — which is a **no-op**.
 This is code whose correctness depends on MT_LOCK actually working.
 `bpg_pi.camera->TriggerMode(1)` at `:9027` is in the same position.
 
-### 2.7 `static cv::Mat test1_buff` written by two threads
+### 2.7 `static cv::Mat test1_buff` written by two threads — FIXED (thread_local)
 `Core0_1/wiringPanel.cpp:6548`, `:6577` — written by ActionThread (`:8098`) and
 by the WS thread's `LAST_FRAME_RESEND` (`:5158`). `image_send_lock` only
 serialises the inside of `SEND_acvImage`; the `ImageDownSampling` write is
@@ -206,7 +206,7 @@ a 5MP `copyTo` all happen inside the lock. ActionThread's
 to the pool and acquisition starts dropping frames. With an unresponsive browser
 the send can hold it indefinitely.
 
-### 2.9 Unbounded contour walk in the teaching path
+### 2.9 Unbounded contour walk in the teaching path — FIXED (bbox-area step cap + NULL check, mirrors acvContourExtraction)
 `MatchingEngine/MatchingCore.cpp:176-183` — `acvOuterContourExtraction` has no
 step cap, no visited marking and no NULL check on `cvContourWalk`, unlike
 `acvContourExtraction:126` which has both guards. A 1px whisker is enough for a
@@ -219,7 +219,7 @@ growth. This is the path that produces `feature_signature` / `ref_orientation`
 WebUI retries, so this can exhaust the fd table and take the WebSocket server
 with it.
 
-### 2.11 Acquisition callback has no try/catch
+### 2.11 Acquisition callback has no try/catch — FIXED (catch + slot return unless enqueued)
 `Core0_1/wiringPanel.cpp:5947-6148` — a `cv::Mat::create` throw permanently
 loses a pool slot and the exception escapes into the SDK's callback thread.
 
