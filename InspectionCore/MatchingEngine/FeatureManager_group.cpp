@@ -391,7 +391,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       cv::rectangle(binary_img_storage, cv::Point(xDist, xDist),
                     cv::Point(binary_img_storage.cols - xDist, binary_img_storage.rows - xDist),
                     cv::Scalar(0), 1);
-      FENCE_AREA+=(img_cv.cols-xDist+img_cv.rows-xDist)*2-4;
+      FENCE_AREA+=(binary_img_storage.cols-xDist+binary_img_storage.rows-xDist)*2-4;
       // 1 px black at y=xDist+3, x=1..xDist-1 (inclusive).
       cv::line(binary_img_storage, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
                cv::Scalar(0), 1);
