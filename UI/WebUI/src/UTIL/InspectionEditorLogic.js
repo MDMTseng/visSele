@@ -810,7 +810,12 @@ export class InspectionEditorLogic {
 
   UpdateInherentShapeList() {
     this.inherentShapeList = [];
-    if (this.sig360info === null || this.sig360info === undefined) return;
+    // Return the (empty) list, not undefined. The caller assigns this straight
+    // into edit_info.inherentShapeList, and the canvas iterates that with
+    // .forEach -- so on a pure shape_based def, which has no sig360 block,
+    // moving the mouse over the canvas threw and the error boundary replaced
+    // the whole editor.
+    if (this.sig360info === null || this.sig360info === undefined) return this.inherentShapeList;
     let setupTarget = this.sig360info.reports[0];
 
     log.debug(setupTarget);
