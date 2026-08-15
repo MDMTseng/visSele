@@ -70,7 +70,9 @@ int getDataFromJson(cJSON * obj,const char *path,void **ret_ptr)
     ret_ptr=&dummy_target;
   }
   char buff[64];//HACK no check
-  if(strlen(path)>sizeof(buff))return -1;
+  //strcpy also writes the terminator, so a path of exactly sizeof(buff)
+  //characters would put 65 bytes into a 64-byte buffer. Reject == too.
+  if(strlen(path)>=sizeof(buff))return -1;
   strcpy(buff,path);
   int i=0;
   char endType;

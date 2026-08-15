@@ -352,8 +352,12 @@ void ws_conn::RESET()
   ws_state = WS_STATE_OPENING;
   memset(&addr, 0, sizeof(addr));
   accBufDataLen = 0;
-  if (recvBuf.size() < recvBufSizeInc)
-    recvBuf.resize(recvBufSizeInc);
+  // INVARIANT: recvBuf is always allocated with ONE spare byte past the
+  // usable region. Only recvBuf.size()-1 bytes are ever received into; the
+  // last byte exists purely so doHandShake()/the link layer can drop a '\0'
+  // terminator at buff[buffLen] without writing past the allocation.
+  if (recvBuf.size() < (size_t)recvBufSizeInc + 1)
+    recvBuf.resize((size_t)recvBufSizeInc + 1);
 
   sendBuf.resize(recvBufSizeInc);
 }
@@ -395,6 +399,11 @@ int ws_conn::strcpy_m(char *dst, int dstMaxSize, char *src)
 
 int ws_conn::doHandShake(void *buff, ssize_t buffLen, struct handshake *p_hs)
 {
+  if (buff == NULL || buffLen < 0)
+    return -1;
+  // Safe: the caller passes recvBuf, which by invariant (see RESET()) has one
+  // byte allocated past the region recv() is allowed to fill, so buffLen can
+  // be at most recvBuf.size()-1 and this write stays inside the allocation.
   ((char *)buff)[buffLen] = '\0';
   struct handshake &hs = *p_hs;
   nullHandshake(&hs);
@@ -587,12 +596,18 @@ int ws_conn::runLoop()
   }
   //printf("sock:%d size:%d\n",sock,recvBuf.size());
 
-  if (recvBuf.size() == accBufDataLen)
+  // See RESET(): recvBuf always holds one spare byte past the usable region,
+  // reserved for a '\0' terminator. Never receive into it.
+  if (recvBuf.size() < 1)
+    recvBuf.resize((size_t)recvBufSizeInc + 1);
+  size_t recvCap = recvBuf.size() - 1;
+  if (recvCap == accBufDataLen)
   {
-    printf("Buffer size(%d) is not enough, expend to %d\n", recvBuf.size(), recvBuf.size() + recvBufSizeInc);
+    printf("Buffer size(%d) is not enough, expend to %d\n", (int)recvCap, (int)(recvCap + recvBufSizeInc));
     recvBuf.resize(recvBuf.size() + recvBufSizeInc);
+    recvCap = recvBuf.size() - 1;
   }
-  ssize_t readed = recv(sock, (char *)(&(recvBuf[0]) + accBufDataLen), recvBuf.size() - accBufDataLen, 0);
+  ssize_t readed = recv(sock, (char *)(&(recvBuf[0]) + accBufDataLen), recvCap - accBufDataLen, 0);
   if (readed <= 0)
   {
     ws_state = WS_STATE_CLOSING;
@@ -613,7 +628,7 @@ int ws_conn::runLoop()
     {
     }
 
-    if (lastPktType == WS_ERROR_FRAME && accBufDataLen == recvBuf.size())
+    if (lastPktType == WS_ERROR_FRAME && accBufDataLen == recvCap)
     {
       printf(">>>>>ERROR QUIT\n");
     }

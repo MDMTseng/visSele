@@ -117,8 +117,23 @@ int BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
     case websock_data::DATA_FRAME:
 
     {
-      data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
-      // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
+      if (data.data.data_frame.raw == NULL)
+        return -1;
+      // No NUL is written at raw[rawL] any more.
+      //
+      // It served nothing: toUpperLayer takes an explicit length, and the BPG
+      // reassembly layer copies exactly rawL bytes, so the terminator never
+      // travelled with the payload. The one reader was the commented-out LOGI
+      // below. Meanwhile it wrote one byte PAST the payload -- and when a
+      // single recv() carries several pipelined WS frames, that byte is the
+      // next frame's FIN/opcode. Zeroing it turns that frame into opcode 0,
+      // a continuation frame, and the rest of the batch is misparsed.
+      //
+      // Payloads that reach cJSON_Parse are NUL-terminated by the sender (the
+      // WebUI allocates body.length + 1); wiringPanel's toUpperLayer verifies
+      // that with memchr and refuses the packet if it is missing, which is
+      // exactly the behaviour this line was never actually providing.
+      // LOGI(">>>>data raw:%.*s", data.data.data_frame.rawL, data.data.data_frame.raw);
       if (bpg_prot)
       {
         toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal, data.peer);

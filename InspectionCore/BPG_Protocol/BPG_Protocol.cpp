@@ -146,63 +146,71 @@ static BPG_protocol_data convert(uint8_t *dat, size_t len)
 int BPG_Protocol_Interface::_fromLinkLayer(uint8_t *dat, size_t len, bool FIN, void *peer)
 {
   vector<uint8_t> &recv_buf = recv_bufs[peer];
-  if (recv_buf.size() < (size_t)getHeaderSize())
+
+  // Drain every complete packet sitting in this peer's reassembly buffer.
+  //
+  // This used to recurse into itself once per decoded packet and, before each
+  // recursion, shift the remaining bytes down to offset 0 one byte at a time.
+  // A single WS frame packed with many tiny BPG packets (e.g. 1.2MB of 9-byte
+  // empty packets) therefore blew the stack, and even short of that the
+  // byte-by-byte shifting was O(n^2) and pinned the main thread.
+  //
+  // Same decisions, same order, same return value -- just a loop, and the
+  // consumed prefix is dropped once at the end instead of per packet.
+  const size_t headerSize = (size_t)getHeaderSize();
+  size_t readOff = 0;
+  int ret = 1;
+
+  while (true)
   {
-    // Not enough bytes for even the header. If the link-layer FIN flag is
-    // set we have an end-of-message frame that didn't deliver a full header
-    // -> corrupt; drop the partial buffer so the next clean packet syncs.
-    // Otherwise wait for more bytes.
-    if (FIN) { recv_buf.clear(); return -1; }
-    return 1;
-  }
-  {
-    BPG_protocol_data bpgdat = convert(&(recv_buf[0]), recv_buf.size());
+    size_t avail = recv_buf.size() - readOff;
+
+    if (avail < headerSize)
+    {
+      // Not enough bytes for even the header. If the link-layer FIN flag is
+      // set we have an end-of-message frame that didn't deliver a full header
+      // -> corrupt; drop the partial buffer so the next clean packet syncs.
+      // Otherwise wait for more bytes.
+      if (FIN) { readOff = recv_buf.size(); ret = -1; }
+      break;
+    }
+
+    BPG_protocol_data bpgdat = convert(&(recv_buf[readOff]), avail);
 
     // Hard cap on the claimed payload size. Even malicious peers can't make
     // the daemon allocate / wait for more than this.
     const uint32_t MAX_BPG_PAYLOAD = 16u * 1024u * 1024u;
     if (bpgdat.size > MAX_BPG_PAYLOAD)
     {
-      recv_buf.clear();
-      return -1;
+      readOff = recv_buf.size(); // == recv_buf.clear() below
+      ret = -1;
+      break;
     }
 
-    size_t packetOffset=getHeaderSize()+bpgdat.size;
-    if(recv_buf.size()<packetOffset)//the packet content is not complete
+    size_t packetOffset = headerSize + (size_t)bpgdat.size;
+    if (avail < packetOffset) //the packet content is not complete
     {
       // Same FIN trick: if the peer told us this is the last frame and the
       // claimed payload still hasn't arrived, the size field is lying ->
       // drop and resync. Otherwise wait for more bytes.
-      if (FIN) { recv_buf.clear(); return -1; }
-      return 1;
+      if (FIN) { readOff = recv_buf.size(); ret = -1; }
+      break;
     }
-    // LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, recv_buf.size());
-    int ret = toUpperLayer(bpgdat, peer);
+    // LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, avail);
+    ret = toUpperLayer(bpgdat, peer);
 
-    bool shiftRest=true;
-    if(shiftRest)
-    {
-      int restBufferSize=recv_buf.size()-packetOffset;
-      for(int i=0;i<restBufferSize;i++)//shift rest buffer to position 0
-      {
-        recv_buf[i]=recv_buf[i+packetOffset];
-      }
-
-      recv_buf.resize(restBufferSize);
-      if(recv_buf.size()>0)//Still have dat in buffer, try decode
-      {
-        ret= _fromLinkLayer(dat, len, FIN, peer);//assume the pakcet stacking would not be deep
-      }
-
-    }
-    else
-    {
-      recv_buf.resize(0);
-    }
-
-    return ret;
+    readOff += packetOffset;
+    if (readOff >= recv_buf.size()) //buffer fully consumed
+      break;
+    //Still have dat in buffer, try decode
   }
-  return 1;
+
+  if (readOff >= recv_buf.size())
+    recv_buf.clear();
+  else if (readOff > 0)
+    recv_buf.erase(recv_buf.begin(), recv_buf.begin() + readOff);
+
+  return ret;
 }
 
 //st1 ok
