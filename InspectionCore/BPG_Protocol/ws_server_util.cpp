@@ -533,8 +533,28 @@ int ws_conn::doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen, enum 
       *ret_restLen = 0;
       return doClosing();
     }
+    else if (frameType == WS_PING_FRAME)
+    {
+      h_padding += curPktLen;
+      // RFC6455 says answer with a PONG carrying the same payload. This is not
+      // an exotic path: python-websockets sends a keepalive ping every 20s by
+      // default, and until now nothing here consumed it -- h_padding never
+      // advanced, so the while condition never changed and the core spun at
+      // 100% with the select loop never coming back.
+      send_pkt(data, dataSize, WS_PONG_FRAME, true, 0);
+    }
+    else if (frameType == WS_PONG_FRAME)
+    {
+      h_padding += curPktLen;   // unsolicited pong: consume it, nothing to do
+    }
     else if (frameType == WS_ERROR_FRAME)
     {
+      break;
+    }
+    else
+    {
+      // Anything we do not know how to consume would leave h_padding where it
+      // was and spin forever. Bail out instead of hanging the whole daemon.
       break;
     }
   }

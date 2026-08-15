@@ -481,6 +481,18 @@ enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
                 (*dataPtr)[i] = (*dataPtr)[i] ^ maskingKey[i%4];
             }
         }
+        else {
+            // A zero-length frame is still 2 header bytes + a 4-byte masking
+            // key (the mask bit was checked above). Falling through without
+            // setting these left curPktLen uninitialised in the caller and
+            // handed it a NULL data pointer -- a 6-byte empty binary frame
+            // was enough to take the core down.
+            if ((size_t)(6 + payloadFieldExtraBytes) > inputLength)
+                return WS_INCOMPLETE_FRAME;
+            *curPktLen = 6 + payloadFieldExtraBytes;
+            *dataPtr = &inputFrame[2 + payloadFieldExtraBytes + 4];
+            *dataLength = 0;
+        }
         return frameType;
     }
 
