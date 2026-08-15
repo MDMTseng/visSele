@@ -37,7 +37,7 @@ Fixed in `d51624af` (auto-load `data/lens_calib.json`, report
 recurs: any state the WebUI is expected to push is absent on a headless or
 restarted core, and nothing says so.
 
-### 1.3 `ignoreCalib` is a sticky global with no restore path
+### 1.3 `ignoreCalib` is a sticky global with no restore path — FIXED (session-scoped assignment + EX scope guard + `station.ignore_calib` field)
 `Core0_1/wiringPanel.cpp:4115-4118`, `4131`, `4179`
 
 CI/FI set `sampler->ignoreCalib(true)` when `IMG_ignore_calib` is requested and
@@ -49,7 +49,7 @@ uncorrected coordinates. The flag is not in any status report.
 Trigger: use the calibration preview once, or have the camera drop a frame
 during EX — i.e. exactly when the camera is misbehaving.
 
-### 1.4 Peripheral disconnect is invisible; verdicts are dropped uncounted
+### 1.4 Peripheral disconnect is invisible; verdicts are dropped uncounted — FIXED (perif_pairing.link counters, WIN32 WriteFile check, suspect-link reopen)
 `Core0_1/wiringPanel.cpp:1202`, `:7403/7434`, `:8629`, `:5266`;
 `contrib/simple_uart/simple_uart.c:162`
 

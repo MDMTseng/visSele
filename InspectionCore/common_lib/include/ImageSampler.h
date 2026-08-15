@@ -171,6 +171,11 @@ class ImageSampler
     ignoreStageLightCalib(d);
     ignoreAngleOffset(d);
   }
+  // The flag is process-global via the shared sampler, and a handler that sets
+  // it and early-exits leaves every later measurement uncorrected. Exposing it
+  // is the difference between "measurements drifted, reboot fixed it" and a
+  // status field that says why.
+  bool isCalibIgnored() const { return _ignoreCorrdCalib; }
   void ignoreCoordCalib(bool d)
   {
     _ignoreCorrdCalib=d;

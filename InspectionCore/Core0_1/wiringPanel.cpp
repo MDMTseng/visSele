@@ -209,6 +209,15 @@ struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
                        long minflt; long majflt; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
+// Link-health visibility (backlog 1.4). The failure this is for: UI green, FPS
+// normal, PASS/FAIL ticking -- and nothing being sorted, found only when
+// someone notices the reject bin is empty. Every way a verdict can silently
+// stop reaching the machine now moves a counter that perif_pairing reports.
+std::atomic<int>  g_perifTxFail{0};        // send returned <0 (wire-level failure)
+std::atomic<int>  g_perifTxFailConsec{0};  // consecutive; >=3 marks the link suspect
+std::atomic<int>  g_perifNoChannelDrop{0}; // verdicts skipped: channel gone after having existed
+std::atomic<bool> g_perifWasConnected{false}; // a channel existed at some point this run
+std::atomic<bool> g_perifLinkSuspect{false};  // disconnected() fired or 3+ consecutive tx failures
 // Preview frames dropped because the view queue was full. Visible on purpose:
 // dropping them is correct, but silently dropping them hides how far behind the
 // preview is running.
@@ -1248,7 +1257,13 @@ class PerifChannel:public Data_JsonRaw_Layer
   }
 
   void disconnected(Data_Layer_IF* ch){
-    printf(">>>%X disconnected\n",ch);
+    // This used to be the WHOLE handling: a printf nobody reads, perifCH left
+    // non-NULL, and every later verdict "sent" into a dead channel. The
+    // channel object stays (teardown from this callback context would be a
+    // use-after-free minefield) but the link is now marked so the send path
+    // and the CONNECT reuse test both know.
+    LOGE("perif: link disconnected (ch:%p) -- verdicts are NOT reaching the machine", ch);
+    g_perifLinkSuspect = true;
   }
 
   ~PerifChannel()
@@ -3179,6 +3194,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddNumberToObject(robj, "cat_ok", bpg_pi.perifCH->cat_ok);
               cJSON_AddNumberToObject(robj, "cat_ng", bpg_pi.perifCH->cat_ng);
             }
+            // Link health (backlog 1.4). "connected" is the pointer, the rest
+            // are the ways a verdict silently stopped reaching the machine.
+            // A reader needs exactly one rule: any of these counters MOVING
+            // while parts run means the machine is not sorting.
+            {
+              cJSON *lk = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj, "link", lk);
+              cJSON_AddBoolToObject(lk, "connected", bpg_pi.perifCH != NULL);
+              cJSON_AddBoolToObject(lk, "suspect", g_perifLinkSuspect.load());
+              cJSON_AddNumberToObject(lk, "tx_fail", (double)g_perifTxFail.load());
+              cJSON_AddNumberToObject(lk, "tx_fail_consec", (double)g_perifTxFailConsec.load());
+              cJSON_AddNumberToObject(lk, "dropped_no_channel", (double)g_perifNoChannelDrop.load());
+              cJSON_AddNumberToObject(lk, "queue_dropped", (double)perifSendDropCount.load());
+            }
             cJSON_AddNumberToObject(robj, "trig_wait_max_ms", g_perifTrigWaitMaxMs);
             // Nonzero skipped is the signature of the 2026-08-10 collapse, and
             // the only way to tell "the link went quiet" apart from "the plate
@@ -4190,9 +4219,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         }
 
 
-        if (cJSON_True == getDataFromJson(json, "IMG_ignore_calib", NULL))
+        // Unconditional assignment, not set-only-when-true: the flag lives in
+        // the SHARED sampler (calib_bacpac feeds production inspection too),
+        // and the set-only version made it sticky -- one calibration-preview
+        // session and every subsequent frame was measured in uncorrected
+        // coordinates until something happened to clear it. Opening a normal
+        // CI/FI session now resets it by construction.
         {
-          calib_bacpac.sampler->ignoreCalib(true); 
+          const bool want = (cJSON_True == getDataFromJson(json, "IMG_ignore_calib", NULL));
+          if (want != calib_bacpac.sampler->isCalibIgnored())
+            LOGE("session %s: ignore_calib -> %d", dat->tl[0]=='F' ? "FI" : "CI", (int)want);
+          calib_bacpac.sampler->ignoreCalib(want);
         }
 
         
@@ -4206,6 +4243,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     else if (checkTL("EX", dat)) //feature EXtraction
     {
       LOGI("Trigger.......");
+      // Scope guard, because the flag is shared with production inspection and
+      // this handler has an early exit: the srcImg==NULL path used to leave
+      // ignoreCalib stuck TRUE -- i.e. one dropped frame during EX (exactly
+      // when the camera is misbehaving) and every frame after it was measured
+      // uncorrected. The handler still toggles the flag as it needs to; the
+      // guard only guarantees the exit state.
+      struct CalibRestore {
+        ImageSampler *s;
+        ~CalibRestore(){ if (s) s->ignoreCalib(false); }
+      } _calib_restore{ calib_bacpac.sampler };
       calib_bacpac.sampler->ignoreCalib(true);
 
       {
@@ -5346,8 +5393,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // cat_ok/cat_ng still takes effect without a reopen. To genuinely
           // re-open -- a wedged link, a swapped board -- DISCONNECT first;
           // that path still does the full teardown.
-          const bool reuse = (perifCH != NULL && desc[0] != '\0' &&
-                              strcmp(perifCH->conn_desc, desc) == 0);
+          // A suspect link (disconnected() fired, or 3+ consecutive write
+          // failures) must NOT be reused: the desc string still matches -- it
+          // describes the port, not the port's health -- and reusing meant
+          // re-ACKing a dead channel, so the UI showed connected while every
+          // verdict kept failing. Declining reuse falls into the full reopen
+          // path below (delete + fresh open), same as a different port.
+          const bool sameDesc = (perifCH != NULL && desc[0] != '\0' &&
+                                 strcmp(perifCH->conn_desc, desc) == 0);
+          const bool reuse = sameDesc && !g_perifLinkSuspect.load();
           if(reuse)
           {
             LOGI("perif CONNECT reuses the open channel to %s "
@@ -5356,6 +5410,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else
           {
+            if (sameDesc)
+              LOGE("perif CONNECT: same port %s but the link is suspect "
+                   "(tx_fail:%d) -- reopening instead of reusing", desc,
+                   g_perifTxFail.load());
             delete_PeripheralChannel();
             if(uart_name != NULL)
             {
@@ -5389,6 +5447,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               perifCH->ID=avail_CONN_ID;
               perifCH->setDLayer(PHYLayer);
               snprintf(perifCH->conn_desc,sizeof(perifCH->conn_desc),"%s",desc);
+              g_perifWasConnected = true;   // arms the no-channel verdict-drop counter
+              g_perifLinkSuspect = false;   // fresh port, fresh judgment
+              g_perifTxFailConsec = 0;
             }
             perifCH->conn_pgID=dat->pgID;
             perifCH->conn_peer=peer;   // async device replies go back to this client
@@ -7526,7 +7587,23 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
           double ms = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - _wt0).count();
           if (ret >= 0)
+          {
             pc->pkt_count++;
+            g_perifTxFailConsec = 0;
+            // A successful write clears suspicion earned from tx failures. It
+            // does NOT clear a disconnected() verdict -- but that path also
+            // fails every subsequent write, so the flag re-arms immediately.
+            g_perifLinkSuspect = false;
+          }
+          else
+          {
+            int n = ++g_perifTxFail;
+            int c = ++g_perifTxFailConsec;
+            if (c >= 3) g_perifLinkSuspect = true;
+            if (n == 1 || (n % 10) == 0)
+              LOGE("perif: verdict write FAILED ret:%d (total:%d consec:%d)%s",
+                   ret, n, c, c >= 3 ? " -- link marked suspect, next CONNECT reopens the port" : "");
+          }
 
           // write-latency stats: track last / max / running avg.
           g_perifWriteLastMs = ms;
@@ -8859,6 +8936,18 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     }
     }
   }
+  else if (g_perifWasConnected.load())
+  {
+    // The channel existed and is gone (closing the last browser tab deletes
+    // it). Every verdict from here on is dropped -- which used to happen with
+    // no counter and no log line, i.e. the machine stopped sorting and nothing
+    // said so. Gated on was-connected so a bench run that never had a board
+    // does not count every frame.
+    int n = ++g_perifNoChannelDrop;
+    if (n == 1 || (n % 100) == 0)
+      LOGE("perif: verdict dropped, channel is GONE (cumulative: %d) -- "
+           "the machine is NOT sorting", n);
+  }
   cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
 
   // ---- station block -------------------------------------------------------
@@ -8906,6 +8995,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // the same claim here, or a reader that predates this key reads a bypassed
     // run as a normal one.
     cJSON_AddBoolToObject(st, "area_bypass", g_area_gates_bypass);
+    // True means this frame was measured WITHOUT distortion/backlight/angle
+    // correction -- legitimate inside a calibration preview, catastrophic if
+    // it leaks into production. It used to be invisible; the 1.3 stickiness
+    // bugs are fixed, but a state this consequential earns a field either way.
+    cJSON_AddBoolToObject(st, "ignore_calib",
+      (imgPipe->bacpac && imgPipe->bacpac->sampler)
+        ? imgPipe->bacpac->sampler->isCalibIgnored() : false);
     // The verdict AS THE MACHINE RECEIVES IT, not as the inspection produced it.
     // Those differ whenever a clean region or a guard intervenes, and the number
     // that decides where the part goes is this one -- so it is the one to show
