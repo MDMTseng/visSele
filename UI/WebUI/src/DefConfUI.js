@@ -578,18 +578,23 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       let ctrlMarg = {...dump.control_margin_info};
       Object.keys(ctrlMarg).forEach(key=>{
   
-        ctrlMarg[key]=[...ctrlMarg[key]].map(m=>{
-          delete m.name;
-          delete m.update;
-          return m;
+        // Copy each ELEMENT before deleting: [...arr] clones the array, not
+        // the rows, so `delete m.update` was stripping the live table rows'
+        // update closures (and the shared def's rows) every time the dump ran.
+        ctrlMarg[key]=(ctrlMarg[key]||[]).map(m=>{
+          let c = {...m};
+          delete c.name;
+          delete c.update;
+          return c;
         })
       })
     }
 
     {
       dump.measureInfo =[...dump.measureInfo].map(m=>{
-        delete m.update;
-        return m;
+        let c = {...m};   // same element-copy rule as ctrlMarg above
+        delete c.update;
+        return c;
       })
     }
 
@@ -601,8 +606,14 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
     //in the following deffile editing, some new measure might appear/delete
     //adjust control_margin_info coording to it
 
+    // dclone like measureInfo just above -- NOT the bare reference. The local
+    // edit copy used to BE the redux-held object, so every limit edit mutated
+    // the def in place: the dirty check compared an unchanged reference and
+    // said "no changes" while the live grading path was already reading the
+    // edited numbers. The editor now works on its own copy; the parent pulls
+    // it explicitly via getMarginInfo / onExitDump.
     if(control_margin_info!==undefined)
-      set_control_margin_info(control_margin_info);
+      set_control_margin_info(dclone(control_margin_info));
 
     if(typeof onExtraCtrlUpdate === "function")
       onExtraCtrlUpdate({
@@ -745,14 +756,16 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
           obj.name=<><PlusOutlined/>{text}</>;
           obj.update=(newObj)=>{
             let newMarginInfo = {..._control_margin_info};
-            
-            let tarIdx=newMarginInfo[text].findIndex(m=>m.id==newObj.id);
+            // Copy the row array too: the top-level spread above still shares
+            // the per-tag arrays, so writing rows[tarIdx] in place edited
+            // whatever else holds that array.
+            let rows = [...(newMarginInfo[text]||[])];
+            let tarIdx=rows.findIndex(m=>m.id==newObj.id);
             if(tarIdx!==-1)
             {
-              newMarginInfo[text][tarIdx]=newObj;
+              rows[tarIdx]=newObj;
+              newMarginInfo[text]=rows;
             }
-            // console.log(_control_margin_info);
-            // console.log(newMarginInfo);
             set_control_margin_info(newMarginInfo);
           };
           delete obj.subtype

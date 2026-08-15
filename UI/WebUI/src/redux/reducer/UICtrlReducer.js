@@ -1001,8 +1001,16 @@ function StateReducer(newState, action) {
             {
               log.info("action.data:", action.data);
 
-              newState.edit_info.__decorator.list_id_order =
-                UpdateListIDOrder(action.data, newState.edit_info._obj.shapeList);
+              // New identities all the way down (edit_info AND __decorator),
+              // like the inspOptionalTag case above. Writing the nested field
+              // in place left every mapped prop reference-equal, react-redux
+              // bailed out, and the drag reorder "sprang back" -- the order
+              // WAS recorded, it just didn't render until something else
+              // forced a redraw.
+              newState.edit_info = { ...newState.edit_info,
+                __decorator: { ...newState.edit_info.__decorator,
+                  list_id_order:
+                    UpdateListIDOrder(action.data, newState.edit_info._obj.shapeList) } };
               break;
             }
 

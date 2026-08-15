@@ -46,6 +46,28 @@ async function reset() {
     await sleep(150);
     if ((await ev('typeof window.__GP_STORE__')) === 'object') break;
   }
+  // Wait out the app's OWN startup auto-load before loading the model. With
+  // machine_setting InspectionMode:FI the app loads the machine def ~1.5s
+  // after connect, and it races our load -- whoever lands second wins, so the
+  // suite would snapshot a random machine def instead of the model (found
+  // 2026-08-16: every flow diffing against a '10155' def nobody asked for).
+  // Settle = loadedDefFile.name unchanged across two 1s polls.
+  {
+    let prev = null;
+    for (let i = 0; i < 12; i++) {
+      await sleep(1000);
+      const nm = await ev(
+        `(((window.__GP_STORE__.getState().UIData.edit_info||{}).loadedDefFile)||{}).name||null`
+      );
+      if (nm !== null && nm === prev) break;
+      prev = nm;
+    }
+  }
+  // Enter the editor BEFORE loading the model: in the auto-entered FI mode the
+  // LD result acts are dropped by the mode guards, so the load "resolves" and
+  // changes nothing.
+  await ev(`window.__GP_STORE__.dispatch({type:'Edit_Mode'}); 'edit'`);
+  await sleep(800);
   // load def + paired image via the real core LD flow. The core WS can transiently
   // drop (auto-reconnects), so retry the load a few times rather than fail spuriously.
   let loaded = false;
@@ -96,9 +118,19 @@ async function editSelectedUSL(value) {
 async function editUSLviaInput(value) {
   await ev(`window.__GP_STORE__.dispatch({type:'DefConf_Lock_Level_Update',data:0}); 'unlock'`);
   await sleep(200);
-  await ev(
-    `(function(){var ins=[...document.querySelectorAll('input')];var el=ins[2];var set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;set.call(el,'${value}');el.dispatchEvent(new Event('input',{bubbles:true}));return ins.length;})()`
+  // Find the USL input by its CURRENT VALUE from the store, not by a fixed
+  // index -- the property sheet gains/loses fields as the app evolves and a
+  // hardcoded ins[2] silently starts editing a different field (it did).
+  const idx = await ev(
+    `(function(){var e=window.__GP_STORE__.getState().UIData.edit_info.edit_tar_info;var usl=String(e.USL);var ins=[...document.querySelectorAll('input')];return ins.findIndex(i=>i.value===usl);})()`
   );
+  if (idx < 0) throw new Error('USL input not found');
+  // REAL Playwright typing, not a synthetic Event: the measure sheet is a
+  // per-shape PropertySheet now (antd controls), and a dispatched 'input'
+  // event no longer reaches its onChange -- the same lesson as clicks on
+  // antd divs (see project notes): synthetic events silently no-op.
+  await api('/fill', { selector: `input >> nth=${idx}`, value: String(value) });
+  await api('/press', { selector: `input >> nth=${idx}`, key: 'Enter' });
   await sleep(500);
 }
 

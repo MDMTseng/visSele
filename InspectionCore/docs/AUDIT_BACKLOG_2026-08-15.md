@@ -299,13 +299,13 @@ practice on this toolchain). `:345-350` double-unlocks; unreachable today.
 
 All from the front-end sweep; none has been touched.
 
-- **Reducer mutates in place and only spreads the top level** —
+- **PARTLY FIXED** (Shape_Decoration_ID_Order_Update gets new identities — the drag-springback case; the applyEditTarSubstate path unchanged) **Reducer mutates in place and only spreads the top level** —
   `redux/reducer/UICtrlReducer.js:1000-1007`, `:1096-1101`. None of the seven
   mapped props change identity, so react-redux bails out. Operator-visible as:
   dragging a measurement row **springs back** (the order was recorded, it
   applies later when something else forces a redraw), and canvas overlays keep
   stale USL/LSL after editing.
-- **`control_margin_info` is written straight into Redux state** —
+- **FIXED** (dclone at mount like measureInfo, row-array copy on update, element copies in cleanUpDumpInfo) **`control_margin_info` is written straight into Redux state** —
   `DefConfUI.js:599-605`, `:740-757`. `measureInfo` is cloned, this is not.
   Editing a limit updates the table but nothing else knows: the dirty check
   compares an unchanged reference and says "no changes" — while the reducer's
