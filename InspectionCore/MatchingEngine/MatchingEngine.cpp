@@ -38,6 +38,20 @@ int MatchingEngine::AddMatchingFeature(FeatureManager *featureSet)
   return -1;
 }
 
+// Owns a cJSON tree for the duration of a scope. The parsed def below has to
+// survive several early returns and the std::invalid_argument that a failed
+// FeatureManager ctor throws; a guard is the only way it gets released on all
+// of them.
+namespace {
+struct _CJsonGuard {
+  cJSON *j;
+  explicit _CJsonGuard(cJSON *p):j(p){}
+  ~_CJsonGuard(){ if(j) cJSON_Delete(j); }
+  _CJsonGuard(const _CJsonGuard&)=delete;
+  _CJsonGuard& operator=(const _CJsonGuard&)=delete;
+};
+}
+
 int MatchingEngine::AddMatchingFeature(const char *json_str)
 {
 
@@ -48,6 +62,7 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
   {
     return -1;
   }
+  _CJsonGuard rootGuard(root);
 
   char *str=JFetch_STRING(root,"type");
   if(str==NULL)
@@ -95,8 +110,7 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     delete jstr;*/
     LOGE("Cannot find a corresponding type (  %s  )...",str);
   }
-  cJSON_Delete(root);
-  return AddMatchingFeature(featureSet);
+  return AddMatchingFeature(featureSet);   // rootGuard releases `root`
 }
 
 

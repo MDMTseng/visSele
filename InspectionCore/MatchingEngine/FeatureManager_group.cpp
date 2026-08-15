@@ -1,6 +1,7 @@
 #include "FeatureManager.h"
 #include "logctrl.h"
 #include <chrono>
+#include <cmath>
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
@@ -131,6 +132,8 @@ int FeatureManager_group_proto::parse_jobj()
     bg_close_kernel = (int)JFetch_NUMBER_ex(root, "bg_close_kernel", 81);
     bg_ratio = JFetch_NUMBER_ex(root, "bg_ratio", 0.5);
     bg_downscale = (int)JFetch_NUMBER_ex(root, "bg_downscale", 4);
+    if (bg_downscale < 1)  bg_downscale = 1;    // a bad def must not resize to 0
+    if (bg_downscale > 16) bg_downscale = 16;
   }
 
   // Optional per-region adaptive threshold (background-evenness soft calib).
@@ -340,7 +343,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // Per-camera adaptive threshold from bacpac->fieldCal (bright grid is
     // already vignette-masked + robust-cleaned at save time, so we don't
     // re-clean here). T = D + ratio*(B - D) per valid cell; invalid
-    // (vignette) cells get NAN so cvThresholdMap can fall back to briThres.
+    // (vignette) cells fall back to the global briThres. They used to be NAN,
+    // which was never handled: a NAN cell makes the bilinear T NAN, every
+    // "pixel > T" false, and the whole neighbourhood comes out as foreground.
     if (useCalibBackground && bgThreshMap.empty() &&
         bacpac && bacpac->fieldCal && bacpac->fieldCal->ok)
     {
@@ -351,7 +356,10 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
         bgThreshMap.resize(W * H);
         for (int k = 0; k < W * H; k++) {
           bool valid = (k < (int)Bg.valid.size()) ? (Bg.valid[k] != 0) : true;
-          bgThreshMap[k] = valid ? (float)(darkLevel + edgeRatio * (Bg.mean[k] - darkLevel)) : NAN;
+          float T = valid ? (float)(darkLevel + edgeRatio * (Bg.mean[k] - darkLevel))
+                          : (float)briThres;
+          if (!std::isfinite(T)) T = (float)briThres;
+          bgThreshMap[k] = T;
         }
         bgMapW = W; bgMapH = H;
         LOGI("adaptiveThres fieldCal map %dx%d ratio=%.2f dark=%.1f vignette=%d",
@@ -419,6 +427,19 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // clean-space regions do the same job per region, with an operator-legible
     // limit in mm^2, and with a per-region choice of whether a trip means "this
     // part is bad" or "this measurement is untrustworthy".
+    //
+    // Nothing was labeled at all (not even the cage): bail out BEFORE touching
+    // ldData[1]. The size gate used to sit below this read.
+    if(ldData.size()<=1)
+    {
+      error=FeatureReport_ERROR::GENERIC;
+      for(int i=0;i<binaryFeatureBundle.size();i++)
+      {
+        binaryFeatureBundle[i]->ClearReport();
+      }
+      return 0;
+    }
+
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
 
     // if(downScaleF!=1)
@@ -435,17 +456,6 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // }
 
 
-
-
-    if(ldData.size()<=1)
-    {
-      error=FeatureReport_ERROR::GENERIC;
-      for(int i=0;i<binaryFeatureBundle.size();i++)
-      {
-        binaryFeatureBundle[i]->ClearReport();
-      }
-      return 0;
-    }
 
 
     ldData[1].area =intrusionObjectArea;
@@ -506,7 +516,8 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.data.binary_processing_group.reports = &sub_reports;
   report.data.binary_processing_group.labeledData = &ldData;
   report.data.binary_processing_group.subFeatureDefSha1 = subFeatureDefSha1;
-  report.data.binary_processing_group.mmpp = bacpac->sampler->mmpP_ideal();
+  report.data.binary_processing_group.mmpp =
+      (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : NAN;
   return &report;
 }
 

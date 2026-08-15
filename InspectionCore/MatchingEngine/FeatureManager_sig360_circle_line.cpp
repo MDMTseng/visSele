@@ -9,6 +9,7 @@ LOG_MODULE("match.sig360");
 #include <stdexcept>
 #include <common_lib.h>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <chrono>
 #include <MatchingCore.h>
@@ -4956,6 +4957,14 @@ FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_Repor
     minx = std::min(minx, gx); maxx = std::max(maxx, gx);
     miny = std::min(miny, gy); maxy = std::max(maxy, gy);
   }
+  // A non-finite corner (NaN pose) makes the float->int casts UB and the
+  // rectangle arithmetic meaningless; there is nothing to measure then.
+  // (the 1e7 bound also keeps the int rect arithmetic below from overflowing)
+  const float BB_LIMIT = 1e7f;
+  if (!std::isfinite(minx) || !std::isfinite(miny) ||
+      !std::isfinite(maxx) || !std::isfinite(maxy) ||
+      fabsf(minx) > BB_LIMIT || fabsf(miny) > BB_LIMIT ||
+      fabsf(maxx) > BB_LIMIT || fabsf(maxy) > BB_LIMIT) return rep;
   cv::Rect bb((int)floorf(minx), (int)floorf(miny),
               (int)ceilf(maxx - minx) + 1, (int)ceilf(maxy - miny) + 1);
   bb &= cv::Rect(0, 0, gray.cols, gray.rows);
@@ -7387,6 +7396,16 @@ bool FeatureManager_sig360_circle_line::ensureShapeScale(float current_mmpp)
   // model variants scale by def_mmpp/current_mmpp.
   float want = def_mmpp / current_mmpp;
   if (fabsf(want - shape_built_scale) < 1e-3f) return true;   // already built for this mmpp
+  // A rescale outside this band is not a magnification difference, it is bad
+  // calibration data. Rebuilding anyway rounds the model size to integers and
+  // can collapse it to nothing while still reporting variants>=1, i.e. a silent
+  // wrong answer. Refuse loudly instead and keep the scale we have.
+  if (!std::isfinite(want) || want < 0.2f || want > 5.0f)
+  {
+    LOGE("[shape] rescale refused: scale=%.4f out of [0.2,5] (def_mmpp=%.6f cur_mmpp=%.6f)",
+         want, def_mmpp, current_mmpp);
+    return false;
+  }
 
   int nv = buildShapeMatcher(want);
   if (nv <= 0) { LOGE("[shape] rescale failed (%d) scale=%.4f", nv, want); return false; }

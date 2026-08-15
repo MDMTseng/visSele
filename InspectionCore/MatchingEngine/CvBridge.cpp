@@ -37,6 +37,8 @@ void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
 {
   if (src.empty() || threshMap == NULL || mapW < 1 || mapH < 1) return;
   if (channel < 0 || channel >= src.channels()) return;
+  if (src.depth() != CV_8U) return;   // the row walk below reads uint8_t
+
   const int H = src.rows, W = src.cols;
   // Output is single-channel binary (0/255). Phase 1 of the grayscale-everywhere
   // path -- legacy callers that need CV_8UC3 BGR-replicated output should

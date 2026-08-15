@@ -154,7 +154,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   }
   if (considerRange <= 0) considerRange = 1;
-  if (alphaKeep > considerRange) alphaKeep = considerRange;
+  // Strictly below considerRange: equal makes the (considerRange-alphaKeep)
+  // denominator below 0, and 0/0 = NaN poisons every weight and the result.
+  if (alphaKeep >= considerRange) alphaKeep = considerRange * 0.999f;
 
   // Collect every edge within n of the top (perpCoord in [pMin, pMin+n]) and peak-weighted-
   // average both coords for a stable apex.
@@ -169,8 +171,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     float ww = e.peak * a;
     Ws += ww; Ss += (double)e.searchCoord * ww; Ps += (double)e.perpCoord * ww; nUsed++;
   }
-  if (Ws <= 0) return false;
+  if (!(Ws > 0)) return false;                         // also catches NaN
   float eS = (float)(Ss / Ws), eP = (float)(Ps / Ws);  // centered region coords
+  if (!std::isfinite(eS) || !std::isfinite(eP)) return false;
   if (dbg) fprintf(stderr, "[SPCV] n=%.1f nUsed=%d final(search,perp)=(%.2f,%.2f)\n", considerRange, nUsed, eS, eP);
 
   if (dbg) // debug: save rectified gray | mask | edge marker

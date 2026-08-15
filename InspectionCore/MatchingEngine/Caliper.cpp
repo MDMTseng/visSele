@@ -151,8 +151,10 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
     {
       acv_XY pt = acvVecAdd(c, acvVecMult(edgeDir, (float)w));
       float v = cvUnsignedMap1Sampling(gray, pt.x, pt.y, 0);
+      if (v != v) continue;   // off-image sample: drop it, don't NaN the whole row
       if (bacpac && bacpac->sampler)
         v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
+      if (v != v) continue;
       sum += v; cnt++;
     }
     profile[i] = (cnt > 0) ? (float)(sum / cnt) : 0;

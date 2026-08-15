@@ -110,10 +110,15 @@ class FeatureManager {
   protected:
   FeatureReport report;
   FeatureManager_BacPac *bacpac;
+  // Parsed def tree, owned by this object. Every reload() replaces it; the
+  // destructor releases the last one (without this the whole tree leaked on
+  // every ResetFeature()/def load).
   cJSON *root;
   virtual int parse_jobj()=0;
 public :
   FeatureManager(const char *json_str){
+    root=NULL;      // subclass ctors set it again before reload(); this makes the
+                    // destructor safe even for a subclass that forgets.
     ClearReport();
   };
   void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
@@ -135,7 +140,10 @@ public :
     report.bacpac=bacpac;
   };
   static const char* GetFeatureTypeName(){return NULL;};
-  virtual ~FeatureManager(){};
+  virtual ~FeatureManager(){
+    if(root) cJSON_Delete(root);
+    root=NULL;
+  };
 
 };
 #endif
