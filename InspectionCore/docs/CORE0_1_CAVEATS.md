@@ -1345,3 +1345,58 @@ tmpW+tmpX > cols    ->  99999-6 > 0  ->  tmpW = 0-(-6) = 6
 所以**它們不解釋這個相關性**。最便宜的判定:齒輪面板打開 `expo_sim_en`、`expo_us`
 設 50 重現暗畫面;崩潰若跟著消失,要查的是二值化/標記那條路徑(變亮 → 前景大增 →
 標記數量),不是相機層。
+
+## 影像通道:bench 上永遠是 3 通道,真機的 mono 相機是 1 通道
+
+2026-08-15 之前,每一個載入路徑都用 `cv::IMREAD_COLOR`,它會把灰階檔複製成 BGR。
+FI、II、`--insp`、背景圖、以及 **BMP 假相機**全都如此。而真的 mono sensor 一路
+保持 `CV_8UC1`(`ImageDownSampling` 的註解寫得很清楚)。
+
+結果是 **bench 上根本產生不出 1 通道的 frame**,mono 專屬的程式碼路徑無法被執行
+到。`pointSobel` 的邊界檢查用像素(`X+offset >= cols`)、索引卻寫死 3 通道位元組
+(`(X+offset)*3`),在 1 通道影像上每一個取樣點都讀錯位置(不是只有 `cols/3` 之後
+——`x=3` 就已經讀到 byte 3 而非 byte 1),右下角還會越界約兩列。它活到現在,就是
+因為離線重播與假相機都給 3 通道。最後是靠 `test_suite/test_pointSobel_channels.cpp`
+直接比對同內容的 1ch 與 3ch 才抓到(修正前 663/663 個取樣點不一致)。
+
+已改成 `IMREAD_ANYCOLOR`(彩色檔仍給 3 通道,既有素材行為不變),假相機也會透過
+`GetLoadedChannels()` 回報 `frameInfo.channelCount`——**在那之前它從不設這個欄位**,
+所以核心的 `(channelCount == 1) ? 1 : 3` 永遠選 3(Aravis 有依 pixel format 設)。
+存檔端不用改,`cv::imwrite` 本來就照 Mat 原樣寫。
+
+實測(同內容):II 路徑 927 個量測值完全相同;carousel 定位相同(cx 15.0246),
+穩態記憶體 258MB → 149MB,吞吐 21.3 → 23.2/s。pool 存 30 張完整影像,所以省的是
+這個量級。
+
+**影響範圍要說準**:`pointSobel` 只在 sig360 的 signature 比對通過之後才被呼叫
+(`contourGridGrayLevelRefine`)。用 `locating_engine: shape_based` 的 def 走不到它;
+沒有 `locating_engine` 欄位的舊 def(預設 sig360)才會。
+
+## core 是有狀態的:量測基準必須在剛啟動的 core 上取
+
+同一個 def、同一張圖,結果會因為 core 之前做過什麼而改變。2026-08-15 曾經差點把
+一個 0.15px(0.002mm)的差異誤判成自己改壞——比對用的「修改前基準」其實取自一個
+已經跑過 120 次 INST_CHECK 的 core。用 `git stash` 還原程式碼重建後**仍然**不一致,
+才確定不是程式碼。
+
+當時的根因是 core 開機不載入鏡頭校正(要等 WebUI 送 `RC{calib_files_load}`),所以
+「有沒有被載入過校正」會改變結果。這點已修(開機自動載入 `data/lens_calib.json`,
+並在 `camera_info` 回報 `lens_calib_loaded` / `_autoloaded` / `_rms_px`),但教訓仍成立。
+
+判斷「不一致是不是自己造成的」的順序:①同一 binary 連跑 3 次,先確認結果是決定性
+的;②`git stash` 還原、重建、再比對——這一步才分得出程式碼與環境;③兩者都排除,
+才去找環境裡變了什麼。
+
+## 崩潰要看 .ips,不要從自家 log 的最後一行推論
+
+完整 backtrace 在 `~/Library/Logs/DiagnosticReports/visSele-<時間>.ips`,含訊號、
+觸發的執行緒、每一層 symbol 與行號。跑完重現步驟就去那裡拿最新一份。
+
+**自家 log 的最後一筆常常是紅鯡魚。** 追 `camera_ez_reconnect` 崩潰時,三份 dump
+都停在 `PHYLayer is not able to eatablish`,看起來像周邊通道——那其實是 perifCH 每
+3 秒重連的常態噪音。真正的點在 `FeatureReport_UTIL.cpp:386` 的 `cameraCalib2JSON`,
+完全不同的執行緒。log 停在哪只代表那是最後一筆**寫完並 flush** 的記錄,尤其在
+persist 預設關閉、drainer 會無聲死掉的情況下。
+
+順帶:`pkill`(SIGTERM)本身在 2026-08-15 之前也會產生 .ips(signal handler 裡做
+`delete ifwebsocket`,主執行緒還在用它)。已修,handler 只設旗標。
