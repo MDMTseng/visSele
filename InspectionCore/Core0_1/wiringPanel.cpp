@@ -726,6 +726,36 @@ void image_pipe_info_occupyFlag_clr(image_pipe_info &pinfo,image_pipe_info_Occup
 }
 
 
+// The hand-back itself, once a caller has won the right to do it.
+static void image_pipe_info_do_return(image_pipe_info &info,resourcePool<image_pipe_info> &pool)
+{
+  // Free the report tree before the slot goes back, because nothing else will.
+  //
+  // resourcePool::retResrc only flips a flag -- no destructor, no free -- and
+  // the slot is handed straight back out, where ImgPipeProcessCenter_imp does
+  //     datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
+  // overwriting the pointer. Every frame recycled through here therefore
+  // orphaned one whole cJSON document. Only the inline non-pass-down branch
+  // deleted it, which is the path a production run almost never takes.
+  //
+  // Measured on 2026-08-10 before the fix: 88.9M live allocations, 3.82GB,
+  // average 42.9 bytes, in two peaks -- 48.5M x 64B (a cJSON node is 64B) and
+  // 40.0M x 16B (its small strings). At 36.5 frames/s that is ~553 nodes a
+  // frame, ~92 MB/min, and phys_footprint reached 3.46GB in 40 minutes.
+  //
+  // The cost was not "the core uses a lot of memory". It pushed a 16GB host
+  // into compression and swap, so the core's OWN pages went out -- and every
+  // thread that touched them stalled on a decompress. That is what froze the
+  // send thread and the preview thread together for 1.4s with neither burning
+  // CPU, which read as a scheduler problem for most of a day.
+  if(info.datViewInfo.report_json)
+  {
+    cJSON_Delete(info.datViewInfo.report_json);
+    info.datViewInfo.report_json=NULL;
+  }
+  pool.retResrc(&info);
+}
+
 bool image_pipe_info_gc(image_pipe_info &info,resourcePool<image_pipe_info> &pool)
 {
   // Claim the slot, don't just look at it. Two threads can reach this with the
@@ -761,14 +791,33 @@ bool image_pipe_info_gc(image_pipe_info &info,resourcePool<image_pipe_info> &poo
   // thread that touched them stalled on a decompress. That is what froze the
   // send thread and the preview thread together for 1.4s with neither burning
   // CPU, which read as a scheduler problem for most of a day.
-  if(info.datViewInfo.report_json)
-  {
-    cJSON_Delete(info.datViewInfo.report_json);
-    info.datViewInfo.report_json=NULL;
-  }
-  pool.retResrc(&info);
+  image_pipe_info_do_return(info, pool);
   return true;
 }
+
+// Clear one occupancy bit and, if that was the last one, hand the slot back --
+// as a single step.
+//
+// Doing it as clr() then gc() leaves a window, and the window is real: the snap
+// thread clears snapSave, is preempted (it runs at the lowest priority), the
+// datView thread's gc claims the now-zero slot and returns it, the capture
+// thread fetches it and resets occupyFlag to 0, and then the snap thread
+// resumes into gc, reads 0, and returns a slot that is currently in use.
+// retResrc's duplicate check cannot see this: by then poolPtr[idx] is NULL
+// again, so the check passes and one image buffer has two owners.
+bool image_pipe_info_release(image_pipe_info &info, image_pipe_info_OccupyFIdx fidx,
+                             resourcePool<image_pipe_info> &pool)
+{
+  {
+    std::lock_guard<std::mutex> _g(occupyFlag_lock);
+    info.occupyFlag&=~(((typeof(info.occupyFlag))1)<<fidx);
+    if(info.occupyFlag!=0)return false;      // somebody else still holds it
+    info.occupyFlag=((typeof(info.occupyFlag))1)<<image_pipe_info_OccupyFIdx::returnedToPool;
+  }
+  image_pipe_info_do_return(info, pool);
+  return true;
+}
+
 bool image_pipe_info_resendCache_swap_and_gc(image_pipe_info &info,resourcePool<image_pipe_info>&pool)
 {
   if(lastDatViewCache==&info)return true;
@@ -782,8 +831,7 @@ bool image_pipe_info_resendCache_swap_and_gc(image_pipe_info &info,resourcePool<
   image_pipe_info *bk_Cache=lastDatViewCache;
   lastDatViewCache=&info;
   g_view_frame_seq.fetch_add(1, std::memory_order_release);
-  image_pipe_info_occupyFlag_clr(*bk_Cache,image_pipe_info_OccupyFIdx::resendCache);
-  return image_pipe_info_gc(*bk_Cache,pool);
+  return image_pipe_info_release(*bk_Cache,image_pipe_info_OccupyFIdx::resendCache,pool);
 }
 
 void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS,bool pureSendImg);
@@ -1498,6 +1546,11 @@ static bool field_calib_capture_grid(int rows, int cols, int n_frames,
 // the latest lens calibration (otherwise downstream measure code keeps using
 // whatever calibPpB/calibmmpB the camera setup loaded -- ignoring the lens
 // recalibration). Telecentric: m = px/mm; mmpP = 1/m.
+// Whether the startup auto-load found a calibration. Reported in camera_info so
+// "is this machine calibrated right now?" is answerable without reading logs --
+// an uncalibrated run produces plausible numbers, so it has to be visible.
+static bool g_calib_autoloaded = false;
+
 static void push_mmpp_to_sampler()
 {
   if (!g_lens_calib.ok) return;
@@ -2374,12 +2427,30 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
   // same lock; it did not, so closing the last browser tab (ws CLOSING ->
   // delete_PeripheralChannel when peers is empty) could free the channel out
   // from under a send in flight.
-  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
-  if (perifCH)
+  //
+  // The pointer swap is under the lock; the delete is NOT.
+  //
+  // ~PerifChannel closes the port, and closing joins the UART receive thread.
+  // That thread can be parked in a blocking send() to a browser that has
+  // stopped reading -- and the path that gets here is "the last browser tab
+  // closed", so that is the likely case, not a rare one. Holding perif_tx_lock
+  // across that join stops PerifSendThread, PerifPingThread and every WebUI
+  // command in the process: one closed tab and the machine is dead with no
+  // crash and no log.
+  //
+  // Swapping to NULL under the lock is what makes the delete safe out here:
+  // every user re-reads the global while holding the lock, so once the swap is
+  // done nobody can obtain this pointer again.
+  PerifChannel *doomed = NULL;
+  {
+    std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
+    doomed = perifCH;
+    perifCH = NULL;
+  }
+  if (doomed)
   {
     LOGI("DELETING");
-    delete perifCH;
-    perifCH = NULL;
+    delete doomed;
   }
   LOGI("DELETED...");
 }
@@ -3320,6 +3391,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cam_1 = cJSON_CreateObject();
             }
             cJSON_AddNumberToObject(cam_1, "mmpp", calib_bacpac.sampler->mmpP_ideal());
+            // Is there a distortion model behind these numbers at all? Without
+            // this the answer is unobservable from outside: an uncalibrated
+            // core reports a perfectly plausible mmpp and measures slightly
+            // wrong forever.
+            cJSON_AddBoolToObject(cam_1, "lens_calib_loaded", g_lens_calib.ok);
+            cJSON_AddBoolToObject(cam_1, "lens_calib_autoloaded", g_calib_autoloaded);
+            cJSON_AddNumberToObject(cam_1, "lens_calib_rms_px", g_lens_calib.overall_rms_px);
             cJSON_AddNumberToObject(cam_1, "cur_width", calib_bacpac.sampler->getCalibMap()->fullFrameW);
             cJSON_AddNumberToObject(cam_1, "cur_height", calib_bacpac.sampler->getCalibMap()->fullFrameH);
 
@@ -4968,8 +5046,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       {
         int ret = CameraSettingFromFile(this->camera, path);
 
-        if (ret)
+        // 0 is success here (-1 on a missing/unreadable file). The test was
+        // inverted, so this ACKed exactly when the settings had NOT been
+        // applied, and reported failure on every successful load.
+        if (ret == 0)
           session_ACK = true;
+        else
+          LOGE("CameraSettingFile '%s' failed (%d)", path, ret);
       }
 
       LOGI("dat->dat_raw:%s", dat->dat_raw);
@@ -6002,7 +6085,13 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->type = type;
   headImgPipe->context = context;
   headImgPipe->fi = finfo;
-  headImgPipe->occupyFlag=0;
+  {
+    // Under the lock like every other write to this field. It also wipes the
+    // returnedToPool marker, which is what makes the slot reusable -- doing
+    // that unsynchronised raced image_pipe_info_release's claim.
+    std::lock_guard<std::mutex> _g(occupyFlag_lock);
+    headImgPipe->occupyFlag=0;
+  }
   cv::Mat *tmp_img=&(headImgPipe->img);
   // Keep a mono camera as a true 1-channel frame (no replicate-to-BGR). The
   // camera reports channelCount via frameInfo; default to 3 for anything that
@@ -6265,7 +6354,12 @@ int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeSta
     "{"
     "\"type\":\"inspRep\",\"status\":%d,"
     "\"idx\":%d,\"count\":%d,"
-    "\"time_100us\":%lu"
+    // PRIu64, not %lu: on the MinGW build that ships to the line, long is 32
+    // bits, so this truncated a 64-bit timestamp to its low word. 2^32 * 100us
+    // is 4.97 days -- after that the stamp wraps and the uInspMEGA dialect
+    // (the default when machine_type is absent) pairs verdicts to the wrong
+    // parts for one batch, then silently recovers.
+    "\"time_100us\":%" PRIu64
     "}", uInspStatus, 1, count, timeStamp_100us);
   return ret;
 }
@@ -7998,9 +8092,8 @@ void InspSnapSaveThread(bool *terminationflag)
           saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str());
       }
 
-      image_pipe_info_occupyFlag_clr(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave);//clear the snap flag
       //possible occupation flag => resendCache, let image_pipe_info_resendCache_swap_and_gc handle it
-      image_pipe_info_gc(*headImgPipe,bpg_pi.resPool);//try to gc the pointer, if there is no occupation
+      image_pipe_info_release(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave,bpg_pi.resPool);
     }
   }
 }
@@ -9272,6 +9365,35 @@ int mainLoop(bool realCamera = false)
     LOGI("CameraSettingFromFile OK");
   }
   LOGI("Camera:%p", bpg_pi.camera);
+
+  // Load the lens calibration at startup instead of waiting for the WebUI.
+  //
+  // It used to be UI-driven only ("no auto-load of any calib files here" --
+  // the WebUI sends RC{calib_files_load}). That means the distortion model is
+  // absent whenever no browser has connected: a headless run, a core restarted
+  // mid-shift while the operator's page stays open on the old session, or any
+  // scripted use. Nothing reports the difference, and the measurements do not
+  // look wrong -- they are just quietly missing the correction.
+  //
+  // Measured on this machine: with the same def and the same image, loading
+  // data/lens_calib.json moves a located point by 0.15px (0.002mm). That is
+  // larger than the calibration's own residual (rms_px 0.096).
+  //
+  // The WebUI still sends its own paths afterwards and overrides this; this is
+  // only the floor, so "no browser yet" stops meaning "no distortion model".
+  {
+    struct stat _lc_st;
+    if (stat("data/lens_calib.json", &_lc_st) == 0)
+    {
+      if (load_lens_calib("data/lens_calib.json"))
+        g_calib_autoloaded = true;
+    }
+    else
+    {
+      LOGE("no data/lens_calib.json at startup -- running WITHOUT a lens "
+           "distortion model until a client loads one");
+    }
+  }
 
   {
     cJSON *json_mac_setting = ReadJson("data/machine_setting.json");
