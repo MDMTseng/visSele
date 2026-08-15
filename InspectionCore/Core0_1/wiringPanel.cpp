@@ -3590,7 +3590,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           // tmp_buff is now cv::Mat; cv::imread directly (same loader the
           // validated loadImageCv primitive uses).
-          tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_COLOR);
+          tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_ANYCOLOR);
           if (!tmp_buff.isContinuous()) tmp_buff = tmp_buff.clone();
           int ret_val = tmp_buff.empty() ? -1 : 0;
           if (ret_val == 0)
@@ -3745,7 +3745,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else
           {
-            tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_COLOR);
+            tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_ANYCOLOR);
             if (!tmp_buff.empty())
             {
               if (!tmp_buff.isContinuous()) tmp_buff = tmp_buff.clone();
@@ -4223,7 +4223,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         cv::Mat *srcImg = NULL;
         if (imgSrcPath != NULL)
         {
-          tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_COLOR);
+          tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_ANYCOLOR);
           if (!tmp_buff.empty())
           {
             if (!tmp_buff.isContinuous()) tmp_buff = tmp_buff.clone();
@@ -9510,7 +9510,7 @@ int simpleTest(char *imgName, char *defName)
 {
   //return testGIGE();;
 
-  cv::Mat newImg = cv::imread(imgName, cv::IMREAD_COLOR);
+  cv::Mat newImg = cv::imread(imgName, cv::IMREAD_ANYCOLOR);
   int ret = newImg.empty() ? -1 : 0;
   if (ret)
   {
@@ -10151,7 +10151,7 @@ int cp_main(int argc, char **argv)
           // the illumination field, then |Ori - filtered - 5| * 3 saturated to
           // highlight darker-than-bg features for inspection of a static
           // backlight target.  Kept as a one-shot debug tool.
-    cv::Mat BGImage = cv::imread("data/BG.BMP", cv::IMREAD_COLOR);
+    cv::Mat BGImage = cv::imread("data/BG.BMP", cv::IMREAD_ANYCOLOR);
     if (BGImage.empty()) return -1;
     if (!BGImage.isContinuous()) BGImage = BGImage.clone();
 

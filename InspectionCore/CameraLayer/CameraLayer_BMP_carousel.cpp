@@ -225,6 +225,9 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
         width:(uint32_t)newW,
         height:(uint32_t)newH,
       };
+      // Report the loaded file's channel count so a grayscale image actually
+      // reaches the core as a 1-channel frame (see GetLoadedChannels).
+      fi_.channelCount = GetLoadedChannels();
       fi = fi_;
       
       if(call_cb)
@@ -237,6 +240,7 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
         width:0,
         height:0,
       };
+      fi_.channelCount = 0;
       fi = fi_;
       if(call_cb)
         callback(*this,CameraLayer::EV_ERROR,context);
@@ -298,12 +302,16 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadAt(int idx, bool call_cb)
         width:(uint32_t)newW,
         height:(uint32_t)newH,
       };
+      // Report the loaded file's channel count so a grayscale image actually
+      // reaches the core as a 1-channel frame (see GetLoadedChannels).
+      fi_.channelCount = GetLoadedChannels();
       fi = fi_;
       if(call_cb) callback(*this,CameraLayer::EV_IMG,context);
     }
     else
     {
       CameraLayer::frameInfo fi_={ timeStamp_us:0, width:0, height:0 };
+      fi_.channelCount = 0;
       fi = fi_;
       if(call_cb) callback(*this,CameraLayer::EV_ERROR,context);
     }

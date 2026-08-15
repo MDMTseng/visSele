@@ -65,6 +65,12 @@ class CameraLayer_BMP : public CameraLayer{
     // Read from the WS thread (camera_info) while LoadBMP assigns it -- a
     // std::string copy out of a string being reassigned is not a benign race.
     std::string GetCurrentFileName(){std::lock_guard<std::mutex> lk(m); return this->fileName;}
+    // Channel count of the image currently loaded, for frameInfo.channelCount.
+    // Without this the fake camera never reports 1 and the core's
+    // `(channelCount == 1) ? 1 : 3` always picks 3, so a grayscale file still
+    // arrives as a 3-channel frame -- which is why a mono sensor's code path
+    // could not be exercised on a bench at all. 0 when nothing is loaded.
+    int GetLoadedChannels(){std::lock_guard<std::mutex> lk(m); return img_load.empty() ? 0 : img_load.channels();}
     status SetMirror(int Dir,int en);
     status SetROI(int x, int y, int w, int h,int zw,int zh);
     

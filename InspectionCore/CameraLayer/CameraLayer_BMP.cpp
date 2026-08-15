@@ -168,8 +168,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           // ROI shared origin AND width, which is false for any PNG/BMP
           // whose dims don't match the requested ROI -- the row stride
           // mismatch produced the striped-corruption pattern.
-          // imread(IMREAD_COLOR) always returns 3-channel BGR (grayscale
-          // PNG is replicated to BGR), so src_ch is 3.
+          // imread(IMREAD_ANYCOLOR) keeps the file's own channel count, so a
+          // grayscale file stays 1-channel here and src_ch is 1.
           const int src_ch = img_load.channels();
           for (int i = 0; i < newH; i++) {
             int li = i + newY;
@@ -439,7 +439,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       cacheUseCounter=0;
       this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
-        img_load = cv::imread(fileName.c_str(), cv::IMREAD_COLOR);
+        img_load = cv::imread(fileName.c_str(), cv::IMREAD_ANYCOLOR);
         ret = img_load.empty() ? -1 : 0;
         if (ret == 0 && !img_load.isContinuous()) img_load = img_load.clone();
         LOGI("ret:%d",ret);
