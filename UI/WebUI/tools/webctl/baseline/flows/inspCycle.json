@@ -1,0 +1,15 @@
+{
+  "c_state": {
+    "entered": true
+  },
+  "shapes": [],
+  "def_at_main": "caliper_verify_tagged",
+  "def_in_insp": "caliper_verify_tagged",
+  "usl_before": 8.7,
+  "margin_present": "[{\"id\":8,\"USL\":16.47,\"LSL\":8.3}]",
+  "usl_in_insp": 16.47,
+  "state_in_insp": "{\"INSP_MODE\":\"INSP_MODE_NEUTRAL\"}",
+  "usl_after_exit": 8.7,
+  "override_applied": true,
+  "restored": true
+}

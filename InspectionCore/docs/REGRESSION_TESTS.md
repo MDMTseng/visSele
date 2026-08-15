@@ -34,7 +34,7 @@ All in `UI/WebUI/tools/webctl/`.
 
 | Test | Run | Covers |
 |---|---|---|
-| flows suite | `node flows.mjs verify` | 8 user flows (load / select / edit / editInput / add / addArc / addMeasure / addThenDelete): serialized def + store + property-sheet DOM snapshot. `editInput` is the only one that proves a REAL keystroke lands (USL edit → UCL recompute) |
+| flows suite | `node flows.mjs verify` | 9 user flows: the 8 editor flows (load / select / edit / editInput / add / addArc / addMeasure / addThenDelete; `editInput` proves a REAL keystroke lands — USL edit → UCL recompute) plus **inspCycle**: recipe with tag margins → REAL menu entry into the Inspection UI (drawer / mode tag / play, with camera-reconnect-modal and WS-SPLASH-bounce handling) → asserts the tag's USL override applies in inspection and is RESTORED on exit |
 | def oracle | `node golden.mjs verify caliper_verify <hydef>` | load → serialize byte-identical (what the UI sends the core wholesale) |
 
 Re-baseline with `capture` ONLY after an intended behaviour change, and diff
@@ -63,6 +63,7 @@ the new snapshot by eye before committing it.
 - Offline golden joins at FeatureMatching: frame admission, skip sizes and the
   perif path are live-probe-only.
 - Margin-editor dirty check and drag reorder: store-level assertions only, no
-  UI-level flow yet.
+  UI-level flow yet. (Inspection enter/exit itself is now covered by
+  `inspCycle`.)
 - The MinGW/Windows deploy path: syntax-checked only, never executed on a
   bench.
