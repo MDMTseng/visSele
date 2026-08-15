@@ -272,6 +272,33 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   // one place where a bad number stops being a bad measurement and becomes a
   // dead process, so it does not get to trust its inputs.
   if (nAlong < 1) { r.nValid = 0; return r; }
+  // The other end of the same range. The def's clamps (count<=512, width<=64,
+  // length<=256) are in MILLIMETRES and are applied before the /= mmpp
+  // conversion; at this machine's ~72-135 px/mm they still permit nAcross in
+  // the tens of thousands and halfW in the thousands, so the two buffers below
+  // reach gigabytes and the std::bad_alloc aborts the process -- the same
+  // "one mistyped def value kills the machine" failure as the negative width,
+  // approached from above. The realistic trigger is not a hostile def, it is
+  // someone typing a pixel figure into a field that wants millimetres.
+  //
+  // Those clamps were sized against caliper_measure's cost model, which only
+  // allocates nAcross floats per caliper; this path allocates nAlong*nAcross
+  // for the whole band, so the clamps bound the CPU but not this memory.
+  //
+  // A real caliper is far below this: a 5mm span at 0.01mm steps with a 1mm
+  // width is well under a million cells.
+  {
+    const size_t cells = (size_t)nAlong * (size_t)nAcross;
+    const size_t CELL_LIMIT = 8u * 1024u * 1024u;   // ~32MB float + ~64MB double
+    if (cells > CELL_LIMIT)
+    {
+      printf("caliper: refusing a %dx%d band (%zu cells) -- check that "
+             "caliper length/width/step are in mm, not px\n",
+             nAlong, nAcross, cells);
+      r.nValid = 0;
+      return r;
+    }
+  }
   acv_XY perpStep = acvVecMult(perp, step);
   std::vector<float> B((size_t)nAlong * nAcross);
   for (int a = 0; a < nAlong; a++)

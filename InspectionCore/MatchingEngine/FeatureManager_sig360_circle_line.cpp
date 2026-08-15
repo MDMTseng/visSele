@@ -6041,6 +6041,14 @@ bool convertContourGrid2Signature(acv_XY center, ContourFetch contour, std::vect
 {
   if (contour.contourSections.size() == 0)
     return false;
+  // A zero-length signature indexes o_signature[0] on an empty vector: the bin
+  // index is round(size * theta / 2pi), which is 0 when size is 0, and every
+  // guard below is a comparison against NaN (always false) so nothing stops
+  // it. Reachable from a def whose signature.magnitude/angle arrays are empty
+  // -- ContourSignature::RELOAD accepts that as long as the two are the same
+  // length, which two empty arrays are.
+  if (o_signature.empty())
+    return false;
 
   int preIdx = -1;
   int _1stIdx = -1;
