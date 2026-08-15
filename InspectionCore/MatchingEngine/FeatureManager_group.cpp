@@ -11,6 +11,7 @@
 #include "LabelingCV.h"
 #include "BinarizeCV.h"
 #include "CvBridge.h"
+#include "auto_release.hpp"
 #include <opencv2/imgproc.hpp>
 
 LOG_MODULE("match.group");
@@ -252,12 +253,18 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   {
 
     LOGI("FeatureManager_sig360_circle_line is the type...");
-    newFeature = new FeatureManager_sig360_circle_line(cJSON_Print(subFeature));
+    // The ctor parses this string and keeps its own tree, so the serialisation
+    // is ours to free. Passing cJSON_Print() straight in leaked one copy of
+    // the sub-feature's def per sub-feature, on every def load -- measured as
+    // a steady 50-125KB per INST_CHECK before this.
+    MallocHold _s(cJSON_Print(subFeature));
+    newFeature = new FeatureManager_sig360_circle_line(_s.str());
   }
   else if(strcmp(FeatureManager_sig360_extractor::GetFeatureTypeName(),str) == 0)
   {
     LOGI("FeatureManager_sig360_extractor is the type...");
-    newFeature = new FeatureManager_sig360_extractor(cJSON_Print(subFeature));
+    MallocHold _s(cJSON_Print(subFeature));
+    newFeature = new FeatureManager_sig360_extractor(_s.str());
   }
   // else if(strcmp(FM_camera_calibration::GetFeatureTypeName(),str) == 0)
   // {
@@ -614,14 +621,18 @@ int FeatureManager_group::addSubFeature(cJSON * subFeature)
   if(strcmp(FeatureManager_group::GetFeatureTypeName(),str) == 0)
   {
 
-    LOGI("FeatureManager_group is the type...:%s",cJSON_Print(subFeature));
-    newFeature = new FeatureManager_group(cJSON_Print(subFeature));
+    // Was printing the whole sub-def into the log AND leaking that copy, on
+    // top of the one below.
+    MallocHold _s(cJSON_Print(subFeature));
+    LOGI("FeatureManager_group is the type...:%s", _s.str());
+    newFeature = new FeatureManager_group(_s.str());
   }
   else if(strcmp(FeatureManager_binary_processing_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_binary_processing_group is the type...");
-    newFeature = new FeatureManager_binary_processing_group(cJSON_Print(subFeature));
+    MallocHold _s(cJSON_Print(subFeature));
+    newFeature = new FeatureManager_binary_processing_group(_s.str());
   }
   else
   {
