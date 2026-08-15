@@ -19,7 +19,7 @@ as "investigate", not "fix blindly".
 These produce plausible numbers that are wrong, or pass parts that should fail.
 For a measuring instrument this is the worst category.
 
-### 1.1 `value_A == value_B` divides by zero, and NaN is judged PASS
+### 1.1 `value_A == value_B` divides by zero, and NaN is judged PASS — FIXED (`7cad540e`)
 `MatchingEngine/FeatureManager_sig360_circle_line.cpp:911`
 
 The two-point remap `(v - A) * (Y - X) / (B - A) + X` has no guard for `A == B`.
@@ -66,7 +66,7 @@ during EX — i.e. exactly when the camera is misbehaving.
 On the line: UI green, FPS normal, PASS/FAIL counts ticking — and nothing is
 being sorted. Found only when someone notices the reject bin is empty.
 
-### 1.5 Line caliper does not filter NaN samples, and a prefix sum spreads it
+### 1.5 Line caliper does not filter NaN samples, and a prefix sum spreads it — FIXED (`7cad540e`)
 `MatchingEngine/Caliper.cpp:286`, `:297`
 
 `Brow[x] = v;` stores the sampler's NaN directly, then the column prefix sum
@@ -80,7 +80,7 @@ Trigger: part near the frame edge, or a longer `caliper.length`. High.
 Fix needs a parallel valid-sample-count prefix sum (memory cost — pair it with
 2.2 below).
 
-### 1.6 `ptSubdivision` writes the tail segment to the wrong index
+### 1.6 `ptSubdivision` writes the tail segment to the wrong index — FIXED (`7cad540e`)
 `MatchingEngine/ContourGrid.cpp:110-118`
 
 `sec[j].pt = ...` should be `sec[(preSize-1)*times + j].pt`. The main loop stops
