@@ -908,11 +908,22 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     auto DEF=judgeReport.def;
 
 
-    judgeReport.measured_val = 
+    judgeReport.measured_val =
       (judgeReport.measured_val - DEF->value_A)
       *(DEF->value_Y - DEF->value_X)
       /(DEF->value_B - DEF->value_A)
       +DEF->value_X;
+
+    // The remap can manufacture NaN/inf out of a perfectly good measurement
+    // (value_A==value_B slips through older defs as 0/0). notNA was decided
+    // BEFORE the remap, and NaN>USL / NaN<LSL are both false, so without this
+    // check a NaN measurement is judged SUCCESS and the part passes.
+    if (!std::isfinite(judgeReport.measured_val))
+    {
+      notNA = false;
+      judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+      judgeReport.measured_val = NAN;
+    }
   }
 
   if (notNA)
@@ -1928,8 +1939,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   if( judge.value_A!=judge.value_A ||
   judge.value_B!=judge.value_B ||
   judge.value_X!=judge.value_X ||
-  judge.value_Y!=judge.value_Y )
-  {
+  judge.value_Y!=judge.value_Y ||
+  judge.value_A==judge.value_B )// A==B makes the remap 0/0 or /0 -- an operator
+  {                             // entering the same reading twice, not hostile input
+    if(judge.value_A==judge.value_B && judge.value_A==judge.value_A)
+      LOGE("judge:%s value_A==value_B(%f), remap disabled, using identity",judge.name,judge.value_A);
     judge.value_A=0;
     judge.value_B=1;
     judge.value_X=0;

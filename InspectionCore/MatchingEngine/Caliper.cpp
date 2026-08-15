@@ -301,6 +301,15 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   }
   acv_XY perpStep = acvVecMult(perp, step);
   std::vector<float> B((size_t)nAlong * nAcross);
+  // Off-image samples are NaN, and a NaN stored into B poisons the column
+  // prefix sum below: every LATER caliper window touching that column averages
+  // to NaN, so one corner of the band off-frame silently blinds all downstream
+  // calipers on the line. The arc path (caliper_measure) drops such samples and
+  // averages what is left ("don't NaN the whole row"); this path now does the
+  // same via a parallel valid-count prefix sum. Bvalid is allocated lazily so
+  // the common all-on-image band pays nothing.
+  std::vector<uint8_t> Bvalid;
+  bool hasNaN = false;
   for (int a = 0; a < nAlong; a++)
   {
     acv_XY rowBase = acvVecAdd(p0, acvVecMult(lineDir, (float)(a - halfW)));
@@ -310,18 +319,34 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     {
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
+      if (v != v) // off-image (or NaN backlight factor): drop the sample
+      {
+        if (!hasNaN) { hasNaN = true; Bvalid.assign(B.size(), 1); }
+        Bvalid[(size_t)a * nAcross + x] = 0;
+        v = 0;
+      }
       Brow[x] = v;
       q = acvVecAdd(q, perpStep);
     }
   }
   // column prefix sums over the along axis: S[a+1][x] = S[a][x] + B[a][x]; S[0]=0.
   std::vector<double> S((size_t)(nAlong + 1) * nAcross, 0.0);
+  // valid-sample-count prefix, same layout; only materialised when needed.
+  std::vector<int> Scnt;
+  if (hasNaN) Scnt.assign((size_t)(nAlong + 1) * nAcross, 0);
   for (int a = 0; a < nAlong; a++)
   {
     const float *Brow = &B[(size_t)a * nAcross];
     const double *Sp = &S[(size_t)a * nAcross];
     double *Sc = &S[(size_t)(a + 1) * nAcross];
     for (int x = 0; x < nAcross; x++) Sc[x] = Sp[x] + Brow[x];
+    if (hasNaN)
+    {
+      const uint8_t *Vrow = &Bvalid[(size_t)a * nAcross];
+      const int *Cp = &Scnt[(size_t)a * nAcross];
+      int *Cc = &Scnt[(size_t)(a + 1) * nAcross];
+      for (int x = 0; x < nAcross; x++) Cc[x] = Cp[x] + Vrow[x];
+    }
   }
 
   std::vector<float> profile(nAcross);
@@ -342,7 +367,22 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     int cnt = aHi - aLo + 1;
     const double *Shi = &S[(size_t)(aHi + 1) * nAcross];
     const double *Slo = &S[(size_t)aLo * nAcross];
-    for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
+    if (!hasNaN)
+    {
+      for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
+    }
+    else
+    {
+      // average over the VALID samples in the window; a fully-off-image column
+      // yields 0, same as caliper_measure's `(cnt > 0) ? sum/cnt : 0`.
+      const int *Chi = &Scnt[(size_t)(aHi + 1) * nAcross];
+      const int *Clo = &Scnt[(size_t)aLo * nAcross];
+      for (int x = 0; x < nAcross; x++)
+      {
+        int vc = Chi[x] - Clo[x];
+        profile[x] = (vc > 0) ? (float)((Shi[x] - Slo[x]) / vc) : 0.0f;
+      }
+    }
 
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
     bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos);
