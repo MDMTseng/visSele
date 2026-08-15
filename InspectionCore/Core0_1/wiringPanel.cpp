@@ -86,13 +86,19 @@ bool SKIP_NA_DATA_VIEW=false;
 int imageQueueSkipSize = -1;//will be set later
 int datViewQueueSkipSize = -1;
 int DATA_VIEW_MAX_FPS=20;
-// SEND_acvImage compression mode. 0 = legacy raw RGBA (4 B / px) for back-compat
-// with current WebUI; 1-100 = JPEG with that quality value. Set via the BPG
-// settings command with key "IMG_STREAMING_JPEG_QUALITY". The format chosen is
-// signalled to the receiver in the first byte of SEND_acvImage's 15-byte
-// metadata sub-frame (0 = raw RGBA, 1 = JPEG); the JPEG quality used is in the
-// second byte for diagnostics.
-int DataView_JPEG_quality = 0;
+// SEND_acvImage compression mode. 0 = legacy raw RGBA (4 B / px);
+// 1-100 = JPEG with that quality value. Set via the BPG settings command with
+// key "IMG_STREAMING_JPEG_QUALITY". The format chosen is signalled to the
+// receiver in the first byte of SEND_acvImage's 15-byte metadata sub-frame
+// (0 = raw RGBA, 1 = JPEG); the JPEG quality used is in the second byte.
+//
+// Default 85, not 0. Raw measured 19.7MB per IM message vs 105KB at q=85
+// (187x) with no fps or CPU difference on the bench -- and the raw default
+// was only ever reachable by accident: DefConfUI sets 85 (sticky) on mount,
+// so any machine whose operator ever opened the editor was already streaming
+// JPEG; only a fresh core going straight into InspectionUI got raw. The
+// receiver has handled format=1 since a7cd253d. 0 remains valid to request.
+int DataView_JPEG_quality = 85;
 bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
 
 float OK_MAX_FPS=6;

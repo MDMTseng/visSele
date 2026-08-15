@@ -13,9 +13,15 @@ Send a `GS` (settings) BPG packet with payload JSON:
 { "IMG_STREAMING_JPEG_QUALITY": 75 }
 ```
 
-- `0`  → legacy raw RGBA, 4 bytes / pixel (current default).
+- `0`  → legacy raw RGBA, 4 bytes / pixel.
 - `1`..`100` → JPEG with that quality. Typical: 75 for high-fidelity,
   60-65 for bandwidth-bound, 85+ for archival.
+
+**Default is 85 since 2026-08-16** (was 0/raw). Raw measured 19.7MB per IM
+message vs 105KB at q=85 on the same stream, same fps, same CPU; and the raw
+default was only reachable on a fresh core that went straight into
+InspectionUI -- DefConfUI has been setting 85 (sticky) on mount all along.
+Request `0` explicitly if a pixel-exact stream is needed.
 
 Set it once per session; takes effect on the next outgoing image.
 

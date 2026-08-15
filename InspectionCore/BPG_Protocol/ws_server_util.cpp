@@ -186,6 +186,22 @@ int ws_server::runLoop(fd_set *read_fds, struct timeval *tv)
     }
     else
     {
+      // Send timeout. Every send in this server is a blocking send() on the
+      // client's socket, issued from shared threads -- so ONE client that
+      // stops reading (a background tab, a laptop lid, a paused debugger)
+      // used to wedge the whole WS layer for EVERY client: measured RP
+      // 27/s -> 0/s within 6 seconds of pausing a second client's socket,
+      // GS unanswered, recovery only when that client resumed. The sorter
+      // kept running (verified against a fake board); the UI layer froze.
+      // With a timeout the stuck send errors out, safeSend shuts the
+      // connection down, and everyone else stays live.
+#ifdef _WIN32
+      DWORD _sndTo = 5000;
+      setsockopt(NewSock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&_sndTo, sizeof(_sndTo));
+#else
+      struct timeval _sndTo = { 5, 0 };
+      setsockopt(NewSock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&_sndTo, sizeof(_sndTo));
+#endif
       ws_conn *conn = ws_conn_pool.find_avaliable_conn_info_slot();
       conn->setSocket(NewSock);
       conn->setAddr(remote);
@@ -315,14 +331,22 @@ int ws_conn::safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
   if (sock < 0)
     return -1;
   ssize_t written = send(sock, (const char *)buffer, bufferSize, 0);
-  if (written == -1)
+  if (written == -1 || written != bufferSize)
   {
-    perror("safeSend:send failed");
-    return -1;
-  }
-  if (written != bufferSize)
-  {
-    perror("written not all bytes");
+    // Timeout (SO_SNDTIMEO, set at accept) or a genuine error. A partial
+    // write is fatal too: the peer now has half a WS frame and can never
+    // resynchronise. Either way this connection is done -- but do NOT
+    // close() here: sends run on several threads while the main loop owns
+    // the fd, and closing from the wrong thread frees a slot the select
+    // loop is still watching. shutdown() is thread-safe, makes the fd
+    // readable-with-EOF, and the main loop then does the real teardown on
+    // its own thread.
+    perror(written == -1 ? "safeSend:send failed" : "safeSend:partial write");
+#ifdef _WIN32
+    shutdown(sock, SD_BOTH);
+#else
+    shutdown(sock, SHUT_RDWR);
+#endif
     return -1;
   }
 

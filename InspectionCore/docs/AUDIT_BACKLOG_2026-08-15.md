@@ -197,7 +197,7 @@ serialises the inside of `SEND_acvImage`; the `ImageDownSampling` write is
 outside it. Same shape as the bug fixed in 138790f3, different buffer.
 Trigger: `downSampLevel > 1` (default 1, settable from the WebUI).
 
-### 2.8 `lastDatViewCache_lock` held across disk I/O and full sends
+### 2.8 `lastDatViewCache_lock` held across disk I/O and full sends — PARTLY MITIGATED (2026-08-16): a stalled client now wedges the WS layer for at most ~5s (SO_SNDTIMEO at accept + shutdown-on-send-failure in safeSend; measured RP 27/s→0→recovered while the stuck client stayed paused). The lock structure itself is unchanged — encode/imwrite/copyTo still run inside the lock
 `Core0_1/wiringPanel.cpp:5150-5161`, `:2946-2956`, `:2859-2868`, `:1457-1459`
 
 JPEG encode + whole-image WS send, directory creation + multi-MB `imwrite`, and
