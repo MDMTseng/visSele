@@ -477,11 +477,43 @@ int WriteBytesToFile(uint8_t *data,size_t dataL,const char* path)
   FILE *write_ptr = fopen(path, "wb"); // w for write, b for binary
   if (write_ptr != NULL)
   {
-    fwrite(data, dataL, 1, write_ptr); // write 10 bytes from our buffer
-    fclose(write_ptr);
+    // Both fwrite AND fclose are checked: ENOSPC routinely surfaces only at
+    // fclose (the last buffered block), and the old code reported success as
+    // long as the file merely opened -- a truncated def with a green ACK.
+    size_t nw = fwrite(data, dataL, 1, write_ptr);
+    int cl = fclose(write_ptr);
+    if ((dataL > 0 && nw < 1) || cl != 0)
+      return -1;
     return dataL;
   }
   return -1;
+}
+
+// Durable variant: write to <path>.tmp~, flush + fsync, then rename over the
+// original. WriteBytesToFile truncates the destination the moment it opens,
+// so disk-full or a crash mid-write DESTROYS the previous content; here the
+// old file stays intact until the new bytes are safely on disk. (On Windows
+// rename() refuses an existing target, so the old file is removed first --
+// a small non-atomic window, but the data is already fsynced by then.)
+int WriteBytesToFileAtomic(uint8_t *data,size_t dataL,const char* path)
+{
+  char tmp[1024];
+  if (snprintf(tmp, sizeof(tmp), "%s.tmp~", path) >= (int)sizeof(tmp))
+    return -1;
+  FILE *f = fopen(tmp, "wb");
+  if (f == NULL) return -1;
+  size_t nw = fwrite(data, dataL, 1, f);
+  if (dataL > 0 && nw < 1) { fclose(f); remove(tmp); return -1; }
+  if (fflush(f) != 0) { fclose(f); remove(tmp); return -1; }
+#ifndef _WIN32
+  if (fsync(fileno(f)) != 0) { fclose(f); remove(tmp); return -1; }
+#endif
+  if (fclose(f) != 0) { remove(tmp); return -1; }
+#ifdef _WIN32
+  remove(path);
+#endif
+  if (rename(tmp, path) != 0) { remove(tmp); return -1; }
+  return dataL;
 }
 
 
@@ -489,8 +521,9 @@ int SaveJson(cJSON* json,const char* path)
 {
   if(json==NULL)return -1;
   char*jsonStr = cJSON_Print(json);
+  if(jsonStr==NULL)return -1;
   int ret = WriteBytesToFile((uint8_t*)jsonStr,strlen(jsonStr),path);
-  delete(jsonStr);
+  free(jsonStr);   // cJSON_Print mallocs; delete on it was UB
   return (ret<0)?-1:0;
 }
 

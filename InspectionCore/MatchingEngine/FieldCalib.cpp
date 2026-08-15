@@ -170,7 +170,10 @@ bool field_calib_save_file(const FieldCalibResult &r, const char *path)
   if (!s) return false;
   FILE *f = fopen(path, "w");
   bool ok = false;
-  if (f) { fputs(s, f); fclose(f); ok = true; }
+  // "the file opened" is not "the calibration is saved": ENOSPC surfaces at
+  // fputs or (for the last buffered block) at fclose, and reporting success
+  // anyway means the operator believes a calibration exists that does not.
+  if (f) { ok = (fputs(s, f) >= 0); if (fclose(f) != 0) ok = false; }
   free(s);
   return ok;
 }

@@ -205,7 +205,10 @@ LensCalibResult lens_calib_run_from_images(const std::vector<std::string> &image
   {
     char *j = lens_calib_to_json(r);
     FILE *f = fopen(saveJsonPath, "w");
-    if (f) { fputs(j, f); fclose(f); }
+    // fputs/fclose checked -- see field_calib_save_file for why "the file
+    // opened" must not read as "saved".
+    if (f) { bool wok = (fputs(j, f) >= 0); if (fclose(f) != 0) wok = false;
+             if (!wok) fprintf(stderr, "lens_calib: SAVE FAILED %s (disk full?)\n", saveJsonPath); }
     free(j);
   }
   return r;

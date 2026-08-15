@@ -3089,23 +3089,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           LOGI("DataType_BPG>>BIN>>%s", byteArrString(dat->dat_raw + strinL, dat->size - strinL));
 
-          FILE *write_ptr;
-
-          write_ptr = fopen(fileName, "wb"); // w for write, b for binary
-          if (write_ptr == NULL)
-          {
-            snprintf(err_str, sizeof(err_str), "file:%s File open failed", fileName);
-            LOGE("%s", err_str);
-            break;
-          }
-          // Check fwrite return so disk-full / I/O failures don't silently
-          // produce a half-written file with session_ACK=true.
-          size_t _nw = fwrite(dat->dat_raw + strinL, dat->size - strinL, 1, write_ptr);
-          fclose(write_ptr);
-          if (_nw < 1)
+          // Atomic replace, not truncate-in-place. This branch is how the
+          // WebUI saves defs and machine_setting.json -- the machine's most
+          // valuable files. fopen("wb") destroyed the old content BEFORE the
+          // new bytes existed, so a full disk or a crash mid-write left the
+          // machine with no def and no backup. WriteBytesToFileAtomic keeps
+          // the old file until the new one is written, flushed and fsynced.
+          if (WriteBytesToFileAtomic((uint8_t*)dat->dat_raw + strinL,
+                                     dat->size - strinL, fileName) < 0)
           {
             snprintf(err_str, sizeof(err_str),
-                     "file:%s fwrite failed (disk full / I/O error)", fileName);
+                     "file:%s write failed (disk full / I/O error) -- previous "
+                     "content kept", fileName);
             LOGE("%s", err_str);
             break;
           }
@@ -8168,6 +8163,7 @@ void InspSnapSaveThread(bool *terminationflag)
         struct _DefSnapGuard { cJSON *p; ~_DefSnapGuard(){ if(p) cJSON_Delete(p); } } _defsnap{defSnap};
         //root/Date/Name/ms.xxx
         std::string extPath = getTimeStr("%Y%m%d") + SEP; //Date
+        bool _dir_ok = true;
         {
 
           char *name = JFetch_STRING(defSnap, "name");
@@ -8181,17 +8177,23 @@ void InspSnapSaveThread(bool *terminationflag)
           }
 
           std::string _path1 = rootPath + extPath;
-          LOGE("create DIR", _path1.c_str());
+          LOGE("create DIR %s", _path1.c_str());
           if (rw_create_dir(_path1.c_str()) == false) //recursive create folder if failed
           {
             LOGE("the path:%s cannot be created", _path1.c_str());
             rootPath = InspSampleSavePath_DEFAULT;      //try the default one
-            if (rw_create_dir(_path1.c_str()) == false) //should always work
+            // Recompute from the NEW root. The old code retried _path1 --
+            // still built from the unwritable root -- so the documented
+            // "fall back to the default path" was dead code and the actual
+            // behaviour was exit(-100): the whole core, over a snapshot
+            // folder. A machine must not die because it cannot save a
+            // souvenir; skip the snap and keep inspecting.
+            std::string _path2 = rootPath + extPath;
+            if (rw_create_dir(_path2.c_str()) == false)
             {
-              std::string _path_d = _path1;
-              LOGE("the default path:%s cannot be created.... exit", _path_d.c_str());
-              exit(-100);
-              //TODO: critical
+              LOGE("the default path:%s cannot be created either -- "
+                   "snapshot SKIPPED, inspection continues", _path2.c_str());
+              _dir_ok = false;
             }
           }
           // if(access((rootPath+extPath).c_str(),W_OK)==0)//should work
@@ -8253,7 +8255,7 @@ void InspSnapSaveThread(bool *terminationflag)
                  save_snap_disk_low_skip_count);
           }
         }
-        if (_disk_ok)
+        if (_disk_ok && _dir_ok)
           saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str());
       }
 

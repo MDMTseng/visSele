@@ -280,15 +280,15 @@ practice on this toolchain). `:345-350` double-unlocks; unreachable today.
 
 ## Tier 4 — write path durability
 
-- `common_lib/Util.c:474-485` `WriteBytesToFile` checks neither `fwrite` nor
+- **FIXED** `common_lib/Util.c:474-485` `WriteBytesToFile` checks neither `fwrite` nor
   `fclose` (ENOSPC surfaces at `fclose`) — returns success as long as `fopen`
   worked. `SaveJson` inherits this.
-- `Core0_1/wiringPanel.cpp:2970-2988` the `SV` endpoint (how the WebUI saves
+- **FIXED** (`WriteBytesToFileAtomic`: tmp + fsync + rename) `Core0_1/wiringPanel.cpp:2970-2988` the `SV` endpoint (how the WebUI saves
   defs and machine setup) truncates in place with no `rename(tmp, final)` and no
   `fsync` — a full disk or a crash destroys the machine's def with no backup.
-- `MatchingEngine/FieldCalib.cpp:171-175`, `LensCalib.cpp:199-200` report
+- **FIXED** (fputs/fclose checked) `MatchingEngine/FieldCalib.cpp:171-175`, `LensCalib.cpp:199-200` report
   "saved" if the file merely opened.
-- `Core0_1/wiringPanel.cpp:7926-7936` when the sample directory cannot be
+- **FIXED** (fallback recomputes from the new root; double-failure skips the snap instead of exit(-100)) `Core0_1/wiringPanel.cpp:7926-7936` when the sample directory cannot be
   created the fallback re-tries **the same unrecomputed path**, so it fails
   again and calls `exit(-100)`. The documented "fall back to the default path"
   is dead code; the actual behaviour is that the core vanishes.
