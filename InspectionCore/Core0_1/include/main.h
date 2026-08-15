@@ -93,12 +93,26 @@ enum image_pipe_info_OccupyFIdx
   // imgInsp,
   // datView,
   snapSave,
-  resendCache
+  resendCache,
+  // Not an occupant: the marker image_pipe_info_gc claims the slot with, so
+  // that exactly one caller can hand it back. See image_pipe_info_gc.
+  returnedToPool
 };
 
 typedef struct image_pipe_info
 {
 
+  // Read-modify-written by several threads: the datView thread sets/clears
+  // snapSave and clears the previous cache slot's resendCache, while the
+  // snap-save thread clears snapSave on the same slot. A lost |= left a slot
+  // occupied forever (the pool bleeds one entry per lost update until "image
+  // pool empty -> dropped a frame" becomes permanent and acquisition stalls);
+  // a lost &= handed a slot back while someone was still writing into it.
+  //
+  // Guarded by occupyFlag_lock (wiringPanel.cpp) rather than being a
+  // std::atomic, because resourcePool holds these in a std::vector<T> and
+  // resize() needs the element type to stay movable. Only ever touched through
+  // image_pipe_info_occupyFlag_set / _clr / image_pipe_info_gc.
   uint32_t occupyFlag;
   bool endLifeCycle;
   CameraLayer *camLayer;

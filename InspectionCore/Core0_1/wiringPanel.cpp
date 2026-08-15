@@ -5,6 +5,7 @@
 
 //#include "MLNN.hpp"
 #include "cJSON.h"
+#include "auto_release.hpp"   // CJsonHold / MallocHold -- scope-bound ownership
 #include "logctrl.h"
 
 #include "MatchingCore.h"
@@ -708,19 +709,39 @@ static void perifConsoleEcho(const uint8_t *raw, int rawL);   // dev console, op
 int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
 
 
+// Serialises every read-modify-write of image_pipe_info::occupyFlag. One global
+// lock rather than one per slot: these are a handful of bit twiddles per frame,
+// and the correctness argument is much easier to see with a single lock.
+static std::mutex occupyFlag_lock;
+
 void image_pipe_info_occupyFlag_set(image_pipe_info &pinfo,image_pipe_info_OccupyFIdx fidx)
 {
+  std::lock_guard<std::mutex> _g(occupyFlag_lock);
   pinfo.occupyFlag|=(((typeof(pinfo.occupyFlag))1)<<fidx);
 }
 void image_pipe_info_occupyFlag_clr(image_pipe_info &pinfo,image_pipe_info_OccupyFIdx fidx)
 {
+  std::lock_guard<std::mutex> _g(occupyFlag_lock);
   pinfo.occupyFlag&=~(((typeof(pinfo.occupyFlag))1)<<fidx);
 }
 
 
 bool image_pipe_info_gc(image_pipe_info &info,resourcePool<image_pipe_info> &pool)
 {
-  if(info.occupyFlag!=0)return false;
+  // Claim the slot, don't just look at it. Two threads can reach this with the
+  // flag already at 0 -- the datView thread clearing resendCache on the old
+  // cache slot and the snap thread clearing snapSave on the same slot -- and
+  // both would then hand the same entry back. retResrc's own duplicate check
+  // does not save us: if another thread fetches the slot in between, the check
+  // passes and the pool hands one buffer to two owners. Testing the flag and
+  // claiming it therefore has to be one indivisible step. The marker is wiped
+  // when the slot is handed out again (occupyFlag=0 in the capture callback),
+  // so it never blocks a legitimate reuse.
+  {
+    std::lock_guard<std::mutex> _g(occupyFlag_lock);
+    if(info.occupyFlag!=0)return false;
+    info.occupyFlag=((typeof(info.occupyFlag))1)<<image_pipe_info_OccupyFIdx::returnedToPool;
+  }
   // Free the report tree before the slot goes back, because nothing else will.
   //
   // resourcePool::retResrc only flips a flag -- no destructor, no free -- and
@@ -1136,13 +1157,25 @@ class PerifChannel:public Data_JsonRaw_Layer
       }
       // Route the reply to the client that owns this connection (conn_peer), not
       // default_peer.  conn_peer==NULL falls back to default_peer in the WS layer.
-      BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
-      bpg_dat.pgID=conn_pgID;
-      bpg_pi.fromUpperLayer(bpg_dat, conn_peer);
+      //
+      // Under subscribersLock. This runs on the UART receive thread, and
+      // main.h states the contract: WS CLOSING/ERROR must hold that lock
+      // before freeing a peer, precisely so an in-flight dispatch cannot land
+      // on a dangling void*. pushToSubscribers honours it; this path did not.
+      // Clearing conn_peer on close is not enough -- by then this thread may
+      // already have loaded the old value and be one instruction from using
+      // it. Taking the lock is what makes the read and the dispatch one step.
+      {
+        std::lock_guard<std::mutex> _peer_guard(bpg_pi.subscribersLock);
+        void *peer_now = conn_peer;
+        BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+        bpg_dat.pgID=conn_pgID;
+        bpg_pi.fromUpperLayer(bpg_dat, peer_now);
 
-      bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
-      bpg_dat.pgID = conn_pgID;
-      bpg_pi.fromUpperLayer(bpg_dat, conn_peer);
+        bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
+        bpg_dat.pgID = conn_pgID;
+        bpg_pi.fromUpperLayer(bpg_dat, peer_now);
+      }
       return 0;
 
     }
@@ -1389,7 +1422,17 @@ static int g_pending_img_w = 0, g_pending_img_h = 0;
 static bool field_calib_capture_grid(int rows, int cols, int n_frames,
                                      int timeout_ms, FieldGrid &out_grid)
 {
+  // Bounded, not just positive. rows*cols is computed in int: 65536x65536
+  // wraps to exactly 0 and sails through every check below, after which
+  // sum[r*cols+c] writes far outside a zero-length vector; 2x1073741824
+  // wraps negative and std::vector throws length_error out of a handler that
+  // has no try around it. Both reachable from one RC packet. A calibration
+  // grid is tens of cells -- 1024 per side is already absurdly generous.
   if (rows <= 0 || cols <= 0 || n_frames <= 0) return false;
+  if (rows > 1024 || cols > 1024) {
+    LOGE("field_calib grid %dx%d refused (max 1024 per side)", rows, cols);
+    return false;
+  }
   const int ncells = rows * cols;
   std::vector<double> sum(ncells, 0.0), sumsq(ncells, 0.0);
   int captured = 0;
@@ -2008,7 +2051,7 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
 
   cJSON_Delete(infoJObj);
   int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath+"." + (std::string)filename_extension).c_str());
-  delete (jstr);
+  free(jstr);
   if (ret_write_Len < 0)
     return -1;
 
@@ -2603,17 +2646,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
            dat->tl[0], dat->tl[1], (unsigned)dat->size);
       return -1;
     }
-    cJSON *json = cJSON_Parse((char *)dat->dat_raw);
+    // An empty payload never reaches cJSON_Parse. The NUL check above is
+    // guarded by `size > 0`, so a header-only packet slipped past it -- and
+    // dat_raw is `&dat[9]` regardless of whether 9 bytes actually exist, so
+    // for a 9-byte packet at the tail of the reassembly buffer it points one
+    // past the end and cJSON_Parse scans the heap until it happens to find a
+    // zero. Handlers that need a payload fail their own JFetch checks on NULL.
+    cJSON *json = (dat->size > 0 && dat->dat_raw != NULL)
+                    ? cJSON_Parse((char *)dat->dat_raw)
+                    : NULL;
     // RAII cleanup: this BPG message handler is a ~1600-line do/while with
     // 20+ inner `break` paths, none of which previously called
     // cJSON_Delete(json) before bailing out -> one cJSON tree leak per
     // malformed / early-exit packet, unbounded in a 24/7 daemon. Wrap json
     // in a stack-RAII guard that frees on every exit path. The trailing
     // `cJSON_Delete(json)` at the bottom of this block was removed.
-    struct _CJsonGuard {
-      cJSON *p;
-      ~_CJsonGuard() { if (p) cJSON_Delete(p); }
-    } _json_guard{json};
+    CJsonHold _json_guard(json);
     char err_str[1000] = "\0";
     bool session_ACK = false;
     // Sized for the worst case, not the typical one: the reply below formats
@@ -2802,13 +2850,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else if (strcmp(type, "__LAST_DATA_VIEW_CACHE_IMG__") == 0)
           {
+            // Under the lock, like the __LAST_DATA_VIEW_CACHE_INFO__ branch
+            // below. Without it, image_pipe_info_resendCache_swap_and_gc can
+            // swap this slot out and return it to the pool while imwrite is
+            // reading the Mat -- the capture thread then create()s over the
+            // same buffer. Hitting "save current frame" while the line runs
+            // was enough.
+            std::lock_guard<std::mutex> _dvc_guard(lastDatViewCache_lock);
             if(lastDatViewCache==NULL)
             {
               session_ACK = false;
             }
             else
             {
-              
+
               session_ACK = safe_imwrite_cache(fileName, lastDatViewCache->img);
             }
             
@@ -3009,7 +3064,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         session_ACK = true;
 
         cJSON *retArr = cJSON_CreateObject();
-        char chBuff[120];
+        // realfullPath() calls realpath()/_fullpath(), both of which are
+        // contractually allowed to write PATH_MAX bytes into this. At 120 a
+        // deployment path longer than that -- routine on Windows, e.g. under
+        // "OneDrive - <company>" -- overwrote the stack frame. The other
+        // caller in this file already sizes it this way.
+        char chBuff[PATH_MAX + 1];
         session_ACK = true;
 
         for (int k = 0;; k++)
@@ -3646,6 +3706,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         bool isCalibNA = false;
         cJSON *img_property = JFetch_OBJECT(json, "img_property");
 
+        // Owned for the rest of the block. The only free() used to sit inside
+        // the try below, so the `defObj == NULL` break leaked it outright and
+        // an exception out of ImgInspection_JSONStr leaked it too -- ~50KB per
+        // occurrence, in a handler the editor calls on every "check".
+        MallocHold _jsonStr_own;
         char *jsonStr = NULL;
         if (defInfo)
         {
@@ -3664,22 +3729,38 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           LOGI("Read deffile:%s", deffile);
         }
+        _jsonStr_own.reset(jsonStr);
 
-        
+
         {
-          
-          cJSON *defObj = cJSON_Parse(jsonStr);
-          if(defObj==NULL)
+          // This tree was never deleted on any path -- one whole def document
+          // orphaned per II request.
+          CJsonHold defObj(cJSON_Parse(jsonStr));
+          if(defObj.get()==NULL)
           {
             snprintf(err_str, sizeof(err_str), "defObj: is not Available  LINE:%04d", __LINE__);
             LOGE("%s", err_str);
             break;
           }
-          neutral_bacpac.sampler->getCalibMap()->calibPpB=
-            JFetch_NUMBER_ex(defObj,"featureSet[0].cam_param.ppb2b");
-          neutral_bacpac.sampler->getCalibMap()->calibmmpB=
-            JFetch_NUMBER_ex(defObj,"featureSet[0].cam_param.mmpb2b");
-        } 
+          // JFetch_NUMBER_ex defaults to NAN, so a def without cam_param used
+          // to write NaN straight into the calibration map, and ppb2b of 0
+          // made mmpP_ideal() return inf. Either one silently turns every
+          // millimetre in every later measurement into NaN/inf -- it does not
+          // fail, it just quietly stops meaning anything. Keep the previous
+          // value and say so instead.
+          double _ppb  = JFetch_NUMBER_ex(defObj.get(),"featureSet[0].cam_param.ppb2b");
+          double _mmpb = JFetch_NUMBER_ex(defObj.get(),"featureSet[0].cam_param.mmpb2b");
+          if(std::isfinite(_ppb) && _ppb>0 && std::isfinite(_mmpb) && _mmpb>0)
+          {
+            neutral_bacpac.sampler->getCalibMap()->calibPpB=_ppb;
+            neutral_bacpac.sampler->getCalibMap()->calibmmpB=_mmpb;
+          }
+          else
+          {
+            LOGE("def has no usable featureSet[0].cam_param (ppb2b:%f mmpb2b:%f)"
+                 " -- keeping the previous scale", _ppb, _mmpb);
+          }
+        }
         
 
 
@@ -3714,7 +3795,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           int ret = ImgInspection_JSONStr(matchingEng, *srcImg, 1, jsonStr, select_bacpac, &_phases);
           double insp_wall_ms = _phases.insp_ms;
           double insp_cpu_ms  = _phases.insp_cpu_ms;
-          free(jsonStr);
+          // (jsonStr is released by _jsonStr_own at end of block)
           const FeatureReport *report = skip_inspection() ? NULL
                                 : matchingEng.GetReport();
 
@@ -3742,7 +3823,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             
             fromUpperLayer(bpg_dat, peer);
 
-            delete jstr;
+            free(jstr);
             session_ACK = true;
           }
           else
@@ -3836,9 +3917,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           std::lock_guard<std::mutex> _me_guard(matchingEnglock);
           matchingEng.ResetFeature();
           {
-            char *injected_ctx = def_stamp_context(jsonStr, deffile);
-            matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
-            if (injected_ctx) free(injected_ctx);
+            MallocHold injected_ctx(def_stamp_context(jsonStr, deffile));
+            matchingEng.AddMatchingFeature(injected_ctx.get() ? injected_ctx.str() : jsonStr);
           }
           fp = matchingEng.GetShapeFeaturePoints();
         }
@@ -3918,6 +3998,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
         try
         {
+          // Owned for the rest of the try. AddMatchingFeature below throws
+          // std::invalid_argument on a def it cannot build, which skipped the
+          // free() at the bottom entirely -- and that is the exception the
+          // catch a few lines down exists to handle, so it was the normal
+          // outcome for a bad def, not a rare one.
+          MallocHold _jsonStr_own;
           char *jsonStr = NULL;
 
           if (defInfo != NULL)
@@ -3937,6 +4023,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             LOGI("Read deffile:%s", deffile);
           }
+          _jsonStr_own.reset(jsonStr);
 
           // Parse-then-swap (see cache_camera_param above).
           if (cJSON *_new_def = cJSON_Parse(jsonStr))
@@ -3961,9 +4048,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // --insp path so live/WS-loaded shape-based defs can train. deffile may
             // be NULL when the def is pushed inline via "definfo" -> only the reg is
             // stamped (no sidecar path); reference_image in the def still works.
-            char *injected_ctx = def_stamp_context(jsonStr, deffile);
-            matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
-            if (injected_ctx) free(injected_ctx);
+            MallocHold injected_ctx(def_stamp_context(jsonStr, deffile));
+            matchingEng.AddMatchingFeature(injected_ctx.get() ? injected_ctx.str() : jsonStr);
           }
           void *target;
           if (getDataFromJson(json, "get_deffile", &target) == cJSON_True)
@@ -3973,7 +4059,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             
             fromUpperLayer(bpg_dat, peer);
           }
-          free(jsonStr);
+          // (jsonStr is released by _jsonStr_own at end of try)
           //TODO: HACK: this sleep is to wait for the gap in between def config file arriving and inspection result arriving.
           //If the inspection result arrives without def config file then webUI will generate(by design) an statemachine error event.
           // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -4124,7 +4210,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               
               fromUpperLayer(bpg_dat, peer);
 
-              delete jstr;
+              free(jstr);
             }
             else
             {
@@ -4565,7 +4651,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       }
       else if (strcmp(cmd_type, "exec") == 0)
       {
+        // Off unless explicitly enabled. This runs an arbitrary string through
+        // popen() with the core's privileges, and it is reachable by anyone who
+        // can open a socket to 4090 -- which is bound to INADDR_ANY with no
+        // Origin check on the handshake, so that includes any web page an
+        // operator happens to visit (WebSocket is not subject to CORS). The
+        // WebUI never sends this command; it exists for hands-on maintenance,
+        // which can set INSP_ALLOW_EXEC=1 for the session that needs it.
+        static const bool exec_allowed = (getenv("INSP_ALLOW_EXEC") != NULL);
         char *cmd_ = JFetch_STRING(json, "cmd");
+        if (!exec_allowed)
+        {
+          LOGE("SC exec refused (set INSP_ALLOW_EXEC=1 to enable): %s",
+               cmd_ ? cmd_ : "(no cmd)");
+          cJSON_AddStringToObject(retObj, "error", "exec disabled");
+          session_ACK = false;
+          cmd_ = NULL;
+        }
         if (cmd_)
         {
           std::string exec_ret = run_exe(cmd_);
@@ -4644,7 +4746,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_Delete(fileJson);
               }
 
-              delete fileStr;
+              free(fileStr);
             }
             else
             { //File reading error
@@ -4717,7 +4819,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       bpg_dat.pgID = dat->pgID;
       
       fromUpperLayer(bpg_dat, peer);
-      delete jstr;
+      free(jstr);
       session_ACK = true;
     }
     else if (checkTL("ST", dat)) //[S]e[T]ting
@@ -4777,7 +4879,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         bpg_dat = GenStrBPGData("DT", jstr); //Special Return from cmd
         bpg_dat.pgID = dat->pgID;
         fromUpperLayer(bpg_dat, peer);
-        delete jstr;
+        free(jstr);
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
       // IGNORE_DYNAMIC_VIEW=1 skips ONLY the crop-application sub-step
@@ -6390,7 +6492,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
 
       bpg_pi.pushToSubscribers(bpg_dat);
 
-      delete jstr;
+      free(jstr);
     }
     catch (const std::exception &ex)
     {
@@ -8808,12 +8910,20 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     imgPipe->dview_enq_us = perif_now_us(); // sent inline: the queue wait is nil
     InspResultAction(imgPipe, &skipInspDataTransfer, &skipImageTransfer,&inspSnap, &doPassDown);
 
-    if (!doPassDown) //then, we need to recycle the resource here
+    if (!doPassDown)
     {
+      // Free the report tree, but do NOT hand the slot back here. The caller
+      // already does that on !pass_down (ImgPipeProcessThread), so this was
+      // returning the same slot twice. retResrc's duplicate check does not
+      // cover it -- if the capture thread fetches the slot between the two
+      // returns, the second one puts a live, in-use slot back on the free
+      // list and two threads end up writing the same image buffer.
+      //
+      // Currently unreachable (doInspActionThread is always true), which is
+      // the only reason this has not bitten.
       if (imgPipe->datViewInfo.report_json)
         cJSON_Delete(imgPipe->datViewInfo.report_json);
       imgPipe->datViewInfo.report_json = NULL;
-      bpg_pi.resPool.retResrc(imgPipe);
     }
   }
   if (ret_pipe_pass_down)
@@ -9052,6 +9162,11 @@ CameraLayer *getCamera(int initCameraType = 0)
 }
 
 bool terminationFlag = false;
+// Set by the signal handler and by nothing else. Separate from terminationFlag
+// because that one is passed to every worker thread as a bool* and cannot
+// change type; this one has to be sig_atomic_t to be legal to touch from a
+// handler.
+volatile sig_atomic_t g_shutdownRequested = 0;
 int mainLoop(bool realCamera = false)
 {
   /**/
@@ -9186,7 +9301,7 @@ int mainLoop(bool realCamera = false)
   LOGI("SetEventCallBack is set...");
 
   int count=0;
-  while (1)
+  while (!g_shutdownRequested)
   {
 
 
@@ -9202,7 +9317,13 @@ int mainLoop(bool realCamera = false)
     // LOGI("WAIT..");
     fd_set fd_s = ifwebsocket->get_fd_set();
     int maxfd = ifwebsocket->findMaxFd();
-    if (select(maxfd + 1, &fd_s, NULL, NULL, NULL) == -1)
+    // A timeout, where this used to block forever: a signal arriving in the
+    // window between the loop condition and this call would otherwise not be
+    // noticed until the next client packet, which on an idle machine is never.
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 200000;
+    if (select(maxfd + 1, &fd_s, NULL, NULL, &tv) == -1)
     {
       if (errno == EINTR)
         continue; // interrupted by a signal; just retry
@@ -9213,6 +9334,29 @@ int mainLoop(bool realCamera = false)
     ifwebsocket->runLoop(&fd_s, NULL);
   }
 
+  // Teardown, on the main thread instead of inside the signal handler.
+  //
+  // sigroutine used to do the logging, the shutdown dump and `delete
+  // ifwebsocket` itself. None of those is async-signal-safe, and worse, the
+  // main thread was parked in select() holding that same pointer: the signal
+  // popped it out with EINTR and it went straight back to get_fd_set() on a
+  // destroyed object. Every Ctrl-C / SIGTERM ended in a SIGSEGV in
+  // ws_server::set_fd_set, or a SIGTRAP inside the allocator when the free
+  // landed on top of another thread's malloc.
+  LOGE("shutdown requested -- tearing down");
+  terminationFlag = true;   // the worker threads poll this and return
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  log_request_shutdown_dump();
+
+  // ifwebsocket is deliberately NOT deleted. The worker threads reach it
+  // through pushToSubscribers and none of them is ever joined -- there are no
+  // join() or detach() calls for any of the threads started above, because
+  // this loop used to be while(1) and this line was unreachable. Freeing it
+  // here would just move the same use-after-free onto a different thread.
+  // Exiting closes the sockets; _exit also skips the global destructors, which
+  // would race those same threads.
+  _exit(0);
+
   return 0;
 }
 void sigroutine(int dunno)
@@ -9221,19 +9365,14 @@ void sigroutine(int dunno)
   {
   case SIGINT:
   case SIGTERM:
-    LOGE("Get a signal -- %s \n", (dunno == SIGINT) ? "SIGINT" : "SIGTERM");
-    // Mark a GRACEFUL shutdown so the drainer writes its final dump to the
-    // fixed-name latest_dump.dump (overwritten every close -> no disk growth)
-    // instead of a timestamped crash_<utc>.dump. This is just a marker in the
-    // shared ring; it does NOT itself trigger a dump (the drainer's single
-    // producer-death dump does), so there's no duplicate file. Unexpected deaths
-    // (OOM / taskkill /F) never reach here, so they still get crash_<utc>.dump.
-    log_request_shutdown_dump();
-    LOGE("Tear down websocket.... \n");
-    delete ifwebsocket;
-
-    terminationFlag = true;
-    LOGE("signal exit.... \n");
+    // A flag and nothing else. Everything this used to do here -- LOGE, the
+    // shutdown-dump marker, `delete ifwebsocket` -- runs on whichever thread
+    // the signal happened to land on, none of it is async-signal-safe, and the
+    // main loop was concurrently using the object being freed. The teardown
+    // (including the GRACEFUL shutdown marker, so the drainer still writes
+    // latest_dump.dump rather than a timestamped crash dump) now happens at
+    // the bottom of mainLoop, which observes this flag.
+    g_shutdownRequested = 1;
     break;
   }
   return;
