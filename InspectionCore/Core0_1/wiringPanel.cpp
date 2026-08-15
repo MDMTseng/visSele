@@ -4224,6 +4224,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         // above is for.
         delete camera;
         camera = NULL;
+        // Nulled together with `camera`, not several hundred lines and one
+        // getCamera() later. getCamera(1) rediscovers and opens a device, which
+        // takes ~1s; leaving the freed pointer parked in the shared bacpac for
+        // that whole window means anything that reaches it -- the GS
+        // camera_info reply's isInOperation(), a frame that gets inspected --
+        // is reading a destroyed object. There is no reason for the stale value
+        // to survive the delete at all.
+        calib_bacpac.cam = NULL;
 
         camera = getCamera(1);
 
@@ -6037,10 +6045,17 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 }
 
 
-int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
+int sendcJsonTo_perifCH(PerifChannel *perifCH_arg,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
 {
-
-  if (bpg_pi.perifCH==NULL)
+  // The caller's pointer is a snapshot taken without the lock: perifDeliverResult
+  // and PerifConsoleThread both cache bpg_pi.perifCH and carry it around, and the
+  // WS thread can delete_PeripheralChannel() from under them when the last
+  // browser tab closes. The old code checked the global but dereferenced the
+  // argument, and did it before taking the lock -- so the check protected
+  // nothing. Take the lock first, then work only from the global.
+  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
+  PerifChannel *perifCH = bpg_pi.perifCH;
+  if (perifCH==NULL)
   {
     return -1;
   }
@@ -6056,9 +6071,6 @@ int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool direc
   }
 
   int contentSize=strlen(padded_buf);
-  // Held only across the write, not across the serialisation above: the whole
-  // point is that one frame reaches the wire before the next one starts.
-  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
   if(directStringFormat)
   {
     ret = perifCH->send_json_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
@@ -6073,9 +6085,18 @@ int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool direc
 
 
 
-int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
+int printfTo_perifCH(PerifChannel *perifCH_arg,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
 {
-  if (bpg_pi.perifCH==NULL)
+  // Lock first, then read the channel from the global -- see sendcJsonTo_perifCH
+  // for why the argument cannot be trusted. _lkT0/_lkT1 keep their meaning: the
+  // gap between them is still purely the wait for another sender. vsnprintf now
+  // lands on the wire side of the split, which is microseconds against a 20ms
+  // reporting threshold.
+  const uint64_t _lkT0 = perif_now_us();
+  std::unique_lock<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
+  const uint64_t _lkT1 = perif_now_us();
+  PerifChannel *perifCH = bpg_pi.perifCH;
+  if (perifCH==NULL)
   {
     return -1;
   }
@@ -6100,9 +6121,6 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
   // 230400 baud a ~100 byte frame is ~4ms, so 140ms is somebody else holding
   // the port, not the port being slow. Which of the two it is decides the fix:
   // a faster link, or not serialising reports behind status polls.
-  const uint64_t _lkT0 = perif_now_us();
-  std::unique_lock<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
-  const uint64_t _lkT1 = perif_now_us();
   if(directStringFormat)
   {
     ret = perifCH->send_json_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
@@ -8068,6 +8086,42 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
+  // A frame can outlive the camera that took it.
+  //
+  // imgPipe->camLayer is captured in the acquisition callback and travels with
+  // the frame through inspQueue. camera_lifetime_lock (held around this whole
+  // function) stops the object being destroyed MID-frame -- it says nothing
+  // about a frame that was ALREADY QUEUED when camera_ez_reconnect ran. That
+  // frame arrives here carrying a pointer to freed memory, ImgInspection
+  // publishes it as bacpac->cam, and FeatureReport_UTIL's cameraCalib2JSON
+  // calls GetExposureTime() on it one virtual dispatch later.
+  //
+  // Not a hypothesis: SIGSEGV on the inspection thread at cameraCalib2JSON+76
+  // (FeatureReport_UTIL.cpp:386), 100% reproducible as
+  //   CI streaming running  ->  RC camera_ez_reconnect
+  // -- exactly the sequence the WebUI performs when it auto-reconnects a camera
+  // while inspection is live. Without the CI there are no queued frames and the
+  // same reconnect is harmless, which is why it only ever showed up in
+  // combination.
+  //
+  // The live pointer is the authority, not the frame's copy: if they differ,
+  // the camera that took this frame no longer exists. NULL is the right
+  // substitute -- every reader of bacpac->cam below (and in the report
+  // serializer) is already NULL-guarded, and the fields they would have filled
+  // are camera metadata about a camera that is gone.
+  CameraLayer *frameCam = imgPipe->camLayer;
+  if (frameCam != bpg_pi.camera)
+  {
+    LOG_EVERY(50, "frame outlived its camera (%p, live %p) -> camera fields dropped for this frame",
+              frameCam, bpg_pi.camera);
+    frameCam = NULL;
+  }
+  // Publish it before the first use below, so the ROI sync and the inspection
+  // agree on one camera instead of the ROI sync running on whatever the
+  // PREVIOUS frame happened to leave in this shared (global) struct.
+  if (bacpac)
+    bacpac->cam = frameCam;
+
   int ret = 0;
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   //stackingC=0;
@@ -8181,7 +8235,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     const RUSnap _ru0 = rusnap();
     const uint64_t _mT0 = perif_now_us();
     if (!skip_inspection())
-      ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
+      ret = ImgInspection(matchingEng, capImg, bacpac, frameCam, 1);
     g_lastMatchUs = perif_now_us() - _mT0;
     g_histMatch.add(g_lastMatchUs / 1000.0);
     {
@@ -9091,10 +9145,16 @@ int mainLoop(bool realCamera = false)
     calib_bacpac.cam = camera;
     LOGI("DatCH_BPG1_0 camera :%p", camera);
 
+    // Published BEFORE the settings pass, not after. CameraSettingFromFile can
+    // start acquisition, and bpg_pi.camera is what ImgPipeProcessCenter_imp
+    // checks a frame's captured camera pointer against -- if it is still NULL
+    // the first frames look like they came from a camera that no longer exists
+    // and lose their exposure/ROI metadata for no reason.
+    bpg_pi.camera = camera;
+
     CameraSettingFromFile(camera, "data/");
 
     LOGI("CameraSettingFromFile OK");
-    bpg_pi.camera = camera;
   }
   LOGI("Camera:%p", bpg_pi.camera);
 
