@@ -100,6 +100,23 @@ float NA_MAX_FPS=6;
 
 CameraLayerManager camLayerMan;
 cJSON *cache_deffile_JSON = NULL;
+// Guards InspSampleSavePath and cache_deffile_JSON against InspSnapSaveThread.
+//
+// Both are written by the WS thread (machine-setting update, def reload) and read
+// by the snap-save thread. cache_deffile_JSON is the dangerous one: the reload does
+// cJSON_Delete(old) then reassigns, so the snap thread could be walking a tree that
+// was just freed.
+//
+// They were nominally covered by MT_LOCK -- which does nothing: mainThreadLock_lock()
+// returns 0 before ever touching the mutex. The comment at the snap-thread read even
+// says "InspSampleSavePath might be changed by main thread", so the race was known
+// and the lock protecting it has never existed.
+//
+// A dedicated mutex rather than reviving MT_LOCK: that one is a process-wide lock
+// taken in ~6 places, and making it real would deadlock immediately (LAST_FRAME_RESEND
+// holds lastDatViewCache_lock then takes MT_LOCK, while the inspection path takes them
+// the other way round). A narrow lock has no such ordering to get wrong.
+static std::mutex snap_cfg_lock;
 
 cJSON *cache_camera_param = NULL;
 
@@ -2254,12 +2271,12 @@ void setup_machine_setting(cJSON *json_mac_setting)
     string path_str(path);
     if (rw_create_dir(path_str.c_str()) == true && access(path_str.c_str(), W_OK) == 0)
     {
-      InspSampleSavePath = path_str;
+      { std::lock_guard<std::mutex> _cfg(snap_cfg_lock); InspSampleSavePath = path_str; }
     }
     else
     {
       LOGE("PATH:%s is not writable!! set to default", path_str.c_str());
-      InspSampleSavePath = InspSampleSavePath_DEFAULT;
+      { std::lock_guard<std::mutex> _cfg(snap_cfg_lock); InspSampleSavePath = InspSampleSavePath_DEFAULT; }
     }
     LOGE("InspSampleSavePath:%s is set!!", InspSampleSavePath.c_str());
   }
@@ -3924,8 +3941,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // Parse-then-swap (see cache_camera_param above).
           if (cJSON *_new_def = cJSON_Parse(jsonStr))
           {
-            if (cache_deffile_JSON) cJSON_Delete(cache_deffile_JSON);
-            cache_deffile_JSON = _new_def;
+            {
+              std::lock_guard<std::mutex> _cfg(snap_cfg_lock);
+              if (cache_deffile_JSON) cJSON_Delete(cache_deffile_JSON);
+              cache_deffile_JSON = _new_def;
+            }
           }
           else
           {
@@ -7751,14 +7771,27 @@ void InspSnapSaveThread(bool *terminationflag)
       //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
       {
 
-        MT_LOCK("");
-        std::string rootPath = InspSampleSavePath + SEP; //InspSampleSavePath might be changed by main thread
-        MT_UNLOCK("");
+        // Take a private copy of everything the WS thread can change underneath us,
+        // then let go. The def tree is DUPLICATED rather than borrowed: a def reload
+        // does cJSON_Delete(old) + reassign, and this thread walks the tree twice --
+        // once for "name", once inside saveInspectionSample -- with directory
+        // creation and an image write in between. Holding the lock across that would
+        // stall every def load for the length of a disk write; borrowing the pointer
+        // without the lock is a use-after-free. ~60KB of JSON against a multi-MB
+        // image write is not a cost worth optimising.
+        std::string rootPath;
+        cJSON *defSnap = NULL;
+        {
+          std::lock_guard<std::mutex> _cfg(snap_cfg_lock);
+          rootPath = InspSampleSavePath + SEP;
+          if (cache_deffile_JSON) defSnap = cJSON_Duplicate(cache_deffile_JSON, 1);
+        }
+        struct _DefSnapGuard { cJSON *p; ~_DefSnapGuard(){ if(p) cJSON_Delete(p); } } _defsnap{defSnap};
         //root/Date/Name/ms.xxx
         std::string extPath = getTimeStr("%Y%m%d") + SEP; //Date
         {
 
-          char *name = JFetch_STRING(cache_deffile_JSON, "name");
+          char *name = JFetch_STRING(defSnap, "name");
           if (name != NULL && name[0] != '\0')
           {
             extPath += std::string(name) + SEP;
@@ -7842,7 +7875,7 @@ void InspSnapSaveThread(bool *terminationflag)
           }
         }
         if (_disk_ok)
-          saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, headImgPipe->img, filePath.c_str());
+          saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str());
       }
 
       image_pipe_info_occupyFlag_clr(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave);//clear the snap flag
