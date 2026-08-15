@@ -214,7 +214,7 @@ Moore walk to enter a loop that never revisits the start point → hang + unboun
 growth. This is the path that produces `feature_signature` / `ref_orientation`
 (`FeatureExtractor.cpp:90`).
 
-### 2.10 Failed TCP CONNECT leaks a descriptor each time
+### 2.10 Failed TCP CONNECT leaks a descriptor each time — FIXED, but the finding was overstated: refused/timeout connects already closed (connect_nonb). The real leaks were the rare paths (immediate connect() failure, getsockopt/setsockopt failure), plus a caller-unfriendly half-and-half close contract. Now: connect_nonb closes on EVERY failure (both platforms), ctor closes its own throws. Measured 30 failed CONNECTs: 0 fd growth
 `common_lib/Data_Layer_PHY.cpp:193-201` — no `close()` before the throw. The
 WebUI retries, so this can exhaust the fd table and take the WebSocket server
 with it.
