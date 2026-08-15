@@ -311,16 +311,16 @@ All from the front-end sweep; none has been touched.
   compares an unchanged reference and says "no changes" — while the reducer's
   live grading path already reads the mutated array. **The UI says nothing
   changed while the verdict has already changed.**
-- **Entering inspection mode writes tag-specific limits back into the editor
-  def** — `InspectionUI.js:1766`, `:1789-1812`, `:1840-1844`. After one
+- **FIXED (restore-on-exit; E2E untested — needs the menu entry flow + a tagged machine def, see REGRESSION_TESTS gaps)** Entering inspection mode writes tag-specific limits back into the editor
+  def — `InspectionUI.js:1766`, `:1789-1812`, `:1840-1844`. After one
   inspection run the editor reports unsaved changes the operator never made; if
   they save, the tag's limits are baked into the base def and the recorded def
   hash no longer matches any file on disk.
-- **`machine_setting.json` has two writers that overwrite each other** —
+- **PARTLY FIXED (the station panel now read-merge-writes only its two keys; MAINUI still writes whole-file from its cache — acceptable: it IS the settings editor)** `machine_setting.json` has two writers that overwrite each other —
   `InspectionUI.js:858-869` and `MAINUI.js:1522-1548` both write the whole file
   from a copy cached at connect time and never refreshed. Browser B silently
   reverts browser A's `InspectionMode`. Re-read before merging.
-- **`loadedDefFile` is a load-time snapshot re-expanded on every save** —
+- **DEFERRED (needs a save-flow conflict check: LD the on-disk def, compare featureSet_sha1 vs load-time hash, confirm dialog on mismatch — a UX decision, not a patch)** `loadedDefFile` is a load-time snapshot re-expanded on every save —
   `InspectionEditorLogic.js:281`, `MISC_Util.js:228-234`. Any field changed
   outside the editor (hand-edited `.hydef`, a core-side migration) is quietly
   resurrected on the next save.

@@ -856,16 +856,47 @@ class ObjInfoList extends React.Component {
             this.props.WSCMD_CB("ST", 0, { InspAreaBypass: !!on });
           }}
           onSave={(setting) => {
-            let _s = { ...setting };
-            Object.keys(_s).forEach(k => { if (k.startsWith("_")) delete _s[k]; });
-            this.props.WSCMD_CB("SV", 0,
-              { filename: "data/machine_setting.json" },
-              new TextEncoder().encode(JSON.stringify(_s, null, 2)),
-              { resolve: () => {
-                  this.props.ACT_machine_custom_setting_Update(setting);
-                  log.info("[station] regions saved");
+            // Read-merge-write, not write-the-cache. This handler and MAINUI's
+            // settings panel both used to serialize their OWN copy of the whole
+            // file -- a copy cached at connect and never refreshed -- so
+            // whichever saved second silently reverted the other's changes
+            // (browser B undoing browser A's InspectionMode was the observed
+            // case). This panel owns exactly two keys; re-read the file and
+            // overlay only those.
+            const STATION_KEYS = ["inspection_region", "clean_regions"];
+            const writeMerged = (base) => {
+              let _s = { ...base };
+              STATION_KEYS.forEach(k => {
+                if (setting[k] !== undefined) _s[k] = setting[k];
+                else delete _s[k];   // panel cleared it; absent must not resurrect
+              });
+              Object.keys(_s).forEach(k => { if (k.startsWith("_")) delete _s[k]; });
+              this.props.WSCMD_CB("SV", 0,
+                { filename: "data/machine_setting.json" },
+                new TextEncoder().encode(JSON.stringify(_s, null, 2)),
+                { resolve: () => {
+                    this.props.ACT_machine_custom_setting_Update({ ...setting, ..._s });
+                    log.info("[station] regions saved (merged onto the on-disk file)");
+                  },
+                  reject: (e) => log.error("[station] save failed", e) });
+            };
+            this.props.WSCMD_CB("LD", 0, { filename: "data/machine_setting.json" },
+              undefined,
+              { resolve: (pkts) => {
+                  // FL's data is the already-parsed JSON object (see
+                  // CalibrationUI's readers of the same reply shape).
+                  const fl = (pkts || []).find(p => p.type == "FL");
+                  const base = fl && fl.data;
+                  if (base && typeof base === "object" && !Array.isArray(base)) writeMerged(base);
+                  else {
+                    log.warn("[station] could not re-read machine_setting.json; saving from the local copy");
+                    writeMerged(setting);
+                  }
                 },
-                reject: (e) => log.error("[station] save failed", e) });
+                reject: () => {
+                  log.warn("[station] re-read failed; saving from the local copy");
+                  writeMerged(setting);
+                } });
           }} />
       </>}
       >
@@ -1795,6 +1826,15 @@ class APP_INSP_MODE extends React.Component {
 
         if(curMarginInfo!==undefined)
         {
+          // Remember what the editor held BEFORE the tag overrides, so
+          // unmount can put it back. This dispatch writes the tag's limits
+          // into the EDITOR's shape_list (the canvas overlays and the def
+          // generation below both need them there), but it used to be
+          // one-way: after a single inspection run the editor reported
+          // unsaved changes the operator never made, and saving then baked
+          // the tag's limits into the base def -- with a recorded def hash
+          // that no longer matched any file on disk.
+          this._preInspShapeList = this.props.shape_list;
           let newShapeList = [...this.props.shape_list];
           curMarginInfo.forEach(info=>{
             let cur_shape_idx = newShapeList.findIndex(shape=>shape.id==info.id);
@@ -1809,8 +1849,9 @@ class APP_INSP_MODE extends React.Component {
 
 
           });
+          this._inspShapeList = newShapeList;
           this.props.ACT_Shape_List_Update_EXPRESS(newShapeList);
-          
+
           // console.log("ACT_Shape_List_Update<<<<<<");
         }
 
@@ -1995,6 +2036,19 @@ class APP_INSP_MODE extends React.Component {
     // Stop the camera flooding when leaving InspMode.
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
       { CameraSetting: { trigger_mode: 1 } });
+
+    // Undo the tag-limit overrides applied on mount -- but only if the list
+    // is still exactly the one we installed. The editor is locked during
+    // inspection so nothing else should have touched it; if something did,
+    // restoring would clobber that change, so leave it and say so.
+    if (this._inspShapeList !== undefined && this._preInspShapeList !== undefined) {
+      if (this.props.shape_list === this._inspShapeList) {
+        this.props.ACT_Shape_List_Update_EXPRESS(this._preInspShapeList);
+      } else {
+        log.warn("[insp-exit] shape_list changed during inspection; NOT restoring the pre-inspection limits");
+      }
+      this._inspShapeList = this._preInspShapeList = undefined;
+    }
   }
 
   constructor(props) {
