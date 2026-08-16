@@ -3,6 +3,9 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <io.h>      // _commit
+#endif
 
 int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
 {
@@ -505,13 +508,21 @@ int WriteBytesToFileAtomic(uint8_t *data,size_t dataL,const char* path)
   size_t nw = fwrite(data, dataL, 1, f);
   if (dataL > 0 && nw < 1) { fclose(f); remove(tmp); return -1; }
   if (fflush(f) != 0) { fclose(f); remove(tmp); return -1; }
-#ifndef _WIN32
+#ifdef _WIN32
+  // _commit is the Windows fsync. Without it the "durable" path was
+  // fflush-only ON THE DEPLOYED PLATFORM: data in the OS cache, old file
+  // already removed below -- a power cut could lose both. (Process crash was
+  // always fine; power loss was not.)
+  if (_commit(_fileno(f)) != 0) { fclose(f); remove(tmp); return -1; }
+#else
   if (fsync(fileno(f)) != 0) { fclose(f); remove(tmp); return -1; }
 #endif
   if (fclose(f) != 0) { remove(tmp); return -1; }
 #ifdef _WIN32
   remove(path);
 #endif
+  // Recovery note: a crash between the remove above and this rename leaves no
+  // <path> at all -- but <path>.tmp~ holds the complete, fsynced payload.
   if (rename(tmp, path) != 0) { remove(tmp); return -1; }
   return dataL;
 }

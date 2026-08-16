@@ -27,6 +27,8 @@ All in `UI/WebUI/tools/webctl/`.
 | `slow_client.mjs` | a paused subscriber must not wedge the WS layer for others | healthy client recovers ≤ ~5s while the stuck one is still paused |
 | `slow_client_sort.mjs` | verdicts keep flowing to the (fake) board during a WS wedge | board_bytes steady through the pause |
 | `fd_leak.mjs <n>` | failed TCP CONNECTs leak no fds | lsof count unchanged |
+| `churn.mjs [rounds]` | WS teardown under fire: waves of subscribed clients hard-destroyed mid-stream + a stalled client FIN'd mid-backpressure; fd-reuse probes assert clean first bytes; freeze-gap ≤6s asserted | RESULT line all-true, exit 0 (~60s). Optionally grep core stdout for `deferred close:` — nearly unreachable by design (subscribersLock ordering), it is a safety net, not a common path |
+| `doorbell.mjs` | camera-state doorbell end-to-end: 15s steady-state suppression (0 pkts on pgID 0xCA11) + RC `cam_doorbell_ping` → exact SS/GS/SS triplet | suppression=PASS triplet=PASS (~20s, non-destructive) |
 | `dv_bench.mjs <secs>` | image-stream bytes/fps, raw vs JPEG | default ~105KB/IM msg (JPEG 85) |
 | `perifstat.mjs` / `caminfo.mjs` | GS readouts: `perif_pairing.link`, `camera_info.setup_failed`, `lens_calib_loaded` | eyeball |
 | browser `window.__GP_PERIF_LINKS__()` | the WebUI perif link store (states + core link counters) — feeds PerifStatus | four ids registered; linkHealth mirrors perifstat |

@@ -35,6 +35,7 @@ const log = mkLog('ui.insp');
 import Row from 'antd/lib/row';
 import Col from 'antd/lib/col';
 import Slider from 'antd/lib/slider';
+import message from 'antd/lib/message';
 import Checkbox from 'antd/lib/checkbox'
 import Popover from 'antd/lib/popover';
 import Table from 'antd/lib/table';
@@ -891,13 +892,20 @@ class ObjInfoList extends React.Component {
                   const base = fl && fl.data;
                   if (base && typeof base === "object" && !Array.isArray(base)) writeMerged(base);
                   else {
-                    log.warn("[station] could not re-read machine_setting.json; saving from the local copy");
-                    writeMerged(setting);
+                    // REFUSE, do not fall back to the cached copy: writing the
+                    // local snapshot as the whole file is exactly the
+                    // browser-B-reverts-browser-A bug this read-merge-write
+                    // exists to kill -- the fallback would resurrect keys
+                    // another writer deleted. A failed save the operator can
+                    // retry beats a "successful" save that silently undoes
+                    // someone else's work.
+                    log.error("[station] could not re-read machine_setting.json -- NOT saving (retry when the core answers)");
+                    message.error("無法讀取 machine_setting.json，工位設定未儲存 — 請重試");
                   }
                 },
                 reject: () => {
-                  log.warn("[station] re-read failed; saving from the local copy");
-                  writeMerged(setting);
+                  log.error("[station] re-read failed -- NOT saving (retry when the core answers)");
+                  message.error("無法讀取 machine_setting.json，工位設定未儲存 — 請重試");
                 } });
           }} />
       </>}

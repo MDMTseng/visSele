@@ -32,7 +32,7 @@
 //    it. One central poll here feeds it into the link store for
 //    PerifStatus.jsx to show.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { regroup as uinspRegroup, flatten as uinspFlatten } from '../uinspCfg';
 import { GetObjElement, xstate_GetCurrentMainState } from 'UTIL/MISC_Util';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -109,7 +109,14 @@ export function linkToLegacyConn(l) {
 }
 
 export function usePerifConn(id) {
-  return linkToLegacyConn(usePerifLink(id));
+  // Memoized on the store snapshot: the raw version minted a FRESH object
+  // every render, which turned any useEffect depending on this value into a
+  // self-sustaining loop wherever the effect also setState()s -- MAINUI's
+  // readiness effect did exactly that and spun at commit speed for the whole
+  // duration of "camera reconnecting" on a uInsp machine. The link snapshot
+  // object only changes identity on publish(), so this is the correct key.
+  const link = usePerifLink(id);
+  return useMemo(() => linkToLegacyConn(link), [link]);
 }
 
 // ---- API-object registry ---------------------------------------------------
@@ -142,8 +149,12 @@ function startLinkHealthPoll() {
           // Core-side suspect only demotes a link the module believes is up;
           // a link that is DISCONNECTED locally stays DISCONNECTED.
           const patch = { linkHealth: lk };
-          if (cur && cur.state === 'CONNECTED' && lk.suspect) patch.state = 'SUSPECT';
-          if (cur && cur.state === 'SUSPECT' && !lk.suspect) patch.state = 'CONNECTED';
+          if (cur && cur.state === 'CONNECTED' && lk.suspect) { patch.state = 'SUSPECT'; patch.suspectSrc = 'core'; }
+          // Only promote a SUSPECT this poll itself demoted. The local PING
+          // watchdog (suspectSrc 'local') holds SUSPECT while pings go
+          // unanswered; promoting it here made the chip flap green/orange
+          // every <=10s during exactly the outage it exists to show.
+          if (cur && cur.state === 'SUSPECT' && !lk.suspect && cur.suspectSrc !== 'local') { patch.state = 'CONNECTED'; patch.suspectSrc = null; }
           publish(id, patch);
         });
       },
@@ -391,7 +402,7 @@ export class Perif_API_Base {
     if (this.PINGCount >= 2) {
       //time to disconnect
       this.PINGCount = 0;
-      publish(this.id, { state: 'SUSPECT' });   // face first, then reconnect
+      publish(this.id, { state: 'SUSPECT', suspectSrc: 'local' });   // face first, then reconnect
       this.connect(this.connInfo);
       return;
     }
@@ -608,7 +619,7 @@ export class uInspESP32_API extends Perif_API_Base {
         this._linkResyncTries++;
         perifLog.warn('[link] PING unanswered -- trying RESET before reconnect',
           { attempt: this._linkResyncTries, max: LINK_RESYNC_MAX });
-        publish(this.id, { state: 'SUSPECT' });
+        publish(this.id, { state: 'SUSPECT', suspectSrc: 'local' });
         deps.sendBPG('PD', 0, { type: 'RESYNC', CONN_ID: this.CONN_ID },
           undefined, { resolve: (d) => d, reject: (d) => d });
         this.PINGCount = 0;      // give the link one more cycle to answer
@@ -621,7 +632,7 @@ export class uInspESP32_API extends Perif_API_Base {
     } else if (this.PINGCount === 0) {
       this._linkResyncTries = 0;   // link is healthy again
       if ((links[this.id] || {}).state === 'SUSPECT' && !((links[this.id] || {}).linkHealth || {}).suspect)
-        publish(this.id, { state: 'CONNECTED' });
+        publish(this.id, { state: 'CONNECTED', suspectSrc: null });
     }
 
     super._sendPing();

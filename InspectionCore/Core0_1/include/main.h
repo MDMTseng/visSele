@@ -220,6 +220,21 @@ public:
     for (void *p : stream_subscribers)
       fromUpperLayer(bpg_dat, p);
   }
+  // Push a MULTI-PACKET batch (e.g. SS-start / payload / SS-end) atomically
+  // with respect to the subscriber set: three separate pushToSubscribers
+  // calls each retake subscribersLock, so a peer subscribing between them
+  // receives a torn batch (SS-end with no SS-start, or an unterminated
+  // SS-start left open in its demux). Peer-major on purpose -- each peer
+  // gets its complete, ordered batch before the next peer sees anything.
+  // Lock order (subscribersLock -> linkLayerLock inside fromUpperLayer) is
+  // the same as pushToSubscribers.
+  void pushBatchToSubscribers(const BPG_protocol_data *bpg_dats, size_t count)
+  {
+    std::lock_guard<std::mutex> g(subscribersLock);
+    for (void *p : stream_subscribers)
+      for (size_t i = 0; i < count; i++)
+        fromUpperLayer(bpg_dats[i], p);
+  }
 
   int toUpperLayer(BPG_protocol_data bpgdat, void *peer) override;
   bool checkTL(const char *TL, const BPG_protocol_data *dat);

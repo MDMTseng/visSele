@@ -69,6 +69,11 @@ BPG_Protocol_Interface::BPG_Protocol_Interface()
 {
 }
 //st1 ok
+// DEAD API, DO NOT ADOPT as-is: this resizes cached_data_send under
+// bufferLock alone, while fromUpperLayer resizes the SAME vector under
+// linkLayerLock alone -- any future caller races every normal send. Make it
+// take linkLayerLock (and drop bufferLock) before reviving. Zero callers
+// today (one commented-out reference in tmpCodes.cpp).
 uint8_t *BPG_Protocol_Interface::requestSendingBuffer(size_t len)
 {
   bufferLock.lock();

@@ -63,6 +63,8 @@ ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(
 int ws_server::disconnect(int sock)
 {
   ws_conn *conn = ws_conn_pool.find(sock);
+  if (conn == NULL)
+    return -1;   // no live callers today; the day one appears, a stale sock must not deref NULL
   int ret = conn->doClosing();
   std::vector<ws_conn *> *servers = ws_conn_pool.getServers();
 
@@ -254,6 +256,11 @@ int ws_server::send_pkt(websock_data *packet)
 {
   if (packet == NULL || packet->peer == NULL)
     return -1;
+  // A peer already torn down has sock == -1; without this, find(-1) walks the
+  // pool and can match any unoccupied slot -- benign only because of the
+  // identity check below, but there is no reason to lean on that.
+  if (packet->peer->getSocket() < 0)
+    return -1;
   ws_conn *client = ws_conn_pool.find(packet->peer->getSocket());
   if (client != packet->peer)
     return -20;
@@ -352,7 +359,20 @@ int ws_conn::safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
 #endif
   if (sock < 0)
     return -1;
-  ssize_t written = send(sock, (const char *)buffer, bufferSize, 0);
+  ssize_t written;
+  do
+  {
+    written = send(sock, (const char *)buffer, bufferSize, 0);
+    // EINTR with zero bytes transferred is NOT a dead peer -- the process
+    // catches SIGINT/SIGTERM and the kernel may deliver them to whatever
+    // thread sits in send(). The stream is still aligned; retry. (A timeout
+    // with PARTIAL progress comes back as a short count, not EINTR, and is
+    // correctly fatal below.)
+#ifndef _WIN32
+  } while (written == -1 && errno == EINTR);
+#else
+  } while (false);
+#endif
   if (written == -1 || written != bufferSize)
   {
     // Timeout (SO_SNDTIMEO, set at accept) or a genuine error. A partial
@@ -464,6 +484,7 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen, struct handshake *p_hs)
   //printf("%s:%s\n", __func__, resource);
 
   // if resource is right, generate answer handshake and send it
+  bool sendFailed = false;
   {
     // No worker can send to a conn that has not finished its handshake, but
     // take the lock anyway: it is uncontended here and keeps the invariant
@@ -473,11 +494,16 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen, struct handshake *p_hs)
 
     wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
     //freeHandshake(&hs);
-    if (safeSend(sock, &sendBuf[0], frameSize) != 0)
-    {
-      doClosing();
-      return -1;
-    }
+    sendFailed = (safeSend(sock, &sendBuf[0], frameSize) != 0);
+  }
+  if (sendFailed)
+  {
+    // OUTSIDE the guard: doClosing -> tryFinalizeClose does try_lock on
+    // sendMutex, and try_lock on a mutex this thread already owns is UB.
+    // It also runs the CLOSING callback (which takes subscribersLock) --
+    // holding sendMutex across that would invert every sender's lock order.
+    doClosing();
+    return -1;
   }
   return 0;
 }
@@ -518,7 +544,13 @@ bool ws_conn::tryFinalizeClose()
   // The shutdown() in doClosing() already made that send return quickly, so
   // the retry from runLoop lands almost immediately.
   if (!sendMutex.try_lock())
+  {
+    // Deliberately observable: this is the branch the whole deferred-close
+    // design exists for (a sender was inside send() when the conn died), and
+    // without a marker no test can tell it ever ran.
+    printf("deferred close: sender mid-send, fd=%d\n", pendingCloseFd);
     return false;
+  }
   close(pendingCloseFd);
   pendingCloseFd = -1;
   RESET();   // sendBuf resize -- must not race a sender, hence under the lock
@@ -732,10 +764,16 @@ int ws_conn::runLoop()
     struct handshake hs;
     if (doHandShake(&(recvBuf[0]), readed, &hs) != 0)
     {
-      // printf("Error:Hand shake failed...");
-      // ws_state = WS_STATE_CLOSING;
-      // doClosing();
-
+      // doHandShake returns nonzero BOTH for "this is a raw-TCP client"
+      // (parse failure -> fall through to TCP mode) and for "the handshake
+      // ANSWER failed to send", in which case it already ran doClosing() --
+      // promoting a close-pending slot to WS_STATE_TCP and firing TCP events
+      // at the just-closed peer would resurrect a zombie.
+      if (!isOccupied())
+      {
+        freeHandshake(&hs);
+        return -1;
+      }
       websock_data ws_dat = genCallbackData(websock_data::eventType::TCP_CONNECTION_FINISHED);
       cb->ws_callback(ws_dat);
 
@@ -802,6 +840,10 @@ int ws_conn::send_pkt(websock_data *packet)
   return send_pkt(packet->data.data_frame.raw, packet->data.data_frame.rawL, frameType, packet->data.data_frame.isFinal,packet->data.data_frame.extraHeaderRoom);
 }
 #define WS_MAX_HEADERSIZE 10
+// DEAD API, DO NOT ADOPT without adding sendMutex: this resizes sendBuf with
+// no lock and hands out a pointer a concurrent send_pkt would invalidate --
+// it violates the "sendBuf only under sendMutex" invariant by construction
+// (the caller fills the buffer outside any lock). Zero callers today.
 uint8_t* ws_conn::request_data_buffer(size_t req_size)
 {
   size_t frameSize = sendBuf.size();

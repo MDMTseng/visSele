@@ -12,3 +12,4 @@
 - 現況文件描述機器**現在**的行為,發現不符就當場改。
 - `*_design.md` / `*_plan.md` 描述**打算**做的事,看它自己的 Status 行。
 - [REPORT_2026-08-11_fullframe_wedge.md](REPORT_2026-08-11_fullframe_wedge.md) — full frame stops the camera after 3-25 images; UNSOLVED, with what was excluded and four withdrawn conclusions
+- [BACPAC_MACHINECONTEXT_REFACTOR.md](BACPAC_MACHINECONTEXT_REFACTOR.md) — plan to centralize inspection-path magic (BacPac, station, pipe skip, verdict/perif policy); not implemented; excludes def load

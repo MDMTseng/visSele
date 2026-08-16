@@ -67,6 +67,13 @@ int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool 
     return -1;
 
   websock_data packet;
+  // websock_data has no constructor, so `type` is stack garbage unless set --
+  // and ws_conn::send_pkt branches on it FIRST: garbage that equals CLOSING
+  // (7) would run doClosing() on this SENDER thread, inside whatever locks it
+  // holds (pushToSubscribers holds subscribersLock -> the CLOSING callback
+  // retakes it -> self-deadlock), and would break the invariant that
+  // teardown (pendingCloseFd, RESET) is main-WS-thread-only.
+  packet.type = websock_data::DATA_FRAME;
   packet.peer = target;
   packet.data.data_frame.rawL = len;
   packet.data.data_frame.raw = dat;

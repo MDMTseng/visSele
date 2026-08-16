@@ -1262,18 +1262,30 @@ class PerifChannel:public Data_JsonRaw_Layer
     printf(">>>%X connected\n",ch);
   }
 
+  // Set before a DELIBERATE teardown (destructor / reopen / last-tab-close).
+  // The recv thread fires disconnected() on ANY exit, including these -- and
+  // the alarm below is for the machine losing its link, not for us closing
+  // it on purpose. Without this, every clean disconnect logged "verdicts are
+  // NOT reaching the machine" and latched suspect (harmless -- the fresh
+  // open clears it -- but a diagnostic that cries wolf on every teardown
+  // stops being read).
+  std::atomic<bool> deliberate_close{false};
+
   void disconnected(Data_Layer_IF* ch){
     // This used to be the WHOLE handling: a printf nobody reads, perifCH left
     // non-NULL, and every later verdict "sent" into a dead channel. The
     // channel object stays (teardown from this callback context would be a
     // use-after-free minefield) but the link is now marked so the send path
     // and the CONNECT reuse test both know.
+    if (deliberate_close.load())
+      return;
     LOGE("perif: link disconnected (ch:%p) -- verdicts are NOT reaching the machine", ch);
     g_perifLinkSuspect = true;
   }
 
   ~PerifChannel()
   {
+    deliberate_close = true;
     close();
     printf("MData_uInsp DISTRUCT:%p\n",this);
   }
@@ -1467,6 +1479,10 @@ char **_argv;
 //main.cpp  1062 main:v Center: 1295,971
 
 FeatureManager_BacPac calib_bacpac = {0};
+
+// Camera-state doorbell (defined next to CamStateWatchThread). Declared here
+// because the RC handler's "cam_doorbell_ping" target rings it too.
+static void pushCamStateDoorbell(int st, bool present);
 FeatureManager_BacPac neutral_bacpac = {0};
 
 // Persistent calib data loaded from disk at startup and re-loaded after a
@@ -4437,6 +4453,25 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       if (target == NULL)
       {
       }
+      else if (strcmp(target, "cam_doorbell_ping") == 0)
+      {
+        // Ring the camera-state doorbell NOW, with the current state. Exists
+        // because a healthy bench camera never produces a real transition (a
+        // successful reconnect is atomic under camera_lifetime_lock; the BMP
+        // carousel's isInOperation is always ACK), so without this the full
+        // core->wire->client doorbell path is untestable end-to-end. Also a
+        // field diagnostic: "does this client hear doorbells at all".
+        int st;
+        bool present;
+        {
+          std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+          present = (calib_bacpac.cam != NULL);
+          st = present ? (int)calib_bacpac.cam->isInOperation()
+                       : (int)CameraLayer::NAK;
+        }
+        pushCamStateDoorbell(st, present);
+        session_ACK = true;
+      }
       else if (strcmp(target, "camera_ez_reconnect") == 0)
       {
         // Rate limit FIRST, before anything is touched.
@@ -4546,8 +4581,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             LensCalibResult r = lens_calib_run_from_images(imgs, *sq, model, out);
             LOGI("lens_calibrate: ok=%d RMS=%.4f px, m=%.4f px/mm, u0=%.2f v0=%.2f -> %s",
                  r.ok ? 1 : 0, r.overall_rms_px, r.tele.m, r.tele.u0, r.tele.v0, out);
-            session_ACK = r.ok;
-            if (r.ok) load_lens_calib(out);
+            // r.ok from the LM fit means "converged", not "sane" -- corner
+            // mis-detections can converge to m<=0/NaN, and lens_calib_from_json
+            // (the load-side guard) would then refuse the very file we just
+            // green-ACKed: operator sees success, the OLD calibration silently
+            // stays active, and the next restart comes up with none at all.
+            // Loading the freshly written file back through that guard IS the
+            // produce-side validation; ACK only what actually took effect.
+            bool _calibLoaded = r.ok && load_lens_calib(out);
+            if (r.ok && !_calibLoaded)
+            {
+              LOGE("lens_calibrate: fit converged but FAILED validation on "
+                   "reload (m=%.6f) -- NOT ACKing; previous calibration stays",
+                   r.tele.m);
+              r.ok = false;   // the RP report below must not claim success
+            }
+            session_ACK = _calibLoaded;
             // Emit result JSON as RP so UI can display stats without re-fetching.
             char *jstr = lens_calib_to_json(r);
             if (jstr) {
@@ -7988,30 +8037,47 @@ void CamStateWatchThread(bool *terminationflag)
     if (!announce)
       continue;
 
-    LOGI("camera state changed: cam_status=%d present=%d (subscribers=%zu)",
-         st, (int)present, bpg_pi.streamSubscriberCount());
-    if (bpg_pi.streamSubscriberCount() == 0)
+    const size_t subs = bpg_pi.streamSubscriberCount();
+    LOGI("camera state changed: cam_status=%d present=%d (subscribers=%u)",
+         st, (int)present, (unsigned)subs);
+    if (subs == 0)
       continue;
 
-    char tmp[160];
-    BPG_protocol_data bpg_dat;
-
-    sprintf(tmp, "{\"start\":true}");
-    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp);
-    bpg_dat.pgID = CAM_STATE_PGID;
-    bpg_pi.pushToSubscribers(bpg_dat);
-
-    sprintf(tmp, "{\"camera_state\":{\"cam_status\":%d,\"present\":%s}}",
-            st, present ? "true" : "false");
-    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData((char *)"GS", tmp);
-    bpg_dat.pgID = CAM_STATE_PGID;
-    bpg_pi.pushToSubscribers(bpg_dat);
-
-    sprintf(tmp, "{\"start\":false,\"ACK\":true}");
-    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp);
-    bpg_dat.pgID = CAM_STATE_PGID;
-    bpg_pi.pushToSubscribers(bpg_dat);
+    pushCamStateDoorbell(st, present);
   }
+}
+
+// The doorbell batch itself, callable outside the watcher: RC target
+// "cam_doorbell_ping" rings it on demand so the full core->wire->client path
+// is testable (a healthy bench camera never produces a real transition --
+// a successful reconnect is atomic under camera_lifetime_lock, and the BMP
+// carousel's isInOperation is always ACK).
+//
+// One batch call, not three pushes: the three-push version retook
+// subscribersLock between packets, so a peer subscribing mid-batch received
+// a torn batch (SS-end with no SS-start, or an SS-start left open in its
+// demux until the next doorbell flushed it).
+static void pushCamStateDoorbell(int st, bool present)
+{
+  char tmp[160];
+  BPG_protocol_data batch[3];
+
+  sprintf(tmp, "{\"start\":true}");
+  batch[0] = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp);
+  batch[0].pgID = CAM_STATE_PGID;
+
+  char tmp2[160];
+  sprintf(tmp2, "{\"camera_state\":{\"cam_status\":%d,\"present\":%s}}",
+          st, present ? "true" : "false");
+  batch[1] = m_BPG_Protocol_Interface::GenStrBPGData((char *)"GS", tmp2);
+  batch[1].pgID = CAM_STATE_PGID;
+
+  char tmp3[160];
+  sprintf(tmp3, "{\"start\":false,\"ACK\":true}");
+  batch[2] = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp3);
+  batch[2].pgID = CAM_STATE_PGID;
+
+  bpg_pi.pushBatchToSubscribers(batch, 3);
 }
 
 // The idle half of the host heartbeat.
@@ -8251,7 +8317,11 @@ void InspSnapSaveThread(bool *terminationflag)
           if (rw_create_dir(_path1.c_str()) == false) //recursive create folder if failed
           {
             LOGE("the path:%s cannot be created", _path1.c_str());
-            rootPath = InspSampleSavePath_DEFAULT;      //try the default one
+            // + SEP: the initial rootPath is InspSampleSavePath + SEP, and
+            // extPath does not start with one -- without it the fallback
+            // writes into a mangled SIBLING dir ("data/SAMPLE20260816/...")
+            // that nothing browsing data/SAMPLE/ will ever find.
+            rootPath = InspSampleSavePath_DEFAULT + SEP;  //try the default one
             // Recompute from the NEW root. The old code retried _path1 --
             // still built from the unwritable root -- so the documented
             // "fall back to the default path" was dead code and the actual
@@ -9410,10 +9480,20 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
            inet_ntoa(data.peer->getAddr().sin_addr),
            ntohs(data.peer->getAddr().sin_port), data.peer->getSocket());
 
-      peers.insert(data.peer);
+      {
+        // Same guard the CLOSING handler holds for these fields: the UART
+        // reply thread reads default_peer/conn_peer under subscribersLock,
+        // and a one-sided discipline is no discipline. subscribeStream
+        // self-locks, so it stays outside.
+        std::lock_guard<std::mutex> _peer_guard(bpg_pi.subscribersLock);
+        peers.insert(data.peer);
+      }
       if (default_peer == NULL)
       {
-        default_peer = data.peer;
+        {
+          std::lock_guard<std::mutex> _peer_guard(bpg_pi.subscribersLock);
+          default_peer = data.peer;
+        }
         bpg_pi.subscribeStream(data.peer); // primary client streams by default
       }
 
@@ -9632,7 +9712,13 @@ int mainLoop(bool realCamera = false)
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       camera = getCamera(CamInitStyle);
     }
-    calib_bacpac.cam = camera;
+    {
+      // CamStateWatchThread is already running and reads this pointer under
+      // camera_lifetime_lock (as the RC handler writes it); publish the
+      // initial value under the same lock so there is a happens-before edge.
+      std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+      calib_bacpac.cam = camera;
+    }
     LOGI("DatCH_BPG1_0 camera :%p", camera);
 
     // Published BEFORE the settings pass, not after. CameraSettingFromFile can

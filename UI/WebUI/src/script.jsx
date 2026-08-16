@@ -556,9 +556,9 @@ class APPMasterX extends React.Component {
     // not a data update -- re-run the normal camera_info query immediately so
     // every policy (soft-cam, reconnect) stays in Cam_Stat_Query. This is
     // what lets the steady-state poll run at 6s instead of 2s.
-    if (pkts.some(pkt => pkt && pkt.type == "GS" && pkt.data && pkt.data.camera_state)) {
-      log.info("[cam-doorbell] camera state changed, re-querying",
-        pkts.find(pkt => pkt.type == "GS").data.camera_state);
+    const doorbell = pkts.find(pkt => pkt && pkt.type == "GS" && pkt.data && pkt.data.camera_state);
+    if (doorbell) {
+      log.info("[cam-doorbell] camera state changed, re-querying", doorbell.data.camera_state);
       if (this.camStatQuery) this.camStatQuery.pokeNow();
     }
     let acts = {
@@ -1076,33 +1076,48 @@ class APPMasterX extends React.Component {
           },timeout_ms*2);
           return;
         }
-        // comp.props.DISPATCH({
-        //   type:"MW_API_CALL",id,method:"send",
-        //   param:{
-            
-        //   }
-        // });
 
-        this._queryCam(()=>{
-          this.queryTimeOut=setTimeout(()=>{
+        // One chain, ever. The timer is only re-armed inside these callbacks,
+        // so between _queryCam firing and its reply there is NO pending timer
+        // -- a pokeNow() in that window used to clearTimeout a stale handle
+        // and start a SECOND in-flight query, whose reply armed a second 6s
+        // chain; chains only ever accumulated (each doorbell-during-flight
+        // added one). inFlight makes that window explicit, and a poke that
+        // lands inside it is coalesced into pokePending, honoured here when
+        // the reply arrives.
+        // A poke that arrived BEFORE this query starts is satisfied by this
+        // query itself (it fetches the fresh state); only pokes landing while
+        // it is in flight need the immediate follow-up in _next.
+        this.pokePending = false;
+        this.inFlight = true;
+        const _next = (delay_ms) => {
+          this.inFlight = false;
+          if (this.pokePending === true)
+          {
+            this.pokePending = false;
+            this.queryCam(timeout_ms);   // immediate re-query, same chain
+            return;
+          }
+          this.queryTimeOut = setTimeout(() => {
             this.queryCam(timeout_ms);
-          },timeout_ms);
-        },
-        ()=>{
-          this.queryTimeOut=setTimeout(()=>{
-            this.queryCam(timeout_ms);
-          },timeout_ms/2);
-        })
-
-
-
+          }, delay_ms);
+        };
+        this._queryCam(()=>{ _next(timeout_ms); },
+                       ()=>{ _next(timeout_ms/2); });
       }
-      // The core's camera-state doorbell says "re-query NOW". Collapse the
-      // pending scheduled poll into an immediate one (never a parallel one:
-      // the timer is cleared first, and the query re-arms it as usual).
+      // The core's camera-state doorbell says "re-query NOW". Three cases:
+      // a timer is pending -> collapse it into an immediate query; a query
+      // is in flight -> remember the poke and let its reply re-query (never
+      // start a parallel chain); reconnecting -> remember the poke too (the
+      // old silent drop meant a "camera back" doorbell arriving inside the
+      // RC round trip was only noticed by the 12s fallback timer).
       pokeNow()
       {
-        if(this.isInReconn==true) return;
+        if (this.inFlight === true || this.isInReconn === true)
+        {
+          this.pokePending = true;
+          return;
+        }
         clearTimeout(this.queryTimeOut);
         this.queryCam(CAM_POLL_MS);
       }
