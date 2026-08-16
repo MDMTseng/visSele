@@ -94,27 +94,31 @@
 
   background: #0081ee;
 }
+/* The blink must animate ONLY opacity: a background-color animation runs on
+ * the main thread and forces a style+paint pass every vsync forever -- one
+ * disconnected-device button held an otherwise idle renderer at ~5% CPU
+ * (measured 2026-08-16; opacity is composited and costs ~0). This matters
+ * most on a machine with a dead peripheral, which is exactly when the screen
+ * is left up unattended. */
 .DISCONNECT_Blink {
-  animation: DISCONNECT_Blink_ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
+  background-color: #a50000 !important;
+  border-color: #a50000 !important;
+  animation: DISCONNECT_Blink_ANIMATION 1s infinite;
 }
 
 .Emergency_Blink {
   color:#FFF !important;
-  animation: DISCONNECT_Blink_ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
+  background-color: #a50000 !important;
+  border-color: #a50000 !important;
+  animation: DISCONNECT_Blink_ANIMATION 1s infinite;
 }
 
 @keyframes DISCONNECT_Blink_ANIMATION {
   0%, 49% {
-    background-color: #400000;
+    opacity: 0.45;
   }
-  49%, 50% {
-      background-color: #e50000;
-  }
-  50%, 99% {
-    background-color: #a50000;
-  }
-  99%, 100% {
-    background-color: #a50000;
+  50%, 100% {
+    opacity: 1;
   }
 }
 
