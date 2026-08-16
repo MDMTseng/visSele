@@ -1669,10 +1669,17 @@ static bool load_lens_calib(const char *path)
          "keeping the previous calibration", path, parsed.ok, parsed.tele.m);
     return false;
   }
-  g_lens_calib = parsed;
-  calib_bacpac.lensCalib   = &g_lens_calib;
-  neutral_bacpac.lensCalib = &g_lens_calib;
-  push_mmpp_to_sampler();
+  {
+    // The inspection thread reads lensCalib doubles and the sampler's mm/px
+    // mid-match under matchingEnglock; swapping the struct without that lock
+    // frees/rewrites storage under its feet -- UAF at worst, a silently wrong
+    // dimension at best. Callers (RC handlers, startup) never hold this lock.
+    std::lock_guard<std::mutex> _swap_guard(matchingEnglock);
+    g_lens_calib = parsed;
+    calib_bacpac.lensCalib   = &g_lens_calib;
+    neutral_bacpac.lensCalib = &g_lens_calib;
+    push_mmpp_to_sampler();
+  }
   LOGI("load_lens_calib: %s ok=%d rms=%.4f m=%.4f", path,
        g_lens_calib.ok, g_lens_calib.overall_rms_px, g_lens_calib.tele.m);
   return true;
@@ -1686,9 +1693,14 @@ static bool load_field_calib(const char *path)
     LOGE("load_field_calib: %s missing or empty", path);
     return false;
   }
-  g_field_calib = tmp;
-  calib_bacpac.fieldCal   = &g_field_calib;
-  neutral_bacpac.fieldCal = &g_field_calib;
+  {
+    // Same contract as load_lens_calib: the matcher indexes fieldCal's
+    // vectors mid-frame under matchingEnglock -- swap only under it.
+    std::lock_guard<std::mutex> _swap_guard(matchingEnglock);
+    g_field_calib = tmp;
+    calib_bacpac.fieldCal   = &g_field_calib;
+    neutral_bacpac.fieldCal = &g_field_calib;
+  }
   LOGI("load_field_calib: %s bright %dx%d(n=%d) dark %dx%d(n=%d) uniformity=%.1f%%",
        path,
        g_field_calib.bright.rows, g_field_calib.bright.cols, g_field_calib.bright.n_frames,
@@ -2322,6 +2334,14 @@ static bool &g_full_inspection = g_inspCtx.full_inspection;   // P0 alias
 // have no wire to flip it over; the ST switch overrides it either way at runtime.
 static bool &g_area_gates_bypass = g_inspCtx.area_gates_bypass;   // P0 alias (env read in the ctx initializer)
 
+// Guards the station-config swaps (g_insp_region / g_clean_regions) against
+// the inspection thread reading them mid-frame. Those reads sit deliberately
+// OUTSIDE matchingEnglock (eval_clean_regions runs before the engine is
+// entered), so the engine lock protects neither; without this, saving
+// machine_setting from the UI while the line runs frees the vector the
+// inspection thread is iterating.
+static std::mutex g_station_cfg_lock;
+
 static void load_insp_region(cJSON *json_mac_setting)
 {
   cJSON *r = cJSON_GetObjectItem(json_mac_setting, "inspection_region");
@@ -2336,7 +2356,10 @@ static void load_insp_region(cJSON *json_mac_setting)
     cJSON *jf = cJSON_GetObjectItem(r, "fit");
     if (jf && cJSON_IsString(jf) && strcmp(jf->valuestring, "center") == 0) cfg.fit = 0;
   }
-  g_insp_region = cfg;
+  {
+    std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+    g_insp_region = cfg;
+  }
   if (cfg.w > 0 && cfg.h > 0)
     LOGE("inspection_region: [%.0f,%.0f %.0fx%.0f] full-sensor px, fit=%s -- objects "
          "outside this are not judged", cfg.x, cfg.y, cfg.w, cfg.h,
@@ -2393,8 +2416,11 @@ static void load_clean_regions(cJSON *json_mac_setting)
       out.push_back(c);
     }
   }
-  g_clean_regions = out;
-  LOGE("clean_regions: %d configured", (int)g_clean_regions.size());
+  {
+    std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+    g_clean_regions = out;
+  }
+  LOGE("clean_regions: %d configured", (int)out.size());
 }
 
 int InspStatusReducer(int total_status, int new_status);   // defined further down
@@ -2409,15 +2435,23 @@ static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff,
                               cJSON *out_arr = NULL)
 {
   typedef FeatureReport_sig360_circle_line_single FR;
-  if (g_clean_regions.empty() || gray.empty()) return FR::STATUS_SUCCESS;
+  // Snapshot under the config lock: a machine_setting save from the UI
+  // reassigns g_clean_regions on the WS thread, and iterating the live vector
+  // here reads freed storage. The copy is a handful of small structs per frame.
+  std::vector<CleanRegionCfg> regs;
+  {
+    std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+    regs = g_clean_regions;
+  }
+  if (regs.empty() || gray.empty()) return FR::STATUS_SUCCESS;
 
   cv::Mat g1;
   if (gray.channels() == 1) g1 = gray; else cv::extractChannel(gray, g1, 0);
 
   int worst = FR::STATUS_SUCCESS;
-  for (size_t i = 0; i < g_clean_regions.size(); i++)
+  for (size_t i = 0; i < regs.size(); i++)
   {
-    const CleanRegionCfg &c = g_clean_regions[i];
+    const CleanRegionCfg &c = regs[i];
     if (std::isnan(c.dark_thresh)) continue;          // no dark measurement asked for
 
     cv::Rect r((int)lroundf(c.x - sOff.x), (int)lroundf(c.y - sOff.y),
@@ -2793,6 +2827,9 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
 
 int getImage(CameraLayer *camera, cv::Mat &dst, int trig_type=0, int timeout_ms=-1)
 {
+  // A failed camera_ez_reconnect leaves `camera` NULL on purpose (see the RC
+  // handler); II/EX keep arriving from a UI that doesn't know that yet.
+  if (camera == NULL) return -1;
   return (camera->SnapFrame(SNAP_Callback, (void *)&dst, trig_type, timeout_ms) == CameraLayer::ACK) ? 0 : -1;
 }
 
@@ -3123,17 +3160,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               session_ACK = false;
               break;
             }
-            lastDatViewCache_lock.lock();
-
-            int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
-              report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
-              img_extension!=NULL?img_extension:SNAP_IMG_EXTENSION);
-            
-            if(err==0)
             {
-              session_ACK=true;
+              // RAII, not lock()/unlock(): saveInspectionSample runs imwrite,
+              // which throws cv::Exception on a bad path/disk -- a naked
+              // unlock after it never runs and the frame pipeline (which takes
+              // this lock per frame in the cache swap) hangs forever.
+              std::lock_guard<std::mutex> _cache_guard(lastDatViewCache_lock);
+
+              int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
+                report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
+                img_extension!=NULL?img_extension:SNAP_IMG_EXTENSION);
+
+              if(err==0)
+              {
+                session_ACK=true;
+              }
             }
-            lastDatViewCache_lock.unlock();
           }
 
           
@@ -3900,7 +3942,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         if (deffile == NULL && defInfo == NULL)
         {
           LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
-          camera->TriggerMode(1);
+          if (camera) camera->TriggerMode(1);
           break;
         }
 
@@ -4193,7 +4235,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
 
-          camera->TriggerMode(1);
+          if (camera) camera->TriggerMode(1);
           break;
         }
 
@@ -4284,6 +4326,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           if (g_area_gates_bypass)
             LOGE("insp session starting with InspAreaBypass ON -- clean_regions "
                  "are not being checked and the station filter is off");
+          // A failed camera_ez_reconnect leaves `camera` NULL; the ST handler
+          // already guards for that, but a UI holding an insp button reaches
+          // here just as easily. Refuse the session instead of dereferencing.
+          if (camera == NULL)
+            throw std::runtime_error("no camera (failed reconnect leaves none) -- insp session refused");
           if (dat->tl[0] == 'C')
           {
             camera->TriggerMode(0);
@@ -8223,9 +8270,17 @@ void PerifPingThread(bool *terminationflag)
     ts.tv_sec = 0; ts.tv_nsec = (long)(PING_PERIOD_US * 1000ull);
     nanosleep(&ts, NULL);
 
-    if (bpg_pi.perifCH == NULL) continue;
+    // Read last_tx_us under perif_tx_lock: delete_PeripheralChannel (WS
+    // thread, last tab closing) swaps perifCH under that lock, and reading
+    // through the pointer in the check-then-lock gap is a read of freed
+    // memory. The send below re-checks NULL under the same lock.
+    uint64_t last;
+    {
+      std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
+      if (bpg_pi.perifCH == NULL) continue;
+      last = bpg_pi.perifCH->last_tx_us;
+    }
     const uint64_t now = perif_now_us();
-    const uint64_t last = bpg_pi.perifCH->last_tx_us;
     if (last != 0 && (now - last) < PING_QUIET_US) continue;
 
     // Every 20th beat carries the arming instead of a bare ping.
@@ -8777,11 +8832,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // is never lost: flipping it off restores the real region on the next frame
     // with no reload, and machine_setting.json is never touched.
     bool on = g_full_inspection && !g_area_gates_bypass;
-    bacpac->insp_region_x = on ? g_insp_region.x : 0;
-    bacpac->insp_region_y = on ? g_insp_region.y : 0;
-    bacpac->insp_region_w = on ? g_insp_region.w : 0;
-    bacpac->insp_region_h = on ? g_insp_region.h : 0;
-    bacpac->insp_region_fit = g_insp_region.fit;
+    // Copy the whole struct under the config lock first: reading the five
+    // fields one by one races a machine_setting save and can hand this frame
+    // a chimera region (new x, old w).
+    InspRegionCfg _ir;
+    {
+      std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+      _ir = g_insp_region;
+    }
+    bacpac->insp_region_x = on ? _ir.x : 0;
+    bacpac->insp_region_y = on ? _ir.y : 0;
+    bacpac->insp_region_w = on ? _ir.w : 0;
+    bacpac->insp_region_h = on ? _ir.h : 0;
+    bacpac->insp_region_fit = _ir.fit;
   }
 
   //if(stackingC!=0)return;
@@ -9110,7 +9173,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // the part out of the verdict rather than ejecting it -- it goes round again
     // and is measured on a clean field. A region marked on_fail:"ng" reports
     // FAILURE and does eject.
-    if (!g_clean_regions.empty() && !g_area_gates_bypass)
+    bool _have_clean_regions;
+    {
+      std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+      _have_clean_regions = !g_clean_regions.empty();
+    }
+    if (_have_clean_regions && !g_area_gates_bypass)
     {
       float cr_mmpp = (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : 0.0f;
       acv_XY cr_off = (bacpac && bacpac->sampler) ? bacpac->sampler->getOriginOffset()
@@ -9331,14 +9399,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // What the core is actually enforcing -- not what the panel has in its
     // draft. A disagreement between the two is the single most confusing state
     // this feature can be in, and it is now visible instead of inferred.
-    if (g_insp_region.w > 0 && g_insp_region.h > 0)
+    InspRegionCfg _rg_snap;
+    {
+      std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+      _rg_snap = g_insp_region;
+    }
+    if (_rg_snap.w > 0 && _rg_snap.h > 0)
     {
       cJSON *rg = cJSON_CreateObject();
-      cJSON_AddNumberToObject(rg, "x", g_insp_region.x);
-      cJSON_AddNumberToObject(rg, "y", g_insp_region.y);
-      cJSON_AddNumberToObject(rg, "w", g_insp_region.w);
-      cJSON_AddNumberToObject(rg, "h", g_insp_region.h);
-      cJSON_AddStringToObject(rg, "fit", g_insp_region.fit ? "contain" : "center");
+      cJSON_AddNumberToObject(rg, "x", _rg_snap.x);
+      cJSON_AddNumberToObject(rg, "y", _rg_snap.y);
+      cJSON_AddNumberToObject(rg, "w", _rg_snap.w);
+      cJSON_AddNumberToObject(rg, "h", _rg_snap.h);
+      cJSON_AddStringToObject(rg, "fit", _rg_snap.fit ? "contain" : "center");
       // Geometry is sent in both modes -- the box has to be visible in CI or it
       // cannot be placed -- but only FI filters by it. Saying which is which is
       // the whole point: a box drawn on screen that is not selecting anything
@@ -9634,8 +9707,16 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 
     case websock_data::DATA_FRAME:
     {
-      data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
-      // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
+      if (data.data.data_frame.raw == NULL)
+        return -1;
+      // NO NUL is written at raw[rawL] here. The base class removed exactly
+      // that write with the full diagnosis (BPG_Link_Interface_WebSocket.cpp,
+      // DATA_FRAME case): the byte past the payload is the NEXT pipelined WS
+      // frame's FIN/opcode byte, and zeroing it turns that frame into an
+      // opcode-0 continuation -- the rest of the recv batch is misparsed.
+      // This override shadows the fixed base handler, so it must carry the
+      // same fix; toUpperLayer takes an explicit length and never needed the
+      // terminator.
       if (bpg_prot)
       {
         toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal, data.peer);

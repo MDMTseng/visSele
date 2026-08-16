@@ -396,11 +396,15 @@ char* ReadText(const char *filename)
        fseek(handler, 0, SEEK_END);
        // Offset from the first to the last byte, or in other words, filesize
        string_size = ftell(handler);
+       // ftell returns -1 on error (e.g. the path is a directory): the +1
+       // below would malloc 0 bytes and the '\0' write would overflow it.
+       if (string_size < 0) { fclose(handler); return NULL; }
        // go back to the start of the file
        rewind(handler);
 
        // Allocate a string that can hold it all
        buffer = (char*) malloc(sizeof(char) * (string_size + 1) );
+       if (buffer == NULL) { fclose(handler); return NULL; }
 
        // Read it all in one operation
        read_size = fread(buffer, sizeof(char), string_size, handler);
@@ -437,11 +441,15 @@ uint8_t* ReadByte(const char *filename,int *length)
        fseek(handler, 0, SEEK_END);
        // Offset from the first to the last byte, or in other words, filesize
        buf_size = ftell(handler);
+       // Same guards as ReadText: -1 from ftell would malloc (size_t)-1 -> NULL
+       // and fread(NULL,...) is UB.
+       if (buf_size < 0) { fclose(handler); return NULL; }
        // go back to the start of the file
        rewind(handler);
 
        // Allocate a string that can hold it all
        buffer = (uint8_t*) malloc(sizeof(uint8_t) * (buf_size) );
+       if (buffer == NULL) { fclose(handler); return NULL; }
 
        // Read it all in one operation
        read_size = fread(buffer, sizeof(uint8_t), buf_size, handler);
@@ -466,7 +474,7 @@ cJSON* ReadJson(const char* filename)
   if(fileContent==NULL)return NULL;
   
   cJSON *sl_json = cJSON_Parse(fileContent);
-  delete fileContent;
+  free(fileContent);   // ReadText mallocs; delete on it is UB (same fix as SaveJson)
   return sl_json;
 }
 

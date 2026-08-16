@@ -231,7 +231,7 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
       fi = fi_;
       
       if(call_cb)
-        callback(*this,CameraLayer::EV_IMG,context);
+        invokeFrameCallback(CameraLayer::EV_IMG);
     }
     else
     {
@@ -243,7 +243,7 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
       fi_.channelCount = 0;
       fi = fi_;
       if(call_cb)
-        callback(*this,CameraLayer::EV_ERROR,context);
+        invokeFrameCallback(CameraLayer::EV_ERROR);
     }
     return status;
 }
@@ -306,14 +306,14 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadAt(int idx, bool call_cb)
       // reaches the core as a 1-channel frame (see GetLoadedChannels).
       fi_.channelCount = GetLoadedChannels();
       fi = fi_;
-      if(call_cb) callback(*this,CameraLayer::EV_IMG,context);
+      if(call_cb) invokeFrameCallback(CameraLayer::EV_IMG);
     }
     else
     {
       CameraLayer::frameInfo fi_={ timeStamp_us:0, width:0, height:0 };
       fi_.channelCount = 0;
       fi = fi_;
-      if(call_cb) callback(*this,CameraLayer::EV_ERROR,context);
+      if(call_cb) invokeFrameCallback(CameraLayer::EV_ERROR);
     }
     return status;
 }

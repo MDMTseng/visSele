@@ -176,6 +176,25 @@ class CameraLayer{
     int snapFlag=0;
     std::condition_variable conV;
     static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
+
+    // Serializes {callback, context} against the driver frame threads.
+    // SnapFrame swaps the pair in two plain writes; a hardware-triggered frame
+    // landing between them used to run SNAP_Callback with the OLD context (a
+    // NULL dst -> SIGSEGV in copyTo), and a snap timing out mid-invocation
+    // restored the pair and returned while the frame thread was still writing
+    // into the caller's stack Mat. Every driver invocation goes through
+    // invokeFrameCallback below; SnapFrame swaps/restores under the same lock,
+    // so a restore now waits out an in-flight invocation. This mutex guards
+    // ONLY the pair and the invocation -- nothing else may take it, and the
+    // invoked callbacks must never call SnapFrame (they don't: SnapFrame is
+    // command-side, callbacks are frame-side).
+    std::mutex cb_swap_m;
+    CameraLayer::status invokeFrameCallback(int type)
+    {
+      std::lock_guard<std::mutex> _g(cb_swap_m);
+      if (callback == NULL) return NAK;
+      return callback(*this, type, context);
+    }
     public:
     
     static std::string getDriverName(){

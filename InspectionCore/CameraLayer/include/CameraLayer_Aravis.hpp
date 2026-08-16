@@ -111,6 +111,17 @@ protected:
   static constexpr int SATURATION_RUN_ALERT = 3;
   void refreshExposureFloor();
 
+  // Drain gate for the GLib stream/device callbacks. arv_stream_set_emit_signals
+  // (FALSE) + g_signal_handler_disconnect stop FUTURE emissions but do not wait
+  // for one already executing -- and a 5MP demosaic keeps the callback inside
+  // this object for tens of ms. The destructor flips _stream_cb_teardown and
+  // then acquires the gate once: that both blocks a callback that slipped past
+  // the disconnect and waits out the one in flight, before the stream/camera
+  // are unref'd. carousel/HikRobot get the same guarantee by joining their
+  // threads; Aravis has no thread of ours to join, hence this.
+  std::mutex _stream_cb_gate;
+  bool _stream_cb_teardown = false;
+
   static void s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self);
   void STREAM_NEW_BUFFER_CB(ArvStream *stream);
   static void s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self);

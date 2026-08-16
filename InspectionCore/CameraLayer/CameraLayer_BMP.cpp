@@ -472,7 +472,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     // pipeline in some configurations, and it calls back into this layer
     // (ExtractFrame, CalcROI) which now takes the same non-recursive mutex.
     if(ret_status==NAK)
-      callback(*this,CameraLayer::EV_ERROR,context);
+      invokeFrameCallback(CameraLayer::EV_ERROR);
     return ret_status;
 }
 

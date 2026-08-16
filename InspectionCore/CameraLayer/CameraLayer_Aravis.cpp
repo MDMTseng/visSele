@@ -524,6 +524,10 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
 
 void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 {
+  // See _stream_cb_gate in the header: the destructor drains this gate before
+  // freeing the stream/camera this body dereferences.
+  std::lock_guard<std::mutex> _cb_gate(_stream_cb_gate);
+  if (_stream_cb_teardown) return;
   frameCount++;
   if (takeCount >= 0)
     LOGI(">>>>>takeCount:%d", takeCount);
@@ -547,7 +551,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 
     _frame_cache_buffer = NULL;
     pushErrorCode(130130131);
-    callback(*this, CameraLayer::EV_ERROR, context);
+    invokeFrameCallback(CameraLayer::EV_ERROR);
     return;
   }
 
@@ -735,7 +739,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     }
 
     fi=_fi;
-    callback(*this, CameraLayer::EV_IMG, context);
+    invokeFrameCallback(CameraLayer::EV_IMG);
 
     if (takeCount > 0)
     {
@@ -771,7 +775,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     // clears frameNumValid, which the old form did not name at all.
     frameInfo _fi = frameInfo();
     fi = _fi;
-    callback(*this, CameraLayer::EV_ERROR, context);
+    invokeFrameCallback(CameraLayer::EV_ERROR);
   }
   // If the camera reports SIZE_MISMATCH the buffer was sized for the previous
   // payload (e.g. ROI grew). Recreate at the current payload before re-pushing
@@ -861,6 +865,10 @@ void CameraLayer_Aravis::s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer
 
 void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
 {
+  // Same drain gate as the new-buffer callback -- this one fires from the
+  // device signal and dereferences `this` just as freely.
+  std::lock_guard<std::mutex> _cb_gate(_stream_cb_gate);
+  if (_stream_cb_teardown) return;
   LOGE("CTRL lost %s",connection_data.name.c_str());
 
   pushErrorCode(130130130);
@@ -879,7 +887,7 @@ void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
   // NOTE: still no reconnect attempt here -- the layer only reports upward and
   // leaves recovery to the owner, which is why a lost camera needs an explicit
   // teardown and re-construct rather than healing itself.
-  callback(*this, CameraLayer::EV_CTRL_LOST, context);
+  invokeFrameCallback(CameraLayer::EV_CTRL_LOST);
 
 
 }
@@ -1414,8 +1422,15 @@ CameraLayer_Aravis::~CameraLayer_Aravis()
     }
   }
 
-  // Nothing can be mid-callback past this point, so the cached pointer is
-  // meaningless and the chunk state can go.
+  // Disconnecting the signals stopped FUTURE emissions only; a callback that
+  // is already inside its body (a 5MP demosaic takes tens of ms) still holds
+  // `this`. Flip the teardown flag and acquire the gate once: that waits out
+  // the in-flight callback and turns any straggler into an early return.
+  // Only NOW is nothing mid-callback, and the frees below become safe.
+  {
+    std::lock_guard<std::mutex> _cb_gate(_stream_cb_gate);
+    _stream_cb_teardown = true;
+  }
   _frame_cache_buffer = NULL;
 
   if (chunk_parser)

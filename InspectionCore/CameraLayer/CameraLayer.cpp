@@ -78,11 +78,19 @@ CameraLayer::status  CameraLayer::SnapFrame(CameraLayer_Callback snap_cb,void *c
   {
     std::unique_lock<std::mutex> lock(m);
 
-    CameraLayer_Callback _callback=callback;
-    void* _context=context;//replace the callback
-    _snap_cb=snap_cb;
-    callback=SNAP_Callback;
-    context=cb_param;
+    CameraLayer_Callback _callback;
+    void* _context;
+    {
+      // Swap the pair atomically w.r.t. the frame threads (they read it under
+      // the same lock in invokeFrameCallback). Without this, a frame landing
+      // between the two writes ran SNAP_Callback with the old context.
+      std::lock_guard<std::mutex> _cb_guard(cb_swap_m);
+      _callback=callback;
+      _context=context;//replace the callback
+      _snap_cb=snap_cb;
+      callback=SNAP_Callback;
+      context=cb_param;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // A trigger needs a running stream. This is not a belt-and-braces call:
@@ -150,9 +158,15 @@ CameraLayer::status  CameraLayer::SnapFrame(CameraLayer_Callback snap_cb,void *c
       retStatus=NAK;
     }
     snapFlag=0;
-    callback=_callback;
-    context=_context;//recover the callback
-    _snap_cb=NULL;
+    {
+      // The restore waits out any invocation still in flight: on a timeout the
+      // frame thread may be inside SNAP_Callback writing the caller's Mat, and
+      // returning before it finishes hands it a destroyed stack object.
+      std::lock_guard<std::mutex> _cb_guard(cb_swap_m);
+      callback=_callback;
+      context=_context;//recover the callback
+      _snap_cb=NULL;
+    }
   }
   return retStatus;
 }

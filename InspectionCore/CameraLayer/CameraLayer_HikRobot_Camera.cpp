@@ -146,7 +146,7 @@ void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
   inNoError=false;
   LOGI("ExceptionCallBack");
   error_code_list.push_back(nMsgType);
-  callback(*this, CameraLayer::EV_ERROR, context);
+  invokeFrameCallback(CameraLayer::EV_ERROR);
 }
 
 
@@ -427,7 +427,7 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   _prev_frame_us = nDevTimeStamp_us;
 
   fi=_fi;
-  callback(*this, CameraLayer::EV_IMG, context);
+  invokeFrameCallback(CameraLayer::EV_IMG);
 
   if (takeCount > 0)
   {
