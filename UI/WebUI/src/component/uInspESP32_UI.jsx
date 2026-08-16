@@ -12,6 +12,7 @@
 // "Save to NVS" makes it survive a reboot.
 import React, { useState, useEffect, useRef } from 'react';
 import { PerifStatusPanel } from '../perif/PerifStatus';
+import { usePerifConn, getPerifAPI, perifGetObj } from '../perif/PerifAPI';
 import { useSelector, useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Input from 'antd/lib/input';
@@ -309,9 +310,9 @@ const Why = ({ children }) => (
 export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const dispatch = useDispatch();
   const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
-  const CONN = useSelector((s) => s.ConnInfo.uInspESP32_API_ID_CONN_INFO);
+  const CONN = usePerifConn(useSelector((s) => s.ConnInfo.uInspESP32_API_ID));
   const CORE_ID = useSelector((s) => s.ConnInfo.CORE_ID);
-  const withApi = (cb) => dispatch(UIAct.EV_WS_GET_OBJ(API_ID, cb));
+  const withApi = (cb) => cb(getPerifAPI(API_ID));
 
   const [stat, setStat] = useState(undefined);
   const [busy, setBusy] = useState('');
@@ -1392,8 +1393,8 @@ export function UINSP_ESP32_MINI() {
   const dispatch = useDispatch();
   const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
   const CORE_ID = useSelector((s) => s.ConnInfo.CORE_ID);
-  const CONN = useSelector((s) => s.ConnInfo.uInspESP32_API_ID_CONN_INFO);
-  const withApi = (cb) => dispatch(UIAct.EV_WS_GET_OBJ(API_ID, cb));
+  const CONN = usePerifConn(useSelector((s) => s.ConnInfo.uInspESP32_API_ID));
+  const withApi = (cb) => cb(getPerifAPI(API_ID));
 
   const stat = GetObjElement(CONN, ['runningStat']);
   const cfg = GetObjElement(CONN, ['machineSetup']) || {};
@@ -1605,7 +1606,7 @@ export function UINSP_ESP32_MINI() {
       OTH: oth ? { s: oth, n: n0(cnt[oth]) } : null,
       SKIP: n0(cnt.SKIP), UNANS: n0(cnt.UNANSWERED), feed: n0(gate && gate.accept),
     };
-    dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+    perifGetObj(API_ID, ((api) => {
       if (!api) { setRsting(false); setWhy('裝置未連線'); return; }
       Promise.resolve(api.resetRunningStat())
         .then(() => { if (mounted.current) setHist(storeHist([snap, ...hist])); })
@@ -1675,7 +1676,7 @@ export function UINSP_ESP32_MINI() {
           onClick={() => {
             const on = !(running || starting);
             setBusy(true);
-            dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+            perifGetObj(API_ID, ((api) => {
               if (!api) { setBusy(false); return; }
               runSequence(api, on, lastSpeedRef.current)
                 .then((w) => { if (mounted.current) setWhy(w || ''); })
@@ -1715,7 +1716,7 @@ export function UINSP_ESP32_MINI() {
             disabled={running || starting}
             onClick={() => {
               setSnapping(true); setWhy('');
-              dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+              perifGetObj(API_ID, ((api) => {
                 if (!api || typeof api.camSnapWithLight !== 'function') {
                   setSnapping(false); setWhy('韌體或介面不支援 camSnapWithLight'); return;
                 }
@@ -1740,7 +1741,7 @@ export function UINSP_ESP32_MINI() {
             disabled={!inError && !(stat && stat.error_hist && stat.error_hist.length)}
             onClick={() => {
               setClearing(true); setWhy('');
-              dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+              perifGetObj(API_ID, ((api) => {
                 if (!api) { setClearing(false); return; }
                 Promise.resolve(api.clearError())
                   .then(() => api.clearErrorHistory())
@@ -1792,7 +1793,7 @@ export function UINSP_ESP32_MINI() {
             lastSpeedRef.current = pf;
             // Only push it to the device if the plate is already turning.
             if (running || starting) {
-              dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+              perifGetObj(API_ID, ((api) => {
                 if (api) api.machineSetupUpdate({ plate_freq: pf }, false, true);
               }));
             }

@@ -30,6 +30,9 @@ let StateReducer = (state, action) => {
     {
       switch(action.id)
       {
+        // uInsp/uInspESP32/SLID/CNC cases removed 2026-08-16: peripheral
+        // link state lives in src/perif/PerifAPI.js's own store now
+        // (usePerifLink / usePerifConn), not in Redux.
         case CORE_ID:
           
           if(action.type=="WS_UPDATE")
@@ -85,45 +88,9 @@ let StateReducer = (state, action) => {
           break;
 
         
-        case uInsp_API_ID:
-          if(action.type=="WS_UPDATE")
-          {
-            delete action["type"];
-            return {...state,uInsp_API_ID_CONN_INFO:{...state.uInsp_API_ID_CONN_INFO,...action}}
-          }
-          if(GetObjElement(state,["uInsp_API_ID_CONN_INFO","type"]) == action.type)break;
-          return {...state,uInsp_API_ID_CONN_INFO:action}
-          break;
 
-        case uInspESP32_API_ID:
-          if(action.type=="WS_UPDATE")
-          {
-            delete action["type"];
-            return {...state,uInspESP32_API_ID_CONN_INFO:{...state.uInspESP32_API_ID_CONN_INFO,...action}}
-          }
-          if(GetObjElement(state,["uInspESP32_API_ID_CONN_INFO","type"]) == action.type)break;
-          return {...state,uInspESP32_API_ID_CONN_INFO:action}
-          break;
 
-        case SLID_API_ID:
-          if(action.type=="WS_UPDATE")
-          {
-            delete action["type"];
-            return {...state,SLID_API_ID_CONN_INFO:{...state.SLID_API_ID_CONN_INFO,...action}}
-          }
-          if(GetObjElement(state,["SLID_API_ID_CONN_INFO","type"]) == action.type)break;
-          return {...state,SLID_API_ID_CONN_INFO:action}
-          break;
 
-        case CNC_API_ID:
-          if(action.type=="WS_UPDATE")
-          {
-            delete action["type"];
-            return {...state,CNC_API_ID_CONN_INFO:{...state.CNC_API_ID_CONN_INFO,...action}}
-          }
-          if(GetObjElement(state,["CNC_API_ID_CONN_INFO","type"]) == action.type)break;
-          return {...state,CNC_API_ID_CONN_INFO:action}
-          break;
       }
       return state;
     }

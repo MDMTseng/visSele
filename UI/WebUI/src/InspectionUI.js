@@ -20,6 +20,8 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,defFileGeneration,stampRefImagePath,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
+import { usePerifConn, getPerifAPI } from './perif/PerifAPI';
+import { withPerifConns } from './perif/PerifStatus';
 import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -488,8 +490,8 @@ function UInspMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=
   
   const dispatch = useDispatch();
   const uInsp_API_ID = useSelector(state => state.ConnInfo.uInsp_API_ID);
-  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
-  const API= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(uInsp_API_ID,callback));
+  const uInsp_API_ID_CONN_INFO = usePerifConn(uInsp_API_ID);
+  const API= (callback)=>callback(getPerifAPI(uInsp_API_ID));
 
 
   const [limitCD, setLimitCD] = useState(20);
@@ -633,10 +635,10 @@ function SLIDMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=>
   
   const dispatch = useDispatch();
   const SLID_API_ID = useSelector(state => state.ConnInfo.SLID_API_ID);
-  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
-  const API= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+  const SLID_API_ID_CONN_INFO = usePerifConn(SLID_API_ID);
+  const API= (callback)=>callback(getPerifAPI(SLID_API_ID));
 
-  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+  const ACT_WS_GET_OBJ= (callback)=>callback(getPerifAPI(SLID_API_ID));
 
   const [popUp, setPopUp] = useState(false);
 
@@ -3059,7 +3061,13 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
-    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback)),
+    ACT_WS_GET_OBJ: (api_id,callback)=>{
+      // Peripheral APIs live in the module registry now (synchronous); the
+      // Redux round-trip stays only for non-perif objects (DB_WS, Platform).
+      const api = getPerifAPI(api_id);
+      if (api !== undefined) { callback(api); return; }
+      dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback));
+    },
     // Station regions are edited here, on the live image, so the redux copy has
     // to be updated from here too -- otherwise the panel would keep re-adopting
     // the pre-save value the next time machine_custom_setting changed.
@@ -3087,11 +3095,10 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     inspectionReport: state.UIData.edit_info.inspReport,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
-    uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
+
     uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
 
-    SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
-    uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
+
     // Needed to reach the v2 board's API on the way out -- see componentWillUnmount.
     uInspESP32_API_ID:state.ConnInfo.uInspESP32_API_ID,
 
@@ -3118,9 +3125,9 @@ const mergeProps_APP_INSP_MODE = (ownProps, mapProps, dispatchProps) => {
   })
 }
 
-const APP_INSP_MODE_rdx = connect(
+const APP_INSP_MODE_rdx = withPerifConns(connect(
   mapStateToProps_APP_INSP_MODE,
   mapDispatchToProps_APP_INSP_MODE,
-  mergeProps_APP_INSP_MODE)(APP_INSP_MODE);
+  mergeProps_APP_INSP_MODE)(APP_INSP_MODE));
 
 export default APP_INSP_MODE_rdx;

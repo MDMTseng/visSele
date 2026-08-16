@@ -10,8 +10,8 @@
 //    re-render event. The store here is a plain module object with the
 //    useSyncExternalStore contract (subscribe/getSnapshot); components use
 //    usePerifLink(id) and re-render only when THEIR device changes.
-//    (A temporary bridge still dispatches the legacy WS_* actions so
-//    not-yet-migrated consumers keep working; see initPerifModule.)
+//    (Migration complete: consumers read usePerifLink/usePerifConn; the
+//    legacy WS_* bridge and the ConnInfo reducer cases are gone.)
 //
 // 2. ONE file. The classes are coupled, stateful and share the base's
 //    request/response machinery — splitting them into per-device files would
@@ -45,13 +45,11 @@ const perifLog = mkLog('ui.uinsp2');
 
 const deps = {
   sendBPG: null,   // (tl, prop, obj, bin, promiseCBs) -> void ; targets the CORE ws
-  dispatch: null,  // legacy Redux bridge (WS_CONNECTED/WS_DISCONNECTED/WS_UPDATE)
   getState: null,  // Redux getState -- SLID's EM_STOP rules read UIData
 };
 
 export function initPerifModule(d) {
   deps.sendBPG = d.sendBPG;
-  deps.dispatch = d.dispatch || (() => {});
   deps.getState = d.getState || (() => ({}));
   startLinkHealthPoll();
 }
@@ -89,11 +87,30 @@ export function usePerifLink(id) {
   return snap;
 }
 
-// ---- legacy Redux bridge ---------------------------------------------------
-// Not-yet-migrated consumers read ConnInfo.*_CONN_INFO; keep feeding them the
-// exact same actions the classes used to dispatch. Delete this (and the
-// reducer cases) once the last consumer uses usePerifLink.
-function bridge(action) { deps.dispatch(action); }
+// Legacy-shaped view of a link, for consumers written against the old Redux
+// ConnInfo.*_CONN_INFO objects ({type:"WS_CONNECTED", machineStatus, ...}).
+// SUSPECT maps to WS_CONNECTED on purpose: every legacy gate is
+// `type!=="WS_CONNECTED" -> hide the panel`, and a doubtful link is exactly
+// when the operator needs the panel MOST -- the doubt is carried in the
+// separate `suspect` flag (and drawn by PerifStatus), not by hiding things.
+export function linkToLegacyConn(l) {
+  if (!l || (l.state === 'DISCONNECTED' && l.connInfo === undefined)) return undefined;
+  return {
+    type: (l.state === 'CONNECTED' || l.state === 'SUSPECT') ? 'WS_CONNECTED' : 'WS_DISCONNECTED',
+    suspect: l.state === 'SUSPECT',
+    machineStatus: l.machineStatus,
+    machineSetup: l.machineSetup,
+    deviceState: l.deviceState,
+    runningStat: l.runningStat,
+    default_pulse_hz: l.default_pulse_hz,
+    result_count_rate_recent: l.result_count_rate_recent,
+    linkHealth: l.linkHealth,
+  };
+}
+
+export function usePerifConn(id) {
+  return linkToLegacyConn(usePerifLink(id));
+}
 
 // ---- API-object registry ---------------------------------------------------
 // Replaces the ACT_WS_GET_OBJ round-trip through Redux for peripheral ids:
@@ -101,6 +118,9 @@ function bridge(action) { deps.dispatch(action); }
 const registry = {};
 export function registerPerifAPI(id, api) { registry[id] = api; }
 export function getPerifAPI(id) { return registry[id]; }
+// Call-shape twin of dispatch(EV_WS_GET_OBJ(id, cb)) for mechanical migration:
+// same paren count, synchronous.
+export function perifGetObj(id, cb) { return cb(getPerifAPI(id)); }
 
 // ---- central core-side link-health poll ------------------------------------
 // One poller for the whole module (not one per widget): perif_pairing.link is
@@ -177,7 +197,6 @@ export class Perif_API_Base {
   // PING reply with the envelope fields already stripped.
   onPingStatus(machineStatus) {
     publish(this.id, { machineStatus });
-    bridge({ type: 'WS_UPDATE', id: this.id, machineStatus });
   }
 
   onSetupFileLoaded(machInfo) {}
@@ -200,7 +219,6 @@ export class Perif_API_Base {
     if (this.inReconnection == true) return false;
 
     publish(this.id, { state: 'CONNECTING', connInfo });
-    bridge({ type: 'WS_DISCONNECTED', id: this.id, data: undefined });
     this.connInfo = connInfo;
     this.inReconnection = true;
     // Not every machine keeps its configuration on the host. See
@@ -229,14 +247,12 @@ export class Perif_API_Base {
               this._failN++;
               this._nextAttemptAt = Date.now() + Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * Math.pow(2, this._failN - 1));
               publish(this.id, { state: 'DISCONNECTED' });
-              bridge({ type: 'WS_DISCONNECTED', id: this.id, data: PD });
               break;
             case 'CONNECT':
               this.CONN_ID = PD_data.CONN_ID;
               this._failN = 0;
               this._nextAttemptAt = 0;
               publish(this.id, { state: 'CONNECTED', CONN_ID: this.CONN_ID });
-              bridge({ type: 'WS_CONNECTED', id: this.id, data: PD });
 
               if (this.machineSetup !== undefined) {
                 this.onBeforeSetupPush();
@@ -256,7 +272,6 @@ export class Perif_API_Base {
         this._failN++;
         this._nextAttemptAt = Date.now() + Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * Math.pow(2, this._failN - 1));
         publish(this.id, { state: 'DISCONNECTED' });
-        bridge({ type: 'WS_DISCONNECTED', id: this.id, data: undefined });
       },
     });
   }
@@ -308,7 +323,6 @@ export class Perif_API_Base {
   machineSetupUpdate(newMachineInfo, doReplace = false) {
     this.machineSetup = doReplace == true ? newMachineInfo : { ...this.machineSetup, ...newMachineInfo };
     publish(this.id, { machineSetup: this.machineSetup });
-    bridge({ type: 'WS_UPDATE', id: this.id, machineSetup: this.machineSetup });
     this.send(uinspRegroup({ type: 'set_setup', ...newMachineInfo }),
       (ret) => {
         log.debug('[machine-setup] set_setup ack', ret);
@@ -460,17 +474,14 @@ export class uInsp_API extends Perif_API_Base {
   onSetupFileLoaded(machInfo) {
     this.default_pulse_hz = machInfo.pulse_hz;
     publish(this.id, { default_pulse_hz: this.default_pulse_hz });
-    bridge({ type: 'WS_UPDATE', id: this.id, default_pulse_hz: this.default_pulse_hz });
   }
 
   onSetupFileSaved() {
     publish(this.id, { default_pulse_hz: this.machineSetup.pulse_hz });
-    bridge({ type: 'WS_UPDATE', id: this.id, default_pulse_hz: this.machineSetup.pulse_hz });
   }
 
   onBeforeSetupPush() {
     publish(this.id, { default_pulse_hz: this.default_pulse_hz });
-    bridge({ type: 'WS_UPDATE', id: this.id, default_pulse_hz: this.default_pulse_hz });
   }
 
   onPingStatus(machineStatus) {
@@ -520,7 +531,6 @@ export class uInsp_API extends Perif_API_Base {
     }
 
     publish(this.id, { machineStatus, result_count_rate_recent: this.res_count_rate_recent });
-    bridge({ type: 'WS_UPDATE', id: this.id, machineStatus, result_count_rate_recent: this.res_count_rate_recent });
   }
 }
 
@@ -695,7 +705,6 @@ export class uInspESP32_API extends Perif_API_Base {
     this.machineSetup = undefined;
 
     publish(this.id, { machineSetup: this.cfg, deviceState: this.deviceState });
-    bridge({ type: 'WS_UPDATE', id: this.id, machineSetup: this.cfg, deviceState: this.deviceState });
     if (push !== true) return;
     this.send(uinspRegroup({ type: 'set_setup', ...settable }),
       (ret) => log.debug('[machine-setup] set_setup ack', ret),
@@ -759,7 +768,6 @@ export class uInspESP32_API extends Perif_API_Base {
     return this.sendP({ type: 'get_running_stat' }).then((ret) => {
       this.runningStat = ret;
       publish(this.id, { runningStat: ret });
-      bridge({ type: 'WS_UPDATE', id: this.id, runningStat: ret });
       return ret;
     });
   }

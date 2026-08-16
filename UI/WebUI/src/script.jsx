@@ -530,14 +530,11 @@ class APPMasterX extends React.Component {
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
 
       uInspESP32_API_ID:state.ConnInfo.uInspESP32_API_ID,
-      uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
 
       SLID_API_ID:state.ConnInfo.SLID_API_ID,
-      SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
 
 
       CNC_API_ID:state.ConnInfo.CNC_API_ID,
-      CNC_API_ID_CONN_INFO:state.ConnInfo.CNC_API_ID_CONN_INFO,
 
 
       Platform_API_ID:state.ConnInfo.Platform_API_ID,
@@ -1118,7 +1115,6 @@ class APPMasterX extends React.Component {
     // getPerifAPI().
     initPerifModule({
       sendBPG: (tl, prop, obj, bin, cbs) => comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, tl, prop, obj, bin, cbs),
-      dispatch: (a) => StoreX.dispatch(a),
       getState: () => StoreX.getState(),
     });
     {

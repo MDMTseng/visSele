@@ -14,6 +14,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
+import { usePerifConn } from './perif/PerifAPI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import CalibrationUI_rdx from './CalibrationUI';
 import InstInspUI_rdx from './InstInspUI';
@@ -279,8 +280,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
   const CAM1_ID_CONN_INFO = useSelector(state => state.ConnInfo.CAM1_ID_CONN_INFO);
-  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
-  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+  const uInsp_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.uInsp_API_ID));
+  const SLID_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.SLID_API_ID));
 
   
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);

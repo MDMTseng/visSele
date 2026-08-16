@@ -11,7 +11,30 @@
 // any of these moving while parts run means the machine is not sorting.
 
 import React from 'react';
-import { usePerifLink } from './PerifAPI';
+import { useSelector } from 'react-redux';
+import { usePerifLink, usePerifConn } from './PerifAPI';
+
+// HOC for CLASS components (they cannot hook): injects the three legacy
+// conn-info props APP_INSP_MODE reads, sourced from the module store instead
+// of Redux. Delete when InspectionUI's inner class goes functional.
+export function withPerifConns(Comp) {
+  return function WithPerifConns(props) {
+    const uInspId = useSelector((s) => s.ConnInfo.uInsp_API_ID);
+    const esp32Id = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
+    const slidId = useSelector((s) => s.ConnInfo.SLID_API_ID);
+    const uInsp = usePerifConn(uInspId);
+    const esp32 = usePerifConn(esp32Id);
+    const slid = usePerifConn(slidId);
+    return (
+      <Comp
+        {...props}
+        uInsp_API_ID_CONN_INFO={uInsp}
+        uInspESP32_API_ID_CONN_INFO={esp32}
+        SLID_API_ID_CONN_INFO={slid}
+      />
+    );
+  };
+}
 
 const STATE_COLOR = {
   CONNECTED: '#52c41a',      // green
