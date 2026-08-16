@@ -440,8 +440,14 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave, 
         onClick={() => {
           const patch = built();
           if (onApply) onApply(patch);
-          if (onSave) onSave({ ...(machineSetting || {}), ...patch });
-          setDirty(false);
+          // Keep `dirty` until the save actually SUCCEEDS. onSave can refuse
+          // (a failed re-read must not clobber the on-disk file -- see
+          // InspectionUI), and clearing dirty unconditionally disabled this
+          // very button and hid 放棄, contradicting the "請重試" toast and
+          // leaving live state (onApply already pushed ST) diverged from disk
+          // with no "未存檔" indicator. Gate on the onDone(ok) callback.
+          if (onSave) onSave({ ...(machineSetting || {}), ...patch }, (ok) => { if (ok) setDirty(false); });
+          else setDirty(false);
         }}>套用並存檔</Button>
       {/* Discard = drop the in-session edit and re-adopt the machine's own
           setting. Clearing loadedFrom is what forces that re-adopt: the effect

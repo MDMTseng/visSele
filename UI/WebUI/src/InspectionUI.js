@@ -858,7 +858,12 @@ class ObjInfoList extends React.Component {
             // stopped enforcing its station. The core drops it on restart.
             this.props.WSCMD_CB("ST", 0, { InspAreaBypass: !!on });
           }}
-          onSave={(setting) => {
+          onSave={(setting, onDone) => {
+            // onDone(ok) tells the panel whether to clear its dirty flag. A
+            // refused/failed save reports ok=false so the panel keeps "未存檔"
+            // and the retry affordance (the Save/放棄 buttons) instead of
+            // pretending it saved.
+            const done = (ok) => { if (typeof onDone === "function") onDone(ok); };
             // Read-merge-write, not write-the-cache. This handler and MAINUI's
             // settings panel both used to serialize their OWN copy of the whole
             // file -- a copy cached at connect and never refreshed -- so
@@ -880,8 +885,9 @@ class ObjInfoList extends React.Component {
                 { resolve: () => {
                     this.props.ACT_machine_custom_setting_Update({ ...setting, ..._s });
                     log.info("[station] regions saved (merged onto the on-disk file)");
+                    done(true);
                   },
-                  reject: (e) => log.error("[station] save failed", e) });
+                  reject: (e) => { log.error("[station] save failed", e); done(false); } });
             };
             this.props.WSCMD_CB("LD", 0, { filename: "data/machine_setting.json" },
               undefined,
@@ -901,11 +907,13 @@ class ObjInfoList extends React.Component {
                     // someone else's work.
                     log.error("[station] could not re-read machine_setting.json -- NOT saving (retry when the core answers)");
                     message.error("無法讀取 machine_setting.json，工位設定未儲存 — 請重試");
+                    done(false);
                   }
                 },
                 reject: () => {
                   log.error("[station] re-read failed -- NOT saving (retry when the core answers)");
                   message.error("無法讀取 machine_setting.json，工位設定未儲存 — 請重試");
+                  done(false);
                 } });
           }} />
       </>}

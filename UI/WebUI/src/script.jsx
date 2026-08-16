@@ -1006,9 +1006,17 @@ class APPMasterX extends React.Component {
 
               }
               // console.log(camInfo);
-              
+
             }
-            
+            else
+            {
+              // A reply with no GS packet: neither branch above ran, so
+              // WITHOUT this the caller's resolve/reject never fires ->
+              // queryCam's _next never runs -> inFlight sticks true -> the
+              // whole camera poll chain dies silently and permanently. Treat
+              // a GS-less reply as a soft failure and let the poll retry.
+              reject(stacked_pkts,P);
+            }
           },
           reject:(e)=>{
             StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID,data:e});
