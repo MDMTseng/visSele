@@ -406,7 +406,7 @@ every ≤10s during the outage it exists to show. Tagged `suspectSrc`; the poll
 only promotes what it demoted.
 
 ### 6.12 `soak.mjs` reads `region_dropped` at the wrong path — OPEN (cheap)
-`UI/WebUI/tools/webctl/soak.mjs:40` reads `j.station.region_dropped`, but the
+`UI/WebUI/tools/webctl/soak.mjs:52` reads `j.station.region_dropped`, but the
 core emits `region_dropped` at RP top level (`FeatureReport_UTIL.cpp:523`), so
 soak's dropped counter always reads 0. One-line fix. (Found by the cross-layer
 test-design pass.)
@@ -419,6 +419,57 @@ path is only reported via the load path. Fake-camera only, harmless today.
 The carousel never stamps `pcnt` (always -1), so the pairing-disagreement path
 is untestable without a real camera or a carousel pcnt stamp. Not a defect;
 a test-coverage hole to remember.
+
+## Tier 6b — found by the 8-agent re-review (2026-08-17)
+
+Eight agents re-checked this sprint's commits, tests, and docs. All four
+commit clusters (BACPAC P0, WS locks, doorbells, WebUI runtime) verified
+CORRECT. What the review turned up:
+
+### 6.15 `_queryCam` reply-with-no-GS wedges the camera poll forever — FIXED (`script.jsx`)
+The camera poll's resolve callback only acted `if(GS!==undefined)`; a reply
+carrying no GS packet ran neither resolve nor reject, so queryCam's `_next`
+never fired, `inFlight` stuck true, and the whole camera poll chain died
+silently and permanently. Pre-existing (not from the doorbell work, which
+merely made the stuck-inFlight state reachable). Fixed: a GS-less reply now
+takes the reject/retry path. (PerifAPI's `try/finally` was the pattern.)
+
+### 6.16 station-save refuse left a misleading dirty half-state — FIXED (`StationRegionPanel.jsx` / `InspectionUI.js`)
+Exposed by 6.10's fallback→refuse change: the panel cleared `dirty`
+unconditionally after `onSave`, so a REFUSED save disabled the Save button and
+hid 放棄 while the "請重試" toast said otherwise — and `onApply` had already
+pushed the region live, so live state diverged from disk with no "未存檔"
+indicator. Fixed: `onSave(setting, onDone)` reports success; `setDirty(false)`
+is now gated on `onDone(true)`.
+
+### 6.17 perif SUSPECT can latch orange on an idle-but-healthy link — OPEN (core-side, medium)
+A link suspected by 3 failed verdicts stays SUSPECT because the WebUI clear
+(`PerifAPI.js` `_sendPing` recovery) requires the CORE's `g_perifLinkSuspect`
+to be false, and the core only clears that on a successful tx or a port
+reopen. On an idle machine no verdicts are sent, so the flag — hence the
+orange chip — persists on an actually-healthy link until the next real verdict
+or a manual reconnect. Pre-existing; a clean fix needs a core-side idle-clear
+(e.g. clear suspect after N successful PINGs, not only verdicts).
+
+### 6.18 bare `perifCH` read in the perif doorbell — NOTED (LOW, benign)
+`CamStateWatchThread` / `pushPerifStateDoorbell` read `bpg_pi.perifCH != NULL`
+without `perif_tx_lock` (which `delete_PeripheralChannel` swaps under). Both
+sites only TEST for NULL, never dereference, and the delete is of a different
+captured pointer — worst case reads a stale non-NULL that is never touched.
+A stricter fix is `std::atomic<PerifChannel*>`; not required for correctness.
+
+### 6.19 test false-greens in cycle.mjs — FIXED (all three)
+The 8-agent pass caught three cycle.mjs assertions that passed without testing
+what they claimed: (a) the inst-check required `sig360info.reports.length>0`,
+but loading the def SEEDS that from its embedded signature, so EX's own effect
+was never observed — fixed by clearing sig360info before EX and requiring
+repopulation; (b) def-hash "stability" re-read the hash from a freshly loaded
+file each lap, wiping the round-trip's in-memory mutations before the read —
+replaced with a within-lap full-limit-set round-trip snapshot; (c) the NG-range
+check accepted ANY change, not the tag's specific 16.47 — now asserts the exact
+value. Plus toMain's SPLASH socket-kick made robust (fresh state, >10s
+threshold, skip while CONNECTING) and doorbell.mjs's suppression window widened
+15s→40s with a best-effort camera_state currency cross-check.
 
 ---
 

@@ -29,7 +29,7 @@ All in `UI/WebUI/tools/webctl/`.
 | `fd_leak.mjs <n>` | failed TCP CONNECTs leak no fds | lsof count unchanged |
 | `churn.mjs [rounds]` | WS teardown under fire: waves of subscribed clients hard-destroyed mid-stream + a stalled client FIN'd mid-backpressure; fd-reuse probes assert clean first bytes; freeze-gap ≤6s asserted | RESULT line all-true, exit 0 (~60s). Optionally grep core stdout for `deferred close:` — nearly unreachable by design (subscribersLock ordering), it is a safety net, not a common path |
 | `doorbell.mjs` | state doorbells end-to-end: 15s suppression (0 pkts on 0xCA11) + RC `cam_doorbell_ping` → SS/GS/SS triplet + perif doorbell (0xCA12) on REAL PD CONNECT/DISCONNECT transitions | suppression/triplet/perif all PASS (~30s, non-destructive) |
-| `bpg_sweep.mjs [--include-crashers]` | ALL 16 handled TLs × {valid → reply-shape+ACK, malformed → error path, framing abuse → truncated/lying/giant headers, unknown TL, NUL-guard, multi-packet}; canonical GS liveness after EVERY case. Safe variants for the destructive TLs (SV/CI/FI/RC/PD/SC). `--include-crashers` adds the PD-no-type case (SIGSEGV'd an unpatched core; the sweep's negative control reproduced it) | 34/34, ~30s. Raised BPG shape-coverage ~15%→~90% vs daemon_fuzz |
+| `bpg_sweep.mjs [--include-crashers]` | 15 of the 17 handled TLs (EX + SF excluded as heavy/stateful) × {valid → reply-shape+ACK, malformed → error path, framing abuse → truncated/lying/giant headers, unknown TL, NUL-guard, multi-packet}; canonical GS liveness after EVERY case. Safe variants for the destructive TLs (SV/CI/FI/RC/PD/SC). `--include-crashers` adds the PD-no-type case (SIGSEGV'd an unpatched core; the sweep's negative control reproduced it) | 35/35 with crashers (34 without), ~30s. Far tighter reply-shape coverage than daemon_fuzz (5 TLs, HR-liveness only) |
 | `dv_bench.mjs <secs>` | image-stream bytes/fps, raw vs JPEG | default ~105KB/IM msg (JPEG 85) |
 | `perifstat.mjs` / `caminfo.mjs` | GS readouts: `perif_pairing.link`, `camera_info.setup_failed`, `lens_calib_loaded` | eyeball |
 | browser `window.__GP_PERIF_LINKS__()` | the WebUI perif link store (states + core link counters) — feeds PerifStatus | four ids registered; linkHealth mirrors perifstat |
@@ -74,7 +74,7 @@ the new snapshot by eye before committing it.
    in-page eval (see toMain in cycle.mjs/flows.mjs), and kick the socket if
    SPLASH persists.
 5. uInsp board-attached harnesses (~25) are separate:
-   `Peripheral/uInspESP32/TESTS.md`.
+   `Peripheral/uInspESP32/tools/TESTS.md`.
 
 ## Gaps (nothing covers these today)
 
