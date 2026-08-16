@@ -208,16 +208,21 @@ async function toMain(maxMs = 40000) {
     // exit -- our EXIT then landed on MAIN, and MAIN+EXIT -> SPLASH, which
     // only leaves on REMOTE_SYSTEM_READY (an HR, i.e. a reconnect): a dead
     // end with the WS still up. Cost one lap of cycle.mjs to find.
-      await ev(`(function(){var v=JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value);
+      const v = await ev(`(function(){var v=JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value);
         if(v.indexOf('INSP_MODE')>=0||v.indexOf('DEFCONF_MODE')>=0||v.indexOf('INSTINSP_MODE')>=0)
           window.__GP_STORE__.dispatch({type:'EXIT'});
         return v;})()`);
-    // SPLASH with the WS still connected is that dead end -- force a
-    // reconnect so the HR greeting re-fires READY.
-    if (st === '"SPLASH"' && splashN++ > 6) {
-      splashN = 0;
-      await ev(`try{window.__GP_WS__.inst.websocket.close()}catch(e){}; 'kick'`);
-    }
+    // SPLASH with the WS still connected is a dead end (only an HR from a
+    // reconnect leaves it). Force a reconnect off the FRESH `v`, at most once
+    // per >10s (the reconnect delay), never while already CONNECTING.
+    if (v === '"SPLASH"') {
+      splashN++;
+      const rs = await ev(`(window.__GP_WS__.inst.websocket||{}).readyState`);
+      if (splashN >= 12 && rs !== 0) {
+        splashN = 0;
+        await ev(`try{window.__GP_WS__.inst.websocket.close()}catch(e){}; 'kick'`);
+      }
+    } else splashN = 0;
     await sleep(1000);
   }
   throw new Error('could not reach MAIN');

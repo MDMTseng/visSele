@@ -45,8 +45,12 @@ ws.on('error', e => { console.error('ws error:', e.message); process.exit(2); })
 await new Promise(r => ws.on('open', () => setTimeout(r, 400)));
 ws.send(frame('SB', 0, pg++, { stream: true }));
 
-console.log('phase 1: 15s subscribed idle -- expecting 0 doorbell packets...');
-await new Promise(r => setTimeout(r, 15000));
+// 40s, not 15s: the watcher pushes only on CHANGE, so a flap whose period is
+// longer than the window can show 0 and pass. 40s is > 2x the slowest known
+// reconnect cadence (client 10s reconnect, ~5s camera reconnect), so a real
+// steady-state flapper has to reveal itself.
+console.log('phase 1: 40s subscribed idle -- expecting 0 doorbell packets...');
+await new Promise(r => setTimeout(r, 40000));
 const idleCount = bell.length;
 console.log(`  doorbell packets while idle: ${idleCount}`);
 
@@ -58,12 +62,38 @@ await new Promise(r => setTimeout(r, 3000));
 const shape = bell.map(p => p.t).join(',');
 const gs = bell.find(p => p.t === 'GS');
 const cs = gs && gs.j && gs.j.camera_state;
+// Cross-check the doorbell against a direct camera_info query: the doorbell's
+// camera_state must MATCH the live core state, not just be well-typed (a
+// regression to a hardcoded stub would pass a type-only check).
+let directCam = null;
+{
+  const qp = pg++;
+  const got = [];
+  const onMsg = (d) => {
+    const b = new Uint8Array(d instanceof ArrayBuffer ? d : d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength));
+    if (((b[3] << 8) | b[4]) !== qp) return;
+    if (String.fromCharCode(b[0], b[1]) !== 'GS') return;
+    try { got.push(JSON.parse(dec.decode(b.subarray(H)).replace(/\0+$/, ''))); } catch {}
+  };
+  ws.on('message', onMsg);
+  ws.send(frame('GS', qp, { items: ['camera_info'] }));
+  await new Promise(r => setTimeout(r, 1500));
+  ws.off('message', onMsg);
+  const ci = got.find(j => j.camera_info) && got.find(j => j.camera_info).camera_info[0];
+  if (ci) directCam = { cam_status: ci.cam_status, present: ci.present };
+}
+// Currency cross-check is BEST-EFFORT: the core routes a lone GS camera_info
+// reply in a way this side-query doesn't always capture, so a null directCam
+// must not fail the triplet -- but when we DO get it, a mismatch is a real
+// failure (a doorbell reporting stale/stub state).
+const csMismatch = cs && directCam && (cs.cam_status !== directCam.cam_status || cs.present !== directCam.present);
 const okTriplet =
   shape === 'SS,GS,SS' &&
   bell[0].j && bell[0].j.start === true &&
   cs && typeof cs.cam_status === 'number' && typeof cs.present === 'boolean' &&
+  !csMismatch &&
   bell[2].j && bell[2].j.start === false;
-console.log(`  got [${shape}] camera_state=${JSON.stringify(cs)}`);
+console.log(`  got [${shape}] camera_state=${JSON.stringify(cs)} vs direct camera_info=${JSON.stringify(directCam)} ${directCam ? (csMismatch ? 'MISMATCH' : 'match') : '(direct query not captured -- currency check skipped)'}`);
 
 // Phase 3 (perif doorbell, pgID 0xCA12): a PD CONNECT to a throwaway local
 // TCP "board" flips perif_pairing.link.connected -> the watcher must push a
@@ -86,7 +116,11 @@ ws.send(frame('PD', 0, pg++, { type: 'CONNECT', ip: '127.0.0.1', port: 5998, mac
 await new Promise(r => setTimeout(r, 3000));
 const gotConn = pbell.some(p => p.t === 'GS' && p.j && p.j.perif_state && p.j.perif_state.connected === true);
 ws.send(frame('PD', 0, pg++, { type: 'DISCONNECT' }));
-await new Promise(r => setTimeout(r, 3000));
+await new Promise(r => setTimeout(r, 4000));
+// gotConn keys on connected:true, gotDisc on connected:false -- distinct
+// values, so a leftover can't cross-satisfy them; a connected:false only comes
+// from a real disconnect transition. (Watermarking the two apart proved
+// fragile: the false can legitimately arrive interleaved.)
 const gotDisc = pbell.some(p => p.t === 'GS' && p.j && p.j.perif_state && p.j.perif_state.connected === false);
 srv.close();
 console.log(`  perif doorbells: ${pbell.filter(p => p.t === 'GS').length} (connect seen: ${gotConn}, disconnect seen: ${gotDisc})`);

@@ -55,16 +55,23 @@ async function toMain(maxMs = 40000) {
     // exit -- our EXIT then landed on MAIN, and MAIN+EXIT -> SPLASH, which
     // only leaves on REMOTE_SYSTEM_READY (an HR, i.e. a reconnect): a dead
     // end with the WS still up. Cost one lap of cycle.mjs to find.
-      await ev(`(function(){var v=JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value);
+      const v = await ev(`(function(){var v=JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value);
         if(v.indexOf('INSP_MODE')>=0||v.indexOf('DEFCONF_MODE')>=0||v.indexOf('INSTINSP_MODE')>=0)
           window.__GP_STORE__.dispatch({type:'EXIT'});
         return v;})()`);
-    // SPLASH with the WS still connected is that dead end -- force a
-    // reconnect so the HR greeting re-fires READY.
-    if (st === '"SPLASH"' && splashN++ > 6) {
-      splashN = 0;
-      await ev(`try{window.__GP_WS__.inst.websocket.close()}catch(e){}; 'kick'`);
-    }
+    // SPLASH with the WS still connected is a dead end (only REMOTE_SYSTEM_READY
+    // -- an HR from a reconnect -- leaves it). Force a reconnect. Use the FRESH
+    // `v`, not the stale pre-dispatch `st`; the reconnect is scheduled at +10s
+    // (BPG_WS.js), so kick at most once per >10s and never while the socket is
+    // already CONNECTING (a kick there aborts the dial and reschedules +10s).
+    if (v === '"SPLASH"') {
+      splashN++;
+      const rs = await ev(`(window.__GP_WS__.inst.websocket||{}).readyState`);
+      if (splashN >= 12 && rs !== 0) {   // 0 = CONNECTING
+        splashN = 0;
+        await ev(`try{window.__GP_WS__.inst.websocket.close()}catch(e){}; 'kick'`);
+      }
+    } else splashN = 0;
     await sleep(1000);
   }
   throw new Error('could not reach MAIN (state=' + await state() + ')');
@@ -101,6 +108,14 @@ async function loadFixtureIntoStore() {
 // The editor's inst-check, by the same action the 檢測 button dispatches (EX
 // snap exam). Resolves when edit_info.inspReport carries a report.
 async function editorInstCheck() {
+  // Clear sig360info FIRST. Loading the def seeds sig360info from its embedded
+  // signature, so a post-EX `reports.length>0` check proved nothing -- it
+  // passed on the def seed even if EX silently downgraded/failed. Null it, then
+  // require EX to repopulate it: now the assertion actually tests EX.
+  await ev(`window.__GP_STORE__.dispatch({type:'SIG360_Report_Update',data:{reports:[]}}); 'cleared'`);
+  await sleep(200);
+  const cleared = await ev(`(function(){var si=window.__GP_STORE__.getState().UIData.edit_info.sig360info;return (si&&si.reports&&si.reports.length)||0;})()`);
+  if (cleared !== 0) throw new Error('could not clear sig360info before inst-check (got ' + cleared + ')');
   await ev(`(function(){
     var S=window.__GP_STORE__;var CORE=S.getState().ConnInfo.CORE_ID;
     window.__exDone=false;window.__exErr=null;
@@ -218,6 +233,16 @@ for (let lap = 1; lap <= LAPS; lap++) {
     if (hash0 === null) hash0 = before.hash;
     else if (before.hash !== hash0) throw new Error(`def hash drifted: ${hash0} -> ${before.hash}`);
 
+    // Within-lap round-trip integrity: snapshot id-8's FULL limit set (not
+    // just USL) right before entering inspection. After restore we require a
+    // byte-identical snapshot -- this is the real "no state leaked across the
+    // editor->insp->editor round-trip" test the header advertises, and it
+    // catches a leak in ANY limit field (USL, LSL, ...), not only USL.
+    const shapeSnap = (label) => ev(
+      `(function(){var m=window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList.find(x=>x.id===8);return m?JSON.stringify({USL:m.USL,LSL:m.LSL,UCL:m.UCL,LCL:m.LCL}):null;})()`
+    );
+    const beforeShape = await shapeSnap();
+
     // -- inspection ------------------------------------------------------
     await toMain(); await dismissBlockers();
     await clickModeTagAndPlay();
@@ -225,19 +250,26 @@ for (let lap = 1; lap <= LAPS; lap++) {
     const during = await ev(
       `(function(){var s=window.__GP_STORE__.getState().UIData;var m=s.edit_info._obj.shapeList.find(x=>x.id===8);return {usl:(m&&m.USL!==undefined)?m.USL:null};})()`
     );
-    const overrideOK = tag.length ? (during.usl !== before.usl) : (during.usl === before.usl);
-    if (!overrideOK) throw new Error(`NG-range wrong in insp: tag=${JSON.stringify(tag)} usl ${before.usl} -> ${during.usl}`);
+    // Assert the EXACT NG range in force, not merely "changed": TAGX overrides
+    // id-8 USL to 16.47; no tag keeps the base 8.7. A loose "!== before"
+    // passed for a wrong value (stale/LSL/garbage) -- 16.47 pins it.
+    const TAG_USL = 16.47, BASE_USL = 8.7;
+    const expectUsl = tag.length ? TAG_USL : BASE_USL;
+    if (during.usl !== expectUsl)
+      throw new Error(`NG-range wrong in insp: tag=${JSON.stringify(tag)} expected USL ${expectUsl}, got ${during.usl} (before ${before.usl})`);
 
     // -- exit + restore ---------------------------------------------------
     const logMark = Date.now();
     await ev(`window.__GP_STORE__.dispatch({type:'EXIT'}); 'out'`);
-    let after = { usl: null };
+    let after = { usl: null }, afterShape = null;
     for (let i = 0; i < 25; i++) {
       await sleep(100);
       after = await ev(`(function(){var s=window.__GP_STORE__.getState().UIData;var m=s.edit_info._obj.shapeList.find(x=>x.id===8);return {usl:(m&&m.USL!==undefined)?m.USL:null};})()`);
-      if (after.usl === before.usl) break;
+      afterShape = await shapeSnap();
+      if (afterShape === beforeShape) break;
     }
-    if (after.usl !== before.usl) throw new Error(`USL not restored: ${during.usl} stayed ${after.usl}`);
+    if (afterShape !== beforeShape)
+      throw new Error(`round-trip leak: id-8 limits ${beforeShape} -> ${afterShape}`);
     if (tag.length) {   // a tag was applied -> the component MUST log its restore
       const logs = await api('/logs').catch(() => null);
       const arr = (logs && (logs.logs || logs)) || [];

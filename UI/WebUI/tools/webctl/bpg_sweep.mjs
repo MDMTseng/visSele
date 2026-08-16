@@ -77,10 +77,14 @@ async function fire(bytes, pgid, ms = 800) {
   return inbox.get(pgid) || [];
 }
 
-// liveness: a GS on a fresh pgID must return a GS packet carrying binary_path
+// liveness: a GS on a fresh pgID must return a GS packet carrying binary_path.
+// 600ms, not 2s: GS binary_path is sub-100ms, so a generous window would mask
+// a latency regression while still calling the core "alive". (It only proves
+// main-dispatch-lock health + path resolution -- a wedged stream/camera/insp
+// thread doesn't hold that lock and would still answer GS.)
 async function alive() {
   const p = nextPg();
-  const pkts = await fire(frame('GS', p, { items: ['binary_path'] }), p, 2000);
+  const pkts = await fire(frame('GS', p, { items: ['binary_path'] }), p, 600);
   return pkts.some((k) => k.tl === 'GS' && k.data && typeof k.data.binary_path === 'string');
 }
 
@@ -124,12 +128,19 @@ await CASE('A4 GS perif_pairing', (p) => frame('GS', p, { items: ['perif_pairing
   (k) => { const g = pkt(k, 'GS'); const l = g && g.data.perif_pairing && g.data.perif_pairing.link; return (l && 'connected' in l) || 'no perif_pairing.link.connected'; });
 await CASE('A5 FB list .', (p) => frame('FB', p, { path: '.', depth: 1 }),
   (k) => (pkt(k, 'FB') || (ss(k) && ss(k).data.cmd === 'FB')) ? true : 'no FB/SS-FB reply');
+await CASE('A6 LB /nonexistent (error path)', (p) => frame('LB', p, { filename: '/nonexistent' }),
+  (k) => (ss(k) && ss(k).data.cmd === 'LB' && ss(k).data.ACK === false) || 'LB bad-file not ACK-false');
 await CASE('A7 LD {} (nothing loaded)', (p) => frame('LD', p, {}),
   (k) => (ss(k) && ss(k).data.cmd === 'LD' && ss(k).data.ACK === true) || 'LD{} not ACK-true');
 await CASE('A8 SC log_dump', (p) => frame('SC', p, { type: 'log_dump' }),
   (k) => (pkt(k, 'SR') || ss(k)) ? true : 'no SR/SS for SC log_dump');
 await CASE('A9 SC exec (must be gated off)', (p) => frame('SC', p, { type: 'exec', cmd: 'echo hi' }),
-  (k) => { const s = ss(k); const sr = pkt(k, 'SR'); const gated = (sr && sr.data && /disabl/i.test(JSON.stringify(sr.data))) || (s && s.data.ACK === false); return gated || 'exec not gated (SR error/ACK-false expected)'; });
+  // Positive assertion: SC always ends session_ACK=true (the exec gate does
+  // not flip it), so the ONLY signal that exec is disabled is the SR error
+  // string. Asserting the error directly (not "SR-error OR ACK-false", whose
+  // ACK-false leg is dead) means a regression that stops emitting the string
+  // while still not executing (or worse, executes and emits {output}) fails.
+  (k) => { const sr = pkt(k, 'SR'); return (sr && sr.data && /disabl/i.test(JSON.stringify(sr.data)) && !('output' in (sr.data || {}))) || 'exec not gated (SR must carry "disabled" and no output)'; });
 await CASE('A10 II /nonexistent (no camera touch)', (p) => frame('II', p, { imgsrc: '/nonexistent' }),
   (k) => (ss(k) && ss(k).data.cmd === 'II' && ss(k).data.ACK === false) || 'II bad-src not ACK-false');
 await CASE('A11 RC cam_doorbell_ping', (p) => frame('RC', p, { target: 'cam_doorbell_ping' }),
@@ -157,10 +168,12 @@ await CASE('B11 SC {} no type (guard holds)', (p) => frame('SC', p, {}),
 await CASE('B12 II non-JSON (outer break, no reply)', (p) => frame('II', p, 'not json'),
   null, { expectNoReply: true });
 // CI/FI with unparseable JSON: the json==NULL guard breaks BEFORE
-// this->CI_pgID / TriggerMode / any engine touch, so the camera is untouched
-// -- the safety property -- and session_ACK stays false, so the universal SS
-// still fires ACK-false. (Verified in wiringPanel.cpp: the break precedes the
-// camera calls; the reply proves the guard, liveness proves no session leaked.)
+// this->CI_pgID / TriggerMode / AddMatchingFeature, so the CAMERA and ENGINE
+// FEATURES are untouched -- the safety property -- and session_ACK stays
+// false, so the universal SS fires ACK-false. (Not literally "nothing
+// touched": a few shared sampler/FPS/snap flags are set before the guard; the
+// camera train and def load are not reached. The reply proves the guard,
+// liveness proves no session leaked.)
 await CASE('B13 CI non-JSON (camera untouched, ACK-false)', (p) => frame('CI', p, 'not json'),
   (k) => (ss(k) && ss(k).data.cmd === 'CI' && ss(k).data.ACK === false) || 'CI bad-json not ACK-false');
 await CASE('B14 FI garbage (camera untouched, ACK-false)', (p) => frame('FI', p, undefined, { rawBytes: Uint8Array.from([0xff, 0xfe, 0x00, 0x01]) }),
@@ -203,5 +216,8 @@ if (INCLUDE_CRASHERS) {
 }
 
 console.log(`\nRESULT: ${pass}/${pass + fail} cases pass`);
+if (!INCLUDE_CRASHERS)
+  console.log('WARNING: crash-guard cases (D1 PD-no-type) SKIPPED -- run with --include-crashers for full coverage; a PD-guard regression would slip through this run.');
+console.log('coverage: 15 of the 17 handled TLs (EX + SF excluded as heavy/stateful; the rest swept valid+malformed+abuse).');
 ws.close();
 process.exit(fail === 0 ? 0 : 1);
