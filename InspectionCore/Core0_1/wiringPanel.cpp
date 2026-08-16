@@ -1482,28 +1482,69 @@ char **_argv;
 //main.cpp  1061 main:v K: 0.989226 0.0101698 0.000896734 RNormalFactor:1296
 //main.cpp  1062 main:v Center: 1295,971
 
-FeatureManager_BacPac calib_bacpac = {0};
+// ========================== InspectionContext (P0) ==========================
+// docs/BACPAC_MACHINECONTEXT_REFACTOR.md P0 "freeze machine twins": ONE bag
+// for the machine state the inspection path reads, so membership is visible
+// in one place instead of scattered across 900 lines of file-scope globals.
+//
+// STORAGE moved here; the old names live on below as REFERENCE ALIASES, so
+// every call site reads exactly as before -- zero behavior change, --insp
+// golden gated. P1+ delete the aliases group by group (Station first).
+//
+// Threading is deliberately unchanged (plan §6): the WS thread writes these,
+// the inspection threads read them bare -- same races as before the move.
+// Adding locks here is a behaviour change with its own deadlock surface and
+// is explicitly NOT this refactor.
+struct InspRegionCfg { float x = 0, y = 0, w = 0, h = 0; int fit = 1; };
+struct CleanRegionCfg {
+  float x = 0, y = 0, w = 0, h = 0;
+  float dark_thresh = NAN;              // grey level; pixel < thresh counts as dark
+  float dark_ratio_max = NAN;           // dark px / region px
+  float dark_area_max  = NAN;           // mm^2
+  int   on_fail = FeatureReport_sig360_circle_line_single::STATUS_NA;
+  std::string name;
+};
+struct InspectionContext {
+  // -- machine twins (plan §4.1): two views, shared calib blobs below,
+  //    separate samplers.
+  FeatureManager_BacPac production = {0};   // a.k.a. calib_bacpac
+  FeatureManager_BacPac authoring  = {0};   // a.k.a. neutral_bacpac
+
+  // -- CalibStore-to-be (P2). Persistent calib data loaded from disk at
+  //    startup / after an in-app calibrate; both BacPacs alias these. Core
+  //    does NOT auto-load anything; they stay empty until the UI asks.
+  LensCalibResult  lens_calib;
+  FieldCalibResult field_calib;
+  bool calib_autoloaded = false;
+  // Per-side capture scratch staged between field_calib_capture calls.
+  FieldGrid pending_bright;
+  FieldGrid pending_dark;
+  int pending_img_w = 0, pending_img_h = 0;
+
+  // -- Station-to-be (P1): machine-level, NOT def-level (the regions
+  //    describe the station, not the product).
+  InspRegionCfg insp_region;
+  std::vector<CleanRegionCfg> clean_regions;
+  bool full_inspection = false;
+  bool area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
+};
+static InspectionContext g_inspCtx;
+InspectionContext &inspection() { return g_inspCtx; }
+
+// ---- P0 transition aliases (delete in P1+) --------------------------------
+FeatureManager_BacPac &calib_bacpac   = g_inspCtx.production;
 
 // Camera-state doorbell (defined next to CamStateWatchThread). Declared here
 // because the RC handler's "cam_doorbell_ping" target rings it too.
 static void pushCamStateDoorbell(int st, bool present);
-FeatureManager_BacPac neutral_bacpac = {0};
+FeatureManager_BacPac &neutral_bacpac = g_inspCtx.authoring;
 
-// Persistent calib data loaded from disk at startup and re-loaded after a
-// successful in-app calibrate. Owned here, pointed-at by calib_bacpac. Default
-// applyXxx flags stay false -- consumer code gates on its own toggle.
-static LensCalibResult  g_lens_calib;
-static FieldCalibResult g_field_calib;
-// Calib files are not hard-coded anymore -- WebUI tells core which path to
-// load / save / reload via explicit RPC payload fields. Core does NOT
-// auto-load anything at startup; bacpac.lensCalib / .fieldCal stay null
-// until the UI requests a load.
-
-// Per-side capture buffer staged between field_calib_capture calls. Finalize
-// folds these into a FieldCalibResult and writes the JSON.
-static FieldGrid g_pending_bright;
-static FieldGrid g_pending_dark;
-static int g_pending_img_w = 0, g_pending_img_h = 0;
+static LensCalibResult  &g_lens_calib  = g_inspCtx.lens_calib;
+static FieldCalibResult &g_field_calib = g_inspCtx.field_calib;
+static FieldGrid &g_pending_bright = g_inspCtx.pending_bright;
+static FieldGrid &g_pending_dark   = g_inspCtx.pending_dark;
+static int &g_pending_img_w = g_inspCtx.pending_img_w;
+static int &g_pending_img_h = g_inspCtx.pending_img_h;
 
 // Capture n_frames distinct streamed frames from the live camera CI stream
 // (caller must have CI registered + trigger_mode:0). Builds an M×N grid of
@@ -1590,7 +1631,7 @@ static bool field_calib_capture_grid(int rows, int cols, int n_frames,
 // Whether the startup auto-load found a calibration. Reported in camera_info so
 // "is this machine calibrated right now?" is answerable without reading logs --
 // an uncalibrated run produces plausible numbers, so it has to be visible.
-static bool g_calib_autoloaded = false;
+static bool &g_calib_autoloaded = g_inspCtx.calib_autoloaded;   // P0 alias
 
 static void push_mmpp_to_sampler()
 {
@@ -2243,8 +2284,8 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
 // change when the product does. A def carrying it would have to be redrawn per
 // product for no reason, and would be wrong the moment it was copied to another
 // machine.
-struct InspRegionCfg { float x = 0, y = 0, w = 0, h = 0; int fit = 1; };
-static InspRegionCfg g_insp_region;
+// InspRegionCfg's definition moved to the InspectionContext block (P0).
+static InspRegionCfg &g_insp_region = g_inspCtx.insp_region;   // P0 alias
 
 // The region describes a STATION -- where a part stands when the machine fires
 // at it -- so it only means anything while the machine is the thing driving the
@@ -2258,7 +2299,7 @@ static InspRegionCfg g_insp_region;
 //
 // So: filter in FI, show everything in CI. Set by the CI/FI session handler,
 // read by the per-frame code that publishes the region onto the bacpac.
-static bool g_full_inspection = false;
+static bool &g_full_inspection = g_inspCtx.full_inspection;   // P0 alias
 
 // Temporary bypass of BOTH machine-level area gates: the station
 // `inspection_region` and the `clean_regions`. Off by default.
@@ -2279,7 +2320,7 @@ static bool g_full_inspection = false;
 //
 // INSP_AREA_BYPASS=1 seeds it at launch, for --insp and headless harnesses that
 // have no wire to flip it over; the ST switch overrides it either way at runtime.
-static bool g_area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
+static bool &g_area_gates_bypass = g_inspCtx.area_gates_bypass;   // P0 alias (env read in the ctx initializer)
 
 static void load_insp_region(cJSON *json_mac_setting)
 {
@@ -2318,15 +2359,10 @@ static void load_insp_region(cJSON *json_mac_setting)
 // The def-level obj_detect feature still exists and still does the other job: a
 // region that FOLLOWS the located part, for measuring the part. Only the
 // "is this patch of plate empty" role is here.
-struct CleanRegionCfg {
-  float x = 0, y = 0, w = 0, h = 0;
-  float dark_thresh = NAN;              // grey level; pixel < thresh counts as dark
-  float dark_ratio_max = NAN;           // dark px / region px
-  float dark_area_max  = NAN;           // mm^2
-  int   on_fail = FeatureReport_sig360_circle_line_single::STATUS_NA;
-  std::string name;
-};
-static std::vector<CleanRegionCfg> g_clean_regions;
+// CleanRegionCfg's definition moved to the InspectionContext block (P0);
+// the reasoning above (machine-level, not an engine feature) is about THIS
+// code, so it stays here.
+static std::vector<CleanRegionCfg> &g_clean_regions = g_inspCtx.clean_regions;   // P0 alias
 
 static void load_clean_regions(cJSON *json_mac_setting)
 {

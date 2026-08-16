@@ -255,9 +255,14 @@ Session overlay:
 
 Each phase is a separate, reviewable change. Gate: `--insp` golden byte-identical.
 
-### P0 — freeze machine twins
+### P0 — freeze machine twins — DONE 2026-08-17
 
 Move the six `g_*` + two BacPacs into `InspectionContext`. `inspection()` accessor. Zero behavior change.
+
+Landed as storage-move + reference aliases (`calib_bacpac` etc. now alias
+`g_inspCtx.*`), so every call site reads unchanged and P1+ can delete the
+aliases group by group. Gate: `--insp` leaf-diff bit-identical on
+10321/10155/4444 vs pre-P0 baselines; live doorbell suite green.
 
 ### P1 — Station
 
