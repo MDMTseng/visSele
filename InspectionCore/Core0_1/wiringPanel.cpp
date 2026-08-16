@@ -5429,7 +5429,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     }
     else if (checkTL("PD", dat)) //Peripheral device
     {
+      // NULL guard, same bug/same fix as SC at :4891: a PD payload with no
+      // "type" key (or non-JSON) made JFetch_STRING return NULL and the
+      // strcmp(NULL,...) below SIGSEGV'd the daemon -- a live crash any
+      // client could trigger, found by bpg_sweep.mjs. A misrouted or empty
+      // command must be an unhandled no-op, never a crash.
       char *type = JFetch_STRING(json, "type");
+      if (type == NULL) type = (char *)"";
 
       double *_CONN_ID = JFetch_NUMBER(json, "CONN_ID");
       int CONN_ID=-1;
