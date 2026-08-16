@@ -65,7 +65,33 @@ const okTriplet =
   bell[2].j && bell[2].j.start === false;
 console.log(`  got [${shape}] camera_state=${JSON.stringify(cs)}`);
 
-const pass = (idleCount === 0) && okTriplet;
-console.log(`RESULT: suppression=${idleCount === 0 ? 'PASS' : 'FAIL(' + idleCount + ' pkts)'} triplet=${okTriplet ? 'PASS' : 'FAIL'}`);
+// Phase 3 (perif doorbell, pgID 0xCA12): a PD CONNECT to a throwaway local
+// TCP "board" flips perif_pairing.link.connected -> the watcher must push a
+// perif_state batch; PD DISCONNECT flips it back -> another one. Real state
+// transitions, not a test hook.
+console.log('phase 3: PD CONNECT/DISCONNECT -- expecting perif_state doorbells...');
+const net = await import('node:net');
+const srv = net.createServer(s => { s.on('error', () => {}); s.on('data', () => {}); });
+await new Promise(r => srv.listen(5998, r));
+const PERIF_PGID = 0xCA12;
+const pbell = [];
+ws.on('message', d => {
+  const b = new Uint8Array(d instanceof ArrayBuffer ? d : d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength));
+  if (((b[3] << 8) | b[4]) !== PERIF_PGID) return;
+  const t = String.fromCharCode(b[0], b[1]);
+  let j = null; try { j = JSON.parse(dec.decode(b.subarray(H)).replace(/\0+$/, '')); } catch {}
+  pbell.push({ t, j });
+});
+ws.send(frame('PD', 0, pg++, { type: 'CONNECT', ip: '127.0.0.1', port: 5998, machine_type: 'uInspESP32', cat_ok: 3, cat_ng: 1 }));
+await new Promise(r => setTimeout(r, 3000));
+const gotConn = pbell.some(p => p.t === 'GS' && p.j && p.j.perif_state && p.j.perif_state.connected === true);
+ws.send(frame('PD', 0, pg++, { type: 'DISCONNECT' }));
+await new Promise(r => setTimeout(r, 3000));
+const gotDisc = pbell.some(p => p.t === 'GS' && p.j && p.j.perif_state && p.j.perif_state.connected === false);
+srv.close();
+console.log(`  perif doorbells: ${pbell.filter(p => p.t === 'GS').length} (connect seen: ${gotConn}, disconnect seen: ${gotDisc})`);
+
+const pass = (idleCount === 0) && okTriplet && gotConn && gotDisc;
+console.log(`RESULT: suppression=${idleCount === 0 ? 'PASS' : 'FAIL(' + idleCount + ' pkts)'} triplet=${okTriplet ? 'PASS' : 'FAIL'} perif=${gotConn && gotDisc ? 'PASS' : 'FAIL'}`);
 ws.close();
 process.exit(pass ? 0 : 1);

@@ -8020,15 +8020,55 @@ void PerifWatchdogThread(bool *terminationflag)
 // in-flight inspection batch would corrupt that batch's reassembly.
 static const uint16_t CAM_STATE_PGID = 0xCA11;
 
+// Perif-link doorbell (pgID 0xCA12): same doorbell idea as the camera one,
+// for perif_pairing.link. The change-key includes the raw counters, so during
+// an active fault (tx_fail incrementing per verdict) it fires once per 1s
+// sample -- naturally rate-limited to the watcher cadence, and exactly the
+// window where a 10s poll left the operator blind.
+static const uint16_t PERIF_STATE_PGID = 0xCA12;
+
+static void pushPerifStateDoorbell()
+{
+  char tmp[3][192];
+  BPG_protocol_data batch[3];
+
+  sprintf(tmp[0], "{\"start\":true}");
+  batch[0] = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp[0]);
+  batch[0].pgID = PERIF_STATE_PGID;
+
+  sprintf(tmp[1],
+          "{\"perif_state\":{\"connected\":%s,\"suspect\":%s,"
+          "\"tx_fail\":%d,\"tx_fail_consec\":%d,"
+          "\"dropped_no_channel\":%d,\"queue_dropped\":%d}}",
+          (bpg_pi.perifCH != NULL) ? "true" : "false",
+          g_perifLinkSuspect.load() ? "true" : "false",
+          g_perifTxFail.load(), g_perifTxFailConsec.load(),
+          g_perifNoChannelDrop.load(), (int)perifSendDropCount.load());
+  batch[1] = m_BPG_Protocol_Interface::GenStrBPGData((char *)"GS", tmp[1]);
+  batch[1].pgID = PERIF_STATE_PGID;
+
+  sprintf(tmp[2], "{\"start\":false,\"ACK\":true}");
+  batch[2] = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp[2]);
+  batch[2].pgID = PERIF_STATE_PGID;
+
+  bpg_pi.pushBatchToSubscribers(batch, 3);
+}
+
 void CamStateWatchThread(bool *terminationflag)
 {
   bool primed = false;
   int last_status = -1;
   bool last_present = false;
+
+  bool p_primed = false;
+  bool p_conn = false, p_susp = false;
+  int p_fail = 0, p_consec = 0, p_nochan = 0, p_qdrop = 0;
+
   while (terminationflag && *terminationflag == false)
   {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
+    // ---- camera half ----
     int st;
     bool present;
     {
@@ -8041,22 +8081,48 @@ void CamStateWatchThread(bool *terminationflag)
                    : (int)CameraLayer::NAK;
     }
 
-    if (primed && st == last_status && present == last_present)
-      continue;
-    const bool announce = primed;   // first pass only establishes the baseline
-    primed = true;
-    last_status = st;
-    last_present = present;
-    if (!announce)
-      continue;
+    if (!(primed && st == last_status && present == last_present))
+    {
+      const bool announce = primed;   // first pass only establishes the baseline
+      primed = true;
+      last_status = st;
+      last_present = present;
+      if (announce)
+      {
+        const size_t subs = bpg_pi.streamSubscriberCount();
+        LOGI("camera state changed: cam_status=%d present=%d (subscribers=%u)",
+             st, (int)present, (unsigned)subs);
+        if (subs != 0)
+          pushCamStateDoorbell(st, present);
+      }
+    }
 
-    const size_t subs = bpg_pi.streamSubscriberCount();
-    LOGI("camera state changed: cam_status=%d present=%d (subscribers=%u)",
-         st, (int)present, (unsigned)subs);
-    if (subs == 0)
-      continue;
-
-    pushCamStateDoorbell(st, present);
+    // ---- perif-link half ----
+    // Reading perifCH without perif_tx_lock is a pointer sample; the doorbell
+    // payload re-samples, and a stale one-second-old view is exactly what a
+    // poll would have seen anyway.
+    const bool conn = (bpg_pi.perifCH != NULL);
+    const bool susp = g_perifLinkSuspect.load();
+    const int fail = g_perifTxFail.load();
+    const int consec = g_perifTxFailConsec.load();
+    const int nochan = g_perifNoChannelDrop.load();
+    const int qdrop = (int)perifSendDropCount.load();
+    if (!(p_primed && conn == p_conn && susp == p_susp && fail == p_fail &&
+          consec == p_consec && nochan == p_nochan && qdrop == p_qdrop))
+    {
+      const bool announce = p_primed;
+      p_primed = true;
+      p_conn = conn; p_susp = susp; p_fail = fail;
+      p_consec = consec; p_nochan = nochan; p_qdrop = qdrop;
+      if (announce)
+      {
+        LOGI("perif link state changed: conn=%d suspect=%d tx_fail=%d "
+             "consec=%d no_chan=%d q_drop=%d",
+             (int)conn, (int)susp, fail, consec, nochan, qdrop);
+        if (bpg_pi.streamSubscriberCount() != 0)
+          pushPerifStateDoorbell();
+      }
+    }
   }
 }
 

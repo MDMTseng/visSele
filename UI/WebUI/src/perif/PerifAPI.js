@@ -132,15 +132,28 @@ export function perifGetObj(id, cb) { return cb(getPerifAPI(id)); }
 // ---- central core-side link-health poll ------------------------------------
 // One poller for the whole module (not one per widget): perif_pairing.link is
 // global core state (there is one perifCH), so it lands on every registered
-// link. 10s cadence — the counters matter on the minutes scale.
+// link. 30s cadence: transitions are pushed by the core's perif-state
+// doorbell (pgID 0xCA12 -> pokeLinkHealthNow below), so the poll is only a
+// safety net for non-primary peers and older cores without the watcher.
 let healthTimer = null;
-function startLinkHealthPoll() {
-  if (healthTimer) return;
-  healthTimer = setInterval(() => {
-    if (!deps.sendBPG) return;
-    if (Object.keys(registry).length === 0) return;
-    deps.sendBPG('GS', 0, { items: ['perif_pairing'] }, undefined, {
-      resolve: (pkts) => {
+// One in-flight query, ever (the pokeNow-fork lesson from the camera poll):
+// a doorbell landing while a query is airborne is coalesced into pokePending
+// and honoured when the reply arrives, never run in parallel.
+let healthInFlight = false;
+let healthPokePending = false;
+function queryLinkHealthNow() {
+  if (!deps.sendBPG) return;
+  if (Object.keys(registry).length === 0) return;
+  if (healthInFlight) { healthPokePending = true; return; }
+  healthPokePending = false;
+  healthInFlight = true;
+  const done = () => {
+    healthInFlight = false;
+    if (healthPokePending) queryLinkHealthNow();
+  };
+  deps.sendBPG('GS', 0, { items: ['perif_pairing'] }, undefined, {
+    resolve: (pkts) => {
+      try {
         const gs = (pkts || []).find((p) => p.type === 'GS');
         const lk = gs && gs.data && gs.data.perif_pairing && gs.data.perif_pairing.link;
         if (!lk) return;
@@ -153,14 +166,21 @@ function startLinkHealthPoll() {
           // Only promote a SUSPECT this poll itself demoted. The local PING
           // watchdog (suspectSrc 'local') holds SUSPECT while pings go
           // unanswered; promoting it here made the chip flap green/orange
-          // every <=10s during exactly the outage it exists to show.
+          // during exactly the outage it exists to show.
           if (cur && cur.state === 'SUSPECT' && !lk.suspect && cur.suspectSrc !== 'local') { patch.state = 'CONNECTED'; patch.suspectSrc = null; }
           publish(id, patch);
         });
-      },
-      reject: () => {},
-    });
-  }, 10000);
+      } finally { done(); }
+    },
+    reject: () => { done(); },
+  });
+}
+// The core's perif-state doorbell says "link summary changed, re-read NOW".
+// Wired from WSDataDispatch (script.jsx), same as the camera doorbell.
+export function pokeLinkHealthNow() { queryLinkHealthNow(); }
+function startLinkHealthPoll() {
+  if (healthTimer) return;
+  healthTimer = setInterval(queryLinkHealthNow, 30000);
 }
 
 // ---- reconnect backoff -----------------------------------------------------

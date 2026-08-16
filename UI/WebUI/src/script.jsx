@@ -79,7 +79,7 @@ const path = require('path')
 // diag-wrapped console (the R-quick-wins #7 fix is now built into initLogger
 // since every logger is created lazily via mkLog post-initDiag).
 import { initLogger, mkLog } from 'UTIL/logger';
-import { initPerifModule, registerPerifAPI, usePerifLink, uInsp_API, uInspESP32_API, GenPerif_API, SLID_API } from './perif/PerifAPI';
+import { initPerifModule, registerPerifAPI, usePerifLink, pokeLinkHealthNow, uInsp_API, uInspESP32_API, GenPerif_API, SLID_API } from './perif/PerifAPI';
 initLogger();
 const log = mkLog('ui.main');
 const dbLog = mkLog('comm.db'); // DB_WS / SLID API queue chatter
@@ -560,6 +560,14 @@ class APPMasterX extends React.Component {
     if (doorbell) {
       log.info("[cam-doorbell] camera state changed, re-querying", doorbell.data.camera_state);
       if (this.camStatQuery) this.camStatQuery.pokeNow();
+    }
+    // Perif-link doorbell (core pgID 0xCA12): the link summary changed --
+    // counters moving, suspect flip, channel gone. Re-read perif_pairing now
+    // instead of waiting out the 30s safety-net poll.
+    const perifBell = pkts.find(pkt => pkt && pkt.type == "GS" && pkt.data && pkt.data.perif_state);
+    if (perifBell) {
+      log.info("[perif-doorbell] link state changed, re-querying", perifBell.data.perif_state);
+      pokeLinkHealthNow();
     }
     let acts = {
       type: "ATBundle",
