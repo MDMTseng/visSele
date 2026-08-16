@@ -79,7 +79,7 @@ const path = require('path')
 // diag-wrapped console (the R-quick-wins #7 fix is now built into initLogger
 // since every logger is created lazily via mkLog post-initDiag).
 import { initLogger, mkLog } from 'UTIL/logger';
-import { initPerifModule, registerPerifAPI, uInsp_API, uInspESP32_API, GenPerif_API, SLID_API } from './perif/PerifAPI';
+import { initPerifModule, registerPerifAPI, usePerifLink, uInsp_API, uInspESP32_API, GenPerif_API, SLID_API } from './perif/PerifAPI';
 initLogger();
 const log = mkLog('ui.main');
 const dbLog = mkLog('comm.db'); // DB_WS / SLID API queue chatter
@@ -120,6 +120,8 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
   window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
+  // Live view of the perif link store (a function, so it's always current).
+  import('./perif/PerifAPI').then(m => { window.__GP_PERIF_LINKS__ = m.getPerifLinksSnapshot; });
   window.__GP_LOG__ = log; // loglevel module — for QA to verify the diag ring captures loglevel output
 }
 
@@ -193,6 +195,11 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
       case "WS_ERROR":
         return "color-error-anim";
         break;
+      // Module-store link state (perif rows come from usePerifLink now, not
+      // Redux). SUSPECT = link up but verdicts in doubt -- the error color,
+      // because a machine that may not be sorting deserves red, not grey.
+      case "WS_SUSPECT":
+        return "color-error-anim";
       default:
         return "color-noresource-anim";
         break;
@@ -200,18 +207,33 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     
   }
   
-  // console.log(ConnInfo);
+  // Peripheral rows read the module link store (usePerifLink), not Redux --
+  // that also gives them the SUSPECT state, which the legacy WS_* bridge
+  // never carried. The adapter shapes a link into the conn_info the shared
+  // row renderer already understands. A link that never connected stays
+  // undefined so the row hides, same as before.
+  const _linkToConn = (link) => {
+    if (!link || (link.state === 'DISCONNECTED' && link.connInfo === undefined)) return undefined;
+    const t = link.state === 'CONNECTED' ? 'WS_CONNECTED'
+      : link.state === 'SUSPECT' ? 'WS_SUSPECT'
+      : 'WS_DISCONNECTED';
+    return { type: t, brief_info: link.state === 'SUSPECT' ? '連線異常' : undefined };
+  };
+  const uInspConn      = _linkToConn(usePerifLink(ConnInfo.uInsp_API_ID));
+  const uInspESP32Conn = _linkToConn(usePerifLink(ConnInfo.uInspESP32_API_ID));
+  const SLIDConn       = _linkToConn(usePerifLink(ConnInfo.SLID_API_ID));
+  const CNCConn        = _linkToConn(usePerifLink(ConnInfo.CNC_API_ID));
 
   return [
     [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測DB",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.uInspESP32_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
-    ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
-    ["全檢設備v2",     ConnInfo.uInspESP32_API_ID_CONN_INFO, <RobotOutlined />,false],
-    ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
-    ["CNC設備",       ConnInfo.CNC_API_ID_CONN_INFO,    <RobotOutlined />,false],
+    [undefined,            undefined,                  <MinusOutlined />,uInspConn!==undefined || uInspESP32Conn!==undefined || SLIDConn!==undefined||CNCConn!==undefined],//seg line
+    ["全檢設備",       uInspConn,   <RobotOutlined />,false],
+    ["全檢設備v2",     uInspESP32Conn, <RobotOutlined />,false],
+    ["坡檢設備",       SLIDConn,    <StockOutlined />,false],
+    ["CNC設備",       CNCConn,    <RobotOutlined />,false],
     ]
     .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
     .map(([textName, conn_info, icon,froceAppear],idx)=>{

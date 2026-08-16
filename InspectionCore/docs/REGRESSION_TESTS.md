@@ -29,6 +29,7 @@ All in `UI/WebUI/tools/webctl/`.
 | `fd_leak.mjs <n>` | failed TCP CONNECTs leak no fds | lsof count unchanged |
 | `dv_bench.mjs <secs>` | image-stream bytes/fps, raw vs JPEG | default ~105KB/IM msg (JPEG 85) |
 | `perifstat.mjs` / `caminfo.mjs` | GS readouts: `perif_pairing.link`, `camera_info.setup_failed`, `lens_calib_loaded` | eyeball |
+| browser `window.__GP_PERIF_LINKS__()` | the WebUI perif link store (states + core link counters) — feeds PerifStatus | four ids registered; linkHealth mirrors perifstat |
 
 ## 3. WebUI (webctld + vite dev server + core)
 

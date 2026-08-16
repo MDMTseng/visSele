@@ -11,6 +11,7 @@
 // value typed here is pushed only when you press its button, and only
 // "Save to NVS" makes it survive a reboot.
 import React, { useState, useEffect, useRef } from 'react';
+import { PerifStatusPanel } from '../perif/PerifStatus';
 import { useSelector, useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Input from 'antd/lib/input';
@@ -694,6 +695,11 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       {/* ---- main row: what someone standing at the machine needs ---------- */}
       <Card size="small" style={{ marginBottom: 8, borderColor: runColor }}
         bodyStyle={{ padding: '10px 12px' }}>
+        {/* Link health, incl. the core-side verdict counters (tx_fail /
+            dropped_no_channel). The core has counted them since 0338671f;
+            this is the first place an operator can see "the UI is green but
+            nothing is being sorted" as it happens. */}
+        <PerifStatusPanel id={API_ID} />
         <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start',
           flexWrap: 'wrap', marginBottom: 10 }}>
           <div>
