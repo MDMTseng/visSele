@@ -328,6 +328,100 @@ All from the front-end sweep; none has been touched.
 
 ---
 
+## Tier 6 — found by the 2026-08-16/17 review + broad-test sweep
+
+Two adversarial review waves (8 agents) over the 08-15/16 sprint, then a
+four-viewpoint "widest single test" design pass. What each turned up:
+
+### 6.1 `PD` with no `"type"` key SIGSEGV'd the core — FIXED (`f76bb2a9`)
+`Core0_1/wiringPanel.cpp` PD handler did `strcmp(JFetch_STRING(json,"type"), …)`
+with no NULL guard, so any client sending `PD` without `"type"` (or non-JSON)
+crashed the daemon. Identical bug/fix to SC at `:4891`; PD was missed. Found by
+`bpg_sweep.mjs`; negative control (revert + rebuild) reproduced the crash
+(liveness lost, :4090 gone), patched core survives 34/34.
+
+### 6.2 `websock_data.type` uninitialized in the link layer — FIXED (`703e1b9b`)
+`BPG_Link_Interface_WebSocket.cpp` fromUpperLayer left the outer `type` field
+stack-garbage; `ws_conn::send_pkt` branches on it first. Garbage == CLOSING (7)
+would run `doClosing()` on a SENDER thread inside its own subscribersLock
+(self-deadlock) and break the deferred-close design's main-thread-only
+invariant. One-line init. The whole WS lock rework's soundness rested on it.
+
+### 6.3 `pokeNow()` forked poll chains (camera doorbell) — FIXED (`703e1b9b`)
+`script.jsx` Cam_Stat_Query: a doorbell landing while a camera_info query was
+in flight cleared a stale timer and started a SECOND poll chain; chains only
+accumulated (flapping camera → one leaked per second). inFlight + pokePending
+coalescing. Found independently by two review agents. The same shape was then
+avoided by construction in the perif-link poll (`96214eed`).
+
+### 6.4 `usePerifConn` minted a fresh object every render — FIXED (`703e1b9b`)
+`perif/PerifAPI.js`: the non-memoized return turned MAINUI's readiness effect
+into a setState loop spinning at commit speed for the whole "camera
+reconnecting" window on a uInsp machine. Memoized on the store snapshot.
+
+### 6.5 WriteBytesToFileAtomic had no fsync on Windows — FIXED (`703e1b9b`)
+`common_lib/Util.c`: the durable path was fflush-only on the DEPLOYED platform
+(fsync was `#ifndef _WIN32`), so a power cut after the pre-rename `remove` could
+lose both the old and the new file. `_commit` added.
+
+### 6.6 lens_calibrate green-ACKed a fit the load-side guard refuses — FIXED (`703e1b9b`)
+`Core0_1/wiringPanel.cpp`: `session_ACK = r.ok` (LM "converged", not "sane"),
+then `load_lens_calib(out)`'s false return was ignored — operator sees success,
+the OLD calibration silently stays active, next restart has none. Reloading
+through the guard IS the produce-side validation now.
+
+### 6.7 `abs`→`fabsf` in ContourGrid shifts real measurements on Windows — OPEN (deploy gate)
+`MatchingEngine/ContourGrid.cpp:380,:914`. libc++ (Mac) already had float `abs`,
+so the golden proves nothing about it; old MinGW `int abs(int)` truncated, making
+the 0.15 curvature filter near-inert. A/B (08-17, replicating the old int-abs on
+the Mac, `--insp` leaf diff): 10321 bit-identical, but **10155 (factory def) line
+fit loses ~19 points and judge #11 moves 1.9460 → 1.9922 mm (+46 µm)**. The new
+filter is correct; the risk is that factory limits were tuned against the inert
+one. **Before the next Windows deploy: revalidate affected defs' limits.**
+
+### 6.8 `doClosing`'s CLOSING callback can stall the select loop ≤5s — OPEN (deferred)
+`ws_server_util.cpp` doClosing fires the CLOSING callback synchronously, which
+takes `subscribersLock`; `pushToSubscribers` holds that lock across a full image
+send (≤5s SO_SNDTIMEO). So a disconnect can head-of-line-block accept/recv for
+one stuck subscriber's timeout. Same bound as 2.8, bounded not unbounded. The
+naive fix (snapshot the set, send outside the lock) reopens a wrong-stream
+window on slot reuse; proper fix is generation-stamped peers, with the 2.8
+lock-structure rework.
+
+### 6.9 safeSend killed a healthy connection on EINTR — FIXED (`703e1b9b`)
+`ws_server_util.cpp`: `written == -1` was unconditionally fatal, but EINTR
+(a caught SIGINT/SIGTERM delivered mid-send, zero bytes moved) leaves the
+stream aligned. Now retried.
+
+### 6.10 station-save fell back to the cached whole-file copy — FIXED (`703e1b9b`)
+`InspectionUI.js`: on an LD re-read failure the handler wrote the connect-time
+cache as the whole file — the exact browser-B-reverts-browser-A bug the
+read-merge-write exists to kill, resurrecting other writers' deletions. Now
+refuses (message + no save) instead.
+
+### 6.11 10s perif poll flipped a locally-held SUSPECT green — FIXED (`96214eed`)
+`perif/PerifAPI.js`: the poll promoted SUSPECT→CONNECTED on core-side
+`suspect:false` without consulting the local PING watchdog, flapping the chip
+every ≤10s during the outage it exists to show. Tagged `suspectSrc`; the poll
+only promotes what it demoted.
+
+### 6.12 `soak.mjs` reads `region_dropped` at the wrong path — OPEN (cheap)
+`UI/WebUI/tools/webctl/soak.mjs:40` reads `j.station.region_dropped`, but the
+core emits `region_dropped` at RP top level (`FeatureReport_UTIL.cpp:523`), so
+soak's dropped counter always reads 0. One-line fix. (Found by the cross-layer
+test-design pass.)
+
+### 6.13 `CameraLayer_BMP.cpp` cache-hit path never assigns `ret` — OPEN (latent, benign)
+`CameraLayer/CameraLayer_BMP.cpp:427-445`: a decode failure on the cache-hit
+path is only reported via the load path. Fake-camera only, harmless today.
+
+### 6.14 `INSP_PERIF_PCNT_SLIP` fault injection is a no-op on the fake camera — NOTED
+The carousel never stamps `pcnt` (always -1), so the pairing-disagreement path
+is untestable without a real camera or a carousel pcnt stamp. Not a defect;
+a test-coverage hole to remember.
+
+---
+
 ## Deliberately not changed — needs a decision, not a patch
 
 - **`SC {"type":"exec"}` runs `popen()`**, and 4090 binds `INADDR_ANY` with no

@@ -1,4 +1,4 @@
-# Regression tests — what exists and how to run it (2026-08-16)
+# Regression tests — what exists and how to run it (2026-08-17)
 
 One page, three layers. The offline golden gates every measurement change;
 the live probes cover what `--insp` cannot see (admission, perif, WS); the

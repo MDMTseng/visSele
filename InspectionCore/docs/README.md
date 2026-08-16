@@ -11,5 +11,6 @@
 - `*_CAVEATS.md` 是**追加式紀錄**,不要通讀,`grep` 你的症狀。
 - 現況文件描述機器**現在**的行為,發現不符就當場改。
 - `*_design.md` / `*_plan.md` 描述**打算**做的事,看它自己的 Status 行。
-- [REPORT_2026-08-11_fullframe_wedge.md](REPORT_2026-08-11_fullframe_wedge.md) — full frame stops the camera after 3-25 images; UNSOLVED, with what was excluded and four withdrawn conclusions
-- [BACPAC_MACHINECONTEXT_REFACTOR.md](BACPAC_MACHINECONTEXT_REFACTOR.md) — plan to centralize inspection-path magic (BacPac, station, pipe skip, verdict/perif policy); not implemented; excludes def load
+
+接手先讀 `HANDOVER_2026-08-16.md`(現況地圖+TODO)。完整文件清單與「我想做 X 讀哪份」
+的對照,在 repo 根的 `docs/README.md`,不在這裡重複。
