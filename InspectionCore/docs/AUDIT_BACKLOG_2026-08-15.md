@@ -141,7 +141,7 @@ copy.
 
 ## Tier 2 — crashes and resource failures
 
-### 2.1 `ws_conn`'s socket, `sendBuf` and connection pool are shared unlocked
+### 2.1 `ws_conn`'s socket, `sendBuf` and connection pool are shared unlocked — FIXED (2026-08-16): per-conn `sendMutex` funnels every send (incl. main-thread PONG/handshake) and gates teardown; `doClosing` = shutdown-now + DEFERRED close/RESET via try_lock (never blocks the select loop; fd can't be recycled while a sender holds it; slot not reusable until finalized); pool `find()` locked against `push_back` realloc. Senders were already mutually serialized by BPG `linkLayerLock` — the missing halves were teardown and the main thread's own sends. Survived churn.mjs: 90 subscribed clients hard-destroyed mid-stream + a 5s-stalled client; stream recovered, core alive
 `BPG_Protocol/ws_server_util.cpp:233`, `:752`, `:769` (senders) vs `:182`,
 `:272`, `:436`, `:444` (main loop)
 
@@ -180,7 +180,7 @@ HikRobot side (the production path) only confirms direction B; direction A there
 is **unconfirmed**. Even without the deadlock, holding `m` across a full
 inspection makes every camera setting call wait a frame period.
 
-### 2.6 `conn_peer` write side is unlocked, and the documented contract is not kept
+### 2.6 `conn_peer` write side is unlocked, and the documented contract is not kept — FIXED (2026-08-16): the CLOSING handler now holds `bpg_pi.subscribersLock` across `peers.erase` + `default_peer` promotion decision + `conn_peer = NULL`, closing the loop with the UART reply thread's guarded conn_peer read; `subscribeStream`/`unsubscribeStream` moved outside the guard (they self-lock, non-recursive). MT_LOCK remains a no-op and remains labeled as such
 `Core0_1/wiringPanel.cpp:8991-9031`
 
 `main.h:195-198` states WS CLOSING/ERROR must hold `subscribersLock` before

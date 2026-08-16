@@ -221,6 +221,14 @@ int ws_server::runLoop(fd_set *read_fds, struct timeval *tv)
   // 2) Service ALL ready client connections this round (fair servicing).
   std::vector<ws_conn *> *servers = ws_conn_pool.getServers();
   bool any_closed = false;
+  // Retry any close that doClosing() had to defer because a sender was
+  // mid-send. The shutdown() already fired, so the sender's send() has
+  // returned by now and the try_lock succeeds; this is a no-op otherwise.
+  for (size_t i = 0; i < (*servers).size(); i++)
+  {
+    if ((*servers)[i]->closePending())
+      (*servers)[i]->tryFinalizeClose();
+  }
   for (size_t i = 0; i < (*servers).size(); i++)
   {
     int fd = (*servers)[i]->getSocket();
@@ -253,7 +261,7 @@ int ws_server::send_pkt(websock_data *packet)
 }
 //////////////////////////////ws_conn_entity_pool/////////////////////////////////////
 
-ws_conn *ws_conn_entity_pool::find(int sock)
+ws_conn *ws_conn_entity_pool::find_nolock(int sock)
 {
   for (int i = 0; i < ws_conn_set.size(); i++)
   {
@@ -263,8 +271,18 @@ ws_conn *ws_conn_entity_pool::find(int sock)
   return NULL;
 }
 
+ws_conn *ws_conn_entity_pool::find(int sock)
+{
+  // Runs on sender threads while the main thread's
+  // find_avaliable_conn_info_slot() may push_back (and reallocate) under it.
+  std::lock_guard<std::mutex> _pool_guard(poolLock);
+  return find_nolock(sock);
+}
+
 std::vector<ws_conn *> *ws_conn_entity_pool::getServers()
 {
+  // Raw access; main-thread-only iterations (select loop, fd sets,
+  // destructor). Cross-thread lookups must go through find().
   return &ws_conn_set;
 }
 
@@ -280,9 +298,13 @@ int ws_conn_entity_pool::remove(int sock)
 
 ws_conn *ws_conn_entity_pool::find_avaliable_conn_info_slot()
 {
+  std::lock_guard<std::mutex> _pool_guard(poolLock);
   for (int i = 0; i < ws_conn_set.size(); i++)
   {
-    if (!ws_conn_set[i]->isOccupied())
+    // A slot whose close is still deferred (a sender was mid-send when the
+    // connection died) still owns its sendBuf and its not-yet-closed fd --
+    // handing it to a new connection would stack two lifetimes on one slot.
+    if (!ws_conn_set[i]->isOccupied() && !ws_conn_set[i]->closePending())
       return (ws_conn_set[i]);
   }
   ws_conn_set.push_back(new ws_conn());
@@ -442,14 +464,20 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen, struct handshake *p_hs)
   //printf("%s:%s\n", __func__, resource);
 
   // if resource is right, generate answer handshake and send it
-  size_t frameSize = sendBuf.size();
-
-  wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
-  //freeHandshake(&hs);
-  if (safeSend(sock, &sendBuf[0], frameSize) != 0)
   {
-    doClosing();
-    return -1;
+    // No worker can send to a conn that has not finished its handshake, but
+    // take the lock anyway: it is uncontended here and keeps the invariant
+    // "sendBuf is only ever touched under sendMutex" unconditional.
+    std::lock_guard<std::mutex> _send_guard(sendMutex);
+    size_t frameSize = sendBuf.size();
+
+    wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
+    //freeHandshake(&hs);
+    if (safeSend(sock, &sendBuf[0], frameSize) != 0)
+    {
+      doClosing();
+      return -1;
+    }
   }
   return 0;
 }
@@ -457,17 +485,45 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen, struct handshake *p_hs)
 int ws_conn::doClosing()
 {
   if (isOccupied())
-    close(sock);
+  {
+    // shutdown() first, close() later (tryFinalizeClose). A sender may be
+    // sitting inside send() on this fd right now; shutdown makes that send
+    // fail fast and is safe from any thread, while close() would recycle
+    // the fd number for the next accept() while the sender still uses it.
+#ifdef _WIN32
+    shutdown(sock, SD_BOTH);
+#else
+    shutdown(sock, SHUT_RDWR);
+#endif
+    pendingCloseFd = sock;
+  }
 
   printf("%s:cb:%p sock:%d\n", __func__, cb, sock);
-  sock = -1;
+  sock = -1;   // no NEW sender passes the in-lock check from here on
   if (cb != NULL)
   {
     cb->ws_callback(genCallbackData(websock_data::eventType::CLOSING));
   }
-  RESET();
+  tryFinalizeClose();   // usually immediate; retried from ws_server::runLoop
   printf("%s\n", __func__);
   return 0;
+}
+
+bool ws_conn::tryFinalizeClose()
+{
+  if (pendingCloseFd == -1)
+    return true;
+  // try_lock, never lock: a sender blocked in send() can hold sendMutex for
+  // up to the 5s SO_SNDTIMEO, and this runs on the select loop's thread.
+  // The shutdown() in doClosing() already made that send return quickly, so
+  // the retry from runLoop lands almost immediately.
+  if (!sendMutex.try_lock())
+    return false;
+  close(pendingCloseFd);
+  pendingCloseFd = -1;
+  RESET();   // sendBuf resize -- must not race a sender, hence under the lock
+  sendMutex.unlock();
+  return true;
 }
 
 websock_data ws_conn::genCallbackData(websock_data::eventType type)
@@ -733,7 +789,11 @@ int ws_conn::send_pkt(websock_data *packet)
 
   if (frameType == TCP_BINARY_FRAME)
   {
-    return safeSend(sock, packet->data.data_frame.raw, packet->data.data_frame.rawL);
+    std::lock_guard<std::mutex> _send_guard(sendMutex);
+    const int s = sock;
+    if (s < 0)
+      return -1;
+    return safeSend(s, packet->data.data_frame.raw, packet->data.data_frame.rawL);
   }
 
   if (frameType != WS_TEXT_FRAME && frameType != WS_BINARY_FRAME && frameType != WS_PING_FRAME && frameType != WS_PONG_FRAME && frameType != WS_CONT_FRAME)
@@ -755,9 +815,16 @@ uint8_t* ws_conn::request_data_buffer(size_t req_size)
 
 int ws_conn::send_pkt(uint8_t *packet, size_t pkt_size, int type, bool isFinal,int extraHeaderRoom)
 {
+  // Worker sends are serialized among themselves by BPG's linkLayerLock, but
+  // the main WS thread's PONG replies come through here too, and teardown
+  // (close + sendBuf RESET) is gated on this same mutex -- see the header.
+  std::lock_guard<std::mutex> _send_guard(sendMutex);
+  const int s = sock;
+  if (s < 0)
+    return -1;   // doClosing already ran; the fd may be gone or recycled
 
   uint8_t* frameBuffer=NULL;
-  
+
   size_t frameSize = -1;
 
   // printf(">pkt_size:%d MHSize:%d> extraHeaderRoom:%d\n",pkt_size,WS_MAX_HEADERSIZE,extraHeaderRoom);
@@ -784,13 +851,13 @@ int ws_conn::send_pkt(uint8_t *packet, size_t pkt_size, int type, bool isFinal,i
 
   uint8_t * sendData=wsMakeFrame_HeaderBack(packet, pkt_size,
                          frameBuffer, &frameSize, (enum wsFrameType)type, isFinal);
-  if(sendData==NULL) 
+  if(sendData==NULL)
   {
     printf("wsMakeFrame2 error:\n");
     return -1;
   }
 
-  return safeSend(sock, sendData, frameSize);
+  return safeSend(s, sendData, frameSize);
 
   
   // int ret = wsMakeFrame2(packet, pkt_size,

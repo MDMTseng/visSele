@@ -9347,40 +9347,51 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       LOGI("CLOSING peer %s:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
 
-      // Serialize peer teardown with InspResultAction_s / pushToSubscribers
-      // (both take MT_LOCK) so the iteration can't observe a freed peer.
+      // MT_LOCK is a NO-OP (backlog 2.6) -- the real serialization against
+      // the UART reply thread is bpg_pi.subscribersLock, which that thread
+      // holds around its conn_peer load + dispatch (see the PD reply path).
+      // unsubscribeStream/subscribeStream take the same (non-recursive) lock
+      // internally, so they must sit OUTSIDE the guarded block.
       MT_LOCK("ws CLOSING");
       bpg_pi.dropPeerState(data.peer); // free this peer's inbound reassembly buffer
       bpg_pi.unsubscribeStream(data.peer);
-      peers.erase(data.peer);
 
-      // If the default broadcast target left, promote another peer (or none) --
-      // and carry the stream subscription with the promotion.
-      //
-      // Streaming is granted in exactly one place (HAND_SHAKING_FINISHED) and
-      // only while default_peer is NULL, and nothing in the WebUI ever sends SB
-      // to ask for it. So a peer promoted here without subscribeStream() never
-      // receives another frame, and the failure is completely silent: the core
-      // keeps grabbing, inspecting and calling pushToSubscribers -- there is
-      // simply nobody left in the list to push to. No error, no warning, an
-      // empty canvas.
-      //
-      // A browser reload hits this whenever the new socket finishes its
-      // handshake before the old one's CLOSING is processed, which is the
-      // common ordering: the new connection is not NULL-default so it does not
-      // subscribe, and then the old one hands it a promotion without one.
-      if (data.peer == default_peer)
+      bool promote_default = false;
       {
-        default_peer = peers.empty() ? NULL : *peers.begin();
-        if (default_peer != NULL)
-          bpg_pi.subscribeStream(default_peer);
-      }
+        std::lock_guard<std::mutex> _peer_guard(bpg_pi.subscribersLock);
+        peers.erase(data.peer);
 
-      // Drop the perif channel's reply target if it pointed at this peer, so an
-      // async device reply never dereferences a freed peer (it falls back to
-      // default_peer until the client reconnects and re-sends CONNECT).
-      if (bpg_pi.perifCH != NULL && bpg_pi.perifCH->conn_peer == data.peer)
-        bpg_pi.perifCH->conn_peer = NULL;
+        // If the default broadcast target left, promote another peer (or none)
+        // -- and carry the stream subscription with the promotion.
+        //
+        // Streaming is granted in exactly one place (HAND_SHAKING_FINISHED)
+        // and only while default_peer is NULL, and nothing in the WebUI ever
+        // sends SB to ask for it. So a peer promoted here without
+        // subscribeStream() never receives another frame, and the failure is
+        // completely silent: the core keeps grabbing, inspecting and calling
+        // pushToSubscribers -- there is simply nobody left in the list to push
+        // to. No error, no warning, an empty canvas.
+        //
+        // A browser reload hits this whenever the new socket finishes its
+        // handshake before the old one's CLOSING is processed, which is the
+        // common ordering: the new connection is not NULL-default so it does
+        // not subscribe, and then the old one hands it a promotion without one.
+        if (data.peer == default_peer)
+        {
+          default_peer = peers.empty() ? NULL : *peers.begin();
+          promote_default = (default_peer != NULL);
+        }
+
+        // Drop the perif channel's reply target if it pointed at this peer, so
+        // an async device reply never dereferences a freed peer (it falls back
+        // to default_peer until the client reconnects and re-sends CONNECT).
+        // This clear and the reply thread's read are now the same critical
+        // section, which is what makes "cleared on close" actually mean it.
+        if (bpg_pi.perifCH != NULL && bpg_pi.perifCH->conn_peer == data.peer)
+          bpg_pi.perifCH->conn_peer = NULL;
+      }
+      if (promote_default)
+        bpg_pi.subscribeStream(default_peer);
 
       // Only tear down shared core state when the LAST client disconnects.
       if (peers.empty())
