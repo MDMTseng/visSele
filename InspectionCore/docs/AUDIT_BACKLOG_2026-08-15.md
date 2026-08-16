@@ -473,7 +473,107 @@ threshold, skip while CONNECTING) and doorbell.mjs's suppression window widened
 
 ---
 
-## Deliberately not changed — needs a decision, not a patch
+## Tier 7 — 8-agent audit round 2 (2026-08-17): crash/lock/memory/perf
+
+Eight agents (4 × crash/lock/memory/race, 4 × hotpath/measurement/WebUI perf).
+FIXED in `6541c07b` (crash/race/UB) + `2d43370e` (perf quick wins); everything
+verified with the pre/post `--insp` gate (10321/10155/10221 bit-identical) and
+the live suite. Items below are the OPEN remainder, ranked.
+
+### Fixed (for the record)
+camera-NULL family in II/CI/FI/EX after a failed reconnect (getImage + session
+guards); the derived ws_callback's reintroduced `raw[rawL]=NUL` write (base had
+removed it with full diagnosis — the override shadowed the fix); calib/station
+config swap races (loaders under `matchingEnglock`, new `g_station_cfg_lock`
+with snapshot reads — the wrong-verdict class); PerifPingThread pre-lock UAF
+read; `lastDatViewCache_lock` bare across imwrite (throw = permanent pipeline
+hang); `resourcePool::retResrc` per-frame unowned unlock (UB, fatal on
+winpthreads) + dead `fetchResrc_blocking` deleted; `ReadJson` delete-on-malloc
++ `ReadText/ReadByte` ftell(-1) overflow; SnapFrame callback/context swap race
+(`cb_swap_m` + `invokeFrameCallback` at all 14 driver sites — the "立即拍照
+during FI" SIGSEGV); Aravis destructor now drains in-flight stream callbacks
+(the bench-green/factory-crash asymmetry — carousel/Hik join, Aravis had
+nothing); stream-rate RP `cJSON_PrintUnformatted`; machine-hash hexed once.
+
+### 7.1 OPEN — JPEG encodes once per SUBSCRIBER, under three locks (the big one)
+`BPG_Protocol.cpp:115-118` runs the IM callback inside the per-peer
+fromUpperLayer loop; `SEND_acvImage` (wiringPanel.cpp ~2678) does imencode
+(12-20ms at 5MP q85) per PEER per frame, and the whole thing sits under
+`subscribersLock`+`linkLayerLock`+`image_send_lock` with a blocking send
+(SO_SNDTIMEO 5s). Two UIs = double encode; one stalled client parks every
+other producer — this is the logged "send thread 811ms" mystery. Fix shape:
+encode once per frame BEFORE the fan-out (cache keyed on frame seq;
+`image_pipe_info.img_jpg_enc` fields already exist unused), then per-peer
+header+chunk sends of cached bytes; encode moves outside the locks for free.
+Byte-identical wire output. Pairs with 2.8/6.8 (lock-scope rework).
+
+### 7.2 OPEN — NG-snapshot saving is silently dead
+`cache_camera_param` (wiringPanel.cpp:132) is never assigned anywhere;
+`saveInspectionSample` requires `reports[0]` from it → returns −11 → every
+snapshot save (WS path AND snap thread) fails silently. Functional regression,
+not a leak. Decide what should fill it (the RP report? camera json?) and wire
+it, or drop the requirement.
+
+### 7.3 OPEN — measurement-pipeline bit-exact recoveries (~2-3ms of 8.5ms)
+Ranked, all verified as bit-exact by the perf agent: (a) per-frame camera
+REGISTER reads on the measurement thread — `cameraCalib2JSON` GetExposureTime
+(0.5-10ms device I/O!) + the GetROI 4-read fallback when offset==0,0 (cache in
+CameraLayer, invalidate on set/reconnect); (b) full-frame extractChannel
+re-derived up to 5× (ROI-first + member buffers); (c) dead `roughness()`
+passes feeding commented-out logs (sig360 ~3088, ~1302, ~4536); (d) binarize
+LUT + per-column tables + parallel_for (BinarizeCV/CvBridge); (e) caliper
+undistort-on-hit moved to miss branch + batched + index-ordered parallel;
+(f) v2 signature build re-labels and computes ALL labels (~1900 speck frames);
+(g) `ContourFetch` by value → const& (100-400KB/candidate); (h) hot-loop
+`getenv` → static (pattern exists at sig360:7480); (i) xrefine template DFT
+cached at parse. Behavior-touching (golden-gate first): shape-path crop before
+match, circle-caliper rectify-once, ContourGrid acceleration, 24-bit walker.
+
+### 7.4 OPEN — WebUI stream-rate fixes
+(a) `reqWindow` never cleaned on disconnect (`BPG_WS.js:491`): leaks in-flight
+entries (incl. IM ArrayBuffer views), permanently kills the camera poll
+(`inFlight` stuck — the OTHER half of 6.15, disconnect-shaped), and a full
+window hard-hangs `send()`. Fix: reject+clear on close. (b) ImageBitmap not
+`.close()`d on frame swap (`EverCheckCanvasComponent.js:341-357`) — GPU/native
+pile at ~6 fps. (c) `edit_info` new identity per WS message → RepDisplayUI
+redraws unconditionally per report; gate like APP_INSP_MODE already does.
+(d) `shape_fingerprints` JSON.stringify per report (cache per def edit);
+1Hz whole-app re-render from `WS_UPDATE`; IndexedDB pending queue unbounded
+when insp-DB is down (durability trade-off — needs owner sign-off).
+
+### 7.5 OPEN — camera layer, data integrity + stalls
+(a) Aravis `Trigger()` borrows TriggerSource (Software↔Line0) — a hardware
+edge in the window is silently dropped → frame↔part pairing shifts by one
+(the 449-vs-213 drift is the documented extreme). (b) CamStateWatchThread
+holds `camera_lifetime_lock` across `arv_camera_get_integer` — a dying GigE
+link stalls inspection at exactly the wrong time (cache/timeout). (c) GS
+camera_info touches the camera WITHOUT `camera_lifetime_lock` — safe only by
+WS-thread confinement; must be fixed before comm-refactor Phase 4 multi-thread
+dispatch. (d) Hik `SetFrameRate`/Aravis `SetROI` clamp against uninitialized
+maxima when the get fails. (e) Bayer GR decoded with GB pattern (wrong colors,
+not a crash).
+
+### 7.6 OPEN — smaller memory/race items
+Sub-feature sibling leak when a later ctor throws mid-parse (group dtor never
+runs); `shape_cache_in` dangles after failed reload (latent);
+`GetReport()` hands out reports whose def pointers a reload invalidated;
+`reportDataPool` ratchets to the worst frame ever; WS-thread
+`__LAST_DATA_VIEW_CACHE_INFO__` mutates `cache_deffile_JSON` without
+`snap_cfg_lock` vs the snap thread's Duplicate (per-coincidence UAF);
+`ws_conn::sock` plain-int cross-thread (make atomic to make the invariant
+real); PerifProt 8-byte load at +2 (misaligned/aliasing UB, works on our
+targets); `ImageStackAddUp` self-deadlocks if anyone re-enables stacking;
+`RingBuf` locking UB (CoreHub-only); FI `payload_file` deliberate def-tree
+leak (fine for the tool, wrong if scripted).
+
+### Environment regressions noticed this round (NOT code)
+- doorbell.mjs phase 3 (perif doorbell) now FAILS on both pre- and post-change
+  binaries — a REAL usb-serial device (`/dev/cu.usbserial-0001`) is attached
+  to the bench, changing PD CONNECT behavior. Do not hammer PD paths while the
+  physical board is attached (serial open = DTR power-cycle).
+- churn.mjs freeze 29-52s (limit 20) on BOTH binaries — environmental (loaded
+  Mac and/or the attached serial device's 5s timeouts); previously 16s ×3.
+  Re-baseline on a quiet bench before treating as a regression.
 
 - **`SC {"type":"exec"}` runs `popen()`**, and 4090 binds `INADDR_ANY` with no
   Origin check on the handshake — any page an operator visits can reach it

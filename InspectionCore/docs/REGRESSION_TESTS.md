@@ -31,6 +31,7 @@ All in `UI/WebUI/tools/webctl/`.
 | `doorbell.mjs` | state doorbells end-to-end: 15s suppression (0 pkts on 0xCA11) + RC `cam_doorbell_ping` → SS/GS/SS triplet + perif doorbell (0xCA12) on REAL PD CONNECT/DISCONNECT transitions | suppression/triplet/perif all PASS (~30s, non-destructive) |
 | `bpg_sweep.mjs [--include-crashers]` | 15 of the 17 handled TLs (EX + SF excluded as heavy/stateful) × {valid → reply-shape+ACK, malformed → error path, framing abuse → truncated/lying/giant headers, unknown TL, NUL-guard, multi-packet}; canonical GS liveness after EVERY case. Safe variants for the destructive TLs (SV/CI/FI/RC/PD/SC). `--include-crashers` adds the PD-no-type case (SIGSEGV'd an unpatched core; the sweep's negative control reproduced it) | 35/35 with crashers (34 without), ~30s. Far tighter reply-shape coverage than daemon_fuzz (5 TLs, HR-liveness only) |
 | `dv_bench.mjs <secs>` | image-stream bytes/fps, raw vs JPEG | default ~105KB/IM msg (JPEG 85) |
+| `rc_hammer.mjs` | RC `camera_ez_reconnect` + GS `camera_info` interplay: 5 rounds of reconnect + 6 GS each. Catches camera-lifecycle UAFs AND stale-build ABI mismatches (its first catch: "mutex lock failed: Invalid argument" in GetFolderName = TUs compiled against different CameraLayer.hpp layouts) | 5 rounds, 30 GS replies, exit 0, core alive (~25s) |
 | `perifstat.mjs` / `caminfo.mjs` | GS readouts: `perif_pairing.link`, `camera_info.setup_failed`, `lens_calib_loaded` | eyeball |
 | browser `window.__GP_PERIF_LINKS__()` | the WebUI perif link store (states + core link counters) — feeds PerifStatus | four ids registered; linkHealth mirrors perifstat |
 
@@ -75,6 +76,20 @@ the new snapshot by eye before committing it.
    SPLASH persists.
 5. uInsp board-attached harnesses (~25) are separate:
    `Peripheral/uInspESP32/tools/TESTS.md`.
+6. **After editing a CameraLayer header, make sure the build is CONSISTENT**
+   (2026-08-17): a member added to `CameraLayer.hpp` shifted every field after
+   it; a build that relinked without recompiling all dependent TUs produced a
+   core where header-inline accessors (GetFolderName) read the wrong offset —
+   crash signature `mutex lock failed: Invalid argument` on a VALID object.
+   It looked exactly like a UAF and cost an hour of lldb. `rc_hammer.mjs`
+   catches it in 5s; when in doubt after a header change, delete the
+   affected `CMakeFiles/*.dir` objects and rebuild.
+7. **doorbell.mjs phase 3 needs a bench with NO real perif board attached** —
+   with `/dev/cu.usbserial-0001` present, PD CONNECT talks to real hardware
+   (and a serial open DTR-power-cycles the board). perif=FAIL with a device
+   attached is the environment, not the code. churn.mjs freeze bounds also ran
+   29-52s (vs 16s baseline) on the same loaded bench, on both A/B binaries —
+   re-baseline quiet before believing a regression.
 
 ## Gaps (nothing covers these today)
 
