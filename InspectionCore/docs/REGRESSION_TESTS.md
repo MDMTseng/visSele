@@ -39,6 +39,7 @@ All in `UI/WebUI/tools/webctl/`.
 |---|---|---|
 | flows suite | `node flows.mjs verify` | 9 user flows: the 8 editor flows (load / select / edit / editInput / add / addArc / addMeasure / addThenDelete; `editInput` proves a REAL keystroke lands — USL edit → UCL recompute) plus **inspCycle**: recipe with tag margins → REAL menu entry into the Inspection UI (drawer / mode tag / play, with camera-reconnect-modal and WS-SPLASH-bounce handling) → asserts the tag's USL override applies in inspection and is RESTORED on exit |
 | def oracle | `node golden.mjs verify caliper_verify <hydef>` | load → serialize byte-identical (what the UI sends the core wholesale) |
+| mode round-trip | `node cycle.mjs [laps]` | N laps of the operator's day: editor + REAL inst-check (EX → sig360info lands) → recipe with alternating NG-range setup (tag TAGX vs none) → inspection via the real menu road → NG range in force asserted → exit → USL restored (+ the component's restore log) and the def hash stable across all laps. Catches repetition-only leaks (double-apply, SM dead ends, modal zombies). ~10s/lap; 15/15 green 2026-08-17 |
 
 Re-baseline with `capture` ONLY after an intended behaviour change, and diff
 the new snapshot by eye before committing it.
@@ -65,6 +66,12 @@ the new snapshot by eye before committing it.
 4. **Synthetic DOM events no-op on the per-shape PropertySheets** (and on antd
    div controls) — drive the UI with webctld's real Playwright `/fill`,
    `/click`, `/press`, never `dispatchEvent`.
+4b. **Never dispatch EXIT from a separate round-trip after reading the state**
+   — the app may have exited on its own in between, your EXIT lands on MAIN,
+   and MAIN+EXIT → SPLASH, which only leaves on REMOTE_SYSTEM_READY (an HR =
+   a reconnect): a dead end with the WS still up. Check-and-dispatch in ONE
+   in-page eval (see toMain in cycle.mjs/flows.mjs), and kick the socket if
+   SPLASH persists.
 5. uInsp board-attached harnesses (~25) are separate:
    `Peripheral/uInspESP32/TESTS.md`.
 
