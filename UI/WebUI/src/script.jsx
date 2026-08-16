@@ -551,6 +551,16 @@ class APPMasterX extends React.Component {
 
 
   WSDataDispatch(pkts) {
+    // Camera-state doorbell (core CamStateWatchThread): the core pushes this
+    // tiny GS batch whenever the camera's health CHANGES. It is a doorbell,
+    // not a data update -- re-run the normal camera_info query immediately so
+    // every policy (soft-cam, reconnect) stays in Cam_Stat_Query. This is
+    // what lets the steady-state poll run at 6s instead of 2s.
+    if (pkts.some(pkt => pkt && pkt.type == "GS" && pkt.data && pkt.data.camera_state)) {
+      log.info("[cam-doorbell] camera state changed, re-querying",
+        pkts.find(pkt => pkt.type == "GS").data.camera_state);
+      if (this.camStatQuery) this.camStatQuery.pokeNow();
+    }
     let acts = {
       type: "ATBundle",
       ActionThrottle_type: "express",
@@ -879,6 +889,7 @@ class APPMasterX extends React.Component {
 
 
 
+    const CAM_POLL_MS = 6000;
     class Cam_Stat_Query{
       camDisconnectionAction()
       {
@@ -1086,20 +1097,34 @@ class APPMasterX extends React.Component {
 
 
       }
+      // The core's camera-state doorbell says "re-query NOW". Collapse the
+      // pending scheduled poll into an immediate one (never a parallel one:
+      // the timer is cleared first, and the query re-arms it as usual).
+      pokeNow()
+      {
+        if(this.isInReconn==true) return;
+        clearTimeout(this.queryTimeOut);
+        this.queryCam(CAM_POLL_MS);
+      }
       constructor(id)
       {
         this.id=id;
         this.isInReconn=false;
         this.isConnected=false;
 
-        this.queryCam(2000);
+        // 6s, not 2s: steady-state changes are pushed by the core's
+        // CamStateWatchThread (the doorbell above), so the poll is only a
+        // safety net for missed pushes, non-primary peers (only the default
+        // peer is stream-subscribed) and older cores without the watcher.
+        this.queryCam(CAM_POLL_MS);
       }
 
 
       
 
     }
-    this.props.ACT_WS_REGISTER(this.props.CAM1_ID,new Cam_Stat_Query(this.props.CAM1_ID));
+    this.camStatQuery = new Cam_Stat_Query(this.props.CAM1_ID);
+    this.props.ACT_WS_REGISTER(this.props.CAM1_ID, this.camStatQuery);
 
 
 

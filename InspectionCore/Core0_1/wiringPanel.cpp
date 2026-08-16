@@ -7944,6 +7944,76 @@ void PerifWatchdogThread(bool *terminationflag)
   }
 }
 
+// Camera-state doorbell: push a tiny notification when the camera's health
+// CHANGES, so clients can slow their camera_info poll way down (it was 2s per
+// client, each poll rebuilding the full camera_info JSON including the
+// carousel file list) without losing transition latency. The push carries the
+// new summary but is deliberately just a doorbell -- the client re-runs its
+// normal GS camera_info query on receipt, so all its existing policy
+// (soft-cam handling, reconnect) stays in one place.
+//
+// pgID: client-generated request ids stay below ~500 (BPG_WS.js pgIDCounter)
+// and CI_pgID is one of them. Anything far above cannot collide with a
+// tracked request, and MUST NOT be CI_pgID: an SS-start on the pgID of an
+// in-flight inspection batch would corrupt that batch's reassembly.
+static const uint16_t CAM_STATE_PGID = 0xCA11;
+
+void CamStateWatchThread(bool *terminationflag)
+{
+  bool primed = false;
+  int last_status = -1;
+  bool last_present = false;
+  while (terminationflag && *terminationflag == false)
+  {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    int st;
+    bool present;
+    {
+      // Same lock the reconnect handler holds across delete/getCamera, so
+      // this never probes a destroyed object. isInOperation() is cheap on
+      // every layer (a flag, or one <1ms register read on Aravis).
+      std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+      present = (calib_bacpac.cam != NULL);
+      st = present ? (int)calib_bacpac.cam->isInOperation()
+                   : (int)CameraLayer::NAK;
+    }
+
+    if (primed && st == last_status && present == last_present)
+      continue;
+    const bool announce = primed;   // first pass only establishes the baseline
+    primed = true;
+    last_status = st;
+    last_present = present;
+    if (!announce)
+      continue;
+
+    LOGI("camera state changed: cam_status=%d present=%d (subscribers=%zu)",
+         st, (int)present, bpg_pi.streamSubscriberCount());
+    if (bpg_pi.streamSubscriberCount() == 0)
+      continue;
+
+    char tmp[160];
+    BPG_protocol_data bpg_dat;
+
+    sprintf(tmp, "{\"start\":true}");
+    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp);
+    bpg_dat.pgID = CAM_STATE_PGID;
+    bpg_pi.pushToSubscribers(bpg_dat);
+
+    sprintf(tmp, "{\"camera_state\":{\"cam_status\":%d,\"present\":%s}}",
+            st, present ? "true" : "false");
+    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData((char *)"GS", tmp);
+    bpg_dat.pgID = CAM_STATE_PGID;
+    bpg_pi.pushToSubscribers(bpg_dat);
+
+    sprintf(tmp, "{\"start\":false,\"ACK\":true}");
+    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData((char *)"SS", tmp);
+    bpg_dat.pgID = CAM_STATE_PGID;
+    bpg_pi.pushToSubscribers(bpg_dat);
+  }
+}
+
 // The idle half of the host heartbeat.
 //
 // The device has always had a host-link watchdog (host_timeout_ms): no valid
@@ -9498,6 +9568,9 @@ int mainLoop(bool realCamera = false)
 
   std::thread _perifSendThread(PerifSendThread, &terminationFlag);
   std::thread _perifPingThread(PerifPingThread, &terminationFlag);
+  // Never joined, like every thread here: mainLoop ends in _exit(0) (see the
+  // shutdown note there), so the unjoined-thread terminate() can't fire.
+  std::thread _camStateWatchThread(CamStateWatchThread, &terminationFlag);
   // INSP_CV_THREADS: pin OpenCV's internal thread pool.
   //
   // This is the A/B for what insp_off actually means. That instrument is wall
