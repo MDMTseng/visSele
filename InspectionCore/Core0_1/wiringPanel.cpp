@@ -1894,16 +1894,16 @@ void AttachStaticInfo(cJSON *reportJson, m_BPG_Protocol_Interface *BPG_prot_if)
 {
   if (reportJson == NULL)
     return;
-  char tmpStr[128];
-
-  {
-    char *tmpStr_ptr = tmpStr;
+  // machine_h never changes after startup; hex it once (magic static -- both
+  // the datView thread and command handlers call this), not per RP at 25-40fps.
+  static const std::string hexOnce = []{
+    char b[sizeof(machine_h.machine) * 2 + 1];
+    char *p = b;
     for (int i = 0; i < sizeof(machine_h.machine); i++)
-    {
-      tmpStr_ptr += sprintf(tmpStr_ptr, "%02X", machine_h.machine[i]);
-    }
-    cJSON_AddStringToObject(reportJson, "machine_hash", tmpStr);
-  }
+      p += sprintf(p, "%02X", machine_h.machine[i]);
+    return std::string(b);
+  }();
+  cJSON_AddStringToObject(reportJson, "machine_hash", hexOnce.c_str());
 }
 // int backPackLoad(FeatureManager_BacPac &calib_bacpac,cJSON *from)
 // {
@@ -6857,7 +6857,12 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       // {
       //   cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
       // }
-      char *jstr = cJSON_Print(jobj);
+      // Unformatted: this is THE stream-rate print (every RP at 25-40 fps).
+      // The pretty variant adds ~25-40% whitespace to a report full of nested
+      // point arrays -- pure cost in print time, memcpy and wire bytes; the
+      // only consumer is JSON.parse in the WebUI. Command-path prints keep
+      // their formatting, this one leg carries the load.
+      char *jstr = cJSON_PrintUnformatted(jobj);
 
       // LOGI("__\n %s  \n___",jstr);
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("RP", jstr);
