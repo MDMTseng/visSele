@@ -330,8 +330,19 @@ class EverCheckCanvasComponent_proto {
     if (img_info.jpegBlob) {
       const w = img_info.width, h = img_info.height;
       const token = (this._jpegToken = (this._jpegToken || 0) + 1);
+      // Announces "a decode is in flight; the draw() at the end of it is the
+      // one that matters". InspectionUI's UPDATE used to draw synchronously
+      // right after this call -- with the PREVIOUS bitmap under the NEW
+      // overlays -- and then the decode callback drew again: measured as two
+      // full-canvas draws per frame, half of them wasted (plus one frame of
+      // new-overlay-on-old-image). Callers that check this flag skip the sync
+      // draw; callers that don't behave exactly as before.
+      this._imgDecodePending = true;
       createImageBitmap(img_info.jpegBlob).then((bmp) => {
+        // A stale token means a NEWER SetImg is in flight and owns the
+        // pending flag now -- leave it alone.
         if (this._jpegToken !== token) { if (bmp.close) bmp.close(); return; }
+        this._imgDecodePending = false;
         // TEMP probe — confirm decoded bitmap intrinsic size matches header.
         if (bmp.width !== w || bmp.height !== h) {
           console.warn("JPEG size mismatch: header="+w+"x"+h+
@@ -350,6 +361,13 @@ class EverCheckCanvasComponent_proto {
         if (typeof this.draw === 'function') this.draw();
       }).catch((err) => {
         log.warn("SetImg: JPEG decode failed", err);
+        if (this._jpegToken === token) {
+          this._imgDecodePending = false;
+          // Parity with the old behaviour: the skipped sync draw would have
+          // advanced the overlays over the previous image; do that now so a
+          // failed decode doesn't freeze the annotations too.
+          if (typeof this.draw === 'function') this.draw();
+        }
       });
       return;
     }

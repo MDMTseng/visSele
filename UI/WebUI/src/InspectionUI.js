@@ -1131,7 +1131,12 @@ class CanvasComponent extends React.Component {
         // shape drawInspection reads renderer.show_caliper_hits.
         this.ec_canvas.rUtil.show_caliper_hits = props.showCaliperHits !== false;
         //this.ec_canvas.ctrlLogic();
-        this.ec_canvas.draw();
+        // When EditDBInfoSync just started a JPEG decode, the decode callback
+        // will draw with the NEW bitmap after this synchronous block finishes
+        // (single-threaded: it always sees the setters above already applied).
+        // Drawing here too painted the OLD bitmap under the new overlays and
+        // doubled the canvas work -- see SetImg's _imgDecodePending.
+        if (!this.ec_canvas._imgDecodePending) this.ec_canvas.draw();
         this.ec_canvas.doRotateView=this.props.renderObjAlignRotate;
 
       }
