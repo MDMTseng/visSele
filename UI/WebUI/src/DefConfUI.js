@@ -1508,14 +1508,54 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           log.info("[action] def_image_reg stored", report.def_image_reg);
         }
       }
-      ACT_DefFileHash_Update(report.featureSet_sha1);
-      log.info("[action] report-save");
-      ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-      if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
-      else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
-      ACT_Def_Model_Path_Update(fileNamePath);
+      const commitSave = () => {
+        ACT_DefFileHash_Update(report.featureSet_sha1);
+        log.info("[action] report-save");
+        ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
+        if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
+        else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
+        ACT_Def_Model_Path_Update(fileNamePath);
+        DefFile_DB_SEND(report).then((ret) => console.log('then', ret)).catch((ret) => console.log("catch", ret));
+      };
       setFileSavingCallBack(undefined);
-      DefFile_DB_SEND(report).then((ret) => console.log('then', ret)).catch((ret) => console.log("catch", ret));
+
+      // Conflict check before overwriting the def THIS SESSION LOADED: if the
+      // on-disk featureSet_sha1 no longer matches the hash recorded at load
+      // (edit_info.DefFileHash), someone else -- another browser, a hand
+      // edit, a core-side migration -- saved it since. Silently overwriting
+      // resurrects this session's stale view of every field it never edited
+      // (defFileGeneration spreads loadedDefFile wholesale). Surface it and
+      // let the operator decide. LD {filename} is a pure file read (FL
+      // reply), no core-state side effects.
+      //
+      // Scope: only when the target IS the loaded def's path. Overwriting a
+      // DIFFERENT existing file is the file picker's own confirm; our
+      // load-time hash says nothing about that file.
+      const sameFile = existed && edit_info.defModelPath === fileNamePath;
+      if (!sameFile || edit_info.DefFileHash === undefined) { commitSave(); return; }
+      ACT_WS_SEND_BPG(CORE_ID, "LD", 0, { filename: fileNamePath + '.' + DEF_EXTENSION }, undefined, {
+        resolve: (pkts) => {
+          const fl = (pkts || []).find(p => p.type == "FL");
+          const onDiskSha1 = fl && fl.data && fl.data.featureSet_sha1;
+          // Legacy def without a sha1, or unreadable reply: nothing to compare
+          // against -- keep the old behaviour rather than block every save.
+          if (onDiskSha1 === undefined || onDiskSha1 === edit_info.DefFileHash) { commitSave(); return; }
+          log.warn("[save-conflict] on-disk def changed since load", { onDiskSha1, loadedHash: edit_info.DefFileHash });
+          setModal_view({
+            title: dictLookUp("WARNING", DICT),
+            view: "此定義檔在載入後已被其他人修改（sha1 不符）。覆蓋會丟失對方的變更；建議先取消、重新載入檢視。",
+            okText: "仍要覆蓋",
+            onOk: () => { commitSave(); setModal_view(undefined); },
+            onCancel: () => { log.info("[save-conflict] save cancelled"); setModal_view(undefined); },
+          });
+        },
+        reject: () => {
+          // Cannot read the on-disk file (deleted since load?). The save
+          // recreates it; nothing to conflict with.
+          log.warn("[save-conflict] could not re-read on-disk def; saving");
+          commitSave();
+        },
+      });
     });
   };
 

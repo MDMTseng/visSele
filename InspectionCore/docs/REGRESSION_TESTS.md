@@ -75,5 +75,8 @@ the new snapshot by eye before committing it.
 - Margin-editor dirty check and drag reorder: store-level assertions only, no
   UI-level flow yet. (Inspection enter/exit itself is now covered by
   `inspCycle`.)
+- The save-conflict dialog (on-disk sha1 changed since load → 仍要覆蓋/取消):
+  the normal save path is covered by flows, but no flow drives the file
+  picker, so the dialog branch is manual-verify only.
 - The MinGW/Windows deploy path: syntax-checked only, never executed on a
   bench.
