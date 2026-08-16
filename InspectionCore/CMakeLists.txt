@@ -405,8 +405,11 @@ target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
 # layer where jitter stops being +/-10ms. Links only cJSON on purpose: the
 # camera and the matching engine are later stages and there is no point adding
 # them while the cheap layers are still suspects.
-add_executable(latency_stages tools/latency_stages.cpp)
-target_link_libraries(latency_stages PRIVATE common_lib)
+# POSIX-only (openpty): a bench diagnostic, not a deploy artifact.
+if(NOT WIN32)
+  add_executable(latency_stages tools/latency_stages.cpp)
+  target_link_libraries(latency_stages PRIVATE common_lib)
+endif()
 
 # copy aravis dylib next to the binary for rpath loading (mac)
 if(FEATURE_ARAVIS)

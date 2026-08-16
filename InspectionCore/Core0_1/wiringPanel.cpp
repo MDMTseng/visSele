@@ -12,7 +12,9 @@
 #include "mjpegLib.h"
 
 #include <sys/stat.h>
-#include <sys/socket.h>   // INSP_PERIF_CONSOLE dev console
+#ifndef _WIN32
+#include <sys/socket.h>   // INSP_PERIF_CONSOLE dev console (POSIX-only feature)
+#endif
 #ifndef _WIN32
 #include <sys/resource.h> // getrusage: voluntary vs INVOLUNTARY context switches
 #endif
@@ -20,7 +22,9 @@
 #include <pthread.h>
 #include <sys/qos.h>
 #endif
+#ifndef _WIN32
 #include <netinet/in.h>
+#endif
 #include <atomic>         // std::atomic explicit for mingw
 #include <deque>
 #ifndef _WIN32
@@ -7129,6 +7133,11 @@ int removeOldestRep(const char* path,const char* ext)
 // Off unless the variable is set: no socket, no thread, no listener. A
 // production machine does not open a control port because a developer once
 // needed one.
+//
+// POSIX-only (sendmsg/MSG_DONTWAIT, raw fds): the whole reason it exists is
+// the Mac bench's exclusive serial port. On Windows both functions compile
+// to stubs -- the deployed machine keeps no dev console.
+#ifndef _WIN32
 static std::atomic<int> g_perifConsoleClient{-1};
 
 static void perifConsoleEcho(const uint8_t *raw, int rawL)
@@ -7355,6 +7364,10 @@ void PerifConsoleThread(bool *terminationflag)
   ::close(srv);
   LOGI("[perif console] ended");
 }
+#else
+static void perifConsoleEcho(const uint8_t *raw, int rawL) { (void)raw; (void)rawL; }
+void PerifConsoleThread(bool *terminationflag) { (void)terminationflag; }
+#endif  // _WIN32 -- dev console is POSIX-only
 
 // Drains perifSendQueue and performs the (potentially blocking) serial write
 // to the peripheral inspection machine, keeping that latency off the
