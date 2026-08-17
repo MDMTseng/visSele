@@ -10432,6 +10432,60 @@ int cp_main(int argc, char **argv)
       trigger_test_crash((ai + 1 < argc) ? argv[ai + 1] : "segv");
   }
 
+  // `visSele --init-data [srcdir]` -- give a fresh clone a working data/.
+  //
+  // init_data/ has been in the tree since 2022 as a directory you were meant to
+  // copy by hand: nothing read it, nothing said so, and a new clone started with
+  // whichever three files happened to be force-added past the `data` gitignore
+  // rule. This makes the folder mean something.
+  //
+  // NEVER OVERWRITES. A file that already exists in data/ is this machine's
+  // state -- its calibration, its station geometry, its identity -- and a seed
+  // directory has no business replacing any of it. So running this on a live
+  // machine is a no-op that prints what it skipped, which also makes it safe to
+  // put in a setup script that someone re-runs.
+  //
+  // Deliberately explicit rather than automatic at boot: the core has no
+  // hard-coded paths and does not auto-load anything (every read is UI-driven),
+  // and seeding files behind the operator's back would be the first exception.
+  for (int ai = 1; ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--init-data") != 0) continue;
+    const char *src = (ai + 1 < argc && argv[ai + 1][0] != '-') ? argv[ai + 1] : "init_data";
+    const char *dst = "data";
+    DIR *d = opendir(src);
+    if (d == NULL) { fprintf(stderr, "--init-data: cannot open '%s'\n", src); return 2; }
+    rw_create_dir(dst);
+    int copied = 0, kept = 0, failed = 0;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL)
+    {
+      if (e->d_name[0] == '.') continue;
+      // The seed directory documents itself; that README is not data.
+      { size_t ln = strlen(e->d_name);
+        if (ln > 3 && strcmp(e->d_name + ln - 3, ".md") == 0) continue; }
+      std::string sp = std::string(src) + "/" + e->d_name;
+      std::string dp = std::string(dst) + "/" + e->d_name;
+      if (access(dp.c_str(), F_OK) == 0)
+      { fprintf(stderr, "  keep  %s (already present)\n", dp.c_str()); kept++; continue; }
+      FILE *fi = fopen(sp.c_str(), "rb");
+      if (fi == NULL) continue;              // subdirectory or unreadable: skip
+      FILE *fo = fopen(dp.c_str(), "wb");
+      if (fo == NULL)
+      { fclose(fi); fprintf(stderr, "  FAIL  %s (cannot write)\n", dp.c_str()); failed++; continue; }
+      char buf[8192]; size_t n; bool ok = true;
+      while ((n = fread(buf, 1, sizeof(buf), fi)) > 0)
+        if (fwrite(buf, 1, n, fo) != n) { ok = false; break; }
+      fclose(fi); fclose(fo);
+      if (ok) { fprintf(stderr, "  copy  %s\n", dp.c_str()); copied++; }
+      else    { fprintf(stderr, "  FAIL  %s (short write)\n", dp.c_str()); failed++; remove(dp.c_str()); }
+    }
+    closedir(d);
+    fprintf(stderr, "--init-data: %d copied, %d kept, %d failed  (%s -> %s/)\n",
+            copied, kept, failed, src, dst);
+    return failed ? 1 : 0;
+  }
+
   // for(int i=0;i<10;i++)
   // {
   //   float f[]={0.3,0.2,0.4,0.7,1.1,1.5,1.8,2,2.3,2.6};
