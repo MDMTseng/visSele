@@ -155,8 +155,27 @@ struct alignas(64) LogRingHeader {
      * use. NUL-terminated; empty if the producer was built without build_info. */
     char     producer_build[96];
 
-    /* Pad up to LOG_HEADER_BYTES.  Layout: 372 + 8 + 8 + 8 + 96 = 492. */
-    uint8_t pad[LOG_HEADER_BYTES - 492];
+    /* Value of `head` when THIS producer attached.
+     *
+     * The ring is a NAMED shared segment that nobody unlinks, so it survives
+     * core restarts and a dump can be almost entirely another process's log.
+     * Measured on a real SIGABRT dump: 65356 records retained, 41992 of them
+     * emitted from a code path that had been DELETED two commits earlier --
+     * and only 9 from the process that actually crashed. Reading that dump
+     * meant reading someone else's run.
+     *
+     * The reattach path deliberately does NOT reset head (nothing in flight is
+     * lost, and the previous run's tail is often the context you want), so the
+     * fix is to record the boundary rather than erase what is before it.
+     *
+     * 0 = unknown (legacy producer): the drainer falls back to saying nothing.
+     * Lives in what used to be pad, so the header size and every existing
+     * field offset are unchanged -- an old drainer reads zero here and behaves
+     * exactly as before. */
+    uint64_t producer_start_head;
+
+    /* Pad up to LOG_HEADER_BYTES.  Layout: 372 + 8 + 8 + 8 + 96 + 8 = 500. */
+    uint8_t pad[LOG_HEADER_BYTES - 500];
 };
 
 /* One log entry.  Fixed-size; producer truncates rather than splitting

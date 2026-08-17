@@ -637,6 +637,18 @@ std::string write_crash_dump(const Config &cfg,
     else
         std::fprintf(fp, "--- Ring: all %llu records since start (nothing lost) ---\n",
                      (unsigned long long)head);
+    /* Where THIS producer's log begins. The ring outlives core restarts, so a
+     * dump can be mostly a previous run -- and on a real crash dump it was:
+     * 65356 records retained, 9 of them from the process that died. Say how
+     * many are actually this run's before the reader draws conclusions from
+     * someone else's log. */
+    const uint64_t p_start = h->producer_start_head;
+    if (p_start > tail)
+        std::fprintf(fp, "    NOTE: only the last %llu records are from THIS process"
+                         " (started at record %llu); everything before the"
+                         " >>> PRODUCER START <<< line below is a PREVIOUS run.\n",
+                     (unsigned long long)(head > p_start ? head - p_start : 0),
+                     (unsigned long long)p_start);
     uint32_t emitted = 0;
     for (uint64_t i = tail; i < head; ++i) {
         LogSlot *slot = log_ring_slot(h, i);
@@ -646,6 +658,10 @@ std::string write_crash_dump(const Config &cfg,
         std::memcpy(text, slot->text, LOG_SLOT_TEXT);
         uint64_t after = slot->seq.load(std::memory_order_acquire);
         if (after != before) continue;
+        if (i == p_start && p_start > tail)
+            std::fprintf(fp, ">>> PRODUCER START (record %llu) -- everything above"
+                             " is a previous process <<<\n",
+                         (unsigned long long)p_start);
         std::fputs(text, fp);
         emitted++;
     }

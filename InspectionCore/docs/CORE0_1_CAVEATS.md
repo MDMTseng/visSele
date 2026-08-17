@@ -1456,3 +1456,28 @@ headless 觸發:`UI/WebUI/tools/webctl/logdump.mjs`。
 
 **insp.log 的 rotation(10MB × 5)實務上從沒跑過**:persist 預設 OFF,那條路是死的。
 唯一的持久化是手動 dump。
+
+## Crash dump 的內容有很大一部分不是崩潰的那個行程(2026-08-18 標出來)
+
+ring 是**具名共享記憶體,沒有人 unlink**,所以它跨 core 重啟存活;
+`log_open_shm_ring()` 的 reattach 分支**刻意不重設 head**(在途的東西不丟,而且上一輪
+的尾巴常常正是你要的脈絡)。後果是一份 crash dump 可能幾乎全是別人的 log。
+
+實測(一次真的 SIGABRT):ring 段保留 **65356 行**,其中 **41992 行來自兩個 commit 前
+就已經刪掉的程式路徑**(只可能是舊世代的 core),而真正崩潰的那個行程只貢獻了 **9 行**。
+照著那份 dump 讀,你讀的是另一次執行。
+
+修法不是清空,是**標界線**:header 新增 `producer_start_head`(佔用原本的 pad,
+**header 大小與所有既有欄位位移都不變**,舊 drainer 讀到 0 就退回舊行為),dump 於是印:
+
+```
+--- Ring: records A..B of N written -- M EARLIER RECORDS WERE OVERWRITTEN ---
+    NOTE: only the last 110 records are from THIS process (started at record ...)
+...
+>>> PRODUCER START (record ...) -- everything above is a previous process <<<
+```
+
+**已知限制:POSIX 上 crash 堆疊沒有符號。** `crash_module_base` 只有
+`log_crash_win.cpp` 會填,POSIX 版沒填 → dump 印 `module: base=0x0`,drainer 算不出
+RVA,每個 exe frame 都是 `??? 0x... 0x0 + <huge>`。**產線目標是 Windows,那條路是好的**;
+Mac bench 上請改看 `~/Library/Logs/DiagnosticReports/*.ips`(OS 的報告本來就有完整符號)。
