@@ -619,12 +619,18 @@ putting the answer in the picture (LegacyFirmware.cpp ~5420). The
 449-vs-213 drift quoted here belongs to the sequence-paired era and should
 not be read as this bug's blast radius.
 What actually happens: the board holds a pipeline object the core can never
-answer, so the part reaches SWITCH **UNANSWERED**. `UNANSWERED_POLICY`
-defaults to 0 = legacy ("any unanswered part at SWITCH stops the line") and
-is not overridden in this machine's NVS (`get_setup` exposes only
-`skip_policy`). So the real cost is a **line stop**, loud and self-limiting
-— an availability bug, not a quality one, and the direction the machine is
-deliberately designed to fail in (RELIABILITY_ROADMAP layer 2).
+answer, so the part reaches SWITCH **UNANSWERED**. This machine runs
+`UNANSWERED_POLICY` **1** — read it as `skip_policy.mode` in `get_setup`,
+which is that variable's serialization (`==1 ? "stop_only" : "none"`); live
+values are `stop_only` / `stop_after` 10. Under policy 1 an unanswered part is
+**not actuated, so it recirculates** (fail-to-reject) and is counted; the line
+faults only after `UNANSWERED_STOP_AFTER` **consecutive** unanswered.
+So the real cost of one dropped edge is **one part goes round again**, plus an
+`UNANSWERED_Count` tick. A nuisance, not an availability event, and exactly
+the direction the machine is designed to fail in (RELIABILITY_ROADMAP layer 2).
+(Earlier revisions of this note said "policy defaults to 0, so the line stops".
+That is the COMPILE default, not this machine's; corrected after reading the
+board.)
 Still worth fixing: a manual take-image should not be able to halt
 production. Note `SnapFrame` additionally re-applies `TriggerMode(1)`, so an
 II during a hardware-triggered session does more than borrow the source — it

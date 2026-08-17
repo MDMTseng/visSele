@@ -5,24 +5,75 @@ on real parts, what each measurement is worth, and which instruments returned
 clean results while testing nothing. Read it before trusting any "clean" result
 quoted here.
 
-Start here. This is the live state of the uInspESP32 bring-up as of the end of
-the 2026-08-05 session, written so the next person (or the next session) can
-pick it up without re-deriving anything.
+Start here. The dated sections below are the record of the 2026-08-05 and
+2026-08-11 sessions; the STATUS block immediately after is the live state and
+overrides anything older that contradicts it.
 
 ---
+
+> ## STATUS 2026-08-18 — read this before the rest of the page
+>
+> **The pairing is by TIMESTAMP. There is no second mechanism.** Read on this
+> machine's live NVS (`get_setup`, not the compile defaults):
+>
+> | key | value | meaning |
+> |---|---|---|
+> | `cam.report_match_ts` | **true** | the device places every report by `cam_ts`. THE authority. |
+> | `cam.report_match_pcnt` | **false** | trigger-count pairing is off, permanently — see below |
+> | `cam.match_window_us` | 5000 | tolerance around the expected device-clock time |
+>
+> The head of this page used to say `report_match_ts` was false and that
+> flipping it was "the actual handover, and it is not done". **It has been
+> flipped.** The rest of the page below is the record of how that was decided
+> and is still accurate; only this summary was stale.
+>
+> **Trigger count is not a fallback, a cross-check, or a second opinion.** Do
+> not reach for `pcnt` when the timestamp is inconvenient. Three independent
+> reasons, all already measured:
+>
+> 1. **Above the camera's frame floor it is confidently WRONG**, not blind. The
+>    camera keeps producing frames at its own cadence while `ExtTriggerCount`
+>    advances ~1:1, so each frame slides ~420 µs further from the pulse it is
+>    labelled with and wraps a whole period every ~12 frames. Adjudicated by the
+>    per-pulse PRBS backlight (the picture measures the exposure instead of
+>    asserting it): flash pattern correct 104/104 at 150 Hz vs **53/92 — chance
+>    — at 200 Hz**. See UINSP_CAVEATS 2026-08-11 and the "not peers" section
+>    below.
+> 2. **It cannot even learn its offset here.** `pcnt` only exists in a report if
+>    the host enables `INSP_CAM_TRIG_WATERMARK`, which is off (this bench's core
+>    is launched without it). No watermark → no `pcnt` in the report → `CAM_PCNT`
+>    never gets an unambiguous sample, so its `offset` stays unlearned.
+> 3. **Any tool that fires a CAM pulse breaks it anyway.** `CAM_PULSE_N` counts
+>    every edge this firmware drives — the ISR's CAM stage, `calFireNow`, AND the
+>    `trig_cam_*` commands. Every `trig_cam_pulse` from a test harness (which is
+>    how this bench is driven) shifts the offset by one, permanently, and looks
+>    identical to a real slip.
+>
+> `cam_ts` is a measurement of the imaging event and can abstain; `pcnt` is
+> bookkeeping of the request and cannot. They are not peers.
+>
+> **Trap:** the firmware compile defaults are `REPORT_MATCH_TS=false` /
+> `REPORT_MATCH_PCNT=false`. The live behaviour comes from NVS. A board
+> reflashed with a wiped NVS silently reverts to acting on the tid the CORE
+> names — check `get_setup` after any flash.
+>
+> **Still genuinely not done** (steps 6-8 below, A6 in DEV_COMPLETE_CHECKLIST):
+> the host still compiles its own pairing — `PERIF_CORE_PAIRING` defaults to 1
+> in CMakeLists, so the core still names a tid and `disagree` is still the
+> evidence that a verdict landed on the right part. Promoting the device to sole
+> authority and deleting `PerifTriggerPairing.hpp` is the remaining work.
 
 ## The one-paragraph version
 
 The machine decides which camera frame belongs to which physical part. That
 mapping used to be inferred on the host from arrival order, which is wrong by
-construction and silently mis-sorts parts. It now matches on timestamps, and is
-in the middle of being moved onto the ESP32 — which knew the answer all along
-and was throwing it away. Everything works at 35 parts/s with zero losses.
+construction and silently mis-sorts parts. It now matches on **timestamps**,
+computed on the ESP32 — which knew the answer all along and was throwing it
+away. Everything works at 35 parts/s with zero losses.
 
-The device-side machinery is flashed and running, but it is **not yet the
-authority**: `report_match_ts` is false, so the device still acts on the tid the
-core names and only *watches* its own timestamp match. Flipping that flag is the
-actual handover, and it is not done — see "Tomorrow, in order".
+The device is now the one that places a report (`report_match_ts` true). What
+has not happened is the cleanup: the host still computes a tid alongside it, and
+that redundancy is what `disagree` measures.
 
 ---
 
@@ -36,7 +87,7 @@ actual handover, and it is not done — see "Tomorrow, in order".
 | Throughput at 35/s | 14–18 parts/s accepted, ~27% deferred by clustering |
 | Parts on plate | ~45 (measured: 32.4 detections/rev × 1.40 parts/detection) |
 | Plate speed | 15000 is the throughput optimum; slower is monotonically worse |
-| Persisted to NVS | gate **18/s** (deliberately conservative for inspection work; the measured ceiling is 35-36/s), `unanswered_policy` 1, `unanswered_stop_after` 2 |
+| Persisted to NVS | gate **18/s** (deliberately conservative for inspection work; the measured ceiling is 35-36/s), `unanswered_policy` 1, `unanswered_stop_after` **10** (was 2 when this line was written; read `skip_policy` in `get_setup` — that key IS `UNANSWERED_POLICY`, serialized as `stop_only`/`none`) |
 
 Physical: parts jam / stop circulating after long unattended runs. Normal
 operation (vibratory feeder in, ejected at the last station) will not do this;

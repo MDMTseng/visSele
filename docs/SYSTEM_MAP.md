@@ -90,8 +90,16 @@ WebUI 收到就 poke 對應的 single-flight 查詢鏈。
 - **CAM_SYNC**（時戳）：板子在 CAM1 邊緣記 `cam_us`，相機 frame 帶 `cam_ts`，
   core 報告回傳 `cam_ts`；offset 由 8 顆校正脈衝學得（一般報告不教 — 循環論證），
   漂移補償 slope 常開。窗外連兩次 → CAM_CLOCK_LOST(13) **停機不猜**。
-- **CAM_PCNT**（計數）：板子數自己發的 CAM1 邊緣 vs 相機接受數（浮水印 pcnt）；
-  精確算術配對，但對「被拒的觸發」從此盲。兩法同開時不一致 → err 16。
+- **CAM_PCNT**（計數）：**已淘汰，不是備援也不是第二意見。** 程式碼還在(`report_match_pcnt`
+  可開、兩法同開不一致 → err 16),但設計上不再使用,實機 `report_match_pcnt=false`。
+  三個理由,都量過:(1) 超過相機幀率下限時它**不是盲,是自信地給錯答案**——相機用自己的
+  節奏出圖而 `ExtTriggerCount` 仍約 1:1 前進,每張離它被標記的那一發再滑 ~420µs,約每
+  12 張繞完一圈;用每發變動的 PRBS 背光裁決:150Hz 時 104/104 正確,200Hz 時 53/92(＝亂猜)。
+  (2) 它連 offset 都學不到:`pcnt` 只有在 host 開 `INSP_CAM_TRIG_WATERMARK` 時才會出現在
+  報告裡,而它是關的。(3) `CAM_PULSE_N` 會數**韌體驅動 CAM1 的每一條路徑**,包含
+  `calFireNow` 與 `trig_cam_*` 命令——測試工具每打一發脈衝就把 offset 永久推一格,
+  而且跟真的滑移長得一模一樣。
+  **`cam_ts` 是對「成像事件」的量測,可以棄權;`pcnt` 是對「請求」的記帳,不能。兩者不對等。**
 - `reset_running_stat` 會**殺掉時鐘模型**（run 中不可恢復）；A/B 只能用
   `reset_latency_stat`。
 
