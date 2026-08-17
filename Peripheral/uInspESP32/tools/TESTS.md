@@ -64,6 +64,11 @@ ESP32 就重置——所以每次 CONNECT 之後裝置的 RAM 設定（含 `stag
 **7. core 在 perif DISCONNECT 之後沒有關掉 tty fd。** 要燒錄韌體必須整個重啟 core，
 光送 DISCONNECT 不夠。
 
+**8a. `uinsp_panel.py` 在這台 bench 上要 `--http-port 8766`。** 預設 8765 被
+webctld（WebUI 測試的瀏覽器控制服務）佔走，panel 直接 Address-in-use 死掉。
+另外 panel 和 core 對序列埠互斥（陷阱 7：core 連 DISCONNECT 都不放 tty）——
+開 panel 前先停 core，兩邊同開會互相打碎 frame。
+
 **8b. 桌上只接板子（步進沒出力/沒接線）時，配對類 dry-run 走不完。**（2026-08-17
 整合測試）鏈路、心跳、console、`enter_insp_mode` 100→102→112、gate 到速收單
 全部正常，但 `plate_freq_meas` 恆為 0 —— SYS_STEP_COUNT 沒在走，物件進了 gate
