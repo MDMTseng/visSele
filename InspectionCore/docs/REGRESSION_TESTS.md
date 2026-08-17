@@ -21,6 +21,8 @@ All in `UI/WebUI/tools/webctl/`.
 | Probe | Verifies | Healthy looks like |
 |---|---|---|
 | `soak.mjs <def> <secs>` | CI stream rate + drops | ~25 reports/s steady on the bench |
+| `logdump.mjs` | headless `SC log_dump` — writes the core's whole log ring to `latest_dump.dump` | the only way to see INFO/DEBUG from a running core (disk persist keeps WARN+) |
+| `pulse_load.mjs <rate> <secs>` | drives CAM1 hardware triggers via the core's perif console (4099) | production-shaped load for per-frame paths; pair with `fi_hold.mjs` |
 | `station_probe.mjs` | station block: `skip_inspection`, `ignore_calib`, region, `area_bypass` | prints one frame's station JSON |
 | `calib_sticky.mjs <def>` | ignore_calib is session-scoped (AUDIT 1.3) | self-judging PASS/FAIL |
 | `link_fault.mjs` | perif link chain: tx_fail → suspect → reopen → dropped_no_channel (AUDIT 1.4) | five-line trace; counters move exactly when they should |
@@ -107,3 +109,19 @@ the new snapshot by eye before committing it.
   picker, so the dialog branch is manual-verify only.
 - The MinGW/Windows deploy path: syntax-checked only, never executed on a
   bench.
+
+## Log census (how to prove a logging change did anything)
+
+Same load, two binaries, a **fresh ring each** — the ring is a named shm segment
+that survives restarts, so without a new name the dump is contaminated with
+every previous generation (`CORE0_1_CAVEATS.md`).
+
+```sh
+INSP_LOG_RING_NAME=run_$$ ... ./visSele          # startup must say (created)
+node fi_hold.mjs <def> &  node pulse_load.mjs 25 20
+node logdump.mjs                                  # -> latest_dump.dump
+# census by (level, file:line), dedupe exact repeats (dump writes disk+ephemeral)
+```
+
+2026-08-18 baseline, 20s / 488 frames / NA snapshots on:
+**3982 → 494 lines (8.14 → 1.01 per frame), ERROR 1226 → 26.**

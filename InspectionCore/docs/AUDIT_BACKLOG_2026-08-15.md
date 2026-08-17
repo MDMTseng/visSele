@@ -513,12 +513,28 @@ encode once per frame BEFORE the fan-out (cache keyed on frame seq;
 header+chunk sends of cached bytes; encode moves outside the locks for free.
 Byte-identical wire output. Pairs with 2.8/6.8 (lock-scope rework).
 
-### 7.2 OPEN — NG-snapshot saving is silently dead
+### 7.2 FIXED 2026-08-18 — NG-snapshot saving was silently dead
 `cache_camera_param` (wiringPanel.cpp:132) is never assigned anywhere;
 `saveInspectionSample` requires `reports[0]` from it → returns −11 → every
-snapshot save (WS path AND snap thread) fails silently. Functional regression,
-not a leak. Decide what should fill it (the RP report? camera json?) and wire
-it, or drop the requirement.
+snapshot save (WS path AND snap thread) failed silently. Functional regression,
+not a leak.
+
+**Confirmed, not inferred**: every dated folder under `data/SAMPLE/` from
+20260812 to 20260817 contained **0 files**, while the log printed
+`SAVE::<path>` for each one — the call site discarded the return value. It
+surfaced the hour the save started reporting its own result (see the log-census
+work in the same commit): 972 × `snapshot WRITE FAILED (-11)` in a 20s run.
+
+**Fix**: the legacy global stays honoured if anything ever sets it, but the
+fallback is the frame's own calibration — `FeatureReport_UTIL` already writes
+`cameraCalib2JSON`'s output to `reports[0].cam_param`, and that is the same
+`{"type":"camera_calibration",...}` object the historical `.xreps` files carry
+under `"camera_param"`. Verified: same 20s run now writes files, and the
+`.xreps` `camera_param` reads
+`{"ppb2b":1,"mmpb2b":0.0138859432190657,"exposure_time":50}`.
+
+`data/default_camera_param.json`, the original source, has not existed for a
+long time — see the stale-claims table in `docs/SYSTEM_MAP.md` §8.
 
 ### 7.3 OPEN — measurement-pipeline bit-exact recoveries (~2-3ms of 8.5ms)
 Ranked, all verified as bit-exact by the perf agent: (a) per-frame camera

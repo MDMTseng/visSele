@@ -1400,3 +1400,35 @@ persist 預設關閉、drainer 會無聲死掉的情況下。
 
 順帶:`pkill`(SIGTERM)本身在 2026-08-15 之前也會產生 .ips(signal handler 裡做
 `delete ifwebsocket`,主執行緒還在用它)。已修,handler 只設旗標。
+
+---
+
+## 日誌:ring 是「跨行程、跨世代」的具名共享記憶體(2026-08-18)
+
+`latest_dump.dump` 裡有**每一代 core 的日誌**,不是這次跑的。ring 是具名 shm
+(`insp_log_ring`),core 結束不 unlink,drainer 重開也是 attach 而非重建。所以:
+
+- 用 dump 做「這次跑了多少行」的統計會被前幾代污染(踩過:一份 8.5MB 的 dump
+  裡有 21568 筆 HR,全是好幾天前重連風暴留下的)。
+- 時間戳也不能拿來過濾——不同世代的 epoch 不同,同一份檔案裡會同時出現
+  `[ 2836.5]` 和 `[554192.4]`。
+- **要乾淨的量測就給它一個新名字**:`INSP_LOG_RING_NAME=xxx_$$ ./visSele`,
+  啟動訊息會寫 `(created)` 而不是 `(connected)`。這是本輪 before/after 對照
+  唯一可信的做法。
+- dump 會同時寫 disk 段與 ephemeral 段,**同一行可能出現兩次**;統計前先 dedupe。
+
+## SC log_dump 的檔名是固定的
+
+on-demand dump → `latest_dump.dump`(`inspd_log_main` 用 `fixed_name=on_demand`),
+每次覆蓋;`crash_<utc>.dump` 只有真崩潰才產生。要留就先改名。
+headless 觸發:`UI/WebUI/tools/webctl/logdump.mjs`。
+
+## 「日誌噪音」是可以量的,而且量了才知道錯在哪
+
+方法:同一份負載跑兩個 binary,各給一個新 ring,`SC log_dump` 後依
+(level, file:line) 做普查。2026-08-18 的結果:同一段 20s / 488 幀、開 NA 快照的
+負載,**3982 行 → 494 行(每幀 8.14 → 1.01)**,ERROR **1226 → 26**。
+
+真正的收穫不是行數:普查把 `SAVE::<path>` 這種「說自己成功了但其實沒有」的
+行揪出來,直接證出 backlog 7.2(快照從 08-12 起一張都沒存成)。
+**丟掉回傳值的日誌比沒有日誌更糟**——它會主動說謊。

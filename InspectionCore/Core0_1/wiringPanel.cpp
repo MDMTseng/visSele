@@ -2211,7 +2211,22 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   if (reportsList == NULL)
     return -10;
 
+  // The caller's camera_param is the LEGACY source: cache_camera_param, which
+  // used to be parsed from data/default_camera_param.json. That file is gone
+  // and nothing ever assigns the global again, so it is permanently NULL --
+  // and this early return meant EVERY snapshot save failed with -11 while the
+  // call site discarded the return and logged "SAVE::<path>". Every dated
+  // folder under data/SAMPLE/ since 2026-08-12 is empty for that reason;
+  // found the moment the save started reporting its own result.
+  //
+  // The live equivalent is already in the report the snapshot is being taken
+  // from: FeatureReport_UTIL puts cameraCalib2JSON's output at
+  // reports[0].cam_param, which is the same {"type":"camera_calibration",...}
+  // object the old .xreps files carry under "camera_param". Prefer the legacy
+  // global when someone does set it, fall back to the frame's own calibration.
   cJSON *camera_param_data = JFetch_OBJECT(camera_param, "reports[0]");
+  if (camera_param_data == NULL)
+    camera_param_data = JFetch_OBJECT(inspectionReport, "reports[0].cam_param");
   if (camera_param_data == NULL)
     return -11;
 
@@ -2844,8 +2859,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
     BPG_protocol_data *dat = &bpgdat;
 
-    LOG_EVERY(50, "DataType_BPG:[%c%c] pgID:%d", dat->tl[0], dat->tl[1],
-         dat->pgID);
+    // HR is excluded from the sample, not merely quiet: it is a per-connection
+    // handshake, so during a reconnect storm it IS the traffic, and a 1-in-50
+    // sample of a stream that is 90% HR shows almost nothing of the commands
+    // you opened the log to find. In a 2026-08-17 dump this one line was 19%
+    // of the ring and nearly all of it read "[HR]".
+    if (!checkTL("HR", dat))
+      LOG_EVERY(50, "DataType_BPG:[%c%c] pgID:%d", dat->tl[0], dat->tl[1],
+           dat->pgID);
     // The payload is NOT guaranteed to be NUL-terminated.
     //
     // dat_raw points straight into the reassembly buffer (BPG_Protocol.cpp:
@@ -2940,9 +2961,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     //       dat->pgID);
     if (checkTL("HR", dat))
     {
-      LOGI("DataType_BPG>>>>%s", dat->dat_raw);
-
-      LOGI("Hello ready.......");
+      // ONE line, and it carries the number nobody could see before.
+      //
+      // This used to be two content-free lines ("DataType_BPG>>>>{...}" --
+      // the client's own greeting echoed back -- and "Hello ready......."),
+      // plus a third from the sampler above. In a 2026-08-17 dump those three
+      // were 72% of the entire ring: 21568 handshakes' worth. HR is sent once
+      // per connection, so that count is not a heartbeat, it is a record of
+      // reconnect churn -- and the log made that churn unreadable at exactly
+      // the moment it mattered. The client count is what tells you whether a
+      // reconnect replaced a client or added one.
+      LOGI("client HR (peer %p) -- stream subscribers:%zu", peer,
+           bpg_pi.streamSubscriberCount());
       session_ACK = true;
     }
     else if (checkTL("SB", dat)) //[S]u[B]scribe to the live inspection stream
@@ -7071,7 +7101,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     if (*skipImageTransfer) s_skipImg++;
     if (*skipInspDataTransfer) s_skipRep++;
     if ((s_n % 50) == 0)
-      LOGE("dview split: wait avg:%.1fms max:%.1fms | rep avg:%.1fms max:%.1fms"
+      LOGW("dview split: wait avg:%.1fms max:%.1fms | rep avg:%.1fms max:%.1fms"
            " | img avg:%.1fms max:%.1fms | tot avg:%.1fms max:%.1fms"
            " | skipped img:%llu rep:%llu of n:%llu | q:%d/%d",
            s_wait/1000.0/s_n, m_wait/1000.0, s_rep/1000.0/s_n, m_rep/1000.0,
@@ -7993,7 +8023,7 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
           // produce exactly this, so measure the instrument.
           if (newMax || (g_perifWriteCnt % 100) == 0)
           {
-            LOGE("perif write: last:%.2fms max:%.2fms avg:%.2fms | wait last:%.2fms "
+            LOGW("perif write: last:%.2fms max:%.2fms avg:%.2fms | wait last:%.2fms "
                  "max:%.2fms avg:%.2fms | n:%llu qdepth:%zu drops:%d%s",
                  ms, g_perifWriteMaxMs, g_perifWriteSumMs / (double)g_perifWriteCnt,
                  _waitMs, g_perifWaitMaxMs, g_perifWaitSumMs / (double)g_perifWriteCnt,
@@ -8023,7 +8053,7 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             // and missed flat; pending climbing means results are not keeping up
             // with triggers, missed climbing means frames are being lost.
             if (pc->machine_type == PERIF_UINSP_ESP32)
-              LOGE("perif trig: missed(NA):%lld", perifMissedFrameCount.load());
+              LOGW("perif trig: missed(NA):%lld", perifMissedFrameCount.load());
             // The whole logging tail, not just up to the first line.
             //
             // This is the prime suspect and it needs a distribution, not a
@@ -8511,7 +8541,16 @@ void InspSnapSaveThread(bool *terminationflag)
           }
 
           std::string _path1 = rootPath + extPath;
-          LOGE("create DIR %s", _path1.c_str());
+          // Was LOGE, unconditionally, once per snapshot: 4172 of the 5165
+          // "errors" in a 2026-08-17 dump were this mkdir succeeding. The path
+          // only changes when the date rolls or the def is renamed, so say it
+          // when it CHANGES -- that is the whole information content.
+          static std::string _last_dir;
+          if (_path1 != _last_dir)
+          {
+            _last_dir = _path1;
+            LOGI("snapshot dir -> %s", _path1.c_str());
+          }
           if (rw_create_dir(_path1.c_str()) == false) //recursive create folder if failed
           {
             LOGE("the path:%s cannot be created", _path1.c_str());
@@ -8549,18 +8588,17 @@ void InspSnapSaveThread(bool *terminationflag)
 
         int count =getFileCountInFolder(folderPath.c_str(),SNAP_FILE_EXTENSION);
 
-        LOGI("folderPath::%s  ,count:%d",folderPath.c_str(),count);
         // while(count>=InspSampleSaveMaxCount)
+        bool _rotated = false;
+        int _rot_ret = 0;
         if(count>=InspSampleSaveMaxCount)//only deal with one
         {
-          int ret = removeOldestRep(folderPath.c_str(),SNAP_FILE_EXTENSION);
-          
-          LOGI("removeOldestRep ret:%d",ret);
+          _rot_ret = removeOldestRep(folderPath.c_str(),SNAP_FILE_EXTENSION);
+          _rotated = true;
           count--;
           save_snap_folder_full_delete_count++;
         }
         std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
-        LOGI("SAVE::%s",filePath.c_str());
 
         // Hard disk-space floor: avoid the silent-truncation cascade where
         // the snapshot fopen succeeds, the kernel hits ENOSPC mid-write, and
@@ -8593,8 +8631,26 @@ void InspSnapSaveThread(bool *terminationflag)
                  save_snap_disk_low_skip_count);
           }
         }
+        // ONE line per snapshot, and it says what happened.
+        //
+        // It used to be three (create DIR / folderPath+count / SAVE::path),
+        // none of which reported the outcome: saveInspectionSample's return
+        // was discarded, so a snapshot that failed to write looked exactly
+        // like one that succeeded. Rate-limited because at 35 parts/s an
+        // NG burst is 35 of these a second; failures are NOT rate-limited,
+        // they are the reason to read this at all.
         if (_disk_ok && _dir_ok)
-          saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str());
+        {
+          int _sv = saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str());
+          if (_sv != 0)
+            LOGE("snapshot WRITE FAILED (%d) %s -- NG evidence is being lost",
+                 _sv, filePath.c_str());
+          else
+            LOG_EVERY(50, "snapshot saved %s (%d/%d in folder%s)",
+                      filePath.c_str(), count + 1, InspSampleSaveMaxCount,
+                      _rotated ? (_rot_ret == 0 ? ", rotated oldest"
+                                                : ", ROTATE FAILED") : "");
+        }
       }
 
       //possible occupation flag => resendCache, let image_pipe_info_resendCache_swap_and_gc handle it
@@ -9326,7 +9382,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       if (q_us > s_q_max) s_q_max = q_us;
       if (i_us > s_i_max) s_i_max = i_us;
       if ((s_n % 100) == 0)
-        LOGE("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
+        LOGW("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
              "max:%.2fms | n:%llu",
              s_q_sum / 1000.0 / s_n, s_q_max / 1000.0,
              s_i_sum / 1000.0 / s_n, s_i_max / 1000.0,
