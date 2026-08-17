@@ -495,7 +495,13 @@ during FI" SIGSEGV); Aravis destructor now drains in-flight stream callbacks
 (the bench-green/factory-crash asymmetry — carousel/Hik join, Aravis had
 nothing); stream-rate RP `cJSON_PrintUnformatted`; machine-hash hexed once.
 
-### 7.1 OPEN — JPEG encodes once per SUBSCRIBER, under three locks (the big one)
+### 7.1 OPEN — JPEG encode under three locks (the per-subscriber half DOWNGRADED)
+Owner note 2026-08-17: in practice one WebUI is connected, so the
+N-subscribers-N-encodes half is low priority. What stays high priority is
+lock scope — even with ONE subscriber the 12-20ms encode + blocking send
+happen inside `subscribersLock`+`linkLayerLock`, parking every other producer
+per frame (the "send thread 811ms" was measured single-client); do the
+encode-outside-locks half with 2.8/6.8.
 `BPG_Protocol.cpp:115-118` runs the IM callback inside the per-peer
 fromUpperLayer loop; `SEND_acvImage` (wiringPanel.cpp ~2678) does imencode
 (12-20ms at 5MP q85) per PEER per frame, and the whole thing sits under
