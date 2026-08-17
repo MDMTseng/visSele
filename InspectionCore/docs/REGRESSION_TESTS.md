@@ -84,11 +84,15 @@ the new snapshot by eye before committing it.
    It looked exactly like a UAF and cost an hour of lldb. `rc_hammer.mjs`
    catches it in 5s; when in doubt after a header change, delete the
    affected `CMakeFiles/*.dir` objects and rebuild.
-7. **doorbell.mjs phase 3 needs a bench with NO real perif board attached** —
-   with `/dev/cu.usbserial-0001` present, PD CONNECT talks to real hardware
-   (and a serial open DTR-power-cycles the board). perif=FAIL with a device
-   attached is the environment, not the code. churn.mjs freeze bounds also ran
-   29-52s (vs 16s baseline) on the same loaded bench, on both A/B binaries —
+7. **doorbell.mjs phase 3's "environment" FAIL was two real bugs** (found the
+   moment the real board was attached, fixed 2026-08-17): (a) the perif
+   doorbell was only level-sampled at 1s — a DISCONNECT reconnected within one
+   period was invisible; the PD CONNECT/DISCONNECT handlers now ring it
+   event-driven; (b) a CONN_ID-less DISCONNECT always failed — the `-1`
+   wildcard branch was dead code behind an earlier guard. Phase 3 passes WITH
+   the real board attached now. Still true: a serial CONNECT DTR-power-cycles
+   the board — don't hammer PD while a run is in progress. churn.mjs freeze
+   bounds ran 29-52s (vs 16s baseline) on a loaded bench on both A/B binaries —
    re-baseline quiet before believing a regression.
 
 ## Gaps (nothing covers these today)

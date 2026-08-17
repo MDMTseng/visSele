@@ -64,6 +64,14 @@ ESP32 就重置——所以每次 CONNECT 之後裝置的 RAM 設定（含 `stag
 **7. core 在 perif DISCONNECT 之後沒有關掉 tty fd。** 要燒錄韌體必須整個重啟 core，
 光送 DISCONNECT 不夠。
 
+**8b. 桌上只接板子（步進沒出力/沒接線）時，配對類 dry-run 走不完。**（2026-08-17
+整合測試）鏈路、心跳、console、`enter_insp_mode` 100→102→112、gate 到速收單
+全部正常，但 `plate_freq_meas` 恆為 0 —— SYS_STEP_COUNT 沒在走，物件進了 gate
+之後永遠到不了 verdict/sort，`cam_sync` 也沒有時基可學（learned 恆 0）。
+`dryrun_pairing.py`/`static_part_profile.py` 需要整機（或至少步進子系統回應）。
+另注意 `count{}`/`gate.out` 這類計數是 NVS 壽命值，跨重啟累積——判斷單次 run
+要用前後差值，別像 dryrun 的 `judged=` 那樣讀絕對值。
+
 **8. log ring 跨 core 重啟累積。** dump 裡讀到的那幾行可能屬於上一次的 run。
 `?lat` 的直方圖同理是**自 core 啟動累積**的——比較兩個條件要用前後差值，或重啟 core。
 

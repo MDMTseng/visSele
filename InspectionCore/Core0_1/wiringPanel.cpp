@@ -1731,6 +1731,9 @@ static bool load_field_calib(const char *path)
 int CameraSettingFromFile(CameraLayer *camera, char *path);
 
 CameraLayer *getCamera(int initCameraType); //0 for real First, then fake one, 1 for real camera only, 2 for fake only
+// Perif-link doorbell (defined with the CamStateWatchThread below); the PD
+// CONNECT/DISCONNECT handlers ring it synchronously on the transition.
+static void pushPerifStateDoorbell();
 // The two phases are timed separately because they answer different questions
 // and only one of them is the def's running cost. See the definition.
 struct InspPhaseMs { double build_ms = 0, insp_ms = 0, build_cpu_ms = 0, insp_cpu_ms = 0; };
@@ -5729,9 +5732,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", avail_CONN_ID);
             bpg_dat = GenStrBPGData("PD", tmp);
             bpg_dat.pgID = dat->pgID;
-            
+
             fromUpperLayer(bpg_dat, peer);
 
+            // Event-driven doorbell, not just the 1s sampler: a DISCONNECT
+            // followed by a reconnect inside one sampling period is invisible
+            // to the watcher (it level-samples; the state is back to where it
+            // was). The transition itself is what subscribers care about.
+            if (bpg_pi.streamSubscriberCount() != 0)
+              pushPerifStateDoorbell();
           }
           else
           {
@@ -5752,16 +5761,24 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         else if(strcmp(type, "DISCONNECT") == 0)
         {
 
-          if(perifCH==NULL || perifCH->ID != CONN_ID)
+          // CONN_ID -1 = "disconnect whatever is current". The old first guard
+          // compared the wildcard against the real ID and broke out, which
+          // made the wildcard branch below unreachable -- every CONN_ID-less
+          // DISCONNECT silently failed while ACK-false'ing.
+          if(perifCH==NULL || (CONN_ID!=-1 && perifCH->ID != CONN_ID))
           {
             sprintf(err_str, "CONN_ID(%d)  perifCH exist:%p or current perifCH has different CONN_ID", CONN_ID, perifCH);
             break;
           }
-          
+
           if(CONN_ID==-1 || perifCH->ID == CONN_ID)
           {//disconnect
             delete_PeripheralChannel();
             session_ACK = true;
+            // Same event-driven push as CONNECT: the watcher's 1s sample can
+            // miss a disconnect that something reconnects right away.
+            if (bpg_pi.streamSubscriberCount() != 0)
+              pushPerifStateDoorbell();
           }
           else
           {
