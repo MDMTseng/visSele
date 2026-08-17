@@ -7514,11 +7514,71 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   // (no-op when mmpp matches the teach scale; cached so a fixed camera pays once).
   if (!ensureShapeScale(bacpac->sampler->mmpP_ideal())) return -1;
 
-  // Match the full scene. Scene downscaling for speed is the def's shape_match_scale
-  // (handled inside ShapeMatcher); ROI refine restores full-res accuracy.
+  // ---- station crop: search where a part can be, not the whole frame --------
+  //
+  // The station used to be applied to the RESULTS: match the full frame, then
+  // throw away every pose outside it. On a plate carrying several items that
+  // discards most of the work it just paid for. Hand the locator the region
+  // instead.
+  //
+  // Padded by half the model's diagonal at the scale the matcher is currently
+  // built for, because the keep-rule is "CENTRE inside the station": an object
+  // may legitimately hang half-way out, and a tight crop would clip the very
+  // features it is recognised by -- that would change which objects are found,
+  // not just how fast. With the pad, anything whose centre is inside is fully
+  // visible, so this is a speed change and nothing else.
+  //
+  // Scene px = full-sensor px - camera ROI origin; the region is full-sensor.
+  // INSP_SHAPE_NOCROP=1 restores full-frame matching with the old result-side
+  // filter, so the two can be A/B'd on the same machine and def. Same idiom as
+  // INSP_AREA_BYPASS / INSP_SKIP_INSPECTION: read once, dies with the process.
+  static const bool shapeNoCrop = []{
+    const char *e = getenv("INSP_SHAPE_NOCROP");
+    const bool v = e && atoi(e) != 0;
+    if (v) LOGW("INSP_SHAPE_NOCROP=1 -- shape locator searches the whole frame; "
+                "the station is applied to results instead");
+    return v;
+  }();
+
+  cv::Point sceneCropOff(0, 0);
+  if (bacpac && bacpac->hasInspRegion() && !shapeNoCrop)
+  {
+    acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+    int pad = 0;
+    if (shapeFeatureSet)
+    {
+      const double tw = (double)shapeFeatureSet->templ_width;
+      const double th = (double)shapeFeatureSet->templ_height;
+      const double s  = (shape_built_scale > 0.f) ? (double)shape_built_scale : 1.0;
+      pad = (int)std::ceil(0.5 * std::sqrt(tw * tw + th * th) * s);
+    }
+    cv::Rect want((int)std::floor(bacpac->insp_region_x - sOff.x) - pad,
+                  (int)std::floor(bacpac->insp_region_y - sOff.y) - pad,
+                  (int)std::ceil(bacpac->insp_region_w) + 2 * pad,
+                  (int)std::ceil(bacpac->insp_region_h) + 2 * pad);
+    cv::Rect crop = want & cv::Rect(0, 0, scene.cols, scene.rows);
+    if (crop.width > 0 && crop.height > 0 &&
+        (crop.width < scene.cols || crop.height < scene.rows))
+    {
+      LOGI_EVERY_N(100, "[shape] station crop %dx%d at (%d,%d) pad %d (scene was %dx%d)",
+                   crop.width, crop.height, crop.x, crop.y, pad, scene.cols, scene.rows);
+      scene = scene(crop).clone();     // line2Dup wants a continuous buffer
+      sceneCropOff = crop.tl();
+    }
+  }
+
+  // Scene downscaling for speed is the def's shape_match_scale (handled inside
+  // ShapeMatcher); ROI refine restores full-res accuracy.
   std::vector<sbm::MatchResult> ms;
   try { ms = shapeMatcher->match(scene); }
   catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+
+  // Lift crop-local poses back to scene px immediately, so every consumer below
+  // -- the station test, the measurement, the report -- sees exactly the values
+  // it saw before this crop existed. Nothing downstream knows the crop happened.
+  if (sceneCropOff.x || sceneCropOff.y)
+    for (size_t _i = 0; _i < ms.size(); _i++)
+    { ms[_i].x += sceneCropOff.x; ms[_i].y += sceneCropOff.y; }
   { static unsigned _lc = 0; if ((_lc++ % 100) == 0)
       LOGI("[shape] matches=%d (1 line in 100)", (int)ms.size()); }
   if (dbg)
@@ -7558,9 +7618,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   {
     sbm::MatchResult &m = ms[mi];
 
-    // Inspection region (the station). m.x/m.y are already full-res scene px, so
-    // only the camera's hardware ROI has to be added to reach full-sensor px.
-    // Dropped before any measurement work, same as the sig360 path.
+    // Inspection region (the station). No longer the mechanism -- the scene was
+    // cropped to the station before matching -- but still the boundary rule: the
+    // crop is padded by half a model diagonal so objects straddling the edge are
+    // not clipped, which means a pose CENTRED in that pad margin can still come
+    // back. This trims those. It now runs over a handful of candidates instead
+    // of everything in the frame.
+    //
+    // m.x/m.y are full-res scene px (crop offset already added back), so only
+    // the camera's hardware ROI has to be added to reach full-sensor px.
     if (bacpac && bacpac->hasInspRegion())
     {
       acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
