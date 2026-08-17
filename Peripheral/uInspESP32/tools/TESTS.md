@@ -76,11 +76,13 @@ webctld（WebUI 測試的瀏覽器控制服務）佔走，panel 直接 Address-i
 另外 panel 和 core 對序列埠互斥（陷阱 7：core 連 DISCONNECT 都不放 tty）——
 開 panel 前先停 core，兩邊同開會互相打碎 frame。
 
-**8b. 桌上只接板子（步進沒出力/沒接線）時，配對類 dry-run 走不完。**（2026-08-17
-整合測試）鏈路、心跳、console、`enter_insp_mode` 100→102→112、gate 到速收單
-全部正常，但 `plate_freq_meas` 恆為 0 —— SYS_STEP_COUNT 沒在走，物件進了 gate
-之後永遠到不了 verdict/sort，`cam_sync` 也沒有時基可學（learned 恆 0）。
-`dryrun_pairing.py`/`static_part_profile.py` 需要整機（或至少步進子系統回應）。
+**8b. 「桌面時基不走」是假的——序列被污染才會 meas=0。**（2026-08-17 兩度驗證後
+翻案）乾淨序列 `clear_error → set_setup plate.freq → enter_insp_mode` 在桌上板
+（無步進出力）一樣讓 SYS_STEP_COUNT 邏輯轉起來：meas 1150→7270→13305→15000
+穩住（102→103→101）。先前 meas=0 的 run 中間都夾過失敗命令（flat-key set_setup、
+freq≠0 時的 stepper_disable 被拒、殘留 error state）。完整迴圈在桌面可跑：
+60 顆 phantom @5/s → gate_in +402（NA 迴圈再入）→ stage 排程打 CAM1 → 相機硬體
+觸發 frame → core FI 判定 → verdict_in +119、NA +141、cam_sync learned 8。
 另注意 `count{}`/`gate.out` 這類計數是 NVS 壽命值，跨重啟累積——判斷單次 run
 要用前後差值，別像 dryrun 的 `judged=` 那樣讀絕對值。
 
