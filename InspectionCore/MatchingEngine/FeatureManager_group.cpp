@@ -394,21 +394,91 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
 
     int downScaleF = dsampLevel;
 
+    // ---- station mask: stop speckle outside the station becoming labels -----
+    //
+    // The station used to be applied to the CCL OUTPUT: label the whole frame,
+    // then drop what fell outside. One measured run produced 1,901 labels to
+    // keep 2 -- the other 1,899 were backlight speckle that cost a full stats
+    // record each. Blank them in the binary instead, before CCL runs.
+    //
+    // MASK, not crop, and the reason is specific: sig360's phase 2 runs a
+    // SECOND CCL over bacpac->binary_uc1_for_phase2 and looks its per-label
+    // signatures up BY LABEL INDEX against this ldData. Handing one of those a
+    // cropped image and the other a full one renumbers the labels and silently
+    // attaches signatures to the wrong objects. Masking keeps both passes on
+    // the same full-size image, so every coordinate downstream is untouched --
+    // no offset to thread through the measurement chain, nothing to get wrong.
+    //
+    // Cropping the SOURCE would also have moved every adaptive threshold:
+    // cvThresholdMap stretches the fieldCal grid across whatever image it is
+    // given, so a cropped gray_in silently rescales the whole map. Masking
+    // after binarization leaves that pass bit-identical.
+    //
+    // INSP_LABEL_NOCROP=1 restores whole-frame labeling for A/B.
+    static const bool labelNoMask = [] {
+      const char *e = getenv("INSP_LABEL_NOCROP");
+      const bool v = e && atoi(e) != 0;
+      if (v) LOGW("INSP_LABEL_NOCROP=1 -- labeling the whole frame; the station "
+                  "is applied to labels afterwards");
+      return v;
+    }();
+
+    // The cage rectangle. Whole image by default -- which reproduces the old
+    // geometry exactly -- or the station when masking is on.
+    cv::Rect cageR(0, 0, binary_img_storage.cols, binary_img_storage.rows);
+    if (bacpac && bacpac->hasInspRegion() && !labelNoMask)
+    {
+      acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+      // Region is full-sensor px; the binary is input px / dsampLevel.
+      cv::Rect want((int)std::floor((bacpac->insp_region_x - sOff.x) / downScaleF),
+                    (int)std::floor((bacpac->insp_region_y - sOff.y) / downScaleF),
+                    (int)std::ceil (bacpac->insp_region_w / downScaleF),
+                    (int)std::ceil (bacpac->insp_region_h / downScaleF));
+      cv::Rect r = want & cv::Rect(0, 0, binary_img_storage.cols, binary_img_storage.rows);
+      // Needs room for the cage + inner fence, else the fence maths goes
+      // negative and the "cage" swallows the station.
+      const int need = 2 * (15 / downScaleF) + 8;
+      if (r.width > need && r.height > need &&
+          (r.width < binary_img_storage.cols || r.height < binary_img_storage.rows))
+      {
+        // Blank everything outside the station to background (255). Four
+        // rectangles rather than a mask Mat: no allocation, no full-frame copy.
+        if (r.y > 0)
+          binary_img_storage(cv::Rect(0, 0, binary_img_storage.cols, r.y)).setTo(255);
+        if (r.br().y < binary_img_storage.rows)
+          binary_img_storage(cv::Rect(0, r.br().y, binary_img_storage.cols,
+                                      binary_img_storage.rows - r.br().y)).setTo(255);
+        if (r.x > 0)
+          binary_img_storage(cv::Rect(0, r.y, r.x, r.height)).setTo(255);
+        if (r.br().x < binary_img_storage.cols)
+          binary_img_storage(cv::Rect(r.br().x, r.y,
+                                      binary_img_storage.cols - r.br().x, r.height)).setTo(255);
+        cageR = r;
+        LOGI_EVERY_N(100, "station mask: labeling %dx%d at (%d,%d) of %dx%d (binary px)",
+                     r.width, r.height, r.x, r.y,
+                     binary_img_storage.cols, binary_img_storage.rows);
+      }
+    }
+
     // Draw the cage on the BINARY image (CV_8UC1, bg=255/fg=0). Cage pixels
-    // are foreground (0) so CCL picks them up as one big component.
-    cv::rectangle(binary_img_storage, cv::Point(1, 1),
-                  cv::Point(binary_img_storage.cols - 2, binary_img_storage.rows - 2),
+    // are foreground (0) so CCL picks them up as one big component. It rides
+    // cageR, so with masking on it lands on the station boundary and label 1
+    // becomes "material crossing the station", which is what intrusion means
+    // once the station is the thing being inspected.
+    cv::rectangle(binary_img_storage, cv::Point(cageR.x + 1, cageR.y + 1),
+                  cv::Point(cageR.x + cageR.width - 2, cageR.y + cageR.height - 2),
                   cv::Scalar(0), 1);
 
-    int FENCE_AREA = (binary_img_storage.cols+binary_img_storage.rows)*2-4;//External frame
+    int FENCE_AREA = (cageR.width+cageR.height)*2-4;//External frame
     {
       int xDist=15/downScaleF;
-      cv::rectangle(binary_img_storage, cv::Point(xDist, xDist),
-                    cv::Point(binary_img_storage.cols - xDist, binary_img_storage.rows - xDist),
+      cv::rectangle(binary_img_storage, cv::Point(cageR.x + xDist, cageR.y + xDist),
+                    cv::Point(cageR.x + cageR.width - xDist, cageR.y + cageR.height - xDist),
                     cv::Scalar(0), 1);
-      FENCE_AREA+=(binary_img_storage.cols-xDist+binary_img_storage.rows-xDist)*2-4;
-      // 1 px black at y=xDist+3, x=1..xDist-1 (inclusive).
-      cv::line(binary_img_storage, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
+      FENCE_AREA+=(cageR.width-xDist+cageR.height-xDist)*2-4;
+      // 1 px black at y=xDist+3, x=1..xDist-1 (inclusive), relative to the cage.
+      cv::line(binary_img_storage, cv::Point(cageR.x + 1, cageR.y + xDist + 3),
+               cv::Point(cageR.x + xDist - 1, cageR.y + xDist + 3),
                cv::Scalar(0), 1);
       FENCE_AREA+=xDist;
     }
