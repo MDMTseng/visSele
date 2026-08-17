@@ -88,7 +88,7 @@ All sites `Core0_1/wiringPanel.cpp` unless noted. **Verdict** = can change PASS/
 | `g_lens_calib` / `g_field_calib` | `:1469` | measure | Owned blobs; both BacPacs alias them |
 | `g_insp_region` | `:2221` | verdict | Copied onto `bacpac.insp_region_*` **every live frame** (`:8486`) |
 | `g_clean_regions` | `:2303` | verdict | Never on BacPac; `eval_clean_regions` reads the global |
-| `g_full_inspection` | `:2235` | verdict | FI publishes region; CI publishes zero-size |
+| `g_full_inspection` | `:2235` | label only | Records FI/CI for the session log. **No longer gates the region** -- as of 2026-08-17 a configured region is enforced in both modes, and only `g_area_gates_bypass` publishes zero-size |
 | `g_area_gates_bypass` | `:2256` | verdict | ST + `INSP_AREA_BYPASS`; must not be persisted |
 | `sampler->ignoreCalib` | each sampler | measure | Sticky on **production** sampler (AUDIT 1.3) |
 | `g_pending_*` field-calib capture | `:1478` | measure | Scratch next to the live calib |

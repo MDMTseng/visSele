@@ -677,8 +677,13 @@ uint64_t g_perifWriteCnt = 0;
 // muting every LOGI (INSP_LOG=warn) moved neither the report latency
 // (18.0 -> 18.3ms avg) nor the accepted rate (851 vs 852 in 60s). Anything
 // that must be seen on EVERY frame belongs at WARN or above, not here.
-#define LOG_EVERY(n, ...) do { static unsigned _lc_ = 0; \
-    if ((_lc_++ % (unsigned)(n)) == 0) LOGI(__VA_ARGS__); } while (0)
+// Now a thin alias over logctrl's LOGI_EVERY_N so the tree has ONE throttle
+// with one behaviour. This macro predated it and was file-local, which is why
+// CameraLayer and MatchingEngine had no throttle available and grew per-frame
+// spam of their own. Same shape as before -- first line, then every Nth -- and
+// it additionally tags the running total, so a reader can see the rate instead
+// of inferring it from timestamps.
+#define LOG_EVERY(n, ...) LOGI_EVERY_N(n, __VA_ARGS__)
 
 
 // One serial port, four writers, and until now no lock between them:
@@ -4402,17 +4407,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           imageQueueSkipSize=inspQueue.capacity();//it will never hit the skip size
           datViewQueueSkipSize=datViewQueue.capacity();
-          // Which mode this session is. The station region keys off it: it is a
-          // property of the machine driving the camera, and in CI nothing is.
+          // Which mode this session is. The station region no longer keys off
+          // it -- a configured region is enforced in CI as well, so setup sees
+          // what production sees. Only the bypass turns it off.
           g_full_inspection = (dat->tl[0] == 'F');
           // Announced, because it silently changes which objects get judged.
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
             LOGI("insp session: %s -- station region %s",
                  g_full_inspection ? "FI" : "CI",
-                 g_area_gates_bypass
-                   ? "off (InspAreaBypass ON)"
-                   : (g_full_inspection ? "ENFORCED"
-                                        : "off (setup view shows everything)"));
+                 g_area_gates_bypass ? "off (InspAreaBypass ON)" : "ENFORCED");
           // A session starting while the bypass is still latched from earlier
           // work is the way this ends up on in production. Say so every time,
           // not just when it is flipped.
@@ -6441,7 +6444,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     }
   }
   pframeT = t;
-  LOG_EVERY(100, "=============== frameInterval:%fms \n", interval);
+  LOG_EVERY(100, "frameInterval: %.2fms", interval);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
   CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
@@ -7103,7 +7106,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       // subscribers is the number this packet was actually delivered to.
       // pushToSubscribers is a fan-out to a list, so "sent" with an empty list
       // is indistinguishable from "not sent" unless the count is printed.
-      LOG_EVERY(50, "img transfer(DL:%d) %fms pgID:%d subscribers:%zu\n", _downSampLevel,
+      LOG_EVERY(50, "img transfer(DL:%d) %fms pgID:%d subscribers:%zu", _downSampLevel,
            ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000,
            bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
       
@@ -9004,15 +9007,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   // reads (same place lensCalib and fieldCal ride). Re-applied per frame so a
   // change saved from InspectionUI takes effect on the next part, with no
   // def reload and no restart.
-  // FI only. In CI the region is published as zero-size, which the engine reads
-  // as "no region configured" -- the same path as a machine that has none, so
-  // there is one behaviour to reason about and not two.
+  // Applied in BOTH modes. It used to be FI-only, on the reasoning that the
+  // station geometry is a property of the machine driving the camera and in CI
+  // nothing is -- but that made the setup view judge a different set of objects
+  // than production, which is the one place the two should agree. A region that
+  // is configured is now enforced; a machine that does not want one removes it
+  // from machine_setting.json, which is an explicit decision instead of a mode
+  // side effect. INSP_AREA_BYPASS still turns it off for both modes at once.
   if (bacpac)
   {
     // Bypass folds in here rather than at load time so the configured geometry
     // is never lost: flipping it off restores the real region on the next frame
     // with no reload, and machine_setting.json is never touched.
-    bool on = g_full_inspection && !g_area_gates_bypass;
+    bool on = !g_area_gates_bypass;
     // Copy the whole struct under the config lock first: reading the five
     // fields one by one races a machine_setting save and can hand this frame
     // a chimera region (new x, old w).
@@ -9595,10 +9602,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       cJSON_AddNumberToObject(rg, "h", _rg_snap.h);
       cJSON_AddStringToObject(rg, "fit", _rg_snap.fit ? "contain" : "center");
       // Geometry is sent in both modes -- the box has to be visible in CI or it
-      // cannot be placed -- but only FI filters by it. Saying which is which is
-      // the whole point: a box drawn on screen that is not selecting anything
-      // looks exactly like a box that is, until a part goes the wrong way.
-      cJSON_AddBoolToObject(rg, "active", g_full_inspection && !g_area_gates_bypass);
+      // cannot be placed -- and now both modes filter by it, so the only thing
+      // that makes it inactive is the bypass. Reporting this accurately is the
+      // whole point: a box drawn on screen that is not selecting anything looks
+      // exactly like a box that is, until a part goes the wrong way.
+      cJSON_AddBoolToObject(rg, "active", !g_area_gates_bypass);
       cJSON_AddItemToObject(st, "region", rg);
     }
     // Stated at station level, not inside "region", because the bypass also
