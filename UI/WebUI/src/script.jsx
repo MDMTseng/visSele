@@ -212,17 +212,22 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   // never carried. The adapter shapes a link into the conn_info the shared
   // row renderer already understands. A link that never connected stays
   // undefined so the row hides, same as before.
-  const _linkToConn = (link) => {
+  // `id` MUST be carried through: onItemClick(conn_info) does
+  // `switch(connInfo.id)` to pick which modal to open. The Redux-sourced rows
+  // get it for free (the conn_info IS the dispatched action, which has .id);
+  // this adapter builds a fresh object, so dropping it silently killed every
+  // peripheral row's click -- 全檢設備v2「設定/診斷」叫不出面板就是這個。
+  const _linkToConn = (link, id) => {
     if (!link || (link.state === 'DISCONNECTED' && link.connInfo === undefined)) return undefined;
     const t = link.state === 'CONNECTED' ? 'WS_CONNECTED'
       : link.state === 'SUSPECT' ? 'WS_SUSPECT'
       : 'WS_DISCONNECTED';
-    return { type: t, brief_info: link.state === 'SUSPECT' ? '連線異常' : undefined };
+    return { id, type: t, brief_info: link.state === 'SUSPECT' ? '連線異常' : undefined };
   };
-  const uInspConn      = _linkToConn(usePerifLink(ConnInfo.uInsp_API_ID));
-  const uInspESP32Conn = _linkToConn(usePerifLink(ConnInfo.uInspESP32_API_ID));
-  const SLIDConn       = _linkToConn(usePerifLink(ConnInfo.SLID_API_ID));
-  const CNCConn        = _linkToConn(usePerifLink(ConnInfo.CNC_API_ID));
+  const uInspConn      = _linkToConn(usePerifLink(ConnInfo.uInsp_API_ID),      ConnInfo.uInsp_API_ID);
+  const uInspESP32Conn = _linkToConn(usePerifLink(ConnInfo.uInspESP32_API_ID), ConnInfo.uInspESP32_API_ID);
+  const SLIDConn       = _linkToConn(usePerifLink(ConnInfo.SLID_API_ID),       ConnInfo.SLID_API_ID);
+  const CNCConn        = _linkToConn(usePerifLink(ConnInfo.CNC_API_ID),        ConnInfo.CNC_API_ID);
 
   return [
     [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],

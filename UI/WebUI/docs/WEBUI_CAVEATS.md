@@ -187,3 +187,31 @@ a timer left behind by the first — see `InspectionCore/docs/CORE0_1_CAVEATS.md
 §M, and B3 above for why the `timeout: -1` in that request matters.
 `tools/webctl/snap_probe.mjs` presses it N times over the same wire without a
 browser, which is the cheapest way to see it.
+
+---
+
+## 系統狀態面板的周邊列點不開 — adapter 掉了 `id`（2026-08-18 修）
+
+症狀:右側系統狀態抽屜裡點「全檢設備 v2」(或全檢設備 / 坡檢設備 / CNC)
+**完全沒有反應**,面板叫不出來;core / 相機 / 兩個 DB 那四列卻正常。
+
+原因:`System_Status_Display` 的 `onItemClick(conn_info)` 是靠
+**`switch(connInfo.id)`** 決定要開哪個 modal。Redux 來源的那四列免費拿到
+`id`——它們的 conn_info **就是** dispatch 出去的 action 本身,action 帶 `id`。
+2026-08-16 周邊連線狀態搬去 `perif/PerifAPI.js` 的模組 store 之後,
+`script.jsx` 的 `_linkToConn(link)` 是**新造**一個 `{type, brief_info}` 物件,
+沒有 `id` → `switch(undefined)` 一個 case 都不中 → 靜默什麼都不做。
+
+四列的顏色點、SUSPECT 標示都照常運作,所以看起來「UI 是活的、只是點了沒事」,
+很容易誤判成 antd `visible`/`open` 又踩到,或 modal 被 CSS 蓋住。
+
+修法:`_linkToConn(link, id)` 把 id 帶進結果物件。
+
+**通則:任何把新資料源包成舊 conn_info 形狀的 adapter,必須連身分欄位一起帶。**
+點擊路由靠的是 `id`,不是顯示欄位。驗證方式(webctld):
+
+```sh
+node webctl.mjs click 'button:has-text("全檢設備v2")'
+node webctl.mjs eval "[...document.querySelectorAll('.ant-modal-wrap')].map(e=>({h:e.offsetHeight,t:(e.querySelector('.ant-modal-title')||{}).innerText}))"
+# 期望看到 h>0 且 t=="全檢設備 v2 (uInspESP32)"
+```
