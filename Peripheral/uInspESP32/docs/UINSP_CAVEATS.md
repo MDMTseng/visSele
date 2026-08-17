@@ -3166,3 +3166,38 @@ frame 被交付,所以連錯誤回覆都沒有,跟 `serial_error_locked` 那種�
 `comm_lost_backup` 永遠是 false,B4 那套完全不會啟動——A7 早就預告過這件事。
 
 復原:送 `{"type":"clear_error"}`。
+
+## 2026-08-18 — pulse-count pairing deleted; what to check after the flash
+
+Removed end to end: firmware `CamPulseSync`/`CAM_PCNT`, `pipeLineInfo.cam_pcnt`,
+`REPORT_MATCH_PCNT`, the dual-mode arbitration and its `CAM_PAIRING_DISAGREE`
+halt; core-side the `pcnt` field in the report and `INSP_PERIF_PCNT_SLIP`.
+Timestamp (`cam_ts` / CAM_SYNC) is the only pairing.
+
+**Kept on purpose, do not delete as "leftovers":**
+- `CAM_PULSE_N` — the board's own count of CAM1 edges it drove, reported as
+  `cam_pcnt.dev_pulses`. A diagnostic about the BOARD.
+- the camera's `ExtTriggerCount` watermark decode in CameraLayer_Aravis —
+  `extTrigCount - frameNum` is how many triggers the camera REFUSED, which is a
+  measurement about the CAMERA. Off by default; it overwrites row 0.
+
+**Compatibility:** `set_setup` refuses a whole document containing an unknown
+key, and old tools/backups still name `report_match_pcnt`. So the key stays in
+the K_CAM schema and `false` is accepted silently; `true` is refused with
+`err: "report_match_pcnt_removed"` rather than accepted and ignored — a machine
+that silently declines a setting is worse than one that tells you what you chose.
+
+**The mistake to avoid when doing this kind of deletion:** `CAM_PULSE_N` was
+incremented on the same line that stamped the object (`task->src->cam_pcnt =
+++CAM_PULSE_N;`). Deleting the stamp deleted the count with it, and the ISR's
+CAM stage silently stopped counting — `dev_pulses` read 15 after a 1445-part run
+instead of ~1900. Caught only because the first verification run looked at that
+number. **After any pairing surgery, check `dev_pulses` against the parts fed.**
+
+**Verified after flashing** (NVS survived: `report_match_ts` still true,
+`skip_policy` stop_only/10, gate 28571, SEL1_on 30000 all intact):
+1445 phantom parts at 25/s, 1806 RP frames — `cam_sync` valid + authoritative,
+`disagree` 0, `rejected` 0, `rebuilds` 0, `resid_us` −2 against a 5000 µs
+window, `dev_pulses` 1921. `agree` reads 0 and that is correct, not a
+regression: the core sends `tid:-1`, so there is no second opinion to agree
+with — which is the whole point of the end state.

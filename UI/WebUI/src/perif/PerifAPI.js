@@ -708,7 +708,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // The match window expressed as what it actually is -- a position
     // tolerance. Settable on the device since 2026-08-11.
     'cam_match_tolerance_mm',
-    'report_match_ts', 'report_match_pcnt',
+    'report_match_ts',   // report_match_pcnt removed 2026-08-18 (firmware)
     // skip_policy_mode replaced auto_rate + unanswered_policy (2026-08-08).
     'skip_policy_mode',
     'machine_id', 'CAM1_Tags', 'CAM2_Tags', 'persist',

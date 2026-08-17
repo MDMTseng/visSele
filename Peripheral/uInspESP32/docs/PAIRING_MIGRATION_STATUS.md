@@ -19,7 +19,7 @@ overrides anything older that contradicts it.
 > | key | value | meaning |
 > |---|---|---|
 > | `cam.report_match_ts` | **true** | the device places every report by `cam_ts`. THE authority. |
-> | `cam.report_match_pcnt` | **false** | trigger-count pairing is off, permanently — see below |
+> | `cam.report_match_pcnt` | **removed** | the key is still accepted (old backups name it) but setting it TRUE is refused: `err: report_match_pcnt_removed`. The mechanism was deleted from the firmware 2026-08-18 — see below |
 > | `cam.match_window_us` | 5000 | tolerance around the expected device-clock time |
 >
 > The head of this page used to say `report_match_ts` was false and that
@@ -27,9 +27,18 @@ overrides anything older that contradicts it.
 > flipped.** The rest of the page below is the record of how that was decided
 > and is still accurate; only this summary was stale.
 >
-> **Trigger count is not a fallback, a cross-check, or a second opinion.** Do
-> not reach for `pcnt` when the timestamp is inconvenient. Three independent
-> reasons, all already measured:
+> **Trigger count is GONE from the code, not merely switched off** (2026-08-18):
+> `CamPulseSync`/`CAM_PCNT`, the `cam_pcnt` field on pipeline objects, the
+> dual-mode arbitration that halted on `CAM_PAIRING_DISAGREE`, the core's `pcnt`
+> field in the report and its `INSP_PERIF_PCNT_SLIP` fault injector are all
+> deleted. What survives is `CAM_PULSE_N` — the board's own count of CAM1 edges
+> it drove — reported as `cam_pcnt.dev_pulses` beside `"removed": true`. It is a
+> diagnostic about the BOARD, not a pairing input. The core also keeps the
+> camera's `ExtTriggerCount` watermark decode, because `extTrigCount - frameNum`
+> is how many triggers the camera THREW AWAY: a measurement about the camera,
+> also not a pairing input.
+>
+> Three independent measured reasons it had to go:
 >
 > 1. **Above the camera's frame floor it is confidently WRONG**, not blind. The
 >    camera keeps producing frames at its own cadence while `ExtTriggerCount`

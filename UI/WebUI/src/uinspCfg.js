@@ -35,7 +35,10 @@ export const CFG_GROUP = {
   min_detect_dist_um:    ["gate", "min_detect_dist_um"],
 
   report_match_ts:       ["cam", "report_match_ts"],
-  report_match_pcnt:     ["cam", "report_match_pcnt"],
+  // report_match_pcnt is NOT mapped any more: pulse-count pairing was removed
+  // from the firmware 2026-08-18. The device still ACCEPTS the key (so old
+  // backups are not refused wholesale) but refuses it set to true, so there is
+  // nothing for the UI to offer.
   cam_match_window_us:   ["cam", "match_window_us"],
   cam_match_tolerance_mm:["cam", "match_tolerance_mm"],
   cam_recal_idle_ms:     ["cam", "recal_idle_ms"],

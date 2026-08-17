@@ -6781,7 +6781,7 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
 // out around 8ms on the bench. Sending it costs ~12 bytes and turns a
 // subtraction between two reports into a per-frame number on one clock.
 int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t cam_ts_us,
-                         int64_t pcnt, uint64_t host_us)
+                         uint64_t host_us)
 {
   uint8_t buffx[200];
 
@@ -6801,37 +6801,19 @@ int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t c
        (long long)(prev_cam_ts ? (int64_t)(cam_ts_us - prev_cam_ts) : 0));
   prev_cam_ts = cam_ts_us;
 
-  // pcnt: the CAMERA's own hardware trigger count for this frame, read out of
-  // the image watermark. Sent alongside cam_ts so the device has two
-  // independent ways to place the report -- a hardware counter and two clocks --
-  // and can require them to agree. Omitted entirely when the watermark is off,
-  // so the device can tell "no counter" from "counter zero".
-  // Fault injection: INSP_PERIF_PCNT_SLIP=N shifts pcnt by +1 from the Nth
-  // report onward. That is exactly the shape of a trigger the camera refused
-  // -- a permanent step of one, not a transient -- and it is the failure the
-  // device's dual-mode pairing exists to catch. A mechanism that has only ever
-  // been observed agreeing has not been tested; this is how the disagreeing
-  // half gets exercised without waiting for a real refusal.
+  // `pcnt` is no longer sent.
   //
-  // Deliberately on the wire and not in the pairing: the point is to lie to
-  // the device in the one field under test and watch it refuse to sort.
-  if (pcnt >= 0)
-  {
-    static const int64_t _slipAt = []{ const char *e = getenv("INSP_PERIF_PCNT_SLIP");
-                                       return e ? atoll(e) : 0; }();
-    if (_slipAt > 0)
-    {
-      static std::atomic<int64_t> _n{0};
-      if (++_n >= _slipAt) pcnt += 1;
-    }
-  }
-  if (pcnt >= 0)
-    return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
-      "{"
-      "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu,\"pcnt\":%lld"
-      ",\"hus\":%llu"
-      "}", (long long)tid, cat, (unsigned long long)cam_ts_us, (long long)pcnt,
-      (unsigned long long)host_us);
+  // The device's pulse-count pairing was removed 2026-08-18 (see the CAM_PULSE_N
+  // note in LegacyFirmware.cpp): above the camera's frame-rate floor the count
+  // names a trigger the frame was not exposed with -- confidently, with nothing
+  // inside the count able to tell. `cam_ts` is a measurement of the imaging
+  // event and can abstain; the count is bookkeeping of the request and cannot.
+  // With no consumer, the field and its fault injector (INSP_PERIF_PCNT_SLIP,
+  // which existed only to exercise the dual-mode arbitration) go too.
+  //
+  // The camera's ExtTriggerCount watermark itself is KEPT in CameraLayer_Aravis:
+  // `extTrigCount - frameNum` is how many triggers the camera THREW AWAY, which
+  // is a measurement about the camera and not a pairing input.
   return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
     "{"
     "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu"
@@ -7908,9 +7890,9 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
               else
               {
                 const uint64_t _hostUs = msg.rx_us ? (perif_now_us() - msg.rx_us) : 0;
-                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt, _hostUs);
+                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, _hostUs);
                 if (tx_twice)
-                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, msg.pcnt, _hostUs);
+                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts, _hostUs);
               }
               // The announcement side is traced ([perif RX] cam_trig) but the
               // verdict side was not, so "did tid N ever get answered, and

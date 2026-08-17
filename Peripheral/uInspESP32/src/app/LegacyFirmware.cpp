@@ -378,18 +378,8 @@ typedef struct pipeLineInfo{
   // out of the frame watermark and sent back in the report as `pcnt`), so the
   // two differ by a constant that is fixed at power-on and learned once. That
   // makes it a second, entirely separate way to say which frame belongs to
-  // which object: cam_us pairs by WHEN, cam_pcnt pairs by HOW MANY.
-  //
-  // Its value is that it fails differently. A clock mispairing is a
-  // continuous error -- drift, latency, a window slightly too wide -- and can
-  // be off by one object while still looking reasonable. A count mispairing is
-  // discrete: it is either exactly right or off by a whole pulse, and a pulse
-  // the camera refused shifts it permanently and visibly. Neither can hide the
-  // other's failure, which is the whole point of running both.
-  //
-  // 0 means "this object's camera stage has not fired", same convention as
-  // cam_us, and the matcher skips zeroes for the same reason.
-  uint32_t cam_pcnt;
+  // which object: cam_us pairs by WHEN. (cam_pcnt -- pairing by HOW MANY --
+  // was removed 2026-08-18; see the note where CAM_PULSE_N is declared.)
 }pipeLineInfo;
 
 // ---------------------------------------------------------------------------
@@ -812,70 +802,7 @@ CamClockSync CAM_SYNC;
 //
 // CamClockSync answers "which object was in front of the camera at time T",
 // which is a question about two free-running crystals and therefore about
-// drift, latency and a tolerance window. This answers "which object was the
-// Nth trigger", which involves no clock at all: the board counts the pulses it
-// puts on the CAM1 line, the camera counts the pulses it accepts on the same
-// wire (ExtTriggerCount, written into the frame watermark and returned in the
-// report as `pcnt`), and the difference between the two counters is a constant
-// fixed at the camera's power-on.
-//
-// So the match is exact arithmetic -- cam_pcnt == pcnt - offset -- with no
-// tolerance to size and nothing to re-measure. What it CANNOT do is survive a
-// pulse the camera refuses: a refused trigger advances this board's counter
-// and not the camera's, so the offset moves by one and every subsequent frame
-// pairs to the wrong object. That is not a weakness to be papered over, it is
-// the mechanism's whole diagnostic value -- a refusal is exactly the event a
-// clock-only pairing absorbs silently (the frame simply is not there, the next
-// one is a few ms off and still inside the window). Here it is a permanent,
-// unmistakable step.
-//
-// Hence: learn the offset ONCE, from a calibration pulse fired with nothing
-// else outstanding -- the same unambiguous sample CamClockSync bootstraps from
-// -- and never quietly re-learn it. A sample that disagrees with the
-// established offset is counted as a slip and left visible; if pulse-count
-// matching is authoritative the machine then stops, which is the correct
-// outcome for a sorter that no longer knows which part it is holding.
-struct CamPulseSync
-{
-  bool     valid = false;
-  int64_t  offset = 0;          // pcnt - cam_pcnt
-  uint32_t learned = 0;         // unambiguous samples seen
-  uint32_t slip = 0;            // samples that disagreed with the offset
-  uint32_t hit = 0, miss = 0;   // reports this named / could not name an object
-  // WHICH side failed, split out because `miss` alone cannot say -- and the
-  // answer is the whole diagnosis. A halt on CAM_PAIRING_DISAGREE has three
-  // distinct causes and they call for opposite responses:
-  //
-  //   ts_blind    the timestamp could not place the frame, the count could.
-  //               The report arrived outside the match window -- latency, not
-  //               pairing. Widen the window or make the report faster.
-  //   pcnt_blind  the count could not, the timestamp could. A trigger the
-  //               camera did not count, i.e. the refusal case.
-  //   mismatch    both placed it, on DIFFERENT objects. The serious one:
-  //               two independent mechanisms actively contradicting.
-  //
-  // The board already prints this at the halt, but a printed line has to be
-  // caught as it goes past and the log ring has blocked that four times. A
-  // counter is readable afterwards, which is when the question gets asked.
-  uint32_t ts_blind = 0, pcnt_blind = 0, mismatch = 0;
-  int64_t  last_sample = 0;     // most recent pcnt - cam_pcnt
-  int64_t  last_pcnt = 0;
 
-  void reset(){ valid=false; offset=0; learned=slip=hit=miss=0;
-                ts_blind=pcnt_blind=mismatch=0;
-                last_sample=0; last_pcnt=0; }
-
-  void observe(int64_t pcnt, uint32_t cam_pcnt)
-  {
-    if(pcnt<0 || cam_pcnt==0) return;
-    const int64_t s = pcnt - (int64_t)cam_pcnt;
-    learned++;
-    last_sample = s;
-    if(!valid){ offset=s; valid=true; }
-    else if(s!=offset) slip++;      // do not adopt -- see the note above
-  }
-};
-CamPulseSync CAM_PCNT;
 
 // The board's own count of camera trigger pulses, since boot.
 //
@@ -886,12 +813,28 @@ CamPulseSync CAM_PCNT;
 // fired a pulse without counting it would shift the offset exactly as a
 // refused trigger does -- and it would look identical in the counters.
 static volatile uint32_t CAM_PULSE_N = 0;
-// Pairing by pulse count, set_setup "report_match_pcnt". With
-// report_match_ts also on, BOTH must name the same object or the machine
-// stops; with only one on, that one decides. Off by default: the offset needs
-// the frame watermark enabled on the host side (INSP_CAM_TRIG_WATERMARK), and
-// without `pcnt` in the report this can never learn anything.
-bool REPORT_MATCH_PCNT=false;
+// PAIRING BY PULSE COUNT WAS REMOVED 2026-08-18.
+//
+// It was never a fallback and could not be made into one. Three measured
+// reasons, kept here because "count the triggers" is the first idea everyone
+// has:
+//
+//   1. Above the camera's frame-rate floor it is confidently WRONG, not blind.
+//      The camera keeps producing frames at its own cadence while
+//      ExtTriggerCount advances ~1:1, so each frame slides ~420us further from
+//      the pulse it is labelled with and wraps a whole period every ~12 frames.
+//      Adjudicated with the per-pulse PRBS backlight, which measures the
+//      exposure instead of asserting it: 104/104 correct at 150 Hz, 53/92 --
+//      chance -- at 200 Hz. (UINSP_CAVEATS 2026-08-11.)
+//   2. It could not even learn its offset in this machine: `pcnt` only reaches
+//      a report when the host enables INSP_CAM_TRIG_WATERMARK, which is off.
+//   3. CAM_PULSE_N counts every path that drives CAM1 -- the ISR stage,
+//      calFireNow, and the trig_cam_* commands -- so any bench tool firing a
+//      pulse shifted the offset permanently and looked identical to a real slip.
+//
+// cam_ts measures the imaging event and can abstain; pcnt is bookkeeping of the
+// request and cannot. They were never peers. Timestamp is the only pairing.
+// The code is in git before this commit if a future camera makes it viable.
 
 // Gate->report latency, updated by the report handler (main loop only),
 // reported by get_running_stat, zeroed by reset_running_stat.
@@ -2927,7 +2870,6 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // looking cam_us from whoever held the slot last -- and the timestamp matcher
   // only skips zeroes, so it would happily match a frame against it.
   head->cam_us = 0;
-  head->cam_pcnt = 0;           // same ring-reuse hazard as cam_us
   // Same reason cam_us is cleared: RBuf is a ring, so without this a recycled
   // slot arrives already retired and the drain frees it before it has lived.
   head->retired = 0;
@@ -3044,12 +2986,14 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                     {
                     IO_ON(PIN_O_CAM1,IOI_CAM1);
                     IO_TRACE_LOG(PIN_O_CAM1,1,cur_pulse,task->src->tid);
-                    // Count the edge, and stamp the object with the count --
-                    // outside the ISRTrigQ block on purpose. The announcement
-                    // can be suppressed (trig_report) or the queue can
-                    // overflow; the pulse still went out and the camera still
-                    // counted it, so this must not be conditional on either.
-                    task->src->cam_pcnt = ++CAM_PULSE_N;
+                    // Count the edge -- outside the ISRTrigQ block on purpose.
+                    // The announcement can be suppressed (trig_report) or the
+                    // queue can overflow; the pulse still went out, so the
+                    // count must not be conditional on either. (It no longer
+                    // stamps the object: pairing by count was removed
+                    // 2026-08-18. CAM_PULSE_N stays as the board's own
+                    // diagnostic of how many CAM1 edges it drove.)
+                    CAM_PULSE_N++;
                     if(time_us_fetched==false)
                     { time_us=esp_timer_get_time(); time_us_fetched=true; }
                     CAM1_PW_T0 = time_us;
@@ -3082,9 +3026,9 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
                       }
                       commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=1;
-                      // The announcement only. task->src->tid, cam_us and
-                      // cam_pcnt are untouched, so the object still knows the
-                      // truth and only the host is misled.
+                      // The announcement only. task->src->tid and cam_us are
+                      // untouched, so the object still knows the truth and only
+                      // the host is misled.
                       commInfo->trig_id=(uint32_t)((int32_t)task->src->tid
                                                    + faultTidOffset());
                       commInfo->gate_pulse=task->src->gate_pulse;
@@ -4558,7 +4502,7 @@ static void calibrationBegin(bool full)
   // hit one can only recover by measuring it again. CAL is where that happens
   // -- gate shut, nothing outstanding, the one sample that needs no prior
   // knowledge.
-  if(full){ CAM_SYNC.reset(); CAM_PCNT.reset(); CAL_RESET_PENDING=false; }
+  if(full){ CAM_SYNC.reset(); CAL_RESET_PENDING=false; }
   else     CAL_RESET_PENDING=true;
   CAL_STARTED_MS = (int64_t)(esp_timer_get_time()/1000);
   CAL_PULSE_MS = 0;
@@ -4632,7 +4576,6 @@ static int calFireNow()
   head->tid          = CAL_TID_NEXT++;
   head->trig_us      = (uint32_t)esp_timer_get_time();
   head->cam_us       = 0;
-  head->cam_pcnt     = 0;              // stamped at the edge, below
   head->retired      = 0;
   head->stage        = 0;
   head->sync         = 1;              // only sync objects teach the offset
@@ -4673,7 +4616,7 @@ static int calFireNow()
   // has to carry both stamps. It is also the only pulse fired with nothing
   // else outstanding, which is precisely what makes the count offset it
   // teaches unambiguous.
-  head->cam_pcnt = ++CAM_PULSE_N;
+  CAM_PULSE_N++;
   io_drive(PIN_O_L1A,  IOI_L1A,  true);   // the backlight (GPIO16)
   // 100us was exactly the camera's trigger floor -- the same ~100us this file
   // cites at STAGE_PULSE_OFFSET to explain why a 2-tick (66us) window "could
@@ -4998,7 +4941,6 @@ static void syncPulseService()
     // have moved, and the count offset is the one that moves in whole pulses;
     // keeping it across a recal would carry a slip through the exact event
     // meant to clear it. valid=false makes the next sync pulse teach it again.
-    CAM_PCNT.valid=false;
     CAL_RESET_PENDING=false;
     djrl.dbg_printf("CAMSYNC RECAL: pipeline clear, re-measuring");
   }
@@ -5765,6 +5707,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     else
     {
+    // Pulse-count pairing was removed 2026-08-18. The key is still accepted so
+    // old documents are not refused wholesale, but turning it ON cannot be
+    // honoured, and saying so is the point.
+    JsonVariant _pc = doc["cam"]["report_match_pcnt"];
+    const bool _pcnt_on = (!_pc.isNull() && _pc.as<bool>()==true);
+    if(_pcnt_on)
+    {
+      retdoc["err"]="report_match_pcnt_removed";
+      djrl.dbg_printf("SET_SETUP REFUSED: report_match_pcnt=true -- "
+                      "pulse-count pairing was removed 2026-08-18");
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
     setMachineSetup(doc, true);
     MachineConfig::invalidateHash();
 
@@ -5790,6 +5746,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     doRsp=true;
     rspAck=persistAck;
+    }                       // end of the report_match_pcnt-clean body
     }                       // end of the schema-clean body
 
   }
@@ -6426,29 +6383,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       }
     }
     {
-      // The pulse-count pairing, reported beside cam_sync rather than inside
-      // it: they answer the same question by unrelated means, and folding one
-      // into the other's object would invite reading a single "pairing is
-      // healthy" number out of two independent measurements.
+      // What is left of the pulse-count pairing after it was removed
+      // (2026-08-18): the board's own count of CAM1 edges it drove. Not a
+      // pairing input any more -- a plain diagnostic, and the ONLY number here
+      // that was ever independent of the camera. `mode` is kept so a host can
+      // still see which pairing is authoritative without a second query.
       JsonObject jP=retdoc.createNestedObject("cam_pcnt");
-      jP["mode"]=REPORT_MATCH_PCNT ? (REPORT_MATCH_TS?"both":"pcnt")
-                                   : (REPORT_MATCH_TS?"ts":"tid");
-      jP["valid"]=CAM_PCNT.valid;
-      jP["offset"]=(double)CAM_PCNT.offset;
-      jP["learned"]=CAM_PCNT.learned;
-      // Nonzero means a pulse went out that the camera did not count (or the
-      // reverse). This is the number the whole mechanism exists to surface.
-      jP["slip"]=CAM_PCNT.slip;
-      jP["hit"]=CAM_PCNT.hit;
-      jP["miss"]=CAM_PCNT.miss;
-      // Which side went blind. See the declaration for why miss alone is not
-      // an answer.
-      jP["ts_blind"]=CAM_PCNT.ts_blind;
-      jP["pcnt_blind"]=CAM_PCNT.pcnt_blind;
-      jP["mismatch"]=CAM_PCNT.mismatch;
-      jP["last_sample"]=(double)CAM_PCNT.last_sample;
-      jP["last_pcnt"]=(double)CAM_PCNT.last_pcnt;
+      jP["mode"]=REPORT_MATCH_TS?"ts":"tid";
       jP["dev_pulses"]=(uint32_t)CAM_PULSE_N;
+      jP["removed"]=true;
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
@@ -6527,14 +6470,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(doc["cam_ts"].is<uint64_t>()==true) cam_ts=doc["cam_ts"];
     else if(doc["cam_ts"].is<double>()==true) cam_ts=(uint64_t)(double)doc["cam_ts"];
 
-    // The camera's own trigger counter for this frame, decoded by the host out
-    // of the frame watermark. Absent (-1) whenever the watermark is off, which
-    // is the default -- so every path below has to work without it.
-    int64_t pcnt = -1;
-    if(doc["pcnt"].is<uint32_t>()==true) pcnt=(int64_t)(uint32_t)doc["pcnt"];
-    else if(doc["pcnt"].is<int>()==true) pcnt=(int64_t)(int)doc["pcnt"];
-    else if(doc["pcnt"].is<double>()==true) pcnt=(int64_t)(double)doc["pcnt"];
-    if(pcnt>=0) CAM_PCNT.last_pcnt=pcnt;
+    // `pcnt` (the camera's own trigger counter, decoded from the frame
+    // watermark) is no longer read: pulse-count pairing was removed
+    // 2026-08-18. A core that still sends the field is simply ignored.
 
     // How long the frame spent inside the core, sent by the core itself.
     // Subtracting it from cam_lat leaves the one leg neither side can see --
@@ -6578,11 +6516,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // wrong sample here poisons the offset that everything downstream trusts.
     pipeLineInfo *bySync=NULL;
     int syncOutstanding=0;
-    // Exact arithmetic, no window: the object whose trigger was the one the
-    // camera counted. NULL whenever the offset has not been learned or the
-    // report carries no pcnt, which is what keeps this inert until it is
-    // deliberately switched on at both ends.
-    pipeLineInfo *byPcnt=NULL;
     if(cat!=-1)
     {
       int64_t want = CAM_SYNC.valid ? CAM_SYNC.expectedCamUs(cam_ts) : 0;
@@ -6593,8 +6526,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         if(tid!=-1 && pipe->tid==(uint32_t)tid) byTid=pipe;
         if(pipe->sync && pipe->insp_status==insp_status_UNSET)
         { bySync=pipe; syncOutstanding++; }
-        if(pcnt>=0 && CAM_PCNT.valid && pipe->cam_pcnt!=0 &&
-           (int64_t)pipe->cam_pcnt == pcnt - CAM_PCNT.offset) byPcnt=pipe;
         if(cam_ts!=0 && CAM_SYNC.valid && pipe->cam_us!=0)
         {
           int64_t d = (int64_t)pipe->cam_us - want; if(d<0) d=-d;
@@ -6625,10 +6556,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // is the circularity guard, not a lookup detail.
     pipeLineInfo *teach = (byTid!=NULL) ? (byTid->sync ? byTid : NULL) : bySync;
     if(teach!=NULL && cam_ts!=0) CAM_SYNC.observe(cam_ts, teach->cam_us);
-    // Same teacher, same reason: only a pulse fired with nothing else
-    // outstanding gives a pairing that is certain without already knowing the
-    // offset. Unlike the clock, this learns exactly once and then only checks.
-    if(teach!=NULL && pcnt>=0) CAM_PCNT.observe(pcnt, teach->cam_pcnt);
 
     // Once the offset exists, every report maintains it: nearest object inside
     // the window re-measures it, outside the window twice running stops the
@@ -6681,63 +6608,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // Three configurations, and the middle one is the reason this exists:
     //
     //   ts only    -- as before.
-    //   pcnt only  -- exact matching, no window, but blind to a refused
-    //                 trigger from the moment one happens.
-    //   both       -- each covers the other's blind spot. A clock mispairing
-    //                 is continuous and can look plausible; a count mispairing
-    //                 is a whole-pulse step. For them to agree on the wrong
-    //                 object, the clock would have to be off by exactly the
-    //                 same object the count is off by, which is not a way
-    //                 either of them fails.
-    //
-    // "One found an object and the other did not" is a disagreement, not a
-    // fallback. The whole value of running two is refusing to sort a part that
-    // only one of them can identify -- accepting the survivor would give
-    // exactly the single-mechanism confidence the dual mode was turned on to
-    // avoid. Both silent is different and NOT a conflict: that is simply a
-    // report neither can place yet (during CAL, before either offset exists),
-    // and it falls through to bySync/byTid below as it always did.
-    bool pairConflict=false;
-    pipeLineInfo *byDev=NULL;
-    if(REPORT_MATCH_TS && REPORT_MATCH_PCNT)
-    {
-      if(byTs!=NULL && byPcnt!=NULL)
-      {
-        if(byTs==byPcnt){ CAM_PCNT.hit++; byDev=byTs; }
-        else { CAM_PCNT.miss++; CAM_PCNT.mismatch++; pairConflict=true; }
-      }
-      else if(byTs!=NULL || byPcnt!=NULL)
-      {
-        CAM_PCNT.miss++;
-        if(byPcnt!=NULL) CAM_PCNT.ts_blind++;   // count placed it, clock did not
-        else             CAM_PCNT.pcnt_blind++; // clock placed it, count did not
-        pairConflict=true;
-      }
-    }
-    else if(REPORT_MATCH_TS)   byDev = byTs;
-    else if(REPORT_MATCH_PCNT)
-    {
-      byDev = byPcnt;
-      if(byPcnt!=NULL)                     CAM_PCNT.hit++;
-      else if(CAM_PCNT.valid && pcnt>=0)   CAM_PCNT.miss++;
-    }
+    // One mechanism, by design. The dual-mode arbitration that used to live
+    // here (ts+pcnt must name the same object or the machine halts on
+    // CAM_PAIRING_DISAGREE) went with the pulse-count pairing on 2026-08-18 --
+    // see the note at CAM_PULSE_N. What it protected against, a clock that
+    // mispairs plausibly, is now covered by CAM_SYNC's own refusal: outside the
+    // window twice running is CAM_CLOCK_LOST and the machine stops rather than
+    // guesses.
+    pipeLineInfo *byDev = REPORT_MATCH_TS ? byTs : NULL;
 
-    if(pairConflict)
-    {
-      djrl.dbg_printf("CAMPAIR DISAGREE tid_ts=%d tid_pcnt=%d pcnt=%lld "
-                      "off=%lld d=%lld slip=%u",
-                      byTs!=NULL?(int)byTs->tid:-1,
-                      byPcnt!=NULL?(int)byPcnt->tid:-1,
-                      (long long)pcnt,(long long)CAM_PCNT.offset,
-                      (long long)bestDelta,(unsigned)CAM_PCNT.slip);
-      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
-                         (int)GEN_ERROR_CODE::CAM_PAIRING_DISAGREE);
-    }
-
-    tarP = pairConflict ? NULL
-         : (byDev!=NULL ? byDev
+    tarP = (byDev!=NULL ? byDev
          : (byTid!=NULL ? byTid
-         : (byTs!=NULL ? byTs : (byPcnt!=NULL ? byPcnt : bySync))));
+         : (byTs!=NULL ? byTs : bySync)));
 
     // --- sweep everything older than the chosen object --------------------
     if(tarP!=NULL)
@@ -6871,14 +6753,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // pretend the pairing broke.
       SYNC_TOMB_HITS++;
       rspAck=true;
-    }
-    else if(pairConflict)
-    {
-      // Already stopped, with the reason that is actually true. Falling
-      // through to the NOMATCH branch would halt a second time under
-      // INSP_RESULT_MATCHES_NO_OBJECT -- "no object was found", when in fact
-      // two were and they contradicted each other.
-      rspAck=false;
     }
     else
     {
@@ -8905,7 +8779,6 @@ void genMachineSetup(JsonDocument &jdoc)
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
     jCM["report_match_ts"]=REPORT_MATCH_TS;
-    jCM["report_match_pcnt"]=REPORT_MATCH_PCNT;
     jCM["match_window_us"]=CamClockSync::TOL_US;
     // The setting, and what it currently BUYS in millimetres. The second one is
     // emitted whichever mode is in use, because the hazard the microsecond form
@@ -9268,7 +9141,12 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   JSON_SETIF_ABLE(REPORT_MATCH_TS,jCM,"report_match_ts");
-  JSON_SETIF_ABLE(REPORT_MATCH_PCNT,jCM,"report_match_pcnt");
+  // "report_match_pcnt" stays in the SCHEMA (K_CAM) but is no longer applied.
+  // Kept in the schema because set_setup refuses a whole document containing an
+  // unknown key and old tools/backups still name it; asking for it to be ON is
+  // refused loudly in the set_setup handler rather than accepted and ignored --
+  // a machine that silently declines a setting is worse than one that tells you
+  // what you chose.
   JSON_SETIF_ABLE(CamClockSync::TOL_US,jCM,"match_window_us");
 
   // "match_tolerance_mm": the window expressed as what it actually is.
