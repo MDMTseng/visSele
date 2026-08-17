@@ -7,6 +7,27 @@ a separate process and not covered here.
 The core rework is happening in parallel; that work runs on port **4190** and
 must not interfere with your 4090. See "Coexistence with the rework" below.
 
+## First run on a fresh clone — seed `data/`
+
+`data/` is gitignored on purpose: it is THIS machine's state (calibration,
+station geometry, identity, snapshots), and inheriting another machine's crop or
+`machine_info` is a defect, not a convenience. A fresh clone therefore has no
+`data/` at all. Seed it once:
+
+```sh
+cd InspectionCore/Core0_1
+../build/mac-arm64/visSele --init-data      # copies MISSING files from init_data/
+```
+
+It **never overwrites** — anything already in `data/` is yours, so it prints
+`keep` and moves on, which makes it safe to re-run. See
+`Core0_1/init_data/README.md` for what is seeded and what is deliberately left
+out (no `InspectionROI`, no `inspection_region`/`clean_regions`, and
+`machine_info` is `UNSET` rather than someone else's machine name).
+
+Calibration is not seeded and cannot be: `lens_calib.json` / `field_calib.json`
+are measurements of one camera and one lens. Produce them from 相機校正.
+
 ## TL;DR — start it on 4090
 
 ```bash
