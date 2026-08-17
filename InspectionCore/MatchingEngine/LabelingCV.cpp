@@ -192,12 +192,19 @@ void buildLabeledSignatures_phase2(const cv::Mat &binary_uc1,
       float R = sqrtf(R2);
       int span = (int)ceilf(BINS_OVER_2PI / R);
       if (span < K_min) span = K_min;
+      // Cap the span at one full turn. R here is the distance from a boundary
+      // pixel to its own label's centroid, and for a tiny blob (dust, a fibre,
+      // a scratch a few pixels long) the centroid can land on one of its own
+      // pixels: R below ~0.08px makes span exceed 2*N_bins. Without the cap
+      // that is both a runaway inner loop and -- with the single-step wrap
+      // below -- a write past the end of a 360-float vector.
+      if (span > N_bins) span = N_bins;
       int halfSpan = span / 2;
       // Diffusion writes are also into R^2 space.
       for (int db = -halfSpan; db <= halfSpan; db++)
       {
-        int b = bin + db;
-        if (b < 0) b += N_bins; else if (b >= N_bins) b -= N_bins;
+        // Full modulo, not one conditional step: db can exceed N_bins.
+        int b = ((bin + db) % N_bins + N_bins) % N_bins;
         if (B[L][b] < R2) B[L][b] = R2;
       }
 

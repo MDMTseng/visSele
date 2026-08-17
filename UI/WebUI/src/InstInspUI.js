@@ -24,6 +24,9 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
 
   const rdx_edit_info = useSelector(state => state.UIData.edit_info);
   const FILE_default_camera_setting = useSelector(state => state.UIData.FILE_default_camera_setting);
+  // 儀器尺度的單一來源: data/lens_calib.json (見 UICtrlReducer 的 FILE_lens_calib)。
+  // 舊路徑是 camera_calibration_report, 核心已不再發出該 report。
+  const instrument_mmpp = useSelector(state => state.UIData.instrument_mmpp);
   let _ = useRef({
     canvas: undefined,
     windowSize:{width:0,height:0},
@@ -72,8 +75,8 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
           // log.error(event);
           // this.props.ACT_ERROR();
 
-          let rep = rdx_edit_info.camera_calibration_report.reports[0];
-          let mmpp=rep.mmpb2b/rep.ppb2b;
+          let mmpp = instrument_mmpp;
+          if (!(mmpp > 0)) { log.warn("down_samp_level_update: 尚無 lens_calib.json 的 mmpp, 略過"); break; }
 
           let crop = event.data.crop.map(val=>val/mmpp);
 
@@ -157,55 +160,48 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
             onCancel:()=>setModal_view(),
             onOk:()=>{
               
-              let targetPath = "data/default_camera_param.json";
-              BPG_Channel("LD",0,
-              {filename: targetPath},
-              undefined,
-              { 
-                resolve:(pkts,action_channal)=>{
-
-                  let FL=pkts.find(pkt=>pkt.type=="FL");
-                  if(FL===undefined)
-                  {
-                    ModalPopup(`檔案:${targetPath} 找不到!`);
-                    return;
-                  }
+              // 寫回 data/lens_calib.json -- 儀器尺度的唯一來源。
+              //
+              // 這裡本來寫的是 data/default_camera_param.json: 那個檔案已經沒有
+              // 任何人讀 (核心改用 lens_calib.json + field_calib.json), 檔案本身
+              // 也不存在, 所以這個「更新校正參數」按下去只會跳找不到檔案 --
+              // 更糟的情況是有人把檔案補回來, 那它就會回報成功卻什麼都沒改。
+              //
+              // lens_calib.json 用 um_per_px(微米) 與 m(px/mm) 兩個欄位描述同一
+              // 件事, 兩個都要更新, 否則核心的 push_mmpp_to_sampler 走 m, 而 UI
+              // 走 um_per_px, 又會分裂成兩個尺度。
+              const targetPath = "data/lens_calib.json";
+              const newMmpp = _this.adjCalibInfo.adj_mmpb2b / _this.adjCalibInfo.adj_ppb2b;
+              if (!(newMmpp > 0)) { ModalPopup("修正後的 mmpp 不合法, 未寫入"); setModal_view(); return; }
+              BPG_Channel("LD",0,{filename: targetPath},undefined,
+              {
+                resolve:(pkts)=>{
+                  const FL=pkts.find(pkt=>pkt.type=="FL");
+                  if(FL===undefined){ ModalPopup(`檔案:${targetPath} 找不到!`); return; }
+                  let lc;
                   try{
-
-                    FL.data.reports[0].mmpb2b=_this.adjCalibInfo.adj_mmpb2b;
-                    FL.data.reports[0].ppb2b=_this.adjCalibInfo.adj_ppb2b;
-                  }
-                  catch(e)
-                  {
-                    ModalPopup(`修改檔案時錯誤:${e}`);
-                    return;
-                  }
-
-                  var enc = new TextEncoder();
-
-                  BPG_Channel("SV",0,
-                  {filename: targetPath},
-                  enc.encode(JSON.stringify(FL.data, null, 2),
-                  { 
-                    resolve:(pkts,action_channal)=>{
-                      
-                      ModalPopup(`OK`);
-                    }, 
-                    reject:(e)=>{
-                      ModalPopup(`錯誤:${e}`);
-                    } 
-                  }));
-
-
-                }, 
-                reject:(e)=>{
-                  
-                  log.error("[error]", e);
-                  ModalPopup(`錯誤:${e}`);
-                  return;
-                } 
+                    lc = {...FL.data};
+                    lc.um_per_px = newMmpp * 1000;
+                    lc.m         = 1 / newMmpp;
+                  }catch(e){ ModalPopup(`修改檔案時錯誤:${e}`); return; }
+                  BPG_Channel("SV",0,{filename: targetPath},
+                    new TextEncoder().encode(JSON.stringify(lc, null, 2)),
+                    {
+                      resolve:()=>{
+                        // 存檔只改了磁碟。要核心立刻採用, 必須請它重載校正檔,
+                        // 否則 sampler 還是舊倍率, 直到下次相機連線才更新。
+                        BPG_Channel("RC",0,{ target:"calib_files_load",
+                          camera_setting_dir:"data/",
+                          lens_calib_path:"data/lens_calib.json",
+                          field_calib_path:"data/field_calib.json" });
+                        ModalPopup(`OK  mmpp=${newMmpp}`);
+                      },
+                      reject:(e)=>ModalPopup(`錯誤:${e}`)
+                    });
+                },
+                reject:(e)=>{ log.error("[error]", e); ModalPopup(`錯誤:${e}`); }
               });
-  
+
               setModal_view();
             },
             // view:<>dddd</>
@@ -293,16 +289,10 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
 
   function updateCalcMMPP(dataX)
   {
-    let camInfo=GetObjElement(rdx_edit_info,["camera_calibration_report","reports",0]);
-
-
-    let mmpb2b=NaN;
-    let ppb2b=NaN;
-    if(camInfo!==undefined)
-    {
-      mmpb2b=camInfo.mmpb2b;
-      ppb2b=camInfo.ppb2b;
-    }
+    // 目前的儀器尺度來自 lens_calib.json。以 mmpb2b/ppb2b 這組表示時, 讓
+    // ppb2b=1 使 mmpp = mmpb2b/ppb2b 成立, 下面的修正倍率算法完全不變。
+    let mmpb2b = (instrument_mmpp > 0) ? instrument_mmpp : NaN;
+    let ppb2b  = (instrument_mmpp > 0) ? 1 : NaN;
 
     // rdx_edit_info
     let adjInfo=dataX.reduce((avg,dat)=>{

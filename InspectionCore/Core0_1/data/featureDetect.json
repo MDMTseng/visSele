@@ -6,7 +6,7 @@
       "type":"sig360_extractor",
       "ver":"0.0.0.0",
       "unit":"mm",
-      "mmpp":100
+      "mmpp":-1
     }
   ]
 }

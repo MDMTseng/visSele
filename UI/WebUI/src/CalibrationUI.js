@@ -13,6 +13,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
+import { CameraParamPanel } from './component/CameraParamPanel.jsx';
 
 // Live preview canvas — minimal SLCALIB_CanvasComponent wrapper. Pulls c_state /
 // edit_info from redux so the streamed image (delivered via the usual BPG
@@ -28,6 +29,12 @@ class PreviewCanvas extends React.Component {
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.canvas);
     this.ec_canvas.disableImageAlign = true;   // raw live frame: no def_image_reg rotate
+    // This page uses NO def-file state at all. It exists to aim and calibrate
+    // the instrument itself, so its scale must come from the instrument
+    // (lens_calib.json um_per_px, passed down as props.mmpp) -- a def's mmpp
+    // describes whatever image was side-loaded with that def, which is a
+    // different camera-lens-standoff and simply the wrong number here.
+    this.ec_canvas.SetStandalonePreview(this.props.mmpp);
     this._didInitialFit = false;
     if (this.props.onCanvasInit) this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);
@@ -41,15 +48,21 @@ class PreviewCanvas extends React.Component {
     // it, mouse drag is a no-op. (BackLightCalibUI hits the same code via the
     // DefConfUI flow that already pushes state.)
     if (ec_state) this.ec_canvas.SetState(ec_state);
-    // EditDBInfoSync calls scaleImageToFitScreen() every time img changes,
-    // which would reset the user's pan/zoom on every streamed frame. Run the
-    // full sync once to set db_obj + initial fit; after that, push only the
-    // new img frame via SetImg.
-    if (!this._didInitialFit) {
-      this.ec_canvas.EditDBInfoSync(props.edit_info);
-      if (props.edit_info && props.edit_info.img) this._didInitialFit = true;
-    } else if (props.edit_info && props.edit_info.img) {
+    // lens_calib.json is fetched asynchronously, so the first frames can land
+    // before the instrument scale does. Re-apply on change (it also re-fits).
+    if (props.mmpp !== this._appliedMmpp && Number.isFinite(props.mmpp)) {
+      this._appliedMmpp = props.mmpp;
+      this.ec_canvas.SetStandalonePreview(props.mmpp);
+    }
+    // Only the frame is taken from redux -- edit_info.img is the live stream's
+    // delivery slot, not def data. Fit once so the streamed frames don't reset
+    // the operator's pan/zoom on every update.
+    if (props.edit_info && props.edit_info.img) {
       this.ec_canvas.SetImg(props.edit_info.img);
+      if (!this._didInitialFit) {
+        this.ec_canvas.scaleImageToFitScreen();
+        this._didInitialFit = true;
+      }
     }
     this.ec_canvas.draw();
   }
@@ -104,6 +117,10 @@ function CalibrationUI(props) {
   const [fieldReport, setFieldReport] = useState(null);
   const [fieldBusy, setFieldBusy] = useState(false);
   const [savedField, setSavedField] = useState(null);   // { hasBright, hasDark }
+  // Instrument scale (mm/px) straight from lens_calib.json -- the authority for
+  // this page. Undefined until the file loads; the preview keeps the renderer
+  // default until then rather than borrowing a number from somewhere wrong.
+  const [instMmpp, setInstMmpp] = useState(undefined);
 
   const CALIB_DIR = "data/calibImages";
   const canvasRef = useRef(null);
@@ -125,7 +142,14 @@ function CalibrationUI(props) {
   // Stable identity so hover re-renders of this component don't churn the (pure,
   // connected) PreviewCanvas -- otherwise each mousemove would re-run SetImg
   // (JPEG re-decode) on the live preview.
-  const onCanvasInit = useCallback((c) => { canvasRef.current = c; }, []);
+  const onCanvasInit = useCallback((c) => {
+    canvasRef.current = c;
+    // QA handle: this canvas silently rendered nothing for a whole session
+    // (CORE0_1_CAVEATS J8). Being able to read back the scale it is actually
+    // using -- __GP_CALIB_CANVAS__.rUtil.get_mmpp() -- is what makes "is the
+    // instrument mmpp applied?" a one-line question instead of an inference.
+    if (typeof window !== "undefined") window.__GP_CALIB_CANVAS__ = c;
+  }, []);
 
   // On mount, list any already-saved chessboard images and load their thumbnails.
   // Use LD with down_samp_level (DOWNSAMPLED) instead of LB (full-res PNG) so a
@@ -216,16 +240,9 @@ function CalibrationUI(props) {
     return tc.toDataURL('image/jpeg', 0.6);
   };
 
-  // Camera tuning controls. Initial values are read from
-  // data/default_camera_setting.json (the same file CameraSettingFromFile()
-  // loads at core boot). User nudges push live via ST/CameraSetting; Save
-  // writes the JSON back so it survives restart.
-  const SETTING_PATH = "data/default_camera_setting.json";
-  const [exposure, setExposure] = useState(10000);
-  const [gain, setGain] = useState(1.0);
-  const [gamma, setGamma] = useState(1.0);
-  const [blacklevel, setBlacklevel] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+  // Camera tuning controls live in component/CameraParamPanel.jsx now (shared
+  // with the main menu's Camera modal). It owns the file read/write and the
+  // live ST push; nothing about them belongs to this page.
 
   // On mount, ask core to (re)load camera setting + lens calib + field calib
   // from the paths the UI owns. Core has NO hard-coded paths and does NOT
@@ -247,6 +264,25 @@ function CalibrationUI(props) {
   // to be present on disk -- finalize uses the latest pending grid per side,
   // and missing-side pending means the saved file's side stays intact only if
   // we re-load it server-side first, which is out of scope here.
+  // Instrument scale. um_per_px is what lens calibration produces and what the
+  // core writes back; m (px/mm) is the same number inverted, kept as a fallback
+  // for older files. Re-read after a successful run so the preview immediately
+  // reflects the calibration the operator just made.
+  const loadInstMmpp = useCallback(() => {
+    props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: "data/lens_calib.json" },
+      undefined, {
+        resolve: (pkts) => {
+          const fl = pkts.find(p => p.type === "FL");
+          const d = fl && fl.data;
+          if (!d) return;
+          const mmpp = Number.isFinite(+d.um_per_px) && +d.um_per_px > 0 ? +d.um_per_px / 1000
+                     : (Number.isFinite(+d.m) && +d.m > 0 ? 1 / +d.m : undefined);
+          if (mmpp !== undefined) setInstMmpp(mmpp);
+        },
+        reject: () => {},
+      });
+  }, []);
+  useEffect(() => { loadInstMmpp(); }, []);
   useEffect(() => {
     props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: "data/field_calib.json" },
       undefined, {
@@ -262,48 +298,19 @@ function CalibrationUI(props) {
         reject: () => setSavedField({ hasBright: false, hasDark: false }),
       });
   }, []);
-  useEffect(() => {
-    props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: SETTING_PATH }, undefined, {
-      resolve: (pkts) => {
-        const fl = pkts.find(p => p.type === "FL");
-        if (!fl || !fl.data) { setLoaded(true); return; }
-        const cfg = fl.data;
-        if (cfg.exposure   != null) setExposure(cfg.exposure);
-        if (cfg.gain       != null) setGain(cfg.gain);
-        if (cfg.gamma      != null) setGamma(cfg.gamma);
-        if (cfg.blacklevel != null) setBlacklevel(cfg.blacklevel);
-        setLoaded(true);
-      },
-      reject: () => setLoaded(true),
-    });
-  }, []);
-
-  const setCam = (key, val) => {
-    props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { [key]: val } });
-  };
-
-  const saveCameraSetting = () => {
-    // Read-modify-write: pull the current file, override only the four fields
-    // this UI manages, write back. Any other keys (ROI, trigger_mode, vendor
-    // extensions, etc.) are preserved.
-    props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: SETTING_PATH }, undefined, {
-      resolve: (pkts) => {
-        const fl = pkts.find(p => p.type === "FL");
-        const base = (fl && fl.data && typeof fl.data === 'object') ? fl.data : {};
-        const merged = { ...base, exposure, gain, gamma, blacklevel };
-        const payload = new TextEncoder().encode(JSON.stringify(merged, null, 2));
-        props.ACT_WS_SEND_BPG(props.CORE_ID, "SV", 0, { filename: SETTING_PATH }, payload, {
-          resolve: (pkts2) => {
-            const ss = pkts2.find(p => p.type === "SS");
-            if (ss && ss.data.ACK) console.log("saved", SETTING_PATH, merged);
-            else console.warn("save failed", SETTING_PATH);
-          },
-        });
-      },
-      reject: () => console.warn("save aborted: could not read", SETTING_PATH),
-    });
-  };
+  // Calibration is a SENSOR measurement, so it needs the whole sensor.
+  //
+  // Focus, distortion and the field/brightness grids describe the optics, not
+  // the product: measured through the inspection crop they would be valid only
+  // inside that crop, and silently wrong the moment it moved. The frame this
+  // page wants was already described as "the real 2448x2048" below -- the ROI
+  // was simply never stated, because until InspectionROI existed the stored
+  // setting was full-sensor anyway.
+  //
+  // Nothing restores this on the way out, deliberately: entering InspectionUI
+  // reloads the machine's camera file, so there is ONE place that puts the crop
+  // back rather than one per page that ever opened the sensor.
+  const FULL_SENSOR_ROI = [0, 0, 99999, 99999];
 
   // Mirror InspMode trigger policy AND register a CI subscription. trigger_mode
   // alone doesn't push frames; core streams only when a CI is active. We reuse
@@ -312,8 +319,15 @@ function CalibrationUI(props) {
   useEffect(() => {
     if (!thumbsLoaded) return;   // start the stream only after saved thumbnails load
     const CALIB_STREAM_PGID = 10105;
+    // Full resolution on purpose. This is the one page where the pixels ARE the
+    // subject: judging focus and reading chessboard corners needs the real
+    // 2448x2048 frame, and a downsampled preview hides exactly the detail the
+    // operator is here to set. It is not free -- ~5MB raw and ~38ms just to
+    // encode, against ~3.3ms at DL:4 -- but this page never runs during
+    // production, so the frame rate it costs buys nothing back elsewhere.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 1,
+                         ROI: FULL_SENSOR_ROI } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID,
       _PGINFO_: { keep: true },
@@ -492,8 +506,12 @@ function CalibrationUI(props) {
       { CameraSetting: { trigger_mode: 1 } });
   };
   const startStream = () => {
+    // Restate down_samp_level, not just trigger_mode: it is core-global state
+    // that another page (or a lens-calibration run) may have moved since the
+    // mount effect set it.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 1,
+                         ROI: FULL_SENSOR_ROI } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID, _PGINFO_: { keep: true },
       definfo: { type: "stage_light_report", grid_size: [10, 10],
@@ -530,6 +548,7 @@ function CalibrationUI(props) {
           setCalibMsg(ok ? 'Calibration complete. (no report payload)' :
             'Calibration failed. Check core log.');
         }
+        if (ok) loadInstMmpp();   // the run just rewrote lens_calib.json
         startStream();
         setTimeout(() => setCalibrating(false), ok ? 4000 : 3500);
       },
@@ -547,7 +566,7 @@ function CalibrationUI(props) {
       <div ref={previewBoxRef} style={{ height: '60vh', position: 'relative', flexShrink: 0 }}
         onMouseMove={onPreviewHover} onMouseLeave={onPreviewLeave}>
         <PreviewCanvas_rdx addClass="s width12 height12"
-          onCanvasInit={onCanvasInit}/>
+          mmpp={instMmpp} onCanvasInit={onCanvasInit}/>
         {hoverBri !== undefined && (
           <div style={{
             position: 'absolute', left: hoverBri.sx + 14, top: hoverBri.sy + 14,
@@ -561,32 +580,12 @@ function CalibrationUI(props) {
           </div>
         )}
       </div>
-      <Card size="small" style={{ marginTop: 12 }}
-        title={<span>Camera {loaded ? '' : <span style={{color:'#aaa'}}>(loading…)</span>}</span>}
-        extra={<Button size="small" onClick={saveCameraSetting} disabled={!loaded}>Save</Button>}>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label>exposure (µs):
-            <InputNumber value={exposure} min={1} max={1000000} step={100}
-              style={{ marginLeft: 6, width: 110 }}
-              onChange={(v) => { const x = Math.max(1, v || 1); setExposure(x); setCam('exposure', x); }} />
-          </label>
-          <label>gain:
-            <InputNumber value={gain} min={0} max={48} step={0.1}
-              style={{ marginLeft: 6, width: 90 }}
-              onChange={(v) => { const x = v || 0; setGain(x); setCam('gain', x); }} />
-          </label>
-          <label>gamma:
-            <InputNumber value={gamma} min={0.1} max={4} step={0.05}
-              style={{ marginLeft: 6, width: 90 }}
-              onChange={(v) => { const x = v || 1; setGamma(x); setCam('gamma', x); }} />
-          </label>
-          <label>blacklevel:
-            <InputNumber value={blacklevel} min={0} max={1000} step={1}
-              style={{ marginLeft: 6, width: 90 }}
-              onChange={(v) => { const x = v || 0; setBlacklevel(x); setCam('blacklevel', x); }} />
-          </label>
-        </div>
-      </Card>
+      {/* Shared with the main menu's Camera modal -- component/CameraParamPanel.jsx.
+          It owns the file read/write, the debounced live push and the
+          setup_failed readout; this page just places it. */}
+      <CameraParamPanel style={{ marginTop: 12 }} title="Camera"
+        send={(tl, prop, obj, bin, cbs) =>
+          props.ACT_WS_SEND_BPG(props.CORE_ID, tl, prop, obj, bin, cbs)} />
 
       <Tabs activeKey={tab} onChange={setTab} type="card" style={{ marginTop: 12 }}>
         <Tabs.TabPane tab={`Chessboard (${chessShots.length})`} key="chessboard">

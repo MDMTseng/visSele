@@ -27,6 +27,16 @@ function urlConcat(base, add) {
         this.pgIDCounter= 0;
         this.websocket=undefined;
         this.isConnected=false;
+        // QA handle, same spirit as __GP_STORE__/__GP_PERIF__. The demux is the
+        // one place where a packet can vanish without a trace, so it needs to be
+        // reachable from devtools: __GP_WS__.rxTally() / .reqWindow.
+        if (typeof window !== "undefined") {
+          window.__GP_WS__ = {
+            inst: this,
+            rxTally: () => ({ ...(this._rxTally || {}) }),
+            reqWindowIDs: () => Object.keys(this.reqWindow),
+          };
+        }
         this.systemStatusPull();
       }
 
@@ -36,7 +46,12 @@ function urlConcat(base, add) {
         setInterval(()=>{
           if(this.isConnected==false)return;
           
-          this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "GS", 0,  { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","binary_path","data_path"] },
+          // save_snap_disk_low_skip_count was missing from this list: the core has
+          // reported it since the disk guard landed, nothing ever asked, so
+          // "machine stopped keeping NG evidence because the disk filled" was
+          // invisible in the UI. The Core modal shows all three together.
+          this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "GS", 0,
+          { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","save_snap_disk_low_skip_count","binary_path","data_path"] },
           undefined, 
           {
             resolve: (stacked_pkts,P) => {
@@ -71,6 +86,23 @@ function urlConcat(base, add) {
         }
         this.websocket.onclose=(ev)=>{
           this.isConnected=false;
+          // Every in-flight request dies with the socket. Nothing used to say
+          // so, and the consequences were all silent:
+          //
+          //   * the caller's promise never settles -- queryCam's `inFlight`
+          //     guard stays true forever, so the camera poll is permanently
+          //     dead after ONE disconnect (the disconnect-shaped half of 6.15)
+          //   * entries hold their accumulated `pkts`, including IM
+          //     ArrayBuffer views -- a leak that grows per drop
+          //   * pgIDs are never freed, and the allocator in send() is
+          //     `while (this.reqWindow[PGID] !== undefined)` over a 501-entry
+          //     space: fill it with corpses and that loop never exits, which
+          //     is a HARD HANG of send(), not a slowdown
+          //
+          // Reject rather than silently drop: a caller that handles failure can
+          // retry, and one that does not gets an unhandled rejection in the
+          // console instead of a hang nobody can explain.
+          this.failAllPending("websocket closed (code " + (ev && ev.code) + ")");
           // 1006 = abnormal closure (no close frame from peer — typically network
           // drop or process kill); call out separately since it's the dominant
           // factory failure mode and the only one with no `reason` payload.
@@ -109,6 +141,14 @@ function urlConcat(base, add) {
         // log.info("onMessage:["+header.type+"]");
         let pgID = header.pgID;
 
+        // Inbound tally by pgID+type. Mirror of the core's "img transfer ...
+        // subscribers:N" log: without a count on BOTH ends, "core sent it" and
+        // "the page drew it" have a silent gap between them (socket? demux?
+        // reducer?) that costs hours to bisect. Cheap enough to leave on.
+        if (this._rxTally === undefined) this._rxTally = {};
+        const tkey = pgID + ":" + header.type;
+        this._rxTally[tkey] = (this._rxTally[tkey] || 0) + 1;
+
         let parsed_pkt = undefined;
         let SS_start = false;
 
@@ -130,13 +170,35 @@ function urlConcat(base, add) {
               
               {
 
-                this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0, { filename: "data/default_camera_param.json" },
-                undefined,
-                {resolve: (data,action_channal) => {
-                  log.debug("[ld] default_camera_param.json", data);
-                  action_channal(data);
+                // data/default_camera_param.json is not loaded here any more.
+                //
+                // It was the legacy calibration pair:
+                //   {"type":"binary_processing_group",
+                //    "reports":[{"type":"camera_calibration","mmpb2b":...,"ppb2b":...}]}
+                // The core stopped reading it (calibration comes from
+                // lens_calib.json + field_calib.json via calib_files_load), the
+                // reducer's "camera_calibration" case was removed with
+                // loadCameraCalibParam, and the file itself is long gone. So this
+                // was a file read over the wire on every core connect whose reply
+                // matched no case and was discarded.
+                //
+                // Worth removing rather than leaving inert: the file carried
+                // mmpb2b 0.0088578486, which disagrees with lens_calib.json's
+                // 0.01388594. Re-creating it would have quietly reintroduced a
+                // third source of scale into the UI.
 
-                }});
+                // The instrument scale, loaded once per core connect so the
+                // whole UI has one mmpp. Consumers used to derive it from the
+                // camera_calibration report, which the core no longer emits.
+                this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0,
+                  { filename: "data/lens_calib.json" }, undefined,
+                  {resolve: (data) => {
+                    if (data && data[0] && data[0].type == "FL")
+                      this.store.dispatch({ type: "FILE_lens_calib", data: data[0].data });
+                    else
+                      log.warn("[ld] lens_calib.json: no FL reply; instrument mmpp stays undefined");
+                  },
+                   reject: (e) => log.warn("[ld] lens_calib.json failed", e)});
 
                 let machineSettingPath="data/machine_setting.json";
                 this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0,{ filename: machineSettingPath },
@@ -177,6 +239,27 @@ function urlConcat(base, add) {
                     else
                     {
                       log.info("[peripheral] uInsp not configured (no uInsp_peripheral_conn_info.url)");
+                    }
+
+
+                    // uInspESP32 -- the 2nd-gen board, a separate block from the
+                    // uInspMEGA one above on purpose. It speaks a different
+                    // dialect (plate_freq/stage_pulse_offset/report{tid,cat}
+                    // rather than pulse_hz/res_count) and rides its own channel
+                    // (10027), so the two can coexist and the MEGA path stays
+                    // untouched. Configure exactly one of the two in
+                    // machine_setting.json -- the core keeps a single global
+                    // perifCH, so a second CONNECT would evict the first.
+                    if(info.uInspESP32_peripheral_conn_info!==undefined)
+                    {
+
+                      this.comp.props.ACT_WS_GET_OBJ(this.comp.props.uInspESP32_API_ID, (obj)=>{
+                        obj.connect( info.uInspESP32_peripheral_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      log.info("[peripheral] uInspESP32 not configured");
                     }
 
 
@@ -442,8 +525,32 @@ function urlConcat(base, add) {
 
       }
 
+      // Settle and drop every tracked request. Safe to call twice.
+      failAllPending(why)
+      {
+        const ids = Object.keys(this.reqWindow);
+        if (ids.length === 0) return;
+        const pending = this.reqWindow;
+        this.reqWindow = {};                 // swap first: a reject() that
+                                             // re-sends must not land in the
+                                             // map we are still walking
+        let rejected = 0;
+        for (const id of ids) {
+          const e = pending[id];
+          if (e && e.promiseCBs && typeof e.promiseCBs.reject === "function") {
+            rejected++;
+            try { e.promiseCBs.reject(why); } catch (err) {
+              wsLog.warn("[failAllPending] reject threw", { id, err: String(err) });
+            }
+          }
+          if (e) e.pkts = null;              // drop IM ArrayBuffer views now
+        }
+        wsLog.warn("[failAllPending]", { why, entries: ids.length, rejected });
+      }
+
       close()
       {
+        this.failAllPending("websocket closed by client");
         return this.websocket.close();
       }
     }

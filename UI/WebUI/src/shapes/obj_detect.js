@@ -11,6 +11,10 @@ export function applyDefaults(shape) {
   if (shape.ignore_rotation === undefined) shape.ignore_rotation = false;
   if (shape.ignore_translation === undefined) shape.ignore_translation = false;
   if (shape.downsample === undefined) shape.downsample = 1;
+  // dark_thresh and on_fail are deliberately NOT defaulted here. Absent means
+  // "no dark measurement" and "NA on trip" in the core already, and writing them
+  // in would rewrite the def -- and its sha1 -- for every existing region that
+  // never asked for either.
   return shape;
 }
 
@@ -47,6 +51,12 @@ export function draw(ctx, shape, renderer) {
     const tx = Math.min(a.x, b.x), ty = Math.min(a.y, b.y) - pr * 2;
     const f = (v) => (typeof v === 'number' ? v.toFixed(1) : '—');
     ctx.font = `${pr * 6}px sans-serif`;
+    // The dark line is what a clean-space region is actually set up on, so it goes
+    // first and only appears when dark_thresh is set (the core omits it otherwise).
+    if (typeof rep.dark_area_mm2 === 'number') {
+      ctx.fillText(`暗 ${rep.dark_area_mm2.toFixed(3)}mm² (${(rep.dark_ratio * 100).toFixed(2)}%)`,
+                   tx, ty - pr * 7);
+    }
     ctx.fillText(`B ${f(rep.bright_mean)}/${f(rep.bright_max)}  E ${f(rep.edge_mean)}/${f(rep.edge_max)}`, tx, ty);
   }
   ctx.restore();

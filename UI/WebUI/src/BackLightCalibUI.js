@@ -30,8 +30,10 @@ class CanvasComponent extends React.Component {
           // log.error(event);
           // this.props.ACT_ERROR();
 
-          let rep = this.props.camera_calibration_report.reports[0];
-          let mmpp=rep.mmpb2b/rep.ppb2b;
+          // 儀器尺度改讀 lens_calib.json 的單一來源; camera_calibration
+          // report 核心已不再發出。
+          let mmpp = this.props.instrument_mmpp;
+          if (!(mmpp > 0)) { log.warn("down_samp_level_update: 尚無 lens_calib.json 的 mmpp, 略過"); break; }
 
           let crop = event.data.crop.map(val=>val/mmpp);
           let down_samp_level = Math.floor(event.data.down_samp_level/mmpp*2)+1;
@@ -109,6 +111,7 @@ const mapStateToProps_CanvasComponent = (state) => {
     edit_info: state.UIData.edit_info,
 
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
+    instrument_mmpp: state.UIData.instrument_mmpp,
   }
 }
 
@@ -213,19 +216,6 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
           BPG_Channel("ST",0,{CameraSetting:{exposure}});
 
 
-          if(false&&reportInfo!==undefined&&  reportInfo.data.frames_left==0)
-          {
-            //BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
-            // var enc = new TextEncoder();
-            // BPG_Channel("SV",0,
-            //     {filename:"data/stageLightReport.json"},
-            //     enc.encode(JSON.stringify(finalCalibrationReport, null, 2)))
-
-            // if(onCalibFinished!==undefined)
-            // {
-
-            // }
-          }
         },
         reject:(e)=>{
           clearTimeout(c.triggerTimeout);

@@ -110,9 +110,15 @@ void ContourFetch::ptSubdivision(int times)
     //0G .... 1G .... 2G .... 3G .....[NG....0G] loop back
     for(int j=1;j<times;j++)//deal with last mile
     {
-      sec[j].pt=
+      // The tail entries live at (preSize-1)*times + j -- the main loop stops
+      // before them. Writing sec[j] here (the old code) overwrote the already
+      // interpolated first segment and left the tail value-initialised at
+      // {0,0}: `times-1` phantom points at the origin on EVERY contour, pulling
+      // line/circle fits and leaking into neighbours via contourDir.
+      int tail=(preSize-1)*times + j;
+      sec[tail].pt=
         acvVecInterp(sec[(preSize-1)*times].pt,sec[0].pt,1.0*j/times);
-      sec[j].pt_img=
+      sec[tail].pt_img=
         acvVecInterp(sec[(preSize-1)*times].pt_img,sec[0].pt_img,1.0*j/times);
 
     }
@@ -371,7 +377,7 @@ void ContourFetch::getContourPointsWithInLineContour(
 
       if(pt.x < epsilonX && pt.y < epsilonY)
       {
-        if( abs(pti.curvature)>lineCurvatureMax)continue;
+        if( fabsf(pti.curvature)>lineCurvatureMax)continue;
 
         if(flip_f==0)
           ptInSection=true;
@@ -905,7 +911,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       if(pt.y<0)pt.y=-pt.y;
       if(pt.x < epsilonX && pt.y < epsilonY)
       {
-        if( abs(pti.curvature)>lineCurvatureMax)continue;
+        if( fabsf(pti.curvature)>lineCurvatureMax)continue;
 
         //LOGV(">> X:%f<%f  Y:%f<%f",pt.x,epsilonX,pt.y,epsilonY);
         if(flip_f==0)

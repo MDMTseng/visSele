@@ -26,6 +26,7 @@
 #include <logctrl.h>
 #include <sp.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdarg>
@@ -63,6 +64,7 @@
   #include <sys/types.h>
   #include <sys/wait.h>
   #include <execinfo.h>
+  #include <dirent.h>
   static void thread_sleep_ms(int ms) {
     struct timespec ts;
     ts.tv_sec  = ms / 1000;
@@ -87,6 +89,9 @@ struct Config {
     std::string log_basename   = "insp.log";
     int         rotate_bytes   = 10 * 1024 * 1024;
     int         rotate_keep    = 5;
+    /* How many crash_<utc>.dump files to keep. INSP_LOG_DUMP_KEEP overrides;
+     * 0 disables pruning. latest_dump.dump is not counted -- it is one file. */
+    int         dump_keep      = 10;
     /* insp.log is DISABLED by default (persist level OFF): NOTHING trickles to a
      * standalone disk log, so a 24/7 machine never writes it. Every line --
      * including WARN/ERROR/FATAL -- stays in the RAM ring + ephemeral buffer and
@@ -203,6 +208,8 @@ void env_load(Config &c) {
         c.rotate_bytes = std::atoi(e) * 1024 * 1024;
     if (const char *e = std::getenv("INSP_LOG_ROTATE_KEEP"))
         c.rotate_keep = std::atoi(e);
+    if (const char *e = std::getenv("INSP_LOG_DUMP_KEEP"))
+        c.dump_keep = std::atoi(e);
     if (const char *e = std::getenv("INSP_LOG_WS_PORT")) c.ws_port = std::atoi(e);
     if (const char *e = std::getenv("INSP_LOG_PERSIST_LEVEL")) {
         std::string s(e);
@@ -477,6 +484,50 @@ static bool a2l_resolve(const std::string &a2l, const std::string &sym,
     return true;
 }
 
+/* Keep only the newest N crash_<utc>.dump files.
+ *
+ * There was no retention at all: found 107 of them, 903 MB, on a bench that
+ * had been running for five days. On the machine that matters this is a slow
+ * disk-fill -- and a full disk is exactly what makes the core STOP saving NG
+ * snapshots (save_snap_disk_low_skip_count), so the log quietly eats the
+ * evidence it exists to preserve. The on-demand snapshot is unaffected: it
+ * writes the fixed latest_dump.dump and never accumulates.
+ *
+ * Names are crash_YYYYMMDDTHHMMSSZ.dump, so lexicographic order IS time order
+ * and no stat() is needed. */
+void prune_crash_dumps(const std::string &dir, int keep) {
+    if (keep <= 0) return;
+    std::vector<std::string> names;
+#ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    std::string pat = dir + "\\crash_*.dump";
+    HANDLE hf = FindFirstFileA(pat.c_str(), &fd);
+    if (hf != INVALID_HANDLE_VALUE) {
+        do { names.push_back(fd.cFileName); } while (FindNextFileA(hf, &fd));
+        FindClose(hf);
+    }
+#else
+    if (DIR *d = opendir(dir.c_str())) {
+        while (struct dirent *e = readdir(d)) {
+            const char *n = e->d_name;
+            size_t ln = std::strlen(n);
+            if (ln > 11 && std::strncmp(n, "crash_", 6) == 0 &&
+                std::strcmp(n + ln - 5, ".dump") == 0)
+                names.push_back(n);
+        }
+        closedir(d);
+    }
+#endif
+    if ((int)names.size() <= keep) return;
+    std::sort(names.begin(), names.end());          /* oldest first */
+    size_t drop = names.size() - (size_t)keep;
+    for (size_t i = 0; i < drop; ++i) {
+        std::string p = dir + "/" + names[i];
+        if (std::remove(p.c_str()) == 0)
+            std::fprintf(stderr, "[inspd_log] pruned old dump %s\n", names[i].c_str());
+    }
+}
+
 std::string write_crash_dump(const Config &cfg,
                              LogRingHeader *h,
                              const EphemeralBuf &eph,
@@ -567,10 +618,37 @@ std::string write_crash_dump(const Config &cfg,
     }
     std::fprintf(fp, "\n");
 
-    /* Ring tail-to-head dump (everything the producer wrote). */
-    std::fprintf(fp, "--- Ring (entire retained history, incl. verbose) ---\n");
+    /* Ring tail-to-head dump.
+     *
+     * The header used to read "entire retained history", which is only true
+     * until the ring wraps: after that this file starts mid-stream and nothing
+     * said so. `head` is monotonic over the process lifetime, so the number of
+     * records that were overwritten before this dump is known exactly -- print
+     * it, because "the log starts here" and "the log was CUT here" call for
+     * completely different reactions when you are chasing something. */
     uint64_t head = h->head.load(std::memory_order_acquire);
     uint64_t tail = (head > h->slot_count) ? head - h->slot_count : 0;
+    if (tail > 0)
+        std::fprintf(fp, "--- Ring: records %llu..%llu of %llu written -- "
+                         "%llu EARLIER RECORDS WERE OVERWRITTEN (ring holds %u) ---\n",
+                     (unsigned long long)tail, (unsigned long long)(head ? head - 1 : 0),
+                     (unsigned long long)head, (unsigned long long)tail,
+                     (unsigned)h->slot_count);
+    else
+        std::fprintf(fp, "--- Ring: all %llu records since start (nothing lost) ---\n",
+                     (unsigned long long)head);
+    /* Where THIS producer's log begins. The ring outlives core restarts, so a
+     * dump can be mostly a previous run -- and on a real crash dump it was:
+     * 65356 records retained, 9 of them from the process that died. Say how
+     * many are actually this run's before the reader draws conclusions from
+     * someone else's log. */
+    const uint64_t p_start = h->producer_start_head;
+    if (p_start > tail)
+        std::fprintf(fp, "    NOTE: only the last %llu records are from THIS process"
+                         " (started at record %llu); everything before the"
+                         " >>> PRODUCER START <<< line below is a PREVIOUS run.\n",
+                     (unsigned long long)(head > p_start ? head - p_start : 0),
+                     (unsigned long long)p_start);
     uint32_t emitted = 0;
     for (uint64_t i = tail; i < head; ++i) {
         LogSlot *slot = log_ring_slot(h, i);
@@ -580,21 +658,38 @@ std::string write_crash_dump(const Config &cfg,
         std::memcpy(text, slot->text, LOG_SLOT_TEXT);
         uint64_t after = slot->seq.load(std::memory_order_acquire);
         if (after != before) continue;
+        if (i == p_start && p_start > tail)
+            std::fprintf(fp, ">>> PRODUCER START (record %llu) -- everything above"
+                             " is a previous process <<<\n",
+                         (unsigned long long)p_start);
         std::fputs(text, fp);
         emitted++;
     }
     std::fprintf(fp, "(%u lines)\n\n", emitted);
 
-    /* Ephemeral buffer (the DEBUG/TRACE that never went to disk -- this
-     * is the post-mortem prize). */
-    std::fprintf(fp, "--- Ephemeral DEBUG/TRACE buffer (%zu lines) ---\n",
-                 eph.q.size());
-    for (auto &s : eph.q) std::fputs(s.c_str(), fp);
+    /* Ephemeral buffer -- the below-persist lines the drainer kept in RAM.
+     *
+     * It is a SUBSET of the ring above whenever its cap is <= the ring's slot
+     * count: both are FIFOs fed by the same stream, so the smaller one can only
+     * hold the tail of the larger. With persist OFF (the default) EVERY line
+     * takes the ephemeral branch, and the section came out byte-for-byte equal
+     * to the ring section -- every dump was twice its necessary size and every
+     * naive `grep -c` on it was exactly double. Say so instead of repeating it. */
+    if (eph.cap <= (size_t)h->slot_count)
+        std::fprintf(fp, "--- Ephemeral buffer omitted: %zu lines, cap %zu <= ring %u"
+                         " -- it is a subset of the ring above ---\n",
+                     eph.q.size(), eph.cap, (unsigned)h->slot_count);
+    else {
+        std::fprintf(fp, "--- Ephemeral DEBUG/TRACE buffer (%zu lines) ---\n",
+                     eph.q.size());
+        for (auto &s : eph.q) std::fputs(s.c_str(), fp);
+    }
     std::fprintf(fp, "\n");
 
     std::fprintf(fp, "=== end of dump ===\n");
     std::fclose(fp);
     std::fprintf(stderr, "[inspd_log] crash dump written to %s\n", fname);
+    if (!fixed_name) prune_crash_dumps(cfg.log_dir, cfg.dump_keep);
     return std::string(fname);
 }
 

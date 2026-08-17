@@ -3,6 +3,9 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <io.h>      // _commit
+#endif
 
 int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
 {
@@ -70,7 +73,9 @@ int getDataFromJson(cJSON * obj,const char *path,void **ret_ptr)
     ret_ptr=&dummy_target;
   }
   char buff[64];//HACK no check
-  if(strlen(path)>sizeof(buff))return -1;
+  //strcpy also writes the terminator, so a path of exactly sizeof(buff)
+  //characters would put 65 bytes into a 64-byte buffer. Reject == too.
+  if(strlen(path)>=sizeof(buff))return -1;
   strcpy(buff,path);
   int i=0;
   char endType;
@@ -391,11 +396,15 @@ char* ReadText(const char *filename)
        fseek(handler, 0, SEEK_END);
        // Offset from the first to the last byte, or in other words, filesize
        string_size = ftell(handler);
+       // ftell returns -1 on error (e.g. the path is a directory): the +1
+       // below would malloc 0 bytes and the '\0' write would overflow it.
+       if (string_size < 0) { fclose(handler); return NULL; }
        // go back to the start of the file
        rewind(handler);
 
        // Allocate a string that can hold it all
        buffer = (char*) malloc(sizeof(char) * (string_size + 1) );
+       if (buffer == NULL) { fclose(handler); return NULL; }
 
        // Read it all in one operation
        read_size = fread(buffer, sizeof(char), string_size, handler);
@@ -432,11 +441,15 @@ uint8_t* ReadByte(const char *filename,int *length)
        fseek(handler, 0, SEEK_END);
        // Offset from the first to the last byte, or in other words, filesize
        buf_size = ftell(handler);
+       // Same guards as ReadText: -1 from ftell would malloc (size_t)-1 -> NULL
+       // and fread(NULL,...) is UB.
+       if (buf_size < 0) { fclose(handler); return NULL; }
        // go back to the start of the file
        rewind(handler);
 
        // Allocate a string that can hold it all
        buffer = (uint8_t*) malloc(sizeof(uint8_t) * (buf_size) );
+       if (buffer == NULL) { fclose(handler); return NULL; }
 
        // Read it all in one operation
        read_size = fread(buffer, sizeof(uint8_t), buf_size, handler);
@@ -461,7 +474,7 @@ cJSON* ReadJson(const char* filename)
   if(fileContent==NULL)return NULL;
   
   cJSON *sl_json = cJSON_Parse(fileContent);
-  delete fileContent;
+  free(fileContent);   // ReadText mallocs; delete on it is UB (same fix as SaveJson)
   return sl_json;
 }
 
@@ -475,11 +488,51 @@ int WriteBytesToFile(uint8_t *data,size_t dataL,const char* path)
   FILE *write_ptr = fopen(path, "wb"); // w for write, b for binary
   if (write_ptr != NULL)
   {
-    fwrite(data, dataL, 1, write_ptr); // write 10 bytes from our buffer
-    fclose(write_ptr);
+    // Both fwrite AND fclose are checked: ENOSPC routinely surfaces only at
+    // fclose (the last buffered block), and the old code reported success as
+    // long as the file merely opened -- a truncated def with a green ACK.
+    size_t nw = fwrite(data, dataL, 1, write_ptr);
+    int cl = fclose(write_ptr);
+    if ((dataL > 0 && nw < 1) || cl != 0)
+      return -1;
     return dataL;
   }
   return -1;
+}
+
+// Durable variant: write to <path>.tmp~, flush + fsync, then rename over the
+// original. WriteBytesToFile truncates the destination the moment it opens,
+// so disk-full or a crash mid-write DESTROYS the previous content; here the
+// old file stays intact until the new bytes are safely on disk. (On Windows
+// rename() refuses an existing target, so the old file is removed first --
+// a small non-atomic window, but the data is already fsynced by then.)
+int WriteBytesToFileAtomic(uint8_t *data,size_t dataL,const char* path)
+{
+  char tmp[1024];
+  if (snprintf(tmp, sizeof(tmp), "%s.tmp~", path) >= (int)sizeof(tmp))
+    return -1;
+  FILE *f = fopen(tmp, "wb");
+  if (f == NULL) return -1;
+  size_t nw = fwrite(data, dataL, 1, f);
+  if (dataL > 0 && nw < 1) { fclose(f); remove(tmp); return -1; }
+  if (fflush(f) != 0) { fclose(f); remove(tmp); return -1; }
+#ifdef _WIN32
+  // _commit is the Windows fsync. Without it the "durable" path was
+  // fflush-only ON THE DEPLOYED PLATFORM: data in the OS cache, old file
+  // already removed below -- a power cut could lose both. (Process crash was
+  // always fine; power loss was not.)
+  if (_commit(_fileno(f)) != 0) { fclose(f); remove(tmp); return -1; }
+#else
+  if (fsync(fileno(f)) != 0) { fclose(f); remove(tmp); return -1; }
+#endif
+  if (fclose(f) != 0) { remove(tmp); return -1; }
+#ifdef _WIN32
+  remove(path);
+#endif
+  // Recovery note: a crash between the remove above and this rename leaves no
+  // <path> at all -- but <path>.tmp~ holds the complete, fsynced payload.
+  if (rename(tmp, path) != 0) { remove(tmp); return -1; }
+  return dataL;
 }
 
 
@@ -487,8 +540,9 @@ int SaveJson(cJSON* json,const char* path)
 {
   if(json==NULL)return -1;
   char*jsonStr = cJSON_Print(json);
+  if(jsonStr==NULL)return -1;
   int ret = WriteBytesToFile((uint8_t*)jsonStr,strlen(jsonStr),path);
-  delete(jsonStr);
+  free(jsonStr);   // cJSON_Print mallocs; delete on it was UB
   return (ret<0)?-1:0;
 }
 

@@ -59,9 +59,12 @@ function serializeDef() {
 
 // hydef arg may be the .hydef file or the model path; the core LD wants the path w/o extension
 const modelPath = hydef.replace(/\.hydef$/, '');
-await loadByPath(modelPath);
-// enter edit mode so the screenshot shows the def rendered over the real image
+// Edit mode FIRST: with machine_setting InspectionMode:FI the app auto-enters
+// inspection on connect, and in that mode the LD result acts are dropped -- the
+// load resolves but the def never changes (found 2026-08-16).
 await evalExpr(`(function(){window.__GP_STORE__.dispatch({type:"Edit_Mode"});return "edit"})()`);
+await sleep(800);
+await loadByPath(modelPath);
 await sleep(1500);
 const serialized = await serializeDef();
 const pretty = JSON.stringify(JSON.parse(serialized), null, 2);

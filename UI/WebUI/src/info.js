@@ -43,7 +43,14 @@ const default_FLAG={
 export function debug_SysSetting(origsetup={})
 {
   origsetup.DEV_MODE=true;
-  // origsetup.ALLOW_SOFT_CAM=true;
+  // The bench's "1006 disconnect" mystery (2026-08-16): it was never the
+  // network. queryCam polls camera_info every ~2s; whenever the fake camera
+  // is not acquiring (trigger_mode 1 between sessions) cam_status != 0, the
+  // app dispatches WS_ERROR -> REMOTE_SYSTEM_NOT_READY -> SPLASH, and with
+  // ALLOW_SOFT_CAM=false it refuses to auto-reconnect a soft camera -- so a
+  // dev bench cycled SPLASH->MAIN->SPLASH every ~5s forever. Dev builds work
+  // against the soft camera on purpose; let them.
+  origsetup.ALLOW_SOFT_CAM=true;
   origsetup.FI_MODE_UPLOAD_SKIP=100;
   origsetup.CI_MODE_UPLOAD_SKIP=100;
 

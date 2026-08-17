@@ -1,5 +1,9 @@
 # uInspESP32 測試工具
 
+> **接 core 的整機工具在 [`TESTS.md`](TESTS.md)。** 這一份只講不經 core 的韌體直測。
+> 要量檢驗延遲、跑 soak、驗配對正確性，都在那邊——連同八條會給你「看起來合理的錯
+> 數字」的共用陷阱。
+
 `uinsp_test.py` —— 直接對韌體下 JSON 命令，協助跑 `docs/HW_VERIFICATION_CHECKLIST.md`。
 
 **不需要 core、不需要 WebUI。** 這是刻意的：階段 0–3 出問題時，唯一可能出錯的
@@ -36,15 +40,15 @@ python uinsp_test.py --port COM6 -v monitor         # -v 印出每一個收發�
 python3 uinsp_panel.py --port /dev/cu.usbserial-0001    # 開 http://127.0.0.1:8765
 ```
 
-- **Stepper**：enable/disable、設 `plateFreq`、Start（`enter_insp_mode`）/ Stop
+- **Stepper**：enable/disable、設 `plate_freq`、Start（`enter_insp_mode`）/ Stop
 - **吹氣閥 / 任意輸出腳**：`PIN_ON`/`PIN_OFF`/定時 pulse（預設 FEEDER pin 21）
 - **Selectors**：`sel_act` 打 SEL1/2/3（pin 25/26/32），脈寬可調
 - **光閘（pin 27）**：即時電平大字顯示（BLOCKED/CLEAR）＋邊緣計數 —— 揮手就看得到
-- **Live pins** 表、raw JSON 命令框、非同步事件（`bTrigInfo` 等）即時 log
+- **Live pins** 表、raw JSON 命令框、非同步事件（`cam_trig` 等）即時 log
 
 面板可以在板子還沒插上時先開著，插上後自動連線；USB 掉線自動重連。
 
-光閘即時電平靠新的 `PIN_READ` 命令（`{"type":"PIN_READ","pin":27}` 或
+光閘即時電平靠新的 `PIN_READ` 命令（`{"type":"pin_read","pin":27}` 或
 `"pins":[...]` 批次讀），舊韌體沒有 —— 面板會顯示警告並停用該區，其餘功能照常。
 接新板記得先燒新韌體：`pio run -t upload`。
 
@@ -55,10 +59,10 @@ python3 uinsp_panel.py --port /dev/cu.usbserial-0001    # 開 http://127.0.0.1:8
 - `stepper_en_active`（0/1）：EN 腳（13）哪個電平是「啟用」；`stepper_dir`（0/1）：DIR 腳（23）電平（換轉向）
 - `io_on_level`：每個輸出「ON」是 HIGH 還是 LOW，例如
   `{"type":"set_setup","io_on_level":{"SEL1":0,"FEEDER":0}}`（0=ON 是 LOW）。
-  韌體所有輸出路徑（ISR stage 脈波、`sel_act`、feeder、`trigCamPulse`）都走這個映射；
+  韌體所有輸出路徑（ISR stage 脈波、`sel_act`、feeder、`trig_cam_pulse`）都走這個映射；
   FEEDER 預設就是 ON=LOW（沿用舊行為），其餘預設 ON=HIGH
 - `pulses_per_rev`、`plate_diameter_mm`：純 metadata，韌體不拿來運算，
-  host 用來換算 mm/rpm ↔ pulses（rpm = plateFreq / pulses_per_rev × 60）
+  host 用來換算 mm/rpm ↔ pulses（rpm = plate_freq / pulses_per_rev × 60）
 
 面板都有對應 UI（Stepper 卡、IO polarity 卡、Machine metadata 卡）。
 NVS blob 版本升到 v4：舊存檔會退回編譯預設，重新推一次設定再 save 即可。
@@ -72,12 +76,12 @@ python uinsp_test.py --port COM6 bench --count 10 --cat 1
 python uinsp_test.py --port COM6 bench --count 20 --freq 1500 --interval-ms 150
 ```
 
-原理：`trig_phamton_pulse` 直接呼叫 `newPulseEvent()`，**完全繞過閘門感測**，
+原理：`trig_phantom_pulse` 直接呼叫 `newPulseEvent()`，**完全繞過閘門感測**，
 所以會產生帶有真 tid 的真物件，一路跑到氣閥輸出。而閘門腳位是 `INPUT_PULLUP`
 且 `_senseInv_=true`，**沒接線時讀到的是「無物件」**，不會有假觸發干擾。
 
 **B.0 會先用 `set_setup` 把 `SWITCH`／`SEL*` 的 stage-pulse-offset 往下游推
-（見 `_widen_selector_window`）。** 真機幾何裡，相機觸發（`bTrigInfo` 送出的點）
+（見 `_widen_selector_window`）。** 真機幾何裡，相機觸發（`cam_trig` 送出的點）
 到選別氣閥只差 `SWITCH-L1A_on`≈43 步——韌體內的 C++ core 來得及回，但透過序列埠
 下命令的 host 追不上。把窗口撐開後，這條測試量的是「管線有沒有把 tid 正確導向」，
 而不是「host 能不能在 17ms 內回覆」。跑完 B.13 會還原成原本的 offset。
@@ -87,7 +91,7 @@ python uinsp_test.py --port COM6 bench --count 20 --freq 1500 --interval-ms 150
 | # | 內容 |
 |---|---|
 | **B.0** | **用韌體參數把選別窗口撐開**（跑完還原）|
-| B.1–B.4 | 設定 plateFreq、進檢測模式、**確認 timer ISR 到速在跳**、狀態為 READY |
+| B.1–B.4 | 設定 plate_freq、進檢測模式、**確認 timer ISR 到速在跳**、狀態為 READY |
 | B.5 | 每個假脈衝產生一個帶真 tid 的物件，並**各 announce 兩次**（CAM1 `tidx=1`＋CAM2 `tidx=2`）|
 | B.6 | 物件 `tid` 嚴格 +1 遞增 |
 | B.7 | 全部回報完不應進錯誤態 |
@@ -95,9 +99,9 @@ python uinsp_test.py --port COM6 bench --count 20 --freq 1500 --interval-ms 150
 | **B.9** | **回報一個不存在的 tid → 必須停機**（`INSP_RESULT_MATCHES_NO_OBJECT`）|
 | B.10 | `clear_error` 可恢復 |
 | **B.11/B.12** | **不回報的物件 → 乾淨停機**（`OBJECT_HAS_NO_INSP_RESULT`），且板子仍會回應 |
-| B.13 | 回到 IDLE、選別窗口與 plateFreq 還原 |
+| B.13 | 回到 IDLE、選別窗口與 plate_freq 還原 |
 
-**B.3 容易被忽略但很關鍵**：`Run_ACTS` 只在 timer ISR 裡執行。`plateFreq` 是 0 的話
+**B.3 容易被忽略但很關鍵**：`Run_ACTS` 只在 timer ISR 裡執行。`plate_freq` 是 0 的話
 假脈衝會被接受、然後永遠不會被處理——看起來就像管線壞了。而且轉盤是**斜坡加速**的，
 在還沒到速時發脈衝會落在 3.5mm 去重門檻內被丟掉，所以 bench 會 `_wait_at_speed`
 一直讀 `SYS_STEP_COUNT` 直到步進速率不再爬升（斜坡到頂）才開始發。
@@ -111,7 +115,7 @@ python uinsp_test.py --port COM6 bench --count 20 --freq 1500 --interval-ms 150
 
 **每個物件會 announce 兩次**（CAM1 `tidx=1`、CAM2 `tidx=2`，同一 tid）。bench 按
 tid 去重，**每顆只回報一次**——對已經過站的 tid 重複回報，本身就會讓機台失步
-（`INSP_RESULT_MATCHES_NO_OBJECT`）。回報是**一收到 `bTrigInfo` 就發**、不是等固定
+（`INSP_RESULT_MATCHES_NO_OBJECT`）。回報是**一收到 `cam_trig` 就發**、不是等固定
 sleep，這樣即使不撐窗口也能讓判定跑在物件前面。
 
 `--interval-ms` 只管相鄰假脈衝的間距：必須大於 `SYS_MIN_PULSE_TIME_SEP_us`
@@ -127,9 +131,9 @@ sleep，這樣即使不撐窗口也能讓判定跑在物件前面。
 
 | # | 內容 | 為什麼重要 |
 |---|---|---|
-| P.1 | `ask_JsonRaw_version` 回 `rsp_JsonRaw_version` 帶版本字串（**注意**：回覆 id 寫死 100446，是非同步訊息不是配對回覆）| core 就是靠這個握手確認對面是 uInsp 韌體、不是這塊板上一版的 CNC image |
+| P.1 | `get_version` 回 `rsp_JsonRaw_version` 帶版本字串（**注意**：回覆 id 寫死 100446，是非同步訊息不是配對回覆）| core 就是靠這個握手確認對面是 uInsp 韌體、不是這塊板上一版的 CNC image |
 | P.2 | `reset_running_stat` 把 SEL/NA 計數全部歸零 | 之前沒測過；也是讓測試能用絕對值而非增量斷言的唯一手段 |
-| P.3 | `trigCamPulse` 只 announce **一次**、帶呼叫端給的 `trigger_id`，且**不建立管線物件**（Qs 不變）| 這是階段 1 依賴的相機觸發 announce 路徑，接相機前就能先驗；對照假脈衝是 announce 兩次（CAM1+CAM2）且會進 RBuf |
+| P.3 | `trig_cam_pulse` 只 announce **一次**、帶呼叫端給的 `trigger_id`，且**不建立管線物件**（Qs 不變）| 這是階段 1 依賴的相機觸發 announce 路徑，接相機前就能先驗；對照假脈衝是 announce 兩次（CAM1+CAM2）且會進 RBuf |
 
 **刻意排除**（會驅動輸出、這裡沒有可讀回的狀態，清單也把它們留給現場人工）：
 `PIN_ON`/`PIN_OFF`/`PIN_MODE`（裸 GPIO）、`sel_act`（打氣閥，屬階段 3「錯了不會自己
@@ -150,9 +154,9 @@ sleep，這樣即使不撐窗口也能讓判定跑在物件前面。
 | E.5 | 雜訊 → 停機（錯誤碼 11）＋之後所有位元組被靜默吃掉，**一次 RESET** 就恢復並自動 redeem（`recv_RESET` 直接走 `handleResetCommand`，實機驗證 112→101）| 雜訊必須上鎖而不是聳肩續跑；「每次連線送兩次 RESET」（清單 5.5）是保險、不是必要 |
 | E.6 | 把選別窗口撐到 14000 步、塞入 115 顆 → **RBuf（100 深）滿了之後靜默退回多的脈衝**，不當機、不停機，排空後乾淨 | 佇列滿的行為從沒被驗過；壞掉的話產線堵料時就是當機而不是丟料 |
 
-E.1–E.4 在 plateFreq=600 下跑（門檻時序才拉得開）；E.5 要在檢測模式中做——
+E.1–E.4 在 plate_freq=600 下跑（門檻時序才拉得開）；E.5 要在檢測模式中做——
 IDLE 狀態表**沒有** INSPECTION_ERROR 轉移，雜訊在 IDLE 只上鎖不記錯誤。
-跑完 E.7 會把 offset、plateFreq、minDetectTimeSep_us、sel1_cd 全部還原。
+跑完 E.7 會把 offset、plate_freq、min_detect_sep_us、sel1_cd 全部還原。
 
 ## ★ 真實 IO 時序（`iotrace`）—— 韌體當自己的邏輯分析儀
 
@@ -162,9 +166,9 @@ pulse count 記進一個環狀緩衝（`io_trace_arm`/`io_trace_dump`，**預設
 路只是一個 volatile 判斷，量產零成本**）。發一顆假脈衝再 dump，板子就變成自己的
 邏輯分析儀——不用示波器、也**不用撐窗口**：
 
-**關鍵是壓低 plateFreq**（預設 200）。真機幾何裡相機到選別只差 43 步，但步頻一低，
+**關鍵是壓低 plate_freq**（預設 200）。真機幾何裡相機到選別只差 43 步，但步頻一低，
 這 43 步在牆鐘上就變成幾十毫秒，host 的判定照樣趕得上真實窗口，於是 SWITCH 會帶著
-真 verdict 派工、SEL 也照時序打出來。實測 dump（`plateFreq=200`）：
+真 verdict 派工、SEL 也照時序打出來。實測 dump（`plate_freq=200`）：
 
 ```
 L1A_on @654  CAM1_on @654  L2A_on @654  CAM2_on @654   ← 四路燈/相機同一 pulse
@@ -183,7 +187,7 @@ SEL1_on @700  SEL1_off @701
 | I.5 | CAM1 與 CAM2 在同一 pulse 觸發（雙相機同步）|
 | I.6 | **SWITCH 帶著實際 verdict 在真窗口內派工**（沒撐窗口；若沒趕上會是 UNSET 大數）|
 | I.7 | 對應 SEL 在設定 offset on+off |
-| I.8 | 回 IDLE、plateFreq 還原 |
+| I.8 | 回 IDLE、plate_freq 還原 |
 
 RAM 代價：trace 環（120 筆）＋ dump buffer 約 5KB 靜態，佔用從 12.7% 升到 14.2%，
 仍是九牛一毛（見上面「空間 & 算力」的分析）。
@@ -194,13 +198,13 @@ RAM 代價：trace 環（120 筆）＋ dump buffer 約 5KB 靜態，佔用從 12
 看機台會不會被搞出錯：
 
 - **物件速率**：每一顆的間距都在 `[--min-hz, --max-hz]`（預設 30～40/s）之間隨機。
-- **盤速**：每 1.5～3s 隨機把 `plateFreq` 換一個值（在能撐住目標速率的下限之上），
+- **盤速**：每 1.5～3s 隨機把 `plate_freq` 換一個值（在能撐住目標速率的下限之上），
   逼出中途**斜坡**。
 - **選別窗口 offset**：每 2～4s 隨機把 `SWITCH`/`SEL*` 的 offset 挪一挪——這條會在
   「有物件在飛」的情況下**狂敲雙緩衝發布路徑**（就是 `pubcheck` 那條）。
-- **`minDetectTimeSep_us`**：每 2～4s 隨機挪時間去重門檻（保持在還能過 max-hz 的範圍）。
+- **`min_detect_sep_us`**：每 2～4s 隨機挪時間去重門檻（保持在還能過 max-hz 的範圍）。
 - **並發查詢洪流**：整段期間每 ~0.1s 送一個 `PING`/`get_setup`/`get_running_stat`，
-  跟 bTrigInfo／report **搶序列埠頻寬**（core／WebUI 在現場就是這樣）。
+  跟 cam_trig／report **搶序列埠頻寬**（core／WebUI 在現場就是這樣）。
 - **SEL1 批量計數**：每 3～5s 隨機設/清 `set_sel1_cd`。
 
 ```sh
@@ -213,7 +217,7 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 
 | # | 內容 |
 |---|---|
-| C.0 | 開好限速器（`minDetectTimeSep_us` 放低、`plateFreq` 起在能撐住 max-hz 的下限）並到 READY |
+| C.0 | 開好限速器（`min_detect_sep_us` 放低、`plate_freq` 起在能撐住 max-hz 的下限）並到 READY |
 | C.1 | **整段亂動下不進錯誤態**（不 desync、不 `OBJECT_HAS_NO_INSP_RESULT`、不當機）|
 | C.2 | 被接受的 `tid` 全程嚴格 +1（被門檻退掉的脈衝不吃號，所以不算斷號）|
 | C.3 | RBuf 深度全程 < `PIPE_INFO_LEN` |
@@ -240,14 +244,14 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 | 條件 | 不滿足時的 `persist_err` |
 |---|---|
 | `state` 是 `IDLE` 或 `INSPECTION_MODE_READY` | `must be in IDLE or INSPECTION_MODE_READY` |
-| `plateFreq==0`（`SETUP_TAR_FREQ==0`，不會再轉起來）| `set plateFreq to 0 first` |
-| 盤子真的停了（`SYS_CUR_FREQ==0`，timer alarm 已關）| `plate still moving; wait until SYS_STEP_COUNT stops` |
+| `plate_freq==0`（`PLATE_FREQ_SETPOINT==0`，不會再轉起來）| `set plate_freq to 0 first` |
+| 盤子真的停了（`PLATE_FREQ_CURRENT==0`，timer alarm 已關）| `plate still moving; wait until SYS_STEP_COUNT stops` |
 
 **怎麼進到可存檔狀態**（READY 也行，不必退出檢測模式）：
-1. `set_setup {"plateFreq":0}` —— 命令減速。
+1. `set_setup {"plate_freq":0}` —— 命令減速。
 2.（在 READY 就留著；要 IDLE 才 `exit_insp_mode`。）
 3. 等盤子真的停：poll `get_setup` 的 `SYS_STEP_COUNT`，不再增加就是停了
-   （回覆裡的 `plateFreq` 是**目標值**不是當下轉速，所以要看 step count）。
+   （回覆裡的 `plate_freq` 是**目標值**不是當下轉速，所以要看 step count）。
 4. `save_setup` / `set_setup persist:true` → `persisted:true`。
 
 `--seed` 不給就用隨機值並印出來，出事可以照那個 seed 重跑。實測 25s、~28～30/s、
@@ -345,7 +349,7 @@ python test_uinsp_test.py        # 41 項，不需要硬體
 ```
 
 用假的序列埠模擬韌體行為，驗證分框（跨讀取切斷、背對背訊息、字串內含大括號、
-逸出引號、雜訊重同步）以及回覆配對（非同步的 `bTrigInfo` 不會被誤認為命令回覆）。
+逸出引號、雜訊重同步）以及回覆配對（非同步的 `cam_trig` 不會被誤認為命令回覆）。
 
 這組測試已經抓到一個真的 bug：頂層 JSON 陣列會讓 `msg.get("id")` 拋例外並
 **殺掉 reader thread**，之後所有接收靜默停擺。上機才發現的話會非常難查。

@@ -52,8 +52,8 @@ python uinsp_test.py --port COM? all
 
 | # | 動作 | 預期 | 實際 |
 |---|---|---|---|
-| 0.1 | `{"type":"PING"}` | `{"type":"PONG"}` | ☐ |
-| 0.2 | `{"type":"get_setup"}` | 回 `machine_id`、`cfg_from_nvs`、`stage_pulse_offset`、`pulse_minWidth/maxWidth` | ☐ |
+| 0.1 | `{"type":"ping"}` | `{"type":"pong"}` | ☐ |
+| 0.2 | `{"type":"get_setup"}` | 回 `machine_id`、`cfg_from_nvs`、`stage_pulse_offset`、`pulse_min_width/maxWidth` | ☐ |
 | 0.3 | 確認 `cfg_from_nvs` | 全新板子應為 **false**（跑編譯預設值）| ☐ |
 | 0.4 | `{"type":"set_setup","machine_id":"M1","persist":true}` | 回 `persisted:true` | ☐ |
 | 0.5 | **斷電重開**，再 `get_setup` | `machine_id=="M1"` 且 `cfg_from_nvs==true` | ☐ |
@@ -77,8 +77,8 @@ python uinsp_test.py --port COM? all
 
 ## 階段 0B — 光板診斷（不用接機構）★
 
-**只要 ESP32 板 + USB 線。** `trig_phamton_pulse` 繞過閘門感測直接產生物件，
-所以整條 tid 路徑（配發 tid → `bTrigInfo` → `report` → 氣閥輸出 → 錯誤處理）
+**只要 ESP32 板 + USB 線。** `trig_phantom_pulse` 繞過閘門感測直接產生物件，
+所以整條 tid 路徑（配發 tid → `cam_trig` → `report` → 氣閥輸出 → 錯誤處理）
 都可以在桌上驗完。
 
 ```sh
@@ -88,7 +88,7 @@ python uinsp_test.py --port COM? bench --count 10 --cat 1
 | # | 檢查 | 實際 |
 |---|---|---|
 | B.3 | timer ISR 真的在跳（`SYS_STEP_COUNT` 前進）| ☐ |
-| B.5 | 每個假脈衝剛好一個 `bTrigInfo` | ☐ |
+| B.5 | 每個假脈衝剛好一個 `cam_trig` | ☐ |
 | B.6 | `tid` 嚴格 +1 | ☐ |
 | B.8 | SEL 計數器增加正確筆數 | ☐ |
 | **B.9** | **不存在的 tid → 停機**（安全網存在）| ☐ |
@@ -160,7 +160,7 @@ and recirculate. Sorting is OFF until both are declared.
 | 2.6 | 整場跑完，**不應出現** `INSPECTION_MODE_ERROR` | tid 配對正確 | ☐ |
 | 2.7 | 不應出現 `frame with no pending trigger` | 反之代表配對失步 | ☐ |
 
-> 2.4 的 `pending` 持續爬升 = 結果產生速度跟不上觸發，或有 `bTrigInfo` 沒被消化。
+> 2.4 的 `pending` 持續爬升 = 結果產生速度跟不上觸發，或有 `cam_trig` 沒被消化。
 > 2.6 出現 `INSP_RESULT_MATCHES_NO_OBJECT` = tid 對不上，**這是整條路徑的核心假設破了**。
 
 ### 2.8 掉幀吸收（`3ffadfd1`）

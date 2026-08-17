@@ -3,6 +3,7 @@
 #include <chrono>
 #include <mutex>
 #include <set>
+#include <vector>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 #include "acvImage_BasicTool.hpp"
@@ -93,12 +94,26 @@ enum image_pipe_info_OccupyFIdx
   // imgInsp,
   // datView,
   snapSave,
-  resendCache
+  resendCache,
+  // Not an occupant: the marker image_pipe_info_gc claims the slot with, so
+  // that exactly one caller can hand it back. See image_pipe_info_gc.
+  returnedToPool
 };
 
 typedef struct image_pipe_info
 {
 
+  // Read-modify-written by several threads: the datView thread sets/clears
+  // snapSave and clears the previous cache slot's resendCache, while the
+  // snap-save thread clears snapSave on the same slot. A lost |= left a slot
+  // occupied forever (the pool bleeds one entry per lost update until "image
+  // pool empty -> dropped a frame" becomes permanent and acquisition stalls);
+  // a lost &= handed a slot back while someone was still writing into it.
+  //
+  // Guarded by occupyFlag_lock (wiringPanel.cpp) rather than being a
+  // std::atomic, because resourcePool holds these in a std::vector<T> and
+  // resize() needs the element type to stay movable. Only ever touched through
+  // image_pipe_info_occupyFlag_set / _clr / image_pipe_info_gc.
   uint32_t occupyFlag;
   bool endLifeCycle;
   CameraLayer *camLayer;
@@ -109,6 +124,20 @@ typedef struct image_pipe_info
   size_t img_jpg_enc_L;
 
   CameraLayer::frameInfo fi;
+
+  // Host-clock stamps for splitting the report latency. The board measures the
+  // whole chain (trigger -> verdict processed) and that is ~479ms; the send
+  // queue and serial write together account for 2.6ms of it, so the remaining
+  // ~476ms is upstream of them and had no breakdown at all. These two turn
+  // "upstream" into two answerable numbers: how long the frame waited to be
+  // inspected, and how long the inspection itself took.
+  uint64_t host_rx_us;     // pushed onto inspQueue (frame in hand)
+  uint64_t host_insp_us;   // entered ImgPipeProcessCenter_imp
+  // Same idea one queue further along, for the preview. The preview costs the
+  // verdict path 66ms that is NOT queue blocking (that was removed) and the
+  // only way to tell CPU contention from wire time is to split the send
+  // itself. Stamped when the pipe is pushed onto datViewQueue.
+  uint64_t dview_enq_us;   // pushed onto datViewQueue
   //acvRadialDistortionParam cam_param;
   FeatureManager_BacPac *bacpac;
 
@@ -140,6 +169,26 @@ typedef struct BPG_protocol_data_acvImage_Send_info
     // only (e.g. LD thumbnail reads want JPEG without flipping the live stream).
     int jpeg_quality = 0;
 
+    // Pre-encoded JPEG for this frame, filled ONCE by the caller BEFORE the
+    // subscriber fan-out. When set, SEND_acvImage skips imencode entirely and
+    // just frames the bytes.
+    //
+    // Why it exists: the fan-out is `subscribersLock { for peer: fromUpperLayer
+    // -> ... linkLayerLock -> SEND_acvImage }`, so the encode used to run
+    // INSIDE both locks, once PER PEER. Measured on this machine: 6.5ms avg /
+    // 16.2ms max per frame full-frame (441KB JPEG), 0.4ms at the production
+    // ROI crop (31KB) -- and every millisecond of it parked every other
+    // producer. Encoding before the fan-out costs nothing extra and takes the
+    // whole thing out of the locks; a second subscriber then costs a memcpy
+    // instead of another encode.
+    //
+    // jpg_q travels with the bytes on purpose: DataView_JPEG_quality can be
+    // changed by an ST between the encode and the send, and the metadata
+    // header must describe the bytes that are actually going out.
+    const std::vector<uint8_t> *jpg = nullptr;
+    uint8_t jpg_fmt = 0;   // 1 = 3-component BGR, 2 = 1-component grayscale
+    int     jpg_q   = 0;   // quality the cached bytes were encoded at
+
 }BPG_protocol_data_acvImage_Send_info;
 
 class m_BPG_Protocol_Interface : public BPG_Protocol_Interface
@@ -148,7 +197,6 @@ public:
 
   m_BPG_Protocol_Interface();
   uint16_t CI_pgID;
-  int cameraFramesLeft = 0;
 
   cv::Mat  tmp_buff;          // phase 3a (3 BPG image members all cv::Mat now)
   cv::Mat  cacheImage;        // phase 3a
@@ -178,6 +226,13 @@ public:
     std::lock_guard<std::mutex> g(subscribersLock);
     stream_subscribers.erase(peer);
   }
+  // How many peers a pushToSubscribers() call will actually reach. Worth having
+  // at the send sites: the fan-out is silent, so "packet sent" to an empty list
+  // looks exactly like a working stream in the logs.
+  size_t streamSubscriberCount() {
+    std::lock_guard<std::mutex> g(subscribersLock);
+    return stream_subscribers.size();
+  }
   // Push one packet to every subscribed peer (routes per-peer so framing stays
   // per-client; bulk image callbacks pick up the active peer under linkLayerLock).
   void pushToSubscribers(BPG_protocol_data bpg_dat)
@@ -185,6 +240,21 @@ public:
     std::lock_guard<std::mutex> g(subscribersLock);
     for (void *p : stream_subscribers)
       fromUpperLayer(bpg_dat, p);
+  }
+  // Push a MULTI-PACKET batch (e.g. SS-start / payload / SS-end) atomically
+  // with respect to the subscriber set: three separate pushToSubscribers
+  // calls each retake subscribersLock, so a peer subscribing between them
+  // receives a torn batch (SS-end with no SS-start, or an unterminated
+  // SS-start left open in its demux). Peer-major on purpose -- each peer
+  // gets its complete, ordered batch before the next peer sees anything.
+  // Lock order (subscribersLock -> linkLayerLock inside fromUpperLayer) is
+  // the same as pushToSubscribers.
+  void pushBatchToSubscribers(const BPG_protocol_data *bpg_dats, size_t count)
+  {
+    std::lock_guard<std::mutex> g(subscribersLock);
+    for (void *p : stream_subscribers)
+      for (size_t i = 0; i < count; i++)
+        fromUpperLayer(bpg_dats[i], p);
   }
 
   int toUpperLayer(BPG_protocol_data bpgdat, void *peer) override;

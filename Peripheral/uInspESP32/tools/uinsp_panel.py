@@ -4,12 +4,14 @@
 Serves a single-page UI (stdlib http.server, no dependencies) that exercises
 each peripheral over the firmware's JSON-serial protocol:
 
-  * stepper   -- enable/disable, plateFreq, start/stop (enter/exit_insp_mode)
+  * stepper   -- enable/disable, plate_freq, start/stop (enter/exit_insp_mode)
   * blow valve / feeder -- PIN_ON / PIN_OFF on any output pin (default 21)
   * selectors -- sel_act pulses on SEL1/2/3 (pins 25/26/32)
+  * camera    -- trig_cam_pulse on CAM1/L1A (17/16) or CAM2/L2A (19/18):
+    single shot, burst, free-run and a light-duration sweep
   * gate sensor -- live level of pin 27 via PIN_READ polling (firmware >= the
     build that adds PIN_READ; the panel degrades gracefully without it)
-  * raw command box + live async event log (bTrigInfo, systemInfo, dbg)
+  * raw command box + live async event log (cam_trig, system_info, dbg)
 
 Usage:
     python3 uinsp_panel.py --port /dev/cu.usbserial-0001 [--http-port 8765]
@@ -44,6 +46,12 @@ STATE_NAMES = {
     113: "FATAL", 140: "TEST",
 }
 
+# trigger_id range reserved for panel camera tests. The firmware echoes a
+# cam_trig carrying this id, which lets the panel confirm the round trip -- and
+# lets auto-report ignore it (a manual pulse has no object on the plate, so
+# answering it would be a verdict for a tid the pipeline never registered).
+CAM_TEST_ID_BASE = 900000
+
 
 class Panel:
     """Owns the serial link and fans device data out to SSE clients."""
@@ -59,9 +67,17 @@ class Panel:
         self.clients = set()
         self.clients_lock = threading.Lock()
         self.pin_read_ok = None   # None=unknown, True/False once probed
-        # Camera-less test mode: answer every bTrigInfo with a verdict following
+        # Camera-less test mode: answer every cam_trig with a verdict following
         # a repeating pattern of M ok, N ng, O NA. None = off.
         self.autorep = None
+        # Camera trigger test: active config dict (None = idle) plus the ids we
+        # have issued, so their cam_trig echoes can be counted and skipped by
+        # auto-report.
+        self.cam = None
+        self.cam_ids = set()
+        self.cam_fired = 0
+        self.cam_echo = 0
+        self.cam_last_dur = None
         self._stop = False
         threading.Thread(target=self._link_keeper, daemon=True).start()
         threading.Thread(target=self._poller, daemon=True).start()
@@ -128,7 +144,7 @@ class Panel:
         Auto-report verdicts must beat the SWITCH pulse deadline; the poller
         loop's pin/stat round-trips (up to ~1.5s) are far too slow for that,
         so this thread wakes on the link's async event and answers a
-        bTrigInfo within milliseconds. It is also the single drain point --
+        cam_trig within milliseconds. It is also the single drain point --
         SSE forwarding happens here too.
         """
         while not self._stop:
@@ -141,7 +157,18 @@ class Panel:
             for msg in lk.drain_async():
                 self._maybe_autoreport(lk, msg)
                 obj = msg[1] if isinstance(msg, (list, tuple)) and len(msg) == 2 else msg
-                if isinstance(obj, dict) and obj.get("type") == "systemInfo" \
+                if isinstance(obj, dict) and obj.get("type") in ("cam_trig", "cam_trig_tagged") \
+                        and obj.get("tid") in self.cam_ids:
+                    # Round-trip proof: the firmware really drove the pin.
+                    # Echoed here rather than only in the runner, so the last
+                    # shot's echo -- which lands after the runner exits -- still
+                    # updates the counter instead of looking un-echoed.
+                    self.cam_echo += 1
+                    self.broadcast({"panel": "camstat", "running": self.cam is not None,
+                                    "fired": self.cam_fired, "echo": self.cam_echo,
+                                    "dur": self.cam_last_dur,
+                                    "mode": (self.cam or {}).get("mode", "")})
+                if isinstance(obj, dict) and obj.get("type") == "system_info" \
                         and obj.get("state") == 112:
                     threading.Thread(target=self._diag_error, daemon=True).start()
                 self.broadcast({"panel": "async", "msg": msg})
@@ -153,18 +180,18 @@ class Panel:
             g = self.send({"type": "get_setup"}, timeout=3.0)
             spo = (g or {}).get("stage_pulse_offset") or {}
             st = self.send({"type": "get_running_stat"}, timeout=3.0)
-            freq = float(g.get("plateFreq") or 0)
+            freq = float(g.get("plate_freq") or 0)
             win = int(spo.get("SWITCH", 0)) - int(spo.get("CAM1_on", 0))
             win_ms = win / (2.0 * freq) * 1000 if freq else 0
             lat = (st or {}).get("report_latency") or {}
             lat_ms = lat.get("avg_us", 0) / 1000.0
             txt = ("ERROR analysis: answer window CAM1->SWITCH = %d ticks ="
-                   " %.0fms @ plateFreq %g; host report latency avg %.0fms"
+                   " %.0fms @ plate_freq %g; host report latency avg %.0fms"
                    " (n=%d)." % (win, win_ms, freq, lat_ms, lat.get("n", 0)))
             if lat.get("n") and win_ms and lat_ms >= win_ms:
                 txt += (" Latency >= window: the host CANNOT answer in time --"
                         " raise the SWITCH offset (Station offsets card) or"
-                        " lower plateFreq for serial testing.")
+                        " lower plate_freq for serial testing.")
             elif not (self.autorep):
                 txt += (" Auto-report is OFF -- nothing answers objects, so"
                         " any part reaching SWITCH stops the line.")
@@ -172,17 +199,98 @@ class Panel:
         except Exception:
             pass
 
+    # -- camera trigger test ----------------------------------------------
+
+    def cam_stop(self):
+        self.cam = None
+
+    def cam_start(self, cfg):
+        """(Re)start the camera pulse generator. mode: single|burst|run|sweep."""
+        self.cam_stop()
+        mode = cfg.get("mode", "single")
+        if mode == "stop":
+            self.broadcast({"panel": "camstat", "running": False, "text": "stopped"})
+            return {"cam": False}
+        job = {
+            "mode": mode,
+            "cpin": int(cfg.get("cpin", 17)),
+            "lpin": int(cfg.get("lpin", 16)),
+            "light_delay": int(cfg.get("light_delay", 100)),
+            "light_duration": int(cfg.get("light_duration", 100)),
+            "hz": max(0.05, float(cfg.get("hz", 5) or 5)),
+            "count": int(cfg.get("count", 1) or 0),
+            "s0": int(cfg.get("s0", 10)),
+            "s1": int(cfg.get("s1", 500)),
+            "ss": max(1, int(cfg.get("ss", 10) or 1)),
+        }
+        self.cam_fired = self.cam_echo = 0
+        self.cam_ids.clear()
+        self.cam = job
+        threading.Thread(target=self._cam_runner, args=(job,), daemon=True).start()
+        return {"cam": True, "job": job}
+
+    def _cam_runner(self, job):
+        mode = job["mode"]
+        period = 1.0 / job["hz"]
+        # single = one shot; burst = count shots; sweep = one shot per width
+        # step; run = until stopped.
+        if mode == "single":
+            widths = [job["light_duration"]]
+        elif mode == "sweep":
+            lo, hi, st = job["s0"], job["s1"], job["ss"]
+            widths = list(range(lo, hi + 1, st)) if hi >= lo else [lo]
+        elif mode == "burst":
+            widths = [job["light_duration"]] * max(1, job["count"])
+        else:
+            widths = None   # endless
+
+        i = 0
+        while not self._stop and self.cam is job:
+            if widths is not None and i >= len(widths):
+                break
+            dur = job["light_duration"] if widths is None else widths[i]
+            tid = CAM_TEST_ID_BASE + (i % 90000)
+            self.cam_ids.add(tid)
+            if len(self.cam_ids) > 20000:
+                self.cam_ids.clear()
+                self.cam_ids.add(tid)
+            # nowait: at free-run rates a blocking round trip per shot would
+            # queue behind the poller and smear the interval.
+            self.send({"type": "trig_cam_pulse", "cpin": job["cpin"],
+                       "lpin": job["lpin"], "light_delay": job["light_delay"],
+                       "light_duration": dur, "trigger_id": tid}, nowait=True)
+            self.cam_fired += 1
+            self.cam_last_dur = dur
+            self.broadcast({"panel": "camstat", "running": True,
+                            "fired": self.cam_fired, "echo": self.cam_echo,
+                            "dur": dur, "mode": mode})
+            i += 1
+            if widths is not None and i >= len(widths):
+                break
+            time.sleep(period)
+        if self.cam is job:
+            self.cam = None
+        self.broadcast({"panel": "camstat", "running": False,
+                        "fired": self.cam_fired, "echo": self.cam_echo,
+                        "dur": self.cam_last_dur, "mode": mode,
+                        "text": "done"})
+
     def _maybe_autoreport(self, lk, msg):
         ar = self.autorep
         if not ar:
             return
         obj = msg[1] if isinstance(msg, (list, tuple)) and len(msg) == 2 else msg
-        if not isinstance(obj, dict) or obj.get("type") not in ("bTrigInfo", "TriggerInfo"):
+        if not isinstance(obj, dict) or obj.get("type") not in ("cam_trig", "cam_trig_tagged"):
             return
         tid = obj.get("tid")
         if tid is None:
             return
-        # Every object announces twice (CAM1 tidx=1, CAM2 tidx=2); a second
+        # A manual camera pulse has no object on the plate -- reporting a
+        # verdict for it would be a judgement on a tid the pipeline never
+        # registered (and would advance the ok/ng pattern for nothing).
+        if tid in self.cam_ids:
+            return
+        # Every object announces twice (CAM1 cam=1, CAM2 cam=2); a second
         # report for the same tid would advance the pattern AND desync the
         # machine, so answer each tid exactly once.
         if tid in ar["answered"]:
@@ -226,7 +334,7 @@ class Panel:
             # Live pin levels. Older firmware has no PIN_READ; stop hammering
             # it after a few silent tries but keep the rest of the panel alive.
             if self.pin_read_ok is not False:
-                rep = self.send({"type": "PIN_READ", "pins": POLL_PINS}, timeout=0.6)
+                rep = self.send({"type": "pin_read", "pins": POLL_PINS}, timeout=0.6)
                 if rep.get("ack") and "vals" in rep:
                     self.pin_read_ok = True
                     pinread_fails = 0
@@ -238,7 +346,7 @@ class Panel:
                         self.pin_read_ok = False
                         self.broadcast({"panel": "pins_unsupported"})
 
-            # Slow status: state + counters + plateFreq.
+            # Slow status: state + counters + plate_freq.
             if time.time() - last_stat > 1.5:
                 last_stat = time.time()
                 rep = self.send({"type": "get_running_stat"}, timeout=0.8)
@@ -248,7 +356,7 @@ class Panel:
                     self.broadcast({"panel": "stat",
                                     "state": st,
                                     "state_name": STATE_NAMES.get(st, str(st)),
-                                    "plateFreq": rep.get("plateFreq"),
+                                    "plate_freq": rep.get("plate_freq"),
                                     "count": rep.get("count"),
                                     "pipe": rep.get("pipe"),
                                     "report_latency": rep.get("report_latency"),
@@ -332,6 +440,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json({"err": str(exc)}, 500)
             return
+        if self.path == "/camtest":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(n).decode() or "{}")
+                self._json(PANEL.cam_start(body))
+            except Exception as exc:
+                self._json({"err": str(exc)}, 500)
+            return
         if self.path != "/cmd":
             self._json({"err": "not found"}, 404)
             return
@@ -389,7 +505,7 @@ PAGE = r"""<!DOCTYPE html>
   <span class="dot" id="linkdot"></span>
   <b>uInsp bring-up panel</b>
   <span class="kv" id="stateline">state: ?</span>
-  <span class="kv" id="freqline">plateFreq: ?</span>
+  <span class="kv" id="freqline">plate_freq: ?</span>
   <span class="kv" id="reconline"></span>
   <span class="warn" id="pinwarn" style="display:none">PIN_READ unsupported -- flash the new firmware for live pin levels</span>
 </header>
@@ -401,21 +517,21 @@ PAGE = r"""<!DOCTYPE html>
     <button onclick="cmd({type:'stepper_disable'})">Disable driver</button>
   </div>
   <div style="margin-top:8px">
-    plateFreq <input id="freq" type="number" value="1000" onchange="el('freqslide').value=this.value">
+    plate_freq <input id="freq" type="number" value="1000" onchange="el('freqslide').value=this.value">
     accel <input id="accel" type="number" value="2000"> Hz/s
-    <button onclick="cmd({type:'set_setup',plateFreq:+el('freq').value,plateAccel:+el('accel').value})">Set</button>
+    <button onclick="cmd({type:'set_setup',plate_freq:+el('freq').value,plate_accel:+el('accel').value})">Set</button>
   </div>
   <div style="margin-top:8px">
     <input type="range" id="freqslide" min="0" max="4000" step="10" value="1000" style="width:100%"
       oninput="el('freq').value=this.value"
-      onchange="cmd({type:'set_setup',plateFreq:+this.value})">
+      onchange="cmd({type:'set_setup',plate_freq:+this.value})">
     <div class="kv" style="display:flex;justify-content:space-between"><span>0</span><span>drag = live set on release</span><span>4000</span></div>
   </div>
   <div style="margin-top:8px">
     <button class="go" onclick="cmd({type:'stepper_enable'});cmd({type:'enter_insp_mode'})">&#9654; Start (enter insp mode)</button>
     <button class="stop" onclick="cmd({type:'exit_insp_mode'})">&#9632; Stop</button>
   </div>
-  <div class="kv" style="margin-top:6px">start = enable + enter_insp_mode; the plate spins at plateFreq. Stop = exit_insp_mode.</div>
+  <div class="kv" style="margin-top:6px">start = enable + enter_insp_mode; the plate spins at plate_freq. Stop = exit_insp_mode.</div>
   <div style="margin-top:8px;border-top:1px solid #2c2c33;padding-top:8px">
     EN active <select id="enact" style="width:110px">
       <option value="0">LOW (direct)</option>
@@ -437,7 +553,7 @@ PAGE = r"""<!DOCTYPE html>
     <option value="16">16 L1A</option>
     <option value="18">18 L2A</option>
   </select>
-  <button onclick="cmd({type:'PIN_MODE',pin:+el('vpin').value,mode:'OUTPUT'})">Set OUTPUT</button>
+  <button onclick="cmd({type:'pin_mode',pin:+el('vpin').value,mode:'OUTPUT'})">Set OUTPUT</button>
   <div style="margin-top:8px">
     <button class="go" onclick="setOut(+el('vpin').value,true)">ON</button>
     <button class="stop" onclick="setOut(+el('vpin').value,false)">OFF</button>
@@ -445,6 +561,45 @@ PAGE = r"""<!DOCTYPE html>
     <button onclick="pulsePin(+el('vpin').value,+el('vpulse').value)">Pulse</button>
   </div>
   <div class="kv" style="margin-top:6px">ON/OFF are logical -- the wire level follows each output's "ON is" polarity below.</div>
+</div>
+
+<div class="card"><h2>Camera 相機觸發測試</h2>
+  <div>
+    station <select id="camsel" onchange="camStation()">
+      <option value="1" selected>CAM1 pin 17 + light L1A 16</option>
+      <option value="2">CAM2 pin 19 + light L2A 18</option>
+    </select>
+    cpin <input id="cam_cpin" type="number" value="17" style="width:60px">
+    lpin <input id="cam_lpin" type="number" value="16" style="width:60px">
+  </div>
+  <div style="margin-top:6px">
+    light delay <input id="cam_delay" type="number" value="100" style="width:70px"> &#181;s
+    light duration <input id="cam_dur" type="number" value="100" style="width:70px"> &#181;s
+  </div>
+  <div style="margin-top:8px">
+    <button class="go" onclick="camFire('single')">Single shot</button>
+    burst <input id="cam_n" type="number" value="10" style="width:55px"> shots @
+    <input id="cam_hz" type="number" value="5" style="width:55px"> Hz
+    <button onclick="camFire('burst')">Burst</button>
+    <button onclick="camFire('run')">Free-run</button>
+    <button class="stop" onclick="camFire('stop')">Stop</button>
+  </div>
+  <div style="margin-top:8px;border-top:1px solid #2c2c33;padding-top:8px">
+    sweep light duration <input id="cam_s0" type="number" value="10" style="width:60px"> &#8594;
+    <input id="cam_s1" type="number" value="500" style="width:60px"> step
+    <input id="cam_ss" type="number" value="10" style="width:55px"> &#181;s
+    <button onclick="camFire('sweep')">Sweep</button>
+    <div class="kv" style="margin-top:4px">一步一張,找出相機/光源可靠反應的最小脈寬 &#8594; 再據此設 CAM_on/off 與 L1A_on/off 的 tick 寬度。</div>
+  </div>
+  <div style="margin-top:8px;border-top:1px solid #2c2c33;padding-top:8px">
+    hold (接線/極性確認):
+    <button onclick="setOut(+el('cam_cpin').value,true)">CAM ON</button>
+    <button onclick="setOut(+el('cam_cpin').value,false)">CAM OFF</button>
+    <button onclick="setOut(+el('cam_lpin').value,true)">LIGHT ON</button>
+    <button onclick="setOut(+el('cam_lpin').value,false)">LIGHT OFF</button>
+  </div>
+  <div style="margin-top:8px"><b id="camstat" class="kv">idle</b></div>
+  <div class="kv" style="margin-top:6px">trig_cam_pulse 的時序 = CAM 拉起 &#8594; delay &#8594; 光源亮 duration &#8594; 兩者關閉,與檢測模式中 ISR 打出的波形同型。每發都會回一筆 cam_trig(fired vs echo 應相等),此測試用的 trigger_id 不會被 auto-report 回答。脈波期間韌體是阻塞的,所以上面的 Live pins 表看不到這種短脈波 —— 要確認接線/極性請用 hold 按鈕(靜態電平會反映在表上)。</div>
 </div>
 
 <div class="card"><h2>IO polarity ("ON" level)</h2>
@@ -470,7 +625,7 @@ PAGE = r"""<!DOCTYPE html>
   <div id="gate" class="gna">no data</div>
   <div class="kv">INPUT_PULLUP, inverted: beam blocked pulls LOW. edges seen: <b id="gedges">0</b></div>
   <div style="margin-top:8px">
-    <button onclick="cmd({type:'PIN_MODE',pin:27,mode:'INPUT_PULLUP'})">Re-arm INPUT_PULLUP</button>
+    <button onclick="cmd({type:'pin_mode',pin:27,mode:'INPUT_PULLUP'})">Re-arm INPUT_PULLUP</button>
     <button onclick="firePhantom()">Phantom trigger</button>
   </div>
 </div>
@@ -535,7 +690,7 @@ PAGE = r"""<!DOCTYPE html>
     blow width <select id="selw" style="width:70px"><option>SEL1</option><option>SEL2</option><option>SEL3</option></select>
     <input id="selwms" type="number" value="100"> ms
     <button onclick="setSelWidth()">Set width &amp; apply</button>
-    <span class="kv">ms &#8594; ticks 依目前 plateFreq 換算(_off = _on + ms&#215;2&#215;freq/1000)</span>
+    <span class="kv">ms &#8594; ticks 依目前 plate_freq 換算(_off = _on + ms&#215;2&#215;freq/1000)</span>
   </div>
   <div class="kv" style="margin-top:6px">Pulse position of each station, counted from the gate trigger. _on/_off = actuation window edges; SWITCH = report deadline.</div>
 </div>
@@ -550,13 +705,13 @@ PAGE = r"""<!DOCTYPE html>
     <button onclick="cmd({type:'save_setup'})">Save NVS</button>
     <span class="kv" id="convline"></span>
   </div>
-  <div class="kv" style="margin-top:6px">Passive: FW never computes with these; hosts use them to convert mm/rpm &#8596; pulses. rpm = plateFreq / pulses_per_rev &#215; 60.</div>
+  <div class="kv" style="margin-top:6px">Passive: FW never computes with these; hosts use them to convert mm/rpm &#8596; pulses. rpm = plate_freq / pulses_per_rev &#215; 60.</div>
 </div>
 
 <div class="card"><h2>Raw command</h2>
   <textarea id="raw">{"type":"get_setup"}</textarea>
   <button onclick="sendRaw()">Send</button>
-  <button onclick="cmd({type:'PING'})">PING</button>
+  <button onclick="cmd({type:'ping'})">PING</button>
   <button onclick="cmd({type:'get_running_stat'})">Stat</button>
   <button onclick="cmd({type:'clear_error'})">Clear error</button>
 </div>
@@ -577,13 +732,13 @@ async function firePhantom(){
   // An unanswered object stops the line by design -- never fire a phantom
   // without a reporter running.
   if(!arOn){log("autorep","reporter was off -- auto-starting it first");await arSet(true);}
-  cmd({type:'trig_phamton_pulse'},true);
+  cmd({type:'trig_phantom_pulse'},true);
 }
 let ioOn={};  // name -> 1 (ON=HIGH) / 0 (ON=LOW), from get_setup io_on_level
 function setOut(pin,on){
   const lvl=ioOn[PINS[pin]] ?? 1;
   const phys=on ? lvl : 1-lvl;
-  return cmd(phys ? {type:'PIN_ON',pin} : {type:'PIN_OFF',pin});
+  return cmd(phys ? {type:'pin_on',pin} : {type:'pin_off',pin});
 }
 function paintPol(){
   el('polrows').innerHTML=OUTS.map(n=>
@@ -608,14 +763,14 @@ function pfHint(){
 }
 async function applyPf(){
   await cmd({type:'set_setup',
-    pulse_minWidth:+el('pf_min').value, pulse_maxWidth:+el('pf_max').value,
+    pulse_min_width:+el('pf_min').value, pulse_max_width:+el('pf_max').value,
     gate_debounce_rise:+el('pf_dr').value, gate_debounce_fall:+el('pf_df').value,
-    minDetectTimeSep_us:+el('pf_sep').value});
+    min_detect_sep_us:+el('pf_sep').value});
   pfHint();
 }
 async function setSelWidth(){
   const f=lastFreq||+el('freq').value;
-  if(!f){log("err","plateFreq unknown/zero -- set it first");return;}
+  if(!f){log("err","plate_freq unknown/zero -- set it first");return;}
   const n=el('selw').value, ms=+el('selwms').value;
   const on=+el('spo_'+n+'_on').value;
   const ticks=Math.max(1,Math.round(ms*2*f/1000));
@@ -648,6 +803,23 @@ async function arSet(on){
 async function applyMeta(){
   await cmd({type:'set_setup',pulses_per_rev:+el('ppr').value,plate_diameter_mm:+el('pdia').value});
   meta.ppr=+el('ppr').value;meta.dia=+el('pdia').value;
+}
+function camStation(){
+  const s=el('camsel').value;
+  el('cam_cpin').value = s==='1'?17:19;
+  el('cam_lpin').value = s==='1'?16:18;
+}
+async function camFire(mode){
+  const body={mode,
+    cpin:+el('cam_cpin').value, lpin:+el('cam_lpin').value,
+    light_delay:+el('cam_delay').value, light_duration:+el('cam_dur').value,
+    hz:+el('cam_hz').value, count:+el('cam_n').value,
+    s0:+el('cam_s0').value, s1:+el('cam_s1').value, ss:+el('cam_ss').value};
+  if(mode==='single'){body.count=1;body.hz=10;}
+  log("cam",mode+" "+JSON.stringify(body));
+  const r=await fetch('/camtest',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+  log("cam",await r.json());
 }
 function log(tag,obj){
   const d=el('log');
@@ -700,8 +872,8 @@ es.onmessage=e=>{
   else if(m.panel==='stat'){
     el('linkdot').className='dot up';
     el('stateline').textContent='state: '+m.state_name+' ('+m.state+')';
-    lastFreq=m.plateFreq||lastFreq;
-    el('freqline').textContent='plateFreq: '+m.plateFreq+fmtSpeed(m.plateFreq);
+    lastFreq=m.plate_freq||lastFreq;
+    el('freqline').textContent='plate_freq: '+m.plate_freq+fmtSpeed(m.plate_freq);
     el('reconline').textContent=m.reconnects?('reconnects: '+m.reconnects):'';
     if(m.count)el('reconline').textContent+='  sorted: '+JSON.stringify(m.count);
     arOn=!!m.autorep;
@@ -725,6 +897,14 @@ es.onmessage=e=>{
     if(!m.up)el('stateline').textContent='state: link down';
   }
   else if(m.panel==='pins_unsupported'){el('pinwarn').style.display='';el('gate').className='gna';el('gate').textContent='PIN_READ n/a';}
+  else if(m.panel==='camstat'){
+    const miss=(m.fired??0)-(m.echo??0);
+    el('camstat').textContent=(m.running?'RUNNING ':'idle ')+
+      `[${m.mode??''}] fired ${m.fired??0} / echo ${m.echo??0}`+
+      (miss>1?`  (${miss} un-echoed)`:'')+
+      (m.dur!=null?`  last duration ${m.dur}µs`:'');
+    el('camstat').className=m.running?'':'kv';
+  }
   else if(m.panel==='diag')log("diag",m.text);
   else if(m.panel==='async')log("dev",m.msg);
 };
@@ -735,15 +915,15 @@ cmd({type:'get_setup'}).then(s=>{
   if(!s)return;
   if('stepper_en_active' in s)el('enact').value=String(s.stepper_en_active);
   if('stepper_dir' in s)el('dirlvl').value=String(s.stepper_dir);
-  if(s.plateFreq){el('freq').value=s.plateFreq;el('freqslide').value=s.plateFreq;}
-  if('plateAccel' in s)el('accel').value=s.plateAccel;
+  if(s.plate_freq){el('freq').value=s.plate_freq;el('freqslide').value=s.plate_freq;}
+  if('plate_accel' in s)el('accel').value=s.plate_accel;
   if(s.pulses_per_rev){meta.ppr=s.pulses_per_rev;el('ppr').value=s.pulses_per_rev;}
   if(s.plate_diameter_mm){meta.dia=s.plate_diameter_mm;el('pdia').value=s.plate_diameter_mm;}
   if(s.io_on_level)ioOn=s.io_on_level;
-  if('pulse_minWidth' in s){
-    el('pf_min').value=s.pulse_minWidth; el('pf_max').value=s.pulse_maxWidth;
+  if('pulse_min_width' in s){
+    el('pf_min').value=s.pulse_min_width; el('pf_max').value=s.pulse_max_width;
     el('pf_dr').value=s.gate_debounce_rise; el('pf_df').value=s.gate_debounce_fall;
-    el('pf_sep').value=s.minDetectTimeSep_us;
+    el('pf_sep').value=s.min_detect_sep_us;
     pfHint();
   }
   paintPol();

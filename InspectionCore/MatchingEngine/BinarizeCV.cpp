@@ -6,6 +6,9 @@ void binarize_bg_flatten_cv(const cv::Mat &src, cv::Mat &dst, int closeKernel, f
   if (src.empty()) return;
   const int W = src.cols, H = src.rows;
   if (downscale < 1) downscale = 1;
+  // cv::resize throws on a 0-sized destination; shrink the factor until both
+  // axes keep at least one pixel.
+  while (downscale > 1 && (W / downscale < 1 || H / downscale < 1)) downscale--;
   if (closeKernel < 3) closeKernel = 3;
   if ((closeKernel & 1) == 0) closeKernel++; // odd
 

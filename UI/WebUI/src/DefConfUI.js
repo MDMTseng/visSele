@@ -578,18 +578,23 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       let ctrlMarg = {...dump.control_margin_info};
       Object.keys(ctrlMarg).forEach(key=>{
   
-        ctrlMarg[key]=[...ctrlMarg[key]].map(m=>{
-          delete m.name;
-          delete m.update;
-          return m;
+        // Copy each ELEMENT before deleting: [...arr] clones the array, not
+        // the rows, so `delete m.update` was stripping the live table rows'
+        // update closures (and the shared def's rows) every time the dump ran.
+        ctrlMarg[key]=(ctrlMarg[key]||[]).map(m=>{
+          let c = {...m};
+          delete c.name;
+          delete c.update;
+          return c;
         })
       })
     }
 
     {
       dump.measureInfo =[...dump.measureInfo].map(m=>{
-        delete m.update;
-        return m;
+        let c = {...m};   // same element-copy rule as ctrlMarg above
+        delete c.update;
+        return c;
       })
     }
 
@@ -601,8 +606,14 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
     //in the following deffile editing, some new measure might appear/delete
     //adjust control_margin_info coording to it
 
+    // dclone like measureInfo just above -- NOT the bare reference. The local
+    // edit copy used to BE the redux-held object, so every limit edit mutated
+    // the def in place: the dirty check compared an unchanged reference and
+    // said "no changes" while the live grading path was already reading the
+    // edited numbers. The editor now works on its own copy; the parent pulls
+    // it explicitly via getMarginInfo / onExitDump.
     if(control_margin_info!==undefined)
-      set_control_margin_info(control_margin_info);
+      set_control_margin_info(dclone(control_margin_info));
 
     if(typeof onExtraCtrlUpdate === "function")
       onExtraCtrlUpdate({
@@ -745,14 +756,16 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
           obj.name=<><PlusOutlined/>{text}</>;
           obj.update=(newObj)=>{
             let newMarginInfo = {..._control_margin_info};
-            
-            let tarIdx=newMarginInfo[text].findIndex(m=>m.id==newObj.id);
+            // Copy the row array too: the top-level spread above still shares
+            // the per-tag arrays, so writing rows[tarIdx] in place edited
+            // whatever else holds that array.
+            let rows = [...(newMarginInfo[text]||[])];
+            let tarIdx=rows.findIndex(m=>m.id==newObj.id);
             if(tarIdx!==-1)
             {
-              newMarginInfo[text][tarIdx]=newObj;
+              rows[tarIdx]=newObj;
+              newMarginInfo[text]=rows;
             }
-            // console.log(_control_margin_info);
-            // console.log(newMarginInfo);
             set_control_margin_info(newMarginInfo);
           };
           delete obj.subtype
@@ -1151,7 +1164,6 @@ function SettingUI({})
   const dispatch = useDispatch();
   const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
-  const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
     
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
   const ACT_Matching_Version_Update=(v) => { dispatch(DefConfAct.Matching_Version_Update(v)) };// 1=legacy, 2=phase2 dual-sig
@@ -1221,36 +1233,11 @@ function SettingUI({})
 
 
 
-    // Binary intrusion-size gate — only the sig360/binary path uses it; the shape path
-    // skips binarization, so hide it for shape_based.
-    (edit_info.locating_engine !== 'shape_based') && <React.Fragment key="intrusion">
-      <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>
-      <Slider
-        min={0}
-        step={0.01}
-        max={1}
-        included={true}
-        marks={
-          {
-            0: '',
-            0.01: '',
-            0.05: '',
-            0.1: '0.1',
-            0.3: '0.2',
-            0.5: '0.5',
-            1: '',
-          }
-        }
-        onChange={ACT_IntrusionSizeLimitRatio_Update}
-        value={edit_info.intrusionSizeLimitRatio}
-      />
-      <NumberAccInput
-        min={0}
-        max={1}
-        value={edit_info.intrusionSizeLimitRatio}
-        onChange={ACT_IntrusionSizeLimitRatio_Update}
-      />
-    </React.Fragment>,
+    // The intrusion-size gate used to live here. Removed 2026-08-07: it was one
+    // number for the whole def that could only say "something somewhere in this
+    // image is too big, do not inspect at all". obj_detect clean-space regions
+    // say it per region, in mm², and let each region choose whether a trip means
+    // the part is bad or the measurement is untrustworthy.
 
     <Divider orientation="left">localizer</Divider>,
     <span>&nbsp;engine&nbsp;</span>,
@@ -1474,7 +1461,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
-  const ACT_Obj_Detect_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Obj_Detect_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>
@@ -1489,7 +1475,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_DefFileHash_Update= (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) };
 
   const ACT_Def_Model_Path_Update= (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) };
-  const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
     
   const ACT_Report_Save=(id, fileName, content) => {
     let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
@@ -1523,14 +1508,54 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           log.info("[action] def_image_reg stored", report.def_image_reg);
         }
       }
-      ACT_DefFileHash_Update(report.featureSet_sha1);
-      log.info("[action] report-save");
-      ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-      if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
-      else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
-      ACT_Def_Model_Path_Update(fileNamePath);
+      const commitSave = () => {
+        ACT_DefFileHash_Update(report.featureSet_sha1);
+        log.info("[action] report-save");
+        ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
+        if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
+        else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
+        ACT_Def_Model_Path_Update(fileNamePath);
+        DefFile_DB_SEND(report).then((ret) => console.log('then', ret)).catch((ret) => console.log("catch", ret));
+      };
       setFileSavingCallBack(undefined);
-      DefFile_DB_SEND(report).then((ret) => console.log('then', ret)).catch((ret) => console.log("catch", ret));
+
+      // Conflict check before overwriting the def THIS SESSION LOADED: if the
+      // on-disk featureSet_sha1 no longer matches the hash recorded at load
+      // (edit_info.DefFileHash), someone else -- another browser, a hand
+      // edit, a core-side migration -- saved it since. Silently overwriting
+      // resurrects this session's stale view of every field it never edited
+      // (defFileGeneration spreads loadedDefFile wholesale). Surface it and
+      // let the operator decide. LD {filename} is a pure file read (FL
+      // reply), no core-state side effects.
+      //
+      // Scope: only when the target IS the loaded def's path. Overwriting a
+      // DIFFERENT existing file is the file picker's own confirm; our
+      // load-time hash says nothing about that file.
+      const sameFile = existed && edit_info.defModelPath === fileNamePath;
+      if (!sameFile || edit_info.DefFileHash === undefined) { commitSave(); return; }
+      ACT_WS_SEND_BPG(CORE_ID, "LD", 0, { filename: fileNamePath + '.' + DEF_EXTENSION }, undefined, {
+        resolve: (pkts) => {
+          const fl = (pkts || []).find(p => p.type == "FL");
+          const onDiskSha1 = fl && fl.data && fl.data.featureSet_sha1;
+          // Legacy def without a sha1, or unreadable reply: nothing to compare
+          // against -- keep the old behaviour rather than block every save.
+          if (onDiskSha1 === undefined || onDiskSha1 === edit_info.DefFileHash) { commitSave(); return; }
+          log.warn("[save-conflict] on-disk def changed since load", { onDiskSha1, loadedHash: edit_info.DefFileHash });
+          setModal_view({
+            title: dictLookUp("WARNING", DICT),
+            view: "此定義檔在載入後已被其他人修改（sha1 不符）。覆蓋會丟失對方的變更；建議先取消、重新載入檢視。",
+            okText: "仍要覆蓋",
+            onOk: () => { commitSave(); setModal_view(undefined); },
+            onCancel: () => { log.info("[save-conflict] save cancelled"); setModal_view(undefined); },
+          });
+        },
+        reject: () => {
+          // Cannot read the on-disk file (deleted since load?). The save
+          // recreates it; nothing to conflict with.
+          log.warn("[save-conflict] could not re-read on-disk def; saving");
+          commitSave();
+        },
+      });
     });
   };
 
@@ -1636,13 +1661,22 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       text="measure"
       onClick={() => ACT_Measure_Add_Mode()}>
     </BASE_COM.IconButton>,
-    <BASE_COM.IconButton
-      addClass="layout palatte-cyan-7 btn-swipe"
-      key="OBJDETECT"
-      dict={DICT}
-      text="物件偵測"
-      onClick={() => ACT_Obj_Detect_Add_Mode()}>
-    </BASE_COM.IconButton>]);
+    // 物件偵測 (obj_detect) is no longer offered.
+    //
+    // The check it was for -- "this space must be clean" -- is done at MACHINE
+    // level by clean_regions in machine_setting.json (eval_clean_regions),
+    // which is where it belongs: it describes the station, not the product, so
+    // it does not want re-drawing per def. The def-level feature duplicated
+    // that against the def's own frame, and its own design doc records the
+    // half that was never finished ("P2 ... OBJ_DETECT is declared in the
+    // FEATURETYPE enum and has no users").
+    //
+    // Only the CREATE path is gone. Drawing, editing and deleting stay: a def
+    // in the field may still carry obj_detect regions, and those fold into the
+    // part verdict (UINSP_VERDICT_PATH 3.5). Removing the shape module too
+    // would leave them invisible on the canvas while still condemning parts,
+    // which is worse than leaving them visible and removable.
+    ]);
       
 
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
@@ -1671,7 +1705,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     let deffile = defFileGeneration(edit_info);
     stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
-    deffile.intrusionSizeLimitRatio=1;
     setCacheDef(deffile);
 
     let _PGID_=11004;
@@ -1937,8 +1970,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         let deffile = defFileGeneration(edit_info);
         stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
         console.log("deffile",deffile);
-        deffile.intrusionSizeLimitRatio=1;
-        console.log("INST_CHECK");
+            console.log("INST_CHECK");
         ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
         {
           definfo:deffile,
@@ -2307,7 +2339,6 @@ function DefConfImageSwitcher() {
     if (!CORE_ID || !edit_info || !edit_info._obj || !edit_info._obj.sig360info) return;
     let deffile = defFileGeneration(edit_info);
     stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
-    deffile.intrusionSizeLimitRatio = 1;
     ACT_WS_SEND_BPG(CORE_ID, "II", 0,
       { definfo: deffile, imgsrc: "__CACHE_IMG__",
         img_property: { calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp } } },
@@ -2761,8 +2792,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 let deffile = defFileGeneration(this.props.edit_info);
                 stampRefImagePath(deffile, this.props.edit_info);   // shape locator: ref-image path
-                deffile.intrusionSizeLimitRatio=1;
-  
+              
 
                 this.props.ACT_WS_SEND_BPG(this.props.CORE_ID,"II", 0, 
                 {
@@ -2981,7 +3011,6 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_Shape_Decoration_Control_Margin_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Control_Margin_Info_Update(extra_info)) },
     ACT_Matching_Angle_Margin_Deg_Update: (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) },
     ACT_Matching_Face_Update: (faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) },//-1(back)/0(both)/1(front)
-    ACT_IntrusionSizeLimitRatio_Update: (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) },//0~1
     ACT_DefFileHash_Update: (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) },
     ACT_Report_Save: (id, fileName, content) => {
       let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,

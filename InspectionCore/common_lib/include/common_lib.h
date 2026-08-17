@@ -72,6 +72,10 @@ size_t BW2RGB_uncollapse(uint8_t *dst_rgb,size_t dstLen,uint8_t *src_bw,size_t s
 char* ReadText(const char *filename);
 cJSON* ReadJson(const char* filename);
 int WriteBytesToFile(uint8_t *data,size_t dataL,const char* path);
+// tmp + fsync + rename: the destination keeps its old content until the new
+// bytes are durably on disk. Use for anything whose PREVIOUS version matters
+// (defs, machine settings); plain WriteBytesToFile truncates first.
+int WriteBytesToFileAtomic(uint8_t *data,size_t dataL,const char* path);
 int SaveJson(cJSON* json,const char* path);
 
 int CheckFileExistance(const char *filename);

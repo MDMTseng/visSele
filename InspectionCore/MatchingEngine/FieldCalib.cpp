@@ -1,10 +1,13 @@
 #include "FieldCalib.h"
 #include "cJSON.h"
+#include "logctrl.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+
+LOG_MODULE("calib.field");
 
 static cJSON *grid_to_json(const FieldGrid &g)
 {
@@ -59,6 +62,20 @@ static FieldGrid grid_from_json(cJSON *o)
   } else {
     g.valid.assign(g.mean.size(), 1);
   }
+  // rows/cols and the arrays are read independently, so a hand-edited or
+  // truncated calib file could claim a 10x10 grid and carry an empty mean[].
+  // Downstream only checks rows>0 && cols>0 and then indexes r*cols+c, so that
+  // file writes 100 doubles past the end of a zero-length vector. A grid whose
+  // dimensions do not match its data is not a usable grid at all.
+  if ((size_t)g.rows * (size_t)g.cols != g.mean.size() || g.rows <= 0 || g.cols <= 0)
+  {
+    if (g.rows != 0 || g.cols != 0 || !g.mean.empty())
+      LOGE("field calib grid discarded: %dx%d but mean[] has %d entries",
+           g.rows, g.cols, (int)g.mean.size());
+    return FieldGrid();
+  }
+  if (g.valid.size() != g.mean.size()) g.valid.assign(g.mean.size(), 1);
+  if (g.std.size()   != g.mean.size()) g.std.assign(g.mean.size(), 0.0);
   return g;
 }
 
@@ -153,7 +170,10 @@ bool field_calib_save_file(const FieldCalibResult &r, const char *path)
   if (!s) return false;
   FILE *f = fopen(path, "w");
   bool ok = false;
-  if (f) { fputs(s, f); fclose(f); ok = true; }
+  // "the file opened" is not "the calibration is saved": ENOSPC surfaces at
+  // fputs or (for the last buffered block) at fclose, and reporting success
+  // anyway means the operator believes a calibration exists that does not.
+  if (f) { ok = (fputs(s, f) >= 0); if (fclose(f) != 0) ok = false; }
   free(s);
   return ok;
 }

@@ -73,7 +73,10 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1) { d[j] = 0; vv[j] = 0; if (m) m[j] = 0; continue; }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
-      d[j] = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
+      // !(v > 0) catches NaN as well as negatives: the backlight factor is
+      // NaN outside the calibration grid, and casting a NaN float to
+      // unsigned char is UB, not "some grey value".
+      d[j] = !(v > 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
       if (m) m[j] = isObjectPx(labelImg, (int)(q.x + 0.5f), (int)(q.y + 0.5f)) ? 255 : 0;
     }
   }
@@ -154,7 +157,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   }
   if (considerRange <= 0) considerRange = 1;
-  if (alphaKeep > considerRange) alphaKeep = considerRange;
+  // Strictly below considerRange: equal makes the (considerRange-alphaKeep)
+  // denominator below 0, and 0/0 = NaN poisons every weight and the result.
+  if (alphaKeep >= considerRange) alphaKeep = considerRange * 0.999f;
 
   // Collect every edge within n of the top (perpCoord in [pMin, pMin+n]) and peak-weighted-
   // average both coords for a stable apex.
@@ -169,8 +174,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     float ww = e.peak * a;
     Ws += ww; Ss += (double)e.searchCoord * ww; Ps += (double)e.perpCoord * ww; nUsed++;
   }
-  if (Ws <= 0) return false;
+  if (!(Ws > 0)) return false;                         // also catches NaN
   float eS = (float)(Ss / Ws), eP = (float)(Ps / Ws);  // centered region coords
+  if (!std::isfinite(eS) || !std::isfinite(eP)) return false;
   if (dbg) fprintf(stderr, "[SPCV] n=%.1f nUsed=%d final(search,perp)=(%.2f,%.2f)\n", considerRange, nUsed, eS, eP);
 
   if (dbg) // debug: save rectified gray | mask | edge marker

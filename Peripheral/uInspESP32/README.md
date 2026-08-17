@@ -36,7 +36,7 @@ A response of `{"ack":true, "id":...}` indicates success.
 
 *   **Get/Set Configuration**
     *   `{"type":"get_setup"}`: Retrieves the current machine configuration, including pulse offsets and error history.
-    *   `{"type":"set_setup", "plateFreq": 1000, "stage_pulse_offset": {...}}`: Sets machine parameters.
+    *   `{"type":"set_setup", "plate_freq": 1000, "stage_pulse_offset": {...}}`: Sets machine parameters.
 
 *   **State Control**
     *   `{"type":"enter_insp_mode"}`: Puts the system into `INSPECTION_MODE_READY`.
@@ -51,17 +51,17 @@ A response of `{"ack":true, "id":...}` indicates success.
     *   `{"type":"stepper_enable"}` / `{"type":"stepper_disable"}`: Enables or disables the stepper motor output.
 
 *   **Diagnostics & Debugging**
-    *   `{"type":"PING"}`: Responds with `{"type":"PONG"}` to check connectivity.
+    *   `{"type":"ping"}`: Responds with `{"type":"pong"}` to check connectivity.
     *   `{"type":"get_running_stat"}`: Gets real-time statistics (object counts, errors, current state).
     *   `{"type":"reset_running_stat"}`: Resets the sorting counters.
     *   `{"type":"clear_error_history"}`: Clears the persistent error log.
-    *   `{"type":"trig_phamton_pulse"}`: Manually injects a fake object pulse for testing.
+    *   `{"type":"trig_phantom_pulse"}`: Manually injects a fake object pulse for testing.
 
 ### Asynchronous Messages from Device
 
 *   **Trigger Info**: `{"type":"bT", "tidx":1, "usH":..., "usL":..., "tid":...}`
     *   Sent whenever a camera is triggered. `tidx` is the camera index (1 or 2), `usH`/`usL` are the high/low parts of a 64-bit timestamp, and `tid` is the unique object ID.
-*   **System Info**: `{"type":"systemInfo", "state":..., "log":...}`
+*   **System Info**: `{"type":"system_info", "state":..., "log":...}`
     *   Sent on system state changes.
 *   **Debug Messages**: `{"dbg":"..."}`
     *   General debug information.
@@ -71,7 +71,7 @@ A response of `{"ack":true, "id":...}` indicates success.
 The controller operates using a state machine:
 
 *   **`INIT`**: System startup and initialization.
-*   **`IDLE`**: The system is waiting for commands. The motor can be set to a specific frequency (`plateFreq`) for setup purposes, but no inspection occurs.
+*   **`IDLE`**: The system is waiting for commands. The motor can be set to a specific frequency (`plate_freq`) for setup purposes, but no inspection occurs.
 *   **`INSPECTION_MODE_READY`**: The main operational state. The system is running at the configured speed, detecting objects, triggering cameras, and actuating selectors.
 *   **`INSPECTION_MODE_TEST`**: A test mode for inspection.
 *   **`INSPECTION_MODE_ERROR`**: An error has occurred (e.g., object missed inspection, selector countdown reached). The system halts until `clear_error` is received.

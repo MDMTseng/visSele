@@ -91,12 +91,41 @@ function StateReducer(newState, action) {
     break;
 
     case "FILE_default_camera_setting":
-          
+
       newState=
       {
         ...newState,
         FILE_default_camera_setting:action.data
       };
+      break;
+
+    // The instrument scale, from data/lens_calib.json -- ONE source for the
+    // whole UI.
+    //
+    // Every consumer used to compute mmpp as
+    // camera_calibration_report.reports[0].mmpb2b / .ppb2b. That report is
+    // dead: the core stopped emitting it (FeatureReport_UTIL's
+    // camera_calibration case is commented out), so the field is permanently
+    // undefined and each of the five call sites either crashed or bailed --
+    // InspectionUI even carries a defensive "no camera_calibration_report,
+    // skipping" branch for exactly that.
+    //
+    // lens_calib.json is what actually describes this instrument, it is what
+    // the core pushes into the sampler (push_mmpp_to_sampler), and CalibrationUI
+    // already calls it "the authority". So the UI reads the same file, and mmpp
+    // has one definition on both sides instead of two that could disagree.
+    case "FILE_lens_calib":
+      {
+        const lc = action.data;
+        const um = lc && Number(lc.um_per_px);
+        // um_per_px is microns; mmpp is mm. Undefined (not 0, not 1) when the
+        // file is missing or malformed -- callers must be able to tell "no
+        // calibration" from "a scale of 1", which is how a bad number gets
+        // applied as if it were real.
+        const mmpp = (Number.isFinite(um) && um > 0) ? um / 1000 : undefined;
+        log.info("[lens_calib] instrument mmpp =", mmpp);
+        newState = { ...newState, FILE_lens_calib: lc, instrument_mmpp: mmpp };
+      }
       break;
 
     case UISEV.Control_SM_Panel:
@@ -179,6 +208,11 @@ function StateReducer(newState, action) {
 
                   newState.edit_info.inspReport = inspReport;
                   inspReport.time_ms = currentTime_ms;
+                  // How long the core took on this frame. It rides on the
+                  // TOP-LEVEL report (action.data) because it describes the
+                  // whole inspection, not one feature set -- but the canvas
+                  // reads reports[0], so carry it across the same way
+                  // subFeatureDefSha1/machine_hash are pulled out above.
                   // Snapshot per-shape def-relevant fields so the def-conf
                   // cal_hits overlay can detect when the user has edited the
                   // def since this inspection ran (stale → don't show hits).
@@ -690,11 +724,35 @@ function StateReducer(newState, action) {
               let inspMode=GetObjElement(newState,["machine_custom_setting","InspectionMode"]);
               let uInspResult=GetObjElement(action,["data","uInspResult"]);
 
+              // The station block is TOP-LEVEL, next to uInspResult -- it
+              // describes the machine's station, not any one located object, so
+              // it does not belong in the per-object sig360 sub-report that
+              // becomes edit_info.inspReport. Keep it where the panel can find
+              // it. Undefined against a core that does not send it.
+              // Same reasoning for the timing: how long the core took is a
+              // property of the FRAME, not of any one located object, so it
+              // rides top-level next to station rather than inside the sig360
+              // sub-report. Putting it on inspReport was the first attempt and
+              // it silently never appeared on the live path -- that sub-report
+              // is only built on some branches, while this one runs for every
+              // report from both the editor's II and the live CI/FI stream.
+              //
+              // build_ms is undefined on the live path by design: CI/FI build
+              // the engine once at session open, so there is no per-frame def
+              // build to report.
+              newState.edit_info = { ...newState.edit_info,
+                station: GetObjElement(action,["data","station"]),
+                insp_timing: {
+                  wall_ms:  GetObjElement(action,["data","insp_wall_ms"]),
+                  cpu_ms:   GetObjElement(action,["data","insp_cpu_ms"]),
+                  build_ms: GetObjElement(action,["data","def_build_ms"]),
+                } };
+
               //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
               //is NA/UNSET(may caused by dirty image/ non-single object...), when means to tell insp mach skip this one
               //so we gonna skip the report to put in(even if there may be a result)
-              reportSkip=(inspMode=="FI")&&
-                ((uInspResult== INSPECTION_STATUS.NA)  ||  (uInspResult== INSPECTION_STATUS.UNSET))
+              // reportSkip=(inspMode=="FI")&&
+              //   ((uInspResult== INSPECTION_STATUS.NA)  ||  (uInspResult== INSPECTION_STATUS.UNSET))
 
               
               EVENT_Inspection_Report(newState, action,reportSkip);
@@ -795,14 +853,6 @@ function StateReducer(newState, action) {
               // values are -1 (back) / 0 (both) / 1 (front); accept only those.
               if (action.data === -1 || action.data === 0 || action.data === 1) {
                 newState.edit_info = { ...newState.edit_info, matching_face: action.data };
-              }
-              break;
-            }
-
-          case DefConfAct.EVENT.IntrusionSizeLimitRatio_Update:
-            {
-              if (typeof action.data == 'number') {
-                newState.edit_info = { ...newState.edit_info, intrusionSizeLimitRatio: action.data };
               }
               break;
             }
@@ -951,8 +1001,16 @@ function StateReducer(newState, action) {
             {
               log.info("action.data:", action.data);
 
-              newState.edit_info.__decorator.list_id_order =
-                UpdateListIDOrder(action.data, newState.edit_info._obj.shapeList);
+              // New identities all the way down (edit_info AND __decorator),
+              // like the inspOptionalTag case above. Writing the nested field
+              // in place left every mapped prop reference-equal, react-redux
+              // bailed out, and the drag reorder "sprang back" -- the order
+              // WAS recorded, it just didn't render until something else
+              // forced a redraw.
+              newState.edit_info = { ...newState.edit_info,
+                __decorator: { ...newState.edit_info.__decorator,
+                  list_id_order:
+                    UpdateListIDOrder(action.data, newState.edit_info._obj.shapeList) } };
               break;
             }
 

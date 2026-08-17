@@ -3,6 +3,15 @@
 #include "logctrl.h"
 #include <arv.h>
 #include <stdexcept>
+#include <cstdio>
+
+// Set by the acquisition setup from INSP_CAM_TRIG_WATERMARK, read in the frame
+// callback. Written once before streaming starts, so no synchronisation.
+static bool g_trigWatermark = false;
+// INSP_CAM_FRAME_TRACE: per-frame CSV for the flash-identity test. Opened once
+// at acquisition setup, so the callback only ever writes. NULL = off, which is
+// the normal state -- this exists for a bench measurement, not for running.
+static FILE *g_frameTrace = NULL;
 LOG_MODULE("cam.aravis");
 
 using namespace std;
@@ -82,10 +91,12 @@ void CameraLayer_Aravis::s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_A
   self->STREAM_NEW_BUFFER_CB(stream);
 }
 
-void empty_stream(ArvStream *stream)
+// static: this was a global symbol in a file full of them, one collision away
+// from an ODR problem at link time.
+static void empty_stream(ArvStream *stream)
 {
   ArvBuffer *buffer = NULL;
-  while (buffer = arv_stream_try_pop_buffer(stream))
+  while ((buffer = arv_stream_try_pop_buffer(stream)) != NULL)
   {
     arv_stream_push_buffer(stream, buffer);
   }
@@ -93,8 +104,134 @@ void empty_stream(ArvStream *stream)
 }
 
 
+// Bounded because the base class never reads or clears error_code_list: on a
+// link that is dropping packets it grew by one entry per bad frame for the
+// lifetime of the process. Keeping the most recent entries is what a human
+// debugging a fault actually wants anyway.
+void CameraLayer_Aravis::pushErrorCode(uint64_t code)
+{
+  if (error_code_list.size() >= ERROR_LIST_MAX)
+    error_code_list.erase(error_code_list.begin(),
+                          error_code_list.begin() + (error_code_list.size() - ERROR_LIST_MAX / 2));
+  error_code_list.push_back(code);
+}
+
+// See the header for why this is calibrated rather than hardcoded.
+uint64_t CameraLayer_Aravis::deviceTimestampToUs(uint64_t dev_ticks, uint64_t sys_ns)
+{
+  if (!_ts_calibrated)
+  {
+    if (_ts_calib_n == 0)
+    {
+      _ts_calib_dev0 = dev_ticks;
+      _ts_calib_sys0 = sys_ns;
+      _ts_calib_n = 1;
+    }
+    else if (++_ts_calib_n >= TS_CALIB_FRAMES &&
+             dev_ticks > _ts_calib_dev0 && sys_ns > _ts_calib_sys0)
+    {
+      double dev_d = (double)(dev_ticks - _ts_calib_dev0);
+      double sys_us = (double)(sys_ns - _ts_calib_sys0) / 1000.0;
+      double est = (sys_us > 0.0) ? dev_d / sys_us : 0.0;
+
+      // Snap to the conventions that actually exist. The true rate is one of
+      // these; snapping keeps the divisor exact instead of baking in the
+      // (host-clock-limited) error of the estimate.
+      static const double kRates[] = { 1000.0, 100.0, 1.0 };  // ns, 10ns, us ticks
+      double best = 1000.0, best_err = 1e30;
+      for (double r : kRates)
+      {
+        double e = (est > r) ? est / r : r / est;
+        if (e < best_err) { best_err = e; best = r; }
+      }
+      // Only accept a plausible match; otherwise keep the ns default and say so.
+      if (est > 0.0 && best_err < 1.5)
+      {
+        _ts_ticks_per_us = best;
+        LOGI("device timestamp: measured %.4f ticks/us -> using %.0f (%.1f ns/tick)",
+             est, best, 1000.0 / best);
+      }
+      else
+      {
+        LOGE("device timestamp: measured %.4f ticks/us matches no known convention "
+             "-- falling back to nanoseconds; frame timestamps may be mis-scaled", est);
+      }
+      _ts_calibrated = true;
+    }
+  }
+
+  // Until the rate is known there is no honest answer, so say so rather than
+  // divide by the assumed default.
+  //
+  // The default is 1000 (ns) and this camera is 100 (10ns), so every frame
+  // before calibration completed came out 10x too small. Measured on the real
+  // plate 2026-08-05: the first sync sample read 216,513,611 where its
+  // neighbours read 2,382,734,242 +/- 25 -- an outlier 2166 SECONDS wide next
+  // to samples that agreed with each other to 49us. It was outvoted by the
+  // median that time, but the guard on both sides is a majority vote, so a
+  // camera that starts streaming just as pulses begin can fill a whole
+  // bootstrap window with these and converge on nonsense.
+  //
+  // 0 is the "unknown" sentinel the whole stack already honours:
+  // PerifTriggerPairing::pairFrame falls back to positional on it,
+  // announcementLost() declines to judge, and the firmware's
+  // CamClockSync::observe drops the sample. Those frames simply pair by
+  // position, which is what they did before timestamps existed.
+  if (!_ts_calibrated) return 0;
+
+  return (uint64_t)(dev_ticks / _ts_ticks_per_us);
+}
+
+// Reads back what the camera actually settled on, rather than what we asked
+// for. The sibling HikRobot layer has had this for a while; Aravis did not, and
+// its absence is why a mis-set trigger here looks identical to a dead wire:
+// every write "succeeds" (or its GError is dropped) and nothing reports that
+// the camera is in a state that cannot produce frames.
+void CameraLayer_Aravis::logCameraState(const char *when)
+{
+  static const char *kStr[] = { "TriggerSelector", "TriggerMode", "TriggerSource",
+                                "TriggerActivation", "AcquisitionMode" };
+  for (size_t i = 0; i < sizeof(kStr)/sizeof(kStr[0]); i++)
+  {
+    GError *e = NULL;
+    const char *v = arv_camera_get_string(camera, kStr[i], &e);
+    LOGI("[cam state %s] %-18s = %s%s", when, kStr[i],
+         e ? "<err> " : (v ? v : "(null)"), e ? e->message : "");
+    if (e) g_clear_error(&e);
+  }
+
+  {
+    GError *e = NULL;
+    gint64 burst = arv_camera_get_integer(camera, "AcquisitionBurstFrameCount", &e);
+    LOGI("[cam state %s] %-18s = %lld%s", when, "BurstFrameCount",
+         (long long)burst, e ? " <err>" : "");
+    if (e) g_clear_error(&e);
+
+    e = NULL;
+    gboolean fre = arv_camera_get_boolean(camera, "AcquisitionFrameRateEnable", &e);
+    LOGI("[cam state %s] %-18s = %d%s", when, "FrameRateEnable", (int)fre, e ? " <err>" : "");
+    if (e) g_clear_error(&e);
+
+    e = NULL;
+    double rfr = arv_camera_get_float(camera, "ResultingFrameRate", &e);
+    LOGI("[cam state %s] %-18s = %.2f fps%s", when, "ResultingFrameRate", rfr, e ? " <err>" : "");
+    if (e) g_clear_error(&e);
+  }
+
+  gint x=0,y=0,w=0,h=0;
+  arv_camera_get_region(camera, &x, &y, &w, &h, NULL);
+  LOGI("[cam state %s] region = %d,%d %dx%d  payload=%d  acquiring=%d",
+       when, x, y, w, h, payloadSize, (int)acquisition_started);
+}
+
 CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
 {
+  // _frame_cache_buffer is only live inside the EV_IMG callback; everywhere
+  // else it is NULL, and this used to hand that NULL straight to Aravis.
+  if (_frame_cache_buffer == NULL)
+  {
+    return CameraLayer::FrameExtractPixelFormat::RGB;
+  }
 
   ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
 
@@ -112,8 +249,43 @@ CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
 }
 
 
+// Whether the camera is still THERE, asked of the camera.
+//
+// This used to be `return ACK;` under a //TODO. Nothing else in Core0_1 ever
+// checks either -- EV_CTRL_LOST is delivered to a callback that drops every
+// non-image event -- so "is the camera connected?" had exactly one answer in
+// the whole system, and it was yes. Unplug the camera, reload the WebUI, and
+// the panel would still show its id, model and serial: cam_json_info is
+// captured at construction and this said the device was fine, so every layer
+// downstream agreed on a camera that was physically not attached.
+//
+// Two checks, cheapest first:
+//   1. control-lost already fired -- Aravis told us the device went away.
+//      Authoritative and free.
+//   2. a real register read. Needed because a USB device can be yanked without
+//      the control-lost signal arriving promptly, and because this is also the
+//      only way to notice a camera that came back on a different handle.
 CameraLayer::status CameraLayer_Aravis::isInOperation()
-{//TODO: check availability
+{
+    if (_ctrl_lost || camera == NULL)
+        return CameraLayer::NAK;
+
+    // One register read. On a live USB3 link this is well under a millisecond;
+    // on a dead one it fails rather than hanging, which is the entire point.
+    GError *error = NULL;
+    arv_camera_get_integer(camera, "Width", &error);
+    if (error)
+    {
+        LOGE("camera probe failed (%s) -- treating as disconnected",
+             error->message ? error->message : "no message");
+        g_clear_error(&error);
+        // Latch it: once a probe has failed the object is not going to heal
+        // itself, and re-probing a dead device on every UI poll is a stall
+        // waiting to happen.
+        _ctrl_lost = true;
+        acquisition_started = false;
+        return CameraLayer::NAK;
+    }
     return CameraLayer::ACK;
 }
 
@@ -200,7 +372,6 @@ CameraLayer::status bayerToRGB(uint8_t* img_dat, uint8_t* imgBuffer, int width, 
 CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
 {
 
-  LOGI(">>>>");
   if (_frame_cache_buffer == NULL)
   {
     return NAK;
@@ -220,7 +391,9 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
   
   ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
 
-  LOGI(">>>>format:%0X  img_size:%d  wh:%d,%d",format,img_size,w,h);
+  // Constant for the life of a session; one line per frame said nothing new.
+  { static unsigned _lc = 0; if ((_lc++ % 200) == 0)
+      LOGI(">>>>format:%0X  img_size:%d  wh:%d,%d",format,img_size,w,h); }
   if(format == ARV_PIXEL_FORMAT_MONO_8)
   {
     
@@ -351,6 +524,10 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
 
 void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 {
+  // See _stream_cb_gate in the header: the destructor drains this gate before
+  // freeing the stream/camera this body dereferences.
+  std::lock_guard<std::mutex> _cb_gate(_stream_cb_gate);
+  if (_stream_cb_teardown) return;
   frameCount++;
   if (takeCount >= 0)
     LOGI(">>>>>takeCount:%d", takeCount);
@@ -359,6 +536,10 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   {
     arv_camera_stop_acquisition(camera, NULL);
     acquisition_started=false;
+    // Cleared on every exit from here on: leaving a stale pointer to a buffer
+    // that has already gone back to the stream is how a later ExtractFrame
+    // ends up reading a frame the driver is busy refilling.
+    _frame_cache_buffer = NULL;
     empty_stream(stream);
     return;
   }
@@ -368,8 +549,9 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   {
     LOGI("buffer pop failed...");
 
-    error_code_list.push_back(130130131);
-    callback(*this, CameraLayer::EV_ERROR, context);
+    _frame_cache_buffer = NULL;
+    pushErrorCode(130130131);
+    invokeFrameCallback(CameraLayer::EV_ERROR);
     return;
   }
 
@@ -382,32 +564,182 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 
     gint x, y, w, h;
     arv_buffer_get_image_region(buffer, &x, &y, &w, &h);
-    guint64 timeStamp_us = arv_buffer_get_timestamp(buffer);
+    // Raw device ticks, whose unit is device-specific -- converted, not assumed.
+    guint64 dev_ticks = arv_buffer_get_timestamp(buffer);
+    guint64 sys_ns    = arv_buffer_get_system_timestamp(buffer);
     frameInfo _fi;
-    _fi.timeStamp_us = timeStamp_us;
+    _fi.timeStamp_us = deviceTimestampToUs(dev_ticks, sys_ns);
     _fi.offset_x = x;
     _fi.offset_y = y;
     _fi.width = w;
     _fi.height = h;
     _fi.pixel_size_mm=pixel_size_mm;
 
-    
+    // The camera's own frame counter. Aravis has always exposed this and the
+    // layer never passed it on, so consumers could not tell a frame that was
+    // never exposed from one lost in transport -- exactly the distinction
+    // needed when chasing missing frames. (The HikRobot layer already does
+    // this via nFrameNum; this brings Aravis in line.)
+    _fi.frameNum = (uint32_t)arv_buffer_get_frame_id(buffer);
+    _fi.frameNumValid = true;
+
+    // The hardware trigger count, read out of the image itself.
+    //
+    // Enabled by INSP_CAM_TRIG_WATERMARK=1 (see the setup path), which turns on
+    // exactly ONE FrameSpecInfo field so the value sits at offset 0. Reading it
+    // here rather than downstream keeps the decode next to the enable, which is
+    // the only place the offset assumption is checkable.
+    //
+    // The watermark overwrites the first pixels of row 0. On this station the
+    // ROI starts at y=428 and the inspection region at y=432, so row 0 is four
+    // rows outside anything judged -- but that is a property of the CURRENT
+    // geometry, not a guarantee. If the inspection region ever reaches row 0,
+    // this has to move or be masked.
+    if (g_trigWatermark && w >= 8)
+    {
+      size_t _bsz = 0;
+      const uint8_t *r0 = (const uint8_t *)arv_buffer_get_data(buffer, &_bsz);
+      if (r0 != NULL && _bsz >= 8)
+      {
+        // offset 4, 32-bit little endian. Offset 0 is Framecounter.
+        _fi.extTrigCount = (uint32_t)r0[4] | ((uint32_t)r0[5] << 8)
+                         | ((uint32_t)r0[6] << 16) | ((uint32_t)r0[7] << 24);
+        _fi.extTrigCountValid = true;
+      }
+    }
+
+    // INSP_CAM_FRAME_TRACE=<path>: one line per frame, for the flash-identity
+    // test.
+    //
+    // The point of that test is that neither pairing mechanism is ground
+    // truth. cam_ts says when the frame was exposed and pcnt says which
+    // trigger asked for it; when they disagree, nothing so far can say which
+    // is right, because both are claims ABOUT the frame rather than
+    // measurements OF it. The image is the arbiter: drive the backlight with a
+    // per-pulse pattern and the brightness of the frame identifies which pulse
+    // actually exposed it, independently of both.
+    //
+    // So this records, per frame, the three things that have to be lined up --
+    // the count the camera stamped in, the timestamp it latched, and how
+    // bright the frame came out.
+    //
+    // Brightness is sampled from rows 8..24 and NOT row 0: the watermark
+    // overwrites the start of row 0, so a mean that included it would be
+    // partly a reading of the counter rather than of the light.
+    {
+      static bool _first = true;
+      if (_first) {
+        _first = false;
+        size_t _bs = 0; arv_buffer_get_data(buffer, &_bs);
+        fprintf(stderr, "[camdiag] first frame: buffer=%zu payloadSize=%d "
+                        "wh=%d,%d\n", _bs, payloadSize, w, h);
+        fflush(stderr);
+      }
+    }
+    if (g_frameTrace != NULL)
+    {
+      size_t _bsz = 0;
+      const uint8_t *px = (const uint8_t *)arv_buffer_get_data(buffer, &_bsz);
+      uint64_t sum = 0; uint32_t n = 0;
+      if (px != NULL && h > 40)
+      {
+        const size_t stride = (size_t)_bsz / (size_t)h;      // bytes per row
+        // Where the backlight actually falls, which is NOT a fixed fraction
+        // of the frame. The lit band is a property of the station: in
+        // full-sensor coordinates it sits around y=428..880, so the crop's
+        // mid-frame is row ~654 while a full-frame capture's mid-frame is row
+        // 1024 -- dark. Rows 8..24 were wrong for the same reason and made the
+        // first run of this test unreadable.
+        // INSP_CAM_TRACE_ROW overrides; default is mid-frame, which is right
+        // for the production crop.
+        static const int _trow = []{ const char *e = getenv("INSP_CAM_TRACE_ROW");
+                                     return e ? atoi(e) : -1; }();
+        const int yc = (_trow >= 0 && _trow < h) ? _trow : h/2;
+        const int y0 = (yc > 8 ? yc - 8 : 0), y1 = (yc + 8 < h ? yc + 8 : h);
+        for (int y = y0; y < y1; y++)
+        {
+          const uint8_t *row = px + (size_t)y * stride;
+          for (size_t x = 0; x + 16 <= stride; x += 16) { sum += row[x]; n++; }
+        }
+      }
+      fprintf(g_frameTrace, "%llu,%u,%d,%u,%d,%.2f\n",
+              (unsigned long long)_fi.timeStamp_us,
+              (unsigned)_fi.extTrigCount, (int)_fi.extTrigCountValid,
+              (unsigned)_fi.frameNum, (int)_fi.frameNumValid,
+              n ? (double)sum / (double)n : -1.0);
+      // Flushed per line. The tail of the file is the part a burst test cares
+      // about, and it is exactly the part that sits in the stdio buffer when
+      // the process is stopped -- the first run lost 97 of 240 rows that way
+      // and looked like the camera had stopped delivering.
+      fflush(g_frameTrace);
+    }
+
+    // Exposure-floor watch. The interval is taken from the DEVICE timestamp,
+    // not the host clock: host arrival is smeared by transport and scheduling,
+    // while the device stamp is when the sensor actually exposed -- which is
+    // precisely the quantity that gets pinned to the floor.
+    //
+    // Only once the timestamp scale has settled. deviceTimestampToUs() starts
+    // out assuming nanosecond ticks and corrects itself over the first frames,
+    // so intervals before that are off by the calibration factor (10x on this
+    // body) and the frame where it snaps shows a nonsense jump -- which the
+    // floor check would read as a saturation episode.
+    if (_ts_calibrated && _prev_frame_us != 0 &&
+        _fi.timeStamp_us > _prev_frame_us)
+    {
+      _fi.interval_us = _fi.timeStamp_us - _prev_frame_us;
+      if (_exposure_floor_watch && _floor_us > 0.0 &&
+          (double)_fi.interval_us <= _floor_us * (1.0 + SATURATION_TOL))
+      {
+        _fi.rateSaturated = true;
+        _saturated_run++;
+        if (_saturated_run >= SATURATION_RUN_ALERT && !_saturation_reported)
+        {
+          _saturation_reported = true;
+          LOGE("camera is being triggered faster than it can expose: %d frames "
+               "in a row at the %.0fus floor (ResultingFrameRate limit). "
+               "Triggers are being delayed or silently dropped -- frame "
+               "timestamps no longer identify the trigger that caused them.",
+               _saturated_run, _floor_us);
+          pushErrorCode(130130140);
+        }
+      }
+      else
+      {
+        _saturated_run = 0;
+        _saturation_reported = false;
+      }
+    }
+    // Left at 0 until the scale is trustworthy, so the first interval measured
+    // after calibration cannot straddle the change.
+    _prev_frame_us = _ts_calibrated ? _fi.timeStamp_us : 0;
+
     ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
     if(format==ARV_PIXEL_FORMAT_MONO_8)
     {
       _fi.channelCount=1;
       _fi.pixelBits=8;
     }
-    else if(true || format==ARV_PIXEL_FORMAT_BGR_8_PACKED || format==ARV_PIXEL_FORMAT_BAYER_GR_8 || format==ARV_PIXEL_FORMAT_BAYER_GB_8 || format==ARV_PIXEL_FORMAT_BAYER_RG_8)
+    // The `true ||` that used to lead this condition made the whole format
+    // test dead code: EVERY non-Mono8 format was reported as 8-bit 3-channel,
+    // including 16-bit, packed 12-bit and YUV. Consumers sized buffers from
+    // that lie. Only the formats ExtractFrame can actually decode are claimed
+    // as 3-channel now; anything else is reported honestly so the frame is
+    // rejected instead of misread.
+    else if(format==ARV_PIXEL_FORMAT_BGR_8_PACKED || format==ARV_PIXEL_FORMAT_BAYER_GR_8 || format==ARV_PIXEL_FORMAT_BAYER_GB_8 || format==ARV_PIXEL_FORMAT_BAYER_RG_8)
     {
       _fi.channelCount=3;//3 channel
       _fi.pixelBits=8*_fi.channelCount;
     }
-
-
+    else
+    {
+      LOGE("unsupported pixel format %0X -- ExtractFrame cannot decode it", format);
+      _fi.channelCount=0;
+      _fi.pixelBits=0;
+    }
 
     fi=_fi;
-    callback(*this, CameraLayer::EV_IMG, context);
+    invokeFrameCallback(CameraLayer::EV_IMG);
 
     if (takeCount > 0)
     {
@@ -431,24 +763,35 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     )
     {
 
-      error_code_list.push_back(bufferStatus);
+      pushErrorCode(bufferStatus);
     }
     // data->error_count++;
-    frameInfo _fi = {
-      timeStamp_us : 0,
-      width : 0,
-      height : 0,
-      offset_x : 0,
-      offset_y : 0,
-    };
+    // Was a GNU `field: value` designated initializer -- a non-standard C++
+    // extension whose member order here did not even match the declaration
+    // order in CameraLayer.hpp, and which silently left the remaining fields
+    // (channelCount, pixelBits, pixel_size_mm, frameNum...) to the aggregate
+    // rules. A value-initialized frameInfo says exactly the same thing --
+    // "nothing valid in here" -- with none of the ambiguity, and it also
+    // clears frameNumValid, which the old form did not name at all.
+    frameInfo _fi = frameInfo();
     fi = _fi;
-    callback(*this, CameraLayer::EV_ERROR, context);
+    invokeFrameCallback(CameraLayer::EV_ERROR);
   }
   // If the camera reports SIZE_MISMATCH the buffer was sized for the previous
   // payload (e.g. ROI grew). Recreate at the current payload before re-pushing
   // so we don't loop forever on the same bad buffer.
   if (bufferStatus == ARV_BUFFER_STATUS_SIZE_MISMATCH) {
     int cur_payload = arv_camera_get_payload(camera, NULL);
+    // Straight to stderr, not the log ring: this fires exactly when imaging is
+    // about to stop, which is precisely when the ring has been unreadable all
+    // day. Says which side is wrong -- what the buffer was allocated for,
+    // what the camera is now sending, and what we last recorded.
+    {
+      size_t _bs = 0; arv_buffer_get_data(buffer, &_bs);
+      fprintf(stderr, "[camdiag] SIZE_MISMATCH buffer=%zu payloadSize=%d "
+                      "camera_payload=%d\n", _bs, payloadSize, cur_payload);
+      fflush(stderr);
+    }
     if (cur_payload > 0) {
       payloadSize = cur_payload;
       g_object_unref(buffer);
@@ -458,6 +801,24 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     }
   }
   arv_stream_push_buffer(stream, buffer);
+  // Does the pool drain? 19 frames arrive at full frame and then stop, with
+  // no error and correctly-sized buffers, so the question is whether the host
+  // ran out of buffers to receive into or the camera stopped sending. Aravis
+  // answers it directly: n_input is what is queued for the device to fill.
+  // First 40 frames only -- this is a bring-up instrument, not a log line for
+  // running. stderr, because the ring accumulates across restarts and reading
+  // a previous run's errors as this one's has already cost a diagnosis today.
+  {
+    static int _n = 0;
+    if (_n < 40) {
+      gint _in = -1, _out = -1;
+      arv_stream_get_n_buffers(stream, &_in, &_out);
+      fprintf(stderr, "[camdiag] frame %d: n_input=%d n_output=%d\n",
+              _n, (int)_in, (int)_out);
+      fflush(stderr);
+      _n++;
+    }
+  }
   _frame_cache_buffer = NULL;
   // LOGI("buffer status:%d has chunks:%d",arv_buffer_get_status (buffer),arv_buffer_has_chunks (buffer));
   // if (arv_buffer_get_status (buffer) == ARV_BUFFER_STATUS_SUCCESS) {
@@ -504,14 +865,29 @@ void CameraLayer_Aravis::s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer
 
 void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
 {
-  LOGI("CTRL lost %s",connection_data.name.c_str());
+  // Same drain gate as the new-buffer callback -- this one fires from the
+  // device signal and dereferences `this` just as freely.
+  std::lock_guard<std::mutex> _cb_gate(_stream_cb_gate);
+  if (_stream_cb_teardown) return;
+  LOGE("CTRL lost %s",connection_data.name.c_str());
 
+  pushErrorCode(130130130);
 
-  // error_code_list.push_back(130130130);
-  error_code_list.push_back(130130130);
+  // The one fact everything downstream needs, recorded where it can be asked
+  // for. Without it isInOperation() had to guess, and it guessed ACK.
+  _ctrl_lost = true;
 
-  
-  callback(*this, CameraLayer::EV_CTRL_LOST, context);
+  // The device is gone: every Aravis call from here on will fail. Record that
+  // in our own state so the acquisition_started flag stops claiming the camera
+  // is streaming, and drop the frame cache -- no further frames are coming and
+  // the buffer it points at will never be handed back.
+  acquisition_started = false;
+  _frame_cache_buffer = NULL;
+
+  // NOTE: still no reconnect attempt here -- the layer only reports upward and
+  // leaves recovery to the owner, which is why a lost camera needs an explicit
+  // teardown and re-construct rather than healing itself.
+  invokeFrameCallback(CameraLayer::EV_CTRL_LOST);
 
 
 }
@@ -561,33 +937,111 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
 
   
   {
+    // This block used to query the camera's supported formats, log them, throw
+    // the array away without g_free (a leak per construction), and then force
+    // BGR_8_PACKED regardless of whether the camera offered it -- swallowing
+    // the error, so construction carried on with an unknown format. It also
+    // looped on n_pixel_formats without checking the array was non-NULL, so a
+    // failed query dereferenced NULL a garbage number of times.
     GError *err = NULL;
 
+    guint n_pixel_formats = 0;
+    gint64 *formats = arv_camera_dup_available_pixel_formats(camera, &n_pixel_formats, NULL);
+
+    bool has_mono8 = false, has_bgr8 = false;
+    if (formats != NULL)
     {
-      guint n_pixel_formats;
-      gint64 *format=arv_camera_dup_available_pixel_formats			(camera,&n_pixel_formats,NULL);
-      for(int i=0;i<n_pixel_formats;i++)
+      for (guint i = 0; i < n_pixel_formats; i++)
       {
-        LOGI("format:%0X",format[i]);
+        LOGI("supported pixel format: %0llX", (unsigned long long)formats[i]);
+        if ((ArvPixelFormat)formats[i] == ARV_PIXEL_FORMAT_MONO_8)       has_mono8 = true;
+        if ((ArvPixelFormat)formats[i] == ARV_PIXEL_FORMAT_BGR_8_PACKED) has_bgr8  = true;
       }
+      g_free(formats);
     }
-      
-    err=NULL;
-    arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,&err);//this need to be before arv_camera_create_stream
+    else
+    {
+      LOGE("could not enumerate pixel formats -- leaving the camera on its current one");
+    }
+
+    // Preference unchanged (colour -> BGR8, mono stays Mono8); the difference
+    // is that it is now chosen from what the camera actually advertises rather
+    // than set blind. Must happen before arv_camera_create_stream.
+    // INSP_CAM_PIXEL_FORMAT overrides the preference: "mono8", "bgr8", or
+    // unset for the rule above.
+    //
+    // The rule costs three bytes per pixel on a camera that has one. The
+    // MV-CA050-11UM is a MONOCHROME body and still advertises BGR8 -- it
+    // converts internally -- so "prefer BGR8 where offered" picks a format
+    // whose extra two channels are copies. That is invisible at the production
+    // crop and decisive at full frame:
+    //
+    //   560x452  BGR8   759 KB/frame x 37/s =  28 MB/s   fine
+    //   2448x2048 BGR8 15.04 MB/frame x 37/s = 556 MB/s   impossible on USB3
+    //   2448x2048 Mono8 5.01 MB/frame x 37/s = 185 MB/s   measured achievable
+    //
+    // The last line is not a calculation: arv-camera-test on this body, with
+    // this core stopped, sustained 35 frame/s at 175 MiB/s free-running at
+    // full frame. What happens when the link is over-demanded is documented
+    // above at AcquisitionBurstFrameCount and was reproduced here on
+    // 2026-08-11 -- the camera refuses triggers silently, with no error and no
+    // frames, and does NOT recover when the ROI is put back. It took a
+    // physical replug.
+    const char *_pfEnv = getenv("INSP_CAM_PIXEL_FORMAT");
+    const bool  _wantMono = (_pfEnv && strcmp(_pfEnv, "mono8") == 0);
+    const bool  _wantBgr  = (_pfEnv && strcmp(_pfEnv, "bgr8")  == 0);
+    if (_pfEnv) LOGI("INSP_CAM_PIXEL_FORMAT=%s", _pfEnv);
+
+    if (_wantMono && has_mono8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_MONO_8, &err);
+    }
+    else if (_wantBgr && has_bgr8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
+    }
+    else if (_pfEnv)
+    {
+      LOGE("INSP_CAM_PIXEL_FORMAT=%s but the camera does not advertise it "
+           "(mono8:%d bgr8:%d) -- falling back to the default preference",
+           _pfEnv, (int)has_mono8, (int)has_bgr8);
+      if (has_bgr8)      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
+      else if (has_mono8) arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_MONO_8, &err);
+    }
+    else if (has_bgr8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
+    }
+    else if (has_mono8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_MONO_8, &err);
+    }
 
     if (err)
     {
-      LOGE("ERR code:%d msg:%s", err->code, err->message);
+      LOGE("set_pixel_format ERR code:%d msg:%s", err->code, err->message);
       g_clear_error(&err);
     }
 
+    // Loud if we end up somewhere ExtractFrame cannot decode: the symptom
+    // otherwise is a camera that opens cleanly and delivers nothing.
+    ArvPixelFormat settled = arv_camera_get_pixel_format(camera, NULL);
+    if (settled != ARV_PIXEL_FORMAT_MONO_8 &&
+        settled != ARV_PIXEL_FORMAT_BGR_8_PACKED &&
+        settled != ARV_PIXEL_FORMAT_BAYER_GR_8 &&
+        settled != ARV_PIXEL_FORMAT_BAYER_GB_8 &&
+        settled != ARV_PIXEL_FORMAT_BAYER_RG_8)
+    {
+      LOGE("camera settled on pixel format %0X, which ExtractFrame cannot decode "
+           "-- frames will be rejected", settled);
+    }
   }
 
-  stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
-  
+  // The stream is created AFTER the region is settled -- see below. Creating
+  // it here, before SetROI, is what broke full frame.
+  //
   // arv_camera_set_chunk_mode(camera,true,NULL);
 
-  LOGI(">>>>");
   chunk_parser = NULL;
   chunks = NULL;
 
@@ -625,6 +1079,24 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   SetROI(0,0,999999,999999,0,0);//MAX ROI
   payloadSize = arv_camera_get_payload(camera, NULL);
 
+  // Create the stream only now, with the region and the pixel format final.
+  //
+  // Aravis fixes a USB3 stream's transfer configuration when the stream is
+  // created. Creating it before SetROI left that configuration describing
+  // whatever region the camera happened to be in when it was opened, and a
+  // later ROI that made the payload BIGGER then produced truncated transfers:
+  // buffers the right size, payload the right size, and a SIZE_MISMATCH on the
+  // very first frame, after which the camera delivers nothing until a
+  // DeviceReset.
+  //
+  // The production crop survived this by accident. Applying it changes the
+  // payload (5013504 -> 253120), which trips the rebuild in StartAquisition,
+  // and the rebuilt stream is created with the camera already cropped. Full
+  // frame leaves the payload equal to the constructor's value, so nothing ever
+  // rebuilt it. Rebuilding later does not help either -- measured: the first
+  // frame is already truncated before StartAquisition is ever reached.
+  stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
+
   // GigE jumbo-frame negotiation: try to use the largest packet size the link
   // supports, falling back to a smaller size on failure. Big throughput win
   // when the network supports jumbo frames; harmless otherwise.
@@ -641,7 +1113,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   if (stream != NULL)
   { // GigE/USB3 best practice is 4-10 buffers to absorb consumer jitter; 2 was
     // too few and produced packet/frame drops under load.
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < STREAM_BUFFER_COUNT; i++)
     {
       arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
     }
@@ -655,12 +1127,21 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
 
 
+  // Keep the handler ids: without them the destructor had no way to detach
+  // these closures (both capture `this`) before freeing what they touch.
   //
-  g_signal_connect(stream, "new-buffer", G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
+  // Note this arms the stream callback while the constructor is still running.
+  // That is survivable now only because every member the callback reads has a
+  // default initializer in the header -- previously they were indeterminate,
+  // and a takeCount that happened to be 0 stopped acquisition on frame one.
+  _sig_new_buffer = g_signal_connect(stream, "new-buffer",
+                                     G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
 
   arv_stream_set_emit_signals(stream, TRUE);
-  g_signal_connect(arv_camera_get_device(camera), "control-lost",
-                   G_CALLBACK(s_STREAM_CONTROL_LOST_CB), this);
+  ArvDevice *ctrl_dev = arv_camera_get_device(camera);
+  if (ctrl_dev)
+    _sig_control_lost = g_signal_connect(ctrl_dev, "control-lost",
+                                         G_CALLBACK(s_STREAM_CONTROL_LOST_CB), this);
 
   arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, NULL);
   arv_camera_set_exposure_time_auto (camera,ARV_AUTO_OFF,NULL);
@@ -715,9 +1196,69 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
 
 
-  arv_camera_set_string (camera, "BalanceWhiteAuto", "Off",NULL);
-  arv_camera_set_string (camera, "TriggerSource", "Anyway",NULL);
-  arv_camera_set_string (camera, "TriggerMode", "On", NULL);
+  logCameraState("before-trigger-setup");
+
+  // These used to pass NULL for the GError, so a rejected write was invisible
+  // -- and a camera left in a state that cannot produce frames is
+  // indistinguishable from a dead trigger wire. Report them.
+  {
+    GError *e = NULL;
+    arv_camera_set_string (camera, "BalanceWhiteAuto", "Off", &e);
+    if (e) { LOGI("BalanceWhiteAuto=Off: %s", e->message); g_clear_error(&e); }
+
+    // Line0 (the opto input the sorter drives), NOT "Anyway". "Anyway" accepts
+    // a trigger from any source including the camera's internal one, so the
+    // sensor free-runs between hardware pulses -- frames the machine never
+    // asked for. It triggers correctly, so it looks fine, but the core pairs
+    // cam_trig{tid} to frames FIFO and that only holds while the two streams
+    // are 1:1. See the TriggerMode() copy of this comment for the measured
+    // damage. Fall back to "Anyway" for bodies without Line0, and say which one
+    // took -- getting it wrong is invisible until the pairing has drifted.
+    const char *tsrc = "Line0";
+    arv_camera_set_string (camera, "TriggerSource", tsrc, &e);
+    if (e)
+    {
+      LOGE("TriggerSource=Line0 REJECTED (%s) -- falling back to Anyway", e->message);
+      g_clear_error(&e);
+      tsrc = "Anyway";
+      arv_camera_set_string (camera, "TriggerSource", tsrc, &e);
+      if (e) { LOGE("TriggerSource=Anyway REJECTED: %s", e->message); g_clear_error(&e); tsrc = NULL; }
+    }
+    if (tsrc) LOGI("TriggerSource=%s", tsrc);
+
+    // INSP_CAM_FREERUN=1 leaves the camera free-running instead. A bring-up
+    // switch, for one question: arv-camera-test free-runs at full frame
+    // perfectly (567 buffers, 2.84 GB) while this core stops after a handful
+    // of TRIGGERED full-frame images. If the core free-runs cleanly too, the
+    // fault is specific to triggered acquisition; if it stops anyway, the
+    // trigger path is innocent and it is our acquisition path.
+    static const bool _freerun = []{ const char *v = getenv("INSP_CAM_FREERUN");
+                                     return v && *v == '1'; }();
+    if (_freerun)
+    {
+      arv_camera_set_string (camera, "TriggerMode", "Off", &e);
+      if (e) { LOGE("TriggerMode=Off REJECTED: %s", e->message); g_clear_error(&e); }
+      fprintf(stderr, "[camdiag] INSP_CAM_FREERUN=1 -- camera left free-running\n");
+      fflush(stderr);
+    }
+    else
+    {
+    arv_camera_set_string (camera, "TriggerMode", "On", &e);
+    if (e) { LOGE("TriggerMode=On REJECTED: %s", e->message); g_clear_error(&e); }
+    }
+
+    // ONE frame per trigger -- and it has to be done HERE, not only in
+    // TriggerMode(), because this constructor configures triggering inline and
+    // never calls TriggerMode() at all. Left at its default of 5, every trigger
+    // demands five full frames: at this layer's forced BGR8 full frame that is
+    // 5 x 15 MB = 75 MB per trigger, which saturates the link, and the camera
+    // then silently refuses triggers outright -- no error, no frames, and
+    // indistinguishable from a dead trigger wire. Measured: with burst=5 the
+    // layer captured 0 frames from 40 pulses; with burst=1, 35.
+    // Must precede start_acquisition: this node is locked while streaming.
+    arv_camera_set_integer (camera, "AcquisitionBurstFrameCount", 1, &e);
+    if (e) { LOGI("AcquisitionBurstFrameCount=1: %s (absent on some models)", e->message); g_clear_error(&e); }
+  }
   GError *err = NULL;
 
   arv_camera_stop_acquisition (camera, &err);
@@ -728,16 +1269,89 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
   
   
+  // Per-frame trace for the flash-identity test. Opened here, beside the
+  // watermark enable, because the two are read together: the trace is only
+  // meaningful when the count it records is real.
+  {
+    const char *tp = getenv("INSP_CAM_FRAME_TRACE");
+    if (tp && *tp && g_frameTrace == NULL)
+    {
+      g_frameTrace = fopen(tp, "w");
+      if (g_frameTrace)
+      {
+        fprintf(g_frameTrace, "cam_ts_us,ext,ext_valid,frame_num,frame_valid,mean\n");
+        LOGI("INSP_CAM_FRAME_TRACE -> %s", tp);
+      }
+      else LOGE("INSP_CAM_FRAME_TRACE: cannot open %s", tp);
+    }
+  }
+
+  // INSP_CAM_TRIG_WATERMARK: have the camera stamp its trigger count into the
+  // image so a report can carry it.
+  //
+  // This replicates specdecode.py exactly, because that is the ONLY
+  // configuration whose byte layout has ever been measured (UINSP_CAVEATS,
+  // 2026-08-10). Three details are load-bearing and were each got wrong on the
+  // first attempt here:
+  //
+  //   1. clear every field first. Leftover enabled fields change the packing.
+  //   2. enable BOTH ExtTriggerCount and Framecounter. The measurement was made
+  //      with both on; one alone has never been characterised.
+  //   3. ExtTriggerCount is at offset 4, not 0. Offset 0 is Framecounter. Note
+  //      that ExtTriggerCount is enabled FIRST and still lands second, so the
+  //      layout is not "enable order" -- do not re-derive it, copy it.
+  //
+  // Measured behaviour at 400Hz/120 triggers: off=0 stepped by 1 (frames),
+  // off=4 stepped by 2.16 with span exactly 120 -- the camera counting the 64
+  // triggers it REFUSED, which is the whole reason to read this at all.
+  //
+  // The watermark overwrites row 0 (full-frame y=428). The station currently
+  // has inspection_region from y=432 and clean1 from y=429, so nothing judged
+  // overlaps it -- but the caveat file calls that a coincidence, not a design.
+  // Re-check before changing the ROI or the station regions.
+  {
+    const char *e = getenv("INSP_CAM_TRIG_WATERMARK");
+    g_trigWatermark = (e && atoi(e) != 0);
+    if (g_trigWatermark)
+    {
+      static const char *kFields[] = {
+        "ExtTriggerCount", "Framecounter", "Timestamp", "ROIPosition",
+        "LineInputOutput", "BrightnessInfo", "Exposure", "Gain" };
+      ArvDevice *dev = arv_camera_get_device(camera);
+      auto spec = [&](const char *item, gboolean on) -> bool {
+        GError *werr = NULL;
+        arv_device_set_string_feature_value(dev, "FrameSpecInfoSelector", item, &werr);
+        if (werr) { g_error_free(werr); return false; }
+        arv_device_set_boolean_feature_value(dev, "FrameSpecInfo", on, &werr);
+        if (werr) { g_error_free(werr); return false; }
+        return true;
+      };
+      for (size_t i = 0; i < sizeof(kFields)/sizeof(kFields[0]); i++)
+        spec(kFields[i], FALSE);
+      const bool okExt = spec("ExtTriggerCount", TRUE);
+      const bool okFrm = spec("Framecounter",    TRUE);
+      g_trigWatermark = okExt && okFrm;
+      LOGE("camera trigger watermark: %s (ExtTriggerCount=%d Framecounter=%d, "
+           "reading ExtTriggerCount at row0 offset 4)",
+           g_trigWatermark ? "ON" : "FAILED", (int)okExt, (int)okFrm);
+    }
+  }
   arv_camera_start_acquisition (camera, &err);
   if (err)
   {
     LOGE("ERR code:%d msg:%s", err->code, err->message);
     g_clear_error(&err);
   }
-  else 
+  else
   {
     acquisition_started=true;
+    // This path starts acquisition inline instead of via StartAquisition(), so
+    // it has to arm the floor watch itself -- the same omission that left
+    // AcquisitionBurstFrameCount at its factory default here for so long.
+    refreshExposureFloor();
   }
+
+  logCameraState("after-ctor");
 
   //
 
@@ -777,12 +1391,68 @@ void CameraLayer_Aravis::listDevices(vector<cam_info> &ret_infoList, bool tryOpe
 
 CameraLayer_Aravis::~CameraLayer_Aravis()
 {
-  g_object_unref(camera);
-  camera = NULL;
+  // The old body was two unrefs and nothing else, which left three ways for
+  // the stream thread to run against a destroyed object:
+  //   - acquisition was never stopped, so frames kept arriving;
+  //   - "new-buffer"/"control-lost" were never disconnected, and both closures
+  //     carry `this`;
+  //   - `camera` was unreffed FIRST, while the callback dereferences it
+  //     (arv_camera_stop_acquisition, arv_camera_get_payload).
+  // Silence the source, disconnect, and only then release -- camera last,
+  // since the stream holds the device.
+  if (stream)
+  {
+    arv_stream_set_emit_signals(stream, FALSE);
+    if (_sig_new_buffer && g_signal_handler_is_connected(stream, _sig_new_buffer))
+      g_signal_handler_disconnect(stream, _sig_new_buffer);
+    _sig_new_buffer = 0;
+  }
+
+  if (camera)
+  {
+    ArvDevice *dev = arv_camera_get_device(camera);
+    if (dev && _sig_control_lost && g_signal_handler_is_connected(dev, _sig_control_lost))
+      g_signal_handler_disconnect(dev, _sig_control_lost);
+    _sig_control_lost = 0;
+
+    if (acquisition_started)
+    {
+      arv_camera_stop_acquisition(camera, NULL);
+      acquisition_started = false;
+    }
+  }
+
+  // Disconnecting the signals stopped FUTURE emissions only; a callback that
+  // is already inside its body (a 5MP demosaic takes tens of ms) still holds
+  // `this`. Flip the teardown flag and acquire the gate once: that waits out
+  // the in-flight callback and turns any straggler into an early return.
+  // Only NOW is nothing mid-callback, and the frees below become safe.
+  {
+    std::lock_guard<std::mutex> _cb_gate(_stream_cb_gate);
+    _stream_cb_teardown = true;
+  }
+  _frame_cache_buffer = NULL;
+
+  if (chunk_parser)
+  {
+    g_object_unref(chunk_parser);
+    chunk_parser = NULL;
+  }
+  if (chunks)
+  {
+    g_strfreev(chunks);
+    chunks = NULL;
+  }
+
   if (stream)
   {
     g_object_unref(stream);
     stream = NULL;
+  }
+  if (camera)
+  {
+    g_object_unref(camera);
+    camera = NULL;
   }
 }
 CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
@@ -807,20 +1477,37 @@ CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
 
   if(doChange==false)return CameraLayer::ACK;
 
-  arv_camera_stop_acquisition (camera, NULL);
+  // Restore what we found. This used to stop and then unconditionally start,
+  // so toggling a mirror on a stopped camera silently began streaming, and
+  // acquisition_started was never updated either way -- leaving the flag
+  // claiming "stopped" while the camera was actually running.
+  const bool was_running = acquisition_started;
+  if (was_running) StopAquisition();
+
+  GError *err = NULL;
   if(Dir==0)
   {
-    arv_camera_set_boolean(camera,"ReverseX",en,NULL);
+    arv_camera_set_boolean(camera,"ReverseX",en,&err);
   }
   if(Dir==1)
   {
-    arv_camera_set_boolean(camera,"ReverseY",en,NULL);
+    arv_camera_set_boolean(camera,"ReverseY",en,&err);
   }
 
+  CameraLayer::status ret = CameraLayer::ACK;
+  if (err)
+  {
+    // Previously all three Aravis calls here passed NULL for the error, so a
+    // camera that does not expose ReverseX/ReverseY failed silently and this
+    // still returned ACK.
+    LOGE("SetMirror dir %d: %s", Dir, err->message);
+    g_clear_error(&err);
+    ret = CameraLayer::NAK;
+  }
 
-  arv_camera_start_acquisition (camera, NULL);
+  if (was_running) StartAquisition();
 
-  return CameraLayer::ACK;
+  return ret;
 }
 CameraLayer::status CameraLayer_Aravis::SetROIMirror(int Dir, int en)
 {
@@ -875,6 +1562,16 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
   gint	w_inc = arv_camera_get_width_increment	(camera,NULL);
   gint	h_inc = arv_camera_get_height_increment	(camera,NULL);
 
+  // These four are used as divisors immediately below. Every call passes NULL
+  // for the GError, so a camera that does not expose the increment features
+  // returns 0 silently -- and 0 here was an integer division by zero, i.e. a
+  // SIGFPE that takes the whole process down on a ROI change. 1 means "no
+  // granularity constraint", which is the right fallback.
+  if (xo_inc <= 0) { LOGE("x offset increment unavailable, assuming 1"); xo_inc = 1; }
+  if (yo_inc <= 0) { LOGE("y offset increment unavailable, assuming 1"); yo_inc = 1; }
+  if (w_inc  <= 0) { LOGE("width increment unavailable, assuming 1");    w_inc  = 1; }
+  if (h_inc  <= 0) { LOGE("height increment unavailable, assuming 1");   h_inc  = 1; }
+
   x=x/xo_inc*xo_inc;
   y=y/yo_inc*yo_inc;
   w=w/w_inc*w_inc;
@@ -898,16 +1595,15 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
 
-  if(acquisition_started)
+  // Was a hardcoded 1000 ms sleep on the caller's thread, used as a "wait for
+  // the camera to settle" after stopping. StopAquisition() already does the
+  // same stop plus a 50 ms settle -- the value that was actually tuned for
+  // reliable parameter writes (see the comment on StopAquisition) -- so go
+  // through it instead of blocking a full second inside a setter.
+  const bool was_running = acquisition_started;
+  if (was_running)
   {
-    arv_camera_stop_acquisition (camera, &err);
-    if (err)
-    {
-      LOGI("ERR code:%d msg:%s", err->code, err->message);
-      g_clear_error(&err);
-    }
-    // sleep(1);
-    this_thread::sleep_for(chrono::milliseconds(1000) );
+    StopAquisition();
   }
 
 
@@ -932,16 +1628,17 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
   
-  if(acquisition_started)
+  // was_running, NOT acquisition_started: StopAquisition() above cleared the
+  // flag, so testing it here would never restart. Going through
+  // StartAquisition() also re-sizes the buffer pool, which matters precisely
+  // here -- changing the region is what changes the payload, and stale-sized
+  // buffers are what produce SIZE_MISMATCH on the first frames back.
+  if (was_running)
   {
-    arv_camera_start_acquisition (camera, &err);
-    if (err)
-    {
-      LOGI("ERR code:%d msg:%s", err->code, err->message);
-      g_clear_error(&err);
-    }
+    StartAquisition();
   }
-    
+
+
   // if(acquisition_started)
   // {
   //   arv_camera_start_acquisition (camera, &err);
@@ -978,6 +1675,31 @@ CameraLayer::status CameraLayer_Aravis::GetROI(int *x, int *y, int *w, int *h, i
 
 CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 {
+  // Redundant re-application, isolated behind a switch so it can be tested
+  // rather than argued about.
+  //
+  // This is called again on every burst command, and it rewrites the whole
+  // trigger configuration each time -- including register writes to nodes the
+  // device locks while streaming. At full frame the camera stops delivering
+  // during the SECOND round and never recovers without a DeviceReset; at the
+  // production crop the same sequence has not been seen to fail, though it is
+  // not established that the crop is immune rather than simply never pushed.
+  //
+  // INSP_CAM_TRIGMODE_ONCE=1 makes a call that asks for the mode already in
+  // effect a no-op. If full frame then survives, the cause is in here.
+  {
+    static const bool _once = []{ const char *e = getenv("INSP_CAM_TRIGMODE_ONCE");
+                                  return e && *e == '1'; }();
+    static int _applied = -999;
+    if (_once && type == _applied)
+    {
+      fprintf(stderr, "[camdiag] TriggerMode(%d) skipped (already applied)\n", type);
+      fflush(stderr);
+      CameraLayer::TriggerMode(type);
+      return CameraLayer::ACK;
+    }
+    _applied = type;
+  }
   CameraLayer::TriggerMode(type);
   GError *err = NULL;
 
@@ -997,6 +1719,55 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 
 
   takeCount = -1;
+
+  // ONE frame per trigger. Measured on the bench: these bodies expose only
+  // TriggerSelector=FrameBurstStart (there is no FrameStart trigger), so
+  // AcquisitionBurstFrameCount *is* the frames-per-trigger control -- and it
+  // defaults to 5. Left alone, every trigger produces five frames: five times
+  // the payload, on a link whose bandwidth is exactly what decides whether the
+  // camera can accept the next trigger at all. The pipeline pairs one frame to
+  // one part, so anything but 1 also desynchronises that pairing.
+  // Acquisition-control nodes are locked while the camera is streaming --
+  // writing this one mid-stream fails with a USB3Vision write_memory error and
+  // leaves the control endpoint unhappy. Stop, write, restore.
+  //
+  // READ IT FIRST. The stop/restart is the expensive half of this, and the
+  // value is 1 already on every call after the first -- the constructor sets
+  // it. Re-applying it unconditionally means every TriggerMode() call stops
+  // and restarts acquisition for no change at all.
+  //
+  // At the production crop the restart succeeds and nothing is noticed. At
+  // full frame it does not: the restart fails with the USB3Vision
+  // write_memory error documented at StartAquisition, acquisition_started
+  // stays false, every later start fails the same way, and the camera is dead
+  // until a DeviceReset. Measured 2026-08-11: full frame delivered frames
+  // until the first repeat TriggerMode() call and then stopped, at 19 frames
+  // with one trigger cadence and 3 with another -- both in the SECOND burst
+  // round, which is what identified the caller.
+  {
+    GError *burst_err = NULL;
+    const gint64 burst_now =
+      arv_camera_get_integer(camera, "AcquisitionBurstFrameCount", &burst_err);
+    const bool burst_readable = (burst_err == NULL);
+    if (burst_err) g_clear_error(&burst_err);
+
+    if (!burst_readable || burst_now != 1)
+    {
+      const bool burst_was_running = acquisition_started;
+      if (burst_was_running) StopAquisition();
+
+      arv_camera_set_integer(camera, "AcquisitionBurstFrameCount", 1, &burst_err);
+      if (burst_err)
+      {
+        LOGI("AcquisitionBurstFrameCount=1: %s (harmless if the node is absent)",
+             burst_err->message);
+        g_clear_error(&burst_err);
+      }
+
+      if (burst_was_running) StartAquisition();
+    }
+  }
+
   //0 for continuous, 1 for soft trigger, 2 for HW trigger
   if (type == 0)
   {
@@ -1039,18 +1810,54 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
       }
     }
 
-    arv_camera_set_string (camera, "TriggerSource", "Anyway", &err);
+    // Prefer the physical trigger input over "Anyway".
+    //
+    // "Anyway" means the camera accepts a trigger from ANY source -- including
+    // its own internal one -- so the sensor keeps free-running between hardware
+    // pulses. It does trigger correctly (proven 20/20 on the bench), which is
+    // why it looked fine, but the extra frames are the problem downstream: the
+    // core pairs cam_trig{tid} to frames FIFO, and that is only correct while
+    // the two streams are 1:1. Measured with "Anyway": ~213 announced parts vs
+    // 449 frames and 273 "frame with no pending trigger", with report latency
+    // climbing without bound as the pairing drifted.
+    //
+    // Line0 is the opto input the sorter drives. Fall back to "Anyway" if a
+    // body does not expose it, so other cameras keep working -- and log which
+    // one actually took, because getting this wrong is invisible until the
+    // pairing has already drifted.
+    //
+    // Both triggered modes point here, including type 1. That looks wrong --
+    // type 1 is nominally "soft trigger" -- but trigger_mode:1 is what the
+    // WebUI sends to mean "stop free-running", and on this machine the camera
+    // must still answer the plate while it is in that state. Selecting
+    // Software here instead made the camera deaf to Line0 the moment the UI
+    // paused the stream, which is the whole sensor gone (observed 2026-08-05:
+    // FI armed Line0, an ST {"CameraSetting":{"trigger_mode":1}} arrived a
+    // moment later, and from then on the camera only answered software
+    // triggers).
+    //
+    // A software trigger gets the Software source for the instant it needs it
+    // -- see Trigger() -- which is where that requirement actually belongs.
+    const char *trig_src = "Line0";
+    arv_camera_set_string (camera, "TriggerSource", trig_src, &err);
     if(err)
     {
-      LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      LOGE("TriggerSource %s rejected (d%d c:%d m:%s) -- falling back to Anyway",
+           trig_src, err->domain,err->code,err->message);
       err=NULL;
       g_clear_error(&err);
+      trig_src = "Anyway";
+      arv_camera_set_string (camera, "TriggerSource", trig_src, &err);
+      if(err)
+      {
+        LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        err=NULL;
+        g_clear_error(&err);
+        trig_src = NULL;
+      }
     }
-    else
-    {
-      
-      LOGE("TriggerSource Anyway");
-    }
+    if(trig_src)
+      LOGE("TriggerSource %s", trig_src);
     arv_camera_set_string (camera, "TriggerActivation", "RisingEdge", &err);
 
     if(err)
@@ -1116,10 +1923,43 @@ CameraLayer::status CameraLayer_Aravis::Trigger()
   GError *err = NULL;
   if (takeCount >= 0)
     takeCount++;
+
+  // arv_camera_software_trigger() is silently ignored by a camera whose
+  // TriggerSource is the physical line -- the call succeeds, ACK is returned,
+  // and no frame ever arrives. That is what broke the WebUI's take-new-image,
+  // and with a negative snap timeout it hung the core instead of failing.
+  //
+  // The triggered modes hold Line0 because the machine has to keep answering
+  // the plate (see TriggerMode). So borrow the Software source for the instant
+  // of the trigger and hand it straight back -- neither requirement has to
+  // lose. Only in a triggered mode: in free-run there is nothing to restore.
+  const bool borrow_src = (triggerMode == 1 || triggerMode == 2);
+  if (borrow_src)
+  {
+    GError *se = NULL;
+    arv_camera_set_string (camera, "TriggerSource", "Software", &se);
+    if (se) { LOGE("TriggerSource Software rejected: %s", se->message); g_clear_error(&se); }
+  }
+
   arv_camera_software_trigger (camera,&err);
 
-  // arv_camera_start_acquisition(camera, NULL);
-  acquisition_started=true;
+  if (borrow_src)
+  {
+    GError *se = NULL;
+    arv_camera_set_string (camera, "TriggerSource", "Line0", &se);
+    if (se)
+    {
+      g_clear_error(&se);
+      arv_camera_set_string (camera, "TriggerSource", "Anyway", &se);
+      if (se) { LOGE("could not restore TriggerSource: %s", se->message); g_clear_error(&se); }
+    }
+  }
+
+  // NOT acquisition_started=true here. The start_acquisition call it used to
+  // sit next to is commented out, so the flag was simply a lie -- and it is
+  // load-bearing: SetROI (stop/restart around the region write) and
+  // StopAquisition both branch on it, so a lying flag made them act on a
+  // camera that was never streaming.
   if (err == NULL)
   {
     return CameraLayer::ACK;
@@ -1340,9 +2180,30 @@ CameraLayer::status CameraLayer_Aravis::SetFrameRate(float frame_rate)
     LOGD("M:%f m:%f\n",max,min);
   }
 
-  if(frame_rate==0)frame_rate=min;  
-  else if(isinf(frame_rate))frame_rate=max;
-  else if(frame_rate<min || frame_rate>max)return CameraLayer::NAK;
+  if(frame_rate==0)frame_rate=min;
+  else if(isinf(frame_rate) || frame_rate>max)
+  {
+    // "Faster than the sensor can go" means "don't limit me" -- the WebUI's
+    // setCameraSpeed_HIGHEST() sends the finite sentinel 9999999 for exactly
+    // that. Returning NAK here was actively harmful: the request was rejected
+    // and whatever limit was already in force stayed. Observed on the real
+    // machine -- something pushed framerate:8 at inspection start, the
+    // immediately-following framerate:9999999 was refused, and the camera ran
+    // the whole production test pinned at 8 fps (125ms exposure floor) while
+    // the machine fed it parts far faster. The camera then silently refuses
+    // the surplus triggers, which surfaces only as pairing drift several
+    // layers up. Disable the limiter instead, and say so.
+    LOGI("SetFrameRate %.0f exceeds max %.2f -> disabling the limiter", frame_rate, max);
+    arv_camera_set_boolean (camera, "AcquisitionFrameRateEnable", false, &err);
+    if (err != NULL)
+    {
+      LOGE("AcquisitionFrameRateEnable(false): %s", err->message);
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+    }
+    return CameraLayer::ACK;
+  }
+  else if(frame_rate<min)return CameraLayer::NAK;
 
 
 
@@ -1434,33 +2295,133 @@ CameraLayer::status CameraLayer_Aravis::StopAquisition()
   }
   return CameraLayer::ACK;
 }
+// The exposure floor moves with ROI and pixel format, so it has to be re-read
+// every time acquisition starts rather than sampled once at construction.
+// ResultingFrameRate is what the camera itself says it can sustain with the
+// current settings; measured against hardware triggers it is exact, not
+// advisory -- triggers spaced 1ms above it are honoured and 1ms below it are
+// clamped. Exposure time only enters once it exceeds the readout time
+// (full frame: no effect until ~40ms), so this covers that case too.
+void CameraLayer_Aravis::refreshExposureFloor()
+{
+  _prev_frame_us = 0;
+  _saturated_run = 0;
+  _saturation_reported = false;
+  _floor_us = 0.0;
+  if (!camera) return;
+  GError *err = NULL;
+  double rfr = arv_camera_get_float(camera, "ResultingFrameRate", &err);
+  if (err)
+  {
+    // Not every body exposes it. Skip the check rather than invent a floor.
+    LOGI("ResultingFrameRate unavailable (%s); exposure-floor watch disabled",
+         err->message);
+    g_clear_error(&err);
+    return;
+  }
+  if (rfr > 0.0)
+  {
+    _floor_us = 1000000.0 / rfr;
+    LOGI("exposure floor: %.0fus (ResultingFrameRate %.2f fps)", _floor_us, rfr);
+  }
+}
+
 CameraLayer::status CameraLayer_Aravis::StartAquisition()
 {
   if (!camera) return CameraLayer::NAK;
   if (acquisition_started) return CameraLayer::ACK;
   // ROI / pixel format may have changed while stopped, which changes payload.
-  // Drain whatever's queued in the stream and refill with current-size buffers
-  // so the first frames don't fail SIZE_MISMATCH.
+  //
+  // Recycling buffers in place does NOT work: arv_stream_try_pop_buffer only
+  // returns COMPLETED buffers, so any still submitted to the USB transfer
+  // layer at the old size stay in the stream. Pushing new-size buffers on top
+  // leaves the stream holding two sizes at once, and the device then refuses
+  // the next AcquisitionStart -- "USB3Vision write_memory error" -- which is
+  // unrecoverable for the life of the process, because acquisition_started
+  // stays false and every later start fails the same way. Observed today:
+  // changing the ROI (payload 5013504 -> 544960) killed imaging until the
+  // camera was physically unplugged.
+  //
+  // Buffer size is a property of the stream, so change it the way Aravis
+  // intends: tear the stream down and build a new one. Mirrors the destructor's
+  // ordering -- silence the source, disconnect, drop the cached pointer, and
+  // only then release.
   if (stream) {
     int cur_payload = arv_camera_get_payload(camera, NULL);
-    if (cur_payload > 0 && cur_payload != payloadSize) {
-      LOGI("StartAquisition: payload %d -> %d, recycling buffers",
+    // INSP_CAM_FORCE_STREAM_REBUILD=1 rebuilds once on the first start even
+    // when the payload has not changed.
+    //
+    // The stream is created before the constructor sets MAX ROI, so its
+    // transfer configuration belongs to whatever region the camera happened to
+    // be in when it was opened. A later ROI that CHANGES the payload gets a
+    // rebuild and is therefore correct by accident -- which is exactly the
+    // production crop. A full-frame ROI leaves the payload equal to the value
+    // captured at construction, so no rebuild happens and the stream keeps its
+    // stale configuration: buffers the right size, payload the right size, and
+    // truncated transfers. Measured as SIZE_MISMATCH with all three numbers
+    // identical at 5013504, on the FIRST frame.
+    static const bool _force = []{ const char *v = getenv("INSP_CAM_FORCE_STREAM_REBUILD");
+                                   return v && *v == '1'; }();
+    static bool _forced_done = false;
+    bool force_now = false;
+    if (_force && !_forced_done) { force_now = true; _forced_done = true;
+      fprintf(stderr, "[camdiag] forcing a stream rebuild at payload %d\n", cur_payload);
+      fflush(stderr); }
+    if (cur_payload > 0 && (cur_payload != payloadSize || force_now)) {
+      LOGI("StartAquisition: payload %d -> %d, rebuilding stream",
            payloadSize, cur_payload);
       payloadSize = cur_payload;
-      ArvBuffer *b;
-      while ((b = arv_stream_try_pop_buffer(stream)) != NULL) g_object_unref(b);
-      for (int i = 0; i < 8; i++)
+
+      arv_stream_set_emit_signals(stream, FALSE);
+      if (_sig_new_buffer && g_signal_handler_is_connected(stream, _sig_new_buffer))
+        g_signal_handler_disconnect(stream, _sig_new_buffer);
+      _sig_new_buffer = 0;
+      // Points into a buffer owned by the stream about to be released.
+      _frame_cache_buffer = NULL;
+      g_object_unref(stream);
+      stream = NULL;
+
+      stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
+      if (stream == NULL) {
+        LOGE("StartAquisition: stream rebuild failed -- no frames until reconnect");
+        return CameraLayer::NAK;
+      }
+      for (int i = 0; i < STREAM_BUFFER_COUNT; i++)
         arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
+      _sig_new_buffer = g_signal_connect(stream, "new-buffer",
+                                         G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
+      arv_stream_set_emit_signals(stream, TRUE);
     }
   }
   GError *err = NULL;
   arv_camera_start_acquisition(camera, &err);
   if (err) {
-    LOGE("StartAquisition: %s", err->message);
+    // A camera left streaming by a process that died rejects AcquisitionStart
+    // ("USB3Vision write_memory error (invalid-parameter)") -- it is already
+    // acquiring. The new process cannot know that: acquisition_started is
+    // false on a fresh start, so StopAquisition() is skipped and every start
+    // fails forever. The core then runs with no frames at all, and the only
+    // cure was unplugging the camera.
+    //
+    // That is not a rare state here: the core has crashed and been killed
+    // repeatedly during bring-up. So on failure, stop unconditionally and try
+    // once more. Costs nothing on the healthy path -- this runs only after a
+    // start has already failed.
+    LOGE("StartAquisition: %s -- stopping and retrying once", err->message);
     g_clear_error(&err);
-    return CameraLayer::NAK;
+    GError *stop_err = NULL;
+    arv_camera_stop_acquisition(camera, &stop_err);
+    if (stop_err) g_clear_error(&stop_err);   // expected if it really was idle
+    arv_camera_start_acquisition(camera, &err);
+    if (err) {
+      LOGE("StartAquisition retry: %s", err->message);
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+    }
+    LOGI("StartAquisition: recovered a camera left streaming by a dead process");
   }
   acquisition_started = true;
+  refreshExposureFloor();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   return CameraLayer::ACK;
 }

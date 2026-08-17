@@ -672,9 +672,9 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
   const DICT = useSelector(state => state.UIData.DICT);
   const uInsp_API_ID = useSelector(state => state.ConnInfo.uInsp_API_ID);
   
-  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
+  const uInsp_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.uInsp_API_ID));
 
-  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(uInsp_API_ID,callback));
+  const ACT_WS_GET_OBJ= (callback)=>callback(getPerifAPI(uInsp_API_ID));
 
   
   // useEffect(()=>{
@@ -1070,9 +1070,9 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
   const DICT = useSelector(state => state.UIData.DICT);
   const SLID_API_ID = useSelector(state => state.ConnInfo.SLID_API_ID);
   
-  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+  const SLID_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.SLID_API_ID));
 
-  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+  const ACT_WS_GET_OBJ= (callback)=>callback(getPerifAPI(SLID_API_ID));
   const ACT_StatInfo_Clear= (callback)=>dispatch(UIAct.EV_StatInfo_Clear());
   let machineSetup=SLID_API_ID_CONN_INFO.machineSetup;
 
@@ -1620,9 +1620,9 @@ export function CNC_UI({UI_INSP_Count=false})
   const DICT = useSelector(state => state.UIData.DICT);
   const CNC_API_ID = useSelector(state => state.ConnInfo.CNC_API_ID);
   
-  const CNC_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.CNC_API_ID_CONN_INFO);
+  const CNC_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.CNC_API_ID));
 
-  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(CNC_API_ID,callback));
+  const ACT_WS_GET_OBJ= (callback)=>callback(getPerifAPI(CNC_API_ID));
 
   let PIN_OUT=[ 25,26,32,33];
 

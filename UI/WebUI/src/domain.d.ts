@@ -81,7 +81,6 @@ export interface HyDef {
   featureSet_sha1?: string;
   featureSet_sha1_pre?: string;
   featureSet_sha1_root?: string;
-  intrusionSizeLimitRatio?: number;
   name?: string;
   tag?: string | string[];
   [k: string]: unknown;
@@ -138,7 +137,6 @@ export interface EditInfo {
   defModelPath?: string;
   DefFileName: string; DefFileTag: string[]; DefFileHash?: string;
   matching_angle_margin_deg: number; matching_angle_offset_deg: number; matching_face: number;
-  intrusionSizeLimitRatio: number;
   img: unknown;
   inspReport?: unknown;
   reportStatisticState?: unknown;

@@ -29,6 +29,85 @@ import renderUTIL from './canvas/renderUTIL';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './canvas/renderConst';
 export { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR };
 
+// How long the core took on this frame, drawn just above the image's top-left
+// corner. Shared by the inspection view and the def editor -- one function
+// because it is the same claim about the same number, and two copies would
+// drift the moment one of them gained a field.
+//
+// `imgTopLeft_dev` is the SCREEN position of image pixel (0,0), captured by the
+// caller inside the image's own transform. It has to be taken there: the def
+// editor rectifies the image into the object frame, so by the time the caller
+// is back in world space the origin is the part, not the picture -- drawing at
+// world (0,-y) put this caption straight across the object being measured.
+//
+// Drawn in screen space so it stays upright and one size at every zoom, rather
+// than rotating with a rectified image or growing as you zoom out.
+//
+// Wall AND cpu, never wall alone. The core's own log prints only cpu and says
+// "(CPU time, not wall)" because reading one as the other has caused wrong
+// conclusions here; they differ by roughly the thread count on the parallel
+// stages (measured ~9ms wall against ~34ms cpu).
+function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
+  // edit_DB_info.insp_timing -- top-level on the report, set by the
+  // Inspection_Report reducer next to `station`. Read from the image-paired
+  // snapshot so the number belongs to the frame under it, the same way the
+  // station overlay does.
+  const rp = self.edit_DB_info && self.edit_DB_info.insp_timing;
+  const wall = rp && rp.wall_ms;
+  if (!imgTopLeft_dev || typeof wall !== 'number' || !isFinite(wall)) return;
+
+  const cpu = rp.cpu_ms;
+  let txt = (typeof cpu === 'number' && isFinite(cpu))
+    ? ('檢測 ' + wall.toFixed(1) + ' ms  (CPU ' + cpu.toFixed(1) + ' ms)')
+    : ('檢測 ' + wall.toFixed(1) + ' ms');
+
+  // The def build, appended but NEVER added in. It is the def parse plus the
+  // shape-template train, and on a shape-based def it dwarfs the inspection
+  // (measured 79 ms build against 11 ms inspect) -- which is exactly why it
+  // cannot be folded into a number labelled 檢測. Only the editor ever sends
+  // this: the live path loads the def once per session, so the key is absent
+  // there and the caption correctly says nothing about it.
+  const build = rp.build_ms;
+  if (typeof build === 'number' && isFinite(build) && build >= 5)
+    txt += '   ＋建構 ' + build.toFixed(0) + ' ms/次';
+
+  ctx.save();
+  // setTransform directly, NOT self.setMatrix(): that helper is defined on some
+  // canvas subclasses and not others (the inspection view has no such method),
+  // so calling it from shared code threw and took the whole draw with it --
+  // which in InspectionUI means the frame stops rendering, not just the
+  // caption. identityMat does live on the shared prototype; fall back to the
+  // identity anyway so this can never be the thing that breaks a draw.
+  const I = self.identityMat;
+  if (I) ctx.setTransform(I.a, I.b, I.c, I.d, I.e, I.f);
+  else   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = '600 14px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+
+  // Clamped into the viewport.
+  //
+  // The corner is the anchor, not the rule: you are usually zoomed into the
+  // part, and then the image's top-left is far off-screen -- the caption
+  // tracked it faithfully and was never once visible. Clamping keeps the
+  // intent (top-left, above the content) while keeping the number readable.
+  // The left inset clears the side panel, which is an overlay on top of a
+  // full-width canvas; clamping to the canvas edge put the caption underneath
+  // it, visible as a sliver. Only applies when the corner is off-screen left.
+  const pad = 6, safeLeft = 216;
+  const x = Math.min(Math.max(imgTopLeft_dev.x, safeLeft),
+                     Math.max(safeLeft, self.canvas.width - ctx.measureText(txt).width - pad));
+  const y = Math.min(Math.max(imgTopLeft_dev.y - 4, 18), self.canvas.height - pad);
+
+  // Readable over both the pale plate and whatever falls outside it.
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.strokeText(txt, x, y);
+  ctx.fillStyle = '#00b0ff';
+  ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+
 class EverCheckCanvasComponent_proto {
 
   getMousePos(canvas, evt) {
@@ -233,7 +312,16 @@ class EverCheckCanvasComponent_proto {
 
   resourceClean() {
     this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    this.releaseRawImg();
     log.debug("resourceClean......")
+  }
+
+  // ImageBitmap holds native/GPU memory that only close() frees; ImageData
+  // (the legacy raw path) has no close and needs none.
+  releaseRawImg() {
+    const prev = this.secCanvas_rawImg;
+    this.secCanvas_rawImg = null;
+    if (prev && typeof prev.close === 'function') prev.close();
   }
 
   SetImg(img_info) {
@@ -251,8 +339,19 @@ class EverCheckCanvasComponent_proto {
     if (img_info.jpegBlob) {
       const w = img_info.width, h = img_info.height;
       const token = (this._jpegToken = (this._jpegToken || 0) + 1);
+      // Announces "a decode is in flight; the draw() at the end of it is the
+      // one that matters". InspectionUI's UPDATE used to draw synchronously
+      // right after this call -- with the PREVIOUS bitmap under the NEW
+      // overlays -- and then the decode callback drew again: measured as two
+      // full-canvas draws per frame, half of them wasted (plus one frame of
+      // new-overlay-on-old-image). Callers that check this flag skip the sync
+      // draw; callers that don't behave exactly as before.
+      this._imgDecodePending = true;
       createImageBitmap(img_info.jpegBlob).then((bmp) => {
+        // A stale token means a NEWER SetImg is in flight and owns the
+        // pending flag now -- leave it alone.
         if (this._jpegToken !== token) { if (bmp.close) bmp.close(); return; }
+        this._imgDecodePending = false;
         // TEMP probe — confirm decoded bitmap intrinsic size matches header.
         if (bmp.width !== w || bmp.height !== h) {
           console.warn("JPEG size mismatch: header="+w+"x"+h+
@@ -264,6 +363,12 @@ class EverCheckCanvasComponent_proto {
         this.secCanvas.height = bmp.height;
         const ctx2nd = this.secCanvas.getContext('2d');
         ctx2nd.drawImage(bmp, 0, 0);
+        // Release the bitmap this one replaces. createImageBitmap allocates
+        // OUTSIDE the JS heap (GPU / native), so GC pressure never reflects it
+        // and dropping the last reference is not enough -- at ~6 fps the
+        // previous frames just accumulate. The stale-token branch above
+        // already got this right; the success path did not.
+        this.releaseRawImg();
         this.secCanvas_rawImg = bmp;
         // Decode is async: the draw() that ran synchronously on mount had no
         // image yet, so the canvas stayed blank until a mousemove forced a
@@ -271,6 +376,13 @@ class EverCheckCanvasComponent_proto {
         if (typeof this.draw === 'function') this.draw();
       }).catch((err) => {
         log.warn("SetImg: JPEG decode failed", err);
+        if (this._jpegToken === token) {
+          this._imgDecodePending = false;
+          // Parity with the old behaviour: the skipped sync draw would have
+          // advanced the overlays over the previous image; do that now so a
+          // failed decode doesn't freeze the annotations too.
+          if (typeof this.draw === 'function') this.draw();
+        }
       });
       return;
     }
@@ -279,7 +391,8 @@ class EverCheckCanvasComponent_proto {
     let img = img_info.img;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
-    this.secCanvas_rawImg = img;
+    this.releaseRawImg();
+    this.secCanvas_rawImg = img;   // ImageData here, not an ImageBitmap
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(img, 0, 0);
 
@@ -605,8 +718,35 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.CandEditPointInfo = null;
     this.EditPoint = null;
     this.ShowInspectionNote = false;
+    // Standalone preview: show a raw live frame at the INSTRUMENT's own scale,
+    // using no def-file state whatsoever. See SetStandalonePreview below.
+    this.standalonePreview = false;
 
     this.EmitEvent = (event) => { log.debug(event); };
+  }
+
+  // Put this canvas in standalone-preview mode: a raw live frame, drawn at the
+  // instrument scale, with every def-derived input ignored.
+  //
+  // The normal (def editor) path takes all three of its spatial inputs from the
+  // loaded def: mmpp from the def's cam_param / sig360, the origin from the
+  // def's sig360 centre, and the fit extent from the def's signature magnitude.
+  // For camera calibration and lens aiming those are not just unavailable, they
+  // are the WRONG numbers -- a def's scale belongs to whatever image was
+  // side-loaded with it, whereas the frame on screen came from this camera
+  // through this lens. The authority for that is the instrument calibration
+  // (lens_calib.json um_per_px), which the caller passes in here.
+  //
+  // Without this, the def-shaped assumptions fail silently: draw() returns on
+  // its cameraParam guard, so a def-less page receives every frame and paints a
+  // fully transparent canvas with nothing logged anywhere. See CORE0_1_CAVEATS
+  // J8.
+  SetStandalonePreview(mmpp) {
+    this.standalonePreview = true;
+    if (Number.isFinite(mmpp) && mmpp > 0) {
+      this.rUtil.renderParam.mmpp = mmpp;
+      this.scaleImageToFitScreen();
+    }
   }
 
   SetShowInspectionNote(doShow=false)
@@ -635,8 +775,14 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
   scaleImageToFitScreen(img_info=this.img_info) {
     if(img_info===undefined)return;
     let mmpp = this.rUtil.get_mmpp();
-    let magArr = GetObjElement(this.edit_DB_info.inherentShapeList,[0,"signature","magnitude"]);
-    
+    // Normally the fit targets the def's signature extent, not the frame -- the
+    // editor wants the PART filling the view, not the sensor. A standalone
+    // preview has no part to frame, and edit_info still carries whatever def was
+    // loaded last, so honouring magnitude here would zoom the raw frame to a
+    // stale, unrelated scale. Fit to the image extent instead.
+    let magArr = this.standalonePreview ? undefined
+      : GetObjElement(this.edit_DB_info.inherentShapeList,[0,"signature","magnitude"]);
+
 
 
     let minCanvasWH=this.canvas.width<this.canvas.height?this.canvas.width:this.canvas.height;
@@ -651,13 +797,28 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.camera.Scale(1/curScale);
     this.camera.Scale(minCanvasWH/maxSig);
 
-    
+    // In the def path the frame gets centred by draw()'s translate to the def's
+    // sig360 centre. A standalone preview has no sig360, and drawing from the
+    // origin puts the frame's top-left at the middle of the view, so it must
+    // centre on its own -- otherwise the frame drifts off-centre the moment the
+    // canvas is resized (opening the side panel was enough).
+    if (this.standalonePreview) {
+      this.camera.SetOffset({
+        x: -img_info.scale * img_info.width  * mmpp / 2,
+        y: -img_info.scale * img_info.height * mmpp / 2,
+      });
+    }
+
     // let center = this.db_obj.getsig360infoCenter();
 
     // console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
     // this.camera.SetOffset({ x: -center.x, y: -center.y });
   }
   EditDBInfoSync(edit_DB_info) {
+    // A standalone preview owns its scale and has no def to sync against;
+    // pulling mmpp out of edit_DB_info here would overwrite the instrument
+    // value with a def's (or with the 1 fallback when there is no def at all).
+    if (this.standalonePreview) return;
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
@@ -689,7 +850,9 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   draw() {
-    if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
+    if (!this.standalonePreview) {
+      if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
+    }
     if(this.img_info===undefined)
     {
       return;
@@ -735,6 +898,11 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       // exact identity for an init-image save (img reg == reference) and skipped
       // entirely for legacy defs -> zero change to existing rendering.
       // NOTE: coordinate frame/sign (and isFlipped) pending visual verification.
+      // A standalone preview registers against nothing: no def_image_reg to
+      // rotate by and no sig360 centre to translate to, so the frame is drawn at
+      // the origin and this whole block is skipped. (Letting it run would only
+      // "work" by throwing into the catch on a null db_obj.)
+      if (!this.standalonePreview)
       try {
         // The calibration preview (disableImageAlign) shows a raw live frame, not
         // a def image, so it must NOT apply def_image_reg rotation -- ignore reg
@@ -986,11 +1154,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         y:mm_pix.y_mm,
       }
       
+      // y from y_pix, not x_pix. The copy-paste made the live rubber-band's y
+      // track its own x, so a drag read back as a square on the diagonal. Only
+      // `current` was affected -- start/end were always right -- which is why it
+      // survived: the committed rectangle was correct and only the preview lied.
       info.pix={
         x:mm_pix.x_pix,
-        y:mm_pix.x_pix,
+        y:mm_pix.y_pix,
       }
-      
+
       this.draw();
     }
 
@@ -1069,6 +1241,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   EditDBInfoSync(edit_DB_info,updateImgOnly=false) {
     if(updateImgOnly==false)
     {
+      // updateImgOnly==false is InspectionUI telling us a NEW image arrived.
+      // Swapping edit_DB_info here is what pairs BOTH the measurement overlay
+      // and the station state to this frame -- draw_station_overlay reads the
+      // station block straight out of it, so there is nothing else to advance.
       this.edit_DB_info = edit_DB_info;
       this.db_obj = edit_DB_info._obj;
       this.rUtil.setEditor_db_obj(this.db_obj);
@@ -1130,6 +1306,142 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   draw() {
     this.draw_INSP();
+    this.draw_station_overlay();
+  }
+
+  // The station: inspection region + clean-space regions, in FULL-SENSOR pixels.
+  //
+  // Drawn from draw(), not from inside draw_INSP(), because draw_INSP bails
+  // early when there is no report or no edit_DB_info -- and setting the region
+  // up is exactly when you have neither. It must be visible on an empty plate.
+  //
+  // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
+  // in full-sensor px; undefined draws nothing.
+  // GEOMETRY ONLY. The boxes belong to the person dragging them, so they land
+  // immediately. The STATE is not passed in at all -- see draw_station_overlay.
+  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
+
+  draw_station_overlay() {
+    const ov = this.stationOverlay;
+    if (!ov || this.img_info === undefined) return;
+    const mmpp = this.rUtil.get_mmpp();
+    if (!(mmpp > 0)) return;
+    const ctx = this.canvas.getContext('2d');
+    const m = this.worldTransform();
+    ctx.save();
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+
+    // Two rectangles, two jobs. The OUTER one is identity and never changes
+    // colour -- blue is the inspection region, orange is a clean region, and you
+    // can always tell which box you are looking at. The INNER one is state.
+    //
+    // Colouring the outer box by state was the first attempt and it was worse:
+    // when everything went green you could no longer tell the station from the
+    // clean regions at a glance, which is the one thing the overlay has to make
+    // obvious while parts are moving.
+    const box = (r, stroke, fill, label, sub, state) => {
+      if (!r || !(r.w > 0) || !(r.h > 0)) return;
+      const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
+      const lw = this.rUtil.getIndicationLineSize();
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = stroke;
+      ctx.strokeRect(x, y, w, h);
+      if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
+
+      if (state) {
+        // Half a stroke width. Both strokes are centred on their own path, so
+        // at this inset they sit edge to edge and read as one double line --
+        // enough to carry a second colour without turning the box into a
+        // frame-within-a-frame that eats the region it is describing.
+        const g = lw * 0.5;
+        if (w > g * 3 && h > g * 3) {
+          ctx.strokeStyle = state.color;
+          ctx.strokeRect(x + g, y + g, w - g * 2, h - g * 2);
+          if (state.fill) { ctx.fillStyle = state.fill;
+                            ctx.fillRect(x + g, y + g, w - g * 2, h - g * 2); }
+        }
+      }
+
+      // Text goes BELOW the box. Inside, it sits on top of the parts -- which
+      // is the one thing in the frame the operator is actually trying to look
+      // at. Above collides with the neighbouring box's text as soon as the
+      // stations sit a part-pitch apart, and below the plate is empty.
+      //
+      // Small, because getFontStyle takes a size in WORLD mm: the 1 the
+      // measurement overlay passes renders enormous for a station label, and
+      // there are two lines per box.
+      const fs = 0.42, pad = 0.12;
+      ctx.font = this.rUtil.getFontStyle(fs);
+      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + h + fs + pad); }
+      if (sub)   { ctx.fillStyle = state ? state.color : stroke;
+                   ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
+    };
+
+    // State comes from edit_DB_info, NOT from the panel.
+    //
+    // It has to travel with the image or it draws on the wrong picture, and
+    // edit_DB_info is already the snapshot InspectionUI swaps only when a new
+    // image arrives -- so reading it here makes the pairing automatic.
+    //
+    // Routing it through the panel instead was the previous attempt and it
+    // could not work: the panel writes state from a useEffect while the canvas
+    // is driven from a class componentWillUpdate. When React batches a report
+    // and an image into one render, the canvas runs first and promotes the
+    // PREVIOUS state onto the new image. More batching at higher rates, which
+    // is exactly where the symptom lived. One snapshot, one gate, no race.
+    const ST = (this.edit_DB_info && this.edit_DB_info.station) || null;
+    const R = (() => {
+      if (!ST || ST.result === undefined) return {};
+      const cat = ST.cat;
+      const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
+      if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
+      if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
+      return { tone: 'na', text: 'NA → 不動作'
+               + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
+    })();
+    const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
+    // NO fill on the inspection region, in either layer. What is inside it is
+    // the part being measured -- the one thing in the frame worth looking at --
+    // and a tint over it costs contrast on exactly the edges the measurement is
+    // about. The two rings and the caption carry the state without touching the
+    // pixels. Clean regions keep their tint: they are supposed to be empty, so
+    // there is nothing there to obscure.
+    const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
+                 : R.tone === 'ng' ? { color: '#ff5252', fill: null }
+                 : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
+                 : null;
+    // Dashed when the core is not filtering by it. The region only applies in
+    // FI; CI is the setup view and deliberately shows every object, including
+    // the ones a run would drop. A solid box that is not selecting anything
+    // looks exactly like one that is -- until a part goes the wrong way -- so
+    // the line itself says which state it is in.
+    const regionOff = !!(ST && ST.region && ST.region.active === false);
+    if (regionOff) ctx.setLineDash([4 * mmpp, 3 * mmpp]);
+    box(ov.region, '#00b0ff', null,
+        ov.region ? (regionOff ? '檢驗區域(設定中·未過濾)' : '檢驗區域') : null,
+        R.text || null, rState);
+    if (regionOff) ctx.setLineDash([]);
+
+    (ov.clean || []).forEach((c, i) => {
+      const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));
+      c = { ...c, dirty: m ? m.dirty : undefined,
+            detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
+      const known = c.dirty !== undefined;
+      const st = !known ? null
+               : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
+                         : { color: '#00e676', fill: null };
+      box(c, '#ffab00', 'rgba(255,171,0,0.06)',
+          c.name || ('淨空' + (i + 1)),
+          known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null, st);
+    });
+
+    if (ov.pending) {
+      ctx.setLineDash([6 * mmpp, 4 * mmpp]);
+      box(ov.pending, '#ffffff', null, null);
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
   }
 
 
@@ -1270,6 +1582,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
     
     
+    // Filled in inside the image's own transform below; used by the timing
+    // caption after the restore.
+    let imgTopLeft_dev = null;
     {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
@@ -1290,9 +1605,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
         // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
         ctx.drawImage(this.secCanvas, 0, 0);
-        
+
+        // Screen position of image pixel (0,0), for the timing caption below.
+        // Taken here, inside the image's transform, for the same reason the def
+        // editor takes it here -- this is the only place the picture's own
+        // frame exists.
+        imgTopLeft_dev = (() => { const M = ctx.getTransform(); return { x: M.e, y: M.f }; })();
+
         ctx.strokeStyle = "rgba(120, 120, 120,30)";
-        
+
         ctx.lineWidth = 50/curScale;
         this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
   
@@ -1310,6 +1631,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         
       }
       ctx.restore();
+
+      // Same caption as the def editor, same keys. On this path the core sends
+      // no def_build_ms -- CI/FI build the engine once at session open -- so it
+      // shows the per-frame inspection cost alone, which is the number that
+      // decides whether the line keeps up.
+      drawInspTimingCaption(this, ctx, imgTopLeft_dev);
 
       if(false && this.db_obj.cameraParam && this.db_obj.cameraParam.mask_radius!==undefined)
       {
@@ -1766,6 +2093,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           if (o && o.id !== undefined) this.rUtil.objDetect_by_id[o.id] = o;
     }
 
+    // Filled in below, inside the image's own transform: the screen position of
+    // image pixel (0,0). Declared out here because the caption that uses it is
+    // drawn after the block, in screen space.
+    let imgTopLeft_dev = null;
     {
       let center = this.db_obj.getsig360infoCenter();
       ctx.save();
@@ -1821,13 +2152,24 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       
       ctx.drawImage(this.secCanvas, 0, 0);
 
-      
+      // Where the image's top-left corner ends up on screen.
+      //
+      // Grabbed HERE, inside the block, because this is the only place the
+      // image's own transform exists: by the time we are past the restore()
+      // below, the world origin is the OBJECT origin (the rectify above
+      // rotates and translates into the def's frame), not the picture's
+      // corner. Transforming image pixel (0,0) is just the matrix's (e,f).
+      imgTopLeft_dev = (() => { const M = ctx.getTransform(); return { x: M.e, y: M.f }; })();
+
       ctx.strokeStyle = "rgba(120, 120, 120,30)";
       let curScale=this.camera.GetCameraScale();
       ctx.lineWidth = 200/curScale/scale;
       this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
       ctx.restore();
     }
+
+    // The timing caption (shared with draw_INSP). See drawInspTimingCaption.
+    drawInspTimingCaption(this, ctx, imgTopLeft_dev);
 
     let unitConvert = {
       unit: "mm",//"μm",
@@ -2102,6 +2444,28 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   search_far:false,
                   margin: mmpp_round*3,
                   width: mmpp_round*10,
+                  // Caliper, and stated HERE rather than as the schema default.
+                  //
+                  // The core reads a missing `locating` as contour, so flipping
+                  // the schema default would make the editor show caliper for
+                  // an old def that runs as contour -- and then write that
+                  // change into the def the next time it was saved. A new
+                  // point can be born caliper; an existing one must not change
+                  // its mind because somebody opened it.
+                  locating: 'caliper',
+                  // min_strength 0 accepts any edge, which is the setting that
+                  // makes caliper look unreliable on a first try: it will lock
+                  // onto noise as readily as onto the part. 60 is what the line
+                  // primitives on this machine run at.
+                  //
+                  // include_range is a perpendicular band in def-mm; 0 means
+                  // "unset" and the core substitutes 2px, which is a pixel
+                  // quantity leaking into a mm field and therefore moves with
+                  // the lens. 0.01mm states it in the field's own unit.
+                  edge: {
+                    method: 'first', polarity: 'any', nth: 0,
+                    min_strength: 60, include_range: 0.01, manual_offset: 0,
+                  },
                   ref: [{
                     id: this.CandEditPointInfo.shape.id,
                     element: this.CandEditPointInfo.shape.type

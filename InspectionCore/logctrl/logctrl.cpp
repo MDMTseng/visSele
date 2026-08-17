@@ -519,6 +519,8 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
                       "git=%s built=%s cfg=%s",
                       BUILD_GIT_HASH, BUILD_TIME_UTC, BUILD_CONFIG);
 
+        h->producer_start_head = 0;   /* fresh ring: everything in it is ours */
+
         /* Zero all slot seqs so the drainer doesn't trust stale data. */
         auto *slots = reinterpret_cast<uint8_t *>(info.ptr) + LOG_HEADER_BYTES;
         std::memset(slots,
@@ -543,6 +545,12 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
         std::snprintf(h->producer_build, sizeof(h->producer_build),
                       "git=%s built=%s cfg=%s",
                       BUILD_GIT_HASH, BUILD_TIME_UTC, BUILD_CONFIG);
+
+        /* Where OUR log starts. Everything below this index in the ring was
+         * written by a previous process (see the field's comment in
+         * log_ring.h) -- the dump marks the boundary instead of pretending
+         * the whole ring is one run. */
+        h->producer_start_head = h->head.load(std::memory_order_acquire);
     }
 
     g_shm_ring.info         = info;

@@ -66,14 +66,66 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer::BasicCameraInfo 
 CameraLayer_BMP_carousel::~CameraLayer_BMP_carousel()
 {
     LOGI("Descructor...");
+    // The thread outlived the object it runs on. Nothing here stopped it, and
+    // StopAquisition was the base-class no-op, so after `delete camera` the
+    // acquisition thread kept calling LoadNext -> updateFolder on a freed
+    // files_in_folder and kept handing frames to the pipeline through a
+    // callback belonging to a destroyed layer. See the crash dumps behind
+    // camera_lifetime_lock in wiringPanel.cpp: that lock bounds the INSPECTION
+    // thread, it never had anything to say about this one.
+    //
+    // Joining here is what makes the rest safe: if the thread is inside
+    // callback(...) when the destructor runs, the join simply waits for it to
+    // return, and no member is touched after that point.
+    StopThread();
+}
+
+// One stop path for everyone. TriggerMode's stop branch used to be the only
+// place that knew how to do this.
+void CameraLayer_BMP_carousel::StopThread()
+{
+    {
+      std::lock_guard<std::mutex> lk(stop_m);
+      ThreadTerminationFlag = 1;
+    }
+    stop_cv.notify_all();
+
+    if(cameraThread == NULL)
+      return;
+
+    // A stop asked for from inside the thread itself (a callback that turns
+    // the camera off) would be a self-join: std::system_error, i.e. a crash in
+    // the code that exists to prevent one. Setting the flag is all we can do
+    // and all that is needed -- the loop exits on its own, and whoever
+    // destroys the layer later does the join.
+    if(cameraThread->get_id() == std::this_thread::get_id())
+      return;
+
+    cameraThread->join();
+    delete cameraThread;
+    cameraThread = NULL;
+}
+
+// The loop's only sleep. Returns true when a stop was requested, so the caller
+// leaves immediately instead of finishing the interval first.
+bool CameraLayer_BMP_carousel::WaitOrStop(int ms)
+{
+    std::unique_lock<std::mutex> lk(stop_m);
+    if(ms<=0)
+      return ThreadTerminationFlag != 0;
+    return stop_cv.wait_for(lk, std::chrono::milliseconds(ms),
+                            [this]{ return ThreadTerminationFlag != 0; });
 }
 
 
 
 CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderName)
 {
-    this->folderName  = folderName;
-    files_in_folder.resize(0);
+    // Scan into a local list and publish it in one move at the end. The
+    // directory walk is the slow part and it needs no lock; doing it in place
+    // meant a WebUI camera_info poll could be iterating files_in_folder while
+    // the acquisition thread was between resize(0) and the last push_back.
+    std::vector<std::string> found;
     DIR *d;
     struct dirent *dir;
     d = opendir(folderName.c_str());
@@ -81,33 +133,83 @@ CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderNam
         while ((dir = readdir(d)) != NULL) {
             if(dir->d_name[0]=='.')continue;
             std::string str(dir->d_name);
+            // Only what imread can decode.
+            //
+            // The list used to be every entry in the directory, so pointing
+            // the carousel at a folder that also holds a .json, a .hydef or a
+            // README put those in the rotation, imread returned empty, and the
+            // frame path had to cope with "no image" on a file the UI was
+            // happily listing as frame 3 of 12. Filtering here means the list
+            // the operator sees IS the list that can be shown.
+            {
+                size_t dot = str.find_last_of('.');
+                if(dot == std::string::npos) continue;
+                std::string ext = str.substr(dot+1);
+                for(auto &ch : ext) ch = (char)tolower((unsigned char)ch);
+                static const char *kImgExt[] = {
+                    "bmp","png","jpg","jpeg","tif","tiff","pgm","ppm","webp",NULL };
+                bool ok=false;
+                for(int e=0; kImgExt[e]; e++)
+                    if(ext == kImgExt[e]) { ok=true; break; }
+                if(!ok) continue;
+            }
             str = folderName+"/"+str;
             //LOGV("FILE::%s",str.c_str());
-            files_in_folder.push_back(str);
+            found.push_back(str);
         }
         closedir(d);
-        
+
+        {
+          std::lock_guard<std::mutex> lk(files_m);
+          this->folderName = folderName;
+          files_in_folder.swap(found);
+        }
         return ACK;
     }
     else
     {
+        // A folder that cannot be opened has no files, same as before: the
+        // list is emptied rather than left showing the previous folder's.
+        std::lock_guard<std::mutex> lk(files_m);
+        this->folderName = folderName;
+        files_in_folder.clear();
         return NAK;
     }
+}
+
+std::vector<std::string> CameraLayer_BMP_carousel::GetFileList()
+{
+    updateFolder(GetFolderName());
+    std::lock_guard<std::mutex> lk(files_m);
+    return files_in_folder;
 }
 
 
 CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
 {
-    updateFolder(this->folderName);
-    if(files_in_folder.size()==0)return NAK;
-    fileIdx++;
-    if(fileIdx>=files_in_folder.size())
+    updateFolder(GetFolderName());
+
+    // Index arithmetic and the lookup belong to the same critical section:
+    // both are only valid against the list length they were computed from,
+    // and the other thread's `next`/`setfolder` can change that length
+    // between the two. The path is copied out so LoadBMP's imread runs
+    // unlocked.
+    std::string path;
     {
-        fileIdx=0;
+      std::lock_guard<std::mutex> lk(files_m);
+      if(files_in_folder.size()==0)return NAK;
+      fileIdx++;
+      // The <0 half is not new behaviour: the old comparison was int against
+      // size_t, so a negative index converted to something enormous and landed
+      // in the same reset. Written out, it stays true after the (int) cast.
+      if(fileIdx<0 || fileIdx>=(int)files_in_folder.size())
+      {
+          fileIdx=0;
+      }
+      path = files_in_folder[fileIdx];
     }
 
-
-    CameraLayer_BMP::status status=LoadBMP(files_in_folder[fileIdx]);
+    CameraLayer_BMP::status status=LoadBMP(path);
     if(status==ACK)
     {
       struct timeval tp;
@@ -123,10 +225,13 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
         width:(uint32_t)newW,
         height:(uint32_t)newH,
       };
+      // Report the loaded file's channel count so a grayscale image actually
+      // reaches the core as a 1-channel frame (see GetLoadedChannels).
+      fi_.channelCount = GetLoadedChannels();
       fi = fi_;
       
       if(call_cb)
-        callback(*this,CameraLayer::EV_IMG,context);
+        invokeFrameCallback(CameraLayer::EV_IMG);
     }
     else
     {
@@ -135,39 +240,56 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
         width:0,
         height:0,
       };
+      fi_.channelCount = 0;
       fi = fi_;
       if(call_cb)
-        callback(*this,CameraLayer::EV_ERROR,context);
+        invokeFrameCallback(CameraLayer::EV_ERROR);
     }
     return status;
 }
 
 CameraLayer::status CameraLayer_BMP_carousel::LoadPrev(bool call_cb)
 {
-    updateFolder(this->folderName);
-    if(files_in_folder.size()==0)return NAK;
-    if(fileIdx<=0) fileIdx = (int)files_in_folder.size();
-    fileIdx--;
-    return LoadAt(fileIdx, call_cb);
+    updateFolder(GetFolderName());
+    int idx;
+    {
+      std::lock_guard<std::mutex> lk(files_m);
+      if(files_in_folder.size()==0)return NAK;
+      if(fileIdx<=0) fileIdx = (int)files_in_folder.size();
+      fileIdx--;
+      idx = fileIdx;
+    }
+    return LoadAt(idx, call_cb);
 }
 
 CameraLayer::status CameraLayer_BMP_carousel::ReloadCurrent(bool call_cb)
 {
-    updateFolder(this->folderName);
-    if(files_in_folder.size()==0)return NAK;
-    if(fileIdx<0 || fileIdx>=(int)files_in_folder.size()) fileIdx=0;
-    return LoadAt(fileIdx, call_cb);
+    updateFolder(GetFolderName());
+    int idx;
+    {
+      std::lock_guard<std::mutex> lk(files_m);
+      if(files_in_folder.size()==0)return NAK;
+      if(fileIdx<0 || fileIdx>=(int)files_in_folder.size()) fileIdx=0;
+      idx = fileIdx;
+    }
+    return LoadAt(idx, call_cb);
 }
 
 CameraLayer::status CameraLayer_BMP_carousel::LoadAt(int idx, bool call_cb)
 {
-    updateFolder(this->folderName);
-    if(files_in_folder.size()==0)return NAK;
-    if(idx<0) idx=0;
-    if(idx>=(int)files_in_folder.size()) idx=(int)files_in_folder.size()-1;
-    fileIdx = idx;
+    updateFolder(GetFolderName());
 
-    CameraLayer_BMP::status status=LoadBMP(files_in_folder[fileIdx]);
+    std::string path;
+    {
+      std::lock_guard<std::mutex> lk(files_m);
+      if(files_in_folder.size()==0)return NAK;
+      if(idx<0) idx=0;
+      if(idx>=(int)files_in_folder.size()) idx=(int)files_in_folder.size()-1;
+      fileIdx = idx;
+      path = files_in_folder[fileIdx];
+    }
+
+    CameraLayer_BMP::status status=LoadBMP(path);
     if(status==ACK)
     {
       struct timeval tp;
@@ -180,14 +302,18 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadAt(int idx, bool call_cb)
         width:(uint32_t)newW,
         height:(uint32_t)newH,
       };
+      // Report the loaded file's channel count so a grayscale image actually
+      // reaches the core as a 1-channel frame (see GetLoadedChannels).
+      fi_.channelCount = GetLoadedChannels();
       fi = fi_;
-      if(call_cb) callback(*this,CameraLayer::EV_IMG,context);
+      if(call_cb) invokeFrameCallback(CameraLayer::EV_IMG);
     }
     else
     {
       CameraLayer::frameInfo fi_={ timeStamp_us:0, width:0, height:0 };
+      fi_.channelCount = 0;
       fi = fi_;
-      if(call_cb) callback(*this,CameraLayer::EV_ERROR,context);
+      if(call_cb) invokeFrameCallback(CameraLayer::EV_ERROR);
     }
     return status;
 }
@@ -210,14 +336,20 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
     while( ThreadTerminationFlag == 0)
     {
         LOGV("TTFlag:%d imageTakingCount:%d triggerMode:%d",
-            ThreadTerminationFlag,imageTakingCount,triggerMode);
+            ThreadTerminationFlag.load(),imageTakingCount,triggerMode);
         int delay_time=0;
         if(imageTakingCount>0 || triggerMode==0)
         {
-            LOGV("imageTakingCount:%d,ThreadTerminationFlag:%d",imageTakingCount,ThreadTerminationFlag);
+            LOGV("imageTakingCount:%d,ThreadTerminationFlag:%d",imageTakingCount,ThreadTerminationFlag.load());
             for(int i=0;i<10;i++)
             {
-              
+              // Ten failing LoadNext calls are ten directory scans, ten imreads
+              // and ten callbacks; whoever is waiting on the join should not
+              // have to sit through the rest of them.
+              if(ThreadTerminationFlag!=0)
+              {
+                break;
+              }
               if(LoadNext()==ACK)
               {
                 break;
@@ -244,12 +376,13 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         // std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if(frameInterval_ms-delay_time>0)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
+            if(WaitOrStop(frameInterval_ms-delay_time))
+              break;
         }
         if(modeTriggerSim_sleep>0)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(modeTriggerSim_sleep));
-          
+            if(WaitOrStop(modeTriggerSim_sleep))
+              break;
         }
     }
     //ThreadTerminationFlag = 0;
@@ -306,8 +439,11 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
     }
     if(mode==0 || mode==-1 )
     {
-      LOGI("ThreadTerminationFlag:%d cameraThread:%p>>>",ThreadTerminationFlag,cameraThread);
-        ThreadTerminationFlag = 0;
+      LOGI("ThreadTerminationFlag:%d cameraThread:%p>>>",ThreadTerminationFlag.load(),cameraThread);
+        {
+          std::lock_guard<std::mutex> lk(stop_m);
+          ThreadTerminationFlag = 0;
+        }
         if(isThreadWorking==false && cameraThread!=NULL)//Try to clean up the thread
         {
           cameraThread->join();
@@ -316,20 +452,39 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
         }
         if(cameraThread == NULL)
         {
+            // Marked working by the creator, not by the thread itself. The
+            // thread sets this on its first line, but until it is scheduled
+            // the flag still reads false -- and the join above, taken on a
+            // thread that is in fact about to run forever in continuous mode,
+            // never returns. StartAquisition() right after a TriggerMode(0)
+            // walks straight into that window.
+            isThreadWorking = true;
             cameraThread = new std::thread(&CameraLayer_BMP_carousel::ContTriggerThread, this);
         }
     }
     else
     {
-        ThreadTerminationFlag = 1;
-        if(cameraThread)
-        {
-            cameraThread->join();
-            delete cameraThread;
-            cameraThread = NULL;
-        }
+        StopThread();
     }
     return ACK;
+}
+
+// Acquisition here is the carousel thread, nothing else. CameraSetup() brackets
+// its writes with StopAquisition()/StartAquisition(), so the start side has to
+// exist -- otherwise a settings refresh without a "trigger_mode" key would stop
+// the fake camera for good.
+CameraLayer::status CameraLayer_BMP_carousel::StopAquisition()
+{
+  StopThread();
+  return ACK;
+}
+
+CameraLayer::status CameraLayer_BMP_carousel::StartAquisition()
+{
+  // Same start as TriggerMode's, deliberately: in trigger mode (triggerMode!=0
+  // with nothing pending) the loop just exits again, which is what it did
+  // before this override existed.
+  return TriggerMode(-1);
 }
 
 

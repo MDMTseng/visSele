@@ -67,6 +67,13 @@ int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool 
     return -1;
 
   websock_data packet;
+  // websock_data has no constructor, so `type` is stack garbage unless set --
+  // and ws_conn::send_pkt branches on it FIRST: garbage that equals CLOSING
+  // (7) would run doClosing() on this SENDER thread, inside whatever locks it
+  // holds (pushToSubscribers holds subscribersLock -> the CLOSING callback
+  // retakes it -> self-deadlock), and would break the invariant that
+  // teardown (pendingCloseFd, RESET) is main-WS-thread-only.
+  packet.type = websock_data::DATA_FRAME;
   packet.peer = target;
   packet.data.data_frame.rawL = len;
   packet.data.data_frame.raw = dat;
@@ -117,8 +124,23 @@ int BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
     case websock_data::DATA_FRAME:
 
     {
-      data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
-      // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
+      if (data.data.data_frame.raw == NULL)
+        return -1;
+      // No NUL is written at raw[rawL] any more.
+      //
+      // It served nothing: toUpperLayer takes an explicit length, and the BPG
+      // reassembly layer copies exactly rawL bytes, so the terminator never
+      // travelled with the payload. The one reader was the commented-out LOGI
+      // below. Meanwhile it wrote one byte PAST the payload -- and when a
+      // single recv() carries several pipelined WS frames, that byte is the
+      // next frame's FIN/opcode. Zeroing it turns that frame into opcode 0,
+      // a continuation frame, and the rest of the batch is misparsed.
+      //
+      // Payloads that reach cJSON_Parse are NUL-terminated by the sender (the
+      // WebUI allocates body.length + 1); wiringPanel's toUpperLayer verifies
+      // that with memchr and refuses the packet if it is missing, which is
+      // exactly the behaviour this line was never actually providing.
+      // LOGI(">>>>data raw:%.*s", data.data.data_frame.rawL, data.data.data_frame.raw);
       if (bpg_prot)
       {
         toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal, data.peer);

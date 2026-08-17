@@ -20,7 +20,10 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   const int crcL=4;
   const int lenFieldIdx=crcFieldIdx+crcL;
   protected:
-  uint8_t dataBuff[500];
+  // Frame assembly buffer. Was 500 -- a set_setup carrying the full config
+  // (~550B after the snake_case rename) tripped RECV_BUFFER_FULL and latched
+  // the link. Sized to comfortably hold the largest legitimate command.
+  uint8_t dataBuff[2048];
   int buffIdx=0;
   bool protocolErrorActive=false;
 
@@ -54,7 +57,9 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     JSON,
     JSONRAW,
     ERROR,
-
+    TRAILER,   // between a completed JSON frame and its optional *HHHH\n CRC
+    RESYNC,    // after RESET recovery: discard until newline (the RESET that
+               // freed us carries its own trailer, which must not re-latch)
   };
   
   enum ERROR_TYPE
@@ -67,6 +72,18 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     RAW_DATA_OVERSIZE
   };
   RTYPE recvType=RTYPE::INIT;
+  // Optional per-frame integrity trailer ("{...}*HHHH\n", CRC16-CCITT of the
+  // JSON bytes). Frames without a trailer are accepted (legacy peers); frames
+  // with a BAD trailer are dropped and counted -- never latched: the newline
+  // is the resync point.
+  char trailerBuf[6];
+  int trailerIdx=0;
+  uint32_t rx_frames=0;
+  volatile uint32_t last_rx_ms=0;   // millis() of the last VALID inbound frame
+  uint32_t rx_crc_fail=0;
+  uint32_t rx_crc_ok=0;
+  static uint16_t crc16_ccitt(const uint8_t *d,int len);
+  void finishJsonFrame(bool crc_present,bool crc_ok);
   ERROR_TYPE errorCode=ERROR_TYPE::NONE;
   int jsonRawStrL=0;
   int recv_data(uint8_t *data,int len, bool is_a_packet=false);
@@ -74,8 +91,18 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   void clearProtocolError();
   bool tryRecoverResetFromErrorBuffer();
   void handleResetRecovery();
+  void handleClearErrorRecovery();
   
   virtual int recv_RESET()=0;
+  // The other way out of a latched parser. RESET was the only one, and
+  // clear_error -- the command an operator and a generic host actually send --
+  // could not work, because its handler is downstream of the parser that is
+  // latched. Not pure: a link that does not care about the distinction can
+  // ignore it and keep RESET as its only escape.
+  virtual int recv_CLEAR_ERROR(){ return 0; }
+  // How many times the parser has latched. Survives the recovery on purpose:
+  // the whole complaint about this failure is that nothing recorded it.
+  uint32_t rx_latch_n = 0;
   virtual int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0)=0;
   
   // int send_data(int head_room,uint8_t *data,int len,int leg_room)

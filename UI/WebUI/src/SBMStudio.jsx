@@ -246,6 +246,10 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       .then((pkts) => {
         const sf = (pkts || []).find((p) => p.type === 'SF');
         setFeatPts(sf && sf.data ? sf.data : { features: [], roi: [] });
+        // 把核心訓練出來的特徵存進 def, 之後載入不必重抽 (見 MISC_Util 的
+        // __shape_cache 說明)。點在畫面上只是視覺化, 這一行才是真的留下來的。
+        if (sf && sf.data && sf.data.shape_cache)
+          dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: sf.data.shape_cache }));
       })
       .catch(() => {})
       .finally(() => setGenBusy(false));

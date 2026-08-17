@@ -137,8 +137,20 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   acv_XY edgeDir = { -s.y, s.x }; // along the edge (projection direction)
 
   float L = p.length, W = p.width, step = (p.step > 0 ? p.step : 1.0f);
-  int nAcross = (int)(2 * L / step) + 1;
-  if (nAcross < 3) return false;
+  // Size the profile in double BEFORE the int conversion. cal_step is only
+  // checked for <= 0 and is divided by mmpp upstream, so a def value of 0.001
+  // (1 um -- a plausible-looking entry) inflates this ~11x, and small enough
+  // values overflow the (int) conversion, which is UB -- arm64 saturates to
+  // INT_MAX and sails right past the < 3 guard into the allocation.
+  double nAcross_d = 2.0 * L / step + 1.0;
+  if (!(nAcross_d >= 3)) return false;          // also rejects NaN
+  if (nAcross_d > 1e6)
+  {
+    printf("caliper: refusing a %.0f-sample profile -- check that "
+           "caliper step is in mm, not px\n", nAcross_d);
+    return false;
+  }
+  int nAcross = (int)nAcross_d;
   int halfW = (int)(W / 2);
 
   std::vector<float> profile(nAcross, 0);
@@ -151,8 +163,10 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
     {
       acv_XY pt = acvVecAdd(c, acvVecMult(edgeDir, (float)w));
       float v = cvUnsignedMap1Sampling(gray, pt.x, pt.y, 0);
+      if (v != v) continue;   // off-image sample: drop it, don't NaN the whole row
       if (bacpac && bacpac->sampler)
         v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
+      if (v != v) continue;
       sum += v; cnt++;
     }
     profile[i] = (cnt > 0) ? (float)(sum / cnt) : 0;
@@ -213,19 +227,25 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
 
 // weighted total-least-squares line fit over points with weights w; returns
 // anchor (weighted centroid), unit dir, and fills perpendicular residuals.
-static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
+// Returns false when there is no line to be had: zero total weight, or all
+// inlier points coincident (zero covariance -- atan2(0,0) would "fit" a
+// horizontal line with rms 0, i.e. always in spec, which is the one answer a
+// degenerate input must never produce).
+static bool wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
                     const std::vector<char> &use, acv_XY &anchor, acv_XY &dir)
 {
   double sw = 0, mx = 0, my = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i]) { sw += w[i]; mx += w[i]*pts[i].x; my += w[i]*pts[i].y; }
-  if (sw <= 0) { anchor = {0,0}; dir = {1,0}; return; }
+  if (sw <= 0) return false;
   mx /= sw; my /= sw;
   double a = 0, b = 0, c = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
   { double dx = pts[i].x-mx, dy = pts[i].y-my; a += w[i]*dx*dx; b += w[i]*dx*dy; c += w[i]*dy*dy; }
+  if (a + c < 1e-9) return false;   // all points in one spot
   double theta = 0.5 * atan2(2*b, a - c); // major axis of weighted covariance
   anchor = { (float)mx, (float)my };
   dir = { (float)cos(theta), (float)sin(theta) };
+  return true;
 }
 
 CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
@@ -236,6 +256,10 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
   if (count < 2) count = 2;
   acv_XY lineDir = acvVecNormalize(acvVecSub(p1, p0));
+  // A zero-length line (p1 == p0) or a NaN endpoint from morph normalizes to
+  // NaN, and caliper_measure's sibling check has no counterpart here -- the
+  // NaN used to flow into the band geometry and the (int) conversions below.
+  if (lineDir.x != lineDir.x || lineDir.y != lineDir.y) { r.nValid = 0; return r; }
   acv_XY perp = { -lineDir.y, lineDir.x }; // caliper search direction (across edge)
 
   const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
@@ -250,15 +274,75 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   // caliper. The per-caliper along-edge box average then becomes an O(nAcross) prefix-sum
   // subtraction. Edge picking is identical (profile_to_edge) to caliper_measure.
   float L = cal.length, step = (cal.step > 0 ? cal.step : 1.0f);
-  int nAcross = (int)(2 * L / step) + 1;
+  // Same double-first sizing as caliper_measure: a tiny step overflows the
+  // (int) conversion (UB; arm64 saturates INT_MAX) before the CELL_LIMIT
+  // below ever sees a sane number.
+  double nAcross_d = 2.0 * L / step + 1.0;
+  if (!(nAcross_d >= 3) || nAcross_d > 8e6)
+  {
+    if (nAcross_d > 8e6)
+      printf("caliper: refusing a %.0f-sample band width -- check that "
+             "caliper step is in mm, not px\n", nAcross_d);
+    r.nValid = 0; return r;
+  }
+  int nAcross = (int)nAcross_d;
+  // A negative width has no meaning, and it used to KILL THE PROCESS: halfW
+  // went negative, nAlong = alongLen + 2*halfW + 1 went negative with it, and
+  // (size_t)negative * nAcross is astronomically large -> std::length_error ->
+  // uncaught -> abort. Not a crash in this frame: the whole core, i.e. the
+  // machine, on one mistyped def value. (The sibling caliper_measure path
+  // survives the same input by accident -- its `for (w=-halfW; w<=halfW; w++)`
+  // simply never executes -- which is why this only ever showed up here.)
   int halfW = (int)(cal.width / 2);
+  if (halfW < 0) halfW = 0;
   float alongLen = (float)hypot(p1.x - p0.x, p1.y - p0.y);
   std::vector<acv_XY> pts; std::vector<float> w;
   if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   int nAlong = (int)lroundf(alongLen) + 2 * halfW + 1; // a in [0,nAlong) -> along dist (a - halfW)
+  // Belt and braces: alongLen comes from the def's own endpoints and nothing
+  // upstream promises it is finite or positive. The allocation below is the
+  // one place where a bad number stops being a bad measurement and becomes a
+  // dead process, so it does not get to trust its inputs.
+  if (nAlong < 1) { r.nValid = 0; return r; }
+  // The other end of the same range. The def's clamps (count<=512, width<=64,
+  // length<=256) are in MILLIMETRES and are applied before the /= mmpp
+  // conversion; at this machine's ~72-135 px/mm they still permit nAcross in
+  // the tens of thousands and halfW in the thousands, so the two buffers below
+  // reach gigabytes and the std::bad_alloc aborts the process -- the same
+  // "one mistyped def value kills the machine" failure as the negative width,
+  // approached from above. The realistic trigger is not a hostile def, it is
+  // someone typing a pixel figure into a field that wants millimetres.
+  //
+  // Those clamps were sized against caliper_measure's cost model, which only
+  // allocates nAcross floats per caliper; this path allocates nAlong*nAcross
+  // for the whole band, so the clamps bound the CPU but not this memory.
+  //
+  // A real caliper is far below this: a 5mm span at 0.01mm steps with a 1mm
+  // width is well under a million cells.
+  {
+    const size_t cells = (size_t)nAlong * (size_t)nAcross;
+    const size_t CELL_LIMIT = 8u * 1024u * 1024u;   // ~32MB float + ~64MB double
+    if (cells > CELL_LIMIT)
+    {
+      printf("caliper: refusing a %dx%d band (%zu cells) -- check that "
+             "caliper length/width/step are in mm, not px\n",
+             nAlong, nAcross, cells);
+      r.nValid = 0;
+      return r;
+    }
+  }
   acv_XY perpStep = acvVecMult(perp, step);
   std::vector<float> B((size_t)nAlong * nAcross);
+  // Off-image samples are NaN, and a NaN stored into B poisons the column
+  // prefix sum below: every LATER caliper window touching that column averages
+  // to NaN, so one corner of the band off-frame silently blinds all downstream
+  // calipers on the line. The arc path (caliper_measure) drops such samples and
+  // averages what is left ("don't NaN the whole row"); this path now does the
+  // same via a parallel valid-count prefix sum. Bvalid is allocated lazily so
+  // the common all-on-image band pays nothing.
+  std::vector<uint8_t> Bvalid;
+  bool hasNaN = false;
   for (int a = 0; a < nAlong; a++)
   {
     acv_XY rowBase = acvVecAdd(p0, acvVecMult(lineDir, (float)(a - halfW)));
@@ -268,18 +352,34 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     {
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
+      if (v != v) // off-image (or NaN backlight factor): drop the sample
+      {
+        if (!hasNaN) { hasNaN = true; Bvalid.assign(B.size(), 1); }
+        Bvalid[(size_t)a * nAcross + x] = 0;
+        v = 0;
+      }
       Brow[x] = v;
       q = acvVecAdd(q, perpStep);
     }
   }
   // column prefix sums over the along axis: S[a+1][x] = S[a][x] + B[a][x]; S[0]=0.
   std::vector<double> S((size_t)(nAlong + 1) * nAcross, 0.0);
+  // valid-sample-count prefix, same layout; only materialised when needed.
+  std::vector<int> Scnt;
+  if (hasNaN) Scnt.assign((size_t)(nAlong + 1) * nAcross, 0);
   for (int a = 0; a < nAlong; a++)
   {
     const float *Brow = &B[(size_t)a * nAcross];
     const double *Sp = &S[(size_t)a * nAcross];
     double *Sc = &S[(size_t)(a + 1) * nAcross];
     for (int x = 0; x < nAcross; x++) Sc[x] = Sp[x] + Brow[x];
+    if (hasNaN)
+    {
+      const uint8_t *Vrow = &Bvalid[(size_t)a * nAcross];
+      const int *Cp = &Scnt[(size_t)a * nAcross];
+      int *Cc = &Scnt[(size_t)(a + 1) * nAcross];
+      for (int x = 0; x < nAcross; x++) Cc[x] = Cp[x] + Vrow[x];
+    }
   }
 
   std::vector<float> profile(nAcross);
@@ -300,7 +400,22 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     int cnt = aHi - aLo + 1;
     const double *Shi = &S[(size_t)(aHi + 1) * nAcross];
     const double *Slo = &S[(size_t)aLo * nAcross];
-    for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
+    if (!hasNaN)
+    {
+      for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
+    }
+    else
+    {
+      // average over the VALID samples in the window; a fully-off-image column
+      // yields 0, same as caliper_measure's `(cnt > 0) ? sum/cnt : 0`.
+      const int *Chi = &Scnt[(size_t)(aHi + 1) * nAcross];
+      const int *Clo = &Scnt[(size_t)aLo * nAcross];
+      for (int x = 0; x < nAcross; x++)
+      {
+        int vc = Chi[x] - Clo[x];
+        profile[x] = (vc > 0) ? (float)((Shi[x] - Slo[x]) / vc) : 0.0f;
+      }
+    }
 
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
     bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos);
@@ -344,9 +459,14 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
 
   std::vector<char> use(pts.size(), 1);
   acv_XY anchor = {0,0}, dir = {1,0};
+  // If the fit NEVER succeeds, r must not be ok: anchor/dir would still hold
+  // their initialisers and the "measurement" below would be a fabrication with
+  // rms ~0 -- always in spec (backlog 1.7).
+  bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
-    wlsLine(pts, w, use, anchor, dir);
+    if (!wlsLine(pts, w, use, anchor, dir)) break;
+    fitOk = true;
     acv_XY n = { -dir.y, dir.x };
     std::vector<float> res(pts.size());
     std::vector<float> absr;
@@ -373,7 +493,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.confidence = (ni > 0) ? (float)(sumw / ni) : 0;
   const int minInliers = (cal.min_inliers > 0) ? cal.min_inliers : 2;
-  r.ok = (ni >= minInliers);
+  r.ok = fitOk && (ni >= minInliers);
   if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
   return r;
 }
@@ -473,9 +593,15 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
 
   std::vector<char> use(pts.size(), 1);
   acv_XY cen = center0; float rad = radius0;
+  // Same guard as the line path: if Kasa never solves, cen/rad still hold the
+  // def's NOMINAL circle, residuals against it are ~0 (the calipers were
+  // centred on it), and the nominal would be reported as a measurement with
+  // rms 0 (backlog 1.7).
+  bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
     if (!kasaCircle(pts, w, use, cen, rad)) break;
+    fitOk = true;
     std::vector<float> absr;
     for (size_t i = 0; i < pts.size(); i++) if (use[i])
       absr.push_back(fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad));
@@ -498,7 +624,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   r.rms = (ni>0)?sqrtf(sq/ni):0;
   r.confidence = (ni>0)?(float)(sumw/ni):0;
   const int minInliers = (cal.min_inliers > 0) ? cal.min_inliers : 3;
-  r.ok = (ni >= minInliers);
+  r.ok = fitOk && (ni >= minInliers);
   if (dbg)
   {
     caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);

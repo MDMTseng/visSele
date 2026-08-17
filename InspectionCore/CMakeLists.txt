@@ -269,8 +269,12 @@ target_include_directories(shape_based_matching PUBLIC
 target_link_libraries(shape_based_matching PUBLIC opencv_core opencv_imgproc)
 # MIPP picks the AVX2 backend off __AVX2__; -mavx2 (not -march=native) keeps the
 # binary portable across build/deploy hosts. big-obj: line2Dup.cpp is large.
-target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
-target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
+# arm64 has no AVX2 -- MIPP auto-selects NEON there, so only force the flags
+# on x86 hosts.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
+  target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
+endif()
 if(WIN32 OR MINGW OR MSYS)
   target_compile_options(shape_based_matching PRIVATE -Wa,-mbig-obj)
 endif()
@@ -359,6 +363,21 @@ target_link_libraries(CameraLayer PUBLIC camera_sdk)
 # visSele application (Core0_1)
 # ===========================================================================
 add_executable(visSele Core0_1/main.cpp Core0_1/tmpCodes.cpp Core0_1/wiringPanel.cpp)
+
+# Core-side frame<->object pairing. The header defaults it to 1 and states the
+# precondition for ever defaulting to 0: real-part validation, which phantom and
+# virtual traffic do not provide. So it stays 1 here and this option exists to
+# run the A/B deliberately -- cmake -DPERIF_CORE_PAIRING=0 -- rather than by
+# editing the default and forgetting.
+#
+# At 0 the core names nothing: every report goes out with tid -1 and cam_ts for
+# the DEVICE to place. That also removes `disagree`, which is the only evidence
+# that a verdict landed on the right part, so a run with this off cannot prove
+# placement -- only latency.
+if(DEFINED PERIF_CORE_PAIRING)
+  target_compile_definitions(visSele PRIVATE PERIF_CORE_PAIRING=${PERIF_CORE_PAIRING})
+  message(STATUS "PERIF_CORE_PAIRING forced to ${PERIF_CORE_PAIRING}")
+endif()
 target_include_directories(visSele PRIVATE Core0_1 Core0_1/include)
 # leaf libs (acvImage, cJSON, common_lib, logctrl, lodepng, mjpegLib, polyfit,
 # CircleFitting, simple_uart, smem_channel) arrive transitively via these.
@@ -381,6 +400,16 @@ target_link_libraries(calib_chessboard PRIVATE MatchingEngine)
 # jpeg_bench -- imencode timing micro-benchmark (BGR vs grayscale, ~5MP).
 add_executable(jpeg_bench tools/jpeg_bench.cpp)
 target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
+
+# latency_stages -- build the core's timing up one layer at a time, to find the
+# layer where jitter stops being +/-10ms. Links only cJSON on purpose: the
+# camera and the matching engine are later stages and there is no point adding
+# them while the cheap layers are still suspects.
+# POSIX-only (openpty): a bench diagnostic, not a deploy artifact.
+if(NOT WIN32)
+  add_executable(latency_stages tools/latency_stages.cpp)
+  target_link_libraries(latency_stages PRIVATE common_lib)
+endif()
 
 # copy aravis dylib next to the binary for rpath loading (mac)
 if(FEATURE_ARAVIS)

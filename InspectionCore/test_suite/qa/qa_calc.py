@@ -38,8 +38,39 @@ import sys, os, json, math, re as _re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qalib import *
 
-# ---- baseline operand values (measured from a plain golden run) ----
-V8, V12, V13, V14 = 8.601038, 8.468927, 8.601037, 2.792538
+# ---- baseline operand values ----
+#
+# READ FROM A GOLDEN RUN, not hardcoded. These are what the ENGINE measured;
+# this module is testing the CALC evaluator, and an evaluator test must take
+# its operands from the same run it is checking. Hardcoding them meant that
+# any drift in the measurement showed up here as "the CALC evaluator computed
+# the wrong answer" -- the failure pointed at the wrong module, which is worse
+# than not testing it. (2026-08-07: judge 14 had drifted 2.7% and eight of
+# fourteen property trials were reported as evaluator mismatches.)
+#
+# The values recorded when this module was written are kept below and checked
+# separately, by a case that says what it is.
+V_REF_20260530 = {8: 8.601038, 12: 8.468927, 13: 8.601037, 14: 2.792538}
+
+def _golden_values():
+    rc, out = run_insp(GDEF)
+    if rc != 0 or out is None:
+        raise SystemExit("qa_calc: golden run failed -- cannot establish operands")
+    j = json.loads(out)
+    got = {}
+    def walk(o):
+        if isinstance(o, dict):
+            if isinstance(o.get("id"), int) and isinstance(o.get("value"), (int, float)) \
+               and "status" in o and "subtype" in o:
+                got[o["id"]] = float(o["value"])
+            for v in o.values(): walk(v)
+        elif isinstance(o, list):
+            for v in o: walk(v)
+    walk(j)
+    return got
+
+_GV = _golden_values()
+V8, V12, V13, V14 = (_GV.get(8, 0.0), _GV.get(12, 0.0), _GV.get(13, 0.0), _GV.get(14, 0.0))
 TOL = 1e-2  # generous: float32 reports + measurement noise
 
 def _find_value(o, tid):
@@ -824,14 +855,32 @@ CASES.append(case("r8_ws_before_close_bracket", "robust",
 CASES.append(case("r8_plus_minus_literal", "robust",
                   make=mut_calc(["[12]", "+-5", "$+$"])))
 
-# r8_10: embedded exponent  "3e10" -- parseable by stof?
-# If parsed as 3e10, then 3e10 + 0 == 3e10. Use property test: same-as-literal vs
-# split chain ([12] + 3e10) - 3e10 == [12].
-CASES.append(case("r8_exponent_roundtrip", "custom",
-    fn=_r8_assoc_pair(
-        ["[12]"],
-        ["[12]", "3e10", "$+$", "3e10", "$-$"],
-        "[12] == ([12]+3e10)-3e10")))
+# r8_10: embedded exponent "3e10" -- is it parsed as a number at all?
+#
+# The original form of this case asserted ([12]+3e10)-3e10 == [12], and it can
+# never hold: judge_CALC evaluates on a vector<float>, and at 3e10 a float32
+# ULP is 2048, so a millimetre-sized operand is entirely below the last bit and
+# is gone the moment it is added. The engine returning 0.0 is CORRECT.
+#
+# So the case now asserts what actually distinguishes the two possible bugs:
+# 3e10 must PARSE as a number (if "3e10" fell back to 0 or NA, the chain would
+# come back as [12] or NA rather than 0). Precision loss is the expected
+# outcome; a parse failure would not look like this.
+def _fn_exp_parses_and_cancels(run_insp):
+    rc, out = run_insp(mut_calc(["[12]", "3e10", "$+$", "3e10", "$-$"])())
+    if rc != 0 or out is None:
+        return False, f"rc={rc_str(rc)}"
+    v = _find_value(json.loads(out), 8)
+    if v is None:
+        return False, "no value for judge 8"
+    if abs(v) < 1e-3:
+        return True, f"got {v} -- 3e10 parsed, float32 cancellation as expected"
+    if abs(v - V12) < TOL:
+        return False, f"got {v} ~= [12]: 3e10 did NOT parse (treated as 0?)"
+    return False, f"got {v}: neither cancellation (0) nor a no-op"
+
+CASES.append(case("r8_exponent_parses_then_cancels", "custom",
+                  fn=_fn_exp_parses_and_cancels))
 
 # r8_11: post_exp contains the empty-array sentinel (nested empty list)
 def _r8_postexp_empty_array():
@@ -1252,5 +1301,36 @@ CASES.append(case("r10_na_then_arith_chain", "robust",
 CASES.append(case("r10_int_before_func_not_arity", "robust",
                   make=mut_calc(["[12]", "[13]", "2", "max$"])))
 
+# ---- measurement drift, reported as itself -------------------------------
+#
+# Not a CALC test. It lives here because this module is what noticed, and
+# because the operands above are only meaningful next to the values they were
+# recorded as. If this fails, the engine measures the golden sample differently
+# than it did on 2026-05-30 -- which may be a fix or may be a regression, but is
+# never something the CALC cases should be reporting on its behalf.
+def _fn_golden_drift(run_insp):
+    bad = []
+    for tid, ref in sorted(V_REF_20260530.items()):
+        now = _GV.get(tid)
+        if now is None:
+            bad.append(f"id{tid} missing"); continue
+        rel = abs(now - ref) / max(abs(ref), 1e-9)
+        if rel > 1e-3:
+            bad.append(f"id{tid} {ref:.6f} -> {now:.6f} ({rel*100:.2f}%)")
+    if bad:
+        return False, "drift vs 2026-05-30: " + "; ".join(bad)
+    return True, "golden operands within 0.1% of 2026-05-30"
+
+CASES.append(case("golden_operand_drift_since_20260530", "custom", fn=_fn_golden_drift))
+
+# Known, and named. The angle judge (14) moved 2.7% while the three distance
+# judges moved <0.01%. Lines 1 and 2 carry no "locating" key, so this is the
+# LEGACY line fit, not the caliper rework -- 98 MatchingEngine commits since,
+# not yet bisected. CAVEATS O.
+KNOWN = {
+    "golden_operand_drift_since_20260530":
+        "angle judge 14 drifted 2.7% since 2026-05-30, unattributed -- CAVEATS O",
+}
+
 if __name__ == "__main__":
-    sys.exit(run_module("qa_calc", CASES))
+    sys.exit(run_module("qa_calc", CASES, KNOWN))

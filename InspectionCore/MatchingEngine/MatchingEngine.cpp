@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#include <sys/resource.h>
+#endif
+#include <ctime>
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
 #include "FeatureManager_sig360_circle_line.h"
@@ -34,6 +38,20 @@ int MatchingEngine::AddMatchingFeature(FeatureManager *featureSet)
   return -1;
 }
 
+// Owns a cJSON tree for the duration of a scope. The parsed def below has to
+// survive several early returns and the std::invalid_argument that a failed
+// FeatureManager ctor throws; a guard is the only way it gets released on all
+// of them.
+namespace {
+struct _CJsonGuard {
+  cJSON *j;
+  explicit _CJsonGuard(cJSON *p):j(p){}
+  ~_CJsonGuard(){ if(j) cJSON_Delete(j); }
+  _CJsonGuard(const _CJsonGuard&)=delete;
+  _CJsonGuard& operator=(const _CJsonGuard&)=delete;
+};
+}
+
 int MatchingEngine::AddMatchingFeature(const char *json_str)
 {
 
@@ -44,6 +62,7 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
   {
     return -1;
   }
+  _CJsonGuard rootGuard(root);
 
   char *str=JFetch_STRING(root,"type");
   if(str==NULL)
@@ -91,8 +110,7 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     delete jstr;*/
     LOGE("Cannot find a corresponding type (  %s  )...",str);
   }
-  cJSON_Delete(root);
-  return AddMatchingFeature(featureSet);
+  return AddMatchingFeature(featureSet);   // rootGuard releases `root`
 }
 
 
@@ -115,12 +133,43 @@ cJSON * MatchingEngine::SetParam(cJSON *json)
   return retJson;
 }
 
+double MatchingEngine::lastStageMs[MatchingEngine::STAGE_MAX] = {0};
+double MatchingEngine::lastStageCpuMs[MatchingEngine::STAGE_MAX] = {0};
+int    MatchingEngine::lastStageN = 0;
+
+static inline double me_now_ms()
+{
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+static inline double me_proc_cpu_ms()
+{
+#ifndef _WIN32
+  struct rusage ru;
+  if (getrusage(RUSAGE_SELF, &ru) == 0)
+    return ru.ru_utime.tv_sec * 1000.0 + ru.ru_utime.tv_usec / 1000.0
+         + ru.ru_stime.tv_sec * 1000.0 + ru.ru_stime.tv_usec / 1000.0;
+#endif
+  return 0.0;
+}
+
 int MatchingEngine::FeatureMatching(cv::Mat &img_cv)
 {
-  for(int i=0;i<featureBundle.size();i++)
+  const int n = (int)featureBundle.size();
+  lastStageN = n < STAGE_MAX ? n : STAGE_MAX;
+  for(int i=0;i<n;i++)
   {
+    const bool rec = (i < STAGE_MAX);
+    const double t0 = rec ? me_now_ms() : 0.0;
+    const double c0 = rec ? me_proc_cpu_ms() : 0.0;
     featureBundle[i]->setBacPac(bacpac);
     featureBundle[i]->FeatureMatching(img_cv);
+    if (rec)
+    {
+      lastStageMs[i]    = me_now_ms() - t0;
+      lastStageCpuMs[i] = me_proc_cpu_ms() - c0;
+    }
   }
   return 0;
 }

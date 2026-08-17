@@ -1,6 +1,7 @@
 #include "FeatureManager.h"
 #include "logctrl.h"
 #include <chrono>
+#include <cmath>
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
@@ -10,6 +11,7 @@
 #include "LabelingCV.h"
 #include "BinarizeCV.h"
 #include "CvBridge.h"
+#include "auto_release.hpp"
 #include <opencv2/imgproc.hpp>
 
 LOG_MODULE("match.group");
@@ -131,6 +133,8 @@ int FeatureManager_group_proto::parse_jobj()
     bg_close_kernel = (int)JFetch_NUMBER_ex(root, "bg_close_kernel", 81);
     bg_ratio = JFetch_NUMBER_ex(root, "bg_ratio", 0.5);
     bg_downscale = (int)JFetch_NUMBER_ex(root, "bg_downscale", 4);
+    if (bg_downscale < 1)  bg_downscale = 1;    // a bad def must not resize to 0
+    if (bg_downscale > 16) bg_downscale = 16;
   }
 
   // Optional per-region adaptive threshold (background-evenness soft calib).
@@ -249,12 +253,18 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   {
 
     LOGI("FeatureManager_sig360_circle_line is the type...");
-    newFeature = new FeatureManager_sig360_circle_line(cJSON_Print(subFeature));
+    // The ctor parses this string and keeps its own tree, so the serialisation
+    // is ours to free. Passing cJSON_Print() straight in leaked one copy of
+    // the sub-feature's def per sub-feature, on every def load -- measured as
+    // a steady 50-125KB per INST_CHECK before this.
+    MallocHold _s(cJSON_Print(subFeature));
+    newFeature = new FeatureManager_sig360_circle_line(_s.str());
   }
   else if(strcmp(FeatureManager_sig360_extractor::GetFeatureTypeName(),str) == 0)
   {
     LOGI("FeatureManager_sig360_extractor is the type...");
-    newFeature = new FeatureManager_sig360_extractor(cJSON_Print(subFeature));
+    MallocHold _s(cJSON_Print(subFeature));
+    newFeature = new FeatureManager_sig360_extractor(_s.str());
   }
   // else if(strcmp(FM_camera_calibration::GetFeatureTypeName(),str) == 0)
   // {
@@ -340,7 +350,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // Per-camera adaptive threshold from bacpac->fieldCal (bright grid is
     // already vignette-masked + robust-cleaned at save time, so we don't
     // re-clean here). T = D + ratio*(B - D) per valid cell; invalid
-    // (vignette) cells get NAN so cvThresholdMap can fall back to briThres.
+    // (vignette) cells fall back to the global briThres. They used to be NAN,
+    // which was never handled: a NAN cell makes the bilinear T NAN, every
+    // "pixel > T" false, and the whole neighbourhood comes out as foreground.
     if (useCalibBackground && bgThreshMap.empty() &&
         bacpac && bacpac->fieldCal && bacpac->fieldCal->ok)
     {
@@ -351,7 +363,10 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
         bgThreshMap.resize(W * H);
         for (int k = 0; k < W * H; k++) {
           bool valid = (k < (int)Bg.valid.size()) ? (Bg.valid[k] != 0) : true;
-          bgThreshMap[k] = valid ? (float)(darkLevel + edgeRatio * (Bg.mean[k] - darkLevel)) : NAN;
+          float T = valid ? (float)(darkLevel + edgeRatio * (Bg.mean[k] - darkLevel))
+                          : (float)briThres;
+          if (!std::isfinite(T)) T = (float)briThres;
+          bgThreshMap[k] = T;
         }
         bgMapW = W; bgMapH = H;
         LOGI("adaptiveThres fieldCal map %dx%d ratio=%.2f dark=%.1f vignette=%d",
@@ -391,7 +406,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       cv::rectangle(binary_img_storage, cv::Point(xDist, xDist),
                     cv::Point(binary_img_storage.cols - xDist, binary_img_storage.rows - xDist),
                     cv::Scalar(0), 1);
-      FENCE_AREA+=(img_cv.cols-xDist+img_cv.rows-xDist)*2-4;
+      FENCE_AREA+=(binary_img_storage.cols-xDist+binary_img_storage.rows-xDist)*2-4;
       // 1 px black at y=xDist+3, x=1..xDist-1 (inclusive).
       cv::line(binary_img_storage, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
                cv::Scalar(0), 1);
@@ -407,20 +422,32 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     acvComponentLabeling_cv(binary_img_storage, lableImg_cv, ldData);
     auto _pt3 = std::chrono::steady_clock::now();   // [PROF] CCL (component labeling) done
 
-    int CLimit = (lableImg_cv.cols*lableImg_cv.rows)*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
-
-    int intrusionObjectArea = ldData[1].area - FENCE_AREA;
-    LOGI("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
-    if(intrusionObjectArea>CLimit)
-    {//If the cage connects something link to the edge we don't want to do the inspection
-      error=FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT;
-      
+    // Label 1 is everything the cage touches: the border cage itself plus
+    // anything connected to it. Subtracting FENCE_AREA leaves the part of it
+    // that is real intruding material.
+    //
+    // The intrusionSizeLimitRatio gate that used to sit here -- refuse to
+    // inspect the WHOLE frame when this exceeded ratio * image area -- is gone
+    // (2026-08-07). It was one global rule with one number for the entire def,
+    // it could only ever say "somewhere in this image", and with the default it
+    // never got (absent -> 0 -> every frame rejected) it was a trap. obj_detect
+    // clean-space regions do the same job per region, with an operator-legible
+    // limit in mm^2, and with a per-region choice of whether a trip means "this
+    // part is bad" or "this measurement is untrustworthy".
+    //
+    // Nothing was labeled at all (not even the cage): bail out BEFORE touching
+    // ldData[1]. The size gate used to sit below this read.
+    if(ldData.size()<=1)
+    {
+      error=FeatureReport_ERROR::GENERIC;
       for(int i=0;i<binaryFeatureBundle.size();i++)
       {
         binaryFeatureBundle[i]->ClearReport();
       }
       return 0;
     }
+
+    int intrusionObjectArea = ldData[1].area - FENCE_AREA;
 
     // if(downScaleF!=1)
     // {
@@ -436,17 +463,6 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // }
 
 
-
-
-    if(ldData.size()<=1)
-    {
-      error=FeatureReport_ERROR::GENERIC;
-      for(int i=0;i<binaryFeatureBundle.size();i++)
-      {
-        binaryFeatureBundle[i]->ClearReport();
-      }
-      return 0;
-    }
 
 
     ldData[1].area =intrusionObjectArea;
@@ -507,7 +523,8 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.data.binary_processing_group.reports = &sub_reports;
   report.data.binary_processing_group.labeledData = &ldData;
   report.data.binary_processing_group.subFeatureDefSha1 = subFeatureDefSha1;
-  report.data.binary_processing_group.mmpp = bacpac->sampler->mmpP_ideal();
+  report.data.binary_processing_group.mmpp =
+      (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : NAN;
   return &report;
 }
 
@@ -541,11 +558,9 @@ void FeatureManager_binary_processing_group::ClearReport()
 
 int FeatureManager_binary_processing_group::parse_jobj()
 {
-  double *val= JFetch_NUMBER(root,"intrusionSizeLimitRatio");
-
-  intrusionSizeLimitRatio=(val!=NULL)?*val:0;
-
-  LOGV("intrusionSizeLimitRatio:%f  ptr:%p",intrusionSizeLimitRatio,val);
+  // "intrusionSizeLimitRatio" is no longer read. Old defs still carry the key and
+  // that is fine -- an unknown key is ignored, so a factory def loads unchanged
+  // and simply stops being gated by it. See FeatureMatching() for what replaced it.
 
   // Pre-binarization downsample. 1 = off (default). 2 or 4 cuts threshold/CCL/
   // signature build to 1/N^2 of the work. Coordinate scale-back lives in the
@@ -562,7 +577,7 @@ int FeatureManager_binary_processing_group::parse_jobj()
   if(sSet_sha1!=NULL)
   {
     strncpy(subFeatureDefSha1,sSet_sha1,sizeof(subFeatureDefSha1));
-    subFeatureDefSha1[sizeof(subFeatureDefSha1)-1]=='\0';
+    subFeatureDefSha1[sizeof(subFeatureDefSha1)-1]='\0';
   }
 
   return 0;
@@ -606,14 +621,18 @@ int FeatureManager_group::addSubFeature(cJSON * subFeature)
   if(strcmp(FeatureManager_group::GetFeatureTypeName(),str) == 0)
   {
 
-    LOGI("FeatureManager_group is the type...:%s",cJSON_Print(subFeature));
-    newFeature = new FeatureManager_group(cJSON_Print(subFeature));
+    // Was printing the whole sub-def into the log AND leaking that copy, on
+    // top of the one below.
+    MallocHold _s(cJSON_Print(subFeature));
+    LOGI("FeatureManager_group is the type...:%s", _s.str());
+    newFeature = new FeatureManager_group(_s.str());
   }
   else if(strcmp(FeatureManager_binary_processing_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_binary_processing_group is the type...");
-    newFeature = new FeatureManager_binary_processing_group(cJSON_Print(subFeature));
+    MallocHold _s(cJSON_Print(subFeature));
+    newFeature = new FeatureManager_binary_processing_group(_s.str());
   }
   else
   {

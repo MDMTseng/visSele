@@ -311,10 +311,7 @@ class resourcePool
   std::mutex rsc_mutex;
   std::vector <T>pool;
   std::vector <T*>poolPtr;
-  std::mutex fetch_mutex;
   bool termination=false;
-
-  mutable std::mutex fetch_mutex_;
 
   public:
   resourcePool(int size)
@@ -343,9 +340,9 @@ class resourcePool
 
 
   void termination_avalanche_and_throw_excption(){
-
-    fetch_mutex.unlock();
-    rsc_mutex.unlock();
+    // No unlocks here. Unlocking a mutex the calling thread does not own is
+    // undefined behavior (and this was called with neither mutex held); the
+    // "avalanche" existed to wake fetchResrc_blocking, which is gone.
     throw TS_Termination_Exception();
   }
   int rest_size(){return _rest_size;}
@@ -372,17 +369,11 @@ class resourcePool
     return dat;
   }  
 
-  T* fetchResrc_blocking(){
-    if(termination)termination_avalanche_and_throw_excption();
-    T* fdat=NULL;
-    while((fdat=fetchResrc())==NULL)
-    {
-      fetch_mutex.lock();
-      if(termination)termination_avalanche_and_throw_excption();
-    }
-
-    return fdat;
-  }
+  // fetchResrc_blocking was deleted: it used fetch_mutex as a cross-thread
+  // semaphore (locked here, unlocked by retResrc on another thread) -- the
+  // exact UB pattern the TSQueue rewrite at the top of this file purged, and
+  // it had no callers left. If a blocking fetch is ever needed again, build
+  // it on a condition_variable with a predicate, like TSQueue does.
   bool retResrc (T* ret_rsc)
   {
     if(termination)termination_avalanche_and_throw_excption();
@@ -437,7 +428,10 @@ class resourcePool
     poolPtr[resourceIdx]=&(pool[resourceIdx]);
 
     _rest_size++;
-    fetch_mutex.unlock();
+    // No fetch_mutex.unlock() here: this thread never locked it, and calling
+    // unlock() on an unowned std::mutex is UB -- executed per frame on every
+    // pool return until it was removed (winpthreads on the MinGW build does
+    // not forgive it the way libc++ happened to).
     //the ptr address is valid
     return true;
   }  

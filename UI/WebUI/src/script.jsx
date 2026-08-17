@@ -7,8 +7,13 @@ import 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+// The device's setup document is grouped (plate/gate/cam/skip_policy); this UI
+// speaks flat. Translating at the wire is the whole fix -- see uinspCfg.js.
 import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
+import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
+import {CameraParamPanel} from './component/CameraParamPanel.jsx';
+import {CoreStatusPanel} from './component/CoreStatusPanel.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -29,6 +34,7 @@ import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 // import LocaleProvider from 'antd/lib/locale-provider';
 
 import Modal from "antd/lib/modal";
+import SettingOutlined from "@ant-design/icons/SettingOutlined";
 import Divider from 'antd/lib/divider';
 import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
@@ -75,6 +81,7 @@ const path = require('path')
 // diag-wrapped console (the R-quick-wins #7 fix is now built into initLogger
 // since every logger is created lazily via mkLog post-initDiag).
 import { initLogger, mkLog } from 'UTIL/logger';
+import { initPerifModule, registerPerifAPI, usePerifLink, pokeLinkHealthNow, uInsp_API, uInspESP32_API, GenPerif_API, SLID_API } from './perif/PerifAPI';
 initLogger();
 const log = mkLog('ui.main');
 const dbLog = mkLog('comm.db'); // DB_WS / SLID API queue chatter
@@ -115,6 +122,8 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
   window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
+  // Live view of the perif link store (a function, so it's always current).
+  import('./perif/PerifAPI').then(m => { window.__GP_PERIF_LINKS__ = m.getPerifLinksSnapshot; });
   window.__GP_LOG__ = log; // loglevel module — for QA to verify the diag ring captures loglevel output
 }
 
@@ -188,6 +197,11 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
       case "WS_ERROR":
         return "color-error-anim";
         break;
+      // Module-store link state (perif rows come from usePerifLink now, not
+      // Redux). SUSPECT = link up but verdicts in doubt -- the error color,
+      // because a machine that may not be sorting deserves red, not grey.
+      case "WS_SUSPECT":
+        return "color-error-anim";
       default:
         return "color-noresource-anim";
         break;
@@ -195,17 +209,38 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     
   }
   
-  // console.log(ConnInfo);
+  // Peripheral rows read the module link store (usePerifLink), not Redux --
+  // that also gives them the SUSPECT state, which the legacy WS_* bridge
+  // never carried. The adapter shapes a link into the conn_info the shared
+  // row renderer already understands. A link that never connected stays
+  // undefined so the row hides, same as before.
+  // `id` MUST be carried through: onItemClick(conn_info) does
+  // `switch(connInfo.id)` to pick which modal to open. The Redux-sourced rows
+  // get it for free (the conn_info IS the dispatched action, which has .id);
+  // this adapter builds a fresh object, so dropping it silently killed every
+  // peripheral row's click -- 全檢設備v2「設定/診斷」叫不出面板就是這個。
+  const _linkToConn = (link, id) => {
+    if (!link || (link.state === 'DISCONNECTED' && link.connInfo === undefined)) return undefined;
+    const t = link.state === 'CONNECTED' ? 'WS_CONNECTED'
+      : link.state === 'SUSPECT' ? 'WS_SUSPECT'
+      : 'WS_DISCONNECTED';
+    return { id, type: t, brief_info: link.state === 'SUSPECT' ? '連線異常' : undefined };
+  };
+  const uInspConn      = _linkToConn(usePerifLink(ConnInfo.uInsp_API_ID),      ConnInfo.uInsp_API_ID);
+  const uInspESP32Conn = _linkToConn(usePerifLink(ConnInfo.uInspESP32_API_ID), ConnInfo.uInspESP32_API_ID);
+  const SLIDConn       = _linkToConn(usePerifLink(ConnInfo.SLID_API_ID),       ConnInfo.SLID_API_ID);
+  const CNCConn        = _linkToConn(usePerifLink(ConnInfo.CNC_API_ID),        ConnInfo.CNC_API_ID);
 
   return [
     [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測DB",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
-    ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
-    ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
-    ["CNC設備",       ConnInfo.CNC_API_ID_CONN_INFO,    <RobotOutlined />,false],
+    [undefined,            undefined,                  <MinusOutlined />,uInspConn!==undefined || uInspESP32Conn!==undefined || SLIDConn!==undefined||CNCConn!==undefined],//seg line
+    ["全檢設備",       uInspConn,   <RobotOutlined />,false],
+    ["全檢設備v2",     uInspESP32Conn, <RobotOutlined />,false],
+    ["坡檢設備",       SLIDConn,    <StockOutlined />,false],
+    ["CNC設備",       CNCConn,    <RobotOutlined />,false],
     ]
     .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
     .map(([textName, conn_info, icon,froceAppear],idx)=>{
@@ -345,6 +380,30 @@ function BMPCarouselAugPanel({ aug, send }) {
       <Row enKey="y_offset_en" en={eff.y_offset_en}
            valKey="y_offset_r" val={eff.y_offset_r}
            label="y-wobble radius px" min={0} max={500} step={1}/>
+
+      {/* Exposure simulation. Off by default and driven from HERE, not from
+          the shared camera settings: those belong to the real camera, and
+          feeding its 50us against this simulator's 5000us reference rendered
+          every loaded BMP at 1% brightness -- "the image is super dark" with
+          nothing in the fake-camera UI to explain it. A file already has its
+          exposure in its pixels; simulating another is opt-in. */}
+      <div style={{opacity:0.7, fontSize:12, margin:'6px 0 2px'}}>
+        Exposure simulation <span style={{opacity:0.7}}>(100% = {5000}us)</span>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6}}>
+        <Switch size="small" checked={!!eff.expo_sim_en}
+          onChange={(v)=>set({expo_sim_en:v})}/>
+        <span style={{minWidth:140}}>exposure us</span>
+        <InputNumber size="small" disabled={!eff.expo_sim_en}
+          value={eff.expo_us} min={0} max={20000} step={100}
+          onChange={(v)=>set({expo_us:v})}/>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6}}>
+        <span style={{minWidth:160, marginLeft:34}}>gain x</span>
+        <InputNumber size="small" disabled={!eff.expo_sim_en}
+          value={eff.expo_gain} min={0} max={64} step={0.1}
+          onChange={(v)=>set({expo_gain:v})}/>
+      </div>
     </div>
   );
 }
@@ -355,6 +414,7 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
     { target: "bmp_carousel", action, ...extra }, undefined, {
       resolve: () => {}, reject: () => {},
     });
+  const [augOpen, setAugOpen] = React.useState(false);
   const [folderInput, setFolderInput] = React.useState(
     () => localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || (car?.folder ?? ""));
   // Auto-apply the saved folder once when the drawer mounts, but only if it
@@ -411,7 +471,19 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
         <Button onClick={()=>send("pause")}>⏸ Pause</Button>
         <Button onClick={()=>send("resume")}>▶ Resume</Button>
       </div>
-      <BMPCarouselAugPanel aug={car.aug} send={send} />
+      <div style={{display:'flex', justifyContent:'flex-end'}}>
+        <Button size="small" icon={<SettingOutlined />} title="模擬參數 / simulation"
+          onClick={()=>setAugOpen(true)}>模擬參數</Button>
+      </div>
+      {/* `visible`, not `open`. antd renamed this prop in 4.23.0 and this
+          project is pinned at 4.22.8, where Modal.js reads props.visible and
+          ignores `open` entirely -- so the button set the state, the state was
+          correct, and nothing appeared. Nothing warns: an unknown prop is just
+          dropped. Every other Modal/Drawer in this codebase uses `visible`. */}
+      <Modal title="Fake camera — 模擬參數 / simulation" visible={augOpen}
+        onCancel={()=>setAugOpen(false)} footer={null} destroyOnClose={false}>
+        <BMPCarouselAugPanel aug={car.aug} send={send} />
+      </Modal>
       <div style={{maxHeight:'40vh', overflowY:'auto', border:'1px solid #333', padding:6}}>
         {files.map((f, i) => (
           <div key={f}
@@ -465,14 +537,11 @@ class APPMasterX extends React.Component {
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
 
       uInspESP32_API_ID:state.ConnInfo.uInspESP32_API_ID,
-      uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
 
       SLID_API_ID:state.ConnInfo.SLID_API_ID,
-      SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
 
 
       CNC_API_ID:state.ConnInfo.CNC_API_ID,
-      CNC_API_ID_CONN_INFO:state.ConnInfo.CNC_API_ID_CONN_INFO,
 
 
       Platform_API_ID:state.ConnInfo.Platform_API_ID,
@@ -489,6 +558,24 @@ class APPMasterX extends React.Component {
 
 
   WSDataDispatch(pkts) {
+    // Camera-state doorbell (core CamStateWatchThread): the core pushes this
+    // tiny GS batch whenever the camera's health CHANGES. It is a doorbell,
+    // not a data update -- re-run the normal camera_info query immediately so
+    // every policy (soft-cam, reconnect) stays in Cam_Stat_Query. This is
+    // what lets the steady-state poll run at 6s instead of 2s.
+    const doorbell = pkts.find(pkt => pkt && pkt.type == "GS" && pkt.data && pkt.data.camera_state);
+    if (doorbell) {
+      log.info("[cam-doorbell] camera state changed, re-querying", doorbell.data.camera_state);
+      if (this.camStatQuery) this.camStatQuery.pokeNow();
+    }
+    // Perif-link doorbell (core pgID 0xCA12): the link summary changed --
+    // counters moving, suspect flip, channel gone. Re-read perif_pairing now
+    // instead of waiting out the 30s safety-net poll.
+    const perifBell = pkts.find(pkt => pkt && pkt.type == "GS" && pkt.data && pkt.data.perif_state);
+    if (perifBell) {
+      log.info("[perif-doorbell] link state changed, re-querying", perifBell.data.perif_state);
+      pokeLinkHealthNow();
+    }
     let acts = {
       type: "ATBundle",
       ActionThrottle_type: "express",
@@ -817,6 +904,7 @@ class APPMasterX extends React.Component {
 
 
 
+    const CAM_POLL_MS = 6000;
     class Cam_Stat_Query{
       camDisconnectionAction()
       {
@@ -851,12 +939,33 @@ class APPMasterX extends React.Component {
 
               let isInOperation=true;
 
-              if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              // A soft camera when soft cameras are not allowed is a POLICY
+              // mismatch, not a fault -- and reconnecting cannot fix it.
+              //
+              // This is what produced the reconnect livelock: the core hands
+              // back the same CameraLayer_BMP_carousel every time (it is what
+              // the machine has, or what FORCE_BMP_CAROUSEL pins), the UI reads
+              // it as "not in operation" again, and asks again. The core's 3s
+              // rate limit turned that into `camera_ez_reconnect: ignored` on a
+              // loop, so the reconnect could never even run, the blocking
+              // 相機重連中 modal never cleared, and the whole UI was unusable
+              // against a fake camera. Retrying a deterministic answer is the
+              // bug; the rate limit was only hiding its cost.
+              //
+              // Kept separate from the fault case below because the two want
+              // opposite handling: a fault should be retried, this should be
+              // shown to a human. The modal already carries the one control
+              // that resolves it -- 跳過相機連線 sets ALLOW_SOFT_CAM.
+              let softCamBlocked = (cam0!==undefined
+                && comp.props.System_Setting.ALLOW_SOFT_CAM==false
+                && cam0.includes("CameraLayer_BMP"));
+
+              if(cam0===undefined || softCamBlocked)
               {
                 isInOperation=false;
               }
 
-              
+
               if(GetObjElement(camInfo,[0,"cam_status"])!=0)
               {
                 isInOperation=false;
@@ -866,10 +975,25 @@ class APPMasterX extends React.Component {
               {
                 this.isConnected=false;
                 StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
-                
+
                 this.camDisconnectionAction();
-                
-                this.reconnection();
+
+                if(softCamBlocked)
+                {
+                  // Say it once per transition, not once per 2s poll.
+                  if(this.softCamWarned!==true)
+                  {
+                    this.softCamWarned=true;
+                    log.warn("[queryCam] soft camera (" + cam0 + ") with ALLOW_SOFT_CAM=false"
+                      + " -- NOT reconnecting: the core would return the same camera."
+                      + " Press 跳過相機連線 to work against it.");
+                  }
+                }
+                else
+                {
+                  this.softCamWarned=false;
+                  this.reconnection();
+                }
                 reject(stacked_pkts,P);
                 // this.queryTimeOut=setTimeout(()=>{
                 //   this.queryCam(timeout_ms);
@@ -878,6 +1002,7 @@ class APPMasterX extends React.Component {
               else
               {
                 
+                this.softCamWarned=false;
                 let camName=GetObjElement(camInfo,[0,"name"]);
                 // StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CAM1_ID,data:camInfo});
                 let ev_type=(this.isConnected===false)?"WS_CONNECTED":"WS_UPDATE";
@@ -888,9 +1013,17 @@ class APPMasterX extends React.Component {
 
               }
               // console.log(camInfo);
-              
+
             }
-            
+            else
+            {
+              // A reply with no GS packet: neither branch above ran, so
+              // WITHOUT this the caller's resolve/reject never fires ->
+              // queryCam's _next never runs -> inFlight sticks true -> the
+              // whole camera poll chain dies silently and permanently. Treat
+              // a GS-less reply as a soft failure and let the poll retry.
+              reject(stacked_pkts,P);
+            }
           },
           reject:(e)=>{
             StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID,data:e});
@@ -913,6 +1046,23 @@ class APPMasterX extends React.Component {
         {
           return false;
         }
+
+        // Never ask faster than the core will answer.
+        //
+        // wiringPanel's RC handler drops any camera_ez_reconnect inside 3s of
+        // the last one, so a client that retries faster gets nothing but
+        // `ignored, less than 3s since the last one` -- the reconnect it is
+        // waiting for never actually runs. Mirroring the interval here (with a
+        // margin) means every request we send is one the core will act on.
+        // The core's limit stays where it is: it guards against ALL clients,
+        // and this one only governs itself.
+        const RC_MIN_INTERVAL_MS = 3500;
+        const now = Date.now();
+        if(this.lastReconnAt!==undefined && (now-this.lastReconnAt) < RC_MIN_INTERVAL_MS)
+        {
+          return false;
+        }
+        this.lastReconnAt = now;
         this.isInReconn=true;
 
 
@@ -922,15 +1072,18 @@ class APPMasterX extends React.Component {
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "RC", 0, {
           target: "camera_ez_reconnect"
         },
-        undefined, { 
+        undefined, {
           resolve:(ret)=>{
             this.isInReconn=false;
-
-            
-            this._queryCam(
-              ()=>{},
-              ()=>{})
-          }, 
+            // No immediate re-query here.
+            //
+            // It used to call _queryCam() straight from this callback, which
+            // re-entered the not-in-operation branch and fired the next
+            // reconnect with ZERO delay -- the tight half of the livelock, and
+            // the reason requests arrived inside the core's 3s window. The
+            // poll loop in queryCam() already re-queries on its own schedule,
+            // so the reconnect result is picked up there.
+          },
           reject:()=>{
             this.isInReconn=false;
           } })
@@ -946,26 +1099,50 @@ class APPMasterX extends React.Component {
           },timeout_ms*2);
           return;
         }
-        // comp.props.DISPATCH({
-        //   type:"MW_API_CALL",id,method:"send",
-        //   param:{
-            
-        //   }
-        // });
 
-        this._queryCam(()=>{
-          this.queryTimeOut=setTimeout(()=>{
+        // One chain, ever. The timer is only re-armed inside these callbacks,
+        // so between _queryCam firing and its reply there is NO pending timer
+        // -- a pokeNow() in that window used to clearTimeout a stale handle
+        // and start a SECOND in-flight query, whose reply armed a second 6s
+        // chain; chains only ever accumulated (each doorbell-during-flight
+        // added one). inFlight makes that window explicit, and a poke that
+        // lands inside it is coalesced into pokePending, honoured here when
+        // the reply arrives.
+        // A poke that arrived BEFORE this query starts is satisfied by this
+        // query itself (it fetches the fresh state); only pokes landing while
+        // it is in flight need the immediate follow-up in _next.
+        this.pokePending = false;
+        this.inFlight = true;
+        const _next = (delay_ms) => {
+          this.inFlight = false;
+          if (this.pokePending === true)
+          {
+            this.pokePending = false;
+            this.queryCam(timeout_ms);   // immediate re-query, same chain
+            return;
+          }
+          this.queryTimeOut = setTimeout(() => {
             this.queryCam(timeout_ms);
-          },timeout_ms);
-        },
-        ()=>{
-          this.queryTimeOut=setTimeout(()=>{
-            this.queryCam(timeout_ms);
-          },timeout_ms/2);
-        })
-
-
-
+          }, delay_ms);
+        };
+        this._queryCam(()=>{ _next(timeout_ms); },
+                       ()=>{ _next(timeout_ms/2); });
+      }
+      // The core's camera-state doorbell says "re-query NOW". Three cases:
+      // a timer is pending -> collapse it into an immediate query; a query
+      // is in flight -> remember the poke and let its reply re-query (never
+      // start a parallel chain); reconnecting -> remember the poke too (the
+      // old silent drop meant a "camera back" doorbell arriving inside the
+      // RC round trip was only noticed by the 12s fallback timer).
+      pokeNow()
+      {
+        if (this.inFlight === true || this.isInReconn === true)
+        {
+          this.pokePending = true;
+          return;
+        }
+        clearTimeout(this.queryTimeOut);
+        this.queryCam(CAM_POLL_MS);
       }
       constructor(id)
       {
@@ -973,14 +1150,19 @@ class APPMasterX extends React.Component {
         this.isInReconn=false;
         this.isConnected=false;
 
-        this.queryCam(2000);
+        // 6s, not 2s: steady-state changes are pushed by the core's
+        // CamStateWatchThread (the doorbell above), so the poll is only a
+        // safety net for missed pushes, non-primary peers (only the default
+        // peer is stream-subscribed) and older cores without the watcher.
+        this.queryCam(CAM_POLL_MS);
       }
 
 
       
 
     }
-    this.props.ACT_WS_REGISTER(this.props.CAM1_ID,new Cam_Stat_Query(this.props.CAM1_ID));
+    this.camStatQuery = new Cam_Stat_Query(this.props.CAM1_ID);
+    this.props.ACT_WS_REGISTER(this.props.CAM1_ID, this.camStatQuery);
 
 
 
@@ -989,797 +1171,38 @@ class APPMasterX extends React.Component {
     // core's PD channel: connect/reconnect, request/response tracking, the PING
     // watchdog, setting-file load/save and the comm latency probe. Subclasses
     // supply the device's protocol dialect, not the transport.
-    class  Perif_API_Base
+    // Peripheral device APIs (uInspMEGA / uInspESP32 / SLID / CNC) live in
+    // src/perif/PerifAPI.js now, with their own link-state store (no Redux)
+    // -- see the header there for the design. The ACT_WS_REGISTER calls are
+    // the legacy GET_OBJ bridge and go away when the last consumer uses
+    // getPerifAPI().
+    initPerifModule({
+      sendBPG: (tl, prop, obj, bin, cbs) => comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, tl, prop, obj, bin, cbs),
+      getState: () => StoreX.getState(),
+    });
     {
-      constructor(id,settingFilePath,pg_id_channel)
-      {
-        this.id=id;
-        this.settingFilePath=settingFilePath;
-        this.pg_id_channel=pg_id_channel;
-
-        this.CONN_ID=undefined;
-        this.connInfo=undefined;
-        this.inReconnection=false;
-
-        this.trackingWindow={};
-        this.idCounter=10;
-        this.PINGCount=0;
-
-        this.machineInfo=undefined;
-
-        this.checkReconnectionInterval=setInterval(()=>this.checkReConnection(),3000);//watch dog to do reconnection
-        this.runPINGInterval=setInterval(()=>this._sendPing(),3000);//watch dog to do reconnection
-      }
-
-      // ---- subclass hooks ------------------------------------------------
-
-      // uInspMEGA's get_setup reply carries no "ack" field, so the check cannot
-      // be unconditional -- devices that do send one opt in and avoid storing a
-      // nak as if it were settings.
-      resyncRequiresAck(){ return false; }
-
-      // PING reply with the envelope fields already stripped.
-      onPingStatus(machineStatus)
-      {
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineStatus});
-      }
-
-      onSetupFileLoaded(machInfo){}
-      onSetupFileSaved(){}
-      onBeforeSetupPush(){}
-
-      // ---- connection ----------------------------------------------------
-
-      cleanUpTrackingWindow()
-      {
-        let keyList = Object.keys(this.trackingWindow);
-        keyList.forEach(key=>{
-          let reject = this.trackingWindow[key].reject;
-          if(reject !==undefined)
-          {
-            reject("CONNECTION ERROR");
-          }
-          delete this.trackingWindow[key]
-        })
-      }
-
-      cleanUpConnection()
-      {
-        this.cleanUpTrackingWindow();
-      }
-
-      connect(connInfo)
-      {
-        if(this.inReconnection==true)
-        {//still in reconnection state, return
-          return false;
-        }
-
-        StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
-        this.connInfo=connInfo;
-        this.inReconnection=true;
-        this.LoadFileToMachine();
-        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
-        {
-          resolve: (stacked_pkts,action_channal) => {
-            let PD=stacked_pkts.find(pkt=>pkt.type=="PD");
-            this.inReconnection=false;
-            if(PD!==undefined)
-            {
-              let PD_data=PD.data;
-              switch(PD_data.type)
-              {
-                case "MESSAGE":
-                {
-                  let CONN_ID = PD_data.CONN_ID;
-                  let msg = PD_data.msg;
-                  let msg_id = msg!==undefined? msg.id:undefined;
-                  let trwin=this.trackingWindow[msg_id];
-                  if(trwin!==undefined)
-                  {
-                    if(trwin.resolve!==undefined)
-                      trwin.resolve(msg);
-                    delete this.trackingWindow[msg_id];
-                  }
-                }
-                  break;
-                case "DISCONNECT":
-                  this.CONN_ID=undefined;
-                  this.cleanUpConnection();
-                  StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:PD});
-                  break;
-                case "CONNECT":
-                  this.CONN_ID=PD_data.CONN_ID;
-                  StoreX.dispatch({type:"WS_CONNECTED",id:this.id,data:PD});
-
-                  if(this.machineSetup!==undefined)
-                  {
-                    this.onBeforeSetupPush();
-                    this.send({type:"set_setup",...this.machineSetup},
-                    (ret)=>{
-                      this.machineSetupReSync();
-                    },(e)=>console.log(e));
-                  }
-                  else
-                  {
-                    this.machineSetupReSync();
-                  }
-
-                  break;
-              }
-            }
-          },
-          reject:(e)=>{
-            this.CONN_ID=undefined;
-            this.inReconnection=false;
-            this.cleanUpConnection();
-            StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
-          }
-        });
-      }
-
-      checkReConnection()
-      {
-        if(this.connInfo===undefined ||this.CONN_ID!==undefined || this.inReconnection==true)
-        {
-          return;
-        }
-        this.connect(this.connInfo);
-      }
-
-      // ---- setting file ----------------------------------------------------
-
-      saveMachineSetupIntoFile(filename = this.settingFilePath)
-      {
-        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
-          { filename: filename },
-          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
-          {
-            resolve:(res)=>{ this.onSetupFileSaved(); },
-            reject:(res)=>{ },
-          }
-        )
-      }
-
-      LoadFileToMachine(filename = this.settingFilePath) {
-        new Promise((resolve, reject) => {
-
-          log.info("LoadSettingToMachine step2");
-          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
-            { filename },
-            undefined, { resolve, reject }
-          );
-          setTimeout(() => reject("Timeout"), 1000)
-        }).then((pkts) => {
-
-          log.info("LoadSettingToMachine>> step3", pkts);
-          if (pkts[0].type != "FL")
-          {
-            return;
-          }
-          let machInfo = pkts[0].data;
-
-          this.machineSetupUpdate(machInfo,true);
-          this.onSetupFileLoaded(machInfo);
-        }).catch((err) => {
-
-          log.info("LoadSettingToMachine>> step3-error", err);
-        })
-      }
-
-      // ---- machine setup ---------------------------------------------------
-
-      machineSetupUpdate(newMachineInfo,doReplace=false)
-      {
-        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
-        this.send({type:"set_setup",...newMachineInfo},
-        (ret)=>{
-          log.debug("[machine-setup] set_setup ack", ret);
-          //HACK: just assume it will work
-        },(e)=>log.warn("[machine-setup] set_setup failed", e));
-      }
-
-      machineSetupReSync() {
-        log.debug("[machine-setup] resync request");
-        this.send({type:"get_setup"},
-        (ret)=>{
-          if(this.resyncRequiresAck() && ret["ack"]!=true)
-          {
-            log.warn("[machine-setup] get_setup nak", ret);
-            return;
-          }
-          delete ret["type"];
-          delete ret["id"];
-          delete ret["st"];
-          delete ret["ack"];
-          this.machineSetup=ret;
-          this.machineSetupUpdate(this.machineSetup,true);
-        },(e)=>console.log(e));
-      }
-
-      getMachineSetup()
-      {
-        return this.machineSetup;
-      }
-
-      // ---- request / response ---------------------------------------------
-
-      findAvailableID()
-      {
-        let id=this.idCounter;
-        while(this.trackingWindow[id]!==undefined)
-        {
-          this.idCounter++;
-          if(this.idCounter>999999)
-          {
-            this.idCounter=0;
-          }
-          id=this.idCounter;
-        }
-        return id;
-      }
-
-      send(data,resolve,reject)
-      {
-        if(this.CONN_ID===undefined)
-        {
-          reject("CONN ID is not set");
-          return ;
-        }
-
-        if(data.id!==undefined )
-        {
-          if(this.trackingWindow[data.id]!==undefined)
-            reject(`ID ${data.id} collision`);
-        }
-        else
-        {
-          data.id=this.findAvailableID();
-        }
-        this.trackingWindow[data.id]={resolve,reject};
-
-        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, //just send
-        {
-          msg:data,
-          CONN_ID:this.CONN_ID,
-          type:"MESSAGE"
-        },undefined, {
-          resolve:d=>d,
-          reject:d=>console.log(d)
-        });
-      }
-
-      // Promise flavour of send(), for the command helpers subclasses add.
-      sendP(data)
-      {
-        return new Promise((resolve,reject)=>this.send(data,resolve,reject));
-      }
-
-      // ---- PING watchdog ---------------------------------------------------
-
-      _sendPing()
-      {
-        if(this.CONN_ID===undefined)return ;
-
-        if(this.PINGCount>=2)
-        {
-          //time to disconnect
-          this.PINGCount=0;
-
-          this.connect(this.connInfo);
-          return;
-        }
-        this.PINGCount++;
-
-        this.triggerPing();
-      }
-
-      triggerPing()
-      {
-        this.send({type:"PING"},(ret)=>{
-          delete ret["type"]
-          delete ret["id"]
-          delete ret["st"]
-          this.onPingStatus({...ret});
-          this.PINGCount=0;
-        },errorInfo=>console.log(errorInfo));
-      }
-
-      // Round-trip latency probe for the peripheral link: WebUI -> core PD packet
-      // -> perifCH serial -> device -> reply -> back. Sends `count` SEQUENTIAL
-      // PINGs (same transport a light/PIN_CONF command takes) and times each
-      // resolve, then reports min/avg/p95/max + per-sample list via onUpdate.
-      // Drives the WebUI "通訊診斷" button so field comm-delay can be measured.
-      diagnoseComm(count,onUpdate)
-      {
-        count = count || 20;
-        onUpdate = onUpdate || (()=>{});
-        let self=this;
-        let samples=[], fails=0, i=0, startedAt=new Date().getTime();
-        function finish(){
-          let sorted=[...samples].sort((a,b)=>a-b);
-          let sum=samples.reduce((a,b)=>a+b,0);
-          onUpdate({
-            done:true, total:count, n:samples.length, fails:fails,
-            min: sorted.length?sorted[0]:null,
-            max: sorted.length?sorted[sorted.length-1]:null,
-            avg: samples.length?Math.round(sum/samples.length):null,
-            p95: sorted.length?sorted[Math.min(sorted.length-1,Math.floor(sorted.length*0.95))]:null,
-            elapsed: new Date().getTime()-startedAt,
-            samples: samples,
-          });
-        }
-        function next(){
-          if(i>=count || self.CONN_ID===undefined){ finish(); return; }
-          i++;
-          let t0=new Date().getTime(), settled=false;
-          let to=setTimeout(()=>{ if(settled)return; settled=true; fails++;
-            onUpdate({done:false,i:i,total:count,last:null,timeout:true}); next(); },3000);
-          self.send({type:"PING"},()=>{
-            if(settled)return; settled=true; clearTimeout(to);
-            samples.push(new Date().getTime()-t0);
-            onUpdate({done:false,i:i,total:count,last:samples[samples.length-1]});
-            next();
-          },(e)=>{
-            if(settled)return; settled=true; clearTimeout(to); fails++;
-            onUpdate({done:false,i:i,total:count,last:null,error:String(e)});
-            next();
-          });
-        }
-        next();
-      }
+      let _u = new uInsp_API(this.props.uInsp_API_ID);
+      registerPerifAPI(this.props.uInsp_API_ID, _u);
+      this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID, _u);
     }
-
-
-    // uInspMEGA (Arduino MEGA + W5500). Speaks pulse_hz / res_count and reports
-    // sorting throughput derived from successive PING replies.
-    class  uInsp_API extends Perif_API_Base
     {
-      constructor(id,pg_id_channel=10024)
-      {
-        super(id,"data/uInspSetting.json",pg_id_channel);
-
-        this.pre_res_count=undefined;
-        this.res_count_start_time=undefined;
-        this.res_count_pre_time=undefined;
-
-        this.res_count_rate_overall=undefined;
-        this.res_count_rate_recent=undefined;
-      }
-
-      onSetupFileLoaded(machInfo)
-      {
-        this.default_pulse_hz = machInfo.pulse_hz;
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,default_pulse_hz:this.default_pulse_hz});
-      }
-
-      onSetupFileSaved()
-      {
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,default_pulse_hz:this.machineSetup.pulse_hz});
-      }
-
-      onBeforeSetupPush()
-      {
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,default_pulse_hz:this.default_pulse_hz});
-      }
-
-      onPingStatus(machineStatus)
-      {
-        let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
-
-        let currentTime_ms=new Date().getTime();
-        if(this.pre_res_count!==undefined)
-        {
-          if( this.pre_res_count.OK <= res_count.OK &&
-            this.pre_res_count.NG <= res_count.NG &&
-            this.pre_res_count.NA <= res_count.NA &&
-            this.res_count_pre_time!==undefined&&
-            this.res_count_start_time!==undefined
-            )
-          {
-            let period_s = (currentTime_ms-this.res_count_pre_time)/1000;
-            let period_overall_s = (currentTime_ms-this.res_count_start_time)/1000;
-            let period_pre_s=period_overall_s-period_s;
-            let OK_rate=(res_count.OK-this.pre_res_count.OK)/period_s;
-            let NG_rate=(res_count.NG-this.pre_res_count.NG)/period_s;
-            let NA_rate=(res_count.NA-this.pre_res_count.NA)/period_s;
-            this.res_count_rate_overall={
-              OK:(this.res_count_rate_overall.OK*period_pre_s+OK_rate*period_s)/period_overall_s,
-              NG:(this.res_count_rate_overall.NG*period_pre_s+NG_rate*period_s)/period_overall_s,
-              NA:(this.res_count_rate_overall.NA*period_pre_s+NA_rate*period_s)/period_overall_s,
-            }
-
-            let maxRange=20;
-            let offset=1;
-            let alpha=period_s>maxRange?1:((period_s+offset)/(maxRange+offset));
-            this.res_count_rate_recent={
-              OK:(this.res_count_rate_recent.OK*(1-alpha)+OK_rate*alpha),
-              NG:(this.res_count_rate_recent.NG*(1-alpha)+NG_rate*alpha),
-              NA:(this.res_count_rate_recent.NA*(1-alpha)+NA_rate*alpha),
-            }
-            this.res_count_pre_time=currentTime_ms;
-            this.pre_res_count={...res_count};
-          }
-          else
-          {
-            this.pre_res_count=undefined;
-          }
-        }
-
-        if(this.pre_res_count===undefined)
-        {
-          this.pre_res_count={...res_count};
-          this.res_count_start_time=
-          this.res_count_pre_time=currentTime_ms;
-
-          this.res_count_rate_overall={OK:0,NG:0,NA:0};
-          this.res_count_rate_recent={OK:0,NG:0,NA:0};
-        }
-
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineStatus,result_count_rate_recent:this.res_count_rate_recent});
-      }
+      let _uInspESP32 = new uInspESP32_API(this.props.uInspESP32_API_ID);
+      registerPerifAPI(this.props.uInspESP32_API_ID, _uInspESP32);
+      this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID, _uInspESP32);
+      // QA/bring-up handle -- driving the board by hand from the console is
+      // the only way to probe one command in isolation.
+      if (typeof window !== "undefined") window.__GP_PERIF__ = _uInspESP32;
     }
-    this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
-
-
-    // uInspESP32 (Peripheral/uInspESP32). Distinct protocol from uInspMEGA:
-    // plateFreq rather than pulse_hz, stage_pulse_offset for the per-machine
-    // camera/light/selector timing, and an explicit inspection-mode state
-    // machine. get_setup answers with ack, so the resync check is worth having.
-    class  uInspESP32_API extends Perif_API_Base
     {
-      constructor(id,settingFilePath="data/uInspESP32Setting.json",pg_id_channel=10027)
-      {
-        super(id,settingFilePath,pg_id_channel);
-        this.runningStat=undefined;
-      }
-
-      resyncRequiresAck(){ return true; }
-
-      // ---- inspection mode -------------------------------------------------
-
-      enterInspMode(){ return this.sendP({type:"enter_insp_mode"}); }
-      exitInspMode(){ return this.sendP({type:"exit_insp_mode"}); }
-      clearError(){ return this.sendP({type:"clear_error"}); }
-      clearErrorHistory(){ return this.sendP({type:"clear_error_history"}); }
-
-      // ---- sorting ---------------------------------------------------------
-
-      // cat 1 -> SEL1, 2 -> SEL2. tid comes from the bT trigger message that
-      // announced the object, so a late result cannot be applied to the wrong
-      // part.
-      report(tid,cat){ return this.sendP({type:"report",tid,cat}); }
-
-      // count of -1 disables the countdown; reaching zero faults the machine.
-      setSel1Countdown(count){ return this.sendP({type:"set_sel1_cd",count}); }
-      getSel1Countdown(){ return this.sendP({type:"get_sel1_cd"}); }
-
-      // ---- stepper / diagnostics -------------------------------------------
-
-      stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
-      stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
-      trigPhantomPulse(){ return this.sendP({type:"trig_phamton_pulse"}); }
-
-      resetRunningStat(){ return this.sendP({type:"reset_running_stat"}); }
-      getRunningStat()
-      {
-        return this.sendP({type:"get_running_stat"}).then(ret=>{
-          this.runningStat=ret;
-          StoreX.dispatch({type:"WS_UPDATE",id:this.id,runningStat:ret});
-          return ret;
-        });
-      }
-
-      // ---- persistence -----------------------------------------------------
-
-      // The board keeps its own copy in NVS, so a machine that is moved or
-      // reflashed still comes up on its own timing rather than whatever the
-      // host happened to cache. Persisting is deliberate, not automatic --
-      // offset probing during setup should not burn flash cycles.
-      saveSetupToDevice(){ return this.sendP({type:"save_setup"}); }
-      clearSavedSetupOnDevice(){ return this.sendP({type:"clear_saved_setup"}); }
-
-      machineSetupUpdateAndPersist(newMachineInfo)
-      {
-        this.machineSetupUpdate(newMachineInfo);
-        return this.saveSetupToDevice();
-      }
-
-      setMachineId(machine_id){ return this.sendP({type:"set_setup",machine_id,persist:true}); }
-      getMachineId(){ return (this.machineSetup||{}).machine_id; }
-
-      // True when the running config came from the board's NVS rather than the
-      // compiled fallback -- an unconfigured board is worth flagging loudly
-      // before it starts flinging parts at the wrong bin.
-      isConfigFromNVS(){ return (this.machineSetup||{}).cfg_from_nvs===true; }
+      let _slid = new SLID_API(this.props.SLID_API_ID, "data/SLID_Setting.json", 10025);
+      registerPerifAPI(this.props.SLID_API_ID, _slid);
+      this.props.ACT_WS_REGISTER(this.props.SLID_API_ID, _slid);
     }
-    this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID,new uInspESP32_API(this.props.uInspESP32_API_ID));
-
-
-    // Generic serial peripheral with no device-specific status handling.
-    class  GenPerif_API extends Perif_API_Base
     {
-      constructor(id,settingFilePath,pg_id_channel=10025)
-      {
-        super(id,settingFilePath,pg_id_channel);
-      }
-
-      resyncRequiresAck(){ return true; }
-
-      // Deliberately does NOT publish machineStatus: the pre-refactor
-      // GenPerif_API decoded the PING reply and dropped it on the floor, and
-      // SLID_API inherits from here. Publishing it would be a behaviour change
-      // to a machine in production, so it stays opt-in per device.
-      onPingStatus(machineStatus){}
+      let _cnc = new GenPerif_API(this.props.CNC_API_ID, "data/CNC_Setting.json", 10026);
+      registerPerifAPI(this.props.CNC_API_ID, _cnc);
+      this.props.ACT_WS_REGISTER(this.props.CNC_API_ID, _cnc);
     }
-
-    
-    class  SLID_API extends GenPerif_API
-    {
-      constructor(id,settingFilePath,pg_id_channel=10025)
-      {
-        super(id,settingFilePath,pg_id_channel);
-        this.checkInfoInterval=undefined;
-        this.checkInfoListenerDict={};
-        // this.pause_EM_STOP=false;
-        this.is_in_EM_STOP=false;
-        this.EM_STOP_src_list=[];
-        this.no_obj_detected_time_ms=-1;
-        this.no_ava_detected_time_ms=-1;
-        this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE({//set default value
-          enable_EM_STOP:false,
-          no_obj_detected_time_max_ms:60*5*1000,
-          no_ava_detected_time_max_ms:60*5*1000,
-          SNG_Max:10,
-          CNG_Max:20,
-
-          
-          consecutive_SNG_Max:3,
-          consecutive_CNG_Max:6,
-
-          
-          fuzzy_consecutive_SNG_Max:-1,
-          fuzzy_consecutive_CNG_Max:-1,
-
-          
-        })
-
-      }
-      readLocalstorage_SLID_EM_STOP_RULE(defaultRule)
-      {
-        let readRule = window.localStorage.getItem('SLID_EM_STOP_RULE');
-        if(readRule===null)
-        {
-          this.saveLocalstorage_SLID_EM_STOP_RULE(defaultRule);
-          return defaultRule;
-        }
-
-        try { return {...defaultRule,...JSON.parse(readRule)}; }
-        catch (e) { return defaultRule; }
-      }
-      saveLocalstorage_SLID_EM_STOP_RULE(rule=this.EM_STOP_Rule)
-      {
-        window.localStorage.setItem('SLID_EM_STOP_RULE', JSON.stringify(rule));
-      }
-      connect(connInfo)
-      {
-        if(this.checkInfoInterval===undefined)
-        {//start scan loop
-          this.checkInfoInterval=window.setInterval(()=>this.checkInfoState(),1000);//watch dog to do reconnection
-        }
-        super.connect(connInfo)
-      }
-
-
-
-
-      reload_EM_STOP_RULE()
-      {
-        this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE();
-      }
-      update_EM_STOP_RULE(newRule)
-      {
-        this.EM_STOP_Rule={...this.EM_STOP_Rule,...newRule};
-        this.saveLocalstorage_SLID_EM_STOP_RULE(this.EM_STOP_Rule)
-        
-        let reportStatisticState=GetObjElement(StoreX.getState(),["UIData","edit_info","reportStatisticState"]);
-        Object.keys(this.checkInfoListenerDict).forEach(key=>{
-          this.checkInfoListenerDict[key](this,reportStatisticState);
-        })
-      }
-      tmp_EM_STOP_RULE(newRule)
-      {
-        this.EM_STOP_Rule={...this.EM_STOP_Rule,...newRule};
-
-      }
-      
-
-      checkInfoListenerKeyUsed(key)
-      {
-        return this.checkInfoListenerDict[key]!==undefined
-      }
-      checkInfoListenerAdd(key,cb)
-      {
-        this.checkInfoListenerDict[key]=cb
-      }
-      
-      checkInfoListenerRemove(key)
-      {
-        delete this.checkInfoListenerDict[key]
-      }
-
-
-      checkInfoState()
-      {
-        let reportStatisticState=GetObjElement(StoreX.getState(),["UIData","edit_info","reportStatisticState"]);
-        let c_state=GetObjElement(StoreX.getState(),["UIData","c_state"]);
-        let m_state=xstate_GetCurrentMainState(c_state);
-
-        // console.log(this.p_state,m_state.state)
-        if(this.p_state!=m_state.state)
-        {
-          if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE)
-            this.clear_EM_STOP_state();
-          this.p_state=m_state.state;
-        }
-
-
-        if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE && this.EM_STOP_Rule.enable_EM_STOP==true)
-        {
-          this.no_obj_detected_time_ms=-1;
-          if(this.reportCount==reportStatisticState.reportCount)//no change
-          {
-            if(this.noreport_timestamp===undefined)
-              this.noreport_timestamp=Date.now();
-            else
-            {
-              
-              this.no_obj_detected_time_ms= Date.now()-this.noreport_timestamp;
-              
-            }
-          }
-          else
-          {
-            this.noreport_timestamp=undefined
-            this.reportCount=reportStatisticState.reportCount;
-          }
-
-          this.no_ava_detected_time_ms=-1;
-          let ava_report_count=reportStatisticState.reportCount-reportStatisticState.emptyReportCount;
-          if(this.ava_report_count==ava_report_count)//no change
-          {
-            if(this.latest_ava_report_timestamp===undefined)
-              this.latest_ava_report_timestamp=Date.now();
-            else
-            {
-              
-              this.no_ava_detected_time_ms= Date.now()-this.latest_ava_report_timestamp;
-              
-            }
-          }
-          else
-          {
-            this.latest_ava_report_timestamp=undefined
-            this.ava_report_count=ava_report_count;
-          }
-
-          ////
-
-
-          if(this.is_in_EM_STOP==false)
-          {//check status to EM_STOP
-
-            let needToTrigEM_STOP=false;
-            let EM_STOP_src_list=[];
-            if(this.EM_STOP_Rule.no_obj_detected_time_max_ms>0 && this.no_obj_detected_time_ms>=this.EM_STOP_Rule.no_obj_detected_time_max_ms)
-            {
-              EM_STOP_src_list.push("no_obj_detected_time_ms");
-              needToTrigEM_STOP=true
-            }
-            if(this.EM_STOP_Rule.no_ava_detected_time_max_ms>0 && this.no_ava_detected_time_ms>=this.EM_STOP_Rule.no_ava_detected_time_max_ms)
-            {
-              EM_STOP_src_list.push("no_ava_detected_time_ms");
-              needToTrigEM_STOP=true
-            }
-            else
-            {
-            reportStatisticState.statisticValue.measureList.forEach(msure=>{
-              let stat_sp=msure.statistic.sp;//find every 
-
-              if(this.EM_STOP_Rule.SNG_Max>0 && stat_sp.SNG_count>=this.EM_STOP_Rule.SNG_Max)
-              {
-                EM_STOP_src_list.push("SNG_count");
-                needToTrigEM_STOP=true;return;
-              }
-              if(this.EM_STOP_Rule.CNG_Max>0 && stat_sp.CNG_count>=this.EM_STOP_Rule.CNG_Max)
-              {
-                EM_STOP_src_list.push("CNG_count");
-                needToTrigEM_STOP=true;return;
-              }
-
-              if(this.EM_STOP_Rule.consecutive_SNG_Max>0 && stat_sp.consecutive_SNG_count>=this.EM_STOP_Rule.consecutive_SNG_Max)
-              {
-                EM_STOP_src_list.push("consecutive_SNG_count");
-                needToTrigEM_STOP=true;return;
-              }
-              if(this.EM_STOP_Rule.consecutive_CNG_Max>0 && stat_sp.consecutive_CNG_count>=this.EM_STOP_Rule.consecutive_CNG_Max)
-              {
-                EM_STOP_src_list.push("consecutive_CNG_count");
-                needToTrigEM_STOP=true;return;
-              }
-
-
-
-              if(this.EM_STOP_Rule.fuzzy_consecutive_SNG_Max>0 && stat_sp.fuzzy_consecutive_SNG_count>=this.EM_STOP_Rule.fuzzy_consecutive_SNG_Max)
-              {
-                EM_STOP_src_list.push("fuzzy_consecutive_SNG_count");
-                needToTrigEM_STOP=true;return;
-              }
-              if(this.EM_STOP_Rule.fuzzy_consecutive_CNG_Max>0 && stat_sp.fuzzy_consecutive_CNG_count>=this.EM_STOP_Rule.fuzzy_consecutive_CNG_Max)
-              {
-                EM_STOP_src_list.push("fuzzy_consecutive_CNG_count");
-                needToTrigEM_STOP=true;return;
-              }
-              
-            })
-
-            }
-            if(needToTrigEM_STOP)
-            {
-              this.EM_STOP_src_list=EM_STOP_src_list;
-              this.trigger_EM_STOP();
-            }
-          }
-
-
-
-        }
-        else
-        {
-          this.noreport_timestamp=undefined;
-        }
-
-
-          
-        // console.log(this.checkInfoListenerDict)
-        Object.keys(this.checkInfoListenerDict).forEach(key=>{
-          
-          this.checkInfoListenerDict[key](this,reportStatisticState);
-        })
-
-      }
-      
-      clear_EM_STOP_state()
-      {
-        this.noreport_timestamp=undefined;
-        this.latest_ava_report_timestamp=undefined;
-        this.is_in_EM_STOP=false;
-        this.EM_STOP_src_list=[];
-      }
-      trigger_EM_STOP(keep_ms)
-      {
-        this.is_in_EM_STOP=true;
-
-        if(keep_ms===undefined)
-        {
-          keep_ms=this.machineSetup.EM_STOP_keep_ms;//try to find the keep time from setup first
-          
-        }
-        if(keep_ms===undefined)keep_ms=2000;//if still unset use 2s keep time
-        // this.is_in_EM_STOP_src="TRIG";
-        this.send({"type":"EM_STOP","keep_ms":keep_ms},
-        (ret)=>{
-          // console.log(ret);
-        },(e)=>console.log(e));
-      }
-    }
-
-    this.props.ACT_WS_REGISTER(this.props.SLID_API_ID, new SLID_API(this.props.SLID_API_ID,"data/SLID_Setting.json",10025));
-
-
-
-    this.props.ACT_WS_REGISTER(this.props.CNC_API_ID, new GenPerif_API(this.props.CNC_API_ID,"data/CNC_Setting.json",10026));
 
 
     
@@ -1970,18 +1393,21 @@ class APPMasterX extends React.Component {
                     modal_view:{
                       view_fn:()=>
                       {
-                        let cinfo=this.props.CORE_ID_CONN_INFO;
-                        let info=GetObjElement(cinfo,["info"]);  
-                        let snap_queue_skip_count=GetObjElement(info,["snap_queue_skip_count"]);  
-                        let save_snap_folder_full_delete_count=GetObjElement(info,["save_snap_folder_full_delete_count"]);  
-
-                        return <pre>
-                        檢驗NG儲存略過數量：{snap_queue_skip_count}<br/>
-                        檢驗NG儲存資料夾滿後刪舊：{save_snap_folder_full_delete_count}<br/>
-                        {JSON.stringify(info,null,2)}
-                        </pre>
+                        let info=GetObjElement(this.props.CORE_ID_CONN_INFO,["info"]);
+                        return <>
+                          <CoreStatusPanel info={info}
+                            send={(tl,prop,obj,bin,cbs)=>
+                              this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, obj, bin, cbs)}/>
+                          <details style={{marginTop:10}}>
+                            <summary style={{cursor:"pointer", color:"#888"}}>狀態輪詢原始值</summary>
+                            <pre style={{maxHeight:240, overflow:"auto", fontSize:11}}>
+                              {JSON.stringify(info,null,2)}
+                            </pre>
+                          </details>
+                        </>;
                       },
-                      title:"Core",
+                      title:"運算核心",
+                      width:720,
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
                       footer:null
@@ -2003,20 +1429,46 @@ class APPMasterX extends React.Component {
                     this.setState({ carousel_drawer_open: true });
                     break;
                   }
+                  // Used to be the raw conn-info dump plus a 重連 button. The
+                  // dump is still here (last block) because it is the only
+                  // place lens_calib_rms_px / present / cam_status are visible,
+                  // but the panel above it is the reason to open this: setting
+                  // exposure otherwise meant walking into 相機校正, which starts
+                  // a full-resolution stream just to change one number.
                   this.setState({
                     modal_view:{
-                      view_fn:()=><pre>
-                        {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
+                      view_fn:()=>{
+                        let cam0 = GetObjElement(this.props.CAM1_ID_CONN_INFO, ["data", 0]) || {};
+                        return <>
+                        <div style={{marginBottom:10}}>
+                          <b>{cam0.vendor} {cam0.model}</b>
+                          <span style={{color:"#888", marginLeft:8}}>{cam0.serial_nbr}</span>
+                          <span style={{color:"#888", marginLeft:8}}>{cam0.protocol}</span>
+                          {cam0.present===false
+                            ? <span style={{color:"#cf1322", marginLeft:8}}>未回應（顯示的是拔線前的身分）</span>
+                            : null}
+                          <Button size="small" style={{marginLeft:12}} onClick={()=>{
+                            this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
+                              return obj.reconnection();
+                            })
+                          }}>重連</Button>
+                        </div>
 
-                        <Button onClick={()=>{
+                        <CameraParamPanel
+                          camInfo={cam0}
+                          send={(tl,prop,obj,bin,cbs)=>
+                            this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, obj, bin, cbs)}/>
 
-                          this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
-                            return obj.reconnection();
-                          })
-                        }}>重連</Button>
-
-                      </pre>,
+                        <details style={{marginTop:10}}>
+                          <summary style={{cursor:"pointer", color:"#888"}}>camera_info (原始)</summary>
+                          <pre style={{maxHeight:260, overflow:"auto", fontSize:11}}>
+                            {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
+                          </pre>
+                        </details>
+                        </>;
+                      },
                       title:"Camera",
+                      width:720,
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
                       footer:null
@@ -2047,6 +1499,20 @@ class APPMasterX extends React.Component {
                   break;
                 }
                 
+                case this.props.uInspESP32_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><UINSP_ESP32_UI/>,
+                      title:"全檢設備 v2 (uInspESP32)",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+
                 case this.props.SLID_API_ID:
                 {
                   this.setState({

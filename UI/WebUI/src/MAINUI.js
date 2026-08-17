@@ -14,6 +14,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
+import { usePerifConn } from './perif/PerifAPI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import CalibrationUI_rdx from './CalibrationUI';
 import InstInspUI_rdx from './InstInspUI';
@@ -279,8 +280,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
   const CAM1_ID_CONN_INFO = useSelector(state => state.ConnInfo.CAM1_ID_CONN_INFO);
-  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
-  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+  const uInsp_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.uInsp_API_ID));
+  const SLID_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.SLID_API_ID));
 
   
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
@@ -1302,47 +1303,17 @@ const MainUI=()=>{
         BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
         onExtraCtrlUpdate={extraCtrls=>{
           let extraCtrlUI=[];
-          if(extraCtrls.currentReportExtract!==undefined)
-          {
-            extraCtrlUI.push({
-              icon:<SaveOutlined />,
-              text:dictLookUp("save_calibration", DICT),
-              onClick:_=>{
-
-                let report = extraCtrls.currentReportExtract();
-                if(report===undefined)return;
-
-                var enc = new TextEncoder();
-                let info_binary =enc.encode(JSON.stringify(report, null, 2));
-                setPopUpInfo({
-                  title:null,
-                  onOK:()=>{
-                    
-                    ACT_File_Save("data/stageLightReport.json" ,info_binary,
-                      {
-                        resolve:(stacked_pkts,action_channal)=>{
-                          
-                          // ACT_WS_SEND_BPG("RC", 0, {
-                          //   target: "camera_setting_refresh"
-                          // });
-      
-                        }
-                      })
-                    setPopUpInfo();
-                  },
-                  onCancel:()=>{
-                    setPopUpInfo();
-                  },
-                  content:"確定存檔？",
-    
-                  okText:"OK",
-                  cancelText:"NO"
-                });
-
-
-              }
-            });
-          }
+          // 舊的「儲存校正」按鈕已移除。
+          //
+          // 它把 stage_light_report 存成 data/stageLightReport.json, 而那個檔案
+          // 沒有任何人讀 -- 核心只在 wiringPanel.cpp 的註解裡提到它, 說校正已改
+          // 由 lens_calib.json + field_calib.json 提供 (load_lens_calib /
+          // load_field_calib, 由 calib_files_load 觸發)。BackLightCalibUI 自己
+          // 的讀取端也早就註解掉了。
+          //
+          // 也就是說操作員按下去、UI 回報成功、檔案確實寫進磁碟, 但機台行為完全
+          // 沒變 -- 這比按鈕不存在更糟。實際生效的背光/場地校正在 CalibrationUI
+          // 的 field calib(產生 data/field_calib.json)。
           setExtraSideUI(extraCtrlUI);
         }}
 
@@ -1521,12 +1492,10 @@ const MainUI=()=>{
                 target: "camera_setting_refresh"
               });
 
-              
-              ACT_WS_SEND_BPG("LD", 0, { filename: "data/default_camera_param.json" },
-              undefined, 
-              {resolve: (data,action_channal) => {
-                action_channal(data);
-              }});
+              // The default_camera_param.json load that used to follow is gone --
+              // see the note in comm/BPG_WS.js. Nothing consumed the reply, and
+              // the file's mmpb2b disagreed with lens_calib.json. The camera
+              // setting refresh above is the part of this action that does work.
               setUI_state(s_statesTable.RootSelect)
             }
             // subMenu:[]

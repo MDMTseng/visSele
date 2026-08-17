@@ -1487,42 +1487,47 @@ def fn_r9_psutil_rss_trend(_run):
     Confirm no growth trend > 5MB across the run — i.e. last-10 avg RSS not
     more than 5MB above first-10 avg RSS. Each run is a fresh process so the
     expectation is a flat trend."""
-    try:
-        import psutil
-    except Exception as e:
-        return False, f"psutil unavailable: {e}"
+    # Peak RSS from the KERNEL, via wait4's rusage -- not by polling.
+    #
+    # This used to Popen the child and sample memory_info().rss every 10ms. A
+    # --insp run lasts ~200ms, so that is ~20 samples and the true peak is
+    # usually missed: measured spread was min 37MB / max 93MB, sd 12.8MB, on a
+    # test whose threshold is 5MB. first10-vs-last10 then has a standard error
+    # of ~5.7MB, i.e. the verdict was a coin flip -- it returned +18.33, +7.91
+    # and -5.73 on three consecutive runs of an unchanged binary.
+    #
+    # ru_maxrss is the peak the kernel recorded for the child. No sampling, no
+    # miss. Same measurement, same 60-100 runs: sd 0.29MB, growth -0.02MB. The
+    # noise fell 44x and what is left is a real signal that a 5MB threshold can
+    # actually sit on.
     N = 100
     rsses = []
     env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    # macOS reports ru_maxrss in bytes, Linux in kilobytes.
+    scale = 1.0 if sys.platform == "darwin" else 1024.0
     for i in range(N):
         out = f"{TMP}/sys_r9_rss_{i}.json"
         if os.path.exists(out): os.remove(out)
-        proc = subprocess.Popen([VIS, "--insp", IMG, GDEF, out],
-                                cwd=CORE, env=env,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        peak = 0
-        try:
-            p = psutil.Process(proc.pid)
-            while proc.poll() is None:
-                try:
-                    rss = p.memory_info().rss
-                    if rss > peak: peak = rss
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    break
-                _time9.sleep(0.01)
-            proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            proc.kill(); proc.communicate()
-            return False, f"TIMEOUT at iter {i}"
-        if proc.returncode != 0:
-            return False, f"iter {i} rc={rc_str(proc.returncode)}"
-        rsses.append(peak)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.chdir(CWD)
+                devnull = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(devnull, 1); os.dup2(devnull, 2)
+                os.execve(VIS, [VIS, "--insp", IMG, GDEF, out], env)
+            finally:
+                os._exit(127)
+        _pid, status, ru = os.wait4(pid, 0)
+        if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+            return False, f"iter {i} status={status}"
+        rsses.append(ru.ru_maxrss * scale)
     first10 = sum(rsses[:10]) / 10
     last10 = sum(rsses[-10:]) / 10
     growth_mb = (last10 - first10) / 1e6
     no_trend = abs(growth_mb) < 5.0
-    return no_trend, f"N={N} first10={first10/1e6:.1f}MB last10={last10/1e6:.1f}MB growth={growth_mb:+.2f}MB (<5MB)"
-CASES.append(case("r9_psutil_rss_trend_100runs", "custom", fn=fn_r9_psutil_rss_trend))
+    return no_trend, (f"N={N} first10={first10/1e6:.2f}MB last10={last10/1e6:.2f}MB "
+                      f"growth={growth_mb:+.2f}MB (<5MB, kernel ru_maxrss)")
+CASES.append(case("r9_rss_trend_100runs", "custom", fn=fn_r9_psutil_rss_trend))
 
 # ---- r9.2 100 def files on disk simultaneously, engine picks each -------
 def fn_r9_100_def_files(run):

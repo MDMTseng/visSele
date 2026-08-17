@@ -123,9 +123,18 @@ static int connect_nonb(int sockfd, const struct sockaddr *saptr, socklen_t sale
         perror("fcntl F_SETFL");
     }
 
+    // CONTRACT (matches the WIN32 variant above, which already does this on
+    // every path): on failure connect_nonb CLOSES the socket. The caller must
+    // treat -1 as "the fd is gone". Half the failure paths here closed and
+    // half did not, which left the caller no correct choice: closing again
+    // double-closes a number another thread may have been handed, not closing
+    // leaks one fd per retry until the WebSocket server dies of EMFILE.
     error = 0;
     if ((n = connect(sockfd, saptr, salen)) < 0) {
         if (errno != EINPROGRESS) {
+            int e = errno;           // an immediate refusal (e.g. ENETUNREACH)
+            socket_close(&sockfd);   // was a silent leak -- the one path with
+            errno = e;               // no close at all
             return -1;
         }
     } else if (n == 0) {
@@ -151,6 +160,7 @@ static int connect_nonb(int sockfd, const struct sockaddr *saptr, socklen_t sale
     if (FD_ISSET(sockfd, &rset) || FD_ISSET(sockfd, &wset)) {
         len = sizeof(error);
         if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+            socket_close(&sockfd);   // same contract: fail = closed
             return -1;
         }
     } else {
@@ -189,14 +199,19 @@ Data_TCP_Layer::Data_TCP_Layer(const char *host,int port)//throw(std::runtime_er
         throw std::runtime_error("-2");
     }
 
+    // A throw from the ctor means no dtor -- anything below that fails must
+    // close the fd itself or it leaks (the WebUI retries CONNECT, so a leak
+    // here compounds until EMFILE takes the WebSocket server down).
     int enable = 1;
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(int)) < 0)
     {
+      socket_close(&sockfd);
       throw std::runtime_error("-3");
     }
 #ifdef SO_REUSEPORT
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (char*)&enable, sizeof(int)) < 0)
     {
+      socket_close(&sockfd);
       throw std::runtime_error("-4");
     }
 #endif
@@ -216,6 +231,10 @@ Data_TCP_Layer::Data_TCP_Layer(const char *host,int port)//throw(std::runtime_er
     if ((ret_val=connect_nonb( sockfd,(struct sockaddr *)&their_addr,sizeof(struct sockaddr), 1))!=0) {
       //perror("connect");
       sprintf(EXP_INFO,"ERROR ret:%d",ret_val);
+      // connect_nonb closed the fd (its contract on failure) -- do NOT close
+      // here: sockfd still holds the dead number, and closing it again could
+      // hit an unrelated fd another thread was just handed.
+      sockfd = -1;
       throw std::runtime_error(EXP_INFO);
     }
     // recvThread=NULL;
@@ -335,6 +354,23 @@ int Data_UART_Layer::recv_data_thread()
     if(stopRecv)break;       // intentional teardown -- exit without notifying
     if(datLen==0)continue;
     if(datLen<0)break;       // genuine error -> fall through to disconnected()
+    // Raw-byte tap, opt-in via INSP_PERIF_RAW. The framed view further up can
+    // only show frames that PARSED; when a reply goes missing entirely the one
+    // thing worth knowing is what actually came off the wire.
+    {
+      static const bool raw_tap = (getenv("INSP_PERIF_RAW") != NULL);
+      if(raw_tap)
+      {
+        fprintf(stderr,"[raw %3d] ",datLen);
+        for(int i=0;i<datLen;i++)
+        {
+          unsigned char c=buffer[i];
+          if(c>=0x20 && c<0x7f) fputc(c,stderr);
+          else fprintf(stderr,"<%02X>",c);
+        }
+        fputc('\n',stderr);
+      }
+    }
     recv_data(buffer, datLen,false);
   }
 

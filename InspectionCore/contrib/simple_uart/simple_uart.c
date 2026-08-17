@@ -164,7 +164,12 @@ int simple_uart_write(struct simple_uart *sc, const void *buffer, int len)
 #ifdef WIN32
     int r = 0;
     /* TODO: Support char_delay_us */
-    WriteFile (sc->port, buffer, len, (LPDWORD)&r, NULL);
+    /* A failed WriteFile used to be reported as "0 bytes written", which every
+     * caller counts as success -- on the deployed platform an unplugged or
+     * wedged port looked exactly like a healthy quiet one, and verdicts
+     * vanished without a counter moving. */
+    if (!WriteFile (sc->port, buffer, len, (LPDWORD)&r, NULL))
+        return -1;
 #else
     int r;
     if (sc->char_delay_us > 0) {

@@ -326,6 +326,31 @@ node tools/webctl/qa/r6_shapeattr.mjs
 node tools/webctl/qa/r10_smoke.mjs       # known intermittent — see §9
 ```
 
+### Core-side probes (added 2026-08-15)
+
+These talk BPG to the core on 4090 directly, no browser. They answer questions
+the UI harness cannot: the II path and the continuous-inspection path are
+different code, and a leak or stall in one says nothing about the other.
+
+```
+ii_dump.mjs <def> <img...>   every measurement an INST_CHECK produces, sorted,
+                             full precision, timings stripped -> diff two builds
+soak.mjs <def> <seconds>     holds a live CI session open; report rate, object
+                             counts, drops over time
+trigmode.mjs 0|1             flip the camera's trigger mode from a 2nd client.
+                             The Inspection UI sets hardware trigger, and on a
+                             bench the trigger rides the uInsp backlight line --
+                             no board, no frames, view frozen. 0 = free run.
+```
+
+**Take every ii_dump baseline from a freshly started core.** The core is
+stateful: loading a lens calibration changes the result for the same def and
+the same image. A stale baseline once looked exactly like a regression.
+
+To tell "did my change do this?" from "did the environment do this?":
+run the same binary 3x first (is it even deterministic), then revert the code
+and rebuild, and only then go looking at the environment.
+
 ### Test-running constraints
 
 - **webctld holds a single browser tab**. Run one test script at a time.

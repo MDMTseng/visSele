@@ -152,7 +152,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
       offset_y : 0,
     };
     fi = fi_;
-    callback(*this, CameraLayer::EV_ERROR, context);
+    invokeFrameCallback(CameraLayer::EV_ERROR);
   }
   else
   {
@@ -174,7 +174,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
     };
     fi = fi_;
 
-    callback(*this, CameraLayer::EV_IMG, context);
+    invokeFrameCallback(CameraLayer::EV_IMG);
   }
   _cached_frame_info=NULL;
 

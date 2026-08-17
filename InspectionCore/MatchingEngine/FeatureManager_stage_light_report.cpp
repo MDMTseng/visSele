@@ -437,7 +437,6 @@ int FeatureManager_stage_light_report::FeatureMatching(cv::Mat &p_img)
                       p_img.rows / this->down_scale_factor),
              0, 0, cv::INTER_AREA);
 
-  LOGI("T,nonBG_thres:%f  this:%p", this->nonBG_thres, this);
   report.type = FeatureReport::stage_light_report;
   report.data.stage_light_report.gridInfo->clear();
   report.data.stage_light_report.gridInfo->reserve(grid_size[0] * grid_size[1]);

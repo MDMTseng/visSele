@@ -42,11 +42,23 @@ CameraLayer_BMP::CameraLayer_BMP(CameraLayer::BasicCameraInfo camInfo,std::strin
 
 CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount)
 {
+      // Held for the whole extraction, not just the ROI calculation: every
+      // read below (img_load.cols, warpAffine's source, the row pointers) has
+      // to see the same image LoadBMP loaded. Without it a `next`/`jump` from
+      // the WebUI reassigns img_load -- freeing the pixel buffer -- while this
+      // loop is still walking it.
+      std::lock_guard<std::mutex> _img_guard(m);
 
       int newX,newY;
       int newW,newH;
 
-      CalcROI(&newX,&newY,&newW,&newH);
+      // NAK here means there is nothing loaded to extract -- an empty folder,
+      // a file imread could not decode. Returning early keeps the degenerate
+      // geometry out of the pipeline entirely.
+      if(CalcROI_nolock(&newX,&newY,&newW,&newH)!=ACK || newW<=0 || newH<=0)
+      {
+        return NAK;
+      }
 
       // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
       if(pixelCount<newW*newH)
@@ -61,7 +73,12 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         brightnessMult = r * (aug.brightness_jitter_pct/100.0f) + 1.0f;
       }
 
-      int tExp=(1<<13)*brightnessMult*exp_time_us*a_gain/exp_time_100ExpUs;
+      // Full brightness unless exposure simulation is asked for. The file's
+      // own exposure is already in its pixels; the real camera's exposure has
+      // nothing to say about it.
+      const float expoMult = aug.expo_sim_en
+          ? (aug.expo_us * aug.expo_gain / exp_time_100ExpUs) : 1.0f;
+      int tExp=(1<<13)*brightnessMult*expoMult;
       LOGI("tExp:%d",tExp);
 
 
@@ -151,8 +168,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           // ROI shared origin AND width, which is false for any PNG/BMP
           // whose dims don't match the requested ROI -- the row stride
           // mismatch produced the striped-corruption pattern.
-          // imread(IMREAD_COLOR) always returns 3-channel BGR (grayscale
-          // PNG is replicated to BGR), so src_ch is 3.
+          // imread(IMREAD_ANYCOLOR) keeps the file's own channel count, so a
+          // grayscale file stays 1-channel here and src_ch is 1.
           const int src_ch = img_load.channels();
           for (int i = 0; i < newH; i++) {
             int li = i + newY;
@@ -326,7 +343,27 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
 CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
 {
-  
+  // Every clamp below is against img_load's size, so the answer is only
+  // meaningful while img_load is held still.
+  std::lock_guard<std::mutex> _img_guard(m);
+  return CalcROI_nolock(X,Y,W,H);
+}
+
+CameraLayer_BMP::status CameraLayer_BMP::CalcROI_nolock(int* X,int* Y,int* W,int* H)
+{
+  // No image, no ROI. Every clamp below is against img_load's size, and with
+  // an empty Mat they compose into a 6x6 window at origin (-6,-6):
+  //   tmpX >= cols-5  ->  0 >= -5   -> tmpX = -6
+  //   tmpW+tmpX > cols -> 99999-6>0 -> tmpW = 0-(-6) = 6
+  // which is not a refusal, it is a plausible-looking frame. It reached
+  // FeatureMatching and killed the core with std::length_error from a vector
+  // sized off it. A missing image must produce no frame, not a small one.
+  if(img_load.empty())
+  {
+    if(X)*X=0; if(Y)*Y=0; if(W)*W=0; if(H)*H=0;
+    return NAK;
+  }
+
   int tmpW=ROI_W;
   int tmpH=ROI_H;
   int tmpX=ROI_X;
@@ -390,10 +427,11 @@ CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
 CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 {
     status ret_status;
-    m.lock();
+    {
+    std::lock_guard<std::mutex> _img_guard(m);
 
     int ret = 0;
-    
+
     //if(img.GetWidth()<100)//Just to skip image loading
     cacheUseCounter++;
     if(this->fileName.compare(fileName)!=0 || cacheUseCounter>20)//check if the name isn't equal
@@ -401,7 +439,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       cacheUseCounter=0;
       this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
-        img_load = cv::imread(fileName.c_str(), cv::IMREAD_COLOR);
+        img_load = cv::imread(fileName.c_str(), cv::IMREAD_ANYCOLOR);
         ret = img_load.empty() ? -1 : 0;
         if (ret == 0 && !img_load.isContinuous()) img_load = img_load.clone();
         LOGI("ret:%d",ret);
@@ -409,7 +447,6 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     if(ret!=0)
     {
       ret_status=NAK;
-      callback(*this,CameraLayer::EV_ERROR,context);
     }
     else
     {
@@ -430,7 +467,12 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       // callback(*this,CameraLayer::EV_IMG,context);
 
     }
-    m.unlock();
+    }
+    // Outside the lock on purpose: the consumer's callback runs the inspection
+    // pipeline in some configurations, and it calls back into this layer
+    // (ExtractFrame, CalcROI) which now takes the same non-recursive mutex.
+    if(ret_status==NAK)
+      invokeFrameCallback(CameraLayer::EV_ERROR);
     return ret_status;
 }
 

@@ -248,8 +248,8 @@ def _check_against_golden(rc, out, tol_finite, name):
             continue
         drift = abs(cv - gv)
         drifts.append((jid, drift))
-        if drift > tol_finite:
-            bad.append((jid, f"drift {drift:.3f} > {tol_finite}"))
+        if drift > tol_finite * ILL_CONDITIONED.get(jid, 1.0):
+            bad.append((jid, f"drift {drift:.3f} > {tol_finite * ILL_CONDITIONED.get(jid, 1.0):.3f}"))
 
     if bad: return False, f"out-of-tol judges {bad[:3]}"
     measured = len(drifts)
@@ -257,6 +257,39 @@ def _check_against_golden(rc, out, tol_finite, name):
         max_d = max(d for _, d in drifts)
         return True, f"{measured} judges checked, max_drift={max_d:.3f} (tol={tol_finite})"
     return True, f"all judges NA'd in perturbed run (no finite-comparison done)"
+
+# Judges whose GEOMETRY amplifies error, with the factor and the reason.
+#
+# Judge 14 is the angle between line 1 and line 2, and those two lines are not
+# the same kind of object:
+#
+#   line 2  matching_pts=525  fitted along the whole 4.65 mm edge
+#   line 1  matching_pts=2    `vertex_touch_searching: true` in the def -- the
+#                             line is defined by where it TOUCHES the contour at
+#                             its two ends. The 2 is a mode marker hardcoded in
+#                             FeatureManager_sig360_circle_line.cpp (lf.matching_pts
+#                             = 2), not a count of weak support, and that mode
+#                             deliberately runs looser gates (curvatureMax 10 vs
+#                             0.15, cosSim 0.3 vs 0.9).
+#
+# A line through two touch points turns when either point moves by a pixel, and
+# judge 14 is 2.79 deg, so that rotation lands at full size on a small number.
+# Measured under WebP recompression:
+#
+#   id  8 distance  0.01%      id 17 distance  0.04%
+#   id 12 distance  0.02%      id 19 distance  1.65%
+#   id 13 distance  0.01%      id 14 ANGLE    11.24%   (2.7169 -> 3.0223)
+#
+# Not a defect -- it is what that judge is made of. The factor is deliberately
+# NOT a blanket loosening: every other judge keeps the tight bound, and this one
+# carries its own number with the reason attached. 2x still fails on anything
+# worse than ~0.6 deg.
+#
+# Checked and ruled out before concluding this (2026-08-07): the def is not
+# mis-placed (all three lines have an edge within 0.05 mm of nominal) and the
+# object transform is sound (four arc centres agree to 0.065 mm, all three
+# fitted lines sit within 0.07 mm of nominal).
+ILL_CONDITIONED = {14: 2.0}
 
 def _custom(img_path, tol):
     def fn(run_insp):

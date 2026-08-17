@@ -287,10 +287,6 @@ export class InspectionEditorLogic {
       edit_info.def_image_reg = root_defFile.def_image_reg;
 
 
-      if (typeof root_defFile.intrusionSizeLimitRatio == 'number') {
-        edit_info.intrusionSizeLimitRatio =
-          root_defFile.intrusionSizeLimitRatio
-      }
       
       root_defFile.featureSet.forEach((report) => {
         switch (report.type) {
@@ -739,8 +735,8 @@ export class InspectionEditorLogic {
         });
       });
     };
-    addRegionShapes(defInfo.localization_include, 'loc_include', '@__LOC_INCLUDE__');
-    addRegionShapes(defInfo.localization_exclude, 'loc_exclude', '@__LOC_EXCLUDE__');
+    // addRegionShapes(defInfo.localization_include, 'loc_include', '@__LOC_INCLUDE__');
+    // addRegionShapes(defInfo.localization_exclude, 'loc_exclude', '@__LOC_EXCLUDE__');
 
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
@@ -814,7 +810,12 @@ export class InspectionEditorLogic {
 
   UpdateInherentShapeList() {
     this.inherentShapeList = [];
-    if (this.sig360info === null || this.sig360info === undefined) return;
+    // Return the (empty) list, not undefined. The caller assigns this straight
+    // into edit_info.inherentShapeList, and the canvas iterates that with
+    // .forEach -- so on a pure shape_based def, which has no sig360 block,
+    // moving the mouse over the canvas threw and the error boundary replaced
+    // the whole editor.
+    if (this.sig360info === null || this.sig360info === undefined) return this.inherentShapeList;
     let setupTarget = this.sig360info.reports[0];
 
     log.debug(setupTarget);
@@ -1524,7 +1525,6 @@ export function Edit_info_Empty() {
     morph_alpha: undefined,         // re-location relaxation, (0,1]; core default 1
     shape_match_scale: undefined,   // shape-locator coarse downscale, (0,1]; core default 1
     locating_engine: "sig360",      // "sig360" | "shape_based" (shape = line2Dup+ROI refine)
-    intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",
     DefFileTag: [],

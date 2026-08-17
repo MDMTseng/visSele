@@ -31,7 +31,53 @@ os.makedirs(TMP, exist_ok=True)
 
 SIGCRASH = {-signal.SIGSEGV, -signal.SIGBUS, -signal.SIGILL, -signal.SIGFPE}
 
-def run_insp(def_path, out_path=None, img=IMG, timeout=120):
+# ---------------------------------------------------------------------------
+# The station must not follow the tests around.
+#
+# --insp deliberately loads data/machine_setting.json so the offline path
+# behaves like the live one (CORE0_1_CAVEATS §L). With cwd=Core0_1 that means
+# every test inherits THIS machine's inspection_region -- and the golden 10221
+# object's bounding box is 982x1143 px, which cannot be contained in a 318x424
+# station box. Every object was dropped, every judge came back empty, and
+# qa_imgstress aborted at import with "no judges parsed from golden".
+#
+# The tests here measure a PRODUCT; the station is a property of one machine on
+# one day. So they run in a scratch cwd: data/ symlinked entry by entry, with a
+# machine_setting.json whose station keys are stripped. Tests that are ABOUT the
+# station (qa_insp_region) build their own cwd and put the keys back.
+#
+# Symlinks, not a copy: data/ holds sample images and calib files, and a test
+# harness that silently forks them is a harness that tests last week's machine.
+CWD = TMP + "/cwd"
+STATION_KEYS = ("inspection_region", "clean_regions")
+
+def _build_cwd():
+    import shutil
+    shutil.rmtree(CWD, ignore_errors=True)
+    os.makedirs(CWD + "/data", exist_ok=True)
+    src = CORE + "/data"
+    for e in os.listdir(src):
+        if e == "machine_setting.json":
+            continue
+        try:
+            os.symlink(src + "/" + e, CWD + "/data/" + e)
+        except OSError:
+            pass
+    ms = {}
+    p = src + "/machine_setting.json"
+    if os.path.exists(p):
+        try:
+            ms = json.load(open(p))
+        except Exception:
+            ms = {}
+    for k in STATION_KEYS:
+        ms.pop(k, None)
+    json.dump(ms, open(CWD + "/data/machine_setting.json", "w"), indent=1)
+    return CWD
+
+_build_cwd()
+
+def run_insp(def_path, out_path=None, img=IMG, timeout=120, cwd=None):
     """def_path may be a path (str) or a dict (written to tmp). Returns (rc, out_bytes|None)."""
     if isinstance(def_path, dict):
         p = f"{TMP}/_def_{abs(hash(json.dumps(def_path,sort_keys=True)))%10**8}.hydef"
@@ -41,7 +87,7 @@ def run_insp(def_path, out_path=None, img=IMG, timeout=120):
     env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
     try:
         r = subprocess.run([VIS, "--insp", img, def_path, out_path],
-                           cwd=CORE, env=env, capture_output=True, timeout=timeout)
+                           cwd=cwd or CWD, env=env, capture_output=True, timeout=timeout)
         rc = r.returncode
     except subprocess.TimeoutExpired:
         return ("TIMEOUT", None)
@@ -157,12 +203,32 @@ def _eval(c):
         return c["fn"](run_insp)
     return False, "unknown kind"
 
-def run_module(modname, cases):
+# Cases that fail for a reason already understood and deliberately not fixed.
+# name -> one-line why + where it is written up.
+#
+# The point is NOT to hide them. A suite that reports 10 red every run cannot
+# say "nothing new broke", which is the only question a regression suite exists
+# to answer -- so these are counted and printed separately, loudly, and they do
+# NOT contribute to the exit code. Anything not on this list is new.
+#
+# Delete an entry the moment its cause is fixed; a stale entry here is a test
+# that silently stopped testing.
+KNOWN_FAIL = {}
+
+def run_module(modname, cases, known=None):
+    known = known or {}
     print(f"==== {modname}: {len(cases)} cases ====")
     fails = 0
+    knowns = []
     for c in cases:
         ok, detail = _eval(c)
-        print(f"  {c['name']:<34} {'PASS' if ok else 'FAIL'}  {detail}")
-        if not ok: fails += 1
-    print(f"  -> {len(cases)-fails}/{len(cases)} pass")
+        tag = "PASS" if ok else ("KNOWN" if c["name"] in known else "FAIL")
+        print(f"  {c['name']:<34} {tag:<5} {detail}")
+        if not ok:
+            if c["name"] in known: knowns.append(c["name"])
+            else: fails += 1
+    print(f"  -> {len(cases)-fails-len(knowns)}/{len(cases)} pass"
+          + (f", {len(knowns)} known-fail" if knowns else ""))
+    for n in knowns:
+        print(f"     KNOWN {n}: {known[n]}")
     return fails
