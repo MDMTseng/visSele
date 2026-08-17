@@ -4,5 +4,17 @@
   "gamma": 0.7,
   "blacklevel": 254,
   "framerate": -1,
-  "ww": 1
+  "ww": 1,
+  "InspectionROI": [
+    0,
+    0,
+    99999,
+    99999
+  ],
+  "ROI": [
+    0,
+    416,
+    2448,
+    512
+  ]
 }

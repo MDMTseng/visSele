@@ -1,5 +1,9 @@
 # uInsp 測試工具目錄
 
+> 2026-08-17 桌面整合驗證（新 CAM1 接線、觸發鏈到 35/s 零掉發、啟動配方、
+> 三條假線索）的完整記錄在
+> [`../docs/DESK_INTEGRATION_2026-08-17.md`](../docs/DESK_INTEGRATION_2026-08-17.md)。
+
 `README.md` 講的是 **不經 core** 的韌體直測（`uinsp_test.py`、`uinsp_panel.py`）。
 這份講的是另外那一半：**接著 core 跑的整機工具**。它們全部透過 core 的
 `INSP_PERIF_CONSOLE` port 對裝置說話，因為 **core 獨佔序列埠**，機器在跑的時候
