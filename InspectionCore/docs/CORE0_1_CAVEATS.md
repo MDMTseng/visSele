@@ -1432,3 +1432,27 @@ headless 觸發:`UI/WebUI/tools/webctl/logdump.mjs`。
 真正的收穫不是行數:普查把 `SAVE::<path>` 這種「說自己成功了但其實沒有」的
 行揪出來,直接證出 backlog 7.2(快照從 08-12 起一張都沒存成)。
 **丟掉回傳值的日誌比沒有日誌更糟**——它會主動說謊。
+
+## Dump 的三個追蹤陷阱(2026-08-18 修掉前兩個)
+
+1. **「entire retained history」曾經是謊話。** ring 繞圈之後,dump 從中間開始,
+   而標題不會說。現在標題印範圍與遺失數:
+   `--- Ring: records A..B of N written -- M EARLIER RECORDS WERE OVERWRITTEN ---`
+   （沒繞圈時印 `all N records since start (nothing lost)`）。**head 是跨 core
+   世代累積的**(在 shm 裡),所以 N 是那條 ring 的一生,不是這次啟動。
+2. **每一行都印兩次。** persist 預設 OFF,而 `LOG_LV_OFF=6` 是最大值,所以
+   `lv >= persist_min_lv` 對每個等級都是 false → 全部走 ephemeral 分支。ephemeral
+   段於是與 ring 段逐字相同。dump 大一倍,任何 `grep -c` 都剛好是兩倍(踩過)。
+   現在:ephemeral 的 cap(16384) ≤ ring slot 數(65534)時直接省略並註明——兩者都是
+   同一條串流餵的 FIFO,小的只能是大的尾巴,**任何設定下它都是子集**。
+3. **crash dump 沒有保留上限。** 一度累積 107 個檔 / 903MB。而磁碟滿正是核心停止
+   儲存 NG 快照的原因(`save_snap_disk_low_skip_count`)——日誌會吃掉它存在的意義。
+   現在保留最新 10 份(`INSP_LOG_DUMP_KEEP`,0 = 不刪);檔名是 UTC 時戳,字典序即
+   時間序,不需要 stat。`latest_dump.dump` 是固定檔名、不計入。
+
+**drainer 落後是有處理的**(不要誤判):`head - tail > slot_count` 時會把 tail 追到
+`head - slot_count` 並把跳過數印到 **drainer 的 stderr**(＝ core 的 stdout 檔),
+不是 dump 裡。要查有沒有漏,看那裡。
+
+**insp.log 的 rotation(10MB × 5)實務上從沒跑過**:persist 預設 OFF,那條路是死的。
+唯一的持久化是手動 dump。
