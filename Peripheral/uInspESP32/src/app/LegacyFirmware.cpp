@@ -5128,17 +5128,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     handleResetCommand();
     return msg_printf("RESET_OK","");
   }
-  else if(strcmp(type,"ping")==0)
-  {
-    // The host's idle heartbeat, and it does its whole job before reaching
-    // here: any valid frame stamps last_rx_ms, which is what host_timeout_ms
-    // watches. Without it a quiet link is indistinguishable from a dead host,
-    // which is why that watchdog shipped disabled.
-    //
-    // Answered so the heartbeat runs both ways on one exchange -- the host
-    // learns the device is alive without a second mechanism.
-    return msg_printf("PONG","");
-  }
   else if(strcmp(type,"get_version")==0)
   {
     
@@ -5531,6 +5520,21 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   // (3s apart) as a dead link, tearing the peripheral channel down and
   // reopening the serial port every 9s, forever. Accepting both is the
   // additive fix; it costs one comparison and leaves the old WebUI untouched.
+  //
+  // This is now the ONLY ping handler. An earlier `else if(type=="ping")` in
+  // this same chain (above, next to RESET) returned a bare non-JSON "PONG" and
+  // therefore shadowed this branch for the lowercase form: core's heartbeat
+  // (wiringPanel.cpp pingMsg) and tools/uinsp_test.py stage0 0.1 both send
+  // lowercase, so stage0 saw an unparseable reply and failed while uppercase
+  // passed. Removed 2026-08-17 -- one command, one reply shape.
+  //
+  // The heartbeat does its real job before reaching here: any valid frame
+  // stamps last_rx_ms, which is what host_timeout_ms watches. Without it a
+  // quiet link is indistinguishable from a dead host. Answering anyway keeps
+  // the heartbeat bidirectional on a single exchange -- the host learns the
+  // device is alive without a second mechanism. Core discards the reply
+  // (wiringPanel.cpp: "replies (PONG, acks) never reach cJSON"), so the shape
+  // change is free on that path and only fixes the tooling.
   else if(strcmp(type,"ping")==0 || strcmp(type,"PING")==0)
   {
     retdoc["type"]="pong";
