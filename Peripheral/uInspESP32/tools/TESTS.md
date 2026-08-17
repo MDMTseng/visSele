@@ -64,6 +64,13 @@ ESP32 就重置——所以每次 CONNECT 之後裝置的 RAM 設定（含 `stag
 **7. core 在 perif DISCONNECT 之後沒有關掉 tty fd。** 要燒錄韌體必須整個重啟 core，
 光送 DISCONNECT 不夠。
 
+**8c. 全幅 ROI 的 bench 上，core 要帶 `INSP_CAM_TRIGMODE_ONCE=1` 啟動。**（2026-08-17）
+`!fi` 注入兩次＝重複套用 TriggerMode，全幅時相機會死到 DeviceReset（CameraLayer_Aravis
+的 2026-08-11 註解量過）——症狀是硬體觸發 0 frame、軟觸發卻正常，看起來像接線問題。
+另外：`cam_grab.py lines` 的 50ms 輪詢看不到 ms 級脈衝、閒置讀 False 不代表脈衝進不去；
+這版韌體 `PIN_ON`/`PIN_MODE` 沒 ack（默默忽略），靜態電平測試等於沒測。
+接線驗證的正解是「打脈衝、數 frame」：trig_cam_pulse × N vs 相機收到的 frame 數。
+
 **8a. `uinsp_panel.py` 在這台 bench 上要 `--http-port 8766`。** 預設 8765 被
 webctld（WebUI 測試的瀏覽器控制服務）佔走，panel 直接 Address-in-use 死掉。
 另外 panel 和 core 對序列埠互斥（陷阱 7：core 連 DISCONNECT 都不放 tty）——
