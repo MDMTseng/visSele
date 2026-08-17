@@ -495,23 +495,45 @@ during FI" SIGSEGV); Aravis destructor now drains in-flight stream callbacks
 (the bench-green/factory-crash asymmetry — carousel/Hik join, Aravis had
 nothing); stream-rate RP `cJSON_PrintUnformatted`; machine-hash hexed once.
 
-### 7.1 OPEN — JPEG encode under three locks (the per-subscriber half DOWNGRADED)
-Owner note 2026-08-17: in practice one WebUI is connected, so the
-N-subscribers-N-encodes half is low priority. What stays high priority is
-lock scope — even with ONE subscriber the 12-20ms encode + blocking send
-happen inside `subscribersLock`+`linkLayerLock`, parking every other producer
-per frame (the "send thread 811ms" was measured single-client); do the
-encode-outside-locks half with 2.8/6.8.
-`BPG_Protocol.cpp:115-118` runs the IM callback inside the per-peer
-fromUpperLayer loop; `SEND_acvImage` (wiringPanel.cpp ~2678) does imencode
-(12-20ms at 5MP q85) per PEER per frame, and the whole thing sits under
-`subscribersLock`+`linkLayerLock`+`image_send_lock` with a blocking send
-(SO_SNDTIMEO 5s). Two UIs = double encode; one stalled client parks every
-other producer — this is the logged "send thread 811ms" mystery. Fix shape:
-encode once per frame BEFORE the fan-out (cache keyed on frame seq;
-`image_pipe_info.img_jpg_enc` fields already exist unused), then per-peer
-header+chunk sends of cached bytes; encode moves outside the locks for free.
-Byte-identical wire output. Pairs with 2.8/6.8 (lock-scope rework).
+### 7.1 FIXED 2026-08-18 — JPEG encode hoisted out of the send locks
+The fan-out is `subscribersLock { for peer: fromUpperLayer -> linkLayerLock ->
+SEND_acvImage }`, and `SEND_acvImage` did the `cv::imencode` itself -- so the
+encode ran INSIDE both locks, once PER PEER, on every frame.
+
+**Fix**: `encode_acvImage_jpeg()` extracted and called ONCE at the call site,
+before `pushToSubscribers`; the encoded bytes + fmt + the quality they were
+encoded at travel in `BPG_protocol_data_acvImage_Send_info`. `SEND_acvImage`
+frames the cached bytes when present and still encodes inline otherwise (the
+command paths -- LD thumbnail, calibration snap -- send once to one peer, so
+there is nothing to hoist). The quality travels with the bytes because an ST
+can change `DataView_JPEG_quality` between the encode and the send, and the
+metadata header must describe the bytes actually going out.
+
+**Measured** (full sensor, q85, ~500KB JPEG, 2 subscribers, 10/s x 45s,
+identical harness `tools/webctl/fullframe_run.sh`):
+
+| | img avg | img max |
+|---|---|---|
+| before | 14.2 ms | 76.9 ms |
+| after  |  4.9 ms | 12.7 ms |
+
+−65% average, −84% worst case, and that whole span used to be held under both
+locks. One subscriber after the change measures the same 4.9 ms avg as two,
+which is the per-peer multiplication gone.
+
+**Wire output proven identical**, not assumed: `INSP_IM_ENCODE_VERIFY=1` makes
+`SEND_acvImage` re-encode inline and `memcmp` against the cached bytes. 11
+sampled comparisons over ~550 frames, 0 mismatches.
+
+Note for whoever reads the original 12-20ms estimate: that is the FULL-SENSOR
+cost. At the production ROI crop (560x508, ~31KB JPEG) the encode is ~0.4ms,
+so this change matters most to the editor/calibration/InstInsp paths and to
+session start, not to the cropped production loop.
+
+Still open from the original entry: the lock-scope rework itself (2.8/6.8) --
+the blocking send (SO_SNDTIMEO 5s) is still inside `linkLayerLock`, so one
+stalled client still parks the others. The encode is simply no longer part of
+what it parks.
 
 ### 7.2 FIXED 2026-08-18 — NG-snapshot saving was silently dead
 `cache_camera_param` (wiringPanel.cpp:132) is never assigned anywhere;

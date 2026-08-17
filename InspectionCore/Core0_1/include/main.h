@@ -3,6 +3,7 @@
 #include <chrono>
 #include <mutex>
 #include <set>
+#include <vector>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 #include "acvImage_BasicTool.hpp"
@@ -167,6 +168,26 @@ typedef struct BPG_protocol_data_acvImage_Send_info
     // DataView_JPEG_quality (default). >0 forces a JPEG encode for THIS send
     // only (e.g. LD thumbnail reads want JPEG without flipping the live stream).
     int jpeg_quality = 0;
+
+    // Pre-encoded JPEG for this frame, filled ONCE by the caller BEFORE the
+    // subscriber fan-out. When set, SEND_acvImage skips imencode entirely and
+    // just frames the bytes.
+    //
+    // Why it exists: the fan-out is `subscribersLock { for peer: fromUpperLayer
+    // -> ... linkLayerLock -> SEND_acvImage }`, so the encode used to run
+    // INSIDE both locks, once PER PEER. Measured on this machine: 6.5ms avg /
+    // 16.2ms max per frame full-frame (441KB JPEG), 0.4ms at the production
+    // ROI crop (31KB) -- and every millisecond of it parked every other
+    // producer. Encoding before the fan-out costs nothing extra and takes the
+    // whole thing out of the locks; a second subscriber then costs a memcpy
+    // instead of another encode.
+    //
+    // jpg_q travels with the bytes on purpose: DataView_JPEG_quality can be
+    // changed by an ST between the encode and the send, and the metadata
+    // header must describe the bytes that are actually going out.
+    const std::vector<uint8_t> *jpg = nullptr;
+    uint8_t jpg_fmt = 0;   // 1 = 3-component BGR, 2 = 1-component grayscale
+    int     jpg_q   = 0;   // quality the cached bytes were encoded at
 
 }BPG_protocol_data_acvImage_Send_info;
 

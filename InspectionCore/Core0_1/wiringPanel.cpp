@@ -2664,6 +2664,42 @@ static bool _looks_grayscale(const cv::Mat &m)
   return true;
 }
 
+// The JPEG encode, on its own so it can run BEFORE the subscriber fan-out.
+//
+// Everything about the bytes is decided here -- grayscale auto-detect, channel
+// extraction, quality -- so a caller that pre-encodes and SEND_acvImage's own
+// fallback produce identical output by construction. `fmt` is the value that
+// goes into metadata header byte 0.
+static void encode_acvImage_jpeg(const cv::Mat &img, int jpegQ,
+                                 std::vector<uint8_t> &out, uint8_t &fmt)
+{
+  cv::Mat encode_src;
+  if (_looks_grayscale(img))
+  {
+    // Pull a single channel out for encoding -- cv::imencode on CV_8UC1
+    // writes a 1-component grayscale JPEG (SOF0 components=1), ~16% smaller
+    // and ~17% faster than the 3-component path on the same content.
+    if (img.channels() == 1) encode_src = img;
+    else                     cv::extractChannel(img, encode_src, 0);
+    fmt = 2;
+  }
+  else
+  {
+    encode_src = img;
+    fmt = 1;
+  }
+  std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, jpegQ };
+  cv::imencode(".jpg", encode_src, out, params);
+}
+
+// Opt-in self-check for the pre-encode path: re-encode inline and compare.
+// Doubles the encode cost, so it is off unless INSP_IM_ENCODE_VERIFY=1.
+static bool im_encode_verify()
+{
+  static const bool on = (getenv("INSP_IM_ENCODE_VERIFY") != NULL);
+  return on;
+}
+
 int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 {
   if(callbackInfo==NULL)return -1;
@@ -2707,27 +2743,37 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
   //                     as B==G==R for every probe pixel -- the daemon stores
   //                     gray sources as replicated BGR, so this is the common
   //                     case and the auto-detect picks it up for free).
-  if (jpegQ > 0)
+  if (jpegQ > 0 || img_info->jpg != NULL)
   {
-    cv::Mat encode_src;
+    // Pre-encoded by the caller (the live-stream path) -> frame the cached
+    // bytes and describe THEM, not whatever the global quality says now.
+    // Otherwise encode here: the command paths (LD thumbnail, calibration
+    // snap) send once to one peer, so there is nothing to hoist.
+    std::vector<uint8_t> _local;
+    const std::vector<uint8_t> *jpeg = img_info->jpg;
     uint8_t fmt;
-    if (_looks_grayscale(*img))
+    if (jpeg != NULL)
     {
-      // Pull a single channel out for encoding -- cv::imencode on CV_8UC1
-      // writes a 1-component grayscale JPEG (SOF0 components=1), ~16% smaller
-      // and ~17% faster than the 3-component path on the same content.
-      if (img->channels() == 1) encode_src = *img;
-      else                       cv::extractChannel(*img, encode_src, 0);
-      fmt = 2;
+      fmt   = img_info->jpg_fmt;
+      jpegQ = img_info->jpg_q;
+      if (im_encode_verify())
+      {
+        std::vector<uint8_t> _chk; uint8_t _cfmt;
+        encode_acvImage_jpeg(*img, jpegQ, _chk, _cfmt);
+        if (_cfmt != fmt || _chk.size() != jpeg->size() ||
+            memcmp(_chk.data(), jpeg->data(), _chk.size()) != 0)
+          LOGE("IM encode MISMATCH: cached fmt%u %zuB vs inline fmt%u %zuB",
+               fmt, jpeg->size(), _cfmt, _chk.size());
+        else
+          LOG_EVERY(50, "IM encode verify OK (%zuB)", _chk.size());
+      }
     }
     else
     {
-      encode_src = *img;
-      fmt = 1;
+      encode_acvImage_jpeg(*img, jpegQ, _local, fmt);
+      jpeg = &_local;
     }
-    std::vector<uint8_t> _jpeg;
-    std::vector<int> _params = { cv::IMWRITE_JPEG_QUALITY, jpegQ };
-    cv::imencode(".jpg", encode_src, _jpeg, _params);
+    const std::vector<uint8_t> &_jpeg = *jpeg;
 
     LOG_EVERY(50, "JPEG size: %zu", _jpeg.size());
 
@@ -7018,6 +7064,27 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
       bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
       bpg_dat.pgID = bpg_pi.CI_pgID;
+
+      // Encode HERE, before pushToSubscribers takes subscribersLock (and
+      // fromUpperLayer takes linkLayerLock under it). It used to happen inside
+      // SEND_acvImage, i.e. inside both locks, once per subscriber. Same
+      // bytes, same thread, just moved out from under the locks -- and a
+      // second WebUI now costs a memcpy instead of a second encode.
+      //
+      // thread_local for the same reason test1_buff above is: this function
+      // runs on the ActionThread and on the WS thread (LAST_FRAME_RESEND).
+      static thread_local std::vector<uint8_t> _im_jpg;
+      {
+        const int _q = DataView_JPEG_quality;
+        if (_q > 0 && iminfo.img != NULL && !iminfo.img->empty())
+        {
+          uint8_t _fmt = 0;
+          encode_acvImage_jpeg(*iminfo.img, _q, _im_jpg, _fmt);
+          iminfo.jpg     = &_im_jpg;
+          iminfo.jpg_fmt = _fmt;
+          iminfo.jpg_q   = _q;
+        }
+      }
 
       bpg_pi.pushToSubscribers(bpg_dat);
       // subscribers is the number this packet was actually delivered to.
