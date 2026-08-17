@@ -23,6 +23,13 @@ node pulse_load.mjs $RATE $SECS
 sleep 4
 node logdump.mjs > /dev/null
 sleep 3
+# ALWAYS put the production crop back. Leaving the sensor open is not a
+# cosmetic loose end: a large-ROI/full-frame session plus a re-applied
+# TriggerMode is the documented way to kill this Hikrobot until it is
+# reconnected -- symptom is "hardware trigger 0 frames, soft trigger fine",
+# which reads exactly like a wiring fault. Cost me a diagnosis today.
+pkill -f fi_hold 2>/dev/null || true
+node roi_restore.mjs || true
 echo "--- $TAG (full sensor, ${RATE}/s x ${SECS}s)"
 grep -a "dview split" /Users/mdm/workspace/visSele/InspectionCore/Core0_1/latest_dump.dump | tail -1
 grep -a "JPEG size" /Users/mdm/workspace/visSele/InspectionCore/Core0_1/latest_dump.dump | tail -1

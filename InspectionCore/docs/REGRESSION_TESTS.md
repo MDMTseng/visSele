@@ -129,3 +129,19 @@ node logdump.mjs                                  # -> latest_dump.dump
 
 2026-08-18 baseline, 20s / 488 frames / NA snapshots on:
 **3982 → 494 lines (8.14 → 1.01 per frame), ERROR 1226 → 26.**
+
+## Trap: anything that opens the full sensor must put the crop back
+
+`roi_full.mjs` / the calibration page / the def editor all set the runtime ROI
+to `[0,0,99999,99999]`. Leave it there and the next hardware-triggered session
+can kill the camera: **hardware trigger yields 0 frames while the soft trigger
+(II snap) still works**, `cam_status` still reads 0 and `present` still true,
+so it looks exactly like a wiring or board fault. It is not — the board's
+`cam_trig` reply proves the pulse went out.
+
+**Recovery, in this order** (2026-08-18, worked without a DeviceReset or an
+unplug): `node roi_restore.mjs` → `node rc_once.mjs` → re-run the count.
+Verified after recovery: 193 pulses at 20/s → 193 RP, zero loss.
+
+`fullframe_run.sh` now restores the crop itself. Any new harness that opens the
+sensor must do the same.
