@@ -8646,9 +8646,16 @@ void InspSnapSaveThread(bool *terminationflag)
             LOGE("snapshot WRITE FAILED (%d) %s -- NG evidence is being lost",
                  _sv, filePath.c_str());
           else
+            // removeOldestRep returns the NUMBER OF FILES it deleted (a rep is
+            // .xreps + .jpg, so 2 on success); only negative is a failure.
+            //
+            // It deletes ONE rep per save by design ("only deal with one"), so
+            // a folder that is already over the cap stays there rather than
+            // converging down -- it removes one and writes one. Worth knowing
+            // before reading the ratio as a bug.
             LOG_EVERY(50, "snapshot saved %s (%d/%d in folder%s)",
                       filePath.c_str(), count + 1, InspSampleSaveMaxCount,
-                      _rotated ? (_rot_ret == 0 ? ", rotated oldest"
+                      _rotated ? (_rot_ret >= 0 ? ", rotated oldest"
                                                 : ", ROTATE FAILED") : "");
         }
       }

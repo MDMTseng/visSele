@@ -1422,7 +1422,27 @@ export function UINSP_ESP32_MINI() {
   // resolves once it is. It goes to the CORE over the websocket and never
   // touches the device's serial link, so it costs nothing the strip was
   // protecting.
+  // "Asked rarely" was the intent; the effect did the opposite.
+  //
+  // It ran ask() in its body with [outlets] as the dependency, and the reply
+  // called setOutlets(pv) with a FRESH object every time. New reference ->
+  // dependency changed -> effect re-runs -> ask() -> reply -> ... a loop
+  // bounded only by the websocket round-trip. Measured on the bench with the
+  // Inspection UI up: **420 GS/s** to the core, 99.7% of all inbound packets,
+  // every one of them rebuilding perif_pairing JSON under the core's locks
+  // while the machine was inspecting. It also swamped the packet sampler in
+  // the core log, which is how it was found at all.
+  //
+  // It could only run away once the answer arrived: the `if (pv.cat_ok &&
+  // pv.cat_ng)` guard means a machine whose outlet wiring is not known yet
+  // never calls setOutlets, so the loop does not start. That is why this
+  // survived -- it is invisible until the machine is fully wired.
+  //
+  // Now: ask once on mount, and let the 10s timer retry only while the answer
+  // is still missing. The ref exists so that timer reads the CURRENT answer
+  // without the state having to be a dependency.
   const [outlets, setOutlets] = useState(null);
+  const outletsRef = useRef(null);
   useEffect(() => {
     let live = true;
     const ask = () => {
@@ -1431,15 +1451,15 @@ export function UINSP_ESP32_MINI() {
           resolve: (pkts) => {
             const gs = pkts.find((p) => p.type === "GS");
             const pv = gs && gs.data && gs.data.perif_pairing;
-            if (live && pv && pv.cat_ok && pv.cat_ng) setOutlets(pv);
+            if (live && pv && pv.cat_ok && pv.cat_ng) { outletsRef.current = pv; setOutlets(pv); }
           },
           reject: () => {},
         }));
     };
     ask();
-    const h = setInterval(() => { if (!outlets) ask(); }, 10000);
+    const h = setInterval(() => { if (!outletsRef.current) ask(); }, 10000);
     return () => { live = false; clearInterval(h); };
-  }, [outlets]);
+  }, [CORE_ID]);
   // Presses on the reset button, within a 5s window. Three, because inside a
   // modal the risk is no longer a stray click (you had to open it) -- it is
   // pressing the wrong button while looking at the history you came to read.

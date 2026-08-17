@@ -21,6 +21,9 @@ All in `UI/WebUI/tools/webctl/`.
 | Probe | Verifies | Healthy looks like |
 |---|---|---|
 | `soak.mjs <def> <secs>` | CI stream rate + drops | ~25 reports/s steady on the bench |
+| `phantom_feed.mjs <pps> <secs>` | feeds simulated parts (`trig_phantom_pulse`) via console 4099, no PD CONNECT | full-loop load with a real board; pair with the Inspection UI |
+| `census.py <dump> [prev]` | log census by (level, file:line); second arg = diff two dumps | reads ONLY the ring section — the dump prints every line twice |
+| `enter_inspection.mjs --mode 全檢` | drives the real menu into the production Inspection UI | `--mode` added 2026-08-18; 測試 is still the default |
 | `logdump.mjs` | headless `SC log_dump` — writes the core's whole log ring to `latest_dump.dump` | the only way to see INFO/DEBUG from a running core (disk persist keeps WARN+) |
 | `pulse_load.mjs <rate> <secs>` | drives CAM1 hardware triggers via the core's perif console (4099) | production-shaped load for per-frame paths; pair with `fi_hold.mjs` |
 | `station_probe.mjs` | station block: `skip_inspection`, `ignore_calib`, region, `area_bypass` | prints one frame's station JSON |

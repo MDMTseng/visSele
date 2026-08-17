@@ -7554,9 +7554,17 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       if (!bacpac->objInInspRegion(m.x + sOff.x, m.y + sOff.y, 0,0,0,0, false))
       {
         report.data.sig360_circle_line.region_dropped++;
-        LOGI("insp_region: shape match %d at (%.1f,%.1f) outside the station "
-             "(centre test -- the shape locator reports no extent) -- dropped",
-             mi, m.x + sOff.x, m.y + sOff.y);
+        // 1-in-100, same idiom as the match count above. A part that sits
+        // outside the station is not an event, it is the steady state of a
+        // plate carrying more than one item past the camera: on the bench this
+        // single line was 23% of everything the core logged while inspecting.
+        // The number that matters is not lost -- region_dropped travels in the
+        // report and is per-frame exact.
+        { static unsigned _rc = 0; if ((_rc++ % 100) == 0)
+            LOGI("insp_region: shape match %d at (%.1f,%.1f) outside the station "
+                 "(centre test -- the shape locator reports no extent) -- dropped"
+                 " (1 line in 100; exact count in report.region_dropped)",
+                 mi, m.x + sOff.x, m.y + sOff.y); }
         continue;
       }
     }

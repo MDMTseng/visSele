@@ -272,3 +272,44 @@ INFO/DEBUG 從執行中的核心撈出來的方法(磁碟 persist 預設只留 W
 
 **測試小抄**:antd modal 關閉後 DOM 還在,且 `.ant-modal-wrap` 的 offsetHeight
 可能仍 >0;要判斷開沒開請看 **`.ant-modal-content`** 的 offsetHeight。
+
+---
+
+## useEffect 依賴自己會設的 state = 無限迴圈（2026-08-18,實測 420 GS/s）
+
+`component/uInspESP32_UI.jsx` 的分料口查詢:
+
+```js
+useEffect(() => {
+  const ask = () => sendGS('perif_pairing', { resolve: pv => setOutlets(pv) });
+  ask();                                   // ← 每次 effect 都問
+  const h = setInterval(() => { if (!outlets) ask(); }, 10000);
+  return () => clearInterval(h);
+}, [outlets]);                             // ← 而 outlets 是它自己設的
+```
+
+回覆裡的 `setOutlets(pv)` 每次都是**新物件參考** → 依賴變了 → effect 重跑 →
+`ask()` → 回覆 → …… 唯一的節流是 WebSocket 來回時間。實測(檢驗畫面開著、機器在跑):
+
+- **420 GS/s** 打到核心,佔全部進站封包的 **99.7%**
+- 每一發都在核心裡重建 `perif_pairing` JSON、拿鎖,而機器正在檢驗
+- 也把核心日誌的封包取樣器灌爆(佔整份 log 的 60-70%)——**這才是它被抓到的原因**
+
+**它只有在機器接線齊全時才會爆**:`if (pv.cat_ok && pv.cat_ng)` 這個守衛讓還沒
+拿到分料口接線的機器根本不會呼叫 `setOutlets`,迴圈就不會啟動。所以它在 bench
+上長期看不出來。
+
+修法:effect 只在掛載時問一次,重試交給那個 10s timer,並用 **ref** 讓 timer 讀到
+當下的答案,而不是把 state 放進依賴。
+
+**通則:effect 的依賴陣列裡不能有這個 effect 自己會 set 的 state**,除非那個
+set 有嚴格的收斂條件。回傳新物件的網路回覆永遠不收斂。
+
+**怎麼發現的**:核心日誌普查(`docs/CORE0_1_CAVEATS.md` 的 log census)。瀏覽器
+端要複驗很便宜——掛一個 `WebSocket.prototype.send` 的計數器:
+
+```js
+window.__t={};const o=WebSocket.prototype.send;
+WebSocket.prototype.send=function(d){const u=new Uint8Array(d);
+  const tl=String.fromCharCode(u[0],u[1]);__t[tl]=(__t[tl]||0)+1;return o.apply(this,arguments)};
+```

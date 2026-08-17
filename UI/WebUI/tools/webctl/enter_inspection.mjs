@@ -41,6 +41,10 @@ const flag = (name, dflt) => {
 
 const URL = flag('url', 'http://localhost:8081/');
 const SHOT = flag('shot', '');
+// 抽檢 / 全檢 / 測試. 全檢 is the production one: it opens an FI session AND
+// puts the board into inspection mode, which is what you want when the point
+// is to watch the machine, not the editor.
+const MODE = flag('mode', '測試');
 
 function ctl(...a) {
   const r = spawnSync('node', [path.join(HERE, 'webctl.mjs'), ...a],
@@ -76,13 +80,13 @@ try {
 
   // 檢測方式 -> 測試. Pick by position: the mode row is the LAST of the tags
   // reading 測試, so take the highest index rather than a fixed nth.
-  step(3, 'select inspection mode 測試');
+  step(3, 'select inspection mode ' + MODE);
   const modeIdx = evalJs(
     "(()=>{const t=[...document.querySelectorAll('span.ant-tag-has-color')]" +
-    ".filter(e=>e.textContent.trim()==='測試');" +
+    `.filter(e=>e.textContent.trim()==='${MODE}');` +
     "return String(t.length?t.length-1:-1)})()");
-  if (modeIdx === '-1') throw new Error('no 測試 mode tag found');
-  ctl('click', `span.ant-tag-has-color:text-is('測試') >> nth=${modeIdx}`);
+  if (modeIdx === '-1') throw new Error('no ' + MODE + ' mode tag found');
+  ctl('click', `span.ant-tag-has-color:text-is('${MODE}') >> nth=${modeIdx}`);
   await sleep(4000);
 
   // The play button: the widest button in the bottom-right bar.
@@ -111,8 +115,9 @@ try {
     step(6, 'screenshot -> ' + path.resolve(SHOT));
   }
   console.log('OK: Inspection UI is up, recipe and station ROI applied.');
-  console.log('NOTE: starting the plate from the UI is broken (SETTABLE_KEYS ' +
-              'sends flat keys). Start it from the harness.');
+  // The flat-vs-grouped SETTABLE_KEYS break noted at the top of this file was
+  // fixed in src/uinspCfg.js (translation happens at the wire), so 全檢 now
+  // starts the plate from the UI on its own.
 } catch (e) {
   console.error('FAILED: ' + e.message);
   process.exit(1);
