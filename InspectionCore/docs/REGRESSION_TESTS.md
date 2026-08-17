@@ -21,6 +21,7 @@ All in `UI/WebUI/tools/webctl/`.
 | Probe | Verifies | Healthy looks like |
 |---|---|---|
 | `soak.mjs <def> <secs>` | CI stream rate + drops | ~25 reports/s steady on the bench |
+| `qwatch.mjs <secs>` | 2Hz poll of the three queue depths (high-water marks) + the three snapshot-loss counters | proves a load did/didn't back the pipeline up |
 | `phantom_feed.mjs <pps> <secs>` | feeds simulated parts (`trig_phantom_pulse`) via console 4099, no PD CONNECT | full-loop load with a real board; pair with the Inspection UI |
 | `census.py <dump> [prev]` | log census by (level, file:line); second arg = diff two dumps | reads ONLY the ring section — the dump prints every line twice |
 | `enter_inspection.mjs --mode 全檢` | drives the real menu into the production Inspection UI | `--mode` added 2026-08-18; 測試 is still the default |
