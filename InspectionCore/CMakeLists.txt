@@ -66,6 +66,14 @@ find_package(OpenMP)
 # OpenCV is now an unconditional dependency of MatchingEngine. Provide via vcpkg.
 find_package(OpenCV REQUIRED)
 
+# OpenCV 5 split calib3d into the `calib` + `geometry` modules. Keep one knob so
+# the same call sites link against either major version.
+if(OpenCV_VERSION_MAJOR GREATER_EQUAL 5)
+  set(OPENCV_CALIB3D_LIBS opencv_calib opencv_geometry)
+else()
+  set(OPENCV_CALIB3D_LIBS opencv_calib3d)
+endif()
+
 # Compile a list of .c sources as C++ (the old build used $(CXX) for everything,
 # so C-linkage assumptions match only if we keep compiling them as C++).
 function(force_cxx)
@@ -308,7 +316,7 @@ target_include_directories(MatchingEngine PUBLIC
   ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer
   shape_based_matching
-  opencv_core opencv_imgproc opencv_imgcodecs opencv_calib3d)
+  opencv_core opencv_imgproc opencv_imgcodecs ${OPENCV_CALIB3D_LIBS})
 target_compile_definitions(MatchingEngine PUBLIC FEATURE_OPENCV)
 
 # ===========================================================================
