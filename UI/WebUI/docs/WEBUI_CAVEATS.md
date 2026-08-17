@@ -215,3 +215,31 @@ node webctl.mjs click 'button:has-text("全檢設備v2")'
 node webctl.mjs eval "[...document.querySelectorAll('.ant-modal-wrap')].map(e=>({h:e.offsetHeight,t:(e.querySelector('.ant-modal-title')||{}).innerText}))"
 # 期望看到 h>0 且 t=="全檢設備 v2 (uInspESP32)"
 ```
+
+---
+
+## 相機參數面板：相機不回讀、ACK 綠了不代表有套用（2026-08-18）
+
+`component/CameraParamPanel.jsx` 是唯一的相機參數編輯器,主選單的 Camera modal
+與相機校正頁共用同一份。三件事決定了它為什麼長這樣:
+
+1. **相機不回讀。** `GS camera_info` 只有身分、mmpp、校正狀態,**沒有 exposure /
+   gain**。面板上的值來自 `data/default_camera_setting.json`(核心開機時
+   `CameraSettingFromFile` 讀的同一份),不是感測器。兩個瀏覽器各自調不會互相看到。
+2. **ACK 是綠的不代表感測器變了。** 驅動的每個 setter 都可能拒絕(基底類別對未實作
+   的一律 NAK),`CameraSetup` 把被拒的名字累積到 `camera_info.setup_failed`——
+   那是**唯一**看得到「設了但沒進去」的地方。面板會把它標紅。
+3. **每推一次就 stop/start acquisition 一次。** `CameraSetup` 在 setters 前後
+   Stop/StartAquisition,所以每個按鍵推一次會讓相機起停十幾遍;面板做了 300ms 去抖。
+   同樣的理由:**跑產時不要動這個面板。**
+
+**ROI 故意不可編輯。** 存檔的裁切在 `InspectionROI`,只由「檢測畫面框選後儲存」
+(`save_insp_roi`)這一個動作寫;其他路徑只能設執行期的 `ROI`,而載入時會把檔案裡的
+`ROI` 丟掉。這個分離就是防止「開全幅看一下然後放棄選取」把機台的裁切永久洗掉——
+真的發生過。面板只唯讀顯示它。
+
+存檔走 read-modify-write:只覆蓋自己那四個鍵,`InspectionROI`/`framerate`/`ww`
+等其他鍵原樣保留。
+
+**antd 按鈕文字會被插空白**:`存檔` 在 DOM 裡是 `存 檔`,Playwright 選 `has-text("存檔")`
+會 timeout,用 `has-text("存")`。

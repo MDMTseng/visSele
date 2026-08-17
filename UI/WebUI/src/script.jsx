@@ -12,6 +12,7 @@ import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
+import {CameraParamPanel} from './component/CameraParamPanel.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -1424,20 +1425,46 @@ class APPMasterX extends React.Component {
                     this.setState({ carousel_drawer_open: true });
                     break;
                   }
+                  // Used to be the raw conn-info dump plus a 重連 button. The
+                  // dump is still here (last block) because it is the only
+                  // place lens_calib_rms_px / present / cam_status are visible,
+                  // but the panel above it is the reason to open this: setting
+                  // exposure otherwise meant walking into 相機校正, which starts
+                  // a full-resolution stream just to change one number.
                   this.setState({
                     modal_view:{
-                      view_fn:()=><pre>
-                        {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
+                      view_fn:()=>{
+                        let cam0 = GetObjElement(this.props.CAM1_ID_CONN_INFO, ["data", 0]) || {};
+                        return <>
+                        <div style={{marginBottom:10}}>
+                          <b>{cam0.vendor} {cam0.model}</b>
+                          <span style={{color:"#888", marginLeft:8}}>{cam0.serial_nbr}</span>
+                          <span style={{color:"#888", marginLeft:8}}>{cam0.protocol}</span>
+                          {cam0.present===false
+                            ? <span style={{color:"#cf1322", marginLeft:8}}>未回應（顯示的是拔線前的身分）</span>
+                            : null}
+                          <Button size="small" style={{marginLeft:12}} onClick={()=>{
+                            this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
+                              return obj.reconnection();
+                            })
+                          }}>重連</Button>
+                        </div>
 
-                        <Button onClick={()=>{
+                        <CameraParamPanel
+                          camInfo={cam0}
+                          send={(tl,prop,obj,bin,cbs)=>
+                            this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, obj, bin, cbs)}/>
 
-                          this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
-                            return obj.reconnection();
-                          })
-                        }}>重連</Button>
-
-                      </pre>,
+                        <details style={{marginTop:10}}>
+                          <summary style={{cursor:"pointer", color:"#888"}}>camera_info (原始)</summary>
+                          <pre style={{maxHeight:260, overflow:"auto", fontSize:11}}>
+                            {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
+                          </pre>
+                        </details>
+                        </>;
+                      },
                       title:"Camera",
+                      width:720,
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
                       footer:null

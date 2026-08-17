@@ -13,6 +13,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
+import { CameraParamPanel } from './component/CameraParamPanel.jsx';
 
 // Live preview canvas — minimal SLCALIB_CanvasComponent wrapper. Pulls c_state /
 // edit_info from redux so the streamed image (delivered via the usual BPG
@@ -239,16 +240,9 @@ function CalibrationUI(props) {
     return tc.toDataURL('image/jpeg', 0.6);
   };
 
-  // Camera tuning controls. Initial values are read from
-  // data/default_camera_setting.json (the same file CameraSettingFromFile()
-  // loads at core boot). User nudges push live via ST/CameraSetting; Save
-  // writes the JSON back so it survives restart.
-  const SETTING_PATH = "data/default_camera_setting.json";
-  const [exposure, setExposure] = useState(10000);
-  const [gain, setGain] = useState(1.0);
-  const [gamma, setGamma] = useState(1.0);
-  const [blacklevel, setBlacklevel] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+  // Camera tuning controls live in component/CameraParamPanel.jsx now (shared
+  // with the main menu's Camera modal). It owns the file read/write and the
+  // live ST push; nothing about them belongs to this page.
 
   // On mount, ask core to (re)load camera setting + lens calib + field calib
   // from the paths the UI owns. Core has NO hard-coded paths and does NOT
@@ -304,27 +298,6 @@ function CalibrationUI(props) {
         reject: () => setSavedField({ hasBright: false, hasDark: false }),
       });
   }, []);
-  useEffect(() => {
-    props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: SETTING_PATH }, undefined, {
-      resolve: (pkts) => {
-        const fl = pkts.find(p => p.type === "FL");
-        if (!fl || !fl.data) { setLoaded(true); return; }
-        const cfg = fl.data;
-        if (cfg.exposure   != null) setExposure(cfg.exposure);
-        if (cfg.gain       != null) setGain(cfg.gain);
-        if (cfg.gamma      != null) setGamma(cfg.gamma);
-        if (cfg.blacklevel != null) setBlacklevel(cfg.blacklevel);
-        setLoaded(true);
-      },
-      reject: () => setLoaded(true),
-    });
-  }, []);
-
-  const setCam = (key, val) => {
-    props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { [key]: val } });
-  };
-
   // Calibration is a SENSOR measurement, so it needs the whole sensor.
   //
   // Focus, distortion and the field/brightness grids describe the optics, not
@@ -338,28 +311,6 @@ function CalibrationUI(props) {
   // reloads the machine's camera file, so there is ONE place that puts the crop
   // back rather than one per page that ever opened the sensor.
   const FULL_SENSOR_ROI = [0, 0, 99999, 99999];
-
-  const saveCameraSetting = () => {
-    // Read-modify-write: pull the current file, override only the four fields
-    // this UI manages, write back. Any other keys (ROI, trigger_mode, vendor
-    // extensions, etc.) are preserved.
-    props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: SETTING_PATH }, undefined, {
-      resolve: (pkts) => {
-        const fl = pkts.find(p => p.type === "FL");
-        const base = (fl && fl.data && typeof fl.data === 'object') ? fl.data : {};
-        const merged = { ...base, exposure, gain, gamma, blacklevel };
-        const payload = new TextEncoder().encode(JSON.stringify(merged, null, 2));
-        props.ACT_WS_SEND_BPG(props.CORE_ID, "SV", 0, { filename: SETTING_PATH }, payload, {
-          resolve: (pkts2) => {
-            const ss = pkts2.find(p => p.type === "SS");
-            if (ss && ss.data.ACK) console.log("saved", SETTING_PATH, merged);
-            else console.warn("save failed", SETTING_PATH);
-          },
-        });
-      },
-      reject: () => console.warn("save aborted: could not read", SETTING_PATH),
-    });
-  };
 
   // Mirror InspMode trigger policy AND register a CI subscription. trigger_mode
   // alone doesn't push frames; core streams only when a CI is active. We reuse
@@ -629,32 +580,12 @@ function CalibrationUI(props) {
           </div>
         )}
       </div>
-      <Card size="small" style={{ marginTop: 12 }}
-        title={<span>Camera {loaded ? '' : <span style={{color:'#aaa'}}>(loading…)</span>}</span>}
-        extra={<Button size="small" onClick={saveCameraSetting} disabled={!loaded}>Save</Button>}>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label>exposure (µs):
-            <InputNumber value={exposure} min={1} max={1000000} step={100}
-              style={{ marginLeft: 6, width: 110 }}
-              onChange={(v) => { const x = Math.max(1, v || 1); setExposure(x); setCam('exposure', x); }} />
-          </label>
-          <label>gain:
-            <InputNumber value={gain} min={0} max={48} step={0.1}
-              style={{ marginLeft: 6, width: 90 }}
-              onChange={(v) => { const x = v || 0; setGain(x); setCam('gain', x); }} />
-          </label>
-          <label>gamma:
-            <InputNumber value={gamma} min={0.1} max={4} step={0.05}
-              style={{ marginLeft: 6, width: 90 }}
-              onChange={(v) => { const x = v || 1; setGamma(x); setCam('gamma', x); }} />
-          </label>
-          <label>blacklevel:
-            <InputNumber value={blacklevel} min={0} max={1000} step={1}
-              style={{ marginLeft: 6, width: 90 }}
-              onChange={(v) => { const x = v || 0; setBlacklevel(x); setCam('blacklevel', x); }} />
-          </label>
-        </div>
-      </Card>
+      {/* Shared with the main menu's Camera modal -- component/CameraParamPanel.jsx.
+          It owns the file read/write, the debounced live push and the
+          setup_failed readout; this page just places it. */}
+      <CameraParamPanel style={{ marginTop: 12 }} title="Camera"
+        send={(tl, prop, obj, bin, cbs) =>
+          props.ACT_WS_SEND_BPG(props.CORE_ID, tl, prop, obj, bin, cbs)} />
 
       <Tabs activeKey={tab} onChange={setTab} type="card" style={{ marginTop: 12 }}>
         <Tabs.TabPane tab={`Chessboard (${chessShots.length})`} key="chessboard">
