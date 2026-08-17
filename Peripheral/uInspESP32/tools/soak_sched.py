@@ -56,7 +56,7 @@ VERDICT_SEED = 20260806
 RUNS = [
     dict(
         name="jitter", block="A", minutes=12,
-        why="配對的斷點在視窗,不在負載。抖動掃到超過視窗之前 disagree 必須是 0;"
+        why="配對的斷點在視窗,不在負載。抖動掃到超過視窗之前 rejected 必須是 0;"
             "超過之後必須開始失配 —— 兩邊都要成立,只有前半段成立代表視窗根本沒被逼到。",
         argv=["jitter_sweep.py", "--seconds", "60",
               "--jitters", "0", "1000", "2500", "4000", "6000", "10000"],
@@ -172,7 +172,7 @@ RUNS = [
     dict(
         name="burst", block="A", minutes=16,
         why="時間戳配對撐得過『沖垮相機 -> 排空 -> 再沖』的過渡。穩定速率是簡單形狀,"
-            "轉態才是序數配對會偷偷錯一格的地方。判準:disagree 0 且無 CAM_CLOCK_LOST。",
+            "轉態才是序數配對會偷偷錯一格的地方。判準:rejected 0 且無 CAM_CLOCK_LOST。",
         argv=["burst_pairing.py", "--seconds", "900", "--min-sep-us", "28571"],
         env={}, pass_if_stdout="clean", fail_if_stdout="FAIL",
     ),
@@ -195,7 +195,7 @@ RUNS = [
     # ---- Block B: 需要盤上有料 -------------------------------------------
     dict(
         name="slip", block="B", minutes=10,
-        why="判定有沒有落到錯的物件上。agree/disagree 只是兩套配對互比,"
+        why="判定有沒有落到錯的物件上。已刪除的 agree/disagree 只是兩套配對互比,"
             "總數則完全看不到滑移 —— 錯一格的總數和正確的一模一樣。"
             "這一項要真料件,而且要噪音判定,規則圖樣會把等於其週期的滑移藏起來。",
         # --seed, not --verdict-seed: that spelling belongs to regress_watch,

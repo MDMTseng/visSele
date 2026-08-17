@@ -155,7 +155,7 @@ def one(s, a, jitter_us):
         "delta_max": cs.get('delta_max_us'),
         "miss_max": cs.get('miss_delta_max_us'),
         "rejected": cs.get('rejected'),
-        "disagree": cs.get('disagree'),
+        "rejected": cs.get('rejected'),
         "sp_min": (tr or {}).get('prev_min_us'),
         "sp_max": (tr or {}).get('prev_max_us'),
         "first_bad": bad[:3],
@@ -188,7 +188,7 @@ def main(a):
             print("%-9d %s" % (jit, r["err"]))
             continue
         print("%-9d %-6d %-5d %-5s %-6s %-9s %-9s %-8s %s"
-              % (jit, r["n"], r["bad"], r["disagree"], r["state"],
+              % (jit, r["n"], r["bad"], r["rejected"], r["state"],
                  "%s-%s" % (r["sp_min"], r["sp_max"]),
                  r["delta_max"], r["miss_max"], r["err"]))
         if r["bad"]:

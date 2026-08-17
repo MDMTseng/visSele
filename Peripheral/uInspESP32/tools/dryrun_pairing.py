@@ -3,7 +3,7 @@
 
 Re-issuing CONNECT tears the peripheral channel down and reopens the UART,
 which toggles DTR and resets the ESP32 -- so every trial starts with
-CAM_SYNC (learned/agree/disagree/resid_max) genuinely at zero. reset_running_stat
+CAM_SYNC (learned/rejected/resid_max) genuinely at zero. reset_running_stat
 does NOT clear those, which is why the earlier deltas were contaminated.
 
 The board reloads NVS on that reset, so the run config is re-applied each time.
@@ -61,8 +61,8 @@ def trial(hz, n, pairing="timestamp"):
     time.sleep(4.0)                       # board reboot + core channel setup
     j = stat(s)
     base = j['cam_sync'] if j else None
-    print("  after reset: learned=%s agree=%s disagree=%s" %
-          (base['learned'], base['agree'], base['disagree']) if base else "  no stat")
+    print("  after reset: learned=%s rejected=%s" %
+          (base['learned'], base.get('rejected')) if base else "  no stat")
 
     send(s, {"type": "clear_error"},
             {"type": "set_setup", "min_detect_sep_us": 15000,
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     tot = ct['NA'] + ct['SEL1'] + ct['SEL2'] + ct['SEL3']
     print("  injected %.1f/s  accept=%s" % (rate, j['gate']['accept']))
     print("  judged=%-5s SKIP=%-5s UNANS=%-4s" % (tot, ct['SKIP'], ct['UNANSWERED']))
-    print("  learned=%-5s agree=%-5s disagree=%-4s rejected=%-5s rebuilds=%-3s" %
-          (cs['learned'], cs['agree'], cs['disagree'],
+    print("  learned=%-5s rejected=%-5s rebuilds=%-3s" %
+          (cs['learned'],
            cs.get('rejected','-'), cs.get('rebuilds','-')))
     print("  resid=%s  resid_max=%s" % (cs['resid_us'], cs['resid_max_us']))

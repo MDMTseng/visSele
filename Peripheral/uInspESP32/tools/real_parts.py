@@ -14,7 +14,7 @@ afterwards are the same ones, but now they describe production:
 
   judged == accept        every accepted part got a verdict
   UNANSWERED == 0         nothing reached its selector without one
-  disagree == 0           only meaningful while the core also pairs
+  rejected / delta_max_us the clock's own refusal -- see CAM_SYNC
                           (PERIF_CORE_PAIRING 1); at 0 there is no second
                           opinion to disagree with and agree/disagree are 0
                           BY CONSTRUCTION, not because things went well
@@ -78,9 +78,9 @@ def show(j, tag):
           "NA=%-5s SKIP=%-4s UNANS=%s"
           % (tag, j.get('state'), g['accept'], judged, ct['SEL1'], ct['SEL2'],
              ct['NA'], ct['SKIP'], ct['UNANSWERED']))
-    print("           learned=%-4s agree=%-6s DISAGREE=%-4s rejected=%-4s "
+    print("           learned=%-4s rejected=%-4s "
           "rebuilds=%-3s recals=%s"
-          % (cs['learned'], cs['agree'], cs['disagree'], cs.get('rejected'),
+          % (cs['learned'], cs.get('rejected'),
              cs.get('rebuilds'), cs.get('recals')))
     print("           delta_max=%-6s miss_max=%-6s window=%-6s "
           "cal_runs=%s cal_fails=%s sync_late=%s recal_skipped=%s"
@@ -165,7 +165,10 @@ def main(a):
 
     cs, ct, g = j['cam_sync'], j['count'], j['gate']
     judged = ct['NA'] + ct['SEL1'] + ct['SEL2'] + ct['SEL3']
-    bad = (cs['disagree'] or ct['UNANSWERED'] or j.get('error_hist'))
+    # The tid-vs-timestamp vote (`disagree`) was removed 2026-08-18 with the
+    # voting scheme. The clock's own refusal replaces it: samples the outlier
+    # guard rejected, plus CAM_CLOCK_LOST in the error history.
+    bad = (cs.get('rejected') or ct['UNANSWERED'] or j.get('error_hist'))
     print("  => %s" % ("FAIL" if bad else "clean"))
     if judged != g['accept']:
         # Not automatically a failure: parts still in flight at the last read

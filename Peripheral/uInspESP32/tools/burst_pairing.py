@@ -193,8 +193,8 @@ if __name__ == '__main__':
           % (cycles, injected, lo, hi, CAM_CEILING_HZ))
     print("  accept=%-6s judged=%-6s SKIP=%-6s UNANS=%s"
           % (g['accept'], judged, ct['SKIP'], ct['UNANSWERED']))
-    print("  learned=%-6s agree=%-6s DISAGREE=%-5s rejected=%-5s rebuilds=%s"
-          % (cs['learned'], cs['agree'], cs['disagree'],
+    print("  learned=%-6s rejected=%-5s rebuilds=%s"
+          % (cs['learned'],
              cs.get('rejected', '-'), cs.get('rebuilds', '-')))
     print("  resid=%-8s resid_max=%-8s delta_max=%-8s window=%s"
           % (cs['resid_us'], cs['resid_max_us'],
@@ -211,6 +211,10 @@ if __name__ == '__main__':
     print("  state=%s error_hist=%s" % (j.get('state'), j.get('error_hist')))
 
     # 13 == GEN_ERROR_CODE::CAM_CLOCK_LOST
-    bad = cs['disagree'] or 13 in (j.get('error_hist') or [])
-    print("  => %s" % ("FAIL (see disagree / CAM_CLOCK_LOST)" if bad else "clean"))
+    # `disagree` (the tid-vs-timestamp vote) was removed with the voting
+    # scheme 2026-08-18. What is left is the clock's own refusal: samples the
+    # outlier guard threw out, and CAM_CLOCK_LOST when two consecutive frames
+    # land outside the window.
+    bad = cs.get('rejected') or 13 in (j.get('error_hist') or [])
+    print("  => %s" % ("FAIL (see rejected / CAM_CLOCK_LOST)" if bad else "clean"))
     raise SystemExit(1 if bad else 0)

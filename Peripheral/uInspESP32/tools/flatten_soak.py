@@ -45,7 +45,7 @@ HEALTH = ["isr_dur_max_us", "isr_dur_env_us", "isr_dur_avg_us", "isr_dur_last_us
           "isr_npe_max_cy", "rbuf_peak", "free_heap", "min_heap", "max_block",
           "stack_hwm", "uptime_s", "consec_unanswered",
           "rx_frames", "rx_crc_ok", "rx_crc_fail"]
-SYNC = ["valid", "agree", "disagree", "rejected", "rebuilds", "resid_max_us",
+SYNC = ["valid", "rejected", "rebuilds", "resid_max_us",
         "delta_max_us", "sync_pulses", "cal_runs", "cal_fails"]
 
 cols = ([c for c, _ in FLAT]

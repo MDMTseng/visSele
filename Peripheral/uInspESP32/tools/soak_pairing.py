@@ -78,7 +78,7 @@ def main():
     with open(OUT, 'a') as f:
         f.write("\n==== sweep session %s ====\n" % datetime.datetime.now().isoformat(timespec='seconds'))
         f.write("%-6s %-5s %-7s %-6s %-6s %-8s %-9s %-8s %-8s\n" %
-                ("sweep", "hz", "judged", "SKIP", "UNANS", "disagree", "rejected", "rebuilds", "resid"))
+                ("sweep", "hz", "judged", "SKIP", "UNANS", "rejected", "rebuilds", "resid"))
         f.flush()
         for sw in range(sweeps):
             for hz in rates:
@@ -91,7 +91,7 @@ def main():
                 cs, ct = j['cam_sync'], j['count']
                 judged = ct['NA'] + ct['SEL1'] + ct['SEL2'] + ct['SEL3']
                 f.write("%-6d %-5d %-7d %-6d %-6d %-8d %-9s %-8s %-8s\n" % (
-                    sw, hz, judged, ct['SKIP'], ct['UNANSWERED'], cs['disagree'],
+                    sw, hz, judged, ct['SKIP'], ct['UNANSWERED'],
                     cs.get('rejected', '-'), cs.get('rebuilds', '-'), cs['resid_us']))
                 f.flush()
     print("done")

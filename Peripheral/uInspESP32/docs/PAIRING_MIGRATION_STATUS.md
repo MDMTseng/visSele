@@ -18,7 +18,7 @@ overrides anything older that contradicts it.
 >
 > | key | value | meaning |
 > |---|---|---|
-> | `cam.report_match_ts` | **true** | the device places every report by `cam_ts`. THE authority. |
+> | `cam.report_match_ts` | **true, and no longer settable** | the device places every report by `cam_ts`. THE authority. Asking for `false` is refused: `err: report_match_ts_is_mandatory` — with one mechanism there is nothing to select between. |
 > | `cam.report_match_pcnt` | **removed** | the key is still accepted (old backups name it) but setting it TRUE is refused: `err: report_match_pcnt_removed`. The mechanism was deleted from the firmware 2026-08-18 — see below |
 > | `cam.match_window_us` | 5000 | tolerance around the expected device-clock time |
 >
@@ -65,6 +65,29 @@ overrides anything older that contradicts it.
 > `REPORT_MATCH_PCNT=false`. The live behaviour comes from NVS. A board
 > reflashed with a wiped NVS silently reverts to acting on the tid the CORE
 > names — check `get_setup` after any flash.
+>
+> **The voting scheme is deleted (2026-08-18).** `byTid` no longer participates
+> in placement at all, and `agree`/`disagree` are gone with it. Both were
+> migration scaffolding — continuous proof that the new mechanism matched the
+> old one — and once the timestamp became sole authority they could only ever
+> read 0: `agree` 0 reads as "nothing ever agreed", and `disagree` 0 means
+> "never checked" rather than "no contradiction". A number that can only be 0
+> is not evidence, it is a trap.
+>
+> **Falling back to the tid was itself the hazard**, not just dead weight: a
+> frame the clock cannot place is precisely the frame this machine must NOT
+> sort, and the old expression handed it to the tid instead. Now it is
+> `tarP = byTs ? byTs : bySync`, where `bySync` fires only during CAL/RECAL
+> (one outstanding object by construction, before the clock exists).
+>
+> **What replaced agree/disagree as the evidence**, and it is stronger — it is a
+> distance rather than a vote: `resid_us` / `resid_max_us` / `delta_max_us` say
+> how far each frame sat from where the clock expected it, `rejected` counts
+> samples the outlier guard threw out, and two consecutive frames outside the
+> window is `CAM_CLOCK_LOST` (the machine stops rather than guesses). Measured
+> right after the change, 1442 parts at 25/s over 1805 frames: `rejected` 0,
+> `rebuilds` 0, `delta_max_us` **1** against a 5000 µs window, `error_hist` empty.
+> The bench harnesses were moved onto those numbers in the same commit.
 >
 > **Still genuinely not done** (steps 6-8 below, A6 in DEV_COMPLETE_CHECKLIST):
 > the host still compiles its own pairing — `PERIF_CORE_PAIRING` defaults to 1

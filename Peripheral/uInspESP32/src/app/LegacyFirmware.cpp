@@ -277,7 +277,12 @@ uint32_t SYS_MIN_PULSE_TIME_SEP_us=30000;
 // Promote the camera-timestamp match from observer to decider. Default off: the
 // first flash must behave exactly as before, and the agree/disagree counters in
 // get_running_stat are what justify turning it on.
-bool REPORT_MATCH_TS=false;
+// Kept only so `get_setup` can answer "yes, the timestamp is authoritative"
+// and so NVS/backups naming the key are not refused wholesale. It is no longer
+// a mode SELECTOR: after the voting scheme was deleted (2026-08-18) there is
+// exactly one pairing mechanism, so the flag has nothing to select between.
+// Forced true at every read; asking for false is refused in set_setup.
+bool REPORT_MATCH_TS=true;
 int SEL1_ACT_COUNTDOWN=-1;
 
 // Plate geometry for the distance gate. These were the OLD machine's numbers
@@ -429,7 +434,20 @@ struct CamClockSync
   uint8_t  boot_n = 0;
   int64_t  last_resid_us = 0;
   int64_t  max_resid_us = 0;
-  uint32_t agree = 0, disagree = 0, learned = 0;
+  // `agree` and `disagree` were removed 2026-08-18 with the voting scheme they
+  // belonged to. They counted how often the core's tid and the timestamp named
+  // the same object -- migration scaffolding, continuous proof that the new
+  // mechanism matched the old one. The timestamp is now the only mechanism, the
+  // core sends tid:-1, and both counters could only ever read 0: `agree` 0
+  // reading as "nothing agreed" is the opposite of the truth, and `disagree` 0
+  // meaning "never checked" is a claim of safety nobody earned.
+  //
+  // What replaced them as the evidence that a frame was placed correctly is
+  // CAM_SYNC's own refusal: `resid_us`/`delta_max_us` say how far each frame sat
+  // from where the clock expected it, `rejected` counts samples the outlier
+  // guard threw out, and two consecutive frames outside the window is
+  // CAM_CLOCK_LOST -- the machine stops rather than guessing.
+  uint32_t learned = 0;
   // Samples refused as outliers, and how often the model was abandoned and
   // rebuilt. Both are diagnostics for the failure this guard exists to stop:
   // rejected climbing while resid stays small is the guard working; rebuilds
@@ -515,11 +533,11 @@ struct CamClockSync
 
   // Drop the estimate, keep the evidence.
   //
-  // A mid-run RECAL must not zero the counters: agree/disagree/rejected/
+  // A mid-run RECAL must not zero the counters: rejected/
   // delta_max are the record of how the machine has been behaving, and wiping
-  // them at every idle top-up means a reading of "disagree 0" says only "none
+  // them at every idle top-up means a reading of "rejected 0" says only "none
   // since the last top-up", which is a far weaker claim than it looks. Observed
-  // exactly that -- a burst run reported agree=0 delta_max=0 because a RECAL
+  // exactly that -- a burst run reported delta_max=0 because a RECAL
   // had landed near the end.
   void resetEstimate()
   {
@@ -530,7 +548,7 @@ struct CamClockSync
   {
     valid=false; offset_us=0; boot_n=0;
     last_resid_us=0; max_resid_us=0;
-    agree=disagree=learned=rejected=rebuilds=0; consec_reject=0;
+    learned=rejected=rebuilds=0; consec_reject=0;
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
@@ -5710,13 +5728,23 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // Pulse-count pairing was removed 2026-08-18. The key is still accepted so
     // old documents are not refused wholesale, but turning it ON cannot be
     // honoured, and saying so is the point.
+    // Both pairing MODE keys are dead: there is one mechanism now. The keys
+    // stay in the schema so old documents are not refused wholesale, but asking
+    // for a mode that no longer exists is refused loudly rather than accepted
+    // and ignored -- a machine that silently declines a setting is worse than
+    // one that tells you what you chose.
     JsonVariant _pc = doc["cam"]["report_match_pcnt"];
-    const bool _pcnt_on = (!_pc.isNull() && _pc.as<bool>()==true);
-    if(_pcnt_on)
+    JsonVariant _ts = doc["cam"]["report_match_ts"];
+    const bool _pcnt_on  = (!_pc.isNull() && _pc.as<bool>()==true);
+    const bool _ts_off   = (!_ts.isNull() && _ts.as<bool>()==false);
+    if(_pcnt_on || _ts_off)
     {
-      retdoc["err"]="report_match_pcnt_removed";
-      djrl.dbg_printf("SET_SETUP REFUSED: report_match_pcnt=true -- "
-                      "pulse-count pairing was removed 2026-08-18");
+      retdoc["err"]= _pcnt_on ? "report_match_pcnt_removed"
+                              : "report_match_ts_is_mandatory";
+      djrl.dbg_printf("SET_SETUP REFUSED: %s -- the tid/pcnt voting scheme was "
+                      "removed 2026-08-18; timestamp is the only pairing",
+                      _pcnt_on ? "report_match_pcnt=true"
+                               : "report_match_ts=false");
       doRsp=true; rspAck=false;
     }
     else
@@ -6320,8 +6348,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["resid_us"]=(int32_t)CAM_SYNC.last_resid_us;
       jS["resid_max_us"]=(int32_t)CAM_SYNC.max_resid_us;
       jS["learned"]=CAM_SYNC.learned;
-      jS["agree"]=CAM_SYNC.agree;
-      jS["disagree"]=CAM_SYNC.disagree;
       // rejected up while resid stays small = the outlier guard doing its job.
       // rebuilds up = the offset genuinely moved and was re-learned.
       jS["rejected"]=CAM_SYNC.rejected;
@@ -6389,7 +6415,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // that was ever independent of the camera. `mode` is kept so a host can
       // still see which pairing is authoritative without a second query.
       JsonObject jP=retdoc.createNestedObject("cam_pcnt");
-      jP["mode"]=REPORT_MATCH_TS?"ts":"tid";
+      jP["mode"]="ts";
       jP["dev_pulses"]=(uint32_t)CAM_PULSE_N;
       jP["removed"]=true;
     }
@@ -6490,7 +6516,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // swept in one pass, which meant the sweep depended on which object it
     // happened to find first -- fine when there was only one way to look, wrong
     // now that there are two and they can disagree.
-    pipeLineInfo *byTid=NULL;
     pipeLineInfo *byTs=NULL;
     // The nearest candidate regardless of the window. byTs is that same object
     // only when it is close enough to be believed; `nearest` is kept separately
@@ -6523,7 +6548,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       {
         pipeLineInfo *pipe = RBuf.getTail(i);
         if (pipe == NULL) break;
-        if(tid!=-1 && pipe->tid==(uint32_t)tid) byTid=pipe;
         if(pipe->sync && pipe->insp_status==insp_status_UNSET)
         { bySync=pipe; syncOutstanding++; }
         if(cam_ts!=0 && CAM_SYNC.valid && pipe->cam_us!=0)
@@ -6539,22 +6563,17 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     // --- cross-check, and learn ------------------------------------------
     //
-    // While both are available the tid stays authoritative and the timestamp
-    // match is only watched. That is what makes this migration free of risk:
-    // the new mechanism has to agree with the old one, continuously and on real
-    // production traffic, before anyone has to trust it. A disagreement is not
-    // a tie to break -- it is a defect, reported as one.
-    // Only sync pulses teach. An ordinary report is a sample of the offset
-    // ONLY IF its pairing was right, which is the thing the offset is for --
-    // so learning from them is circular and self-poisoning. Sync pulses are
-    // fired with nothing else outstanding, so their pairing is certain.
+    // Only sync pulses teach. An ordinary report is a sample of the offset ONLY
+    // IF its pairing was right, which is the thing the offset is for -- so
+    // learning from them is circular and self-poisoning. Sync pulses are fired
+    // with nothing else outstanding, so their pairing is certain without
+    // already knowing the answer.
     //
-    // tid still wins while it is there, so this change cannot alter today's
-    // behaviour: with a tid the teacher is byTid exactly as before, and bySync
-    // is only consulted when the tid is absent. Note byTid must still be a sync
-    // object to teach -- an ordinary part carrying a tid teaches nothing, which
-    // is the circularity guard, not a lookup detail.
-    pipeLineInfo *teach = (byTid!=NULL) ? (byTid->sync ? byTid : NULL) : bySync;
+    // The teacher used to be found by tid when one was present and by bySync
+    // otherwise. With the voting scheme gone the tid lookup went too, and this
+    // reduces to what the tid-free path always did -- which is also the only
+    // one that ever worked under PERIF_CORE_PAIRING=0.
+    pipeLineInfo *teach = bySync;
     if(teach!=NULL && cam_ts!=0) CAM_SYNC.observe(cam_ts, teach->cam_us);
 
     // Once the offset exists, every report maintains it: nearest object inside
@@ -6565,7 +6584,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // in the machine, which is arbitrarily far away -- that counts as a miss,
     // and two in a row halt on CAM_CLOCK_LOST. The frame is accounted for; it
     // is simply not evidence about the clock.
-    const bool retired_sync = (byTid==NULL && byTs==NULL && bySync==NULL &&
+    const bool retired_sync = (byTs==NULL && bySync==NULL &&
                                syncTombMatches(cam_ts));
 
     if(cam_ts!=0 && cat!=-1 && nearest!=NULL && !retired_sync)
@@ -6584,42 +6603,25 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
                          (int)GEN_ERROR_CODE::CAM_CLOCK_LOST);
     }
 
-    if(byTid!=NULL && byTs!=NULL)
-    {
-      if(byTid==byTs) CAM_SYNC.agree++;
-      else
-      {
-        CAM_SYNC.disagree++;
-        djrl.dbg_printf("CAMSYNC MISMATCH tid=%u ts_tid=%u d=%lld",
-                        (unsigned)byTid->tid,(unsigned)byTs->tid,(long long)bestDelta);
-      }
-    }
-
-    // tid wins while it is present. REPORT_MATCH_TS promotes the timestamp to
-    // authoritative once the agreement count says it has earned it.
-    // bySync is the last resort, and it only ever fires during CAL/RECAL: in
-    // READY no sync pulse is outstanding, so bySync is NULL and this reduces to
-    // the previous expression exactly. It matters because calibration runs
-    // BEFORE the clock exists -- byTs is necessarily NULL there -- so without
-    // it a tid-free calibration report would match no object at all and raise
-    // INSP_RESULT_MATCHES_NO_OBJECT on every single pulse.
-    // Which device-side mechanisms are switched on, and what they decided.
+    // ONE mechanism. The old voting scheme is gone (2026-08-18).
     //
-    // Three configurations, and the middle one is the reason this exists:
+    // It used to be "tid wins while it is present, and the timestamp is only
+    // watched", with agree/disagree counting how often the two named the same
+    // object. That was migration scaffolding: the new mechanism had to be shown
+    // to match the old one on real traffic before anyone trusted it. It has
+    // been, the timestamp is authoritative, and the scaffolding now does harm:
     //
-    //   ts only    -- as before.
-    // One mechanism, by design. The dual-mode arbitration that used to live
-    // here (ts+pcnt must name the same object or the machine halts on
-    // CAM_PAIRING_DISAGREE) went with the pulse-count pairing on 2026-08-18 --
-    // see the note at CAM_PULSE_N. What it protected against, a clock that
-    // mispairs plausibly, is now covered by CAM_SYNC's own refusal: outside the
-    // window twice running is CAM_CLOCK_LOST and the machine stops rather than
-    // guesses.
-    pipeLineInfo *byDev = REPORT_MATCH_TS ? byTs : NULL;
-
-    tarP = (byDev!=NULL ? byDev
-         : (byTid!=NULL ? byTid
-         : (byTs!=NULL ? byTs : bySync)));
+    //   * `agree` can only read 0 (the core sends tid:-1), which reads as
+    //     "nothing ever agreed" -- the opposite of the truth
+    //   * falling back to the tid when the timestamp cannot place a frame is
+    //     exactly the confidently-wrong behaviour the timestamp was chosen over.
+    //     A frame the clock cannot place is one this machine must NOT sort.
+    //
+    // bySync stays and is not a vote: it only ever fires during CAL/RECAL, when
+    // the clock does not exist yet and syncPulseService guarantees exactly one
+    // outstanding object. Without it a tid-free calibration report would match
+    // nothing and raise INSP_RESULT_MATCHES_NO_OBJECT on every pulse.
+    tarP = (byTs != NULL) ? byTs : bySync;
 
     // --- sweep everything older than the chosen object --------------------
     if(tarP!=NULL)
@@ -9140,7 +9142,8 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
-  JSON_SETIF_ABLE(REPORT_MATCH_TS,jCM,"report_match_ts");
+  // report_match_ts is no longer settable -- see its declaration. Accepted as
+  // true (a no-op), refused as false in the set_setup handler.
   // "report_match_pcnt" stays in the SCHEMA (K_CAM) but is no longer applied.
   // Kept in the schema because set_setup refuses a whole document containing an
   // unknown key and old tools/backups still name it; asking for it to be ON is

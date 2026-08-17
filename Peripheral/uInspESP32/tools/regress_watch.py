@@ -10,7 +10,9 @@ It watches for the specific regressions, not for "seems fine":
   crash dumps        the camera reconnect use-after-free (80+ dumps in 2 days)
   err 11             two threads interleaving on one UART
   cal_fails          the calibration wait that was gated on state 101
-  disagree           the device's own tid-vs-timestamp cross-check: the ONLY
+  rejected           samples the clock's outlier guard threw out. The
+                     tid-vs-timestamp cross-check (`disagree`) it replaced was
+                     removed 2026-08-18 with the voting scheme; the ONLY
                      instrument here that can see a part matched to the WRONG
                      frame, as opposed to matched to none
   rejected/rebuilds  the match-window guard firing
@@ -410,7 +412,7 @@ def main(a):
             "rej_rate": g0.get("rej_rate", 0),
             "rej_dist": g0.get("rej_dist", 0),
             "cal_fails": cs0.get("cal_fails", 0),
-            "disagree": cs0.get("disagree", 0),
+            "rejected": cs0.get("rejected", 0),
             "rejected": cs0.get("rejected", 0),
             "rebuilds": cs0.get("rebuilds", 0),
             "heap": j["health"].get("free_heap", 0)}
@@ -522,9 +524,10 @@ def main(a):
         # version looked only for 11 and would have shrugged at CAM_CLOCK_LOST.
         if new_err:
             fail.append("new errors %s" % new_err)
-        if cs.get("disagree", 0) > base["disagree"]:
-            fail.append("disagree %s -> %s: a frame was matched to the wrong "
-                        "object" % (base["disagree"], cs.get("disagree")))
+        if cs.get("rejected", 0) > base["rejected"]:
+            fail.append("rejected %s -> %s: the clock refused samples -- a frame "
+                        "landed where the model did not expect it"
+                        % (base["rejected"], cs.get("rejected")))
         # Parts dropped at the gate, silently. rej_busy means the pipeline had
         # no room (PIPE_INFO_LEN=100) and the object was never registered at
         # all -- it does not appear in judged, in the verdict log, or in any
@@ -567,7 +570,7 @@ def main(a):
               % (str(datetime.timedelta(seconds=int(now - (t_end - a.hours * 3600)))),
                  judged, rate,
                  "%s/%s" % (cs.get("cal_runs"), cs.get("cal_fails")),
-                 cs.get("recals"), cs.get("disagree"), cs.get("rejected"),
+                 cs.get("recals"), cs.get("rejected"),
                  len(seen_err), h.get("free_heap"), cs.get("delta_max_us"),
                  j.get("state")))
         rep_judged, rep_t = judged, now
@@ -585,8 +588,8 @@ def main(a):
         print("  calibration : runs=%s fails=%s  recals=%s recal_skipped=%s"
               % (cs.get("cal_runs"), cs.get("cal_fails"),
                  cs.get("recals"), cs.get("recal_skipped")))
-        print("  pairing     : agree=%s disagree=%s rejected=%s rebuilds=%s"
-              % (cs.get("agree"), cs.get("disagree"),
+        print("  pairing     : rejected=%s rebuilds=%s"
+              % (
                  cs.get("rejected"), cs.get("rebuilds")))
         # The distribution, not the high-water mark. delta_max cannot tell
         # "one outlier at 240us" from "routinely near 240", and those two want

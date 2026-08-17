@@ -131,13 +131,13 @@ def main(a):
 
     # A run that read nothing must FAIL, not pass.
     #
-    # The first version judged on `halt or disagree`, both of which stay at
+    # The first version judged on `halt or rejected`, both of which stay at
     # their initial values when no stat is ever read -- so a soak whose link
     # died on the first second printed "(no stat)" eleven times and then
     # "=> clean". Absence of evidence was being reported as evidence of
     # absence, which is the exact failure this whole day's tooling kept
     # producing.
-    worst = {"halt": None, "disagree": 0, "samples": 0}
+    worst = {"halt": None, "rejected": 0, "samples": 0}
     while time.time() < t_end:
         now = time.time()
         if now >= next_idle:
@@ -166,8 +166,8 @@ def main(a):
                      h.get('min_heap'), h.get('rbuf_peak'),
                      cs.get('delta_max_us'), tail_us(hs), j.get('error_hist')))
             worst['samples'] += 1
-            if cs.get('disagree'):
-                worst['disagree'] = cs['disagree']
+            if cs.get('rejected'):
+                worst['rejected'] = cs['rejected']
             if j.get('state') in (112, 113):
                 worst['halt'] = j.get('error_hist')
                 print("  HALTED -- stopping the soak")
@@ -184,8 +184,8 @@ def main(a):
         print("  recals=%s recal_skipped=%s cal_fails=%s rejected=%s rebuilds=%s"
               % (cs.get('recals'), cs.get('recal_skipped'), cs.get('cal_fails'),
                  cs.get('rejected'), cs.get('rebuilds')))
-        print("  agree=%s DISAGREE=%s  min_heap=%s rbuf_peak=%s"
-              % (cs.get('agree'), cs.get('disagree'),
+        print("  DISAGREE=%s  min_heap=%s rbuf_peak=%s"
+              % (cs.get('rejected'),
                  j['health'].get('min_heap'), j['health'].get('rbuf_peak')))
         print("  report_latency avg=%sus max=%sus"
               % (j['report_latency'].get('avg_us'), j['report_latency'].get('max_us')))
@@ -194,9 +194,9 @@ def main(a):
         print("  => NO DATA: the link never answered. This is not a pass -- "
               "check the serial device is present.")
         return 1, s
-    bad = worst['halt'] or worst['disagree']
+    bad = worst['halt'] or worst['rejected']
     print("  => %s  (%d samples)"
-          % ("FAIL (halt=%s disagree=%s)" % (worst['halt'], worst['disagree'])
+          % ("FAIL (halt=%s rejected=%s)" % (worst['halt'], worst['rejected'])
              if bad else "clean", worst['samples']))
     return (1 if bad else 0), s
 

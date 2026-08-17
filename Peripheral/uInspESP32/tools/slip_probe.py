@@ -280,8 +280,9 @@ def sporadic(s, a, harvest, seen, stat_of):
     # the device assigns by its own timestamp match. A mismatch therefore means
     # the two disagreed -- and `disagree` counts exactly that, so a misplaced
     # count with disagree=0 would mean something else entirely is going on.
-    print("    agree=%s DISAGREE=%s  (misplaced should track disagree)"
-          % (cs.get('agree'), cs.get('disagree')))
+    print("    rejected=%s  (the clock\'s own refusal; the tid-vs-ts vote was"
+          " removed 2026-08-18 -- this probe\'s per-item hash is the real"
+          " slip detector anyway)" % (cs.get('rejected'),))
 
     # "Still running" is not "== READY". RECAL (104) is a normal transient the
     # machine enters on its own, and treating it as a halt reported a FAIL on a
@@ -435,10 +436,10 @@ def run(a):
 
     if st:
         cs, ct = st['cam_sync'], st['count']
-        print("  SEL1=%s SEL2=%s NA=%s UNANS=%s  agree=%s DISAGREE=%s "
+        print("  SEL1=%s SEL2=%s NA=%s UNANS=%s  DISAGREE=%s "
               "delta_max=%s err=%s"
               % (ct['SEL1'], ct['SEL2'], ct['NA'], ct['UNANSWERED'],
-                 cs['agree'], cs['disagree'], cs.get('delta_max_us'),
+                 cs.get('rejected'), cs.get('delta_max_us'),
                  st.get('error_hist')))
 
     if bad:

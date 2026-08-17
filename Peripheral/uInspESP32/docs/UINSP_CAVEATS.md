@@ -3201,3 +3201,43 @@ number. **After any pairing surgery, check `dev_pulses` against the parts fed.**
 window, `dev_pulses` 1921. `agree` reads 0 and that is correct, not a
 regression: the core sends `tid:-1`, so there is no second opinion to agree
 with — which is the whole point of the end state.
+
+## 2026-08-18 — the tid-vs-timestamp voting scheme is deleted too
+
+After the pulse-count path went, the remaining vote was the core's `tid` against
+the device's timestamp: `agree`/`disagree` counted how often they named the same
+object, and the placement expression fell back to `byTid` when the timestamp
+could not place a frame. Both are gone.
+
+**Why the counters had to go, not just be ignored:** with the timestamp
+authoritative the core sends `tid:-1`, so `byTid` is permanently NULL and
+neither counter can ever move. `agree` 0 reads as "nothing ever agreed" — the
+opposite of the truth. `disagree` 0 reads as "no contradiction" when it actually
+means "never checked". **A number that can only be 0 is not evidence, it is a
+trap**, and this machine's own harnesses were using `disagree == 0` as their
+pass criterion.
+
+**Why the tid fallback had to go:** a frame the clock cannot place is exactly
+the frame that must NOT be sorted. The old expression handed it to the tid
+instead — the confidently-wrong behaviour the timestamp was chosen over.
+Now: `tarP = byTs ? byTs : bySync`, and `bySync` only ever fires during
+CAL/RECAL where syncPulseService guarantees exactly one outstanding object.
+
+**The replacement evidence is a distance, not a vote**, which is strictly more
+informative: `resid_us` / `resid_max_us` / `delta_max_us` (how far each frame sat
+from where the clock expected it), `rejected` (samples the outlier guard threw
+out), and `CAM_CLOCK_LOST` after two consecutive frames outside the window.
+Measured immediately after the change — 1442 parts at 25/s, 1805 frames:
+`rejected` 0, `rebuilds` 0, `delta_max_us` **1** against a 5000 µs window,
+`error_hist` empty.
+
+**`report_match_ts` is no longer a selector.** It is forced true and reported
+true; `set_setup` refuses `false` with `err: report_match_ts_is_mandatory`. The
+key stays in the schema because set_setup refuses a whole document containing an
+unknown key and NVS/backups name it.
+
+**Nine bench harnesses judged on `disagree`** and were moved to `rejected` +
+error 13 in the same commit (burst_pairing, dryrun_pairing, real_parts,
+soak_real, soak_pairing, slip_probe, jitter_sweep, regress_watch, flatten_soak,
+soak_sched). Deleting a reported field without doing this would have left them
+either crashing on a KeyError or — worse — silently passing.
