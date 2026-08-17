@@ -468,9 +468,13 @@ static bool skip_inspection()
   static const bool on = []{
     const char *e = getenv("INSP_SKIP_INSPECTION");
     const bool v = e && atoi(e) != 0;
-    LOGE("INSP_SKIP_INSPECTION=%d -- %s", v ? 1 : 0,
-         v ? "fixed verdict, NO inspection: this run measures the chain"
-           : "normal inspection");
+    // Running with inspection disabled is a condition worth flagging; the
+    // normal case is a startup fact and belongs at info.
+    if (v)
+      LOGW("INSP_SKIP_INSPECTION=1 -- fixed verdict, NO inspection: "
+           "this run measures the chain, verdicts are not real");
+    else
+      LOGI("INSP_SKIP_INSPECTION=0 -- normal inspection");
     return v;
   }();
   return on;
@@ -2379,7 +2383,7 @@ static void load_insp_region(cJSON *json_mac_setting)
     g_insp_region = cfg;
   }
   if (cfg.w > 0 && cfg.h > 0)
-    LOGE("inspection_region: [%.0f,%.0f %.0fx%.0f] full-sensor px, fit=%s -- objects "
+    LOGI("inspection_region: [%.0f,%.0f %.0fx%.0f] full-sensor px, fit=%s -- objects "
          "outside this are not judged", cfg.x, cfg.y, cfg.w, cfg.h,
          cfg.fit ? "contain (whole object inside)" : "centre only");
   else
@@ -2438,7 +2442,7 @@ static void load_clean_regions(cJSON *json_mac_setting)
     std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
     g_clean_regions = out;
   }
-  LOGE("clean_regions: %d configured", (int)out.size());
+  LOGI("clean_regions: %d configured", (int)out.size());
 }
 
 int InspStatusReducer(int total_status, int new_status);   // defined further down
@@ -4020,7 +4024,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
         if (deffile == NULL && defInfo == NULL)
         {
-          LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
+          // Was: LOGE("...:%p OR ...:%p ", __LINE__, deffile, defInfo) -- two
+          // conversions, three arguments, so the first %p printed __LINE__ and
+          // defInfo was never shown. The framework stamps file:line already;
+          // what the reader needs is which key was missing, not an address.
+          LOGE("inspection request rejected: neither 'deffile' nor 'definfo' "
+               "present in the request JSON -- nothing to inspect against");
           if (camera) camera->TriggerMode(1);
           break;
         }
@@ -4312,7 +4321,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         if (deffile == NULL && defInfo == NULL)
         {
 
-          LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
+          // Was: LOGE("...:%p OR ...:%p ", __LINE__, deffile, defInfo) -- two
+          // conversions, three arguments, so the first %p printed __LINE__ and
+          // defInfo was never shown. The framework stamps file:line already;
+          // what the reader needs is which key was missing, not an address.
+          LOGE("inspection request rejected: neither 'deffile' nor 'definfo' "
+               "present in the request JSON -- nothing to inspect against");
 
           if (camera) camera->TriggerMode(1);
           break;
@@ -4393,7 +4407,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           g_full_inspection = (dat->tl[0] == 'F');
           // Announced, because it silently changes which objects get judged.
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
-            LOGE("insp session: %s -- station region %s",
+            LOGI("insp session: %s -- station region %s",
                  g_full_inspection ? "FI" : "CI",
                  g_area_gates_bypass
                    ? "off (InspAreaBypass ON)"
@@ -4457,8 +4471,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
 
       } while (false);
-
-      LOGE("//////");
     }
     else if (checkTL("EX", dat)) //feature EXtraction
     {
@@ -5188,7 +5200,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           sprintf(err_str, "No signature info....");
         }
       }
-      LOGI(">>>");
+      LOGI("signature query: replying");
 
       char *jstr = cJSON_Print(retObj);
       cJSON_Delete(retObj);
@@ -5404,6 +5416,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           if (cur) free(cur);
           if (doc)
           {
+            // Capture what is about to be replaced. After the delete below it
+            // is gone, and it exists nowhere else on disk -- which is exactly
+            // how a machine ended up at [0,0,99999,99999] with the real crop
+            // unrecoverable. Recording the old value in the log is the cheapest
+            // thing that makes that mistake reversible.
+            char prevDesc[80];
+            {
+              cJSON *oldRoi = cJSON_GetObjectItem(doc, "InspectionROI");
+              if (oldRoi && cJSON_IsArray(oldRoi) && cJSON_GetArraySize(oldRoi) == 4)
+                snprintf(prevDesc, sizeof(prevDesc), "[%.0f,%.0f %.0fx%.0f]",
+                         cJSON_GetArrayItem(oldRoi,0)->valuedouble,
+                         cJSON_GetArrayItem(oldRoi,1)->valuedouble,
+                         cJSON_GetArrayItem(oldRoi,2)->valuedouble,
+                         cJSON_GetArrayItem(oldRoi,3)->valuedouble);
+              else
+                snprintf(prevDesc, sizeof(prevDesc), "(unset)");
+            }
             cJSON_DeleteItemFromObject(doc, "InspectionROI");
             cJSON_AddItemToObject(doc, "InspectionROI", cJSON_Duplicate(roi, 1));
             char *outStr = cJSON_Print(doc);
@@ -5411,7 +5440,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             {
               FILE *fh = fopen(fp, "w");
               if (fh) { fputs(outStr, fh); fclose(fh);
-                        LOGE("camera ROI persisted to %s: [%.0f,%.0f %.0fx%.0f]", fp,
+                        // Destructive: warn, and name the value that was lost.
+                        LOGW("camera ROI OVERWRITTEN in %s: was %s -> now "
+                             "[%.0f,%.0f %.0fx%.0f]", fp, prevDesc,
                              cJSON_GetArrayItem(roi,0)->valuedouble,
                              cJSON_GetArrayItem(roi,1)->valuedouble,
                              cJSON_GetArrayItem(roi,2)->valuedouble,
@@ -7150,7 +7181,8 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     if (*skipImageTransfer) s_skipImg++;
     if (*skipInspDataTransfer) s_skipRep++;
     if ((s_n % 50) == 0)
-      LOGW("dview split: wait avg:%.1fms max:%.1fms | rep avg:%.1fms max:%.1fms"
+      // Rolling telemetry on a 50-sample tick, not a condition: info.
+      LOGI("dview split: wait avg:%.1fms max:%.1fms | rep avg:%.1fms max:%.1fms"
            " | img avg:%.1fms max:%.1fms | tot avg:%.1fms max:%.1fms"
            " | skipped img:%llu rep:%llu of n:%llu | q:%d/%d",
            s_wait/1000.0/s_n, m_wait/1000.0, s_rep/1000.0/s_n, m_rep/1000.0,
@@ -8072,7 +8104,8 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
           // produce exactly this, so measure the instrument.
           if (newMax || (g_perifWriteCnt % 100) == 0)
           {
-            LOGW("perif write: last:%.2fms max:%.2fms avg:%.2fms | wait last:%.2fms "
+            // Rolling telemetry (every 100 writes, or on a new max): info.
+            LOGI("perif write: last:%.2fms max:%.2fms avg:%.2fms | wait last:%.2fms "
                  "max:%.2fms avg:%.2fms | n:%llu qdepth:%zu drops:%d%s",
                  ms, g_perifWriteMaxMs, g_perifWriteSumMs / (double)g_perifWriteCnt,
                  _waitMs, g_perifWaitMaxMs, g_perifWaitSumMs / (double)g_perifWriteCnt,
@@ -8101,8 +8134,19 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
             // and what is still unclaimed (pending). Steady state is pending~0
             // and missed flat; pending climbing means results are not keeping up
             // with triggers, missed climbing means frames are being lost.
+            // Periodic accounting is info; a non-zero missed count is the
+            // condition worth interrupting a reader for, so only that warns.
+            // Emitting the steady-state zero at WARN made "missed" invisible
+            // by making every sample look identical.
             if (pc->machine_type == PERIF_UINSP_ESP32)
-              LOGW("perif trig: missed(NA):%lld", perifMissedFrameCount.load());
+            {
+              long long _missed = perifMissedFrameCount.load();
+              if (_missed > 0)
+                LOGW("perif trig: missed(NA):%lld -- frames judged but not "
+                     "matched to a trigger", _missed);
+              else
+                LOGI("perif trig: missed(NA):0");
+            }
             // The whole logging tail, not just up to the first line.
             //
             // This is the prime suspect and it needs a distribution, not a
@@ -8147,7 +8191,10 @@ void SlowFrameSaveThread(bool *terminationflag)
         try
         {
           if (cv::imwrite(path, sf.img))
-            LOGE("slow frame saved: %s  (match %.1fms, process cpu %.1fms)",
+            // A frame over budget is a condition, not a failure: warn. It was
+            // at ERROR, where 40 routine saves made up 47% of the error level
+            // and buried the handful of records that meant something.
+            LOGW("slow frame saved: %s  (match %.1fms, process cpu %.1fms)",
                  path, sf.match_ms, sf.match_cpu_ms);
           else
             LOGE("slow frame WRITE FAILED: %s", path);
@@ -9438,7 +9485,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       if (q_us > s_q_max) s_q_max = q_us;
       if (i_us > s_i_max) s_i_max = i_us;
       if ((s_n % 100) == 0)
-        LOGW("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
+        // Rolling telemetry on a 100-sample tick, not a condition: info.
+        LOGI("insp split: queue avg:%.2fms max:%.2fms | inspect avg:%.2fms "
              "max:%.2fms | n:%llu",
              s_q_sum / 1000.0 / s_n, s_q_max / 1000.0,
              s_i_sum / 1000.0 / s_n, s_i_max / 1000.0,
@@ -9458,7 +9506,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     static const bool _direct = []{
       const char *e = getenv("INSP_PERIF_DIRECT_SEND");
       const bool on = e && atoi(e) != 0;
-      LOGE("perif delivery: %s", on ? "DIRECT (no queue, no handoff)"
+      LOGI("perif delivery: %s", on ? "DIRECT (no queue, no handoff)"
                                     : "QUEUED via PerifSendThread");
       return on;
     }();
@@ -9959,7 +10007,7 @@ int mainLoop(bool realCamera = false)
 {
   /**/
 
-  LOGI(">>>>>\n");
+  LOGI("mainLoop: entering startup");
   bool pass = false;
   int retryCount = 0;
   while (!pass && !terminationFlag)
@@ -9988,7 +10036,7 @@ int mainLoop(bool realCamera = false)
   setThreadPriority(InspThread, TP_INSPECT, "inspection");
   std::thread ActionThread(ImgPipeDatViewThread, &terminationFlag);
   setThreadPriority(ActionThread, TP_PREVIEW, "preview");
-  LOGI(">>>>>\n");
+  LOGI("mainLoop: worker threads started");
 
   std::thread _inspSnapSaveThread(InspSnapSaveThread, &terminationFlag);
   setThreadPriority(_inspSnapSaveThread, TP_BULK, "snapshot-save");
@@ -10019,10 +10067,10 @@ int mainLoop(bool realCamera = false)
     {
       const int n = atoi(e);
       cv::setNumThreads(n);
-      LOGE("OpenCV threads pinned to %d (was default %d)", n, cv::getNumThreads());
+      LOGI("OpenCV threads pinned to %d (was default %d)", n, cv::getNumThreads());
     }
     else
-      LOGE("OpenCV threads: default %d", cv::getNumThreads());
+      LOGI("OpenCV threads: default %d", cv::getNumThreads());
   }
   std::thread _perifWatchdogThread(PerifWatchdogThread, &terminationFlag);
   std::thread _slowFrameSaveThread(SlowFrameSaveThread, &terminationFlag);
@@ -10852,7 +10900,9 @@ int cp_main(int argc, char **argv)
 
   _argc = argc;
   _argv = argv;
-  for (int i = 0; i < argc; i++)
+  // From 1: argv[0] is the program path, never an option, and scanning it only
+  // produced a guaranteed "unknown param[0]:...\visSele.exe" on every start.
+  for (int i = 1; i < argc; i++)
   {
     bool doMatch = false;
     char *str = PatternRest(argv[i], "CamInitStyle=");//CamInitStyle={str}
@@ -10894,11 +10944,13 @@ int cp_main(int argc, char **argv)
 
     if (doMatch)
     {
-      LOGE("CMD param[%d]:%s ...OK", i, argv[i]);
+      LOGI("arg[%d] accepted: %s", i, argv[i]);
     }
     else
     {
-      LOGE("unknown param[%d]:%s", i, argv[i]);
+      // An unrecognised argument is the caller's mistake, not a core failure:
+      // warn, and say what happens next so it is actionable.
+      LOGW("arg[%d] not recognised: %s -- ignored", i, argv[i]);
     }
   }
 

@@ -5,6 +5,11 @@
 
 #include "SearchPointCV.h"
 #include "logctrl.h"
+#include <opencv2/imgproc.hpp>
+#if CV_VERSION_MAJOR >= 5
+// OpenCV 5 moved getRotationMatrix2D / boundingRect into the geometry module.
+#include <opencv2/geometry/2d.hpp>
+#endif
 LOG_MODULE("match.sig360");
 #include <stdexcept>
 #include <common_lib.h>
@@ -2485,7 +2490,11 @@ void FeatureManager_sig360_circle_line::ClearReport()
   report.data.sig360_circle_line.reports = &reports;
   FeatureManager_binary_processing::ClearReport();
 
-  LOGI("bacpac:<%p>  report.type:%p", bacpac, report.type);
+  // Was: LOGI("bacpac:<%p>  report.type:%p", ...) -- two heap addresses, 48
+  // times a run. An address means nothing once the process has exited, which
+  // is when this log is read. Whether a bacpac is attached is the only part
+  // that was ever legible, and it belongs with the other per-clear state.
+  LOGI("sig360 report cleared (bacpac %s)", bacpac ? "attached" : "none");
 }
 
 
@@ -3408,9 +3417,16 @@ int ConstrainMap::solve()
   int need = min_anchors > 0 ? min_anchors : 2;
   if (valid < need)
   {
+    // Falling back to identity means the constraint solve found nothing to
+    // align to and the image is passed through unmorphed -- a measurement
+    // quality event, not a status update. It sat at INFO and fired 82 times in
+    // one bench run, invisible between thousands of per-frame camera lines.
+    // Throttled because the interesting part is that it is happening at all,
+    // and at what rate; one line per frame would just move the spam.
     if (valid < (int)anchorPairs.size())
-      LOGI("ConstrainMap::solve mode1: only %d/%d valid anchors (<%d) -> identity morph",
-           valid, (int)anchorPairs.size(), need);
+      LOGW_EVERY_N(20, "locating degraded: only %d/%d valid anchors (need %d)"
+                       " -> identity morph, object measured unaligned",
+                   valid, (int)anchorPairs.size(), need);
     return valid;
   }
 

@@ -252,6 +252,53 @@ extern "C" {
 #define LOGE(fmt, ...) LOG_IF_(LOG_LV_ERROR, fmt, ##__VA_ARGS__)
 #define LOGF(fmt, ...) LOG_IF_(LOG_LV_FATAL, fmt, ##__VA_ARGS__)
 
+/* --------------------------------------------------------------------------
+ *  Throttles -- for a condition that is worth seeing but repeats per frame
+ *
+ *  The alternative people reach for is demoting the line to LOGD, but LOGD is
+ *  a compile-time no-op here (below), so demoting does not quiet a line -- it
+ *  deletes it, with no runtime way to get it back. That trades spam for a
+ *  blind spot. These keep the signal and drop the repetition instead.
+ *
+ *  LOG*_EVERY_N   emit the 1st, then every Nth, tagged with the running total
+ *                 so the reader can see the rate rather than infer it.
+ *  LOG*_ON_CHANGE emit only when a scalar differs from the last emitted value.
+ *                 For state that is re-derived every frame but rarely moves --
+ *                 the reader wants the transitions, not the sampling.
+ *
+ *  Each call site owns its own static counter, so two sites never interfere.
+ *  The counter is deliberately not atomic: a race can only duplicate or skip
+ *  one line of a throttled stream, which is cheaper than serialising the log
+ *  hot path. Do not use these where an exact count is the point.
+ * -------------------------------------------------------------------------- */
+#define LOG_EVERY_N_(lv, n, fmt, ...) do { \
+    static unsigned long _log_ev_seen_ = 0; \
+    unsigned long _log_ev_c_ = ++_log_ev_seen_; \
+    if (_log_ev_c_ == 1 || (_log_ev_c_ % (unsigned long)(n)) == 0) { \
+        LOG_IF_(lv, fmt " (x%lu)", ##__VA_ARGS__, _log_ev_c_); \
+    } \
+} while (0)
+
+#define LOGI_EVERY_N(n, fmt, ...) LOG_EVERY_N_(LOG_LV_INFO,  n, fmt, ##__VA_ARGS__)
+#define LOGW_EVERY_N(n, fmt, ...) LOG_EVERY_N_(LOG_LV_WARN,  n, fmt, ##__VA_ARGS__)
+#define LOGE_EVERY_N(n, fmt, ...) LOG_EVERY_N_(LOG_LV_ERROR, n, fmt, ##__VA_ARGS__)
+
+/* `cur` is evaluated once and compared against the previous emitted value.
+ * First call always emits (seeded from a separate "never ran" flag, so a
+ * legitimate 0 on the first frame is not swallowed). */
+#define LOG_ON_CHANGE_(lv, cur, fmt, ...) do { \
+    static long long _log_oc_prev_ = 0; \
+    static int _log_oc_have_ = 0; \
+    long long _log_oc_cur_ = (long long)(cur); \
+    if (!_log_oc_have_ || _log_oc_cur_ != _log_oc_prev_) { \
+        _log_oc_prev_ = _log_oc_cur_; _log_oc_have_ = 1; \
+        LOG_IF_(lv, fmt, ##__VA_ARGS__); \
+    } \
+} while (0)
+
+#define LOGI_ON_CHANGE(cur, fmt, ...) LOG_ON_CHANGE_(LOG_LV_INFO, cur, fmt, ##__VA_ARGS__)
+#define LOGW_ON_CHANGE(cur, fmt, ...) LOG_ON_CHANGE_(LOG_LV_WARN, cur, fmt, ##__VA_ARGS__)
+
 /* LOGV / LOGD: kept as compile-time no-ops in Phase A.
  *
  * Background: the legacy header had these as commented-out empty macros, so

@@ -79,7 +79,12 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       const float expoMult = aug.expo_sim_en
           ? (aug.expo_us * aug.expo_gain / exp_time_100ExpUs) : 1.0f;
       int tExp=(1<<13)*brightnessMult*expoMult;
-      LOGI("tExp:%d",tExp);
+      // Brightness augmentation re-rolls this every frame, so on-change does
+      // not quiet it -- sample it instead. The value is an internal scale
+      // factor; what a reader needs is the order of magnitude and that it is
+      // still moving, not all 2,061 of them.
+      LOGI_EVERY_N(50, "expo scale: tExp=%d (brightness x%.3f, expo x%.3f)",
+                   tExp, brightnessMult, expoMult);
 
 
       // img.ReSize(newW,newH);
@@ -107,7 +112,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         {
           rotate += aug.rotate_step_deg * M_PI/180;
           if(rotate >= 2*M_PI) rotate -= 2*M_PI;   // keep angle bounded
-          LOGI("ROTATE:%f",rotate*180/M_PI);
+          // Advances every frame by design, so on-change would not quiet it.
+          LOGI_EVERY_N(50, "augment rotate: %.2f deg", rotate*180/M_PI);
         }
         else
         {
@@ -221,7 +227,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             rotate+=0.1*M_PI/180;
           }
           // rotate+=1*M_PI/180;
-          LOGI("ROTATE:%f",rotate*180/M_PI);
+          // Advances every frame by design, so on-change would not quiet it.
+          LOGI_EVERY_N(50, "augment rotate: %.2f deg", rotate*180/M_PI);
           // 
         }
 
@@ -369,7 +376,21 @@ CameraLayer_BMP::status CameraLayer_BMP::CalcROI_nolock(int* X,int* Y,int* W,int
   int tmpX=ROI_X;
   int tmpY=ROI_Y;
 
-  LOGI("%d %d %d %d",tmpX,tmpY,tmpW,tmpH);
+  // Called once per frame, but the ROI only moves when somebody moves it.
+  // Logging it unconditionally cost 6,189 of 13,520 records (46% of the ring)
+  // in a single bench run -- all of them the same four unlabelled integers,
+  // evicting the history a fault would have needed. Report the transition.
+  {
+    static int lastX = 0, lastY = 0, lastW = 0, lastH = 0, haveLast = 0;
+    if(!haveLast || tmpX!=lastX || tmpY!=lastY || tmpW!=lastW || tmpH!=lastH)
+    {
+      LOGI("roi changed: [%d,%d %dx%d] (was [%d,%d %dx%d])",
+           tmpX, tmpY, tmpW, tmpH,
+           haveLast ? lastX : 0, haveLast ? lastY : 0,
+           haveLast ? lastW : 0, haveLast ? lastH : 0);
+      lastX=tmpX; lastY=tmpY; lastW=tmpW; lastH=tmpH; haveLast=1;
+    }
+  }
   if(tmpX<0){
     tmpX=0;
   }
@@ -434,15 +455,28 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 
     //if(img.GetWidth()<100)//Just to skip image loading
     cacheUseCounter++;
-    if(this->fileName.compare(fileName)!=0 || cacheUseCounter>20)//check if the name isn't equal
+    const bool nameChanged = (this->fileName.compare(fileName)!=0);
+    if(nameChanged || cacheUseCounter>20)//check if the name isn't equal
     {
       cacheUseCounter=0;
       this->fileName = fileName;
-        LOGI("Loading:%s",fileName.c_str());
         img_load = cv::imread(fileName.c_str(), cv::IMREAD_ANYCOLOR);
         ret = img_load.empty() ? -1 : 0;
         if (ret == 0 && !img_load.isContinuous()) img_load = img_load.clone();
-        LOGI("ret:%d",ret);
+
+        // A failed load is always news, and now says why it matters. A
+        // *successful* re-read of the same file is the 20-frame cache refresh
+        // doing its job -- it was emitting two unlabelled lines each time
+        // ("Loading:..." + "ret:0"), 4,116 records in one bench run.
+        if(ret != 0)
+          LOGE("load failed: %s -- imread returned empty (missing, unreadable, "
+               "or not a supported image)", fileName.c_str());
+        else if(nameChanged)
+          // A carousel changes file every frame, so "the name changed" is not
+          // by itself news either -- sample it. A *failed* load above is never
+          // throttled: that one is always worth a line.
+          LOGI_EVERY_N(50, "loaded %s (%dx%d, %dch)", fileName.c_str(),
+                       img_load.cols, img_load.rows, img_load.channels());
     }
     if(ret!=0)
     {
