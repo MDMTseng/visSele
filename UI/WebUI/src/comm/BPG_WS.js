@@ -86,6 +86,23 @@ function urlConcat(base, add) {
         }
         this.websocket.onclose=(ev)=>{
           this.isConnected=false;
+          // Every in-flight request dies with the socket. Nothing used to say
+          // so, and the consequences were all silent:
+          //
+          //   * the caller's promise never settles -- queryCam's `inFlight`
+          //     guard stays true forever, so the camera poll is permanently
+          //     dead after ONE disconnect (the disconnect-shaped half of 6.15)
+          //   * entries hold their accumulated `pkts`, including IM
+          //     ArrayBuffer views -- a leak that grows per drop
+          //   * pgIDs are never freed, and the allocator in send() is
+          //     `while (this.reqWindow[PGID] !== undefined)` over a 501-entry
+          //     space: fill it with corpses and that loop never exits, which
+          //     is a HARD HANG of send(), not a slowdown
+          //
+          // Reject rather than silently drop: a caller that handles failure can
+          // retry, and one that does not gets an unhandled rejection in the
+          // console instead of a hang nobody can explain.
+          this.failAllPending("websocket closed (code " + (ev && ev.code) + ")");
           // 1006 = abnormal closure (no close frame from peer — typically network
           // drop or process kill); call out separately since it's the dominant
           // factory failure mode and the only one with no `reason` payload.
@@ -508,8 +525,32 @@ function urlConcat(base, add) {
 
       }
 
+      // Settle and drop every tracked request. Safe to call twice.
+      failAllPending(why)
+      {
+        const ids = Object.keys(this.reqWindow);
+        if (ids.length === 0) return;
+        const pending = this.reqWindow;
+        this.reqWindow = {};                 // swap first: a reject() that
+                                             // re-sends must not land in the
+                                             // map we are still walking
+        let rejected = 0;
+        for (const id of ids) {
+          const e = pending[id];
+          if (e && e.promiseCBs && typeof e.promiseCBs.reject === "function") {
+            rejected++;
+            try { e.promiseCBs.reject(why); } catch (err) {
+              wsLog.warn("[failAllPending] reject threw", { id, err: String(err) });
+            }
+          }
+          if (e) e.pkts = null;              // drop IM ArrayBuffer views now
+        }
+        wsLog.warn("[failAllPending]", { why, entries: ids.length, rejected });
+      }
+
       close()
       {
+        this.failAllPending("websocket closed by client");
         return this.websocket.close();
       }
     }

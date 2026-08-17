@@ -312,7 +312,16 @@ class EverCheckCanvasComponent_proto {
 
   resourceClean() {
     this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    this.releaseRawImg();
     log.debug("resourceClean......")
+  }
+
+  // ImageBitmap holds native/GPU memory that only close() frees; ImageData
+  // (the legacy raw path) has no close and needs none.
+  releaseRawImg() {
+    const prev = this.secCanvas_rawImg;
+    this.secCanvas_rawImg = null;
+    if (prev && typeof prev.close === 'function') prev.close();
   }
 
   SetImg(img_info) {
@@ -354,6 +363,12 @@ class EverCheckCanvasComponent_proto {
         this.secCanvas.height = bmp.height;
         const ctx2nd = this.secCanvas.getContext('2d');
         ctx2nd.drawImage(bmp, 0, 0);
+        // Release the bitmap this one replaces. createImageBitmap allocates
+        // OUTSIDE the JS heap (GPU / native), so GC pressure never reflects it
+        // and dropping the last reference is not enough -- at ~6 fps the
+        // previous frames just accumulate. The stale-token branch above
+        // already got this right; the success path did not.
+        this.releaseRawImg();
         this.secCanvas_rawImg = bmp;
         // Decode is async: the draw() that ran synchronously on mount had no
         // image yet, so the canvas stayed blank until a mousemove forced a
@@ -376,7 +391,8 @@ class EverCheckCanvasComponent_proto {
     let img = img_info.img;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
-    this.secCanvas_rawImg = img;
+    this.releaseRawImg();
+    this.secCanvas_rawImg = img;   // ImageData here, not an ImageBitmap
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(img, 0, 0);
 

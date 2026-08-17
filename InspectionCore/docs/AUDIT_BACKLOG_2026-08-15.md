@@ -573,17 +573,41 @@ undistort-on-hit moved to miss branch + batched + index-ordered parallel;
 cached at parse. Behavior-touching (golden-gate first): shape-path crop before
 match, circle-caliper rectify-once, ContourGrid acceleration, 24-bit walker.
 
-### 7.4 OPEN — WebUI stream-rate fixes
-(a) `reqWindow` never cleaned on disconnect (`BPG_WS.js:491`): leaks in-flight
-entries (incl. IM ArrayBuffer views), permanently kills the camera poll
-(`inFlight` stuck — the OTHER half of 6.15, disconnect-shaped), and a full
-window hard-hangs `send()`. Fix: reject+clear on close. (b) ImageBitmap not
-`.close()`d on frame swap (`EverCheckCanvasComponent.js:341-357`) — GPU/native
-pile at ~6 fps. (c) `edit_info` new identity per WS message → RepDisplayUI
-redraws unconditionally per report; gate like APP_INSP_MODE already does.
-(d) `shape_fingerprints` JSON.stringify per report (cache per def edit);
-1Hz whole-app re-render from `WS_UPDATE`; IndexedDB pending queue unbounded
-when insp-DB is down (durability trade-off — needs owner sign-off).
+### 7.4 PARTLY FIXED 2026-08-18 — WebUI stream-rate fixes
+**(a) FIXED — `reqWindow` never cleaned on disconnect** (`comm/BPG_WS.js`).
+Every in-flight request died with the socket and nothing said so. Measured
+before the fix, three core restarts with the page open:
+
+| | reqWindow entries | camera_info polls in 25s |
+|---|---|---|
+| before | 1 -> 4 -> 5 -> 5 (never shrinks) | **0** |
+| after  | 1 -> 1 -> 1 -> 1 | 4 (the 6s cadence) |
+
+Zero camera polls is the whole failure: `queryCam`'s promise never settles, so
+its `inFlight` guard stays true and the camera poll is permanently dead after
+ONE disconnect. The entries also retain their accumulated `pkts` (IM
+ArrayBuffer views), and the pgID allocator in `send()` is
+`while (this.reqWindow[PGID] !== undefined)` over a 501-entry space -- fill it
+with corpses and that loop never exits, which is a HARD HANG of `send()`.
+Fix: `failAllPending(why)` on close and on `close()`, swapping the map out
+before walking it (a `reject()` that re-sends must not land in the map being
+iterated) and rejecting rather than silently dropping, so a caller that handles
+failure retries and one that does not gets a visible unhandled rejection
+instead of a hang.
+
+**(b) FIXED — `ImageBitmap` not closed on frame swap**
+(`EverCheckCanvasComponent.js`). The success path overwrote
+`secCanvas_rawImg` without closing the bitmap it replaced; only the
+stale-token branch got it right. `createImageBitmap` allocates outside the JS
+heap, so GC never reflects it. `releaseRawImg()` now closes on every swap and
+on `resourceClean()`. (`secCanvas_rawImg` is written in three places and read
+in none -- it is pure retention.)
+
+**(c)(d) STILL OPEN**: `edit_info` new identity per WS message ->
+RepDisplayUI redraws unconditionally per report (gate it like APP_INSP_MODE
+already does); `shape_fingerprints` JSON.stringify per report; 1Hz whole-app
+re-render from `WS_UPDATE`; IndexedDB pending queue unbounded when the insp-DB
+is down (durability trade-off -- needs owner sign-off).
 
 ### 7.5 OPEN — camera layer, data integrity + stalls
 (a) Aravis `Trigger()` borrows TriggerSource (Software↔Line0) — a hardware
