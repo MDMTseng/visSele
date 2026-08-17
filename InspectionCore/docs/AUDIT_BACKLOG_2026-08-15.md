@@ -611,8 +611,24 @@ is down (durability trade-off -- needs owner sign-off).
 
 ### 7.5 OPEN — camera layer, data integrity + stalls
 (a) Aravis `Trigger()` borrows TriggerSource (Software↔Line0) — a hardware
-edge in the window is silently dropped → frame↔part pairing shifts by one
-(the 449-vs-213 drift is the documented extreme). (b) CamStateWatchThread
+edge in the window is dropped. **Severity corrected 2026-08-18 (owner):
+pairing is by TIMESTAMP, not image sequence, so this does NOT shift every
+later verdict by one.** `cam_ts` is the primary claim and `pcnt` the
+secondary; where they disagree the per-pulse PRBS backlight arbitrates by
+putting the answer in the picture (LegacyFirmware.cpp ~5420). The
+449-vs-213 drift quoted here belongs to the sequence-paired era and should
+not be read as this bug's blast radius.
+What actually happens: the board holds a pipeline object the core can never
+answer, so the part reaches SWITCH **UNANSWERED**. `UNANSWERED_POLICY`
+defaults to 0 = legacy ("any unanswered part at SWITCH stops the line") and
+is not overridden in this machine's NVS (`get_setup` exposes only
+`skip_policy`). So the real cost is a **line stop**, loud and self-limiting
+— an availability bug, not a quality one, and the direction the machine is
+deliberately designed to fail in (RELIABILITY_ROADMAP layer 2).
+Still worth fixing: a manual take-image should not be able to halt
+production. Note `SnapFrame` additionally re-applies `TriggerMode(1)`, so an
+II during a hardware-triggered session does more than borrow the source — it
+switches the camera out of hardware-trigger mode. (b) CamStateWatchThread
 holds `camera_lifetime_lock` across `arv_camera_get_integer` — a dying GigE
 link stalls inspection at exactly the wrong time (cache/timeout). (c) GS
 camera_info touches the camera WITHOUT `camera_lifetime_lock` — safe only by
