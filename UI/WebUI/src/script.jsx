@@ -13,6 +13,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
 import {CameraParamPanel} from './component/CameraParamPanel.jsx';
+import {CoreStatusPanel} from './component/CoreStatusPanel.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -1392,18 +1393,21 @@ class APPMasterX extends React.Component {
                     modal_view:{
                       view_fn:()=>
                       {
-                        let cinfo=this.props.CORE_ID_CONN_INFO;
-                        let info=GetObjElement(cinfo,["info"]);  
-                        let snap_queue_skip_count=GetObjElement(info,["snap_queue_skip_count"]);  
-                        let save_snap_folder_full_delete_count=GetObjElement(info,["save_snap_folder_full_delete_count"]);  
-
-                        return <pre>
-                        檢驗NG儲存略過數量：{snap_queue_skip_count}<br/>
-                        檢驗NG儲存資料夾滿後刪舊：{save_snap_folder_full_delete_count}<br/>
-                        {JSON.stringify(info,null,2)}
-                        </pre>
+                        let info=GetObjElement(this.props.CORE_ID_CONN_INFO,["info"]);
+                        return <>
+                          <CoreStatusPanel info={info}
+                            send={(tl,prop,obj,bin,cbs)=>
+                              this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, obj, bin, cbs)}/>
+                          <details style={{marginTop:10}}>
+                            <summary style={{cursor:"pointer", color:"#888"}}>狀態輪詢原始值</summary>
+                            <pre style={{maxHeight:240, overflow:"auto", fontSize:11}}>
+                              {JSON.stringify(info,null,2)}
+                            </pre>
+                          </details>
+                        </>;
                       },
-                      title:"Core",
+                      title:"運算核心",
+                      width:720,
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
                       footer:null

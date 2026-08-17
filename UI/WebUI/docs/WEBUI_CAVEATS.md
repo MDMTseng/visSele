@@ -243,3 +243,32 @@ node webctl.mjs eval "[...document.querySelectorAll('.ant-modal-wrap')].map(e=>(
 
 **antd 按鈕文字會被插空白**:`存檔` 在 DOM 裡是 `存 檔`,Playwright 選 `has-text("存檔")`
 會 timeout,用 `has-text("存")`。
+
+---
+
+## 運算核心 modal 的設定:沒有一個是「核心狀態」（2026-08-18）
+
+`component/CoreStatusPanel.jsx`。核心**沒有** runtime 設定檔:每個旋鈕都是
+session 生命期的變數,經 ST 設定,而且**一個都不回讀**(GS 只回計數與佇列)。
+所以面板顯示的是「這個瀏覽器上次送出的值」,不是核心的值——UI 上直接這樣寫,
+不要假裝在顯示狀態。三個會咬人的地方:
+
+1. **CI/FI 會把一部分歸零。** 每次開始檢驗,核心把 `saveInspFailSnap`、
+   `saveInspNASnap`、`SKIP_NA_DATA_VIEW` 設回 false(wiringPanel 的 CI/FI 分支)。
+   所以「不傳 NA 影像」「儲存 NA 快照」只在當前這段檢驗內有效,面板分開一格標明。
+2. **NG 快照設定故意不放這裡。** 它由「設定」頁的 machine_custom_setting 擁有,
+   而且 InspectionUI 在每次開始全檢後會重推一次。兩個地方都能寫、其中一個還會
+   自動重發,是讓設定變得無法解釋的標準做法。
+3. **進入量測設定會無條件把 `IMG_STREAMING_JPEG_QUALITY` 改成 85**(DefConfUI
+   componentDidMount)。在核心面板調的品質不會活過一趟量測設定。
+
+`IMG_STREAMING_MAX_FPS` / `IMG_STREAMING_JPEG_QUALITY` 則會撐到核心重開為止。
+
+**log_dump 的檔名是固定的。** SC `{type:"log_dump"}` 走 on-demand 路徑,
+`inspd_log_main` 以 `fixed_name=on_demand` 寫出 → **`latest_dump.dump`**,
+每按一次蓋掉上一份;`crash_<utc>.dump` 只有真的崩潰才會產生。這也是唯一能把
+INFO/DEBUG 從執行中的核心撈出來的方法(磁碟 persist 預設只留 WARN 以上)——
+本輪就是用它驗證面板推的 `IMG_STREAMING_JPEG_QUALITY=60` 真的進了核心。
+
+**測試小抄**:antd modal 關閉後 DOM 還在,且 `.ant-modal-wrap` 的 offsetHeight
+可能仍 >0;要判斷開沒開請看 **`.ant-modal-content`** 的 offsetHeight。
