@@ -151,8 +151,8 @@
     "LCL": 4.7
   },
   "inputs": [
-    "10221 BOS-LT12BH4211sorting",
-    "W 3.5"
+    "caliper_verify_tagged",
+    "TAGX"
   ],
   "def_measure_usl": 8.7
 }

@@ -660,10 +660,18 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
         setNewTagStr(newStr)
       }}
       onPressEnter={(e)=>{
-        let newTag=e.target.value.split(",");
-        let newTags=[...inspOptionalTag,...newTag];
-        ACT_InspOptionalTag_Update(newTags);
-        this.setState({...this.state,newTagStr:""});
+        // setNewTagStr, not this.setState. This is a function component, so
+        // `this` is undefined and the call threw a TypeError -- AFTER the
+        // dispatch, so the tag was added and the input never cleared. Typing a
+        // second tag then appends to the first, which is also how a second
+        // margin tag gets past the click handler's maxCount check.
+        //
+        // Trim and drop empties too: "a,,b " added an empty tag and a tag with
+        // a trailing space, and neither matches anything a def carries.
+        const newTag = e.target.value.split(",").map((s)=>s.trim()).filter(Boolean);
+        if(newTag.length===0){ setNewTagStr(""); return; }
+        ACT_InspOptionalTag_Update([...inspOptionalTag,...newTag]);
+        setNewTagStr("");
       }}
       className={"width3 "+((inspOptionalTag.find((str)=>str==newTagStr))?"error":"")}
       allowClear

@@ -18,7 +18,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = `http://127.0.0.1:${process.env.WEBCTL_PORT || 8765}`;
 const DIR = path.join(__dirname, 'baseline', 'flows');
-const MODEL_PATH = process.env.WEBCTL_MODEL || '/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify';
+// Default to the fixture that is IN THE REPOSITORY. It used to point at a def
+// on one developer's Mac, so the eight editor flows could not run anywhere
+// else -- the suite's own baselines were unreproducible by construction.
+// The fixture is the same def plus a tag; re-baselining against it changed
+// only the two identity strings (def name, tag) in each snapshot.
+const MODEL_PATH = process.env.WEBCTL_MODEL ||
+  path.join(__dirname, 'fixtures', 'caliper_verify_tagged');
 
 const mode = process.argv[2];
 const only = process.argv[3];

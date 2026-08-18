@@ -409,7 +409,13 @@ export class Perif_API_Base {
     if (this.CONN_ID === undefined) { fail('CONN ID is not set'); return; }
 
     if (data.id !== undefined) {
-      if (this.trackingWindow[data.id] !== undefined) fail(`ID ${data.id} collision`);
+      // RETURN on collision. This reported the clash and then fell through to
+      // overwrite trackingWindow[id] two lines down -- so the request already
+      // in flight lost its callbacks permanently (it can never settle), and
+      // the reply that eventually arrives for the OLD request resolves the NEW
+      // caller with the wrong payload. A wrong answer delivered confidently is
+      // worse than the error this already knew how to report.
+      if (this.trackingWindow[data.id] !== undefined) { fail(`ID ${data.id} collision`); return; }
     } else {
       data.id = this.findAvailableID();
     }
@@ -422,7 +428,33 @@ export class Perif_API_Base {
   }
 
   // Promise flavour of send(), for the command helpers subclasses add.
-  sendP(data) { return new Promise((resolve, reject) => this.send(data, resolve, reject)); }
+  //
+  // With a deadline, because nothing else provides one. A reply that never
+  // arrives -- a dropped PD, a device that ignored a command it did not
+  // recognise, a link that went away between send and answer -- left the
+  // promise pending forever and its entry in trackingWindow with it. Every
+  // caller downstream (import, save-to-NVS, get_setup) then hangs on a spinner
+  // with no error, and findAvailableID walks past the leaked id for the rest
+  // of the session. Only diagnoseComm ever guarded itself.
+  //
+  // 15s: the slowest legitimate reply measured on the bench is get_setup at
+  // ~1.3kB / 63ms, and save_setup writes flash. This is a stuck-detector, not
+  // a latency budget -- it should never fire on a healthy link.
+  sendP(data, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const t = setTimeout(() => {
+        if (done) return;
+        done = true;
+        // Release the slot as well as the caller. Leaving it occupied is what
+        // makes one timeout cost an id for the whole session.
+        if (data && data.id !== undefined) delete this.trackingWindow[data.id];
+        reject(`no reply to ${data && data.type} in ${timeoutMs}ms`);
+      }, timeoutMs);
+      const settle = (fn) => (v) => { if (done) return; done = true; clearTimeout(t); fn(v); };
+      this.send(data, settle(resolve), settle(reject));
+    });
+  }
 
   // ---- PING watchdog ---------------------------------------------------
 
