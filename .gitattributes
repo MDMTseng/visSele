@@ -1,0 +1,32 @@
+# Line endings.
+#
+# The repo stores LF. With core.autocrlf=true a Windows checkout rewrites that
+# to CRLF in the working tree, which is fine for source but breaks anything
+# compared BYTE FOR BYTE against a recorded baseline.
+#
+# That is not hypothetical: UI/WebUI/tools/webctl/flows.mjs compares its
+# freshly generated snapshot (JSON.stringify -> LF) against the baseline file
+# read off disk (CRLF after checkout), so every flow failed on Windows with a
+# diff whose two sides were character-for-character identical. The suite has
+# never been runnable there.
+#
+# Default: let git decide for text, as before.
+* text=auto
+
+# Recorded baselines and fixtures: byte artifacts, never converted. A snapshot
+# that changes shape depending on which OS checked it out is not a baseline.
+UI/WebUI/tools/webctl/baseline/**   -text
+UI/WebUI/tools/webctl/fixtures/**   -text
+
+# Golden inspection data, compared the same way.
+InspectionCore/test_suite/qa/**     -text
+
+# Shell scripts must keep LF or they will not run under sh/bash.
+*.sh        text eol=lf
+
+# Binary, so git never guesses.
+*.png       binary
+*.jpg       binary
+*.gz        binary
+*.bmp       binary
+*.hydef     -text

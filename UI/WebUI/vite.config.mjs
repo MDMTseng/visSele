@@ -80,5 +80,15 @@ export default defineConfig({
     esbuildOptions: { loader: { '.js': 'jsx' } },
     exclude: ['electron', 'fs', 'path'],
   },
-  server: { host: true, port: 8081, strictPort: true },
+  // watch.ignored: webctld keeps its Playwright persistent profile at
+  // tools/webctl/.userdata, which is inside this tree. On Windows Chromium
+  // holds those files with an EXCLUSIVE lock, so chokidar's attempt to watch
+  // Default/Network/Cookies throws EBUSY and takes the whole dev server down
+  // -- start the harness and vite dies. (macOS locks advisorily, which is why
+  // this only ever appeared here.) Nothing in a browser profile is source, so
+  // the watcher has no business in it either way.
+  server: {
+    host: true, port: 8081, strictPort: true,
+    watch: { ignored: ['**/tools/webctl/.userdata/**'] },
+  },
 });
