@@ -1050,12 +1050,32 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROIMirror(int Dir, int en)
   return CameraLayer::ACK;
 }
 
+// "Do not cap the frame rate" is spelled `framerate: -1` in
+// default_camera_setting.json, and CameraLayer_Aravis reads it that way
+// (`frame_rate != frame_rate || frame_rate < 0` -> AcquisitionFrameRateEnable
+// off). This did not: only >1000 disabled the cap, so -1 fell through to the
+// enable branch, turned the limiter ON, and then failed to write -1 into
+// AcquisitionFrameRate -- leaving whatever the camera had stored in force.
+//
+// Measured on the bench: 8 fps against an 18.8 objects/s trigger. The camera
+// could not take more than half the triggers, the frames that did arrive
+// carried timestamps ~18ms from their object, the device could not place the
+// verdicts, and the run stopped with INSP_RESULT_MATCHES_NO_OBJECT. With the
+// sentinel read correctly the same config gives 161.69 fps, and a run that
+// previously died inside 20 objects delivered 4641 reports with zero NOMATCH.
+//
+// One config value, two camera layers, opposite meanings -- and the Mac bench
+// builds Aravis, so nothing there could ever expose it.
 CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
 {
-
-  if(frame_rate>1000)//Max FPS
+  // NaN first: every comparison below is false for it, so an unchecked NaN
+  // reaches SetFloatValue. Uncapped is the safe reading of "no usable number".
+  if(frame_rate != frame_rate || frame_rate < 0 || frame_rate > 1000)//uncapped
   {
-    return (MV_OK == MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", false)) ? CameraLayer::ACK : CameraLayer::NAK;
+    int retD = MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", false);
+    LOGI("frame rate: uncapped (asked %.1f), AcquisitionFrameRateEnable=off ret=%x",
+         frame_rate, retD);
+    return (MV_OK == retD) ? CameraLayer::ACK : CameraLayer::NAK;
   }
   MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", true);
   MVCC_FLOATVALUE resFPS;
@@ -1063,14 +1083,18 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
 
   if(frame_rate>resFPS.fMax)frame_rate=resFPS.fMax;
   int ret2 = SetFloatValue("AcquisitionFrameRate",frame_rate);
-  LOGI(">ret%x,%x>  set:%.1f  m:%.1f<cur:%.1f<M:%.1f",
-    ret,ret2,
-    frame_rate,
-    resFPS.fMin,  resFPS.fCurValue,  resFPS.fMax);
+  // ret2 was computed and printed but never returned, so a rejected write
+  // reported ACK and the caller believed the cap it asked for was in force.
+  // That is the half of this bug that kept it hidden: the log line carried the
+  // failure and nothing acted on it.
+  if(MV_OK != ret2)
+    LOGE("frame rate: AcquisitionFrameRate=%.1f REJECTED ret=%x -- camera stays at %.1f fps",
+         frame_rate, ret2, resFPS.fCurValue);
+  else
+    LOGI("frame rate: capped at %.1f fps (was %.1f, range %.1f..%.1f)",
+         frame_rate, resFPS.fCurValue, resFPS.fMin, resFPS.fMax);
 
-
-  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
-  
+  return (MV_OK == ret && MV_OK == ret2) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 // CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRateMode(int mode)
 // {
