@@ -721,7 +721,13 @@ export class uInspESP32_API extends Perif_API_Base {
     'report_match_ts',   // report_match_pcnt removed 2026-08-18 (firmware)
     // skip_policy_mode replaced auto_rate + unanswered_policy (2026-08-08).
     'skip_policy_mode',
-    'machine_id', 'CAM1_Tags', 'CAM2_Tags', 'persist',
+    // machine_id is NOT here: the firmware derives it from the chip's eFuse
+    // MAC and refuses to set it, so it cannot travel in an export. CAM*_Tags
+    // are gone with it -- cameras are identified by their position (CAM1 /
+    // CAM2), and a per-machine label nobody sets is a field that only ever
+    // copied itself onto the wrong machine. Both are still REPORTED by
+    // get_setup and land in deviceState for display.
+    'persist',
   ];
 
   // This board owns its own configuration -- the sync is READ-ONLY: values
@@ -823,6 +829,87 @@ export class uInspESP32_API extends Perif_API_Base {
 
   // ---- persistence -----------------------------------------------------
 
+  // What a config MUST define, plus which keys came up on COMPILED DEFAULTS
+  // because the stored config did not carry them. That second list is the one
+  // that matters when commissioning a board: an unknown key is named back and
+  // ignored, but a MISSING key does not fail at all -- it silently takes the
+  // firmware's compiled default, and for io_on_level that default is the
+  // opposite polarity to this machine. Not flattened: `defaulted` is already
+  // dotted group.key strings from the device.
+  getSchemaP() { return this.sendP({ type: 'get_schema' }); }
+
+  // ---- config export / import ------------------------------------------
+
+  // Identity is not configuration, and is no longer treated as such.
+  //
+  // machine_id used to be an ordinary settable string, so it travelled inside
+  // any config export -- and the everyday use of an export is bringing up a
+  // new machine from a known-good one. Two boards then answered to the same
+  // name, which breaks nothing visible: both run correctly and the damage is
+  // in the inspection records, attributed to the wrong machine.
+  //
+  // The firmware now derives it from the chip's eFuse MAC and its set_setup
+  // handler accepts-and-ignores the key, so there is nothing here to guard.
+  // CAM*_Tags went with it: cameras are identified by position (CAM1 / CAM2),
+  // and a per-machine label nobody sets is a field that only ever copied
+  // itself onto the wrong machine.
+
+  // The whole configuration, as the plain flat object a JSON file should hold.
+  //
+  // get_setup's reply also carries the command envelope and a pile of things
+  // the device REPORTS rather than stores (uptime, io_armed, cfg_from_nvs,
+  // match_tolerance_mm_eff...). Writing those back is meaningless at best, so
+  // an export keeps only what set_setup would actually accept -- which is
+  // exactly SETTABLE_KEYS, the same filter machineSetupUpdate applies inbound.
+  exportSetupP() {
+    return this.getSetupP().then((doc) => {
+      const out = {};
+      uInspESP32_API.SETTABLE_KEYS.forEach((k) => {
+        if (doc && doc[k] !== undefined) out[k] = doc[k];
+      });
+      return out;
+    });
+  }
+
+  // Push a whole config, then READ IT BACK and report what did not land.
+  //
+  // set_setup answers ack:true whatever it understood -- a key this firmware
+  // no longer knows is named back and ignored, and the reply still says
+  // success. So an import that only writes is an import that cannot fail
+  // visibly, which on a fresh board is the worst possible property. Write,
+  // re-read, and diff; the caller decides what to do about the differences.
+  //
+  // persist is a separate decision, not folded in here: writing NVS is a flash
+  // cycle and the operator may want to try a config before committing it.
+  importSetupP(doc) {
+    // No identity special-case any more: machine_id is derived from the chip
+    // and refused by set_setup, and CAM*_Tags left SETTABLE_KEYS with it, so an
+    // export cannot carry an identity and an import cannot apply one. A file
+    // written by older firmware may still hold them -- those land in `unknown`
+    // and are named back, which is a report rather than a silent skip.
+    const settable = {};
+    const unknown = [];
+    Object.keys(doc || {}).forEach((k) => {
+      if (uInspESP32_API.SETTABLE_KEYS.indexOf(k) >= 0) settable[k] = doc[k];
+      else unknown.push(k);
+    });
+    if (Object.keys(settable).length === 0) {
+      return Promise.reject('沒有任何可設定的欄位' + (unknown.length ? ' (無法辨識: ' + unknown.join(', ') + ')' : ''));
+    }
+    return this.sendP(uinspRegroup({ type: 'set_setup', ...settable }))
+      .then(() => this.exportSetupP())
+      .then((after) => {
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        const mismatch = Object.keys(settable)
+          .filter((k) => !same(after[k], settable[k]))
+          .map((k) => ({ key: k, wanted: settable[k], got: after[k] }));
+        // Refresh the panel's copy from the DEVICE, not from the file: the
+        // device is what the machine will actually run.
+        this.machineSetupUpdate(after, true);
+        return { written: Object.keys(settable), unknown, mismatch, after };
+      });
+  }
+
   // Persisting is deliberate, not automatic -- offset probing during setup
   // should not burn flash cycles.
   saveSetupToDevice() { return this.sendP({ type: 'save_setup' }); }
@@ -835,7 +922,9 @@ export class uInspESP32_API extends Perif_API_Base {
     return this.saveSetupToDevice();
   }
 
-  setMachineId(machine_id) { return this.sendP({ type: 'set_setup', machine_id, persist: true }); }
+  // No setMachineId. The firmware derives machine_id from the chip's eFuse MAC
+  // and its set_setup handler accepts-and-ignores the key, so a setter here
+  // would report success and change nothing -- the worst shape an API can have.
   getMachineId() { return (this.machineSetup || {}).machine_id; }
 
   // True when the running config came from the board's NVS rather than the
