@@ -973,7 +973,24 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
   }
 
   
+  // Re-seed from the store, but never over unsaved work.
+  //
+  // This used to overwrite both copies unconditionally, so anything that
+  // touched machine_custom_setting -- the station panel finishing a save is
+  // the everyday one -- silently discarded whatever was half-typed here. No
+  // warning, no undo: the fields just reverted mid-edit.
+  //
+  // With edits pending, keep them and leave `origin` alone too: origin is the
+  // baseline the save diffs against, so moving it under a dirty form would
+  // make the operator's own changes look like they were already applied and
+  // drop them from the write.
+  const dirtyRef = useRef(false);
+  dirtyRef.current = isUpdated();
   useEffect(() => {
+    if (dirtyRef.current) {
+      log.info('[machine-setting] store changed while this form has unsaved edits -- keeping the edits');
+      return;
+    }
     set_origin_machine_custom_setting(machCusSetting);
     _set_st_machine_custom_setting(machCusSetting);
   }, [machCusSetting]);
@@ -986,6 +1003,12 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
       if(isUpdated())
       {
         ctrlInfo.fetchSetting=()=>st_machine_custom_setting;
+        // The seed this panel was opened with. The save needs it to work out
+        // WHICH keys the operator actually touched -- without it the only
+        // thing it can write is the whole cached file, which is how this
+        // panel reverts changes it never saw. isUpdated() already compares
+        // these two; this just exposes the other half.
+        ctrlInfo.fetchOrigin=()=>origin_machine_custom_setting;
       }
 
       ctrlInfo.isUpdated=isUpdated;
@@ -1519,32 +1542,100 @@ const MainUI=()=>{
           
 
 
-          function saveSetting(saveToFilePath,setting)
+          // Read-merge-write, not write-the-cache.
+          //
+          // This wrote `setting` -- the panel's copy of the WHOLE file, seeded
+          // when the panel last re-seeded from the store -- straight over the
+          // file. Anything that reached the disk without going through the
+          // redux store was therefore reverted by the next save here, silently
+          // and in full. The store only learns of a change on two paths: the
+          // LD at connect, and StationRegionPanel calling
+          // machine_custom_setting_Update after it saves. A field edited by
+          // hand, or written by any future panel that does not dispatch, is
+          // invisible to this one and gets erased.
+          //
+          // StationRegionPanel already solved this for its two keys (see
+          // InspectionUI.js) after browser B was observed reverting browser A's
+          // InspectionMode. Same fix, generalised: this panel does not own a
+          // fixed key set, so the keys it may write are the ones the operator
+          // actually CHANGED -- the difference between the seed it opened with
+          // and what is in the form now. Everything else on disk is left alone.
+          function saveSetting(saveToFilePath, setting, origin)
           {
-            var enc = new TextEncoder();
-            saveToFilePath.SetState
-            let _setting={...setting};
+            const enc = new TextEncoder();
+            const clean = (o) => {
+              const c = { ...(o || {}) };
+              Object.keys(c).forEach((k) => { if (k.startsWith("_")) delete c[k]; });
+              return c;
+            };
+            const cur = clean(setting);
+            const org = clean(origin);
+            const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-            Object.keys(_setting).forEach(key=>{
-              if(key.startsWith("_"))
-                delete _setting[key]
-            })
-            ACT_File_Save( saveToFilePath,
-              enc.encode(JSON.stringify(_setting, null, 2)),
-              {
-                resolve:(stacked_pkts,action_channal)=>{
-                  log.debug("[ok]");
-                  ACT_machine_custom_setting_Update(setting);
+            // What this panel is asking to change, and nothing else.
+            const touched = Object.keys(cur).filter((k) => !same(cur[k], org[k]));
+            const removed = Object.keys(org).filter((k) => !(k in cur));
+
+            // No origin means the panel could not tell us its baseline, so the
+            // change set is unknowable. Refuse rather than fall back to writing
+            // the whole cache -- that fallback IS the bug.
+            if (origin === undefined) {
+              log.error("[machine-setting] no baseline for the diff -- NOT saving");
+              message.error("無法判斷變更範圍，設定未儲存");
+              return;
+            }
+            if (touched.length === 0 && removed.length === 0) {
+              log.info("[machine-setting] nothing changed -- not writing");
+              return;
+            }
+
+            const writeMerged = (base) => {
+              const merged = clean(base);
+              touched.forEach((k) => { merged[k] = cur[k]; });
+              removed.forEach((k) => { delete merged[k]; });
+              log.info("[machine-setting] saving keys:", touched.join(",") || "(none)",
+                       removed.length ? " removing: " + removed.join(",") : "");
+              ACT_File_Save(saveToFilePath,
+                enc.encode(JSON.stringify(merged, null, 2)),
+                {
+                  resolve: () => {
+                    // Publish what is now ON DISK, not the panel's copy: the
+                    // merge may have brought in keys this panel never had, and
+                    // the store is what everything else re-seeds from.
+                    ACT_machine_custom_setting_Update({ ...setting, ...merged });
+                  },
+                  reject: (e) => {
+                    log.error("[machine-setting] save failed", e);
+                    message.error("設定儲存失敗");
+                  }
+                });
+            };
+
+            // Re-read first. On failure, refuse -- a save that silently reverts
+            // someone else's work is worse than one the operator can retry.
+            ACT_WS_SEND_BPG("LD", 0, { filename: saveToFilePath }, undefined, {
+              resolve: (pkts) => {
+                const fl = (pkts || []).find((p) => p.type == "FL");
+                const base = fl && fl.data;
+                if (base && typeof base === "object" && !Array.isArray(base)) writeMerged(base);
+                else {
+                  log.error("[machine-setting] could not re-read " + saveToFilePath + " -- NOT saving");
+                  message.error("無法讀取 " + saveToFilePath + "，設定未儲存 — 請重試");
                 }
-              })
+              },
+              reject: () => {
+                log.error("[machine-setting] re-read failed -- NOT saving");
+                message.error("無法讀取設定檔，設定未儲存 — 請重試");
+              }
+            });
           }
-          function saveSettingPopUp(saveToFilePath,setting,onOK,onCancel)
+          function saveSettingPopUp(saveToFilePath,setting,onOK,onCancel,origin)
           {
             setPopUpInfo({
               title:"CHECK",
               onOK:()=>{
-                saveSetting(saveToFilePath,setting);
-                  
+                saveSetting(saveToFilePath,setting,origin);
+
                 ACT_WS_SEND_BPG( "ST", 0,
                 { MachineSetting: setting})
 
@@ -1574,12 +1665,13 @@ const MainUI=()=>{
                 if(extraCtrls.isUpdated()==true)
                 {
                   let setting = extraCtrls.fetchSetting();
+                  let origin  = extraCtrls.fetchOrigin && extraCtrls.fetchOrigin();
                   saveSettingPopUp(path,setting,
                     ()=>{
                     setUI_state(s_statesTable.RootSelect)
                   },()=>{
                     setUI_state(s_statesTable.RootSelect)
-                  });
+                  },origin);
                   
                 }
                 else
@@ -1600,7 +1692,8 @@ const MainUI=()=>{
               text:"SAVE",
               onClick:_=>{
                 let setting = extraCtrls.fetchSetting();
-                saveSettingPopUp(path,setting);
+                let origin  = extraCtrls.fetchOrigin && extraCtrls.fetchOrigin();
+                saveSettingPopUp(path,setting,undefined,undefined,origin);
 
               }
               // subMenu:[]
