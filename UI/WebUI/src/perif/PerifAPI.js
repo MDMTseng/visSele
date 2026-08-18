@@ -396,10 +396,20 @@ export class Perif_API_Base {
   }
 
   send(data, resolve, reject) {
-    if (this.CONN_ID === undefined) { reject('CONN ID is not set'); return; }
+    // reject is optional -- triggerPing() and machineSetupReSync() both call
+    // send() with a resolve only. Invoking it unguarded turns a failed send
+    // into a TypeError thrown OUT of send(), which unwinds the caller instead
+    // of reporting the failure: from the CONNECT handler that means the rest
+    // of the connect sequence silently does not run. Fail the send; never
+    // break the caller.
+    const fail = (why) => {
+      if (typeof reject === 'function') reject(why);
+      else log.warn('[perif] send dropped:', data && data.type, why);
+    };
+    if (this.CONN_ID === undefined) { fail('CONN ID is not set'); return; }
 
     if (data.id !== undefined) {
-      if (this.trackingWindow[data.id] !== undefined) reject(`ID ${data.id} collision`);
+      if (this.trackingWindow[data.id] !== undefined) fail(`ID ${data.id} collision`);
     } else {
       data.id = this.findAvailableID();
     }
