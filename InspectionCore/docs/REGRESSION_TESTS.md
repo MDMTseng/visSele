@@ -77,6 +77,24 @@ the new snapshot by eye before committing it.
 4. **Synthetic DOM events no-op on the per-shape PropertySheets** (and on antd
    div controls) — drive the UI with webctld's real Playwright `/fill`,
    `/click`, `/press`, never `dispatchEvent`.
+4a. **Select by `data-testid`, never by position, geometry or label text**
+   (2026-08-18). Three harnesses used to find the mode tag as "the LAST
+   element reading 測試" (it appears in 製程, in 檢測方式, and as a title chip)
+   and play as "the widest button in the bottom-right corner". Checked against
+   a live page, that second rule resolves to the FILE BROWSER when MAIN is in
+   another state — and every candidate there is an icon-only text button, so
+   the wrong pick clicks silently instead of failing. Label text is no better:
+   it is translated, and 測試 is three different things.
+   Hooks that exist so far: `main-play` (+`data-ready`), `tag-option`
+   (+`data-group`/`data-tag`/`data-checked`), `cam-reconnect-skip`,
+   `uinsp-count` and `uinsp-hist-cell` (+`data-bin`/`data-sel`/`data-value`).
+   Publish the SEMANTICS, not just a handle: the assertion worth making is
+   usually "the cell claiming to be NG reads the outlet the wiring says is NG",
+   and the rendered digits have thrown that mapping away. If a control you need
+   has no hook, add one to the component — that is cheaper than the selector
+   you would otherwise write, and it cannot rot silently.
+   `lib_enter.mjs` keeps the old heuristics as fallbacks and logs `legacy …`
+   when it uses one, so quiet dependence on a guess stays visible.
 4b. **Never dispatch EXIT from a separate round-trip after reading the state**
    — the app may have exited on its own in between, your EXIT lands on MAIN,
    and MAIN+EXIT → SPLASH, which only leaves on REMOTE_SYSTEM_READY (an HR =
