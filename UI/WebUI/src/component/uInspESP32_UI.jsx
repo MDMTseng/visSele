@@ -32,6 +32,7 @@ import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
+import message from 'antd/lib/message';
 const log = mkLog('ui.uinsp2');
 
 // From FirmwareTypes.hpp SMM_STATE_DECLARE. The panel used to carry five of
@@ -247,6 +248,37 @@ const fmtWhen = (t) => {
 const histRow = { display: 'flex', alignItems: 'center', fontSize: 12,
                   padding: '3px 0', lineHeight: 1.3 };
 const n0 = (v) => (typeof v === 'number' ? v : 0);
+// Counter text that cannot outgrow its box.
+//
+// These run to ~900k on a shift, and the strip gives each one a third of a
+// sidebar. Sizing the font to the worst case would make the common 3-digit
+// reading tiny; letting 6 digits into a fixed box clips them, and a clipped
+// count is not a smaller number, it is a WRONG one -- "148200" losing its tail
+// reads as 1482. So never render more than 5 characters:
+//
+//     0 .. 9999      exact          "9999"
+//     10k .. 99.9k   one decimal    "42.7k"
+//     100k .. 999k   whole          "900k"
+//     >= 1M          one decimal    "1.2M"
+//
+// Precision below the top three digits is lost on purpose -- at that size the
+// digit nobody reads is the last one. The exact value is never gone: it is the
+// element's title, and the history modal lists it in full.
+// Each branch is chosen by what the ROUNDING WILL PRODUCE, not by the raw
+// value. Testing the raw value looks right and is not: 99999 is under 100000,
+// so it took the one-decimal branch and .toFixed(1) rounded it up to "100.0k"
+// -- six characters, the one thing this function exists to prevent. The
+// boundaries are 99.95k and 999.5k because those are where the rounding
+// carries. Found by walking every integer from 0 to 1,000,000, not by reading.
+const compactN = (v) => {
+  if (typeof v !== 'number' || !isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a < 10000)  return String(v);
+  const k = v / 1000;
+  if (a < 99950)  return k.toFixed(1) + 'k';        // 10.0k .. 99.9k
+  if (a < 999500) return Math.round(k) + 'k';       //  100k ..  999k
+  return (v / 1000000).toFixed(1) + 'M';            //  1.0M and up
+};
 const fmtDur = (ms) => {
   if (!(ms > 0)) return '';
   const m = Math.round(ms / 60000);
@@ -301,11 +333,47 @@ export function runSequence(api, on, speed) {
 // the number.
 const Why = ({ children }) => (
   <Tooltip title={<div style={{ maxWidth: 320 }}>{children}</div>}>
-    <span style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
+    {/* stopPropagation because these sit inside FoldCard's clickable title.
+        Reaching for the explanation of a section must not also close it. */}
+    <span onClick={(e) => e.stopPropagation()}
+      style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
       borderRadius: '50%', fontSize: 10, lineHeight: '14px', width: 15, height: 15,
       display: 'inline-block', textAlign: 'center', marginLeft: 6 }}>?</span>
   </Tooltip>
 );
+
+// A Card that folds.
+//
+// One ADVANCED collapse wrapped all seven of these, so the choice was the
+// whole page or none of it -- and the page is long enough that finding the one
+// section you came for meant scrolling past six you did not. antd's Card has
+// no fold of its own, and rebuilding each as a Collapse.Panel would restyle
+// every one, so this gates the BODY and leaves the Card exactly as it was.
+//
+// Closed by default: these are bring-up and diagnosis, opened deliberately.
+// `defaultOpen` is for the ones worth seeing without a click.
+//
+// display:none rather than unmounting, so a half-typed value in a section is
+// still there when it is reopened -- several of these hold working copies
+// (the stage-timing table's spoDraft) that a remount would discard.
+const FoldCard = ({ title, defaultOpen = false, style, extra, children }) => {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <Card size="small" style={style} extra={extra}
+      bodyStyle={open ? undefined : { display: 'none' }}
+      title={
+        <span onClick={() => setOpen(!open)}
+              style={{ cursor: 'pointer', userSelect: 'none', display: 'flex',
+                       alignItems: 'center', gap: 6 }}>
+          <CaretRightOutlined rotate={open ? 90 : 0}
+            style={{ fontSize: 11, opacity: 0.6, flexShrink: 0, transition: 'transform .2s' }} />
+          <span style={{ flex: 1, minWidth: 0 }}>{title}</span>
+        </span>
+      }>
+      {children}
+    </Card>
+  );
+};
 
 export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const dispatch = useDispatch();
@@ -372,6 +440,14 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
 
   const [commDiag, setCommDiag] = useState(null);
   const [pairing, setPairing] = useState(null);   // core-side frame<->object pairing health
+
+  // Whole-config export / import. cfgBusy names the operation in flight so the
+  // three buttons spin independently; cfgReport holds either an import
+  // verification result or a get_schema answer, and is cleared before each run
+  // so a stale report can never be read as belonging to the new one.
+  const [cfgBusy, setCfgBusy] = useState(null);
+  const [cfgReport, setCfgReport] = useState(null);
+  const cfgFileRef = useRef(null);
 
   const [lightUntil, setLightUntil] = useState(0);   // epoch ms the board will auto-drop the hold
   const [now, setNow] = useState(Date.now());
@@ -891,7 +967,117 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       <Collapse ghost style={{ marginLeft: -16, marginRight: -16 }}>
         <Collapse.Panel key="adv" header={<b>ADVANCED</b>}>
 
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>背光 (相機設定用)
+      {/* Commissioning a board, and the escape hatch for anything this panel
+          does not give a control.
+          The firmware declares 30 settable keys and the hand-built cards below
+          reach eight of them. On a bench that is a gap; on a machine in the
+          field it is a dead end -- the value you need is the one nobody built
+          a box for. A whole-config export/import closes it for every key at
+          once, and keeps closing it when the firmware grows a new one.
+          It is also the answer to "how do I set up a replacement board":
+          export from the working machine, import into the new one. */}
+      <FoldCard style={{ marginBottom: 8 }} title={<span>設定備份 / 移機
+        <Why>匯出目前裝置上的完整設定成 JSON,或把 JSON 寫回裝置。換板、備份、
+          以及這個面板沒有做控制項的欄位,都靠這個。<br/><br/>
+          匯入會<b>寫回後重讀比對</b>:韌體對它不認得的鍵一律回 ack:true 然後忽略,
+          所以只寫不驗的匯入是不會失敗的匯入 —— 在新板子上那是最糟的性質。<br/><br/>
+          寫入後仍在 RAM,要斷電保留必須再按「存入 NVS」。</Why></span>}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button size="small" loading={cfgBusy === 'export'} onClick={() => {
+            const api = getPerifAPI(API_ID);
+            if (!api) { message.error('裝置未連線'); return; }
+            setCfgBusy('export'); setCfgReport(null);
+            api.exportSetupP()
+              .then((doc) => {
+                const id = doc.machine_id || 'uInspESP32';
+                const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `uinsp_setup_${id}.json`;
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(a.href);
+                message.success(`已匯出 ${Object.keys(doc).length} 個設定欄位`);
+              })
+              .catch((e) => message.error('匯出失敗: ' + String(e)))
+              .then(() => setCfgBusy(null));
+          }}>匯出 JSON</Button>
+
+          <Button size="small" loading={cfgBusy === 'import'} onClick={() => cfgFileRef.current && cfgFileRef.current.click()}>
+            匯入 JSON…
+          </Button>
+          <input ref={cfgFileRef} type="file" accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(ev) => {
+              const f = ev.target.files && ev.target.files[0];
+              ev.target.value = '';                 // so re-picking the same file fires again
+              if (!f) return;
+              const api = getPerifAPI(API_ID);
+              if (!api) { message.error('裝置未連線'); return; }
+              setCfgBusy('import'); setCfgReport(null);
+              f.text()
+                .then((txt) => JSON.parse(txt))
+                .then((doc) => api.importSetupP(doc))
+                .then((r) => {
+                  setCfgReport(r);
+                  if (r.mismatch.length) message.warning(`${r.written.length} 個欄位已寫入,但 ${r.mismatch.length} 個沒有生效`);
+                  else message.success(`${r.written.length} 個欄位已寫入並確認`);
+                })
+                .catch((e) => { message.error('匯入失敗: ' + String(e)); setCfgReport(null); })
+                .then(() => setCfgBusy(null));
+            }} />
+
+          {/* What is still on a compiled default -- the silent half. */}
+          <Button size="small" loading={cfgBusy === 'schema'} onClick={() => {
+            const api = getPerifAPI(API_ID);
+            if (!api) { message.error('裝置未連線'); return; }
+            setCfgBusy('schema');
+            api.getSchemaP()
+              .then((s) => setCfgReport({ schema: s }))
+              .catch((e) => message.error('查詢失敗: ' + String(e)))
+              .then(() => setCfgBusy(null));
+          }}>檢查預設值</Button>
+        </div>
+
+        {cfgReport && cfgReport.mismatch && (
+          <div style={{ marginTop: 8, fontSize: 12 }}>
+            <div>寫入 {cfgReport.written.length} 個欄位。</div>
+            {cfgReport.unknown.length > 0 && (
+              <div style={{ color: '#c60' }}>⚠ 檔案裡有 {cfgReport.unknown.length} 個此韌體不認得的鍵,已略過:
+                {' '}{cfgReport.unknown.join(', ')}</div>
+            )}
+            {cfgReport.mismatch.length > 0 ? (
+              <div style={{ color: '#c33', marginTop: 4 }}>
+                ⚠ 以下欄位寫入後讀回來不一樣(裝置拒絕或夾限了):
+                {cfgReport.mismatch.map((m) => (
+                  <div key={m.key} style={{ marginLeft: 8 }}>
+                    {m.key}: 想要 {JSON.stringify(m.wanted)} → 實際 {JSON.stringify(m.got)}
+                  </div>
+                ))}
+              </div>
+            ) : <div style={{ color: '#389e0d', marginTop: 4 }}>✓ 全部讀回確認一致</div>}
+          </div>
+        )}
+        {cfgReport && cfgReport.schema && (
+          <div style={{ marginTop: 8, fontSize: 12 }}>
+            <div>io_armed: <b style={{ color: cfgReport.schema.io_armed ? '#389e0d' : '#c33' }}>
+              {String(cfgReport.schema.io_armed)}</b>
+              {cfgReport.schema.io_safe_why ? ` (${cfgReport.schema.io_safe_why})` : ''}</div>
+            <div style={{ marginTop: 4 }}>
+              走編譯預設值的欄位:<b>{cfgReport.schema.defaulted_n ?? 0}</b> 個
+              {Array.isArray(cfgReport.schema.defaulted) && cfgReport.schema.defaulted.length > 0 && (
+                <div style={{ color: '#c60', marginLeft: 8 }}>
+                  {cfgReport.schema.defaulted.join(', ')}
+                </div>
+              )}
+            </div>
+            <div style={{ color: '#888', marginTop: 4 }}>
+              預設值不會報錯,它只是安靜地生效。io_on_level 的編譯預設極性和本機相反。
+            </div>
+          </div>
+        )}
+      </FoldCard>
+
+      <FoldCard style={{ marginBottom: 8 }} title={<span>背光 (相機設定用)
         <Why>相機設定用的常亮。裝置在 IDLE 以外會拒絕 —— 檢測模式下這些腳位歸 stage
           任務所有,點了也會被蓋掉 —— 而且會逾時自動熄滅:為 600µs 閃燈設計的背光,
           不一定撐得住連續點亮。</Why></span>}>
@@ -919,9 +1105,9 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
                 : '熄滅'}
           </span>
         </div>
-      </Card>
+      </FoldCard>
 
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>進料節流(閘門)
+      <FoldCard style={{ marginBottom: 8 }} title={<span>進料節流(閘門)
         <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
           「有觸發、沒影格」—— 那會讓主機的配對永久錯位,不是只掉一顆料。
           這裡把進料速率壓在相機之下。</Why></span>}>
@@ -995,7 +1181,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
               {gate.rej_busy}</b></span>
           </div>
         )}
-      </Card>
+      </FoldCard>
 
       {/* The skip policy: what the machine does about a part that reached the
           selector unjudged.
@@ -1011,7 +1197,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           it: `skip_policy.mode` had no flat name in uinspCfg, so the tuning
           values were writable while the thing they tune could not be turned
           on -- and set_setup answered ack:true to every attempt. */}
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>漏判處置
+      <FoldCard style={{ marginBottom: 8 }} title={<span>漏判處置
         <Why>「漏判」是料走到分選點時還沒有檢測結果。它不會掉 —— 沒有動作就是再轉一圈。
           連續漏判代表主機或相機不再回答了,這時候繼續跑只是讓沒判過的料一顆顆通過,
           所以看的是「連續」幾顆,不是比例。</Why></span>}>
@@ -1042,13 +1228,13 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             </div>
           );
         })()}
-      </Card>
+      </FoldCard>
 
       {/* Every station, expressed the way it is actually adjusted: WHERE it
           fires and HOW LONG it stays on. on/off is how the firmware stores it,
           but nobody thinks "move off to 672" -- they think "make the window
           wider". Width edits keep the position fixed and move `off`. */}
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>站點時序
+      <FoldCard style={{ marginBottom: 8 }} title={<span>站點時序
         <Why>位置 = 從閘門登記算起走了多少 tick,1 tick = {MM_PER_PULSE.toFixed(4)} mm,
           與轉速無關。寬度 = 該站點持續開啟的 tick 數。括號中的時間是
           {isRef(plate_freq) ? `plate_freq ${REF_FREQ} 參考值` : '目前轉速'}下換算的。
@@ -1236,10 +1422,10 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             編輯後離開欄位即套用(下一顆料起);存 NVS 才會撐過重開機
           </span>
         </div>
-      </Card>
+      </FoldCard>
 
       {pairing && (
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>影格配對(核心端)
+      <FoldCard style={{ marginBottom: 8 }} title={<span>影格配對(核心端)
         <Why>每張影格屬於哪一顆料。配錯不會有任何錯誤碼 —— 料照樣被回答、照樣被分選,
           只是判定落在別顆身上。這裡是唯一看得出來的地方。</Why></span>}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -1317,10 +1503,10 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             </span>
           </div>
         )}
-      </Card>
+      </FoldCard>
       )}
 
-      <Card size="small" title="統計" style={{ marginBottom: 8 }}>
+      <FoldCard title="統計" style={{ marginBottom: 8 }}>
         {/* SEL/NA/SKIP/UNANSWERED now live on the main row above. What is left
             here is the timing question they cannot answer: a verdict that is
             correct but late is still an unjudged part, and the only way to see
@@ -1339,9 +1525,9 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             {isRef(plate_freq) ? <span style={dim}> @{REF_FREQ}</span> : null}</b></div>
         <div style={kv}><span>在途 / 等待</span>
           <b>{pipe.registered ?? '—'} / {pipe.waiting ?? '—'}</b></div>
-      </Card>
+      </FoldCard>
 
-      <Card size="small" title="診斷">
+      <FoldCard title="診斷">
         <div style={kv}><span>CRC ok / fail</span>
           <b>{health.rx_crc_ok ?? '—'} / <span style={{ color: health.rx_crc_fail ? '#c33' : undefined }}>{health.rx_crc_fail ?? '—'}</span></b></div>
         <div style={kv}><span>rbuf peak</span><b>{health.rbuf_peak ?? '—'}</b></div>
@@ -1359,7 +1545,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           )}
           {commDiag && commDiag.error && <span style={{ marginLeft: 8, color: '#c33' }}>{commDiag.error}</span>}
         </div>
-      </Card>
+      </FoldCard>
 
         </Collapse.Panel>
       </Collapse>
@@ -1398,6 +1584,10 @@ export function UINSP_ESP32_MINI() {
 
   const stat = GetObjElement(CONN, ['runningStat']);
   const cfg = GetObjElement(CONN, ['machineSetup']) || {};
+  // Read-only device state -- machine_id lives here now that the firmware
+  // derives it and it is no longer a settable key. The reset snapshot stamps
+  // it, so a filed batch says which machine produced it.
+  const dev = GetObjElement(CONN, ['deviceState']) || {};
   const seenRef = useRef({ obj: null, at: 0 });
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
@@ -1592,12 +1782,19 @@ export function UINSP_ESP32_MINI() {
   // What the machine is doing, in one phrase. Kept next to the state word
   // rather than on its own line -- it is the same sentence, and it was costing
   // a whole row to say the second half of it.
+  // null where the phrase would only repeat what is already on screen. The
+  // ordinary idle case used to read "按下即以 21.0 rpm 啟動" -- and the speed
+  // row three lines down already says the rpm AND "(啟動時套用)", which is the
+  // same sentence. It was the longest string here, so it was also the one that
+  // wrapped the status line to two rows, in the state the panel sits in most
+  // of the time. The states that say something the rest of the strip does not
+  // still get their phrase.
   const doing = inError ? '需先在設定面板清除'
     : st === 102 ? '校時中,盤故意停著'
     : st === 103 ? '加速中'
     : st === 104 ? '空檔重新校時'
     : running ? '檢測中'
-    : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
+    : lastSpeedRef.current > 0 ? null
     : '尚無轉速,請先在設定面板設定';
 
   // File the current counts as a batch, then zero the device.
@@ -1620,11 +1817,43 @@ export function UINSP_ESP32_MINI() {
     // its own name -- a count there means a part went to a bin this machine
     // does not have, and which bin that is matters when you go looking.
     const oth = ['SEL1', 'SEL2', 'SEL3'].find((s) => s !== selOK && s !== selNG);
+    // Record the whole picture, not the two columns the table happens to show.
+    //
+    // Zeroing DESTROYS the counts on the device, so this row is the only
+    // surviving record of the batch -- and it was keeping NG/OK/NA/feed and
+    // throwing the rest away. Two things were missing that cannot be
+    // reconstructed afterwards:
+    //
+    //   the WIRING. A row saying "NG 3124" does not say NG meant SEL1. Re-wire
+    //   the machine, or read the row on another one, and the number is no
+    //   longer interpretable -- the same ambiguity that already forced the
+    //   `h.SEL1` legacy special-case in the table below.
+    //
+    //   the RAW selector counts. NG/OK/OTH is a mapped view; if the mapping
+    //   was wrong at the time (it has been), the underlying numbers are gone
+    //   and the mistake is unrecoverable rather than merely visible.
+    //
+    // The mapped fields stay exactly as they were so old rows and the existing
+    // table keep working; everything new is additive.
     const snap = {
+      v: 2,
       t: Date.now(), since: prev ? prev.t : null,
+      // --- as before: the mapped view the table renders -------------------
       NG: n0(cnt[selNG]), OK: n0(cnt[selOK]), NA: n0(cnt.NA),
       OTH: oth ? { s: oth, n: n0(cnt[oth]) } : null,
       SKIP: n0(cnt.SKIP), UNANS: n0(cnt.UNANSWERED), feed: n0(gate && gate.accept),
+      // --- new: what the mapped view cannot be reconstructed from ---------
+      wiring: { ng: selNG, ok: selOK },
+      sel: { SEL1: n0(cnt.SEL1), SEL2: n0(cnt.SEL2), SEL3: n0(cnt.SEL3) },
+      machine: dev.machine_id || cfg.machine_id || null,
+      // Context the batch was produced under. Cheap to keep, impossible to
+      // recover: "that shift ran at 25 rpm and faulted twice" is exactly the
+      // question asked of an archived batch.
+      rpm: rpm > 0 ? Math.round(rpm * 10) / 10 : 0,
+      state: st === undefined ? null : st,
+      errs: (stat && Array.isArray(stat.error_hist) && stat.error_hist.length)
+              ? stat.error_hist.slice(0, 8) : null,
+      gate: gate ? { in: n0(gate.in), out: n0(gate.out), edges: n0(gate.edges) } : null,
     };
     perifGetObj(API_ID, ((api) => {
       if (!api) { setRsting(false); setWhy('裝置未連線'); return; }
@@ -1642,17 +1871,28 @@ export function UINSP_ESP32_MINI() {
   // flex:1 + minWidth:0 on the Tag, and margin:0 to kill antd's default 8px
   // right margin, which otherwise fights the flex gap and pushes the last tag
   // out of a sidebar that has no room to give.
-  // `named` is for the fallback case only. Once the wiring is known the colour
-  // carries the meaning -- red is the reject, green is the pass -- and the word
-  // in front of the number was costing ~30px of a box that four digits already
-  // overflow. Raw SEL1/2/3 keep their names: nothing distinguishes those but
-  // the name.
+  //
+  // No word in the box. The whole width goes to the number, because the number
+  // is what runs to six digits and the colour already says which bin it is.
+  // `named` survives for ONE case: the raw SEL1/2/3 fallback, where nothing
+  // distinguishes the three but their names -- colour cannot carry a meaning
+  // the machine has not told us yet. There the name rides ABOVE the number
+  // instead of beside it, so it costs height (which this row has) rather than
+  // width (which it does not).
+  //
+  // tabular-nums so the three boxes do not jitter as digits change under a
+  // proportional face; title carries the exact value compactN rounded away.
   const tag = (name, v, color, named) => (
     <Tag key={name} color={color}
-         style={{ flex: 1, minWidth: 0, margin: 0, padding: '0 4px',
-                  textAlign: 'center', lineHeight: '22px', overflow: 'hidden' }}>
-      {named ? <span style={{ fontSize: 10, opacity: 0.8, marginRight: 4 }}>{name}</span> : null}
-      <span style={{ fontSize: 15, fontWeight: 600 }}>{v ?? '—'}</span>
+         title={typeof v === 'number' ? `${name}: ${v.toLocaleString()}` : name}
+         style={{ flex: 1, minWidth: 0, margin: 0, padding: named ? '1px 2px' : '0 2px',
+                  textAlign: 'center', lineHeight: named ? 1.05 : '22px',
+                  overflow: 'hidden' }}>
+      {named ? <div style={{ fontSize: 9, opacity: 0.75, letterSpacing: 0.2 }}>{name}</div> : null}
+      <div style={{ fontSize: named ? 14 : 15, fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums' }}>
+        {v === undefined || v === null ? '—' : compactN(v)}
+      </div>
     </Tag>
   );
 
@@ -1662,7 +1902,7 @@ export function UINSP_ESP32_MINI() {
     // children, so a `block` button sizes itself against an unbounded box and
     // drags the whole strip wider than the sidebar -- everything then clips at
     // the left edge and the counts read as "NANS".
-    <div style={{ margin: '2px 12px 6px 12px', textAlign: 'left',
+    <div style={{ margin: '2px 12px 4px 12px', textAlign: 'left',
                   maxWidth: '100%', overflow: 'hidden', whiteSpace: 'normal' }}>
       {/* One button, and it says what pressing it DOES -- not what the machine
           currently is. A switch shows state and leaves the action implied,
@@ -1773,16 +2013,36 @@ export function UINSP_ESP32_MINI() {
         </Tooltip>
       </div>
 
-      {/* State, speed, feed and what the machine is doing -- the things the
-          button deliberately does not say -- on one wrapping line. */}
-      <div style={{ fontSize: 11, lineHeight: 1.35, marginBottom: 3, whiteSpace: 'normal' }}>
-        <b style={{ color }}>{label}</b>
-        <span style={{ color: '#888' }}>
-          {' · '}{rpm > 0 ? `${rpm.toFixed(1)} rpm` : '盤停止'}
-          {gate ? ` · 進料 ${gate.accept}` : ''}
-          {' · '}
+      {/* State on the left, the shift's feed total on the right, and the phrase
+          only when there is one.
+          Three changes from the run-on line this replaces. The rpm is gone --
+          the speed row directly below states it, and stating it twice cost the
+          width that made this wrap. `進料` is right-aligned out of the sentence
+          instead of sitting inside it: it is a cumulative counter, not a fact
+          about the current state, and reading "STOP · 盤停止 · 進料 19239" as
+          one clause invites the 19239 to be read as part of the condition. And
+          it goes through compactN like every other counter here, because it is
+          the same size as they are. */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6,
+                    fontSize: 11, lineHeight: 1.35, marginBottom: 3,
+                    whiteSpace: 'normal' }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <b style={{ color }}>{label}</b>
+          <span style={{ color: '#888' }}>
+            {' · '}{rpm > 0 ? `${rpm.toFixed(1)} rpm` : '盤停止'}
+          </span>
+          {doing ? (<>
+            <span style={{ color: '#888' }}>{' · '}</span>
+            <span style={{ color: inError ? '#c33' : starting ? '#d48806' : '#888' }}>{doing}</span>
+          </>) : null}
         </span>
-        <span style={{ color: inError ? '#c33' : starting ? '#d48806' : '#888' }}>{doing}</span>
+        {gate ? (
+          <span style={{ color: '#888', flexShrink: 0,
+                         fontVariantNumeric: 'tabular-nums' }}
+                title={`進料累計 ${n0(gate.accept).toLocaleString()}`}>
+            進料 {compactN(n0(gate.accept))}
+          </span>
+        ) : null}
       </div>
       {/* Speed, in the unit an operator thinks in.
           Applied LIVE while the machine is running; while it is stopped this
@@ -1818,7 +2078,7 @@ export function UINSP_ESP32_MINI() {
               }));
             }
           }}
-          style={{ margin: '2px 6px 4px' }}
+          style={{ margin: '0 6px 2px' }}
         />
       </div>
       {why ? <div style={{ fontSize: 11, color: '#c33', marginBottom: 3 }}>⚠ {why}</div> : null}
@@ -1846,16 +2106,6 @@ export function UINSP_ESP32_MINI() {
           {tag('SEL3', cnt.SEL3, undefined, true)}
         </>)}
         {tag('NA', cnt.NA)}
-        {/* Not a reset button. Reset is something that happens inside the
-            history, because the history is what a reset produces. */}
-        {/* An icon, so the counts get the width. It is the only affordance on
-            this row, so losing the word costs nothing -- and the title keeps
-            it for anyone who hovers. */}
-        <Button size="small" type="text" title="歷史"
-          icon={<HistoryOutlined />}
-          style={{ padding: '0 4px', height: 22, fontSize: 12, flexShrink: 0 }}
-          onClick={() => setHistOpen(true)}
-        />
       </div>
       {/* The selectors conn_info does NOT name get no column: they read 0
           forever on a given machine and a permanent 0 teaches people to stop
@@ -1867,8 +2117,9 @@ export function UINSP_ESP32_MINI() {
       {selOK && selNG && ['SEL1', 'SEL2', 'SEL3']
         .filter((s) => s !== selOK && s !== selNG && cnt[s] > 0)
         .map((s) => (
-          <div key={s} style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}>
-            ⚠ {s} {cnt[s]}(此機未接線)
+          <div key={s} style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}
+               title={`${s}: ${n0(cnt[s]).toLocaleString()}`}>
+            ⚠ {s} {compactN(n0(cnt[s]))}(此機未接線)
           </div>
         ))}
       {/* SKIP and UNANSWERED lost their columns -- they read 0 all day and were
@@ -1877,10 +2128,11 @@ export function UINSP_ESP32_MINI() {
           device raising anything. So they stay silent while they are zero and
           take a whole line the moment they are not. */}
       {(cnt.SKIP > 0 || cnt.UNANSWERED > 0) && (
-        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}>
+        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}
+             title={`SKIP ${n0(cnt.SKIP).toLocaleString()} · UNANSWERED ${n0(cnt.UNANSWERED).toLocaleString()}`}>
           ⚠ 無判定通過
-          {cnt.SKIP > 0 ? ` · SKIP ${cnt.SKIP}` : ''}
-          {cnt.UNANSWERED > 0 ? ` · UNANS ${cnt.UNANSWERED}` : ''}
+          {cnt.SKIP > 0 ? ` · SKIP ${compactN(n0(cnt.SKIP))}` : ''}
+          {cnt.UNANSWERED > 0 ? ` · UNANS ${compactN(n0(cnt.UNANSWERED))}` : ''}
         </div>
       )}
       {/* Rate, not total. The totals above say what the shift has done; this
@@ -1889,15 +2141,28 @@ export function UINSP_ESP32_MINI() {
           between them are the diagnosis: feed >> inspected means parts are
           arriving faster than the camera can judge them, and inspected >> OK
           means it is judging them and not liking them. */}
-      {rate && (
-        <div style={{ display: 'flex', gap: 4, marginTop: 2, fontSize: 10,
-                      color: '#888', lineHeight: 1.2 }}>
-          <span style={{ flex: 1, minWidth: 0 }}>進料 {rate.g.toFixed(1)}</span>
-          <span style={{ flex: 1, minWidth: 0 }}>檢測 {rate.i.toFixed(1)}</span>
-          <span style={{ flex: 1, minWidth: 0, color: '#389e0d' }}>OK {rate.o.toFixed(1)}</span>
-          <span>件/秒</span>
-        </div>
-      )}
+      {/* The history button lives HERE, not on the counter row above.
+          There it was a fourth item competing with the counts for a sidebar's
+          width, and the counts are the thing that runs to six digits. This row
+          is text at fontSize 10 with slack at its right end, so the button is
+          free here -- and "件/秒" moved onto the numbers, where the unit
+          belongs, instead of floating at the far right detached from them. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
+                    fontSize: 10, color: '#888', lineHeight: 1.2 }}>
+        {rate ? (<>
+          <span style={{ flex: 1, minWidth: 0 }}>進料 {rate.g.toFixed(1)}/s</span>
+          <span style={{ flex: 1, minWidth: 0 }}>檢測 {rate.i.toFixed(1)}/s</span>
+          <span style={{ flex: 1, minWidth: 0, color: '#389e0d' }}>OK {rate.o.toFixed(1)}/s</span>
+        </>) : <span style={{ flex: 1 }} />}
+        {/* Not a reset button. Reset is something that happens inside the
+            history, because the history is what a reset produces. */}
+        <Button size="small" type="text" title="統計歷史 / 歸零"
+          icon={<HistoryOutlined />}
+          style={{ padding: '0 2px', height: 16, fontSize: 11, flexShrink: 0,
+                   lineHeight: 1 }}
+          onClick={() => setHistOpen(true)}
+        />
+      </div>
 
       {/* The history, and the only place the counters can be zeroed. */}
       <Modal visible={histOpen} onCancel={() => setHistOpen(false)} footer={null}
@@ -1905,18 +2170,34 @@ export function UINSP_ESP32_MINI() {
         {/* What is on the machine right now -- i.e. exactly what pressing the
             button below would file away. Shown in the same shape as a history
             row so the two can be compared without translating. */}
+        {/* The SAME wiring the strip uses, not a second guess at it.
+            This row read cnt.SEL2 as NG and cnt.SEL3 as OK. That is the exact
+            hardcoding the comment above the counter row says was removed -- it
+            was removed there and left standing here. On a machine wired
+            cat_ng 1 / cat_ok 3 the NG column then showed SEL2, which is always
+            zero, so every reject the operator was about to archive read as
+            none. And this row is the preview of what "歸零統計" files away,
+            so the wrong number is the one they check before committing.
+            doReset() already builds its snapshot from selNG/selOK; this makes
+            what is shown agree with what is stored. */}
         <div style={{ ...histRow, fontWeight: 600, borderBottom: '1px solid #eee' }}>
           <span style={{ width: 96 }}>目前</span>
-          <span style={{ width: 52, textAlign: 'right' }}>{n0(cnt.SEL2)}</span>
-          <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>{n0(cnt.SEL3)}</span>
-          <span style={{ width: 52, textAlign: 'right' }}>{n0(cnt.NA)}</span>
-          <span style={{ width: 60, textAlign: 'right' }}>{n0(gate && gate.accept)}</span>
+          <span style={{ width: 52, textAlign: 'right', color: '#c33' }}>
+            {selNG ? compactN(n0(cnt[selNG])) : '—'}</span>
+          <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>
+            {selOK ? compactN(n0(cnt[selOK])) : '—'}</span>
+          <span style={{ width: 52, textAlign: 'right' }}>{compactN(n0(cnt.NA))}</span>
+          <span style={{ width: 60, textAlign: 'right' }}>{compactN(n0(gate && gate.accept))}</span>
           <span style={{ flex: 1 }} />
         </div>
         <div style={{ ...histRow, fontSize: 10, color: '#888' }}>
+          {/* Name the outlet in the header. Two columns of bare NG/OK is what
+              let a wrong mapping sit here unnoticed -- with the selector
+              printed, a column reading zero all shift is checkable against the
+              machine instead of believed. */}
           <span style={{ width: 96 }}>歸零時間</span>
-          <span style={{ width: 52, textAlign: 'right' }}>NG</span>
-          <span style={{ width: 52, textAlign: 'right' }}>OK</span>
+          <span style={{ width: 52, textAlign: 'right' }}>NG{selNG ? ` ${selNG}` : ''}</span>
+          <span style={{ width: 52, textAlign: 'right' }}>OK{selOK ? ` ${selOK}` : ''}</span>
           <span style={{ width: 52, textAlign: 'right' }}>NA</span>
           <span style={{ width: 60, textAlign: 'right' }}>進料</span>
           <span style={{ flex: 1, textAlign: 'right' }}>區間</span>
@@ -1928,11 +2209,18 @@ export function UINSP_ESP32_MINI() {
             : hist.map((h) => (
               <div key={h.t} style={{ ...histRow, borderBottom: '1px solid #f5f5f5' }}>
                 <span style={{ width: 96 }}>{fmtWhen(h.t)}</span>
+                {/* Rows are safe: doReset resolved selNG/selOK at snapshot
+                    time, so h.NG/h.OK already name the right bin. Only the
+                    "目前" row above had to read the wiring live. */}
                 <span style={{ width: 52, textAlign: 'right',
-                               color: h.NG > 0 ? '#c33' : undefined }}>{n0(h.NG)}</span>
-                <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>{n0(h.OK)}</span>
-                <span style={{ width: 52, textAlign: 'right' }}>{n0(h.NA)}</span>
-                <span style={{ width: 60, textAlign: 'right' }}>{n0(h.feed)}</span>
+                               color: h.NG > 0 ? '#c33' : undefined }}
+                      title={String(n0(h.NG))}>{compactN(n0(h.NG))}</span>
+                <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}
+                      title={String(n0(h.OK))}>{compactN(n0(h.OK))}</span>
+                <span style={{ width: 52, textAlign: 'right' }}
+                      title={String(n0(h.NA))}>{compactN(n0(h.NA))}</span>
+                <span style={{ width: 60, textAlign: 'right' }}
+                      title={String(n0(h.feed))}>{compactN(n0(h.feed))}</span>
                 <span style={{ flex: 1, textAlign: 'right', fontSize: 10, color: '#888' }}>
                   {h.since ? fmtDur(h.t - h.since) : ''}
                   {/* The quiet ones travel with the batch they happened in --
@@ -1953,6 +2241,39 @@ export function UINSP_ESP32_MINI() {
               </div>
             ))}
         </div>
+
+        {/* Get the record OUT of the browser.
+            Zeroing destroys the counts on the device, so these rows are the
+            only surviving account of each batch -- and they live in
+            localStorage, capped at 20, on one machine's browser. Clearing site
+            data, a reinstall, or twenty resets and the record is gone. The
+            table shows the mapped columns; the file carries everything the
+            snapshot stores, including the wiring and the raw selector counts
+            the table has no room for. */}
+        {hist.length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button size="small" onClick={() => {
+              const payload = {
+                exported: new Date().toISOString(),
+                machine: dev.machine_id || cfg.machine_id || null,
+                wiring: { ng: selNG || null, ok: selOK || null },
+                note: 'uInspESP32 batch history. Rows with v:2 carry per-selector '
+                    + 'raw counts and the OK/NG wiring in force when they were filed; '
+                    + 'earlier rows carry the mapped columns only.',
+                rows: hist,
+              };
+              const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = `uinsp_hist_${payload.machine || 'unknown'}.json`;
+              document.body.appendChild(a); a.click();
+              document.body.removeChild(a); URL.revokeObjectURL(a.href);
+            }}>匯出歷史 JSON</Button>
+            <span style={{ fontSize: 11, color: '#888' }}>
+              {hist.length}/{HIST_MAX} 筆 · 只存在這台瀏覽器,滿了會擠掉最舊的
+            </span>
+          </div>
+        )}
 
         {/* Three presses inside a modal you had to open. The risk here is not a
             stray click -- it is pressing this while reading the table you came
