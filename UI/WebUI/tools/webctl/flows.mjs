@@ -10,7 +10,8 @@
 // React re-render path (property-sheet <input> values), so it can catch regressions
 // in state-ownership / re-render refactors. Screenshots are kept as review artifacts
 // (not diffed — the canvas pan/zoom is non-deterministic).
-import fs from 'node:fs';
+import fs from 'node:fs';
+import { enterInspection } from './lib_enter.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -282,44 +283,14 @@ async function inspCycle() {
     if (i === 12) await api('/click', { selector: `text=跳過相機連線` }).catch(() => {});
     await sleep(1000);
   }
-  // The three traps of entering from MAIN, in order (see enter_inspection.mjs):
-  // 1. the diagnostics drawer may be open over the page -- close it first
-  const hasDrawer = await ev(
-    `(function(){var e=document.querySelector('.ant-drawer-close');if(!e)return 'no';var r=e.getBoundingClientRect();return r.height>0?'yes':'no';})()`
-  );
-  if (hasDrawer === 'yes') { await api('/click', { selector: '.ant-drawer-close' }); await sleep(2000); }
-  // 2. 檢測方式 must be chosen before play does anything; the mode row's 測試
-  //    is the LAST tag reading 測試 on the page. Coming back from inspection
-  //    (unlike a cold load) MAIN's side menu can be collapsed and the tags
-  //    don't exist in the DOM -- open it via the 主選單 edge tab and retry.
-  let modeIdx = -1;
-  for (let tryN = 0; tryN < 4 && modeIdx < 0; tryN++) {
-    modeIdx = await ev(
-      `(function(){var t=[...document.querySelectorAll('span.ant-tag-has-color')].filter(function(e){return e.textContent.trim()==='測試'});return t.length?t.length-1:-1;})()`
-    );
-    if (modeIdx < 0) {
-      await toMain();   // SPLASH bounce leaves an empty page with no tags
-      await api('/click', { selector: `text=主選單` }).catch(() => {});
-      await sleep(2000);
-    }
-  }
-  if (modeIdx < 0) throw new Error('no 測試 mode tag found on MAIN');
-  await api('/click', { selector: `span.ant-tag-has-color:text-is('測試') >> nth=${modeIdx}` });
-  await sleep(3000);
-  // 3. the REAL entry: the widest button in the bottom-right bar (the class is
-  //    shared with its 50x50 neighbours; resolved at runtime)
-  const playIdx = await ev(
-    `(function(){var all=[...document.querySelectorAll('button.ant-btn')];var best=-1,bw=0;all.forEach(function(e,i){var r=e.getBoundingClientRect();if(r.top>innerHeight*0.8&&r.left>innerWidth*0.8&&r.width>bw){bw=r.width;best=i}});return best;})()`
-  );
-  if (playIdx < 0) throw new Error('play button not found on MAIN');
-  await api('/click', { selector: `button.ant-btn >> nth=${playIdx}` });
-  // wait until the SM actually lands in INSP_MODE
+  // The traps of entering from MAIN now live in lib_enter.mjs, shared with
+  // cycle.mjs and enter_inspection.mjs. This was the only copy that worked;
+  // the other two drifted off it and one stopped reaching the UI entirely.
+  // enterInspection throws if the SM never lands, so reaching the next line
+  // IS the assertion the loop used to make.
   let inInsp = false;
-  for (let i = 0; i < 30; i++) {
-    await sleep(1000);
-    const st = await ev(`JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value)`);
-    if (st.includes('INSP_MODE')) { inInsp = true; break; }
-  }
+  try { await enterInspection({ api, ev }, { mode: '測試' }); inInsp = true; }
+  catch (e) { console.warn('  (enterInspection: ' + e.message + ')'); }
   await sleep(2000);   // let APP_INSP_MODE's mount finish (tag apply + FI/CI send)
   const during = inInsp ? await ev(
     `(function(){var s=window.__GP_STORE__.getState().UIData;var m=s.edit_info._obj.shapeList.find(x=>x.id===8);return {state:JSON.stringify(s.c_state.value), def:(s.edit_info.loadedDefFile||{}).name||null, usl:(m&&m.USL!==undefined)?m.USL:null};})()`

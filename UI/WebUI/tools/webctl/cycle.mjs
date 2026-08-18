@@ -23,7 +23,8 @@
 // Needs webctld (8765), vite (8081), core (4090). Non-destructive: the
 // fixture recipe is installed in the STORE only (no SV), machine files
 // untouched.
-import path from 'node:path';
+import path from 'node:path';
+import { enterInspection } from './lib_enter.mjs';
 import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = `http://127.0.0.1:${process.env.WEBCTL_PORT || 8765}`;
@@ -153,27 +154,13 @@ async function editorInstCheck() {
   throw new Error('inst-check ACKed but no sig360info report landed');
 }
 
+// The mode tag + play + wait-for-INSP_MODE journey, from the shared module.
+// This file carried its own copy; there were three, and the standalone one had
+// already rotted into not reaching the UI at all. enterInspection also prefers
+// the data-testid hooks over the positional and geometric guesses this copy
+// used -- 'the last tag reading 測試' and 'the widest button in the corner'.
 async function clickModeTagAndPlay() {
-  let modeIdx = -1;
-  for (let tryN = 0; tryN < 4 && modeIdx < 0; tryN++) {
-    modeIdx = await ev(
-      `(function(){var t=[...document.querySelectorAll('span.ant-tag-has-color')].filter(function(e){return e.textContent.trim()==='測試'});return t.length?t.length-1:-1;})()`
-    );
-    if (modeIdx < 0) { await toMain(); await api('/click', { selector: `text=主選單` }).catch(() => {}); await sleep(2000); }
-  }
-  if (modeIdx < 0) throw new Error('no 測試 mode tag on MAIN');
-  await api('/click', { selector: `span.ant-tag-has-color:text-is('測試') >> nth=${modeIdx}` });
-  await sleep(2500);
-  const playIdx = await ev(
-    `(function(){var all=[...document.querySelectorAll('button.ant-btn')];var best=-1,bw=0;all.forEach(function(e,i){var r=e.getBoundingClientRect();if(r.top>innerHeight*0.8&&r.left>innerWidth*0.8&&r.width>bw){bw=r.width;best=i}});return best;})()`
-  );
-  if (playIdx < 0) throw new Error('play button not found');
-  await api('/click', { selector: `button.ant-btn >> nth=${playIdx}` });
-  for (let i = 0; i < 30; i++) {
-    await sleep(1000);
-    if ((await state()).includes('INSP_MODE')) return;
-  }
-  throw new Error('never entered INSP_MODE');
+  await enterInspection({ api, ev }, { mode: '測試' });
 }
 
 // ---------------------------------------------------------------------------

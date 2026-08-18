@@ -74,13 +74,21 @@ export async function toMain({ api, ev }, maxMs = 40000) {
 }
 
 // Clear the camera-reconnect modal if one is up. Trap 3.
+//
+// The skip button carries data-testid="cam-reconnect-skip"; the Chinese-label
+// selector stays as a fallback so this still works against a build from before
+// the hooks were added. Same pattern throughout this file: prefer the hook,
+// keep the heuristic as a floor, never depend on the heuristic alone.
 export async function dismissCamModal({ api, ev }, tries = 20) {
   for (let i = 0; i < tries; i++) {
     const open = await ev(
       `(function(){var ws=[...document.querySelectorAll('.ant-modal-wrap')];return ws.some(function(w){var r=w.getBoundingClientRect();return r.height>50&&getComputedStyle(w).display!=='none';});})()`
     );
     if (!open) return true;
-    if (i === Math.floor(tries * 0.6)) await api('/click', { selector: `text=跳過相機連線` }).catch(() => {});
+    if (i === Math.floor(tries * 0.6)) {
+      const byHook = await api('/click', { selector: '[data-testid="cam-reconnect-skip"]' }).then(() => true).catch(() => false);
+      if (!byHook) await api('/click', { selector: `text=跳過相機連線` }).catch(() => {});
+    }
     await sleep(1000);
   }
   return false;
@@ -120,29 +128,47 @@ export async function enterInspection(ctl, { mode = '測試', log = () => {} } =
   );
   if (hasDrawer === 'yes') { log('closing diagnostics drawer'); await api('/click', { selector: '.ant-drawer-close' }); await sleep(2000); }
 
-  let modeIdx = -1;
-  for (let tryN = 0; tryN < 4 && modeIdx < 0; tryN++) {
+  // The mode tag, by GROUP rather than by position. 測試 appears in 製程, in
+  // 檢測方式, and as a title chip, so "the last element reading 測試" was
+  // position standing in for meaning -- and it moves the moment a group gains
+  // a tag. data-group says which row it is.
+  const modeSel = `[data-testid="tag-option"][data-group="檢測方式"][data-tag=${JSON.stringify(mode)}]`;
+  const legacySel = `span.ant-tag-has-color:text-is(${JSON.stringify(mode)})`;
+  let useHook = false, modeIdx = -1;
+  for (let tryN = 0; tryN < 4; tryN++) {
+    if (await ev(`document.querySelectorAll(${JSON.stringify(modeSel)}).length`)) { useHook = true; break; }
     modeIdx = await ev(
       `(function(){var t=[...document.querySelectorAll('span.ant-tag-has-color')].filter(function(e){return e.textContent.trim()===${JSON.stringify(mode)}});return t.length?t.length-1:-1;})()`
     );
-    if (modeIdx < 0) {
-      log('no mode tag visible -- reopening the side menu');
-      await toMain(ctl);
-      await api('/click', { selector: `text=主選單` }).catch(() => {});
-      await sleep(2000);
-    }
+    if (modeIdx >= 0) break;
+    log('no mode tag visible -- reopening the side menu');
+    await toMain(ctl);
+    await api('/click', { selector: `text=主選單` }).catch(() => {});
+    await sleep(2000);
   }
-  if (modeIdx < 0) throw new Error(`no ${mode} mode tag found on MAIN`);
-  log(`selecting 檢測方式 = ${mode}`);
-  await api('/click', { selector: `span.ant-tag-has-color:text-is(${JSON.stringify(mode)}) >> nth=${modeIdx}` });
+  if (!useHook && modeIdx < 0) throw new Error(`no ${mode} mode tag found on MAIN`);
+  log(`selecting 檢測方式 = ${mode}` + (useHook ? '' : ' (legacy positional selector)'));
+  await api('/click', { selector: useHook ? modeSel : `${legacySel} >> nth=${modeIdx}` });
   await sleep(3000);
 
-  const playIdx = await ev(
-    `(function(){var all=[...document.querySelectorAll('button.ant-btn')];var best=-1,bw=0;all.forEach(function(e,i){var r=e.getBoundingClientRect();if(r.top>innerHeight*0.8&&r.left>innerWidth*0.8&&r.width>bw){bw=r.width;best=i}});return best;})()`
-  );
-  if (playIdx < 0) throw new Error('play button not found on MAIN');
-  log('pressing play');
-  await api('/click', { selector: `button.ant-btn >> nth=${playIdx}` });
+  // Play, by identity rather than by geometry. The old rule -- widest button
+  // in the bottom-right corner -- currently resolves to the FILE BROWSER when
+  // the page is in a different state, and every candidate is an icon-only text
+  // button, so a wrong pick clicks silently instead of failing.
+  const hasPlay = await ev(`document.querySelectorAll('[data-testid="main-play"]').length`);
+  if (hasPlay) {
+    const ready = await ev(`(document.querySelector('[data-testid="main-play"]')||{}).dataset?.ready`);
+    if (ready !== '1') log(`play is not ready (data-ready=${ready}) -- pressing anyway`);
+    log('pressing play');
+    await api('/click', { selector: '[data-testid="main-play"]' });
+  } else {
+    const playIdx = await ev(
+      `(function(){var all=[...document.querySelectorAll('button.ant-btn')];var best=-1,bw=0;all.forEach(function(e,i){var r=e.getBoundingClientRect();if(r.top>innerHeight*0.8&&r.left>innerWidth*0.8&&r.width>bw){bw=r.width;best=i}});return best;})()`
+    );
+    if (playIdx < 0) throw new Error('play button not found on MAIN');
+    log('pressing play (legacy geometric selector)');
+    await api('/click', { selector: `button.ant-btn >> nth=${playIdx}` });
+  }
 
   for (let i = 0; i < 30; i++) {
     await sleep(1000);

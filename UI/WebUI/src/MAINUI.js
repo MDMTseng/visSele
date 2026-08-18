@@ -384,7 +384,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             //   }
             // })
             dispatch({type:"System_Setting_Update",data:{...System_Setting,ALLOW_SOFT_CAM:true}})
-          }}>跳過相機連線</Button>
+          }}
+          // Found by its Chinese label in three harnesses. This modal sits over
+          // MAIN after a WS bounce and intercepts every click, so failing to
+          // dismiss it does not look like "the button moved" -- it looks like
+          // the whole page stopped responding, which is how it was first
+          // diagnosed as a network fault.
+          data-testid="cam-reconnect-skip"
+          >跳過相機連線</Button>
         </div>,
         onCancel:()=>{},
         onOK:()=>{}
@@ -862,8 +869,18 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
           
           
+          {/* data-testid="main-play": the control that enters the Inspection
+              UI. Three harnesses find it today as "the widest button in the
+              bottom-right corner", because it shares its class with its 50x50
+              neighbours -- geometry standing in for identity. That is one
+              layout change away from clicking the QR popover or the file
+              browser instead, and it silently would: they are all icon-only
+              text buttons. data-ready publishes whether pressing it will do
+              anything, which no amount of DOM reading recovers -- the disabled
+              styling is a colour. */}
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" 
+            data-testid="main-play" data-ready={isOK ? '1' : '0'}
+            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text"
             disabled={!isOK}
             onClick={onPrepareOK}/>
 

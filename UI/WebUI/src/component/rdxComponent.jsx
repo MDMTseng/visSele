@@ -610,7 +610,20 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
       ,group.tags.map((tag,tag_idx)=>{
         let idxOf= inspOptionalTag.indexOf(tag);
         let is_cur_checked =idxOf > -1;
-        return <Tag key={tag+"_essTag_"+tag_idx} 
+        // data-testid / data-group / data-tag / data-checked.
+        //
+        // Which group a tag belongs to is the thing a test needs and the thing
+        // the rendered DOM does not say: 測試 appears in BOTH 製程 and 檢測方式
+        // (and again as a title chip), so every harness here picks the mode by
+        // taking the LAST element whose text reads 測試 -- position standing in
+        // for meaning. That heuristic is copied in three scripts and breaks the
+        // moment a group gains a tag or the groups are reordered. The group is
+        // right here at render time; publish it.
+        return <Tag key={tag+"_essTag_"+tag_idx}
+            data-testid="tag-option"
+            data-group={group.name}
+            data-tag={tag}
+            data-checked={is_cur_checked ? '1' : '0'}
             className={size}
             checked={is_cur_checked}
             color= {is_cur_checked?"#5191a5":"#AAA"}
