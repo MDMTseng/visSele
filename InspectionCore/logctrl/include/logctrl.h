@@ -262,19 +262,32 @@ extern "C" {
  *
  *  LOG*_EVERY_N   emit the 1st, then every Nth, tagged with the running total
  *                 so the reader can see the rate rather than infer it.
- *  LOG*_ON_CHANGE emit only when a scalar differs from the last emitted value.
- *                 For state that is re-derived every frame but rarely moves --
- *                 the reader wants the transitions, not the sampling.
  *
  *  Each call site owns its own static counter, so two sites never interfere.
  *  The counter is deliberately not atomic: a race can only duplicate or skip
  *  one line of a throttled stream, which is cheaper than serialising the log
  *  hot path. Do not use these where an exact count is the point.
+ *
+ *  There is no ON_CHANGE macro here. One was written alongside these and
+ *  never acquired a call site: the case it was meant for -- the camera ROI in
+ *  CameraLayer_BMP's CalcROI_nolock -- compares FOUR scalars, and a macro
+ *  holding one `static long long` cannot express that, so that site kept its
+ *  own explicit statics. Write the comparison out where you need it; it is
+ *  four lines and it can say what actually changed.
  * -------------------------------------------------------------------------- */
+/* n must be positive. A zero would be `% 0` -- undefined behaviour, in a
+ * logging macro, reached only on whatever code path passed the zero. Every
+ * call site today passes a literal (20/50/100/200), so this guard costs a
+ * compile-time-folded comparison and removes the landmine for the first one
+ * that computes n instead. n <= 0 degrades to "emit every time" rather than
+ * silently dropping the line: a throttle that cannot throttle should still
+ * report. */
 #define LOG_EVERY_N_(lv, n, fmt, ...) do { \
     static unsigned long _log_ev_seen_ = 0; \
     unsigned long _log_ev_c_ = ++_log_ev_seen_; \
-    if (_log_ev_c_ == 1 || (_log_ev_c_ % (unsigned long)(n)) == 0) { \
+    long _log_ev_n_ = (long)(n); \
+    if (_log_ev_n_ <= 0 || _log_ev_c_ == 1 || \
+        (_log_ev_c_ % (unsigned long)_log_ev_n_) == 0) { \
         LOG_IF_(lv, fmt " (x%lu)", ##__VA_ARGS__, _log_ev_c_); \
     } \
 } while (0)
@@ -282,22 +295,6 @@ extern "C" {
 #define LOGI_EVERY_N(n, fmt, ...) LOG_EVERY_N_(LOG_LV_INFO,  n, fmt, ##__VA_ARGS__)
 #define LOGW_EVERY_N(n, fmt, ...) LOG_EVERY_N_(LOG_LV_WARN,  n, fmt, ##__VA_ARGS__)
 #define LOGE_EVERY_N(n, fmt, ...) LOG_EVERY_N_(LOG_LV_ERROR, n, fmt, ##__VA_ARGS__)
-
-/* `cur` is evaluated once and compared against the previous emitted value.
- * First call always emits (seeded from a separate "never ran" flag, so a
- * legitimate 0 on the first frame is not swallowed). */
-#define LOG_ON_CHANGE_(lv, cur, fmt, ...) do { \
-    static long long _log_oc_prev_ = 0; \
-    static int _log_oc_have_ = 0; \
-    long long _log_oc_cur_ = (long long)(cur); \
-    if (!_log_oc_have_ || _log_oc_cur_ != _log_oc_prev_) { \
-        _log_oc_prev_ = _log_oc_cur_; _log_oc_have_ = 1; \
-        LOG_IF_(lv, fmt, ##__VA_ARGS__); \
-    } \
-} while (0)
-
-#define LOGI_ON_CHANGE(cur, fmt, ...) LOG_ON_CHANGE_(LOG_LV_INFO, cur, fmt, ##__VA_ARGS__)
-#define LOGW_ON_CHANGE(cur, fmt, ...) LOG_ON_CHANGE_(LOG_LV_WARN, cur, fmt, ##__VA_ARGS__)
 
 /* LOGV / LOGD: kept as compile-time no-ops in Phase A.
  *
