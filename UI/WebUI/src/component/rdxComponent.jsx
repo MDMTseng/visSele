@@ -604,7 +604,19 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
       }
 
       return[
-      <Divider orientation="left" key={"divd_"+group.name+" "+g_idx}>
+      // The group's constraint state, published. `isFullFill` is drawn as a
+      // tick or a warning triangle and nowhere else, so a test can see THAT a
+      // group is unhappy only by classifying an icon, and can never see WHY --
+      // which of min/max it broke, or by how much. Those are the numbers the
+      // assertion needs: readiness for the play button should be the AND of
+      // every group rendered here, and checking that requires the parts.
+      <Divider orientation="left" key={"divd_"+group.name+" "+g_idx}
+        data-testid="tag-group"
+        data-group={group.name}
+        data-count={matchCount}
+        data-min={group.minCount === undefined ? '' : group.minCount}
+        data-max={group.maxCount === undefined ? '' : group.maxCount}
+        data-fulfilled={isFullFill ? '1' : '0'}>
         {isFullFill?acceptIcon:warnIcon}{"  "}{group.name}
       </Divider>
       ,group.tags.map((tag,tag_idx)=>{

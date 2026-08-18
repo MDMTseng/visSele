@@ -578,6 +578,21 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     let isFileOK=(DefFileHash!==undefined&&isSystemReadyForInsp) ;
     
     isOK=isFileOK && isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
+    // Why play is refusing, for the probes. data-ready=0 alone cannot tell a
+    // correct refusal from a wrong one -- "no recipe loaded" and "a tag group
+    // is unsatisfied" look identical, and so does "ready when it should not
+    // be". Deliberately reported against BOTH lists: readiness is computed
+    // from tagGroupsPreset while the picker renders new_tagGroupsPreset (the
+    // margin group is in the second and not the first), so `tags_shown`
+    // disagreeing with `tags_checked` is exactly the gap, and now it is
+    // visible rather than inferred. Reporting only; nothing here changes what
+    // the button does.
+    const playReason =
+      !isSystemReadyForInsp ? 'system-not-ready'
+      : DefFileHash === undefined ? 'no-def'
+      : !isTagFulFillRequrement(inspOptionalTag, tagGroupsPreset) ? 'tags'
+      : !isTagFulFillRequrement(inspOptionalTag, new_tagGroupsPreset) ? 'tags-shown-only'
+      : 'ok';
     let twoPanelClass1="s height12 width4";
     let twoPanelClass2="s height12 width8";
     if(isVertical)
@@ -879,7 +894,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               anything, which no amount of DOM reading recovers -- the disabled
               styling is a colour. */}
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            data-testid="main-play" data-ready={isOK ? '1' : '0'}
+            data-testid="main-play" data-ready={isOK ? '1' : '0'} data-reason={playReason}
             style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text"
             disabled={!isOK}
             onClick={onPrepareOK}/>
