@@ -1620,6 +1620,18 @@ const MainUI=()=>{
                     // merge may have brought in keys this panel never had, and
                     // the store is what everything else re-seeds from.
                     ACT_machine_custom_setting_Update({ ...setting, ...merged });
+                    // Tell the RUNNING core the same thing, from here.
+                    //
+                    // This used to fire unconditionally in saveSettingPopUp,
+                    // right after calling saveSetting -- so once saveSetting
+                    // learned to refuse, a refused write still pushed the
+                    // panel's stale cache into the live core. The operator
+                    // read "設定未儲存" while the machine had already taken the
+                    // values, with nothing on disk to show for it. Sending it
+                    // from the write's own success path makes the file and the
+                    // running core the same decision, carrying the same
+                    // merged document.
+                    ACT_WS_SEND_BPG("ST", 0, { MachineSetting: merged });
                   },
                   reject: (e) => {
                     log.error("[machine-setting] save failed", e);
@@ -1651,10 +1663,12 @@ const MainUI=()=>{
             setPopUpInfo({
               title:"CHECK",
               onOK:()=>{
+                // The ST push moved INTO saveSetting's write-success path. Here
+                // it fired unconditionally with the panel's unmerged cache, so
+                // a refused write still handed the running core the stale
+                // document -- "設定未儲存" on screen, values already in force on
+                // the machine, and nothing on disk to reconcile against.
                 saveSetting(saveToFilePath,setting,origin);
-
-                ACT_WS_SEND_BPG( "ST", 0,
-                { MachineSetting: setting})
 
                 setPopUpInfo();
                 if(onOK!==undefined)onOK();

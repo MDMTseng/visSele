@@ -5800,6 +5800,38 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                      "will be reported NA and recirculate. Sorting is OFF "
                      "until both are declared.");
               }
+              // cat_ng MUST be the lower number, and nothing used to say so.
+              //
+              // The firmware resolves a duplicated report by keeping the
+              // NUMERICALLY SMALLER cat -- LegacyFirmware.cpp's
+              //   if(cat < tarP->insp_status) { REP_REPEAT_WORSE_N++; ... }
+              // -- and calls that "worst wins". It is only worst-wins while
+              // cat_ng < cat_ok. Wire it the other way and the identical rule
+              // becomes BEST-wins: a duplicated report upgrades a reject to a
+              // pass, the bad part goes to the good bin, and the counter that
+              // records it is still called REP_REPEAT_WORSE_N. Nothing else in
+              // either program checks the ordering; the test above only asks
+              // whether they are non-zero.
+              //
+              // Refuse rather than warn. A machine that recirculates everything
+              // is stopped and obvious; a machine that occasionally promotes an
+              // NG is neither, and the evidence leaves in the good bin. There
+              // is no valid wiring with cat_ng >= cat_ok, so nothing legitimate
+              // is being turned away.
+              else if (perifCH->machine_type == PERIF_UINSP_ESP32 &&
+                       (perifCH->cat_ng >= perifCH->cat_ok ||
+                        perifCH->cat_ok < 1 || perifCH->cat_ok > 3 ||
+                        perifCH->cat_ng < 1 || perifCH->cat_ng > 3))
+              {
+                LOGE("perif conn_info REFUSED: cat_ng=%d cat_ok=%d -- cat_ng "
+                     "must be the LOWER selector and both must be 1..3. The "
+                     "device breaks a duplicated verdict by keeping the smaller "
+                     "cat, so this wiring would promote an NG to OK. Sorting "
+                     "stays OFF.",
+                     perifCH->cat_ng, perifCH->cat_ok);
+                perifCH->cat_ok = 0;
+                perifCH->cat_ng = 0;
+              }
               else if (perifCH->machine_type == PERIF_UINSP_ESP32)
               {
                 LOGI("perif sorting: OK->SEL%d  NG->SEL%d",

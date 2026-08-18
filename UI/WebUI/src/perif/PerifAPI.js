@@ -905,7 +905,15 @@ export class uInspESP32_API extends Perif_API_Base {
           .map((k) => ({ key: k, wanted: settable[k], got: after[k] }));
         // Refresh the panel's copy from the DEVICE, not from the file: the
         // device is what the machine will actually run.
-        this.machineSetupUpdate(after, true);
+        //
+        // MERGE, not replace. `after` is SETTABLE_KEYS-only by construction, so
+        // machineSetupUpdate's readonly bucket comes out empty -- and with
+        // doReplace it then assigns deviceState = {}, discarding machine_id and
+        // cfg_from_nvs until the next resync. The strip stamps dev.machine_id
+        // into every archived batch, so a reset taken after an import filed the
+        // batch against null. Merging leaves the read-only half alone; cfg is
+        // fully covered either way, because every settable key is present.
+        this.machineSetupUpdate(after, false);
         return { written: Object.keys(settable), unknown, mismatch, after };
       });
   }
