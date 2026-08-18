@@ -1852,8 +1852,23 @@ export function UINSP_ESP32_MINI() {
   //
   // tabular-nums so the three boxes do not jitter as digits change under a
   // proportional face; title carries the exact value compactN rounded away.
-  const tag = (name, v, color, named) => (
+  // data-testid / data-bin / data-sel / data-value: hooks for the regression
+  // probes, and the reason they carry SEMANTICS rather than just marking the
+  // node.
+  //
+  // A test that finds this cell by walking the DOM for text starting with a
+  // Chinese label is coupled to the layout, the wording and the position --
+  // all three of which are things a UI change is allowed to move. Worse, the
+  // thing worth asserting here is not "a number is displayed" but "the cell
+  // claiming to be NG is reading the selector the wiring says is NG", and no
+  // amount of DOM archaeology recovers that: the mapping is exactly what the
+  // rendered text has thrown away. So publish it. data-bin is the claim
+  // (NG/OK/NA/SELn), data-sel is which physical outlet it resolved to, and
+  // data-value is the unrounded count compactN was about to abbreviate.
+  const tag = (name, v, color, named, sel) => (
     <Tag key={name} color={color}
+         data-testid="uinsp-count" data-bin={name}
+         data-sel={sel || name} data-value={typeof v === 'number' ? v : ''}
          title={typeof v === 'number' ? `${name}: ${v.toLocaleString()}` : name}
          style={{ flex: 1, minWidth: 0, margin: 0, padding: named ? '1px 2px' : '0 2px',
                   textAlign: 'center', lineHeight: named ? 1.05 : '22px',
@@ -2068,8 +2083,8 @@ export function UINSP_ESP32_MINI() {
           labelled wrongly. */}
       <div style={{ display: 'flex', gap: 4 }}>
         {selOK && selNG ? (<>
-          {tag('NG', cnt[selNG], 'red')}
-          {tag('OK', cnt[selOK], 'green')}
+          {tag('NG', cnt[selNG], 'red',   undefined, selNG)}
+          {tag('OK', cnt[selOK], 'green', undefined, selOK)}
         </>) : (<>
           {tag('SEL1', cnt.SEL1, undefined, true)}
           {tag('SEL2', cnt.SEL2, undefined, true)}
@@ -2150,14 +2165,30 @@ export function UINSP_ESP32_MINI() {
             so the wrong number is the one they check before committing.
             doReset() already builds its snapshot from selNG/selOK; this makes
             what is shown agree with what is stored. */}
-        <div style={{ ...histRow, fontWeight: 600, borderBottom: '1px solid #eee' }}>
+        {/* data-testid on the ROW and on each cell: this is the pair the
+            regression probe compares against the strip, and finding it by
+            scanning for a div whose text begins with 目前 matched the modal
+            container instead -- layout-, language- and position-coupled, and
+            wrong on the first try. Each cell publishes which bin it claims and
+            which selector that resolved to, because the mapping is precisely
+            what the rendered digits have discarded. */}
+        <div data-testid="uinsp-hist-current"
+             style={{ ...histRow, fontWeight: 600, borderBottom: '1px solid #eee' }}>
           <span style={{ width: 96 }}>目前</span>
-          <span style={{ width: 52, textAlign: 'right', color: '#c33' }}>
+          <span data-testid="uinsp-hist-cell" data-bin="NG" data-sel={selNG || ''}
+                data-value={typeof cnt[selNG] === 'number' ? cnt[selNG] : ''}
+                style={{ width: 52, textAlign: 'right', color: '#c33' }}>
             {selNG ? compactN(n0(cnt[selNG])) : '—'}</span>
-          <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>
+          <span data-testid="uinsp-hist-cell" data-bin="OK" data-sel={selOK || ''}
+                data-value={typeof cnt[selOK] === 'number' ? cnt[selOK] : ''}
+                style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>
             {selOK ? compactN(n0(cnt[selOK])) : '—'}</span>
-          <span style={{ width: 52, textAlign: 'right' }}>{compactN(n0(cnt.NA))}</span>
-          <span style={{ width: 60, textAlign: 'right' }}>{compactN(n0(gate && gate.accept))}</span>
+          <span data-testid="uinsp-hist-cell" data-bin="NA" data-sel="NA"
+                data-value={typeof cnt.NA === 'number' ? cnt.NA : ''}
+                style={{ width: 52, textAlign: 'right' }}>{compactN(n0(cnt.NA))}</span>
+          <span data-testid="uinsp-hist-cell" data-bin="feed" data-sel="gate"
+                data-value={gate && typeof gate.accept === 'number' ? gate.accept : ''}
+                style={{ width: 60, textAlign: 'right' }}>{compactN(n0(gate && gate.accept))}</span>
           <span style={{ flex: 1 }} />
         </div>
         <div style={{ ...histRow, fontSize: 10, color: '#888' }}>

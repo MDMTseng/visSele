@@ -26,7 +26,8 @@ All in `UI/WebUI/tools/webctl/`.
 | `qwatch.mjs <secs>` | 2Hz poll of the three queue depths (high-water marks) + the three snapshot-loss counters | proves a load did/didn't back the pipeline up |
 | `phantom_feed.mjs <pps> <secs>` | feeds simulated parts (`trig_phantom_pulse`) via console 4099, no PD CONNECT | full-loop load with a real board; pair with the Inspection UI |
 | `census.py <dump> [prev]` | log census by (level, file:line); second arg = diff two dumps | reads ONLY the ring section — the dump prints every line twice |
-| `enter_inspection.mjs --mode 全檢` | drives the real menu into the production Inspection UI | `--mode` added 2026-08-18; 測試 is still the default |
+| `enter_inspection.mjs [--mode 全檢] [--def <base>]` | drives the real menu into the production Inspection UI | sequence shared with flows.mjs via `lib_enter.mjs` (2026-08-18); loads a recipe first — play does nothing without one, which is why the standalone copy had stopped working. Defaults to the checked-in `fixtures/caliper_verify_tagged` |
+| `hist_wiring.mjs` | the history modal's 目前 row reads the machine's actual outlet wiring, cross-checked against the strip's own NG/OK tags | both sides publish `data-bin`/`data-sel`/`data-value`, so it asserts semantics rather than scanning label text. Verified to fail on the reintroduced SEL2 hardcoding. SKIPs (exit 0, loudly) when cat_ng/cat_ok are not declared |
 | `logdump.mjs` | headless `SC log_dump` — writes the core's whole log ring to `latest_dump.dump` | the only way to see INFO/DEBUG from a running core (disk persist keeps WARN+) |
 | `pulse_load.mjs <rate> <secs>` | drives CAM1 hardware triggers via the core's perif console (4099) | production-shaped load for per-frame paths; pair with `fi_hold.mjs` |
 | `station_probe.mjs` | station block: `skip_inspection`, `ignore_calib`, region, `area_bypass` | prints one frame's station JSON |

@@ -1,123 +1,74 @@
 // Drive the WebUI from cold to a running Inspection UI, by script.
 //
-// Written because the flow was worked out by hand three times and lost each
-// time. It is four steps and every one of them has a trap:
+//   node enter_inspection.mjs [--url http://localhost:8081/] [--mode 測試] [--shot out.png]
 //
-//   1. The diagnostics drawer opens over the page on load. Its close button is
-//      `.ant-drawer-close`; the generic `.ant-btn...` selector matches four
-//      other buttons first and Playwright clicks the wrong one, then times out
-//      because the <pre> in the drawer intercepts the pointer.
-//   2. Inspection mode must be chosen (檢測方式 -> 測試) BEFORE the play button
-//      does anything. There are three elements reading 測試 on the page -- a
-//      title tag, one in 製程, one in 檢測方式 -- and only the last is the mode.
-//   3. The play button is the 100x100 one in the bottom bar. It has the same
-//      class as its 50x50 neighbours, so it is selected by DOM index, resolved
-//      at runtime rather than hard-coded.
-//   4. antd controls are SPANs; a JS .click() on them silently does nothing.
-//      Every interaction here goes through a real Playwright click.
+// The sequence itself lives in lib_enter.mjs and is shared with flows.mjs.
+// This file used to carry its own copy of it, and that is exactly how it
+// broke: every fix the flow needed -- SPLASH bounces, the camera-reconnect
+// modal, a collapsed side menu, waiting on the state machine instead of a
+// fixed sleep -- landed in flows.mjs, while this copy kept the original four
+// steps and quietly stopped reaching the UI ("station region:
+// NOT-IN-INSPECTION-UI"). One implementation now, so the next fix cannot miss
+// one of them.
 //
-// KNOWN BROKEN (2026-08-09): pressing start in the Inspection UI raises
-// "轉速沒有寫進裝置,未進入檢測模式" -- SETTABLE_KEYS in src/script.jsx:1555 is
-// a list of FLAT keys (plate_freq, ...) while the device now accepts only
-// grouped ones ({"plate":{"freq":...}}). The device silently ignores unknown
-// keys and still acks true, so the UI only finds out by reading the value back.
-// Until that is fixed, this script gets you to a loaded recipe with the station
-// ROI applied, and the plate has to be started from the test harness instead.
-//
-//   node enter_inspection.mjs [--url http://localhost:8081/] [--shot out.png]
-//
-// Needs webctld running (node webctl.mjs start) and a core on 4090.
-
-import { spawnSync } from 'node:child_process';
+// Requires webctld already running against the same URL:
+//   WEBCTL_URL=http://localhost:8081 node webctld.mjs
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { makeCtl, toMain, dismissCamModal, enterInspection, loadRecipe, sleep } from './lib_enter.mjs';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const args = process.argv.slice(2);
 const flag = (name, dflt) => {
-  const i = args.indexOf('--' + name);
-  return i >= 0 && args[i + 1] ? args[i + 1] : dflt;
+  const hit = process.argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
+  if (!hit) return dflt;
+  if (hit.includes('=')) return hit.split('=').slice(1).join('=');
+  const i = process.argv.indexOf(hit);
+  return process.argv[i + 1] ?? dflt;
 };
-
-const URL = flag('url', 'http://localhost:8081/');
-const SHOT = flag('shot', '');
-// 抽檢 / 全檢 / 測試. 全檢 is the production one: it opens an FI session AND
-// puts the board into inspection mode, which is what you want when the point
-// is to watch the machine, not the editor.
+const URL_ = flag('url', 'http://localhost:8081/');
 const MODE = flag('mode', '測試');
+const SHOT = flag('shot', '');
+// Play does nothing without a loaded recipe. Defaults to the checked-in
+// fixture so this works on a machine with an empty recipe DB -- pass --def
+// (base path, no extension) to drive a real one.
+const DEF  = flag('def', path.join(path.dirname(fileURLToPath(import.meta.url)),
+                                   'fixtures', 'caliper_verify_tagged'));
 
-function ctl(...a) {
-  const r = spawnSync('node', [path.join(HERE, 'webctl.mjs'), ...a],
-                      { encoding: 'utf8' });
-  const out = (r.stdout || '') + (r.stderr || '');
-  if (out.includes('ERR:')) throw new Error(a[0] + ': ' + out.trim().slice(0, 300));
-  return out;
-}
-const evalJs = (expr) => {
-  const out = ctl('eval', expr);
-  const m = out.match(/"result":\s*("(?:[^"\\]|\\.)*"|[^\n]*)/);
-  return m ? m[1].replace(/^"|"$/g, '') : '';
-};
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
+const ctl = makeCtl();
+const { api, ev } = ctl;
 const step = (n, msg) => console.log(`[${n}] ${msg}`);
 
 try {
-  step(1, 'goto ' + URL);
-  ctl('goto', URL);
+  step(1, 'goto ' + URL_);
+  await api('/goto', { url: URL_ });
   await sleep(12000);
 
-  // The drawer is not always present -- only close it if it is, so a warm page
-  // does not fail here.
-  const hasDrawer = evalJs("(()=>document.querySelector('.ant-drawer-close')?'yes':'no')()");
-  if (hasDrawer === 'yes') {
-    step(2, 'close diagnostics drawer');
-    ctl('click', '.ant-drawer-close');
-    await sleep(3000);
-  } else {
-    step(2, 'no drawer open, skipping');
-  }
+  step(2, 'settling the state machine at MAIN');
+  await toMain(ctl);
 
-  // 檢測方式 -> 測試. Pick by position: the mode row is the LAST of the tags
-  // reading 測試, so take the highest index rather than a fixed nth.
-  step(3, 'select inspection mode ' + MODE);
-  const modeIdx = evalJs(
-    "(()=>{const t=[...document.querySelectorAll('span.ant-tag-has-color')]" +
-    `.filter(e=>e.textContent.trim()==='${MODE}');` +
-    "return String(t.length?t.length-1:-1)})()");
-  if (modeIdx === '-1') throw new Error('no ' + MODE + ' mode tag found');
-  ctl('click', `span.ant-tag-has-color:text-is('${MODE}') >> nth=${modeIdx}`);
-  await sleep(4000);
+  step(3, 'clearing the camera-reconnect modal if present');
+  const clear = await dismissCamModal(ctl);
+  if (!clear) console.log('    (modal still up -- continuing, clicks may be intercepted)');
 
-  // The play button: the widest button in the bottom-right bar.
-  step(4, 'press play (enter Inspection UI)');
-  const playIdx = evalJs(
-    "(()=>{const all=[...document.querySelectorAll('button.ant-btn')];" +
-    "let best=-1,bw=0;all.forEach((e,i)=>{const r=e.getBoundingClientRect();" +
-    "if(r.top>innerHeight*0.8&&r.left>innerWidth*0.8&&r.width>bw){bw=r.width;best=i}});" +
-    "return String(best)})()");
-  if (playIdx === '-1') throw new Error('play button not found');
-  ctl('click', `button.ant-btn >> nth=${playIdx}`);
-  await sleep(12000);
+  step(4, 'loading recipe ' + DEF);
+  const loaded = await loadRecipe(ctl, DEF);
+  console.log('    loaded def: ' + loaded);
+  await toMain(ctl);
 
-  // Confirm we actually landed in the Inspection UI rather than silently
-  // staying put: the station-region readout only exists there.
-  const station = evalJs(
-    "(()=>{const e=[...document.querySelectorAll('*')]" +
-    ".find(x=>x.children.length===0&&/^\\d+[x\u00d7]\\d+ @/.test(x.textContent.trim()));" +
-    "return e?e.textContent.trim():'NOT-IN-INSPECTION-UI'})()");
-  step(5, 'station region: ' + station);
-  if (station === 'NOT-IN-INSPECTION-UI')
-    throw new Error('did not reach the Inspection UI');
+  step(5, `entering the Inspection UI (mode ${MODE})`);
+  const st = await enterInspection(ctl, { mode: MODE, log: (m) => console.log('    ' + m) });
+
+  // The station-region readout only exists in the Inspection UI, so it is a
+  // second, independent confirmation of what the state machine already said.
+  const station = await ev(
+    `(function(){var e=[...document.querySelectorAll('*')].find(function(x){return x.children.length===0&&/^\\d+[x×]\\d+ @/.test(x.textContent.trim())});return e?e.textContent.trim():'(no station readout)';})()`
+  );
+  step(6, `state ${st}, station region: ${station}`);
 
   if (SHOT) {
-    ctl('shot', path.resolve(SHOT));
-    step(6, 'screenshot -> ' + path.resolve(SHOT));
+    await api('/shot', { path: path.resolve(SHOT) });
+    step(7, 'screenshot -> ' + path.resolve(SHOT));
   }
   console.log('OK: Inspection UI is up, recipe and station ROI applied.');
-  // The flat-vs-grouped SETTABLE_KEYS break noted at the top of this file was
-  // fixed in src/uinspCfg.js (translation happens at the wire), so 全檢 now
-  // starts the plate from the UI on its own.
 } catch (e) {
   console.error('FAILED: ' + e.message);
   process.exit(1);
