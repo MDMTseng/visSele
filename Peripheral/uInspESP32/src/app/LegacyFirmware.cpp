@@ -9103,10 +9103,18 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   }
   
 
-  if(jdoc["machine_id"].is<const char*>())
-  {
-    MachineConfig::setMachineId(jdoc["machine_id"].as<const char*>());
-  }
+  // machine_id is NOT settable. It is derived from the chip's eFuse MAC
+  // (MachineConfig::machineId) precisely so that it cannot travel in a config
+  // export -- the everyday use of an export is bringing up a new machine from
+  // a known-good one, and an identity that copies with the settings gives two
+  // boards the same name. Nothing misbehaves when that happens; the inspection
+  // records simply get filed against the wrong machine.
+  //
+  // Accepting and ignoring it, rather than rejecting the whole command: old
+  // backups and older hosts still carry the key, and refusing those wholesale
+  // would cost a working import to enforce a field nobody can change any more.
+  // It stays in K_TOP so it is not reported as an unknown key either.
+  // get_setup still reports it -- reading the machine's name is not writing it.
 
   // The config arrives grouped: plate / gate / cam / skip_policy /
   // stage_pulse_offset / stage_pulse_width_us / io_on_level. An absent group

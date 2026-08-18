@@ -2,6 +2,7 @@
 
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <Arduino.h>   // ESP.getEfuseMac() for the derived machine id
 #include <cstring>
 #include <cstddef>   // offsetof
 
@@ -521,11 +522,40 @@ namespace MachineConfig
     return legacyBlob;
   }
 
+  // Derived from the chip, not configured -- and therefore not copyable.
+  //
+  // This used to be an ordinary settable string, which made it part of any
+  // configuration export. The everyday use of an export is to bring a new
+  // machine up from a known-good one, so the identity travelled with the
+  // settings and two boards answered to the same name. That failure is silent:
+  // both machines run correctly, and the damage is in the inspection records,
+  // attributed to the wrong machine and found later.
+  //
+  // The eFuse MAC is unique per chip, immutable, and readable before anything
+  // is stored -- so there is no "not generated yet" window and no write to get
+  // wrong. It is preferred over a random value written to NVS for the case
+  // that actually happens: erasing NVS to reset a machine. A random id would
+  // come back different and orphan every record the machine had already
+  // filed; this comes back the same, because it is the same board.
+  //
+  // A stored id still wins if one is present, so boards commissioned under the
+  // old scheme keep the name their records were filed under.
   const char *machineId()
   {
+    if (machine_id[0] == '\0')
+    {
+      const uint64_t mac = ESP.getEfuseMac();
+      snprintf(machine_id, MACHINE_ID_MAX_LEN, "uI-%02X%02X%02X%02X%02X%02X",
+               (unsigned)((mac >> 40) & 0xFF), (unsigned)((mac >> 32) & 0xFF),
+               (unsigned)((mac >> 24) & 0xFF), (unsigned)((mac >> 16) & 0xFF),
+               (unsigned)((mac >>  8) & 0xFF), (unsigned)((mac      ) & 0xFF));
+    }
     return machine_id;
   }
 
+  // Kept for the stored-config load path, which still carries a machine_id
+  // field and must be able to restore it. It is NOT reachable from set_setup
+  // any more -- see LegacyFirmware.cpp's setMachineSetup.
   void setMachineId(const char *id)
   {
     if (id == NULL)
