@@ -13,6 +13,8 @@ WebUI suite covers the editor. Known traps at the bottom — read them first.
 | ii_dump | `UI/WebUI/tools/webctl/ii_dump.mjs <def> <img…> > out.txt` | II (INST_CHECK) path, full-precision, A/B across builds |
 | pointSobel channels | `test_suite/test_pointSobel_channels.cpp` | 1ch vs 3ch of identical content must measure identically |
 | legacy suite | `test_suite/suite.py`, `daemon_smoke.py`, `daemon_fuzz.py`, `migration_gate.py` | older smoke/fuzz/migration gates |
+| fmt unit | `node UI/WebUI/tools/webctl/unit_fmt.mjs` | `compactN`'s width bound, swept over every integer 0..1e6 (it shipped violating it at exactly 99999, a rounding-carry a spot check cannot see) + monotonicity + non-numeric input. No core, no browser, <1s |
+| no hardcoded selector | `node UI/WebUI/tools/webctl/unit_no_hardcoded_sel.mjs` | source guard: nothing may claim NG/OK while naming SEL1/2/3 — that mapping is wiring (`cat_ng`/`cat_ok`), and hardcoding it once hid 106 real rejects and then survived its own fix in the history modal. Verified to fail on the reintroduced bug, not just to pass |
 
 ## 2. Core, live (webctl probes; core on :4090)
 

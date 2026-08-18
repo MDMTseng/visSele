@@ -32,6 +32,7 @@ import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
+import { compactN } from '../perif/fmt.mjs';
 import message from 'antd/lib/message';
 const log = mkLog('ui.uinsp2');
 
@@ -248,37 +249,6 @@ const fmtWhen = (t) => {
 const histRow = { display: 'flex', alignItems: 'center', fontSize: 12,
                   padding: '3px 0', lineHeight: 1.3 };
 const n0 = (v) => (typeof v === 'number' ? v : 0);
-// Counter text that cannot outgrow its box.
-//
-// These run to ~900k on a shift, and the strip gives each one a third of a
-// sidebar. Sizing the font to the worst case would make the common 3-digit
-// reading tiny; letting 6 digits into a fixed box clips them, and a clipped
-// count is not a smaller number, it is a WRONG one -- "148200" losing its tail
-// reads as 1482. So never render more than 5 characters:
-//
-//     0 .. 9999      exact          "9999"
-//     10k .. 99.9k   one decimal    "42.7k"
-//     100k .. 999k   whole          "900k"
-//     >= 1M          one decimal    "1.2M"
-//
-// Precision below the top three digits is lost on purpose -- at that size the
-// digit nobody reads is the last one. The exact value is never gone: it is the
-// element's title, and the history modal lists it in full.
-// Each branch is chosen by what the ROUNDING WILL PRODUCE, not by the raw
-// value. Testing the raw value looks right and is not: 99999 is under 100000,
-// so it took the one-decimal branch and .toFixed(1) rounded it up to "100.0k"
-// -- six characters, the one thing this function exists to prevent. The
-// boundaries are 99.95k and 999.5k because those are where the rounding
-// carries. Found by walking every integer from 0 to 1,000,000, not by reading.
-const compactN = (v) => {
-  if (typeof v !== 'number' || !isFinite(v)) return '—';
-  const a = Math.abs(v);
-  if (a < 10000)  return String(v);
-  const k = v / 1000;
-  if (a < 99950)  return k.toFixed(1) + 'k';        // 10.0k .. 99.9k
-  if (a < 999500) return Math.round(k) + 'k';       //  100k ..  999k
-  return (v / 1000000).toFixed(1) + 'M';            //  1.0M and up
-};
 const fmtDur = (ms) => {
   if (!(ms > 0)) return '';
   const m = Math.round(ms / 60000);
