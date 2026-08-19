@@ -222,31 +222,74 @@ worth the churn.
 
 ### What it bought — measured, same bench, same day
 
-| | Before | After |
-|---|---|---|
-| PASS | 15 | **32** |
-| SKIP | 21 | **0** |
-| FAIL | 3 | 7 |
-| Wall clock | 954 s | **182 s** |
+| | Before the fixture fix | After it | After the test fixes |
+|---|---|---|---|
+| PASS | 15 | 32 | **35** |
+| SKIP | 21 | 0 | **0** |
+| FAIL | 3 | 7 | **4** |
+| Wall clock | 954 s | 182 s | **187 s** |
 
 The runtime collapsed because ~44 s of that per skipped suite was retry against
 a path that could never exist. **FAIL went up because five suites that had been
 skipping were finally allowed to run** -- those failures were always there.
 
-### The 7 failures, classified
+### The failures, classified (7 after unlocking, 4 after the test fixes)
 
 None is a newly-introduced defect. Do not treat this list as a regression set:
 
 | Suite | Class | What it is |
 |---|---|---|
-| `r3_serialize` S4 | **stale test** | Fires only the `input` event. §9.15 of TEAM_HANDOFF: `JsonEditBlock` moved to commit-on-blur/Enter, so redux never sees it. `flows.mjs` `editInput` was fixed for this; these were not |
-| `r10_bpgfuzz` F3 | **stale test** | Asserts `camera_id`/`session_id` on `raw2Obj_IM` output. The 15-byte IM header has no such fields and never did. 500/500 fail, which is the tell |
+| `r3_serialize` S4 | **stale test — FIXED** | Fired only the `input` event. §9.15 of TEAM_HANDOFF: `JsonEditBlock` moved to commit-on-blur/Enter, so redux never saw it. Now uses real `/fill` + Enter, and the field being `type="number"` means the non-numeric half is typed as keys instead |
+| `r10_bpgfuzz` F3 | **stale test — FIXED** | Asserted `camera_id`/`session_id` on `raw2Obj_IM` output. The 15-byte IM header has no such fields and never did. Now asserts what is parsed, plus that image type follows format (`Uint8Array` for JPEG, `Uint8ClampedArray` for raw) |
+| `r8_matching` T1/T6/T7/T9 | **dead feature — SKIPped** | Asserted `intrusionSizeLimitRatio`, removed from the app 2026-08-07 (`fd5f1f4a`); the identifier is not in `src/` at all. Failing for 12 days, invisible behind the SKIP. T6/T7 now SKIP naming that commit rather than being deleted — whether the cases go or the feature returns is not a test fix's call |
 | `r4_purelib` | **false red** | Every assertion passes, then libuv aborts in teardown (`UV_HANDLE_CLOSING`, exit 127). Standalone 4/4 crash; under `run.mjs` it sometimes exits 0 — a teardown race, not a stable verdict |
 | `r6_decorator` T6 | **flaky** | 2 of 4 runs fail on `addId2(null)Kept=false`. Untriaged |
-| `r6_inspection` (5) | **harness** | Never reaches the Inspection UI — reads `MAIN` then `SPLASH`. It rolls its own entry sequence instead of using `lib_enter.mjs`, which is exactly how `enter_inspection.mjs` rotted. See TEAM_HANDOFF traps 4a/4b |
-| `r7_inspbug` T1 | **harness** | Same: `value="MAIN"` |
+| `r6_inspection` T1, `r7_inspbug` T1 | **timing — IMPROVED, still intermittent** | See the section below. Fixed waits replaced by polling plus re-send. Standalone: pass. Immediately after `r6_decorator`: pass. Under the full 39-suite `run.mjs`: passed once, failed twice. **Root cause not established** — do not read the current green as fixed |
+| `r6_inspection` T2/T4/T5 | **consequence — resolved** | All three were downstream of T1. In the run where T1 entered, they passed (`stillInsp=true`, `value="MAIN"`). T4 had been sending EXIT from MAIN, and MAIN+EXIT lands in SPLASH — trap 4b, reproduced exactly |
 | `r10_smoke` (2) | **mixed** | `S1 ws=false`, plus `S11` counting React dev-mode warnings as errors. Counting them at all is the test's problem: a dev bundle emits them by design (the antd `Drawer visible` deprecation is another). The specific `React does not recognize the `%s` prop` line was NOT traced to a source -- webctld logs the unformatted string and the arg is lost, and hooking `console.error` does not survive the `/reload` that triggers the mount. It is not the `data-*` hooks added 2026-08-18: React does not warn on `data-*`, and all of them were checked |
 | `r8_matching` (3) | **needs triage** | `intrusion_ratio` reads `undefined` from baseline onward. Plausibly a field the tagged fixture does not carry rather than a reducer bug — check the def before blaming the code |
+
+### The systemic one: fixed sleeps standing in for state
+
+Measured 2026-08-19 on this bench: after `store.dispatch({type:'Insp_Mode'})`
+the machine is **still in MAIN at 0 ms and reaches INSP_MODE at ~900 ms**.
+
+There are 27 `dispatchSM(...)` sites across five suites, and the waits after
+them are **80 ms, 120 ms, 200 ms, 250 ms and 300 ms** — every one of them below
+the measured figure. The suites that pass today pass by luck of scheduling, not
+by design; `r6_inspection` and `r7_inspbug` were the two where the luck ran out
+on a slower box.
+
+Worse, the delay is not the whole story. ActionThrottle (TEAM_HANDOFF §9.3) can
+**swallow** a dispatch outright when a burst is in flight, and `reset()` leaves
+exactly such a burst (`MW_API_CALL` ×8, `WS_UPDATE` ×4). Polling longer does not
+rescue a message that was never delivered. `r6_inspection` needed the event
+re-sent during the poll before it would enter at all — waiting alone, even for
+4 s, was not enough.
+
+Fixed so far (`r7_inspbug` T1, `r6_inspection` T1/T5): poll for the state, and
+re-send the event every second while polling. Re-sending is safe because
+`Insp_Mode` is only a transition out of `MAIN`.
+
+**Not yet fixed:** the 80 ms waits in `r8_substates` and the 250–300 ms ones in
+`r10_smoke`. Those suites were left alone because they are not the ones failing
+— but if either starts flaking, this is the first thing to look at, not the
+app.
+
+**And it is not fully solved.** `r6_inspection` T1 and `r7_inspbug` T1 now pass
+standalone, and pass when run immediately after `r6_decorator`, but under the
+full 39-suite `run.mjs` they passed on one run and failed on the next two. The
+polling and the re-send moved them from *always* failing to *sometimes*
+failing; whatever the remaining factor is, it shows up only deep into a long
+serial run, which points at accumulated browser or store state rather than at
+the dispatch itself.
+
+Do not read a green T1 as a fixed T1. If you pick this up, the next thing to
+try is `ActionThrottle_type: 'express'` on the dispatch -- `ActionThrottle.js`
+short-circuits on it -- which would settle whether throttling is involved at
+all. Reproducing it needs the long run, not the suite on its own; that is what
+made it expensive to chase, and why it is written down rather than guessed at.
+
 
 ### Still true regardless of platform
 

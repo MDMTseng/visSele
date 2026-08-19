@@ -9,9 +9,14 @@ bottom — read them first.
 **If all you want is to run something:**
 
 ```sh
-node UI/WebUI/tools/webctl/suite_nohw.mjs          # 13 probes, no camera, no board
+node UI/WebUI/tools/webctl/suite_nohw.mjs          # 14 probes, no camera, no board
 node UI/WebUI/tools/webctl/suite_nohw.mjs --list   # just the plan, runs nothing
 ```
+
+Last full run on this bench, 2026-08-19: **11 pass / 2 skip / 1 fail of 14**,
+about 10 minutes. The single fail is `qa/run.mjs`, which carries its own four
+(all classified, none a new defect — see `qa/SUMMARY.md`). Both skips print a
+stated reason and neither is a pass.
 
 It checks its own preconditions first and exits **2** — not 1 — when the core,
 vite or webctld is down, so a red line always means the code and never the
@@ -28,7 +33,8 @@ is worse than one reporting two thirds.
 | `--insp` leaf-diff | `visSele --insp <img> <def> out.json`, then full-precision numeric leaf diff (filter `_ms/_us/time/seq`) | the whole measurement pipeline, bit-level. THE gate for measurement changes — byte diff false-alarms on timing, rounded diff hides drift |
 | ii_dump | `UI/WebUI/tools/webctl/ii_dump.mjs <def> <img…> > out.txt` | II (INST_CHECK) path, full-precision, A/B across builds |
 | pointSobel channels | `test_suite/test_pointSobel_channels.cpp` | 1ch vs 3ch of identical content must measure identically |
-| legacy suite | `test_suite/suite.py`, `daemon_smoke.py`, `daemon_fuzz.py`, `migration_gate.py` | older smoke/fuzz/migration gates |
+| legacy suite | `test_suite/suite.py`, `daemon_smoke.py`, `daemon_fuzz.py`, `migration_gate.py` | older smoke/fuzz/migration gates. **Mac-bench only, and not merely for path reasons** — they want the 10221 golden, which is not in the repository. See the backlog entry |
+| `test_suite/qa/` (9 modules) | `test_suite/qa/run_all.py` | **not runnable anywhere as it stands** — two modules point at a temporary worktree that no longer exists, the build layout is hardcoded to `build/mac-arm64`, and 5 of the 9 need the 10221 golden. Re-scoped 2026-08-19; do not "just fix the paths" |
 | fmt unit | `node UI/WebUI/tools/webctl/unit_fmt.mjs` | `compactN`'s width bound, swept over every integer 0..1e6 (it shipped violating it at exactly 99999, a rounding-carry a spot check cannot see) + monotonicity + non-numeric input. No core, no browser, <1s |
 | no hardcoded selector | `node UI/WebUI/tools/webctl/unit_no_hardcoded_sel.mjs` | source guard: nothing may claim NG/OK while naming SEL1/2/3 — that mapping is wiring (`cat_ng`/`cat_ok`), and hardcoding it once hid 106 real rejects and then survived its own fix in the history modal. Verified to fail on the reintroduced bug, not just to pass |
 
@@ -68,7 +74,7 @@ All in `UI/WebUI/tools/webctl/`.
 | def oracle | `node golden.mjs verify caliper_verify <hydef>` | load → serialize byte-identical (what the UI sends the core wholesale) |
 | mode round-trip | `node cycle.mjs [laps]` | N laps of the operator's day: editor + REAL inst-check (EX → sig360info lands) → recipe with alternating NG-range setup (tag TAGX vs none) → inspection via the real menu road → NG range in force asserted → exit → USL restored (+ the component's restore log) and the def hash stable across all laps. Catches repetition-only leaks (double-apply, SM dead ends, modal zombies). ~10s/lap; 15/15 green 2026-08-17 |
 | play readiness | `node play_readiness.mjs` | play is enabled iff EVERY tag group the operator can SEE is satisfied. Reads `data-testid="tag-group"`'s own `data-count`/`data-min`/`data-max`/`data-fulfilled` and ANDs them, then compares against `main-play`'s `data-ready`. **Pins an open defect** (readiness is computed against the base preset, the picker renders the base preset PLUS the recipe's margin group) — it SKIPs on the current fixture, which carries one margin tag, so `maxCount:1` cannot be breached. Needs a two-margin-tag fixture to actually drive |
-| no-hardware runner | `node suite_nohw.mjs [--list]` | the 13 above/below that need neither camera nor board, plus the 8 that do and are therefore listed-but-not-run. Materialises `data/BMP_carousel_test` from `fixtures/carousel/` before starting |
+| no-hardware runner | `node suite_nohw.mjs [--list]` | the 14 above/below that need neither camera nor board, plus the 8 that do and are therefore listed-but-not-run. Materialises `data/BMP_carousel_test` from `fixtures/carousel/` before starting |
 | shared entry sequence | `lib_enter.mjs` (imported, not run) | `makeCtl` / `toMain` / `dismissCamModal` / `loadRecipe` / `enterInspection`. The one implementation of "get the app into the Inspection UI"; it had been copied three times and two copies had rotted. Prefers `data-testid`, keeps the old heuristics as fallbacks, and logs `legacy …` when it falls back so quiet dependence on a guess stays visible |
 
 Re-baseline with `capture` ONLY after an intended behaviour change, and diff
@@ -237,6 +243,29 @@ before the code is blamed.
    answers all of them and returns in **2.26 s** — ~59k packets/s, no crash, no
    leak, deterministic, measured with `flood.mjs`. The budget is per-case now.
    A test that has always been red teaches everyone to ignore it.
+
+12. **Three probes are intermittent, and re-running them proves nothing**
+   (2026-08-19). Counted, because the counts are the whole point:
+
+   | Probe | Standalone | Inside its runner |
+   |---|---|---|
+   | `doorbell.mjs` | PASS (suppression/triplet/perif all green) | 1 FAIL, then 1 PASS at the same position |
+   | `r6_inspection` T1 | PASS ×2 | 1 PASS, 2 FAIL over three `qa/run.mjs` runs |
+   | `r7_inspbug` T1 | PASS ×2 | 2 FAIL |
+
+   An earlier version of this entry called it sequence coupling and blamed
+   `bpg_sweep --include-crashers` running before `doorbell`. The next full run
+   passed at that exact position, which kills that theory. What is left is
+   plain intermittency of unknown origin; load late in a 20-minute run, the
+   core's cross-session state, and webctld's single browser accumulating state
+   over ~39 navigations are all still candidates, and none is established.
+
+   The practical rule holds regardless: **a probe that fails in a runner and
+   passes alone has told you it is flaky, not that it is fine.** Record both
+   results. The temptation is to re-run until green and move on, which is how
+   `r7_inspbug` was nearly signed off after polling alone "fixed" it — it still
+   failed under `run.mjs`.
+
 
 ## Gaps (nothing covers these today)
 

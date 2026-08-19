@@ -79,8 +79,38 @@ sets `0.05` has no way to learn it did not take effect.
 (the comment explains: a pose carries no size), so `contain` degrades to a
 centre test, while the CCL path uses the real bbox. One setting, two rules.
 
-**`test_suite/qa/` is dead outside one machine** — VERIFIED
-3 of 9 modules hardcode `/Users/mdm`; none is listed in `REGRESSION_TESTS.md`.
+**`test_suite/qa/` is dead outside one machine** — VERIFIED, and re-scoped
+2026-08-19. The path count understated it: fixing the paths would NOT make this
+runnable. Four separate blockers, in increasing order of cost:
+
+1. Hardcoded roots — `qalib.py:21`, `suite.py:16`, `migration_gate.py:13`.
+   Derivable from `__file__`; cheap.
+2. **Two point at a temporary worktree** — `qa_insp_region.py:22` and
+   `qa_objdetect_dark.py:25` reference
+   `.claude/worktrees/uinsp-mini-compact/InspectionCore`. That directory is not
+   expected to exist any more, so those two are dead even on the Mac.
+3. Hardcoded macOS build layout — `BUILD = ROOT + "/build/mac-arm64"` and
+   `VIS = BUILD + "/visSele"`. Windows is a different preset and needs `.exe`.
+4. **The 10221 golden is not in the repository** — `qalib.py:25-27` wants
+   `/Users/mdm/workspace/HY_sync/DEV/test/10221 BOS-LT12BH4211 SORTING_bk.png`
+   and its `.hydef`. This is the hard one: 5 of the 9 qa modules plus
+   `daemon_smoke.py`, `migration_gate.py` and `suite.py` need it, and no path
+   fix substitutes for a missing file.
+
+So do not "fix the paths" here expecting the suite to come back — that turns
+an obviously-dead suite into one that looks runnable and fails on missing data.
+Decide about the golden image first. Contrast with the WebUI `qa/` layer, where
+the equivalent fix DID work (commit `91efefdf`) because a substitute fixture
+was already in the repository.
+
+Also `UI/WebUI/tools/webctl/fullframe_run.sh:11,15` hardcodes
+`cd /Users/mdm/workspace/visSele/...` and `DYLD_LIBRARY_PATH`. It needs a
+camera anyway, so it is not on the critical path, but it cannot run here at
+all as written.
+
+The four `test_suite/*.py` gates ARE listed in `REGRESSION_TESTS.md` §1;
+as of 2026-08-19 that row says why they do not run. `test_suite/qa/` now has
+its own row there too.
 
 ---
 

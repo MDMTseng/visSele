@@ -346,7 +346,7 @@ qa/r*_*.mjs      39 focused scripts against the __GP_*__ dev hooks (codec, IDB
                  queue, expression evaluator, middleware) rather than the DOM.
                  `node tools/webctl/qa/run.mjs` runs them serially.
 suite_nohw.mjs   The runner for everything that needs neither camera nor board
-                 -- 13 probes across all of the above plus the core-side ones.
+                 -- 14 probes across all of the above plus the core-side ones.
                  Reach for this one on a bench with no hardware.
 ```
 

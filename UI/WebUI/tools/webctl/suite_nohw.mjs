@@ -70,7 +70,10 @@ function ensureCarousel() {
   return `${want.length} frame(s)${copied ? `, ${copied} copied` : ''}`;
 }
 
-// Verified runnable with nothing attached, 2026-08-18.
+// Verified runnable with nothing attached, 2026-08-18; qa/run.mjs added
+// 2026-08-19, once its suites stopped defaulting to a def path on one
+// developer's Mac. Before that it was 21 SKIPs and 954s of retries, which
+// is why it had never been worth including here.
 const RUNNABLE = [
   ['unit_fmt.mjs',              [],                    60,  'compactN width bound, swept 0..1e6'],
   ['unit_no_hardcoded_sel.mjs', [],                    60,  'no NG/OK claim names a selector'],
@@ -83,6 +86,7 @@ const RUNNABLE = [
   ['play_readiness.mjs',        [],                    300, 'play readiness == AND of every rendered tag group'],
   ['station_probe.mjs',         [],                    120, 'station block: region, clean_regions, bypass, ignore_calib'],
   ['churn.mjs',                 [],                    240, 'WS teardown under fire: 90 clients destroyed mid-stream'],
+  ['qa/run.mjs',                [],                    600, '39 suites against the __GP_*__ dev hooks (codec, IDB queue, expr, middleware)'],
   ['flows.mjs',                 ['verify'],            900, '9 editor + inspection flows vs baseline'],
   ['cycle.mjs',                 ['1'],                 300, 'one lap of the operator day; def hash stable'],
 ];
