@@ -3306,7 +3306,7 @@ loopback 實測到 20479 bytes 都完整往返。
 注意方向:裝置**自己**的 RX 緩衝是 `include/comm/Data_Layer_Protocol.hpp:26` 的
 `dataBuff[2048]`,那是 core→裝置。core 能發的最大 `set_setup` 從來沒被量過。
 
-## 裸板上餵 phantom:全部會被 gate 的距離過濾擋掉(2026-08-19,實測)
+## 裸板上餵 phantom 被距離過濾全擋(2026-08-19)— **結論已推翻,見章末更正**
 
 沒有馬達時,`trig_phantom_pulse` 送多少都不會有零件通過 gate:
 
@@ -3338,3 +3338,60 @@ phantom 只差約 10 steps,而門檻是 1703μm ÷ 10.7μm/step ≈ **159 steps*
 檢查,隨即回退:那個限制是真實機器行為(兩顆零件不能佔同一個位置),繞過它測到的
 就不是會出貨的那條路。慢,但是真的。
 
+### 更正(2026-08-19 稍晚):上面的 6.4 秒是我把轉速設錯量出來的
+
+那些數字全部是在 `plate.freq = 12` 下量的 —— 不是 12000,是 **12**。
+一圈要轉 50 分鐘。`SYS_STEP_COUNT` 「幾乎不前進」不是因為沒有馬達,
+是因為我叫它不要動。出貨值是 **15000**(= 30000 steps/s)。
+
+改成 15000 之後,**60 顆零件、間隔 300ms,gate 通過率 100%,零損失**。距離過濾
+沒有任何問題。裸板餵料不受 6.4 秒的限制,那個限制不存在。
+
+保留原文而不是刪掉,是因為它示範了一個更容易再犯的錯:`{"type":"plate","freq":N}`
+會被靜靜忽略(正確寫法是 `set_setup` 底下的巢狀 `plate.freq`),
+而一個沒生效的設定看起來和一個生效了的設定完全一樣。**餵料之前先讀回
+`get_running_stat` 的 `freq_meas` 確認盤在轉。**
+
+
+## `CAM_CLOCK_LOST`(13)在運轉中的機器上不可達(2026-08-19,實測 + 讀碼)
+
+時鐘漂出配對窗口時,機器**會**停 —— 但停在 **error 1
+`INSP_RESULT_MATCHES_NO_OBJECT`**,不是 error 13。三次實驗都一樣,
+每次都是 `rejected=1`、`rebuilds=0`,13 一次都沒出現過。
+
+原因是結構性的,不是時序運氣:
+
+```
+gate()  LegacyFirmware.cpp:634    拒絕   nearest_delta >  TOL_US
+        LegacyFirmware.cpp:6563   byTs   nearestDelta <= TOL_US
+```
+
+同一個變數、同一個門檻、互補 —— 所以 `gate()` 拒絕的 frame **必然**
+`byTs==NULL`。READY 期間 `bySync` 也是 NULL(sync pulse 只在
+CAL/RECAL 發),於是 `tarP = (byTs != NULL) ? byTs : bySync` 是 NULL,
+同一輪往下走到 `:6777` 就 raise error 1 停機。
+
+`gate()` 在 `:6595`、`fault_pending` 檢查在 `:6597`,
+兩者都在 error 1 之前 —— 但那時 `consec_reject` 才剛變成 1,而
+`LOST_N=2`。第二個 frame 永遠不會來,因為機器已經停了。
+
+**安全性質沒破:機器還是停了,沒有拿放不準的 frame 去分料。** 壞掉的是:
+
+1. **診斷指向錯的地方。** 操作員看到「a verdict arrived for no known object」,
+   會去查配對;真正的原因是時鐘。`CAMSYNC LOST` 那行連同它帶的
+   `last delta / tol` 也永遠不會印出來。
+
+2. **遲滯從來沒生效過。** `LOST_N=2` 的註解寫得很清楚:*"one is a lost
+   frame or a stray, two in a row is the clock"* —— 這個容忍單一雜訊 frame 的
+   設計意圖不存在,第一個出界的 frame 就停機。
+
+反過來說也成立,而且值得記住:**一旦時鐘真的漂出窗口,你會看到 error 1,
+永遠不會是 13。** 「實際使用上沒有 error 1 過」代表時鐘從來沒漂出去過,
+不代表 error 1 是個不相干的錯誤碼。
+
+要修的最小改法是在 `:6777` 之前分辨「這個 frame 是被 gate 以出界為由
+拒絕的」,是的話讓 `consec_reject` 累積而不是立刻停。但那等於放寬
+「單一無主 verdict 就停機」,是政策決定,**未處理**。
+
+重現:`node camsync_lost.mjs --window 200 --rate 0.2`(需要 core 帶
+`INSP_CAM_TS_MULT=1.0000833` 且 `slope_n` 已收斂)。
