@@ -75,7 +75,24 @@ CAMSYNC CAL 要靠相機回傳的 pulse 才能收斂(`LegacyFirmware.cpp:4530-45
 時機(物件在 gate 時就進 RBuf,到 CAM1 才填 `cam_us`)、`t_us` 欄位缺失
 (兩個 cam_trig 送出點都有帶)。
 
-下一步是查 phantom 到 CAM1 之間斷在哪。`stage_pulse_offset.CAM1_on=9515`
+**2026-08-19 續測,把間隔拉到 8 秒之後:**
+
+```
+gate    {"in": 4, "out": 4, "pct": 100, "loss": "none"}   <- 4/4 全過
+verdict {"in": 4, "out": 0, "unanswered": 0}
+count   全部 0
+```
+
+距離過濾的假設**完全證實** —— 8 秒間隔下 gate 接受率 100%,先前的 0% 純粹是
+盤沒動。校正同時維持(`state=101`、`valid=true`、`offset_us=800`)。
+
+所以現在斷點很明確且只剩一個:**零件進得了 verdict 階段,但拿不到判定**。
+`verdict in=4 / out=0`,而 `unanswered` 是 0 —— 板子不認為它們被漏答,
+是還在等。core 那邊 `INSP_CAM_TS_SYNTH` 對每個 cam_trig 都回 report,sync
+pulse 明顯配得上(校正就是從那學的),所以格式和傳輸都沒問題,差別在一般零件的
+配對條件。
+
+下一步就是查那個差別,而不是再查 phantom 到 CAM1 之間。`stage_pulse_offset.CAM1_on=9515`
 要求盤子轉到那個 pulse 位置,而 `plate_freq_meas` 有讀數(14.33)表示 counter
 在走。若 phantom 本來就不設計成會觸發相機,那就改用會觸發的路徑
 (`trig_cam_pulse` / `trig_cam_burst`)或讓 phantom 也走完 CAM1 階段。
