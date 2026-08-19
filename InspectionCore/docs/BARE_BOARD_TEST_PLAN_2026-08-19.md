@@ -105,6 +105,101 @@ count   {"NA": 2}
 report 回去 → **板子拿到判定並計數**。判定是 `NA` 而不是 SEL1/SEL3,因為
 core 沒有真的檢驗 —— 那正是 `INSP_CAM_TS_SYNTH` 應有的行為。
 
+## CAMSYNC 漂移估計:對著已知斜率量,這是有相機時做不到的
+
+真機上 `cam_ts` 來自相機晶振、`cam_us` 來自板子晶振,兩者真實關係
+沒人知道,所以估計器吐出的每個數字都只能照單全收 —— 「~83μs/s」這個數字本身
+就是被測物產生的。
+
+`INSP_CAM_TS_MULT` 讓 `cam_ts = t_us * m + offset`,只有一個時鐘,
+真值變成算術:offset 在 T0 學成 `T0(m-1)`,之後殘差是 `(T-T0)(m-1)` ——
+對學到的 offset 而言是貨真價實的斜率,不是階躍。所以 `slope_ppb` 有標準答案。
+
+**工具**:`bareboard_up.mjs`(冷機 → 101)、`camsync_drift.mjs`(精度)、`camsync_lost.mjs`(停機路徑 A/B)。
+
+### 三檔結果
+
+| mult | 真值 | 收斂值 | 樣本 | 誤差 |
+|---|---|---|---|---|
+| 1.0 | 0 ppb | 0 ppb | 241 | 0 |
+| 1.0000833 | 83300 ppb | 83398 | 181 | +0.1% |
+| 1.0000833(重跑) | 83300 ppb | 83303 | 302 | +3 ppb |
+| 1.0000833(清錯後再收斂) | 83300 ppb | 83675 | 121 | +0.5% |
+
+三次獨立收斂,單調趨近,沒有一次偏離超過 0.5%。旁證:進 101 時
+`offset_us=6289`,而 `t_us≈65.9s` 時 `65.9e6 × 83.3e-6 + 800 = 6289` —— 差 1μs。
+
+### 漂移補償把 417μs 壓成 3μs
+
+`resid_us` 和 `delta_last_us` 是不同的量,分清楚才看得懂:
+
+- `resid_us` = 靜態 offset 下的誤差
+- `delta_last_us` = `|pipe->cam_us - expectedCamUs(cam_ts)|`,**窗口實際檢查的量**,已含漂移補償
+
+同一塊板、同一個時鐘、同樣流量(5s 間隔),只切 `cam:{drift_comp}`:
+
+| | resid | delta | 結果 |
+|---|---|---|---|
+| A on | 417 μs | **3–4 μs** | 40s 全程 101,零拒絕 |
+| B off | 417 μs | **416 μs** | t+10s 停機 |
+
+140 倍,而且是「跑得動」與「停機」的分界。
+
+### 沒有斜率就沒有補償 —— 清完錯誤的機器最脆弱
+
+`expectedCamUs()` 的守衛是 `if(DRIFT_COMP && slope_n && est_cam_us)`。
+`clear_error` 之後 `slope_n` 歸零,旗標還是 true 但**補償實際上是空的**,
+要重新餵幾分鐘才長回來。第一次跑 A/B 就栽在這裡:對照組直接停機,看起來像
+「補償沒用」,其實是對照組根本沒開成。`camsync_lost.mjs` 現在會擋。
+
+這也是營運性質,不只是測試陷阱:**剛從錯誤恢復的機器,有一段時間完全沒有漂移補償。**
+
+### `match_window_us` 有 200μs 地板
+
+設 50 或 120 都會被夾成 200(`LegacyFirmware.cpp:9289`)。註解說明了理由:
+*"A window narrower than the measurement noise (~50us observed) can never match
+anything and would stop the machine forever."* 未補償誤差在 1s 間隔下只有 84μs,
+在地板底下 —— 所以撬不動窗口,得改用**間隔**當槓桿(誤差隨 gap 線性成長,5s 給 417μs)。
+
+---
+
+## 發現:`CAM_CLOCK_LOST`(13)在運轉中的機器上不可達
+
+三次實驗都停在 **error 1 = `INSP_RESULT_MATCHES_NO_OBJECT`**,`rejected=1`、
+`rebuilds=0`,13 一次都沒出現。這不是巧合,是結構性的:
+
+```
+gate():634        拒絕條件  nearest_delta >  TOL_US
+:6563   byTs 設定  nearestDelta <= TOL_US
+```
+
+同一個變數、同一個門檻、互補。所以 **gate() 拒絕的 frame 必然 `byTs==NULL`**。
+READY 期間 `bySync` 也是 NULL(sync pulse 只在 CAL/RECAL 發),於是
+`tarP = (byTs != NULL) ? byTs : bySync` 是 NULL,同一輪走到 `:6777`
+raise error 1 停機 —— 而 `gate()` 在 `:6595`,`fault_pending`
+檢查在 `:6597`,都在 error 1 之前,但 `consec_reject` 才剛變成 1。
+
+**機器還是停了,安全性質沒破。** 壞掉的是另外兩件事:
+
+1. **診斷。** 操作員看到「a verdict arrived for no known object」,而不是
+   「camera clock lost」。真正的原因是時鐘,錯誤碼指向配對。
+   `CAMSYNC LOST` 那行 dbg_printf 也永遠不會印。
+
+2. **遲滯。** `LOST_N=2` 的註解寫著 *"one is a lost frame or a stray, two in
+   a row is the clock, and there is nothing to be gained by letting a machine
+   that cannot place its frames keep sorting parts."* 這個「容忍單一雜訊 frame」
+   的設計意圖從來沒有生效過 —— 第一個出界的 frame 就停機了。
+
+這同時回答了「實際使用上沒有 error 1 過」那個疑問的反面:**一旦時鐘真的漂出窗口,
+你會看到的是 error 1,永遠不會是 13。**
+
+未處理,因為這是 firmware 行為改動而不是測試問題。要修的話最小改法是在
+`:6777` 之前檢查「這個 frame 是否被 gate 以出界為由拒絕」,是的話讓
+`consec_reject` 累積而不是立刻停 —— 但那等於放寬「單一無主 verdict 就停機」,
+是個政策決定,不該由測試順手改掉。
+
+---
+
 ### 迴圈完全閉合:60/60,零損失
 
 ```
