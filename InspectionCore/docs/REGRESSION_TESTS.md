@@ -66,6 +66,33 @@ All in `UI/WebUI/tools/webctl/`.
 | `perifstat.mjs` / `caminfo.mjs` | GS readouts: `perif_pairing.link`, `camera_info.setup_failed`, `lens_calib_loaded` | eyeball |
 | browser `window.__GP_PERIF_LINKS__()` | the WebUI perif link store (states + core link counters) — feeds PerifStatus | four ids registered; linkHealth mirrors perifstat |
 
+## 2b. Bare board — no camera, no plate (core must be launched for it)
+
+These need the core started with the synth fixture, and they will silently
+measure the wrong thing without it. The multiplier is the ground truth the
+whole group is built on, so `camsync_drift.mjs` takes `--log` and
+refuses to run if that log does not show the multiplier it was told to expect —
+an orphaned core from an earlier run holds 4099 and the serial port, the newly
+launched one exits quietly, and every command then reaches the OLD process at
+the OLD multiplier while looking completely normal. That happened.
+
+```sh
+# from InspectionCore/Core0_1, with /mingw64/bin and the build dir on PATH
+INSP_PERIF_CONSOLE=4099 INSP_CAM_TS_SYNTH=1 INSP_CAM_TS_OFFSET_US=800 INSP_CAM_TS_MULT=1.0000833   ../build/nohik-cv4/visSele.exe > core.log 2>&1 &
+```
+
+| script | what it proves | pass looks like |
+|---|---|---|
+| `bareboard_up.mjs [--uart COM3] [--freq 15000]` | cold board -> INSPECTION_MODE_READY headless: PD CONNECT (once — each one reboots the ESP32 via DTR), dry run, nested `plate.freq`, `enter_insp_mode` | `READY at t+Ns` with `valid=true`. State 112 + error 14 means the synth is not on |
+| `camsync_drift.mjs <secs> --rate 1 --mult M --log <core.log>` | CAMSYNC learns the drift slope, checked against the multiplier that produced it | `slope_ppb` within ~0.5% of `(M-1)*1e9`, `rejected=0`, `rebuilds=0`, state 101 throughout |
+| `camsync_lost.mjs --window 200 --rate 0.2` | drift compensation is load-bearing: A/B on one board, `cam:{drift_comp}` the only variable | A survives with `delta_last_us` ~3; B halts. **Halt is error 1, not 13** — see UINSP_CAVEATS |
+
+Rate matters and is not a throughput knob here: the slope learns by
+inverse-variance weighting against `SLOPE_GAP_REF_MS = 2000`, so 1/s gives a
+~40-sample time constant while 3/s gives ~300. And the error the window sees
+grows with the gap, which is the only lever that works — `match_window_us`
+floors at 200us and the uncompensated error at 1/s is 84us, under the floor.
+
 ## 3. WebUI (webctld + vite dev server + core)
 
 | Test | Run | Covers |
@@ -294,6 +321,16 @@ before the code is blamed.
    on every attempt and it never gets the ~8s it needs to finish booting.
    Measured: 12 polls at 3s produced 19 `perif: link RESYNC requested`
    lines and a board that never answered at all. One CONNECT, then wait.
+
+14. **After `clear_error`, drift compensation is off even though the flag says
+    on.** `expectedCamUs()` compensates only
+    `if(DRIFT_COMP && slope_n && est_cam_us)`, and the recovery zeroes
+    `slope_n`. A/B tests started straight after a recovery have no control
+    — the first run of `camsync_lost.mjs` halted in its *control* phase and
+    read as evidence that compensation does not work. The script now refuses to
+    start on `slope_n=0`; feed at ~1/s for a couple of minutes first. It is
+    also true of the machine, not just the test: for minutes after an error
+    recovery there is no drift compensation at all.
 
 ## Gaps (nothing covers these today)
 

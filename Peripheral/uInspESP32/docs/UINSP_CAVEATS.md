@@ -552,6 +552,11 @@ in `regress_watch.py` so it does not get "fixed" back.
 
 ## O. How to set the match window — the question mis-verdicts actually reduce to
 
+> Two things measured later belong with this section: the window **floors at
+> 200us** in firmware, and what happens when a frame falls outside it is **error
+> 1, not the CAM_CLOCK_LOST this section's machinery implies**. See
+> "`CAM_CLOCK_LOST`(13)在運轉中的機器上不可達" at the end of this file.
+
 In practice every wrong-verdict question on this machine comes back to one
 number, and that number is squeezed from both sides.
 

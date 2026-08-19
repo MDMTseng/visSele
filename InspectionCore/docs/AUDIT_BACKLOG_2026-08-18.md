@@ -85,6 +85,34 @@ drop the extra, or merge the margins is a machine-owner decision.
 
 ## P2 — coverage holes that let P1s through
 
+**`CAM_CLOCK_LOST` (13) is unreachable from the running machine** — VERIFIED
+2026-08-19, on hardware and in the source
+`Peripheral/uInspESP32/src/app/LegacyFirmware.cpp:634` vs `:6563`
+`gate()` rejects on `nearest_delta > TOL_US` and `byTs` is set on
+`nearestDelta <= TOL_US` — one variable, one threshold, complementary. So any
+frame `gate()` rejects also has `byTs` NULL, and in READY `bySync` is
+NULL too (sync pulses fire only in CAL/RECAL). `tarP` is therefore NULL and
+the same pass raises `INSP_RESULT_MATCHES_NO_OBJECT` at `:6777` and halts,
+while `consec_reject` has reached 1 of `LOST_N`'s 2. The second frame never
+comes, because the machine is already stopped. Reproduced three times with
+`camsync_lost.mjs`: `rejected=1`, `rebuilds=0`, `error_hist=[1]`, never 13.
+
+Not a safety defect — the machine does stop, and no part is sorted on a frame
+it could not place. Two things are lost. The diagnosis: the operator is told "a
+verdict arrived for no known object" and sent to look at pairing when the cause
+is the clock, and the `CAMSYNC LOST` line carrying the delta and tolerance
+never prints. And the hysteresis: `LOST_N=2` exists because "one is a lost
+frame or a stray, two in a row is the clock", and that tolerance for a single
+stray has never existed on this path.
+
+Left open deliberately. The minimal fix distinguishes, before `:6777`, a
+frame the gate refused for being out of window from one that genuinely matched
+nothing, and lets only the former accumulate. That relaxes "a single unowned
+verdict halts the machine", which is a policy decision about how much a
+machine may tolerate before stopping — not a call a test should make in
+passing.
+
+
 **`--insp` never loads `clean_regions`** — VERIFIED
 `InspectionCore/Core0_1/wiringPanel.cpp:10614` vs `:2528-2529`
 The live path loads both region kinds; the offline path loads only
