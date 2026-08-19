@@ -1308,7 +1308,10 @@ class PerifChannel:public Data_JsonRaw_Layer
     //
     // Calibration still converges: sync pulses are paired by bySync, not by
     // the report we would have sent them.
-    if (strstr(p, "\"sync\":1") != NULL) return;
+    // NOT filtered on "sync":1. CAM_SYNC.observe() takes cam_ts straight out
+    // of this reply -- bySync only picks WHICH pipe is the sync one, it does
+    // not supply the timestamp. Skipping sync pulses starves calibration:
+    // measured, valid=false and state 112 within seconds.
     const char *pgp = strstr(p, "\"gate_pulse\":");
     if (pgp && atoll(pgp + 13) == 0) return;
     uint64_t cam_ts = (uint64_t)((double)t_us * camTsSynthMult())
