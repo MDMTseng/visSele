@@ -1,9 +1,9 @@
 #ifndef CAMERALAYER_HPP
 #define CAMERALAYER_HPP
+#include <cmath>      // NAN -- used to arrive via acvImage.hpp
 #include <stdint.h>
 #include <stddef.h>
 
-#include <acvImage.hpp>
 #include <string>
 #include <condition_variable>
 

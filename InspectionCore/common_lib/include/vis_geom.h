@@ -9,6 +9,7 @@
 // / fit / labeled-region structs stay custom because cv::Vec[34]f's
 // positional `[0]/[1]/...` access reads worse than named fields here.
 
+#include <cstdint>
 #include <opencv2/core.hpp>
 #include <vector>
 
@@ -95,5 +96,20 @@ float acvVectorAngle(cv::Point2f v1, cv::Point2f v2);
 bool acvFitLine(const cv::Point2f *pts, int ptsL, vis_Line *line, float *ret_sigma);
 bool acvFitLine(const cv::Point2f *pts, const float *ptsw, int ptsL, vis_Line *line, float *ret_sigma);
 bool acvFitLine(const void *pts_struct, int pts_step, const void *ptsw_struct, int ptsw_step, int ptsL, vis_Line *line, float *ret_sigma);
+
+
+// 24-bit label pixel, moved here from acvImage_ComponentLabelingTool.hpp when
+// acvImage was retired. A labeled image stores each label as 3 bytes; this
+// union is how the engine reads those 3 bytes back as one integer. Nothing to
+// do with the old image container -- it is part of how vis_LabeledData's
+// labels are represented on the wire.
+typedef struct _3BYTE { unsigned Num : 24; } _3BYTE;
+typedef struct _2BYTE { uint16_t Num; uint8_t Empty; } _2BYTE;
+typedef struct BYTE3  { uint8_t Num2; uint8_t Num1; uint8_t Num0; } BYTE3;
+typedef union _24BitUnion {
+  BYTE3  Byte3;
+  _3BYTE _3Byte;
+  _2BYTE _2Byte;
+} _24BitUnion;
 
 #endif

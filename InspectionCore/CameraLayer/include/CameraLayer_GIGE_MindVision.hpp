@@ -5,7 +5,7 @@
 #endif
 #include <CameraLayer.hpp>
 #include <string>
-#include <acvImage_BasicTool.hpp>
+#include "vis_geom.h"
 #include <mutex>
 #include <queue>
 #include <thread>

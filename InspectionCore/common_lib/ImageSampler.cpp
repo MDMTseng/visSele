@@ -1,4 +1,4 @@
-#include <acvImage_BasicTool.hpp>
+#include "vis_geom.h"
 #include <ImageSampler.h>
 #include <vector>
 #include <algorithm>

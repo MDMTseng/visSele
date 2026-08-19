@@ -4,12 +4,9 @@
 #include <mutex>
 #include <set>
 #include <vector>
-#include "acvImage_ToolBox.hpp"
-#include "acvImage_BasicDrawTool.hpp"
-#include "acvImage_BasicTool.hpp"
+#include "SignatureTools.h"
+#include "vis_geom.h"
 
-#include "acvImage_MophologyTool.hpp"
-#include "acvImage_SpDomainTool.hpp"
 #include <opencv2/core.hpp>
 #include "cJSON.h"
 #include "logctrl.h"
@@ -35,7 +32,6 @@
 #endif
 
 
-#include "acvImage_MophologyTool.hpp"
 
 #include <ImageSampler.h>
 

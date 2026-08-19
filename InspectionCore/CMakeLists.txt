@@ -86,13 +86,13 @@ endfunction()
 # Module static libraries
 # ===========================================================================
 
-# --- acvImage --------------------------------------------------------------
-add_library(acvImage STATIC
-  acvImage/acvImage.cpp acvImage/acvImage_BasicTool.cpp acvImage/acvImage_BasicDrawTool.cpp
-  acvImage/acvImage_MophologyTool.cpp acvImage/acvImage_ToolBox.cpp
-  acvImage/acvImage_ComponentLabelingTool.cpp acvImage/acvImage_SpDomainTool.cpp)
-target_include_directories(acvImage PUBLIC acvImage/include common_lib/include)
-target_link_libraries(acvImage PUBLIC opencv_core)
+# --- acvImage: REMOVED 2026-08-19 ------------------------------------------
+# The 1st-gen image container and its tools. The engine finished moving to
+# cv::Mat in phase 3a and the geometry PODs moved to common_lib/vis_geom.h in
+# phase 3b, which left this library exporting 147 symbols of which exactly 5
+# were still referenced -- all five pure cv::Point2f signature helpers that
+# happened to live in acvImage_ToolBox.cpp. They are now
+# MatchingEngine/SignatureTools.cpp; the rest was deleted.
 
 # --- cJSON -----------------------------------------------------------------
 add_library(cJSON STATIC contrib/cJSON/cJSON.c contrib/cJSON/cJSON_Utils.c)
@@ -204,7 +204,7 @@ add_library(common_lib STATIC
 force_cxx(common_lib/Util.c common_lib/Util2.c)
 target_include_directories(common_lib PUBLIC
   common_lib/include contrib/Compat_dirent/${PLAT}/include)
-target_link_libraries(common_lib PUBLIC cJSON acvImage logctrl lodepng mjpegLib simple_uart opencv_core)
+target_link_libraries(common_lib PUBLIC cJSON logctrl lodepng mjpegLib simple_uart opencv_core)
 if(WIN32 OR MINGW OR MSYS)
   target_compile_options(common_lib PRIVATE -Wa,-mbig-obj)
 endif()
@@ -256,7 +256,7 @@ if(FEATURE_MINDVISION)
 endif()
 add_library(CameraLayer STATIC ${_CAM_SRC})
 target_include_directories(CameraLayer PUBLIC CameraLayer/include)
-target_link_libraries(CameraLayer PUBLIC acvImage logctrl common_lib)
+target_link_libraries(CameraLayer PUBLIC logctrl common_lib)
 
 # --- shape_based_matching (line2Dup + roi_refine localizer) ----------------
 # The submodule's own CMakeLists only builds test exes against a hard-coded
@@ -295,6 +295,7 @@ add_library(MatchingEngine STATIC
   MatchingEngine/MatchingEngine.cpp MatchingEngine/MatchingCore.cpp
   MatchingEngine/FeatureManager.cpp MatchingEngine/FeatureExtractor.cpp
   MatchingEngine/ContourGrid.cpp MatchingEngine/FeatureManager_group.cpp
+  MatchingEngine/SignatureTools.cpp
   MatchingEngine/FeatureManager_sig360_circle_line.cpp
   MatchingEngine/JudgeCALC.cpp
   MatchingEngine/MorphEngine/MorphEngine.cpp MatchingEngine/FeatureReport_UTIL.cpp
@@ -314,7 +315,7 @@ add_library(MatchingEngine STATIC
 target_include_directories(MatchingEngine PUBLIC
   MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include
   ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer
+target_link_libraries(MatchingEngine PUBLIC cJSON common_lib CircleFitting logctrl polyfit CameraLayer
   shape_based_matching
   opencv_core opencv_imgproc opencv_imgcodecs ${OPENCV_CALIB3D_LIBS})
 target_compile_definitions(MatchingEngine PUBLIC FEATURE_OPENCV)
@@ -387,7 +388,7 @@ if(DEFINED PERIF_CORE_PAIRING)
   message(STATUS "PERIF_CORE_PAIRING forced to ${PERIF_CORE_PAIRING}")
 endif()
 target_include_directories(visSele PRIVATE Core0_1 Core0_1/include)
-# leaf libs (acvImage, cJSON, common_lib, logctrl, lodepng, mjpegLib, polyfit,
+# leaf libs (cJSON, common_lib, logctrl, lodepng, mjpegLib, polyfit,
 # CircleFitting, simple_uart, smem_channel) arrive transitively via these.
 target_link_libraries(visSele PRIVATE
   MatchingEngine CameraLayer BPG_Protocol MJPEG_Streamer)

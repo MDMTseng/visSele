@@ -3,7 +3,6 @@
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
-#include <acvImage_SpDomainTool.hpp>
 // #include <acvImage_.hpp>
 #include <rotCaliper.h>
 #include "SBM_if.hpp"

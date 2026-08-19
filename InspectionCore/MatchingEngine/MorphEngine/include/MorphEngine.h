@@ -1,9 +1,8 @@
 #ifndef MORPHENGINE_HPP
 #define MORPHENGINE_HPP
 
-#include "acvImage_ToolBox.hpp"
+#include "SignatureTools.h"
 
-#include "acvImage_BasicDrawTool.hpp"
 #include <cstdlib>
 #include <unistd.h>
 

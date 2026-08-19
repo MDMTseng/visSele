@@ -1,5 +1,4 @@
 #include "CameraLayer_BMP.hpp"
-#include "acvImage_SpDomainTool.hpp"
 
 #include <logctrl.h> 
 #include <dirent.h> 

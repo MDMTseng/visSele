@@ -2,7 +2,7 @@
 #define CAMERALAYER_BMP_HPP
 #include <CameraLayer.hpp>
 #include <string>
-#include "acvImage_BasicTool.hpp"   // acv_XY geometry
+#include "vis_geom.h"
 #include <opencv2/core.hpp>
 #include <mutex>
 #include <condition_variable>

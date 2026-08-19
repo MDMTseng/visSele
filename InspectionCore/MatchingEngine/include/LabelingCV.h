@@ -13,7 +13,7 @@
 
 #include <opencv2/core.hpp>
 #include <vector>
-#include "acvImage_ComponentLabelingTool.hpp"  // acv_LabeledData
+#include "vis_geom.h"
 
 // One connectedComponentsWithStats pass produces BOTH the packed label image
 // AND the acv_LabeledData list (area/bbox/centroid).

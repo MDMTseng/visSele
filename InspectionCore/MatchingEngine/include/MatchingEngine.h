@@ -4,7 +4,7 @@ using namespace std;
 #include <vector>
 #include <cstdlib>
 #include <ctime>
-#include "acvImage_BasicTool.hpp"
+#include "vis_geom.h"
 #include "FeatureManager.h"
 #include "FeatureManager_group.h"
 

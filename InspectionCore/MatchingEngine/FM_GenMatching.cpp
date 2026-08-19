@@ -3,7 +3,6 @@
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
-#include <acvImage_SpDomainTool.hpp>
 #include "CvBridge.h"
 #include <opencv2/calib3d.hpp>
 // #include <acvImage_.hpp>

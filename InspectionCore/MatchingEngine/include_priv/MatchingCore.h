@@ -1,9 +1,8 @@
 #ifndef MATCHING_CORE_HPP
 #define MATCHING_CORE_HPP
 
-#include "acvImage_ToolBox.hpp"
+#include "SignatureTools.h"
 #include "ContourGrid.h"
-#include "acvImage_BasicDrawTool.hpp"
 #include <cstdlib>
 #include <unistd.h>
 #include "FeatureManager.h"

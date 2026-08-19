@@ -1,8 +1,7 @@
 #ifndef CONTOURGRID_HPP
 #define CONTOURGRID_HPP
 
-#include "acvImage_ToolBox.hpp"
-#include "acvImage_BasicDrawTool.hpp"
+#include "SignatureTools.h"
 #include <cstdlib>
 #include <unistd.h>
 

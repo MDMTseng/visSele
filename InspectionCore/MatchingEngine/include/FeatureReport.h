@@ -2,8 +2,7 @@
 #define FeatureREPORT_HPP
 
 
-#include "acvImage_ComponentLabelingTool.hpp"
-#include "acvImage_BasicTool.hpp"
+#include "vis_geom.h"
 #include <vector>
 #include <string>
 #include "cJSON.h"
