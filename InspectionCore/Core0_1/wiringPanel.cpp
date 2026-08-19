@@ -1268,6 +1268,68 @@ class PerifChannel:public Data_JsonRaw_Layer
   }
   // Which bin the fake verdict claims. Defaults to 3 = the usual cat_ok; set
   // INSP_CAM_TS_SYNTH_CAT to exercise the other outlets.
+  // How long to hold a synthesised reply before sending it.
+  //
+  // Answering instantly is what breaks the device. A real core waits for
+  // exposure and image processing -- the acquisition leg measured around 8ms --
+  // so its replies to consecutive sync pulses arrive spaced out. A reply
+  // produced on the RX path arrives before the previous sync has been
+  // consumed, syncOutstanding goes above one, bySync becomes NULL
+  // (LegacyFirmware.cpp:6565) and the verdict pairs with nothing:
+  // INSP_RESULT_MATCHES_NO_OBJECT, error 1, machine halted. Measured: 4 parts
+  // at 8s intervals ran clean, 4 parts at 1s hit it.
+  //
+  // Default 8ms because that is the leg it stands in for.
+  // Replies waiting out their delay. A ring rather than a queue: triggers
+  // retire fast, and dropping the oldest under a flood is better than growing
+  // without bound on the RX path.
+  struct SynthPend { int64_t tid; uint64_t cam_ts; uint64_t due_us; };
+  static const uint32_t SYNTH_PEND_N = 128;
+  SynthPend synthPend[SYNTH_PEND_N] = {};
+  std::atomic<uint32_t> synthPendHead{0};
+  std::atomic<uint32_t> synthPendTail{0};
+  std::atomic<bool>     synthSenderUp{false};
+
+  void startSynthSender()
+  {
+    bool expected = false;
+    if (!synthSenderUp.compare_exchange_strong(expected, true)) return;
+    std::thread([this]{
+      while (true)
+      {
+        uint32_t t = synthPendTail.load(std::memory_order_relaxed);
+        uint32_t h = synthPendHead.load(std::memory_order_acquire);
+        if (t == h) { std::this_thread::sleep_for(std::chrono::microseconds(500)); continue; }
+        SynthPend &e = synthPend[t % SYNTH_PEND_N];
+        uint64_t now = perif_now_us();
+        if (now < e.due_us)
+        {
+          uint64_t wait = e.due_us - now;
+          std::this_thread::sleep_for(std::chrono::microseconds(wait > 2000 ? 2000 : wait));
+          continue;
+        }
+        // perif_tx_lock serialises this against the console and the WebUI, so
+        // sending from here is no different from the normal verdict path.
+        sendReportTo_perifCH(this, e.tid, camTsSynthCat(), e.cam_ts, 0);
+        synthPendTail.store(t + 1, std::memory_order_release);
+      }
+    }).detach();
+    LOGW("cam_ts synth sender up: holding each reply %ums", camTsSynthDelayMs());
+  }
+
+
+  static uint32_t camTsSynthDelayMs()
+  {
+    static const uint32_t d = []{
+      const char *e = getenv("INSP_CAM_TS_DELAY_MS");
+      long v = e ? atol(e) : 8;
+      if (v < 0) v = 0;
+      if (v > 5000) v = 5000;
+      return (uint32_t)v;
+    }();
+    return d;
+  }
+
   static int camTsSynthCat()
   {
     static const int c = []{
@@ -1318,7 +1380,15 @@ class PerifChannel:public Data_JsonRaw_Layer
                     + (uint64_t)camTsSynthOffsetUs();
     // host_us = 0: nothing was held in the core, and claiming otherwise would
     // corrupt the acquisition-leg figure the device derives from it.
-    sendReportTo_perifCH(this, tid, camTsSynthCat(), cam_ts, 0);
+    // Queue it; the sender below releases it after camTsSynthDelayMs(). This
+    // must not sleep here -- tap_trigger_info runs on the peripheral RX path,
+    // and stalling that is exactly what perifConsoleEcho goes out of its way to
+    // avoid.
+    uint32_t h = synthPendHead.load(std::memory_order_relaxed);
+    synthPend[h % SYNTH_PEND_N] = { tid, cam_ts,
+                                    perif_now_us() + (uint64_t)camTsSynthDelayMs() * 1000ULL };
+    synthPendHead.store(h + 1, std::memory_order_release);
+    startSynthSender();
   }
 
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
