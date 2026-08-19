@@ -92,7 +92,39 @@ count   全部 0
 pulse 明顯配得上(校正就是從那學的),所以格式和傳輸都沒問題,差別在一般零件的
 配對條件。
 
-下一步就是查那個差別,而不是再查 phantom 到 CAM1 之間。`stage_pulse_offset.CAM1_on=9515`
+**2026-08-19 最終:迴圈閉合了,而擋住它的一直是我設錯的轉速。**
+
+```
+plate.freq = 15000        <- production 值,來自原始碼註解
+state=101  freq_meas=15012  cam_sync valid=true offset_us=800
+verdict {"in": 2, "out": 2, "pct": 100}
+count   {"NA": 2}
+```
+
+零件走完整條路:gate → 註冊 → CAM1 觸發 → core 收到 `cam_trig` → 合成
+report 回去 → **板子拿到判定並計數**。判定是 `NA` 而不是 SEL1/SEL3,因為
+core 沒有真的檢驗 —— 那正是 `INSP_CAM_TS_SYNTH` 應有的行為。
+
+### 轉速:別再設錯
+
+`plate.freq` 的單位不是轉/秒。原始碼註解給了 production 值:
+
+```
+LegacyFirmware.cpp:1218   600us of light at production plate_freq 15000
+LegacyFirmware.cpp:1055   16 kHz at plate_freq 8000      <- tick = 2 x plate_freq
+```
+
+| plate.freq | steps/s | 轉速 | 邊緣速度 | 距離門檻 159 steps |
+|---|---|---|---|---|
+| **15000**(production) | 30,000 | 25.6 RPM | 321 mm/s | **5.3 ms** |
+| 12(我一開始設的) | 24 | 0.02 RPM | 0.26 mm/s | 6.6 秒 |
+
+我設 12 等於**把盤設成每 50 分鐘轉一圈**。先前所有「距離過濾擋掉全部零件」、
+「phantom 不觸發 CAM1」、「要 6.4 秒才能餵一顆」的結論,原因**全部只是這個**。
+實測 ~25 steps/s 和 12 的理論值 24 完全吻合,那個數字本來就該讓我起疑。
+
+現在 20 顆 200ms 間隔:`gate in=20 out=2, loss="blocked"` —— 距離不再是
+瓶頸(換成 blocked,那是 pipeline 深度),而通過的兩顆 100% 拿到判定。`stage_pulse_offset.CAM1_on=9515`
 要求盤子轉到那個 pulse 位置,而 `plate_freq_meas` 有讀數(14.33)表示 counter
 在走。若 phantom 本來就不設計成會觸發相機,那就改用會觸發的路徑
 (`trig_cam_pulse` / `trig_cam_burst`)或讓 phantom 也走完 CAM1 階段。
