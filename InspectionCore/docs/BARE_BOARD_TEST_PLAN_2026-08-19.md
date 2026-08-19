@@ -105,6 +105,42 @@ count   {"NA": 2}
 report 回去 → **板子拿到判定並計數**。判定是 `NA` 而不是 SEL1/SEL3,因為
 core 沒有真的檢驗 —— 那正是 `INSP_CAM_TS_SYNTH` 應有的行為。
 
+### 迴圈會閉合,但回覆太快會讓板子停機
+
+兩次獨立測試,**真正進到 verdict 的零件 100% 拿到判定**:
+
+```
+verdict {"in": 1, "out": 1, "pct": 100}    count {"NA": 1}
+verdict {"in": 2, "out": 2, "pct": 100}    count {"NA": 2}
+```
+
+停機的不是它們,是**多餘的判定**:`error_hist [1]` =
+`INSP_RESULT_MATCHES_NO_OBJECT`「a verdict arrived for no known object」。
+
+孤兒判定只能來自 sync pulse。被 `blocked` 擋掉的零件在
+`LegacyFirmware.cpp:2871` 就 return,**根本不會建立物件、不會發 cam_trig**,
+所以它們不是來源。機制在 `6565`:
+
+```cpp
+if(syncOutstanding!=1) bySync=NULL;      // 同時有多個 sync 待處理 -> 配不到
+```
+
+`INSP_CAM_TS_SYNTH` 目前在 **RX 路徑上同步回覆**,幾乎零延遲。真實 core
+要等曝光加影像處理(acquisition leg 量過約 8ms),所以 sync pulse 之間有足夠間
+隔;合成回覆沒有,前一個還沒被消費下一個就到,`syncOutstanding` 就大於 1。
+
+**證據是速率相關的**:8 秒間隔餵 4 顆全程無誤;1 秒間隔餵到第 4 顆就 error 1。
+
+下一步(尚未實作):給合成回覆加一個延遲,讓它像真的一樣。不能在 RX 路徑上 sleep
+——那會卡住 perif RX——所以需要一個小 queue 加一條送出執行緒,或掛在既有的
+perif send thread 上。
+
+**已排除**:對 sync pulse 不回覆(試過,`e4c19f8c` 已回退)。CAL 的
+`cam_ts` 就是從那個回覆來的,擋掉它校正立刻失效
+(`valid=false`、`state 112`)。
+
+---
+
 ### 轉速:別再設錯
 
 `plate.freq` 的單位不是轉/秒。原始碼註解給了 production 值:
