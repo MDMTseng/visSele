@@ -112,7 +112,28 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   for (int i = 1; i < nS - 1; i++)
   {
     const unsigned char *r0 = g.ptr<unsigned char>(i-1), *r1 = g.ptr<unsigned char>(i), *r2 = g.ptr<unsigned char>(i+1);
+    // The Sobel below reads rows i-1, i and i+1, so the off-image test has to
+    // cover all three. Checking only row i left a one-row gap.
+    //
+    // Off-image samples are filled with 0 above, and a 0<->bright step is a
+    // full-scale gradient, so any that reach this Sobel outrank a real edge on
+    // a low-contrast feature. Whether they reach it depends on the angle: the
+    // differences and the guard both run along j, so when searchDir is PARALLEL
+    // to the frame edge being crossed a column is at constant distance from it
+    // and goes out of frame whole-columns-at-a-time -- the axis the 1x3 guard
+    // already covers. When searchDir is SLANTED the boundary cuts the band
+    // diagonally, row i can be fully in-image while row i-1 is partly outside,
+    // and those zeros get through.
+    //
+    // Measured on a UNIFORM 400x200 image with no feature anywhere: slanted
+    // scans at 10/25/45 deg reported an edge at y = 198.02 / 198.13 / 197.78,
+    // strength 200 -- fabricated, and sitting on the frame boundary. After this
+    // fix they report nothing, and real measurements are bit-identical
+    // (--insp leaf diff over test1: 959 leaves, 0 differ).
+    // Regression: test_suite/test_searchpoint_frame_edge.cpp
+    const unsigned char *v0 = valid.ptr<unsigned char>(i-1);
     const unsigned char *vr = valid.ptr<unsigned char>(i);
+    const unsigned char *v2 = valid.ptr<unsigned char>(i+1);
     const unsigned char *m = useMask ? mask.ptr<unsigned char>(i) : nullptr;
     int16_t *sv = dbg ? sobViz.ptr<int16_t>(i) : nullptr;
     eline[0] = eline[nP-1] = 0.f;
@@ -121,7 +142,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       int gx = (r0[j+1] + 2*r1[j+1] + r2[j+1]) - (r0[j-1] + 2*r1[j-1] + r2[j-1]); // perp gradient
       if (sv) sv[j] = (int16_t)gx;
       float e = sgn(gx);
-      if (!vr[j-1] || !vr[j] || !vr[j+1]) e = 0;     // off-image -> drop spurious border edge
+      if (!vr[j-1] || !vr[j] || !vr[j+1] ||
+          !v0[j-1] || !v0[j+1] || !v2[j-1] || !v2[j+1]) e = 0;  // off-image -> drop spurious border edge
       if (useMask && !m[j]) e = 0;
       eline[j] = e;
     }
