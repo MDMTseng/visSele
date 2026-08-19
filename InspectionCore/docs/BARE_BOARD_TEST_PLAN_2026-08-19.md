@@ -105,6 +105,60 @@ count   {"NA": 2}
 report 回去 → **板子拿到判定並計數**。判定是 `NA` 而不是 SEL1/SEL3,因為
 core 沒有真的檢驗 —— 那正是 `INSP_CAM_TS_SYNTH` 應有的行為。
 
+### 迴圈完全閉合:60/60,零損失
+
+```
+gate    {"in": 60, "out": 60, "pct": 100, "loss": "none"}
+verdict {"in": 60, "out": 60, "pct": 100, "unanswered": 0}
+count   {"SEL3": 60}        <- cat_ok 的料道,分料決策也走到了
+error_hist []
+```
+
+60 顆零件 18 秒內跑完 gate → CAM1 → cam_trig → 合成 report → 配對 → 計數,
+**沒有相機、沒有轉盤**。
+
+### 擋住它的是我對兩站宣告都回覆
+
+板子在報 error 之前就印了完整診斷,一直都有,是我沒去看:
+
+```
+NOMATCH state=101 tid=1 cam_ts=... valid=1 nearest=1 nd=6608
+        rb_real=1 rb_sync=0 syncOut=0
+```
+
+`rb_sync=0`、`syncOut=0` 一次否決了「校正脈衝造成孤兒判定」那整套推論。
+`nearest=1 nd=6608` 說配對沒壞,只差 6.6ms,而 `TOL_US=5000`。
+
+原因在擷取到的宣告裡:
+
+```
+cam_trig tid=1 cam=2 t_us=98673515 gate_pulse=482119
+cam_trig tid=1 cam=1 t_us=98680146 gate_pulse=482119
+```
+
+**同一顆零件、同一個 gate_pulse、兩站、相差 6631 μs。** core 自己的 pairing log
+一直寫著「the firmware announces every object on both 1 and 2」,而
+`stage_pulse_offset` 的 CAM1_on 9515 與 CAM2_on 9317 差 198 steps,在
+30000 steps/s 下正是 6600 μs。板子只記一站的 `cam_us`,所以兩站都回,
+必有一個永遠配不上 —— **不管什麼時候送**。
+
+修法是照 conn_info 裡的 `cam_idx` 過濾:一台相機、一路 frame、一個 report。
+
+### 死掉的假設(別再跑一次)
+
+| 假設 | 怎麼被否決的 |
+|---|---|
+| 回覆太快,sync 還沒被消費 | 0ms 與 8ms 延遲的 `nd` 完全相同(6608) |
+| 校正脈衝的回覆晚到、tombstone 溢出 | `rb_sync=0`,從頭到尾沒有 sync 涉入 |
+| core 該認得 CAL_BIT 的 tid | 板子早就不用 tid 配對了 —— 「with the voting scheme gone the tid lookup went too」 |
+| 該給合成回覆加速率上限 | core 就是要忠實回覆每一個 frame,速率不是 core 的事 |
+
+**驗收標準要用「量化誤差等級」而不是「小於 TOL_US」。** `cam_ts` 是從板子
+自己的 `t_us` 算的,`pipe->cam_us` 也是同一個 `time_us`,所以
+`nd` 理論上就該是 0。用 5000 當及格線的話,6608 修成 3000 也會被誤判成修好。
+
+---
+
 ### 迴圈會閉合,但回覆太快會讓板子停機
 
 兩次獨立測試,**真正進到 verdict 的零件 100% 拿到判定**:
