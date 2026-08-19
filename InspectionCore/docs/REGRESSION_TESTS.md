@@ -288,6 +288,13 @@ before the code is blamed.
    Took two polls to return to CONNECTED. The probe should restore the slot
    itself; until it does, check `__GP_PERIF_LINKS__()` after running it.
 
+   **And send that CONNECT once, not in a retry loop** (2026-08-19). A serial
+   `PD CONNECT` re-opens the port, and opening the port DTR-resets the
+   ESP32 -- so a script that polls `!pd` until the board answers reboots it
+   on every attempt and it never gets the ~8s it needs to finish booting.
+   Measured: 12 polls at 3s produced 19 `perif: link RESYNC requested`
+   lines and a board that never answered at all. One CONNECT, then wait.
+
 ## Gaps (nothing covers these today)
 
 - **`fixtures/test1.hydef` has no matching image in the repo.** It is the
