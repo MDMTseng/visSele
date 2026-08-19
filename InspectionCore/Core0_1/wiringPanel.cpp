@@ -1374,6 +1374,21 @@ class PerifChannel:public Data_JsonRaw_Layer
     // of this reply -- bySync only picks WHICH pipe is the sync one, it does
     // not supply the timestamp. Skipping sync pulses starves calibration:
     // measured, valid=false and state 112 within seconds.
+    // One camera produces one frame, so answer one announcement per part.
+    //
+    // The firmware announces every object on BOTH stations -- the core's own
+    // pairing log says so: "the firmware announces every object on both 1 and
+    // 2". The two stations are 198 steps apart (stage_pulse_offset CAM1_on
+    // 9515, CAM2_on 9317), which at the production 30000 steps/s is 6600us.
+    // Answering both makes the second reply miss by exactly that: measured
+    // nd=6608 against a TOL_US of 5000, NOMATCH, machine halted. The board
+    // records cam_us for one station only, so the other reply can never match
+    // no matter when it is sent -- which is why the figure was identical with
+    // a 0ms and an 8ms delay.
+    //
+    // cam_idx comes from conn_info and is what the machine actually has.
+    const char *pcam = strstr(p, "\"cam\":");
+    if (pcam && (int)atoll(pcam + 6) != cam_idx) return;
     const char *pgp = strstr(p, "\"gate_pulse\":");
     if (pgp && atoll(pgp + 13) == 0) return;
     uint64_t cam_ts = (uint64_t)((double)t_us * camTsSynthMult())
