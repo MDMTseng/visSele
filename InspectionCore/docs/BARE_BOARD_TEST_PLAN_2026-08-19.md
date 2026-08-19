@@ -55,29 +55,33 @@ CAMSYNC CAL 要靠相機回傳的 pulse 才能收斂(`LegacyFirmware.cpp:4530-45
 
 ### 迴圈的現況:校正閉合了,零件還沒
 
-**已閉合**: 讓 core 直接回答板子的 trigger,校正因此
-收斂 —— 、、 **精確等於**設定的
-(5000 和 800 各驗過一次)、。在此之前每次
-都是跑 16 秒 CAL 然後掉 112。
+**已閉合**:`INSP_CAM_TS_SYNTH=1` 讓 core 直接回答板子的 trigger,校正因此
+收斂 —— `state=101 (READY)`、`valid=true`、`offset_us` **精確等於**
+設定的 `INSP_CAM_TS_OFFSET_US`(5000 和 800 各驗過一次)、`resid_us=0`。
+在此之前每次都是跑 16 秒 CAL 然後掉進 112。
 
-**還沒閉合**:零件通過 gate 進了 pipe(/ 會增加),但
- 全 0、SEL 計數不動。根因**不是**配對邏輯 —— 直接觀測發現:
+**還沒閉合**:零件通過 gate 進了 pipe(`registered`/`waiting` 會增加),
+但 `heading` 全 0、SEL 計數不動。根因**不是**配對邏輯 —— 直接觀測發現:
 
-
+```
+餵 6 個 phantom  ->  cam_trig announcements: 0
+```
 
 **phantom 零件從來不觸發 CAM1**,所以沒有 cam_trig 宣告,core 沒有東西可回答,
-物件就永遠停在 waiting。sync pulse 能成功是因為它走另一條路、自己會發 cam_trig。
+物件就永遠停在 waiting。sync pulse 能成功是因為它走另一條路、自己會發 cam_trig
+—— 那正好解釋了為什麼校正收斂而零件不動。
 
-排除掉的假設(不要再試):匹配窗(5000us 與 800us 行為相同)、物件註冊時機
-(物件在 gate 時就進 RBuf,CAM1 時才填 )、 欄位缺失(兩個
-cam_trig 送出點都有)。
+已排除的假設(不要再花時間):匹配窗(5000us 與 800us 行為完全相同)、物件註冊
+時機(物件在 gate 時就進 RBuf,到 CAM1 才填 `cam_us`)、`t_us` 欄位缺失
+(兩個 cam_trig 送出點都有帶)。
 
-下一步是查 phantom 到 CAM1 之間斷在哪 —— 
-需要盤子轉到那個 pulse 位置,而  有讀數(14.33)表示 counter
-在走。若 phantom 本來就不設計成會觸發相機,那就要改用會觸發的路徑
-( / )或讓 phantom 也走 CAM1 階段。
+下一步是查 phantom 到 CAM1 之間斷在哪。`stage_pulse_offset.CAM1_on=9515`
+要求盤子轉到那個 pulse 位置,而 `plate_freq_meas` 有讀數(14.33)表示 counter
+在走。若 phantom 本來就不設計成會觸發相機,那就改用會觸發的路徑
+(`trig_cam_pulse` / `trig_cam_burst`)或讓 phantom 也走完 CAM1 階段。
 
 ---
+
 
 ## 1. 起手式(30 分鐘,先做,別跳過)
 
