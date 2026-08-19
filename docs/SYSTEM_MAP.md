@@ -271,7 +271,7 @@ python3 Peripheral/uInspESP32/tools/uinsp_panel.py --port /dev/cu.usbserial-0001
 |---|---|
 | 全域索引 | `docs/README.md`（本檔上層） |
 | Core 開放問題/bug 帳本 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-15.md`（Tier 1-7 全帶 FIXED/OPEN 標注） |
-| Core sprint 敘事 | `InspectionCore/docs/HANDOVER_2026-08-16.md` |
+| Core sprint 敘事 | `InspectionCore/docs/HANDOVER_2026-08-18.md`(最新) |
 | 測試怎麼跑 | `InspectionCore/docs/REGRESSION_TESTS.md`＋`Peripheral/uInspESP32/tools/TESTS.md` |
 | 板子韌體必守不變量 | `Peripheral/uInspESP32/docs/FIRMWARE_CONTRACT.md` |
 | 整機流程/時戳參考點 | `Peripheral/uInspESP32/docs/MACHINE_FLOW.md` |

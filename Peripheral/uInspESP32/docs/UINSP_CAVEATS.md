@@ -3241,3 +3241,67 @@ error 13 in the same commit (burst_pairing, dryrun_pairing, real_parts,
 soak_real, soak_pairing, slip_probe, jitter_sweep, regress_watch, flatten_soak,
 soak_sched). Deleting a reported field without doing this would have left them
 either crashing on a KeyError or — worse — silently passing.
+
+---
+
+## 重複判定「最差者勝」依賴 cat 的數值順序(2026-08-18)
+
+`LegacyFirmware.cpp:6731`:
+
+```cpp
+if(cat < tarP->insp_status) { REP_REPEAT_WORSE_N++; tarP->insp_status = cat; }
+```
+
+保留**數值較小**的 cat,計數器叫 `REP_REPEAT_WORSE_N`,意圖是最差者勝。
+**那只有在 `cat_ng < cat_ok` 時成立。** 反過來接線,同一條規則變成最好者勝:
+一個重複的判定把 NG 升級成 OK,壞件跟著好料出去,而計數器名字不變。
+
+韌體本身沒有檢查。core 那邊現在會拒絕 `cat_ng >= cat_ok` 並讓分料維持關閉
+(`wiringPanel.cpp`),所以已經被擋住 —— 但**韌體這條規則仍然只是隱含地假設那個順序**。
+改動附近程式碼時要記得。
+
+## machine_id 從晶片推導,不再可設定(2026-08-18)
+
+以前是普通的可設定字串,所以會被包進任何設定匯出 —— 而匯出最常見的用途正是
+「用一台調好的機器把新機帶起來」。兩塊板子就會回答同一個名字。**那不會有任何異常行為**:
+兩台都正常跑,損害落在檢測紀錄上,歸到錯的機台,事後才在資料裡發現。
+
+現在 `MachineConfig::machineId()` 從 eFuse MAC 推導成 `uI-<12 hex>`。
+選它而不是「亂數寫進 NVS」,是為了實際會發生的情境:清 NVS 重置機器。
+亂數會變成新 ID 並讓已歸檔的紀錄變孤兒;MAC 推導回來還是同一個,因為是同一塊板子。
+**已存的 id 仍然優先**,所以用舊方案設定過的板子保住原名。
+
+`set_setup` 的 `machine_id` 分支移除了,但是**接受並忽略**而不是拒絕整條指令 ——
+舊備份和舊 host 還會帶這個鍵,為了一個誰都改不了的欄位讓整次匯入失敗不划算。
+`get_setup` 仍然回報它。
+
+## `board_query.py` 要先送 RESET_PACKET(2026-08-18)
+
+它送裸 JSON + `\n`,**沒有先送 `{"type":"RESET"}`**。裝置的 parser 一旦進入
+framing-error latch,那個位元組序列是唯一能解開的東西 —— 所以會出現
+「板子每秒都在送 SYSTIME,但問什麼都沒有回應」。
+
+手動補這一步就通:
+
+```python
+s.write(b'{"type":"RESET"}\n'); time.sleep(0.4); s.reset_input_buffer()
+s.write(b'{"type":"get_setup"}\n')
+```
+
+工具本身還沒修。
+
+## 回覆長度上限的理由是錯的(2026-08-18)
+
+`LegacyFirmware.cpp` 把 `retdoc` 訂在 3584,註解說 host 會砍掉超過 4096 的行。
+**那個 4096 在 core 的 `PerifConsoleThread` 裡,讀的是開發用 TCP console 的輸入,
+而且 POSIX-only。** 裝置→core 的真正上限是 core 的 `dataBuff[20480]`,
+loopback 實測到 20479 bytes 都完整往返。
+
+已經有代價:`get_schema` 的欄位是為了這個想像中的限制才從 `get_setup` 搬出去的。
+
+**但不代表就該調高。** 真正的成本不是 RAM(`retdoc` 是 static,走 `.bss`)而是
+**線路時間**:230400 baud 下 8KB 約 350ms,期間握著 `perif_tx_lock`,
+排在每一次判定寫入前面,直接壓到 CAM→SWITCH 的期限上。拆成多個指令比較便宜。
+
+注意方向:裝置**自己**的 RX 緩衝是 `include/comm/Data_Layer_Protocol.hpp:26` 的
+`dataBuff[2048]`,那是 core→裝置。core 能發的最大 `set_setup` 從來沒被量過。

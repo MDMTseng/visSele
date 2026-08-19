@@ -1,4 +1,4 @@
-# Defect backlog — opened 2026-08-18
+# Audit backlog — 2026-08-18
 
 Found by four review agents reading the sources, plus bench work the same day.
 Everything here is recorded, not fixed. Items fixed on the day are listed at

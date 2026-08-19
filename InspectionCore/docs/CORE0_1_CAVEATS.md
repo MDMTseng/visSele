@@ -1481,3 +1481,77 @@ ring 是**具名共享記憶體,沒有人 unlink**,所以它跨 core 重啟存�
 `log_crash_win.cpp` 會填,POSIX 版沒填 → dump 印 `module: base=0x0`,drainer 算不出
 RVA,每個 exe frame 都是 `??? 0x... 0x0 + <huge>`。**產線目標是 Windows,那條路是好的**;
 Mac bench 上請改看 `~/Library/Logs/DiagnosticReports/*.ips`(OS 的報告本來就有完整符號)。
+
+---
+
+## 同一個設定鍵在不同 CameraLayer 意義相反(2026-08-18)
+
+`default_camera_setting.json` 的 `framerate: -1` 是「不要限速」的哨兵值。
+`CameraLayer_Aravis::SetFrameRate` 這樣讀(`frame_rate != frame_rate || frame_rate < 0`
+→ `AcquisitionFrameRateEnable = false`);**HikRobot 那層當時只在 `> 1000` 時關閉**,
+所以 `-1` 落進 enable 分支,把限速器**打開**,接著把 `-1` 寫進 `AcquisitionFrameRate`
+失敗,相機就停在它自己 UserSet 裡存的值。
+
+實機上那個值是 **8 fps**,而轉盤每 ~53ms 報一個物件(18.8/s)。相機吃不下一半的觸發,
+進得來的畫格時間戳距離它的物件約 18ms(`NOMATCH nd=18564`),裝置放不上去,
+二十件之內就以 `INSP_RESULT_MATCHES_NO_OBJECT` 停機。
+
+**排查時的訊號**:`exposure floor: 125000us (ResultingFrameRate 8.00 fps)`。
+開機時是 161.69 fps,套用 `default_camera_setting.json` 之後掉到 8 —— 中間那一步就是它。
+
+同一個函式還有第二半:寫入的回傳碼算了、印在 log 裡、**但沒有進回傳值**,
+所以被拒絕的寫入回報 ACK。log 裡有證據(`>ret0,80000102>`),沒有任何東西對它採取行動。
+
+兩者都已修。但這個**類別**還在:`MindVision` 的 `SetFrameRate` 把 `<10` 對應到最慢速度模式,
+`BMP_carousel` 對 `-1` 會算出 `frameInterval_ms = -1000` 而空轉。查任何跨相機的設定行為前,
+先讀那一層自己的 setter,不要假設語意共用。
+
+## Windows 上這些東西和 macOS 不一樣(2026-08-18)
+
+一次把系統帶上 Windows bench 時撞到的,全部與演算法無關:
+
+- **`setThreadPriority` 全部失敗**(`rc=129`,SCHED_RR 不存在)。7 條執行緒
+  (inspection / preview / snapshot-save / slow-frame-save / perif-send / perif-ping /
+  perif-watchdog)都跑在預設 policy,除了 7 行 `[E]` 沒有任何東西反映這件事。
+  **在這裡量到的延遲不等於在 macOS 量到的延遲。**
+- **`INSP_PERIF_CONSOLE` 是空殼**(`#ifndef _WIN32`)。port 4099 那條路在 Windows 不存在,
+  所有「改問核心 console」的建議在這台機器上無效。
+- **`git core.autocrlf=true` + 沒有 `.gitattributes`** ⇒ 所有逐位元比對的 baseline
+  必然失敗,而且 diff 的兩邊**逐字元相同**。已用 `.gitattributes` 的 `-text` 修掉。
+- **Chromium 對檔案是獨佔鎖**。webctld 的 Playwright profile 在
+  `UI/WebUI/tools/webctl/.userdata`,位於 vite 的 watch root 內,chokidar 一 watch 到
+  `Default/Network/Cookies` 就 `EBUSY`,**整個 dev server 死掉**。macOS 是 advisory lock
+  所以不會。已加 `server.watch.ignored`。
+- **HikRobot 的 `SetROI` 會對齊硬體粒度**(實測 `inc x=4 y=4 w=16 h=4`):要求
+  `1154,384 718x522` 會落在 `1156,384 720x524`。判斷成功要比對**回讀值容差**,
+  不能用嚴格相等 —— 也不能用逐個寫入的回傳碼,因為「把 Width 設成它已經是的值」
+  會被 HikRobot 以 `0x80000047` 拒絕。
+
+## 裝置回覆的長度上限不是 4096(2026-08-18)
+
+韌體 `LegacyFirmware.cpp` 把 `retdoc` 訂在 3584,理由寫的是
+「the core reads the peripheral line with `if (line.size() < 4096)`」。**那行不是讀裝置的。**
+它在 `PerifConsoleThread`(現在的 `wiringPanel.cpp:7442`),讀的是開發用 TCP console 的
+**輸入**,而且整段 `#ifndef _WIN32`。
+
+裝置→core 的真正路徑是 `common_lib/Data_Layer_Protocol.cpp`,緩衝區是 `dataBuff[20480]`。
+用 loopback harness 實測(真 sender 產生 frame → 真 receiver),512 到 **20479 bytes**
+全部完整往返,一次送和 512-byte 分塊送都一樣;20480 以上才失敗。而且 frame 結束是靠
+`json_seg_parser` 的括號配對偵測,`*HHHH\n` 只是完整性檢查 —— 它結構上就不受行長度限制。
+
+這個誤解已經造成代價:`get_schema` 的欄位是**為了這個想像中的限制**才從 `get_setup`
+搬出去的,`:1177` 還有欄位因此沒被加進去。
+
+**注意方向**:裝置**自己**的 RX 緩衝是 `include/comm/Data_Layer_Protocol.hpp:26` 的
+`dataBuff[2048]`,那是 core→裝置,和上面 20480 是兩回事。core 能發給裝置的最大
+`set_setup` 從來沒被量過。
+
+## 重複判定的解決規則依賴 cat 的數值順序(2026-08-18)
+
+韌體 `LegacyFirmware.cpp:6731` 用 `if(cat < tarP->insp_status)` 保留**數值較小**的 cat,
+計數器叫 `REP_REPEAT_WORSE_N`,意圖是「最差者勝」。
+
+**那只有在 `cat_ng < cat_ok` 時成立。** 反過來接線,同一條規則變成最好者勝 ——
+一個重複的判定會把 NG 升級成 OK,壞件跟著好料出去,而計數器名字不變。
+core 原本只檢查 `!= 0`。現在 `wiringPanel.cpp` 會**拒絕** `cat_ng >= cat_ok`
+並讓分料維持關閉(全部回流是停著且看得見的;偶爾升級 NG 兩者皆非)。

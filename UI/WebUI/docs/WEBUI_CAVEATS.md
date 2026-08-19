@@ -313,3 +313,69 @@ window.__t={};const o=WebSocket.prototype.send;
 WebSocket.prototype.send=function(d){const u=new Uint8Array(d);
   const tl=String.fromCharCode(u[0],u[1]);__t[tl]=(__t[tl]||0)+1;return o.apply(this,arguments)};
 ```
+
+---
+
+## 選元素不要靠位置、幾何或標籤文字(2026-08-18)
+
+三份 harness 曾經這樣找控制項,三種都會安靜地選錯:
+
+- **模式 tag** = 「最後一個文字是 `測試` 的元素」。`測試` 在這一頁是**三個不同的東西**
+  (製程一個、檢測方式一個、標題 chip 一個),用位置代替語意,群組加一個 tag 就錯位。
+- **play 按鈕** = 「右下角最寬的 button」。對執行中的頁面實測過:MAIN 在別的狀態時
+  那條規則會解析到**檔案瀏覽器**。那一排全是 icon-only text button,**選錯不會報錯,
+  會安靜地點下去。**
+- **相機略過鈕** = 中文標籤 `text=跳過相機連線`。介面一翻譯就壞。
+
+改用 `data-testid`。而且要**公布語意,不只給把手** —— 值得斷言的通常是
+「宣稱自己是 NG 的那格,讀的是接線說的那個出料口」,而渲染出來的數字已經把那個
+對應關係丟掉了,沒有任何選擇器救得回來。
+
+現有掛勾:`main-play`(+`data-ready`/`data-reason`)、`tag-option`
+(+`data-group`/`data-tag`/`data-checked`)、`tag-group`
+(+`data-count`/`data-min`/`data-max`/`data-fulfilled`)、`cam-reconnect-skip`、
+`uinsp-count` 與 `uinsp-hist-cell`(+`data-bin`/`data-sel`/`data-value`)。
+
+`lib_enter.mjs` 保留舊啟發式當 fallback,而且退回時會印 `legacy …` ——
+「默默依賴猜測」因此看得見,不會變成永久狀態。
+
+## antd 把關閉的 modal 留在 DOM(2026-08-18)
+
+判斷「有沒有 modal 擋著」不能用 `querySelectorAll('.ant-modal-wrap').length`,
+那會對已關閉的 modal 回傳非零。要量 **rect 高度**:
+
+```js
+[...document.querySelectorAll('.ant-modal-wrap')].some(w => {
+  const r = w.getBoundingClientRect();
+  return r.height > 50 && getComputedStyle(w).display !== 'none';
+})
+```
+
+代價很具體:我照存在性判斷後連按 Escape,結果打到 app 上把**右側面板整個收合**,
+而那個狀態**跨重載持久化** —— 之後三次執行都在找一個不可能出現的按鈕。
+開場清 `localStorage` 可以拿到乾淨狀態。
+
+## 進 Inspection UI:play 之前必須先載入 recipe(2026-08-18)
+
+`enter_inspection.mjs` 曾經長期壞掉(停在 `station region: NOT-IN-INSPECTION-UI`),
+原因不是選擇器漂移,是**它從來沒有載入 recipe**。它靠 app 的 FI 模式自動載入,
+所以在 recipe DB 空的機器上,它就對著空的 MAIN 按 play,然後回報「進不去」卻不說原因。
+
+序列現在在 `tools/webctl/lib_enter.mjs`,`flows.mjs` / `cycle.mjs` /
+`enter_inspection.mjs` 共用。**曾經有三份**,能用的那份在 `flows.mjs` 裡,
+獨立那份已經腐爛 —— 那就是重複的代價。
+
+## 改了函式的契約,要跟到呼叫端(2026-08-18)
+
+同一天引入又修掉的兩個迴歸,形狀一樣:
+
+- `saveSetting` 學會**拒絕**寫入,但 `saveSettingPopUp` 仍無條件送
+  `ST MachineSetting`,而且送的是**未合併的快取**。改之前兩者一致(都錯),
+  改之後檔案拿到正確合併、執行中的 core 拿到過期值,操作員看到「設定未儲存」
+  而機器已經在用那些值。
+- `importSetupP` 用 `machineSetupUpdate(after, true)`,而 `after` 只含
+  `SETTABLE_KEYS`,所以 `doReplace` 把 `deviceState` 設成 `{}`,`machine_id` 消失。
+  strip 會把 `dev.machine_id` 蓋進每一筆歸檔批次 —— **匯入設定後歸零,
+  那批貨被歸檔成 `machine: null`。**
+
+兩個都是 review agent 讀 diff 找到的,沒有任何測試抓到。

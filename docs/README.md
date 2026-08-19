@@ -50,9 +50,10 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 你要做的事 | 讀這個 | 狀態 |
 |---|---|---|
 | **新 agent 接手整個系統:三方大地圖(板×core×WebUI)、邊界合約、跑產不干擾矩陣** | `docs/SYSTEM_MAP.md` | **2026-08-18 全面校準,從這裡開始** |
-| **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-16.md` | **現況地圖,最新** |
-| 想知道有哪些已知 bug / 哪些已修 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-15.md` | 逐項標 FIXED/OPEN/DEFERRED |
+| **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-18.md` | **現況地圖,最新** |
+| 想知道有哪些已知 bug / 哪些已修 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-18.md`(本輪)、`AUDIT_BACKLOG_2026-08-15.md`(上一輪) | 逐項標 VERIFIED/REPORTED、FIXED/OPEN |
 | 要測 / 想知道有哪些回歸測試 | `InspectionCore/docs/REGRESSION_TESTS.md` | 現行,測試索引 |
+| **手邊沒有相機和板子,想測穩定性** | `node UI/WebUI/tools/webctl/suite_nohw.mjs --list` | 13 項可跑 / 8 項標明缺什麼 |
 | 第一次接觸這個系統 | `InspectionCore/docs/TEAM_ONBOARDING.md` | 現行 |
 | 看系統拓樸 / 協定 / 資料流 | `InspectionCore/docs/ARCHITECTURE.md` | 現行 |
 | 在本機把核心跑起來 | `InspectionCore/docs/RUNNING_CORE0_1.md` | 現行 |
@@ -93,7 +94,8 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 
 - `InspectionCore/docs/HEADLESS_TEST_FIXTURE_2026-08-07.md` — 2026-08-07 的機台幾何
 - `Peripheral/uInspESP32/docs/PAIRING_VALIDATION_2026-08-06.md` — 該日的證據
-- `InspectionCore/docs/HANDOVER_2026-08-13.md` — 已被 `HANDOVER_2026-08-16.md` 接續;只在追那天的事時讀
+- `InspectionCore/docs/HANDOVER_2026-08-13.md` — 已被接續;只在追那天的事時讀
+- `InspectionCore/docs/HANDOVER_2026-08-16.md` — 已被 `HANDOVER_2026-08-18.md` 接續;只在追那兩天的事時讀
 - `InspectionCore/docs/REPORT_2026-08-11_fullframe_wedge.md` — full frame 拍 3-25 張後停機;**未解**,含排除項與四個被撤回的結論
 
 ---
@@ -114,14 +116,15 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 
 **狀態不寫在這裡,寫在 handover。** 本頁是不常變的地圖;會動的東西(現在做到哪、
 下一步、哪些會誤導你)放在**最新一份 `InspectionCore/docs/HANDOVER_*.md`**——
-目前是 `HANDOVER_2026-08-16.md`。每輪 sprint 收尾時只更新那份,這樣這段永遠指向
-真相,而不是某天的快照。開工前讀那份的 §「State」與「What will mislead you」。
+目前是 `HANDOVER_2026-08-18.md`。每輪 sprint 收尾時只更新那份,這樣這段永遠指向
+真相,而不是某天的快照。開工前讀那份的 §1 State 與 §2 What will mislead you。
 
-- **開什麼工 / 排序**:`HANDOVER_2026-08-16.md` §3 TODO
-- **有哪些 bug、修了哪些**:`AUDIT_BACKLOG_2026-08-15.md`(逐項標註)
+- **開什麼工 / 排序**:`HANDOVER_2026-08-18.md` §3 TODO
+- **有哪些 bug、修了哪些**:`AUDIT_BACKLOG_2026-08-18.md`(本輪,逐項標註 VERIFIED/REPORTED)
+  與 `AUDIT_BACKLOG_2026-08-15.md`(上一輪,仍有未結項)
 - **怎麼驗**:`REGRESSION_TESTS.md`
 
-分支目前是 `ct/core01_v2_mach_file_cleanup`(此段隨 handover 更新)。
+分支目前是 `ct/win-bench-bringup`(此段隨 handover 更新)。
 
 ---
 
