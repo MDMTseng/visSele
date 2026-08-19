@@ -10,7 +10,10 @@ import { fileURLToPath } from 'node:url';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.WEBCTL_PORT || 8765);
-const MODEL = process.env.WEBCTL_MODEL || '/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify';
+// Same fixture flows.mjs defaults to -- the def this pointed at lives only on
+// one developer machine, so the baselines were unreproducible anywhere else.
+const MODEL = process.env.WEBCTL_MODEL ||
+  path.join(dir, 'fixtures', 'caliper_verify_tagged');
 
 const health = await fetch(`http://127.0.0.1:${PORT}/health`).then((r) => r.json()).catch(() => null);
 if (!health) {

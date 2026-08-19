@@ -5,10 +5,15 @@
 //  4. kill the listener -> writes fail -> tx_fail moves, suspect flips
 //  5. PD CONNECT same desc -> must REOPEN (not reuse); fails (no listener) -> connected=false
 //  6. with frames still flowing -> dropped_no_channel moves
-import WebSocket from 'ws';
+import WebSocket from 'ws';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import net from 'node:net';
 import fs from 'node:fs';
-const DEF='/Users/mdm/workspace/visSele/InspectionCore/Core0_1/data/test1.hydef';
+// Default to the test1 fixture IN THIS REPOSITORY -- the def these probes were
+// /Users/mdm -- and at data/test1.hydef, which is gitignored -- so the probe
+// died with ENOENT on every machine but one. WEBCTL_DEF overrides it.
+const DEF=(process.env.WEBCTL_DEF || path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'test1.hydef'));
 const BPG_HDR=9; const enc=new TextEncoder();
 function frame(t,p,g,o){const b=enc.encode(o==null?'':JSON.stringify(o));const u=new Uint8Array(BPG_HDR+b.length+1);
 u[0]=t.charCodeAt(0);u[1]=t.charCodeAt(1);u[2]=p;u[3]=g>>8;u[4]=g&255;const l=u.length-BPG_HDR;

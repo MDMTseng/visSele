@@ -1,13 +1,18 @@
 // Does a paused browser stop THE SORTER, not just the UI?
 // fake TCP board counts verdict bytes; client B pauses its stream socket.
-import WebSocket from 'ws';
+import WebSocket from 'ws';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import net from 'node:net';
 import fs from 'node:fs';
 const BPG_HDR=9; const enc=new TextEncoder();
 function frame(t,p,g,o){const b=enc.encode(o==null?'':JSON.stringify(o));const u=new Uint8Array(BPG_HDR+b.length+1);
 u[0]=t.charCodeAt(0);u[1]=t.charCodeAt(1);u[2]=p;u[3]=g>>8;u[4]=g&255;const l=u.length-BPG_HDR;
 u[5]=l>>>24;u[6]=(l>>16)&255;u[7]=(l>>8)&255;u[8]=l&255;u.set(b,BPG_HDR);return u;}
-const def=JSON.parse(fs.readFileSync('/Users/mdm/workspace/visSele/InspectionCore/Core0_1/data/test1.hydef','utf8'));
+// Default to the test1 fixture IN THIS REPOSITORY -- the def these probes were
+// /Users/mdm -- and at data/test1.hydef, which is gitignored -- so the probe
+// died with ENOENT on every machine but one. WEBCTL_DEF overrides it.
+const def=JSON.parse(fs.readFileSync((process.env.WEBCTL_DEF || path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'test1.hydef')),'utf8'));
 
 let boardBytes=0;
 const srv=net.createServer(s=>{s.on('data',d=>{boardBytes+=d.length;});s.on('error',()=>{});});

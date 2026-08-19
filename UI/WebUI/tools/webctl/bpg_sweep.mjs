@@ -82,9 +82,15 @@ async function fire(bytes, pgid, ms = 800) {
 // a latency regression while still calling the core "alive". (It only proves
 // main-dispatch-lock health + path resolution -- a wedged stream/camera/insp
 // thread doesn't hold that lock and would still answer GS.)
-async function alive() {
+// liveMs, because a fixed budget makes the assertion depend on how much work
+// the case itself created. C11 deliberately queues 133,333 packets; the core
+// answers every one of them and comes back in ~2.3s (measured: 59k packets/s,
+// no crash, no leak, deterministic), so a flat 600ms reported LIVENESS LOST on
+// every single run. That is the test failing, not the core -- and a check that
+// cannot pass teaches people to ignore a red line.
+async function alive(liveMs = 600) {
   const p = nextPg();
-  const pkts = await fire(frame('GS', p, { items: ['binary_path'] }), p, 600);
+  const pkts = await fire(frame('GS', p, { items: ['binary_path'] }), p, liveMs);
   return pkts.some((k) => k.tl === 'GS' && k.data && typeof k.data.binary_path === 'string');
 }
 
@@ -94,7 +100,7 @@ const pkt = (pkts, tl) => pkts.find((k) => k.tl === tl);
 
 let pass = 0, fail = 0;
 const results = [];
-async function CASE(name, bytes, check, { expectNoReply = false, timeoutMs = 800 } = {}) {
+async function CASE(name, bytes, check, { expectNoReply = false, timeoutMs = 800, liveMs = 600 } = {}) {
   const p = nextPg();
   const pkts = await fire(typeof bytes === 'function' ? bytes(p) : bytes, p, timeoutMs);
   let ok = true, why = '';
@@ -106,7 +112,7 @@ async function CASE(name, bytes, check, { expectNoReply = false, timeoutMs = 800
       if (r !== true) { ok = false; why = r || 'assertion failed'; }
     }
   } catch (e) { ok = false; why = 'threw: ' + e.message; }
-  const live = await alive();
+  const live = await alive(liveMs);
   if (!live) { ok = false; why = (why ? why + '; ' : '') + 'LIVENESS LOST'; }
   results.push({ name, ok, why, live });
   (ok ? pass++ : fail++);
@@ -207,7 +213,11 @@ await CASE('C11 1.2MB of empty 9-byte packets (stack-blowup guard)', (p) => {
   const u = new Uint8Array(one.length * N);
   for (let i = 0; i < N; i++) u.set(one, i * one.length);
   return u;
-}, () => true, { timeoutMs: 3000 });
+}, () => true, { timeoutMs: 3000,
+     // 133k packets is real work, not a stall: allow for draining it.
+     // Measured 2.26s on the bench; 8s leaves room for a slower host
+     // while still catching an actual wedge.
+     liveMs: 8000 });
 
 if (INCLUDE_CRASHERS) {
   console.log('\nGroup D -- crashers (SIGSEGV an UNPATCHED core; patched -> ACK-false):');

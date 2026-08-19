@@ -2,7 +2,11 @@ node_modules/
 .userdata/
 legacy-golden-build/
 *.log
+# Probe OUTPUT: screenshots. Not fixtures -- those are INPUTS, and they are
+# excepted below. One rule for both is how fixtures/carousel silently failed
+# to be committed, which then reads downstream as "the carousel has no frames".
 *.png
+!fixtures/**
 baseline/*.png
 shot-*.png
 *.current.json
