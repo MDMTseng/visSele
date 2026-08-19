@@ -52,7 +52,8 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | **新 agent 接手整個系統:三方大地圖(板×core×WebUI)、邊界合約、跑產不干擾矩陣** | `docs/SYSTEM_MAP.md` | **2026-08-18 全面校準,從這裡開始** |
 | **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-18.md` | **現況地圖,最新** |
 | 想知道有哪些已知 bug / 哪些已修 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-18.md`(本輪)、`AUDIT_BACKLOG_2026-08-15.md`(上一輪) | 逐項標 VERIFIED/REPORTED、FIXED/OPEN |
-| 要測 / 想知道有哪些回歸測試 | `InspectionCore/docs/REGRESSION_TESTS.md` | 現行,測試索引 |
+| 要測 / 想知道有哪些回歸測試 | `InspectionCore/docs/REGRESSION_TESTS.md` | **2026-08-19 更新**,四層測試的總索引 + 11 條坑 |
+| **要寫或改 WebUI 的自動化測試** | `UI/WebUI/docs/TEAM_HANDOFF.md` §7 §13、`UI/WebUI/tools/webctl/qa/SUMMARY.md` | **2026-08-19 更新**;選元素的規則、五層架構、七個失敗各是什麼(沒有一個是新缺陷) |
 | **手邊沒有相機和板子,想測穩定性** | `node UI/WebUI/tools/webctl/suite_nohw.mjs --list` | 13 項可跑 / 8 項標明缺什麼 |
 | 第一次接觸這個系統 | `InspectionCore/docs/TEAM_ONBOARDING.md` | 現行 |
 | 看系統拓樸 / 協定 / 資料流 | `InspectionCore/docs/ARCHITECTURE.md` | 現行 |
@@ -60,7 +61,7 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 改 Core0_1 前想知道有哪些坑 | `InspectionCore/docs/CORE0_1_CAVEATS.md` | **追加式紀錄** |
 | 改韌體前想知道有哪些坑 | `Peripheral/uInspESP32/docs/UINSP_CAVEATS.md` | **追加式紀錄** |
 | 改 WebUI 前想知道有哪些坑 | `UI/WebUI/docs/WEBUI_CAVEATS.md` | **追加式紀錄** |
-| 接手 WebUI | `UI/WebUI/docs/TEAM_HANDOFF.md` | 現行 |
+| 接手 WebUI | `UI/WebUI/docs/TEAM_HANDOFF.md` | **2026-08-19 更新**(分支、Windows/macOS 兩台機的差異、測試層) |
 | 搞懂「一顆零件從進到被吹走」的完整流程與時序預算 | `Peripheral/uInspESP32/docs/MACHINE_FLOW.md` | **現行,最重要** |
 | 追「判定為什麼變了 / 為什麼沒判定」 | `InspectionCore/docs/UINSP_VERDICT_PATH.md` | 現行 |
 | 韌體任何實作都必須滿足的契約 | `Peripheral/uInspESP32/docs/FIRMWARE_CONTRACT.md` | 現行 |

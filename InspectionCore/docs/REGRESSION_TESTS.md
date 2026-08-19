@@ -1,8 +1,24 @@
-# Regression tests — what exists and how to run it (2026-08-17)
+# Regression tests — what exists and how to run it (2026-08-19)
 
-One page, three layers. The offline golden gates every measurement change;
-the live probes cover what `--insp` cannot see (admission, perif, WS); the
-WebUI suite covers the editor. Known traps at the bottom — read them first.
+One page, four layers. The offline golden gates every measurement change; the
+live probes cover what `--insp` cannot see (admission, perif, WS); the WebUI
+suite covers the editor and the operator's road into inspection; and `qa/`
+holds 39 focused scripts against the app's internals. Known traps at the
+bottom — read them first.
+
+**If all you want is to run something:**
+
+```sh
+node UI/WebUI/tools/webctl/suite_nohw.mjs          # 13 probes, no camera, no board
+node UI/WebUI/tools/webctl/suite_nohw.mjs --list   # just the plan, runs nothing
+```
+
+It checks its own preconditions first and exits **2** — not 1 — when the core,
+vite or webctld is down, so a red line always means the code and never the
+bench. Three outcomes, kept apart on purpose: PASS asserted, **SKIP declined
+for a printed reason (this is NOT a pass)**, NEEDS never ran here at all and
+says what it wants. A suite reporting all-green while a third of it never ran
+is worse than one reporting two thirds.
 
 ## 1. Core, offline (no daemon, seconds)
 
@@ -51,9 +67,54 @@ All in `UI/WebUI/tools/webctl/`.
 | flows suite | `node flows.mjs verify` | 9 user flows: the 8 editor flows (load / select / edit / editInput / add / addArc / addMeasure / addThenDelete; `editInput` proves a REAL keystroke lands — USL edit → UCL recompute) plus **inspCycle**: recipe with tag margins → REAL menu entry into the Inspection UI (drawer / mode tag / play, with camera-reconnect-modal and WS-SPLASH-bounce handling) → asserts the tag's USL override applies in inspection and is RESTORED on exit |
 | def oracle | `node golden.mjs verify caliper_verify <hydef>` | load → serialize byte-identical (what the UI sends the core wholesale) |
 | mode round-trip | `node cycle.mjs [laps]` | N laps of the operator's day: editor + REAL inst-check (EX → sig360info lands) → recipe with alternating NG-range setup (tag TAGX vs none) → inspection via the real menu road → NG range in force asserted → exit → USL restored (+ the component's restore log) and the def hash stable across all laps. Catches repetition-only leaks (double-apply, SM dead ends, modal zombies). ~10s/lap; 15/15 green 2026-08-17 |
+| play readiness | `node play_readiness.mjs` | play is enabled iff EVERY tag group the operator can SEE is satisfied. Reads `data-testid="tag-group"`'s own `data-count`/`data-min`/`data-max`/`data-fulfilled` and ANDs them, then compares against `main-play`'s `data-ready`. **Pins an open defect** (readiness is computed against the base preset, the picker renders the base preset PLUS the recipe's margin group) — it SKIPs on the current fixture, which carries one margin tag, so `maxCount:1` cannot be breached. Needs a two-margin-tag fixture to actually drive |
+| no-hardware runner | `node suite_nohw.mjs [--list]` | the 13 above/below that need neither camera nor board, plus the 8 that do and are therefore listed-but-not-run. Materialises `data/BMP_carousel_test` from `fixtures/carousel/` before starting |
+| shared entry sequence | `lib_enter.mjs` (imported, not run) | `makeCtl` / `toMain` / `dismissCamModal` / `loadRecipe` / `enterInspection`. The one implementation of "get the app into the Inspection UI"; it had been copied three times and two copies had rotted. Prefers `data-testid`, keeps the old heuristics as fallbacks, and logs `legacy …` when it falls back so quiet dependence on a guess stays visible |
 
 Re-baseline with `capture` ONLY after an intended behaviour change, and diff
 the new snapshot by eye before committing it.
+
+### 3b. `qa/` — 39 focused scripts against the app's internals
+
+`node UI/WebUI/tools/webctl/qa/run.mjs [suite …]`, catalogued in
+`qa/SUMMARY.md`. A different layer from the three tables above: these drive
+the **dev hooks** `script.jsx` exposes (`__GP_STORE__`, `__GP_DEF__`,
+`__GP_BPG__`, `__GP_UTIL__`, `__GP_DB_QUEUE__`, `__GP_DIAG__`,
+`__GP_MEASURE__`, `__GP_PERIF_LINKS__`, `__GP_LOG__`, `__GP_LOAD_BY_PATH__`)
+rather than the rendered DOM, so they reach the codec, the IndexedDB queue, the
+expression evaluator and the middleware — none of which any flow can see. Named
+`r<round>_<topic>.mjs`; the runner serialises them because webctld owns ONE
+browser, and it categorises PASS / SKIP / FAIL by exit code plus a SKIP marker
+in the output.
+
+**Full run, this bench, 2026-08-19: 32 PASS, 0 SKIP, 7 FAIL, 182 s.**
+
+That is after the fixture fix below. Before it, the same command on the same
+bench read **15 PASS, 21 SKIP, 3 FAIL, 954 s** — because 22 of the 39 suites
+defaulted `WEBCTL_MODEL` to a path on one developer's Mac, and each then
+misreported the failed load as `SKIP (core down)` with the core up and
+answering on 4090 throughout. `qa/lib_model.mjs` now owns both the default and
+the diagnosis; `diagnoseLoadFailure()` asks the page whether the core is
+actually connected instead of pattern-matching an error string.
+
+| | Before | After |
+|---|---|---|
+| PASS | 15 | **32** |
+| SKIP | 21 | **0** |
+| FAIL | 3 | 7 |
+| Wall clock | 954 s | **182 s** |
+
+**FAIL rose because five suites that had been skipping were finally allowed to
+run.** Those failures were always there. None is a newly-introduced defect, and
+the full classification is in `qa/SUMMARY.md`; in short: two stale tests
+(`r3_serialize` S4 fires `input` without blur — TEAM_HANDOFF §9.15;
+`r10_bpgfuzz` F3 asserts fields `raw2Obj_IM` has never set), one false red
+(`r4_purelib` passes everything then aborts in libuv teardown), one flake
+(`r6_decorator` T6, 2 of 4 runs), three that never reach the Inspection UI
+because they roll their own entry sequence instead of importing
+`lib_enter.mjs`, and one (`r8_matching`) that needs triage against the fixture
+before the code is blamed.
+
 
 ## Known traps
 
@@ -85,9 +146,24 @@ the new snapshot by eye before committing it.
    another state — and every candidate there is an icon-only text button, so
    the wrong pick clicks silently instead of failing. Label text is no better:
    it is translated, and 測試 is three different things.
-   Hooks that exist so far: `main-play` (+`data-ready`), `tag-option`
-   (+`data-group`/`data-tag`/`data-checked`), `cam-reconnect-skip`,
-   `uinsp-count` and `uinsp-hist-cell` (+`data-bin`/`data-sel`/`data-value`).
+   Every hook that exists, verified against source 2026-08-19:
+
+   | `data-testid` | Where | Publishes |
+   |---|---|---|
+   | `main-play` | `MAINUI.js:887` | `data-ready` 0/1, `data-reason` |
+   | `cam-reconnect-skip` | `MAINUI.js:393` | — |
+   | `tag-group` | `rdxComponent.jsx:614` | `data-group`, `data-count`, `data-min`, `data-max` (`''` when undefined), `data-fulfilled` |
+   | `tag-option` | `rdxComponent.jsx:635` | `data-group`, `data-tag`, `data-checked` |
+   | `uinsp-count` | `uInspESP32_UI.jsx:1870` | `data-bin`, `data-sel`, `data-value` |
+   | `uinsp-hist-current` | `uInspESP32_UI.jsx:2175` | the 目前 row |
+   | `uinsp-hist-cell` | `uInspESP32_UI.jsx:2178` | `data-bin`, `data-sel`, `data-value` |
+   | `open-slid-modal` | `InspectionUI.js:2843` | — (predates this rule) |
+   | `slid-bl-on` / `slid-bl-off` / `slid-em-stop` / `slid-comm-diag` / `slid-comm-diag-result` | `rdxComponent.jsx:1362-1414` | — (predates this rule) |
+
+   The `data-*` half is the point. `main-play` alone lets you click it;
+   `data-ready`+`data-reason` let you assert WHY it is or is not ready, and
+   `tag-group`'s counts let `play_readiness.mjs` recompute readiness from what
+   is on screen instead of trusting the same code it is testing.
    Publish the SEMANTICS, not just a handle: the assertion worth making is
    usually "the cell claiming to be NG reads the outlet the wiring says is NG",
    and the rendered digits have thrown that mapping away. If a control you need
@@ -122,8 +198,56 @@ the new snapshot by eye before committing it.
    bounds ran 29-52s (vs 16s baseline) on a loaded bench on both A/B binaries —
    re-baseline quiet before believing a regression.
 
+8. **Windows: three things that break the suite and none of them are the code**
+   (2026-08-18/19). This suite had never once passed off the Mac bench.
+   (a) `core.autocrlf=true` with no `.gitattributes`: git stores LF, checks out
+   CRLF, and `flows.mjs` compares that file byte-for-byte against a snapshot it
+   just built with `JSON.stringify` — LF. Every flow failed over a diff whose
+   two sides were character-for-character identical. Fixed by the root
+   `.gitattributes` (`baseline/**` and `fixtures/**` are `-text`; **never**
+   normalise a byte artifact). (b) Starting webctld killed vite: the Playwright
+   persistent profile lives at `tools/webctl/.userdata`, inside vite's watch
+   root, and Windows Chromium holds those files with an EXCLUSIVE lock —
+   chokidar throws `EBUSY` on `Default/Network/Cookies` and takes the server
+   down. macOS locks advisorily, which is the whole reason this is
+   platform-specific. The watcher now skips it. (c) The harness dependencies
+   had simply never been installed — `node_modules` held only `ws`, and no
+   browser had been downloaded. `npm install && npx playwright install
+   chromium` in `tools/webctl`.
+   Also: there is no `lsof` here. Use `netstat -an | grep LISTENING`.
+9. **A qa suite can print ALL PASS and still exit non-zero.**
+   `qa/r4_purelib.mjs` ends with `Assertion failed: !(handle->flags &
+   UV_HANDLE_CLOSING), file src\win\async.c, line 94` and exit 127 — a libuv
+   teardown crash AFTER every assertion has passed. Run standalone it crashes
+   4 times out of 4; run under `qa/run.mjs` it has also been seen to exit 0.
+   It is a teardown race, not a stable verdict either way. `run.mjs`
+   categorises on the exit code alone, so it files the crash as FAIL. **Read
+   the suite's own last line before believing the summary table.**
+   (An earlier version of this entry called it "deterministic across runs".
+   That was two observations; four more contradicted it.)
+10. **`data/BMP_carousel_test` is inside gitignored `data/`.** It is what
+   stands in for a camera when nothing is attached. When it is missing, every
+   stream-dependent probe fails with "observer got no stream" and nothing says
+   why — it was deleted once during a cleanup and cost a debugging session.
+   `suite_nohw.mjs` materialises it from `tools/webctl/fixtures/carousel/`;
+   anything else you run standalone, check the folder first.
+11. **`bpg_sweep`'s C11 used to fail on every single run, and it was the
+   test's own arithmetic** (2026-08-18). C11 queues 133,333 packets
+   deliberately and then asserted liveness with a flat 600 ms budget. The core
+   answers all of them and returns in **2.26 s** — ~59k packets/s, no crash, no
+   leak, deterministic, measured with `flood.mjs`. The budget is per-case now.
+   A test that has always been red teaches everyone to ignore it.
+
 ## Gaps (nothing covers these today)
 
+- **`fixtures/test1.hydef` has no matching image in the repo.** It is the
+  default def for the five core-side probes, and those only need a def — but
+  anything wanting a def+image *pair* (`ii_dump`, `--insp`, `calib_sticky`)
+  still cannot run from a clean clone. The images live in gitignored
+  `Core0_1/data/` (`test1.png` 7.3MB, `test1_20260813_170712.png` 2.6MB). The
+  smaller one is the same order as the already-committed
+  `caliper_verify_tagged.png` (2.9MB), so committing it would complete the pair
+  and cost about what the existing fixture costs.
 - Offline golden joins at FeatureMatching: frame admission, skip sizes and the
   perif path are live-probe-only.
 - Margin-editor dirty check and drag reorder: store-level assertions only, no
@@ -132,8 +256,13 @@ the new snapshot by eye before committing it.
 - The save-conflict dialog (on-disk sha1 changed since load → 仍要覆蓋/取消):
   the normal save path is covered by flows, but no flow drives the file
   picker, so the dialog branch is manual-verify only.
-- The MinGW/Windows deploy path: syntax-checked only, never executed on a
-  bench.
+- ~~The MinGW/Windows deploy path: syntax-checked only, never executed on a
+  bench.~~ **No longer true (2026-08-18):** the core builds and runs under
+  MSYS2/MinGW64 on the Windows bench with a real HikRobot camera, and the WebUI
+  suite passes there (`flows.mjs verify` 9/9). What is still untested on
+  Windows: `setThreadPriority` fails for all 7 threads (`rc=129`, no SCHED_RR)
+  so they run at default policy — **latency measured here is not latency
+  measured on macOS**.
 
 ## Log census (how to prove a logging change did anything)
 

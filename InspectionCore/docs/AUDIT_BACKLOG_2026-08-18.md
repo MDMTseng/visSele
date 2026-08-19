@@ -144,6 +144,16 @@ WebUI:
 - `PerifAPI.js:340` — `LoadFileToMachine`'s 1 s timeout is never cleared and is
   tight for a file load over the WS.
 - `MAINUI.js:1663` — the cancel branch calls `onOK()`.
+- `UTIL/BPG_Protocol.js:120-128` — a `TEMP probe` marked "Remove once
+  diagnosed" is still in production source: it `console.log`s meta for the
+  first 20 IM frames of every session, gated on `window.__IM_PROBE_N`. Found
+  2026-08-19 while triaging `r10_bpgfuzz`. Harmless but it is noise in the
+  factory console, and TEAM_HANDOFF §9.12 notes that terminal has no
+  devtools to filter it.
+- `qa/r10_bpgfuzz.mjs` F3 — asserts `camera_id`/`session_id` on the object
+  `raw2Obj_IM` returns. The 15-byte IM extra-header has no such fields and
+  never did, so all 500 iterations fail and have always failed. The **test** is
+  wrong, not the decoder; verified live against the running app 2026-08-19.
 
 ---
 

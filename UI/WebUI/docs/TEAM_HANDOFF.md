@@ -1,6 +1,8 @@
 # WebUI (1st gen) — Team Handoff
 
-> Status: factory-deployed, actively maintained on `webui/editor-refactor`. This
+> Status: factory-deployed, actively maintained. Development moved from
+> `webui/editor-refactor` to `ct/win-bench-bringup` (2026-08-18) when the whole
+> system was brought up on a Windows bench with a HikRobot camera. This
 > doc is the single entry point for a new dev. Read top-to-bottom once, then
 > use it as a reference.
 
@@ -33,8 +35,19 @@ see [feedback memory `fix-consumer-not-provider`].
 
 ## 2. Quick start (5 min)
 
-Prereqs: macOS arm64 dev box (or Linux); Node 20+; cmake 3.x; vcpkg-built OpenCV
-already wired in InspectionCore.
+Prereqs: Node 20+; cmake 3.x; a built core. Two benches are in use and they
+differ in more than paths -- see the platform table below.
+
+| | macOS arm64 (dev) | Windows 10 (bench) |
+|---|---|---|
+| Core build | `cmake --build build/mac-arm64 --target visSele -j8` | MSYS2 MinGW64, preset `win-mingw-msys` |
+| Camera | Aravis / fake | HikRobot MV-CA050-11UM, real trigger |
+| Lib path | `DYLD_LIBRARY_PATH=../build/mac-arm64` | not needed (DLLs beside the exe) |
+| Port check | `lsof -nP -iTCP:4090,4091,8081 -sTCP:LISTEN` | `netstat -an \| grep LISTENING` |
+| Thread priority | real SCHED_RR | **fails, all 7 threads (`rc=129`)** -- latency here is not latency there |
+
+OpenCV is pinned at **4.13.0**; MSYS2 now ships OpenCV 5, which splits
+`calib3d` and breaks the core mid-compile.
 
 ```bash
 # 1. Build core (one-time per change)
@@ -55,10 +68,29 @@ cd UI/WebUI && npm run dev   # serves http://127.0.0.1:8081/
 cd UI/WebUI && node tools/webctl/webctld.mjs http://127.0.0.1:8081/ &
 ```
 
-Check `lsof -nP -iTCP:4090,4091,8081 -sTCP:LISTEN`. Three lines = all good.
+Three listeners = all good.
+
+**On the Windows bench** the same four steps read:
+
+```sh
+# 1. Build core
+cmake --build --preset win-mingw-msys --target visSele
+
+# 2. Start core (from Core0_1, so it finds data/)
+cd InspectionCore/Core0_1 && ../dist/win/visSele.exe
+
+# 3. Vite
+cd UI/WebUI && npm run dev
+
+# 4. webctld -- FIRST TIME ONLY, install what it needs:
+cd UI/WebUI/tools/webctl && npm install && npx playwright install chromium
+WEBCTL_URL=http://localhost:8081 WEBCTL_HEADLESS=1 node webctld.mjs
+```
+
+Then `netstat -an | grep LISTENING | grep -E ":4090|:8081|:8765"`.
 
 Open `http://127.0.0.1:8081/` in your own Chrome (NOT the webctld Playwright
-one — that's for tests; see §7).
+one -- that is for tests; see 7).
 
 ---
 
@@ -299,32 +331,79 @@ That's a **separate channel** on port 4091. Read `docs/LOGGING_WEBUI.md` in
 We don't use Jest/RTL. Instead we have a webctl harness that drives a real
 Playwright Chromium against the Vite dev server. Tests are integration-shaped.
 
-### Three layers
+### Five layers (updated 2026-08-19)
 
 ```
+unit_*.mjs       Pure Node, no browser, no core, <1s each. unit_fmt (compactN's
+                 width bound swept over 0..1e6) and unit_no_hardcoded_sel (a
+                 SOURCE guard: nothing may claim NG/OK while naming SEL1/2/3).
 golden.mjs       def-JSON serialization oracle. Run after def-related changes.
-flows.mjs        8 behavioral flows (load/select/edit/editInput/add/addArc/
-                 addMeasure/addThenDelete). Run after ANY change.
-qa/r*_*.mjs      40+ focused regression scripts (r6_shapeattr, r7_downsamp,
-                 r10_smoke, ...). Run after rounds of related changes.
+flows.mjs        9 behavioral flows: the 8 editor ones (load/select/edit/
+                 editInput/add/addArc/addMeasure/addThenDelete) plus inspCycle,
+                 which drives the REAL menu into the Inspection UI. Run after
+                 ANY change.
+qa/r*_*.mjs      39 focused scripts against the __GP_*__ dev hooks (codec, IDB
+                 queue, expression evaluator, middleware) rather than the DOM.
+                 `node tools/webctl/qa/run.mjs` runs them serially.
+suite_nohw.mjs   The runner for everything that needs neither camera nor board
+                 -- 13 probes across all of the above plus the core-side ones.
+                 Reach for this one on a bench with no hardware.
 ```
+
+**The top four layers now find their fixtures in the repository**
+(`tools/webctl/fixtures/`); they used to default to paths under `/Users/mdm`,
+which is most of why this suite looked Mac-only. Two exceptions remain, and
+both are listed under "traps that only bite on Windows" below: 22 of the 39
+`qa/` suites still carry the old Mac default, and `fixtures/test1.hydef` has no
+matching image, so anything needing a def+image *pair* still cannot run from a
+clean clone. `WEBCTL_MODEL` overrides everywhere.
 
 ### Typical workflow
 
 ```bash
 # Pre-flight (every change)
 npm run typecheck                 # tsc --noEmit; allowJs=true, checkJs=false
-                                  # — files opt into checking via // @ts-check
+                                  # files opt into checking via // @ts-check
 
-# Functional regression
-WEBCTL_MODEL=/path/to/some_def \
-  node tools/webctl/flows.mjs verify   # 8 flows. Should be 8 PASS.
+# Cheapest first: no browser, no core, ~1s each
+node tools/webctl/unit_fmt.mjs
+node tools/webctl/unit_no_hardcoded_sel.mjs
+
+# Functional regression -- no WEBCTL_MODEL needed, the fixture is checked in
+node tools/webctl/flows.mjs verify       # 9 flows. Should be 9 PASS.
 
 # QA suite
-node tools/webctl/qa/r1_editor.mjs
-node tools/webctl/qa/r6_shapeattr.mjs
-node tools/webctl/qa/r10_smoke.mjs       # known intermittent — see §9
+node tools/webctl/qa/run.mjs                       # all 39, serially
+node tools/webctl/qa/run.mjs r3_diag r5_wslife     # a subset
+node tools/webctl/qa/r10_smoke.mjs                 # was intermittent; see 9.2
+
+# Everything runnable with nothing attached (~15 min)
+node tools/webctl/suite_nohw.mjs
 ```
+
+### Selecting elements: `data-testid`, never position, geometry or label text
+
+The one rule to internalise before writing a test here (2026-08-18). Three
+harnesses used to find the mode tag as *"the last element reading 測試"* -- it
+is three different things on that page -- and play as *"the widest button in
+the bottom-right corner"*, which against a live page resolves to the **file
+browser** when MAIN is in another state. Every candidate there is an icon-only
+text button, so the wrong pick clicks *silently* instead of failing.
+
+If the control you need has no hook, **add one to the component**. That is
+cheaper than the selector you would otherwise write, and it cannot rot quietly.
+Publish the *semantics*, not just a handle: the assertion worth making is
+usually "the cell claiming to be NG reads the outlet the wiring says is NG",
+and the rendered digits have already thrown that mapping away. That is why
+`tag-group` carries `data-count`/`data-min`/`data-max`/`data-fulfilled`, and
+`uinsp-hist-cell` carries `data-bin`/`data-sel`/`data-value`. The full hook
+table lives in `InspectionCore/docs/REGRESSION_TESTS.md` trap 4a.
+
+`lib_enter.mjs` is the single implementation of "get the app into the
+Inspection UI" -- it had been copied three times and two copies had rotted. It
+prefers `data-testid`, keeps the old heuristics as fallbacks, and logs
+`legacy ...` when it uses one, so quiet dependence on a guess stays visible.
+
 
 ### Core-side probes (added 2026-08-15)
 
@@ -354,9 +433,61 @@ and rebuild, and only then go looking at the environment.
 ### Test-running constraints
 
 - **webctld holds a single browser tab**. Run one test script at a time.
-- The Playwright viewport is `1280×720` — intentionally fixed for deterministic
-  baselines. Do not change. For your own hand-debugging, open your own Chrome.
+  `qa/run.mjs` enforces this for its own suites; it cannot stop you running
+  something else against webctld in parallel, and if you do, the collision
+  shows up as an unrelated suite failing.
+- The Playwright viewport is `1280×720` -- intentionally fixed for
+  deterministic baselines. Do not change. For hand-debugging, open your own
+  Chrome.
 - webctld can grab fullPage screenshots: `/shot?path=...&full=1`.
+- Full endpoint list: `/goto /reload /click /fill /press /mouse /key /viewport
+  /wait /eval /text /shot /logs /health /url /shutdown`.
+
+### Before you trust a red line (2026-08-19)
+
+A full `qa/run.mjs` on this bench reads **32 PASS, 0 SKIP, 7 FAIL in 182 s**.
+Before the fixture fix that same command read **15 PASS, 21 SKIP, 3 FAIL in
+954 s** -- 22 suites defaulted to a def path on one developer's Mac, and each
+then misreported the failed load as `SKIP (core down)` with the core up the
+whole time. `qa/lib_model.mjs` owns the default and the diagnosis now.
+
+**FAIL went UP because five suites that had been skipping were finally allowed
+to run.** Not one of the seven is a newly-introduced defect, so do not treat
+the list as a regression set. Classification lives in `qa/SUMMARY.md`.
+
+Five ways a verdict in this harness still lies:
+
+- **`run.mjs` categorises on the exit code alone.** `r4_purelib` passes every
+  assertion, prints `ALL PASS (0 skipped)`, then aborts in libuv teardown
+  (`UV_HANDLE_CLOSING`, exit 127). Standalone it crashes 4/4; under `run.mjs`
+  it has also exited 0. Read the suite's own last line.
+- **A collision reads as an unrelated suite failing.** `run.mjs` serialises its
+  own suites -- the daemon owns ONE browser -- but it cannot stop a second
+  terminal. `r1_comm` FAILed in the pre-fix baseline for exactly this reason;
+  alone it is 6 PASS / 1 SKIP, exit 0.
+- **Some tests are older than the code they test.** `r3_serialize` S4 fires
+  only the `input` event, which §9.15 explains has not committed to redux since
+  `JsonEditBlock` moved to commit-on-blur. `r10_bpgfuzz` F3 asserts
+  `camera_id`/`session_id` on `raw2Obj_IM` output; the 15-byte IM header has no
+  such fields and never did, so all 500 iterations fail -- and a failure rate
+  of exactly 100% on random input is the tell that the test, not the code, is
+  wrong.
+- **`r6_decorator` T6 is flaky** -- 2 of 4 runs, `addId2(null)Kept=false`,
+  untriaged.
+- **`fixtures/test1.hydef` ships without its image.** Def-only probes are fine;
+  anything wanting a def+image pair (`ii_dump`, `--insp`, `calib_sticky`) is
+  not. The images sit in gitignored `Core0_1/data/`
+  (`test1_20260813_170712.png`, 2.6MB -- the same order as the
+  already-committed `caliper_verify_tagged.png`).
+
+And one real lead worth chasing: **`r6_inspection` (5), `r7_inspbug` (1) and
+`r10_smoke` (2) never reach the Inspection UI** -- they read `MAIN`, then
+`SPLASH`. All three roll their own entry sequence instead of importing
+`lib_enter.mjs`, which is precisely how `enter_inspection.mjs` rotted into not
+reaching the UI at all. Traps 4a and 4b are about this. `r8_matching` (3) reads
+`intrusion_ratio` as `undefined` from its baseline onward; check whether the
+tagged fixture carries that field before blaming the reducer.
+
 
 ### Mock inspd_log for log-panel work
 
@@ -436,12 +567,21 @@ convention sends the basename without extension**, so this regressed every
 LD until we added `UTIL/DefLoadWithImageFallback.js`. ALL future LD callsites
 must use that helper, never raw `ACT_WS_SEND_BPG("LD", ...)`.
 
-### 9.2 1006 disconnect flake (known, not fixed)
-Occasional `ws.close` code 1006 on first paint or under sustained QA. Core
-stays up the whole time. Surfaced now via `comm.ws` structured logs (`[ws]
-close-1006-abnormal`). Reconnect picks it up within 10s. Causes
-`r10_smoke S1/S9/S10` to intermittently fail; documented in `OPENQUESTION.md`
-"Known QA flake" section.
+### 9.2 1006 disconnect flake -- ROOT-CAUSED 2026-08-16, it was never the network
+
+The old entry here said "known, not fixed" and blamed the socket. It was the
+camera. `queryCam` polls `camera_info` about every 2s; a fake camera that is
+not acquiring (`trigger_mode 1` between sessions) reports `cam_status != 0`,
+the app dispatches WS_ERROR -> NOT_READY -> SPLASH, and `ALLOW_SOFT_CAM=false`
+blocked the auto-reconnect. Result: a ~5s SPLASH<->MAIN loop, forever, with the
+core up the whole time -- which is exactly what "1006 flake" looked like from
+the outside.
+
+Dev builds now set `ALLOW_SOFT_CAM=true` (`info.js` `debug_SysSetting`);
+production is unchanged. **If SPLASH cycling ever comes back, check
+`cam_status` before you look at the network.** This was also the cause of the
+intermittent `r10_smoke S1/S9/S10` failures.
+
 
 ### 9.3 ActionThrottle middleware can swallow rapid dispatch
 `ActionThrottle.js` debounces actions with the same `ATID` (default 100ms,
@@ -691,32 +831,61 @@ context that isn't obvious from code.
 
 ---
 
-## 13. The webctl harness (read the code, it's small)
+## 13. The webctl harness (read the code, it is small)
 
 ```
 tools/webctl/
-├── webctld.mjs        ~150 lines. HTTP server on :8765 wrapping Playwright.
-│                      Endpoints: /goto /reload /click /fill /press /wait
-│                      /eval /text /shot /shutdown. Browser stays open
-│                      across requests; state persists.
+├── webctld.mjs        HTTP server on :8765 wrapping Playwright. One browser,
+│                      state persists across requests. Endpoints:
+│                      /goto /reload /click /fill /press /mouse /key /viewport
+│                      /wait /eval /text /shot /logs /health /url /shutdown
 ├── webctl.mjs         CLI client (rarely used directly).
-├── golden.mjs         Two modes: capture / verify. Replays a def through the
-│                      real LD path, snapshots the resulting GenFeature_..._JSON
-│                      to baseline/. Byte-identical regression oracle.
-├── flows.mjs          8 behavioral flows. Each: reset(), do flow, snapshot
-│                      {c_state, shapes, edit_tar, inputs, def}. capture/verify.
+├── lib_enter.mjs      THE entry sequence: makeCtl / toMain / dismissCamModal /
+│                      loadRecipe / enterInspection. Import this; do not write a
+│                      fourth copy. It prefers data-testid and logs `legacy ...`
+│                      whenever it falls back to an old heuristic.
+├── golden.mjs         capture / verify. Replays a def through the real LD path
+│                      and snapshots GenFeature_..._JSON to baseline/.
+├── flows.mjs          9 behavioral flows. capture / verify.
+├── cycle.mjs          N laps of the operator day; asserts the def hash is
+│                      stable across laps (catches repetition-only leaks).
+├── suite_nohw.mjs     Runner for everything needing no camera and no board.
+│                      Checks its preconditions and exits 2 -- not 1 -- if the
+│                      core, vite or webctld is down. PASS / SKIP / NEEDS.
+├── unit_fmt.mjs       compactN width bound, swept 0..1e6. No browser, no core.
+├── unit_no_hardcoded_sel.mjs
+│                      Source guard: no NG/OK claim may name SEL1/2/3.
+├── hist_wiring.mjs    The history 目前 row must read the wiring, not a selector.
+├── play_readiness.mjs Play is ready iff every RENDERED tag group is satisfied.
+│                      Pins an open defect; SKIPs on the current fixture.
+├── flood.mjs          WS flood recovery measurement (~59k pkt/s, 2.26s).
 ├── regress.mjs        umbrella runner.
-├── mock_inspd_log.mjs ~250 lines. Standalone Node WS server speaking inspd_log.v1.
-│                      Knows the OTel schema; replays disk-format fixtures or
-│                      emits synthetic; supports --crash-after, --drop-every.
-└── qa/                40+ focused regression .mjs scripts. Naming: r<round>_<topic>.mjs.
+├── mock_inspd_log.mjs Standalone WS server speaking inspd_log.v1. Replays
+│                      disk-format fixtures; --crash-after, --drop-every.
+├── fixtures/          Everything the suite needs, in the repo:
+│   ├── caliper_verify_tagged.hydef/.png   the model for flows/cycle/enter
+│   ├── test1.hydef                        the core-side probes' default def
+│   └── carousel/frame_01.png, frame_02.png
+│                      copied to Core0_1/data/BMP_carousel_test by suite_nohw --
+│                      that folder is gitignored, and when it is missing every
+│                      stream probe fails with "observer got no stream".
+├── baseline/          Recorded snapshots. Marked -text in .gitattributes: a
+│                      baseline that changes shape per OS is not a baseline.
+└── qa/                39 focused scripts, r<round>_<topic>.mjs, + run.mjs.
+    ├── lib_model.mjs  Which def to load, and whether a load failure means the
+    │                  core is down or the def is absent. Was copy-pasted into
+    │                  22 files; run.mjs ignores it (its pattern is r<N>_...).
     └── SUMMARY.md     What each one covers.
 ```
 
-If you add a regression test, name it `r<N>_<topic>.mjs`, drop it in `qa/`,
-update `SUMMARY.md`. Don't add baselines that aren't bit-stable.
+If you add a regression test, name it `r<N>_<topic>.mjs`, drop it in `qa/`, and
+update `SUMMARY.md`. Do not add baselines that are not bit-stable.
 
----
+**Verify a new test in BOTH directions.** Reintroduce the bug, confirm the test
+goes red, then revert. Three of the tests added on 2026-08-18 were checked this
+way, and it is the only thing that distinguishes a test from a comment: a test
+exercised only in its passing direction has not been tested.
+
 
 ## 14. Cross-team communication
 
@@ -777,10 +946,10 @@ git log --oneline -30
 # full messages. Commit messages in this repo are dense; they're the
 # "design doc" of the change.
 
-# 4. Run the suite once:
+# 4. Run the suite once (fixtures are in the repo; no WEBCTL_MODEL needed):
 cd UI/WebUI && npm run typecheck
-WEBCTL_MODEL=/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify \
-  node tools/webctl/flows.mjs verify
+node tools/webctl/flows.mjs verify        # 9/9
+node tools/webctl/suite_nohw.mjs          # ~15 min, needs no hardware
 
 # 5. Start everything (§2 above), poke around the live UI.
 
@@ -808,7 +977,9 @@ WEBCTL_MODEL=/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify \
 ```bash
 npm run dev                                  # Vite dev server :8081
 npm run typecheck                            # tsc --noEmit
-node tools/webctl/flows.mjs verify           # 8-flow regression
+node tools/webctl/flows.mjs verify           # 9-flow regression
+node tools/webctl/suite_nohw.mjs             # all of it, no hardware
+node tools/webctl/qa/run.mjs                 # the 39 qa suites, serially
 node tools/webctl/qa/r10_smoke.mjs           # smoke
 node tools/webctl/mock_inspd_log.mjs --port 4091   # mock core-log server
 

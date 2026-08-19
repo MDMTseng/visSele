@@ -1,4 +1,9 @@
-# WebUI QA Loop — Summary (branch `webui/editor-refactor`)
+# WebUI QA Loop — Summary
+
+> Written on `webui/editor-refactor`. Development has since moved to
+> `ct/win-bench-bringup`; the suites still run, and as of 2026-08-19 they run
+> off the Mac too. Read "Off the Mac bench" at the bottom before you trust a
+> red line -- none of the 7 current failures is a newly-introduced defect.
 
 This directory is the QA-loop deliverable for the legacy React-16 machine-vision
 WebUI editor refactor. The suites here drive the running app through the
@@ -172,3 +177,85 @@ the QA loop's full output for the parent.
   receiver walk in `BPG_WS.onmessage`.
 - Consider a structured machine-readable JSON report from `run.mjs` (one
   line per suite) — currently text-only; trivial follow-up.
+
+---
+
+## Off the Mac bench (2026-08-19)
+
+These suites were written and maintained on macOS. Getting them to run
+elsewhere took one change, and it is worth knowing what it bought.
+
+### What was wrong
+
+22 of the 39 hardcoded
+
+```
+/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify
+```
+
+as their `WEBCTL_MODEL` default. Off that machine the def load failed -- and
+each suite then classified the failure with its own private copy of
+
+```js
+/not connected|timeout|did not load|reconnect|ECONNREF/i
+```
+
+A missing def produces "did not load", which matches, so the suite reported
+**`SKIP (core down)`** with the core up and answering on 4090 the whole time.
+A wrong diagnosis pointed at the wrong subsystem is worse than none.
+
+There was no shared module to fix this in: `MODEL_PATH` was copy-pasted 22
+times and `isCoreDown` 23 times, with **zero imports between the 39 files**.
+
+### The fix
+
+`lib_model.mjs` now owns both. Each suite lost its local default and its local
+`throw`, and gained one import. `diagnoseLoadFailure()` asks the *page* whether
+the core is there (`ConnInfo.CORE_ID_CONN_INFO.type === 'WS_CONNECTED'`) rather
+than inferring it from the text of an error, so "no core" and "no model" are
+now different messages.
+
+`reset()` was deliberately left alone -- it exists in 24-line and 27-line
+variants and the differences have not been audited. `r1_resilience` also keeps
+its own `CORE_DOWN` sentinel (underscore, not hyphen); it passes, so it was not
+worth the churn.
+
+### What it bought — measured, same bench, same day
+
+| | Before | After |
+|---|---|---|
+| PASS | 15 | **32** |
+| SKIP | 21 | **0** |
+| FAIL | 3 | 7 |
+| Wall clock | 954 s | **182 s** |
+
+The runtime collapsed because ~44 s of that per skipped suite was retry against
+a path that could never exist. **FAIL went up because five suites that had been
+skipping were finally allowed to run** -- those failures were always there.
+
+### The 7 failures, classified
+
+None is a newly-introduced defect. Do not treat this list as a regression set:
+
+| Suite | Class | What it is |
+|---|---|---|
+| `r3_serialize` S4 | **stale test** | Fires only the `input` event. §9.15 of TEAM_HANDOFF: `JsonEditBlock` moved to commit-on-blur/Enter, so redux never sees it. `flows.mjs` `editInput` was fixed for this; these were not |
+| `r10_bpgfuzz` F3 | **stale test** | Asserts `camera_id`/`session_id` on `raw2Obj_IM` output. The 15-byte IM header has no such fields and never did. 500/500 fail, which is the tell |
+| `r4_purelib` | **false red** | Every assertion passes, then libuv aborts in teardown (`UV_HANDLE_CLOSING`, exit 127). Standalone 4/4 crash; under `run.mjs` it sometimes exits 0 — a teardown race, not a stable verdict |
+| `r6_decorator` T6 | **flaky** | 2 of 4 runs fail on `addId2(null)Kept=false`. Untriaged |
+| `r6_inspection` (5) | **harness** | Never reaches the Inspection UI — reads `MAIN` then `SPLASH`. It rolls its own entry sequence instead of using `lib_enter.mjs`, which is exactly how `enter_inspection.mjs` rotted. See TEAM_HANDOFF traps 4a/4b |
+| `r7_inspbug` T1 | **harness** | Same: `value="MAIN"` |
+| `r10_smoke` (2) | **mixed** | `S1 ws=false`, plus `S11` counting React dev-mode warnings as errors. Counting them at all is the test's problem: a dev bundle emits them by design (the antd `Drawer visible` deprecation is another). The specific `React does not recognize the `%s` prop` line was NOT traced to a source -- webctld logs the unformatted string and the arg is lost, and hooking `console.error` does not survive the `/reload` that triggers the mount. It is not the `data-*` hooks added 2026-08-18: React does not warn on `data-*`, and all of them were checked |
+| `r8_matching` (3) | **needs triage** | `intrusion_ratio` reads `undefined` from baseline onward. Plausibly a field the tagged fixture does not carry rather than a reducer bug — check the def before blaming the code |
+
+### Still true regardless of platform
+
+- **Nothing else may touch webctld while `run.mjs` is going.** It serialises
+  its own suites because the daemon owns ONE browser, but it cannot stop a
+  second terminal. In the 2026-08-19 baseline run `r1_comm` FAILed for exactly
+  this reason -- alone it is 6 PASS / 1 SKIP, exit 0.
+- **`fixtures/test1.hydef` ships without its image.** Def-only probes are fine;
+  a def+image pair (`ii_dump`, `--insp`, `calib_sticky`) still cannot run from
+  a clean clone.
+- Read a suite's own last line before believing `run.mjs`'s verdict; it
+  categorises on the exit code alone.
