@@ -1178,9 +1178,103 @@ class PerifChannel:public Data_JsonRaw_Layer
   // past -- the message is still forwarded to the WebUI untouched, so nothing
   // that already consumes it changes. Cheap substring test first so the common
   // replies (PONG, acks) never reach cJSON.
+  // Synthesised camera timestamps, for a bench with no camera.
+  //
+  // CAMSYNC calibration on the device learns from CAM_SYNC.observe(cam_ts,
+  // teach->cam_us) and ONLY from sync pulses. cam_ts arrives in the report the
+  // core sends back, and the core gets it from a real frame. With no camera
+  // there is no frame, the device never gets a cam_ts, the offset never
+  // converges, and the board lands in INSPECTION_MODE_ERROR with
+  // CAM_CLOCK_CAL_FAILED. Everything downstream of calibration is then
+  // untestable.
+  //
+  // INSP_CAM_TS_SYNTH=1 closes that loop without a camera: remember the
+  // hardware timestamp the device announced for each trigger, and when the
+  // verdict goes back, derive its cam_ts from that instead of from a frame.
+  //
+  //     cam_ts = t_us * INSP_CAM_TS_MULT + INSP_CAM_TS_OFFSET_US
+  //
+  // The multiplier stands in for the two crystals running at slightly
+  // different rates; the offset for trigger-to-exposure delay. Both are what a
+  // real camera contributes, and both are what calibration exists to discover
+  // -- which makes this self-checking: set the offset to 5000 and the device
+  // should converge on 5000. If it converges on something else, the bug is
+  // real and it is in the clock path, not in the fixture.
+  //
+  // OFF unless the variable is set. A machine with a camera must never take
+  // its clock from a formula.
+  struct SynthTrig { int64_t tid; uint64_t t_us; };
+  static const int SYNTH_N = 64;                  // ring; triggers retire fast
+  SynthTrig synthRing[SYNTH_N] = {};
+  std::atomic<uint32_t> synthHead{0};
+
+  static bool camTsSynthOn()
+  {
+    static const bool on = []{
+      const char *e = getenv("INSP_CAM_TS_SYNTH");
+      const bool v = e && atoi(e) != 0;
+      if (v)
+        LOGW("INSP_CAM_TS_SYNTH=1 -- cam_ts DERIVED from the device's own t_us, "
+             "not from a frame. mult=%.9f offset=%lldus. Bench only.",
+             camTsSynthMult(), (long long)camTsSynthOffsetUs());
+      return v;
+    }();
+    return on;
+  }
+  static double camTsSynthMult()
+  {
+    static const double m = []{
+      const char *e = getenv("INSP_CAM_TS_MULT");
+      double v = e ? atof(e) : 1.0;
+      if (!(v > 0.5 && v < 2.0)) v = 1.0;         // NaN-safe; a plausible band
+      return v;
+    }();
+    return m;
+  }
+  static int64_t camTsSynthOffsetUs()
+  {
+    static const int64_t o = []{
+      const char *e = getenv("INSP_CAM_TS_OFFSET_US");
+      return e ? (int64_t)atoll(e) : (int64_t)0;
+    }();
+    return o;
+  }
+
+  // Remember tid -> t_us from the device's own cam_trig announcement.
+  //
+  // This function was emptied when host-side pairing was removed (d1ea04c8);
+  // the device pairs on timestamps now and the core stopped needing to read
+  // these. The name survived, and it is exactly the right hook for this.
+  //
+  // Parsed with strstr rather than cJSON on purpose: this runs on the
+  // peripheral RX path for every message the device sends, and only ever needs
+  // two integers out of the line.
   void tap_trigger_info(uint8_t *raw, int rawL)
   {
-    (void)raw; (void)rawL;
+    if (!camTsSynthOn()) { (void)raw; (void)rawL; return; }
+    if (rawL <= 0 || rawL > 4096) return;
+    const char *p = (const char *)raw;
+    if (strstr(p, "\"cam_trig\"") == NULL) return;
+    const char *ptid = strstr(p, "\"tid\":");
+    const char *pts  = strstr(p, "\"t_us\":");
+    if (!ptid || !pts) return;
+    int64_t  tid  = (int64_t)atoll(ptid + 6);
+    uint64_t t_us = (uint64_t)atoll(pts + 7);
+    if (t_us == 0) return;
+    uint32_t i = synthHead.fetch_add(1, std::memory_order_relaxed) % SYNTH_N;
+    synthRing[i].tid  = tid;
+    synthRing[i].t_us = t_us;
+  }
+
+  // The synthesised stamp for a tid, or 0 when we never saw its announcement.
+  uint64_t synthCamTsFor(int64_t tid)
+  {
+    if (!camTsSynthOn()) return 0;
+    for (int k = 0; k < SYNTH_N; k++)
+      if (synthRing[k].t_us != 0 && synthRing[k].tid == tid)
+        return (uint64_t)((double)synthRing[k].t_us * camTsSynthMult())
+             + (uint64_t)camTsSynthOffsetUs();
+    return 0;
   }
 
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
@@ -7972,6 +8066,13 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
               };
 
               uint64_t tx_ts = msg.cam_ts_us;
+              // With no camera the frame's stamp is unrelated to the trigger,
+              // so calibration learns noise. Derive it from what the device
+              // itself announced instead. No-op unless INSP_CAM_TS_SYNTH=1.
+              {
+                uint64_t synth = pc ? pc->synthCamTsFor(msg.tid) : 0;
+                if (synth) tx_ts = synth;
+              }
               bool tx_skip = false, tx_twice = false;
 
               if (f_noise > 0 || f_spike > 0)

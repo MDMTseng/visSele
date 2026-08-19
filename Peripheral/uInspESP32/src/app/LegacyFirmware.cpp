@@ -7031,6 +7031,50 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       doRsp=rspAck=true;
     }
   }
+  else if(strcmp(type,"enter_insp_test_mode")==0)
+  {
+    // IDLE -> INSPECTION_MODE_TEST, bypassing CAL.
+    //
+    // The transition has been declared in FirmwareTypes.hpp since the state
+    // machine was written, and the state's own body is there too
+    // (blockNewDetectedObject=false, plate target follows the setpoint), but
+    // nothing ever emitted the ACT -- so the state was unreachable.
+    //
+    // What it is for: the normal way in runs CAMSYNC calibration, which
+    // converges on pulses fed back BY THE CAMERA. On a bench with no camera it
+    // cannot converge, the board lands in INSPECTION_MODE_ERROR with
+    // CAM_CLOCK_CAL_FAILED, and the whole verdict loop is untestable -- parts
+    // in, nothing out. That is not a hypothetical: it is what a bare-board
+    // bench looks like, and it cost a session to diagnose.
+    //
+    // With this, the loop closes without a camera: phantom pulses make parts,
+    // the board announces each one with cam_trig + hardware timestamps, the
+    // core pairs on those timestamps and answers (INSP_SKIP_INSPECTION=1 gives
+    // a fixed verdict with the image processing removed and everything else --
+    // pairing, queue, serial write, the CAM->SWITCH window -- intact), and the
+    // board sorts. Every link in the chain is exercised except the one piece
+    // of hardware that is missing.
+    //
+    // IO_ARMED is still required. Refusing to run blind matters MORE here, not
+    // less: a test mode that silently sorts everything into OK teaches you the
+    // wrong thing. plate.freq is NOT required -- with dry_run on, the plate is
+    // meant to stand still.
+    if(!IO_ARMED)
+    {
+      retdoc["type"]="enter_insp_test_mode";
+      retdoc["err"]="io_not_configured";
+      retdoc["why"]=IO_SAFE_WHY;
+      retdoc["hint"]="set_setup a complete io_on_level (see get_schema)";
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      SYS_STATE_Transfer(SYS_STATE_ACT::ENTER_INSPECTION_TEST_MODE);
+      retdoc["type"]="enter_insp_test_mode";
+      retdoc["dry_run"]=DRY_RUN;
+      doRsp=rspAck=true;
+    }
+  }
   else if(strcmp(type,"exit_insp_mode")==0)
   {
 
