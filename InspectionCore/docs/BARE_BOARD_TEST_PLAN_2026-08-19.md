@@ -35,6 +35,22 @@ core、WebUI。**沒有相機、沒有轉盤。**
 `plate.freq` 是 `set_setup` 的巢狀欄位,不是獨立指令 —— 這一點吃掉我半小時,
 `{"type":"plate","freq":12}` 會被靜靜忽略。
 
+### 但它到不了終點,而且原因今天無解
+
+上面的序列讓板子從 100 走到 **102 (INSPECTION_MODE_CAL)**,然後**必然掉進
+112 (INSPECTION_MODE_ERROR)**,`error_hist` 留下 **14 =
+`CAM_CLOCK_CAL_FAILED`「clock calibration did not converge」**。
+
+CAMSYNC CAL 要靠相機回傳的 pulse 才能收斂(`LegacyFirmware.cpp:4530-4554`),
+沒有相機就沒有 pulse。這不是設定問題,今天繞不過去。
+
+**直接後果:完整鏈路(phantom 零件 → verdict → SEL 決策)今天測不了。**
+`phantom_feed.mjs` 送了 249 個 phantom 而 `count` 全部是 0,原因就是板子
+根本不在 inspection mode。這也正是先前那個一直查不出的 state 112。
+
+**不受影響的是 Track A 的其餘部分** —— 底下的指令面掃描、協定 fuzz、io_trace、
+故障注入,沒有一個需要進 inspection mode。那才是今天的主戰場。
+
 ---
 
 ## 1. 起手式(30 分鐘,先做,別跳過)
@@ -170,8 +186,10 @@ REGRESSION_TESTS trap 13:它 PD CONNECT 進真板子那個 slot 且不還回去,
 ## 5. 不要在今天做的
 
 - **相機相關**:`dv_bench`、`rc_hammer`、`soak`、`qwatch`、真實檢測。沒有相機。
-- **轉盤實測**:任何要 `plate_freq_meas > 0` 的東西。dry_run 下盤不轉,
-  spinup(state 103)大概率過不去 —— 若要確認,花十分鐘試,不要規劃一小時。
+- **完整檢測鏈路**:已證實走不到(CAM_CLOCK_CAL_FAILED,見 §0)。不要再試,
+  也不要把 `phantom_feed` / `pulse_load` / `qwatch` 排進今天 —— 它們的計數
+  永遠是 0。
+- **轉盤實測**:任何要 `plate_freq_meas > 0` 的東西。
 - **`InspectionCore/test_suite/`**:四層阻塞,最硬的是 10221 golden 不在 repo。
   見 AUDIT_BACKLOG_2026-08-18 那條。
 - **燒 NVS**:`save_setup` / `clear_saved_setup`。現在的 NVS 是好的
@@ -198,3 +216,4 @@ REGRESSION_TESTS trap 13:它 PD CONNECT 進真板子那個 slot 且不還回去,
 | P1 host fuzz | 400 trials × 6000 bytes,0 越界 | `ad02cbe9` |
 | P1 真硬體 | 4 種形狀,SYSTIME 單調無重啟 | 燒錄後 |
 | console 透傳 | `get_running_stat` 2513 bytes 單行,keys 到 `cam_sync` | `49db1c88` |
+| headless rig 上限 | 100 → 102 → **112**,error 14 CAM_CLOCK_CAL_FAILED | 無相機的必然結果 |
