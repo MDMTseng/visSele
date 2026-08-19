@@ -54,6 +54,7 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 想知道有哪些已知 bug / 哪些已修 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-18.md`(本輪)、`AUDIT_BACKLOG_2026-08-15.md`(上一輪) | 逐項標 VERIFIED/REPORTED、FIXED/OPEN |
 | 要測 / 想知道有哪些回歸測試 | `InspectionCore/docs/REGRESSION_TESTS.md` | **2026-08-19 更新**,四層測試的總索引 + 13 條坑 |
 | **要寫或改 WebUI 的自動化測試** | `UI/WebUI/docs/TEAM_HANDOFF.md` §7 §13、`UI/WebUI/tools/webctl/qa/SUMMARY.md` | **2026-08-19 更新**;選元素的規則、五層架構、七個失敗各是什麼(沒有一個是新缺陷) |
+| **只有裸板(無相機、無轉盤),要安排測試** | `InspectionCore/docs/BARE_BOARD_TEST_PLAN_2026-08-19.md` | **2026-08-19**;三條 track、已實測 vs 推測分開標 |
 | **手邊沒有相機和板子,想測穩定性** | `node UI/WebUI/tools/webctl/suite_nohw.mjs --list` | 14 項可跑 / 8 項標明缺什麼 |
 | 第一次接觸這個系統 | `InspectionCore/docs/TEAM_ONBOARDING.md` | 現行 |
 | 看系統拓樸 / 協定 / 資料流 | `InspectionCore/docs/ARCHITECTURE.md` | 現行 |
