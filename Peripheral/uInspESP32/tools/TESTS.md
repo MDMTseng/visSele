@@ -14,6 +14,28 @@
 
 ---
 
+## 例外:一個不需要板子的
+
+`test_data_layer_overflow.cpp` 和這裡其他 38 個工具不同 —— **不需要板子,也不
+需要 core**。它把 `src/comm/Data_Layer_Protocol.cpp` 直接用主機的 g++ 編起來
+(協定層只用到 `millis()` 一個 Arduino 符號,`tools/host_stub/Arduino.h` 補上),
+然後對 `recv_data` 灌各種畸形輸入,每寫一個 byte 就檢查 `buffIdx` 有沒有離開
+`[0, 2048]`、以及物件後面的 canary 有沒有被改。
+
+```sh
+cd Peripheral/uInspESP32
+g++ -std=c++17 -O0 -g -Itools/host_stub -Iinclude -Iinclude/comm   -o /tmp/t.exe tools/test_data_layer_overflow.cpp   src/comm/Data_Layer_Protocol.cpp src/comm/json_seg_parser.cpp
+/tmp/t.exe     # exit 0 = pass
+```
+
+它釘住的是 AUDIT_BACKLOG_2026-08-18 的 P1(2026-08-19 確認並修正):recovery
+handler 已經把 `buffIdx` 歸零之後,外層還拿舊的 shift 再減一次,`buffIdx` 變成
+**負數**(實測 -2104 / -16),下一個 byte 就寫在陣列**之前**。
+
+**協定層的邏輯改動請先跑這個再燒板子。** 一次 host 執行是秒級,燒錄不是。
+
+---
+
 ## 共用前置
 
 ```sh

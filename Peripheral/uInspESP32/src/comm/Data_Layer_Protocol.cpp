@@ -107,14 +107,23 @@ bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
       }
       if(endIdx<buffIdx)
       {
+        // Order matters here, and it used to be wrong.
+        //
+        // Both handlers call clearProtocolError(), which sets buffIdx=0 and
+        // puts the layer in RESYNC (discard everything up to the next newline).
+        // The compaction below then ran anyway and subtracted the PRE-recovery
+        // shift from that fresh zero, so buffIdx came out NEGATIVE -- measured
+        // at -2104 and -16 on different inputs -- and the next byte executed
+        // `dataBuff[buffIdx++]=c` at a negative index, writing BEFORE the
+        // array. That is worse than running off the end: it lands on whatever
+        // the compiler put ahead of dataBuff in the object.
+        //
+        // There is nothing to compact. RESYNC discards to the newline by
+        // definition, so the buffer the handlers just emptied should stay
+        // empty. AUDIT_BACKLOG_2026-08-18 P1; regression test in
+        // tools/test_data_layer_overflow.cpp.
         if(viaClear) handleClearErrorRecovery();
         else         handleResetRecovery();
-        int shift=endIdx+1;
-        if(shift<buffIdx)
-        {
-          memmove(dataBuff,dataBuff+shift,buffIdx-shift);
-        }
-        buffIdx-=shift;
         return true;
       }
       if(firstBrace>0)

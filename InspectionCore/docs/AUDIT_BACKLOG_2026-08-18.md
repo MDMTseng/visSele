@@ -12,14 +12,41 @@ found it and nobody has confirmed it yet — treat those as leads, not facts.
 
 ## P1 — silent wrong answers
 
-**Memory safety: unbounded write past `dataBuff`** — REPORTED
-`Peripheral/uInspESP32/src/comm/Data_Layer_Protocol.cpp:104-121`
-In `tryRecoverResetFromErrorBuffer`, the "matched RESET/clear_error but no
-closing brace yet" branch returns without compacting when `firstBrace <= 0`.
-With `buffIdx` already at 2048 (`include/comm/Data_Layer_Protocol.hpp:26`,
-VERIFIED), `recv_data` keeps writing `dataBuff[buffIdx++]` and the
-`== sizeof` guard never matches again. Narrow trigger, real corruption, on the
-board that drives the air valves. Verify first, then fix.
+**Memory safety: write past `dataBuff`** — VERIFIED and FIXED 2026-08-19.
+The corruption is real; the mechanism reported was not the one.
+
+Reported as: `tryRecoverResetFromErrorBuffer` returns without compacting when
+`firstBrace <= 0`, so `buffIdx` stays pinned at 2048 and `recv_data` keeps
+appending past the end. That branch does exist at
+`Data_Layer_Protocol.cpp:104-121`, but the cited range stops just short of the
+tail of the same function, which handles precisely that case:
+
+    if(firstBrace>0)                     { ...compact... }
+    else if(buffIdx>=sizeof(dataBuff))   { buffIdx=0; }     // line 136
+
+Driving the real code from a host harness — no board — found the corruption by
+a different route, and going the other way. In the "found a complete
+RESET/clear_error" branch:
+
+    if(viaClear) handleClearErrorRecovery();   // both call clearProtocolError(),
+    else         handleResetRecovery();        // which sets buffIdx = 0
+    int shift=endIdx+1;
+    if(shift<buffIdx) memmove(...);            // false: buffIdx is 0 now
+    buffIdx-=shift;                            // 0 - shift  =>  NEGATIVE
+
+Measured `buffIdx` of **-2104** and **-16** on different inputs, at which point
+`dataBuff[buffIdx++]=c` writes *before* the array — worse than overrunning it,
+because it lands on whatever precedes `dataBuff` in the object. Reachable from
+three shapes, all of them ordinary traffic after a link has latched: a partial
+RESET that never closes, a complete RESET arriving after the buffer filled, and
+a RESET straddling the 2048 boundary.
+
+Fixed by deleting the compaction: both handlers have already emptied the buffer
+and switched to RESYNC (discard to the next newline), so there is nothing left
+to compact. Regression test at
+`Peripheral/uInspESP32/tools/test_data_layer_overflow.cpp` — host build, no
+hardware, 400 fuzz trials plus the targeted shapes, checking `buffIdx` and a
+canary after every byte. Confirmed failing before the fix and passing after.
 
 **`EdgeSelect` NTH clamps instead of failing** — VERIFIED
 `InspectionCore/MatchingEngine/EdgeSelect.cpp:68`
