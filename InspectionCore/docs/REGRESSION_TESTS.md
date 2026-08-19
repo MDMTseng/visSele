@@ -267,6 +267,27 @@ before the code is blamed.
    failed under `run.mjs`.
 
 
+13. **`link_fault.mjs` takes the perif slot and does not give it back**
+   (2026-08-19, found the first time it ran with a board attached). It does NOT
+   need a real board -- it drives a fake TCP listener on 127.0.0.1:5999, and
+   `suite_nohw`'s NEEDS list describing it as "a real board" is wrong. But it
+   `PD CONNECT`s into the SAME conn slot the real board occupies: the
+   `dropped_no_channel` counter it reports is the board's own. Run it with a
+   board attached and the board is left **SUSPECT**, and it does not recover on
+   its own -- observed still SUSPECT after six polls.
+
+   Recovery is one `PD CONNECT` carrying the serial descriptor instead of the
+   fake TCP one, sent from inside `tools/webctl` so `ws` resolves:
+
+   ```js
+   ws.send(frame('PD',0,pg++,{type:'CONNECT', uart_name:'COM3', baudrate:230400,
+                              machine_type:'uInspESP32', cam_idx:1,
+                              pairing:'timestamp', cat_ok:3, cat_ng:1}));
+   ```
+
+   Took two polls to return to CONNECTED. The probe should restore the slot
+   itself; until it does, check `__GP_PERIF_LINKS__()` after running it.
+
 ## Gaps (nothing covers these today)
 
 - **`fixtures/test1.hydef` has no matching image in the repo.** It is the

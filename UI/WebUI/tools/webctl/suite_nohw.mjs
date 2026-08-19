@@ -97,7 +97,7 @@ const NEEDS = [
   ['qwatch.mjs',          'a sustained load to watch; the carousel alone is not one'],
   ['dv_bench.mjs',        'an image stream to measure'],
   ['soak.mjs',            'a CI stream'],
-  ['link_fault.mjs',      'a real board (tx_fail -> suspect -> reopen)'],
+  ['link_fault.mjs',      'nothing -- it uses a FAKE TCP board. Excluded because it PD CONNECTs into the real perif slot and leaves it SUSPECT; see REGRESSION_TESTS trap 13'],
   ['phantom_feed.mjs',    'a real board (trig_phantom_pulse over console 4099)'],
   ['pulse_load.mjs',      'a real board (CAM1 hardware triggers)'],
   ['rc_hammer.mjs',       'a real camera (camera_ez_reconnect lifecycle)'],
