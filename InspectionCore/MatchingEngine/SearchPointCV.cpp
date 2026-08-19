@@ -50,8 +50,34 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // column access).  row i -> searchCoord = cs - i  (i=0 top = +search end; CCW)
   //                   col j -> perpCoord   = j  - cp
   //                   q = pt + s*searchCoord + perp*perpCoord
+  // margin and width arrive from the def UNCLAMPED -- unlike the caliper fields,
+  // which are capped at 512/64/256 during parse -- and they size the buffers
+  // below directly. Reject in FLOAT, before the (int) conversion, because
+  // casting an out-of-range float to int is UB and lroundf(1e30) is not
+  // INT_MAX on every target (same note as Caliper.cpp). The comparison shape is
+  // NaN-safe: !(x >= n) is true for NaN, whereas (x < n) is not.
+  if (!(width >= 3.0f) || !(margin > 0.0f)) return false;
   int nS = (int)lroundf(width);          if (nS < 3) return false; // search-depth (rows)
   int nP = (int)lroundf(2.0f * margin);  if (nP < 3) nP = 3;       // perp/lateral (cols)
+  // The failure Caliper.cpp guards with CELL_LIMIT, and the same realistic
+  // trigger: not a hostile def, but a pixel figure typed into a field that
+  // wants millimetres. Measured before this guard: margin=width=3e4 allocated
+  // ~900M cells across g/valid/mask and ran to completion, and margin=1e9 threw
+  // cv::Exception out of the allocator. The live path catches that (the
+  // acquisition callback drops the frame), but it cannot catch the one that
+  // merely succeeds and eats gigabytes. A real search point is a few tens of px
+  // each way -- thousands of cells, not millions.
+  {
+    const size_t cells = (size_t)nS * (size_t)nP;
+    const size_t CELL_LIMIT = 8u * 1024u * 1024u;   // 8M cells, up to 3 CV_8U planes
+    if (cells > CELL_LIMIT)
+    {
+      printf("search_point: refusing a %dx%d band (%zu cells) -- check that "
+             "margin/width are px and sane (margin=%.1f width=%.1f)\n",
+             nS, nP, cells, margin, width);
+      return false;
+    }
+  }
   float cs = (nS - 1) * 0.5f;            // row -> searchCoord (cs - i)
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 
