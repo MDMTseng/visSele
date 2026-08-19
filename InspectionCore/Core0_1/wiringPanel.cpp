@@ -12,8 +12,17 @@
 #include "mjpegLib.h"
 
 #include <sys/stat.h>
-#ifndef _WIN32
-#include <sys/socket.h>   // INSP_PERIF_CONSOLE dev console (POSIX-only feature)
+// INSP_PERIF_CONSOLE dev console. Was POSIX-only; ported to Windows 2026-08-19
+// because the console is the ONLY way to reach the device while the core is
+// running (the core owns the serial port exclusively), and on the Windows bench
+// that made every board-attached tool in Peripheral/uInspESP32/tools/ -- 38 of
+// them -- unusable. The platform difference is confined to the small shim
+// below; the console body itself is shared.
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <sys/socket.h>
 #endif
 #ifndef _WIN32
 #include <sys/resource.h> // getrusage: voluntary vs INVOLUNTARY context switches
@@ -7394,13 +7403,39 @@ int removeOldestRep(const char* path,const char* ext)
 // POSIX-only (sendmsg/MSG_DONTWAIT, raw fds): the whole reason it exists is
 // the Mac bench's exclusive serial port. On Windows both functions compile
 // to stubs -- the deployed machine keeps no dev console.
-#ifndef _WIN32
-static std::atomic<int> g_perifConsoleClient{-1};
+// --- portable socket shim, dev console only -------------------------------
+// Windows has no sendmsg/MSG_DONTWAIT and no raw read/write on sockets. Those
+// are the entire platform difference; the console body below is shared.
+#ifdef _WIN32
+typedef intptr_t consock_t;
+typedef SOCKET   consock_fd_t;      // what FD_SET wants
+static const consock_t CONSOCK_BAD = (consock_t)INVALID_SOCKET;
+static inline int  consock_close(consock_t s)                { return ::closesocket((SOCKET)s); }
+static inline int  consock_read(consock_t s, void *b, int n) { return ::recv((SOCKET)s, (char *)b, n, 0); }
+static inline int  consock_write(consock_t s, const void *b, int n)
+                                                             { return ::send((SOCKET)s, (const char *)b, n, 0); }
+static inline void consock_nonblock(consock_t s)             { u_long m = 1; ::ioctlsocket((SOCKET)s, FIONBIO, &m); }
+static inline bool consock_wouldblock()                      { int e = ::WSAGetLastError();
+                                                               return e == WSAEWOULDBLOCK || e == WSAEINTR; }
+#else
+typedef intptr_t consock_t;
+typedef int      consock_fd_t;      // what FD_SET wants
+static const consock_t CONSOCK_BAD = -1;
+static inline int  consock_close(consock_t s)                { return ::close((int)s); }
+static inline int  consock_read(consock_t s, void *b, int n) { return (int)::read((int)s, b, (size_t)n); }
+static inline int  consock_write(consock_t s, const void *b, int n)
+                                                             { return (int)::write((int)s, b, (size_t)n); }
+static inline void consock_nonblock(consock_t s)             { (void)s; }  // MSG_DONTWAIT per call instead
+static inline bool consock_wouldblock()                      { return errno == EAGAIN || errno == EWOULDBLOCK
+                                                                   || errno == EINTR; }
+#endif
+
+static std::atomic<consock_t> g_perifConsoleClient{CONSOCK_BAD};
 
 static void perifConsoleEcho(const uint8_t *raw, int rawL)
 {
-  int fd = g_perifConsoleClient.load();
-  if (fd < 0) return;
+  consock_t fd = g_perifConsoleClient.load();
+  if (fd == CONSOCK_BAD) return;
 
   // Never block here. This runs on the peripheral RX path, so a console client
   // that reads slowly must not be able to stall it -- and with a blocking
@@ -7411,14 +7446,34 @@ static void perifConsoleEcho(const uint8_t *raw, int rawL)
   // MSG_DONTWAIT means a slow reader loses echo lines instead. That is the
   // right trade: the authoritative record is get_running_stat, which is
   // request/response and cannot be dropped this way.
-  struct iovec iov[2] = { { (void *)raw, (size_t)rawL }, { (void *)"\n", 1 } };
-  struct msghdr mh; memset(&mh, 0, sizeof(mh));
-  mh.msg_iov = iov; mh.msg_iovlen = 2;
-  ssize_t n = ::sendmsg(fd, &mh, MSG_DONTWAIT);
-  if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+  // One write, newline included, so a partial send cannot split a record over
+  // two lines. POSIX gets that atomically from sendmsg+MSG_DONTWAIT; Windows
+  // has neither call, so the socket is switched to non-blocking at accept()
+  // and the line is assembled into one buffer first. Both paths are
+  // non-blocking, which is the property that actually matters here.
+  int n;
+#ifdef _WIN32
   {
-    ::close(fd);
-    g_perifConsoleClient.store(-1);
+    char stackBuf[1024];
+    std::vector<char> heapBuf;
+    char *out = stackBuf;
+    if (rawL + 1 > (int)sizeof(stackBuf)) { heapBuf.resize(rawL + 1); out = heapBuf.data(); }
+    memcpy(out, raw, (size_t)rawL);
+    out[rawL] = '\n';
+    n = consock_write(fd, out, rawL + 1);
+  }
+#else
+  {
+    struct iovec iov[2] = { { (void *)raw, (size_t)rawL }, { (void *)"\n", 1 } };
+    struct msghdr mh; memset(&mh, 0, sizeof(mh));
+    mh.msg_iov = iov; mh.msg_iovlen = 2;
+    n = (int)::sendmsg((int)fd, &mh, MSG_DONTWAIT);
+  }
+#endif
+  if (n < 0 && !consock_wouldblock())
+  {
+    consock_close(fd);
+    g_perifConsoleClient.store(CONSOCK_BAD);
   }
 }
 
@@ -7429,20 +7484,25 @@ void PerifConsoleThread(bool *terminationflag)
   int port = atoi(portStr);
   if (port <= 0) return;
 
-  int srv = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (srv < 0) { LOGE("[perif console] socket() failed"); return; }
+#ifdef _WIN32
+  { WSADATA wsa; static std::atomic<bool> once{false};
+    bool ex = false;
+    if (once.compare_exchange_strong(ex, true)) ::WSAStartup(MAKEWORD(2, 2), &wsa); }
+#endif
+  consock_t srv = (consock_t)::socket(AF_INET, SOCK_STREAM, 0);
+  if (srv == CONSOCK_BAD) { LOGE("[perif console] socket() failed"); return; }
   int on = 1;
-  ::setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+  ::setsockopt((int)srv, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
   struct sockaddr_in a; memset(&a, 0, sizeof(a));
   a.sin_family = AF_INET;
   a.sin_port = htons((uint16_t)port);
   // Loopback only. This forwards arbitrary commands to a machine that moves
   // physical parts; it must not be reachable from the network.
   a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  if (::bind(srv, (struct sockaddr *)&a, sizeof(a)) < 0 || ::listen(srv, 1) < 0)
+  if (::bind((int)srv, (struct sockaddr *)&a, sizeof(a)) < 0 || ::listen((int)srv, 1) < 0)
   {
     LOGE("[perif console] bind/listen on 127.0.0.1:%d failed", port);
-    ::close(srv);
+    consock_close(srv);
     return;
   }
   LOGI("[perif console] listening on 127.0.0.1:%d", port);
@@ -7450,26 +7510,41 @@ void PerifConsoleThread(bool *terminationflag)
   while (terminationflag && *terminationflag == false)
   {
     struct timeval tv = {1, 0};              // so termination is noticed
-    fd_set rf; FD_ZERO(&rf); FD_SET(srv, &rf);
-    if (::select(srv + 1, &rf, NULL, NULL, &tv) <= 0) continue;
+    fd_set rf; FD_ZERO(&rf); FD_SET((consock_fd_t)srv, &rf);
+    if (::select((int)srv + 1, &rf, NULL, NULL, &tv) <= 0) continue;
 
-    int cli = ::accept(srv, NULL, NULL);
-    if (cli < 0) continue;
+    consock_t cli = (consock_t)::accept((int)srv, NULL, NULL);
+    if (cli == CONSOCK_BAD) continue;
+    // The echo path must never block (see perifConsoleEcho); on Windows that
+    // is a socket mode, not a per-call flag, so set it here.
+    consock_nonblock(cli);
     // Without this a client that goes away mid-write raises SIGPIPE and takes
     // the core down with it -- an unacceptable way for a debug socket to fail.
 #ifdef SO_NOSIGPIPE
-    { int one = 1; ::setsockopt(cli, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one)); }
+    { int one = 1; ::setsockopt((int)cli, SOL_SOCKET, SO_NOSIGPIPE, (const char *)&one, sizeof(one)); }
 #endif
-    int old = g_perifConsoleClient.exchange(cli);
-    if (old >= 0) ::close(old);              // one client at a time
+    consock_t old = g_perifConsoleClient.exchange(cli);
+    if (old != CONSOCK_BAD) consock_close(old);   // one client at a time
     LOGI("[perif console] client attached");
 
     std::string line;
     while (terminationflag && *terminationflag == false)
     {
       char c;
-      ssize_t n = ::read(cli, &c, 1);
-      if (n <= 0) break;
+      int n = consock_read(cli, &c, 1);
+      // The socket is non-blocking on Windows so the ECHO path cannot stall the
+      // peripheral RX thread -- but that mode is per-socket, not per-call, so
+      // this read sees EWOULDBLOCK whenever the client is simply idle. Treating
+      // that as a closed connection dropped every client the instant it stopped
+      // typing, which is what the first Windows build did. Only n == 0 (peer
+      // closed) and a real error end the session.
+      if (n == 0) break;
+      if (n < 0)
+      {
+        if (!consock_wouldblock()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        continue;
+      }
       if (c == '\r') continue;
       if (c != '\n') { if (line.size() < 4096) line += c; continue; }
       if (line.size() > 4 && line[0] == '!' && line[3] == ' ')
@@ -7500,7 +7575,7 @@ void PerifConsoleThread(bool *terminationflag)
         bpg_pi.toUpperLayer(d, NULL);
         char ack[64];
         int n = snprintf(ack, sizeof(ack), "{\"core\":\"%s injected\"}\n", tl);
-        ::write(cli, ack, n);
+        consock_write(cli, ack, n);
       }
       // '?lat' -- the same stage histograms the GS reply carries, as text.
       //
@@ -7530,14 +7605,14 @@ void PerifConsoleThread(bool *terminationflag)
         char b[512];
         int n = snprintf(b, sizeof(b), "%-10s %9s %9s %9s\n",
                          "stage", "n", "avg_ms", "max_ms");
-        ::write(cli, b, n);
+        consock_write(cli, b, n);
         for (size_t i = 0; i < sizeof(hs) / sizeof(hs[0]); i++)
         {
           LatHist *h = hs[i].h;
           n = snprintf(b, sizeof(b), "%-10s %9llu %9.3f %9.3f\n", hs[i].k,
                        (unsigned long long)h->n,
                        h->n ? h->sum_ms / (double)h->n : 0.0, h->max_ms);
-          ::write(cli, b, n);
+          consock_write(cli, b, n);
         }
         // Inside the match, by engine stage. Wall AND process cpu side by side:
         // a stage whose wall exceeds its cpu is waiting, one whose cpu exceeds
@@ -7552,7 +7627,7 @@ void PerifConsoleThread(bool *terminationflag)
                        (unsigned long long)w->n,
                        w->n ? w->sum_ms / (double)w->n : 0.0, w->max_ms,
                        c->n ? c->sum_ms / (double)c->n : 0.0, c->max_ms);
-          ::write(cli, b, n);
+          consock_write(cli, b, n);
         }
         // Why the verdicts are NA, which no latency number can say. These are
         // the three outcomes at the reducer: nothing located at the station,
@@ -7568,18 +7643,18 @@ void PerifConsoleThread(bool *terminationflag)
                      (unsigned long long)g_naWrongType.load(),
                      (unsigned long long)g_naNoReports.load(),
                      (unsigned long long)g_naNoLabeled.load());
-        ::write(cli, b, n);
+        consock_write(cli, b, n);
         // The buckets for e2e alone: how OFTEN, which no max can say.
         n = snprintf(b, sizeof(b), "e2e buckets (edges ms):");
-        ::write(cli, b, n);
+        consock_write(cli, b, n);
         for (int i = 0; i < PERIF_HIST_NB - 1; i++)
-        { n = snprintf(b, sizeof(b), " %g", PERIF_HIST_EDGES_MS[i]); ::write(cli, b, n); }
+        { n = snprintf(b, sizeof(b), " %g", PERIF_HIST_EDGES_MS[i]); consock_write(cli, b, n); }
         n = snprintf(b, sizeof(b), "\ne2e counts           :");
-        ::write(cli, b, n);
+        consock_write(cli, b, n);
         for (int i = 0; i < PERIF_HIST_NB; i++)
         { n = snprintf(b, sizeof(b), " %llu",
-                       (unsigned long long)g_histE2E.bucket[i]); ::write(cli, b, n); }
-        ::write(cli, "\n", 1);
+                       (unsigned long long)g_histE2E.bucket[i]); consock_write(cli, b, n); }
+        consock_write(cli, "\n", 1);
       }
       else if (!line.empty())
       {
@@ -7597,7 +7672,7 @@ void PerifConsoleThread(bool *terminationflag)
           size_t b = line.find_first_not_of(" \t");
           if (b == std::string::npos || line[b] != '{')
           {
-            ::write(cli, "{\"err\":\"not JSON -- raw text latches the device "
+            consock_write(cli, "{\"err\":\"not JSON -- raw text latches the device "
                          "parser; use {\\\"type\\\":...}, !TL, or ?lat\"}\n", 100);
             line.clear();
             continue;
@@ -7605,7 +7680,7 @@ void PerifConsoleThread(bool *terminationflag)
         }
         PerifChannel *pc = bpg_pi.perifCH;
         if (pc == NULL)
-          ::write(cli, "{\"err\":\"no perif channel\"}\n", 27);
+          consock_write(cli, "{\"err\":\"no perif channel\"}\n", 27);
         else
         {
           std::vector<uint8_t> buf(line.size() + 64);
@@ -7621,10 +7696,7 @@ void PerifConsoleThread(bool *terminationflag)
   ::close(srv);
   LOGI("[perif console] ended");
 }
-#else
-static void perifConsoleEcho(const uint8_t *raw, int rawL) { (void)raw; (void)rawL; }
-void PerifConsoleThread(bool *terminationflag) { (void)terminationflag; }
-#endif  // _WIN32 -- dev console is POSIX-only
+
 
 // Drains perifSendQueue and performs the (potentially blocking) serial write
 // to the peripheral inspection machine, keeping that latency off the
