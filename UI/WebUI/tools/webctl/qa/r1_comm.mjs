@@ -43,8 +43,9 @@
  * daemon while other agents are using it).
  * ===========================================================================*/
 
+import { MODEL_PATH } from './lib_model.mjs';
+
 const BASE = `http://127.0.0.1:${process.env.WEBCTL_PORT || 8765}`;
-const MODEL_PATH = process.env.WEBCTL_MODEL || '/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify';
 const RECONNECT_TIMEOUT_MS = 30000;
 
 async function api(p, body) {

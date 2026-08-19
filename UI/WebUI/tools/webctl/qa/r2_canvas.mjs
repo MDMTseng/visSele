@@ -51,10 +51,10 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MODEL_PATH, diagnoseLoadFailure } from './lib_model.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = `http://127.0.0.1:${process.env.WEBCTL_PORT || 8765}`;
-const MODEL_PATH = process.env.WEBCTL_MODEL || '/Users/mdm/workspace/HY_sync/DEV/test/caliper_verify';
 const SHOT_PATH = path.join(__dirname, 'r2_canvas.png');
 
 async function api(p, body) {
@@ -99,7 +99,7 @@ async function reset() {
       await sleep(3000);
     }
   }
-  if (!loaded) throw new Error('CORE-DOWN: def did not load after retries: ' + (lastErr || 'timeout'));
+  if (!loaded) { const __d = await diagnoseLoadFailure(ev, lastErr); throw new Error(__d.msg); }
 }
 
 // Canvas DOM probe: dims of the FIRST <canvas> (the editor preview canvas). Returns
