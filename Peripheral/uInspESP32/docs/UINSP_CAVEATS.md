@@ -3305,3 +3305,36 @@ loopback 實測到 20479 bytes 都完整往返。
 
 注意方向:裝置**自己**的 RX 緩衝是 `include/comm/Data_Layer_Protocol.hpp:26` 的
 `dataBuff[2048]`,那是 core→裝置。core 能發的最大 `set_setup` 從來沒被量過。
+
+## 裸板上餵 phantom:全部會被 gate 的距離過濾擋掉(2026-08-19,實測)
+
+沒有馬達時,`trig_phantom_pulse` 送多少都不會有零件通過 gate:
+
+```
+gate  {"in": 5, "out": 0, "pct": 0, "loss": "dist", "loss_n": 4}
+pipe  {"registered": 0, "waiting": 0}
+```
+
+**phantom 有正常 register**(`gate accept`、`pipe registered` 都會動),
+被擋的是距離,不是註冊。判定在 `LegacyFirmware.cpp:2858`:
+
+```cpp
+if(GATE_MIN_DIST_STEPS && middle_pulse - _prePulse_BK < GATE_MIN_DIST_STEPS)
+{ GATE_REJ_DIST++; return -9; }
+```
+
+算術是這樣:cam_trig 宣告帶 `gate_pulse`,實測十秒內從 10627 走到
+10874 —— **247 steps,約每秒 25**。而 9.8Hz、70400 steps/rev 的盤應該是每秒
+**689,000**。沒有馬達時 `SYS_STEP_COUNT` 幾乎不前進,所以連續注入的兩個
+phantom 只差約 10 steps,而門檻是 1703μm ÷ 10.7μm/step ≈ **159 steps**。
+
+**拉長時間間隔沒有用。** 80ms 和 700ms 實測拒絕率完全相同 —— 那個過濾量的是
+**盤子走了多遠**,不是過了多久,而盤沒有在動。
+
+所以裸板上要讓零件通過,只能把間隔拉到 159 steps 以上,以實測的 25 steps/s 換算
+是**每個零件約 6.4 秒**。那測不了吞吐,但足以驗證單顆零件的完整路徑。
+
+**不要為此加繞道。** 一度加過一個 `ignore_dist` 參數讓 phantom 跳過這個
+檢查,隨即回退:那個限制是真實機器行為(兩顆零件不能佔同一個位置),繞過它測到的
+就不是會出貨的那條路。慢,但是真的。
+
