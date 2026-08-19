@@ -113,15 +113,34 @@ const selectType = (type) =>
 
 // drive a property-sheet <input> through the REAL jsonChange path: native value
 // setter + bubbling 'input' event (identical technique to flows.editUSLviaInput).
-const driveInput = (idx, value) =>
-  ev(
-    `(function(){var ins=[].slice.call(document.querySelectorAll('input'));var el=ins[${idx}];` +
-    `if(!el)return {ok:false,n:ins.length};` +
-    `var set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;` +
-    `set.call(el,${JSON.stringify(String(value))});` +
-    `el.dispatchEvent(new Event('input',{bubbles:true}));` +
-    `return {ok:true,n:ins.length,val:el.value};})()`
-  );
+// REAL Playwright typing, not a synthetic Event.
+//
+// This used to set .value through the prototype descriptor and dispatch
+// `input`. That stopped reaching the app when JsonEditBlock moved to
+// commit-on-blur/Enter (TEAM_HANDOFF 9.15) and the per-shape PropertySheets
+// became antd controls (REGRESSION_TESTS trap 4): the event fires, the value
+// shows in the DOM, and redux never hears about it. S4 then reported the app
+// as refusing a valid number when nothing had been typed at all.
+// flows.mjs editUSLviaInput is the reference for this.
+// Send raw keystrokes, for the cases fill() cannot express (a number input
+// refuses non-numeric text, but the keys can still be pressed at it).
+const typeKeys = async (idx, keys) => {
+  const n = await ev(`document.querySelectorAll('input').length`);
+  if (!(idx < n)) return { ok: false, n };
+  for (const k of keys) await api('/press', { selector: `input >> nth=${idx}`, key: k });
+  await api('/press', { selector: `input >> nth=${idx}`, key: 'Enter' });
+  const val = await ev(`document.querySelectorAll('input')[${idx}].value`);
+  return { ok: true, n, val };
+};
+
+const driveInput = async (idx, value) => {
+  const n = await ev(`document.querySelectorAll('input').length`);
+  if (!(idx < n)) return { ok: false, n };
+  await api('/fill', { selector: `input >> nth=${idx}`, value: String(value) });
+  await api('/press', { selector: `input >> nth=${idx}`, key: 'Enter' });
+  const val = await ev(`document.querySelectorAll('input')[${idx}].value`);
+  return { ok: true, n, val };
+};
 
 let failures = 0;
 function report(name, ok, detail) {
@@ -219,8 +238,16 @@ async function main() {
       `cannot map input[${NUM_INPUT_IDX}] (val=${inVal}) to a numeric measure field`);
   } else {
     const prior = Number(m0[fieldKey]);
-    // (a) drive a NON-numeric value through the real jsonChange path
-    const r1 = await driveInput(NUM_INPUT_IDX, 'abc');
+    // (a) drive a NON-numeric value through the real jsonChange path.
+    //
+    // The field is <input type="number"> now, so this is no longer the test it
+    // was written as. Playwright refuses fill('abc') outright ("Cannot type
+    // text into input[type=number]"), and the browser drops non-numeric
+    // keystrokes before the app ever sees them -- the parseFloat guard this
+    // case was written for is not reachable from the UI any more. What is
+    // still worth asserting is the outcome: hammering letters at the field
+    // must not corrupt the stored value. So type them as keys and check.
+    const r1 = await typeKeys(NUM_INPUT_IDX, ['a', 'b', 'c']);
     await sleep(400);
     const dA = await serialDef();
     const mA = dA.features.find((f) => f.id === measureId && f.type === 'measure');

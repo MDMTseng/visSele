@@ -169,12 +169,13 @@ async function main() {
   // Fields exist after load (the loaded def may override the empty-state defaults
   // 180/0/0.1, so we don't pin exact values — just types + sane ranges).
   const base = await probe();
+  // The intr clause was dropped here -- see the OBSOLETE note at T6.
   const okBase =
     typeof base.angDeg === 'number' && Number.isFinite(base.angDeg) &&
-    (base.face === -1 || base.face === 0 || base.face === 1) &&
-    typeof base.intr === 'number' && base.intr >= 0 && base.intr <= 1;
+    (base.face === -1 || base.face === 0 || base.face === 1);
   report('T1 baseline_present_and_sane', okBase,
-    `angDeg=${base.angDeg} face=${base.face} intr=${base.intr} (types + ranges sane)`);
+    `angDeg=${base.angDeg} face=${base.face} (types + ranges sane; ` +
+    `intr not checked, field removed 2026-08-07)`);
 
   // ---------- T2 angle_margin_basic ----------
   const values = [45, 90, 270, 360, 0];
@@ -220,6 +221,16 @@ async function main() {
   report('T5 matching_face', faceOk, faceDetail.join(' '));
 
   // ---------- T6 intrusion_ratio_number ----------
+  // OBSOLETE: intrusionSizeLimitRatio was REMOVED from the app on 2026-08-07
+  // (commit fd5f1f4a "Remove intrusionSizeLimitRatio"; DefConfUI.js:1236 keeps
+  // the note). The identifier does not appear anywhere in src/ any more, so
+  // edit_info.intrusionSizeLimitRatio reads undefined and these cases have
+  // been failing since that day -- invisibly, because the Mac-path default
+  // made this whole suite SKIP. Reported rather than deleted: whether the
+  // cases go or the feature comes back is not a decision for a test fix.
+  console.log('[T6 intrusion_ratio_number] SKIP — field removed 2026-08-07 (fd5f1f4a)');
+  console.log('[T7 intrusion_ratio_garbage] SKIP — field removed 2026-08-07 (fd5f1f4a)');
+  if (false) {
   const ratios = [0.25, 0.5, 1.0, 0];
   let rOk = true; let rDetail = [];
   for (const v of ratios) {
@@ -238,6 +249,8 @@ async function main() {
   const dropped = Math.abs(pStrR.intr - 0.42) < 1e-9 && Math.abs(pObjR.intr - 0.42) < 1e-9;
   report('T7 intrusion_ratio_garbage', dropped,
     `anchor=0.42; after "0.7"->${pStrR.intr}; after {}->${pObjR.intr} (typeof guard must drop non-numbers)`);
+
+  }
 
   // ---------- T8 matching_conditions (non-existent action) ----------
   const before8 = await probe();
@@ -261,10 +274,10 @@ async function main() {
   const finalP = await probe();
   const okSer =
     Number(finalP.angDeg) === 77 &&
-    Number(finalP.face) === 1 &&
-    Math.abs(Number(finalP.intr) - 0.33) < 1e-9;
+    Number(finalP.face) === 1;   // intr dropped -- see the OBSOLETE note at T6
   report('T9 serialization', okSer,
-    `final edit_info: angDeg=${finalP.angDeg} face=${finalP.face} intr=${finalP.intr} (want 77,1,0.33)`);
+    `final edit_info: angDeg=${finalP.angDeg} face=${finalP.face} (want 77,1); ` +
+    `intr=${finalP.intr} not asserted -- field removed 2026-08-07`);
 
   // ---------- T10 no_error_lines ----------
   const errAfter = await getErrLines();

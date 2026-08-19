@@ -162,14 +162,35 @@ async function fuzzIM() {
       try{
         var o=G.raw2Obj_IM({data:ab},0);
         if(o===null){nulls++;continue;}
-        var okCam=(typeof o.camera_id==='number') && o.camera_id>=0 && o.camera_id<=255;
-        var okSes=(typeof o.session_id==='number') && o.session_id>=0 && o.session_id<=255;
-        var imgOK = (o.image===null) ||
-          (o.image && o.image.constructor && o.image.constructor.name==='Uint8ClampedArray');
-        if(!(okCam&&okSes&&imgOK)){
+        // Assert the fields raw2Obj_IM ACTUALLY parses. This used to require
+        // camera_id and session_id, which that function has never set: the
+        // 15-byte IM extra-header is format | jpeg_quality | offsetX | offsetY
+        // | width | height | scale | full_width | full_height (see
+        // UTIL/BPG_Protocol.js and docs/IMG_TRANSFER_JPEG.md). So F3 failed on
+        // 500 of 500 inputs from the day it was written -- and a fuzz case
+        // that fails at exactly 100% is testing its own expectation, not the
+        // code. Verified against the live app 2026-08-19.
+        var NUMS=['format','jpeg_quality','offsetX','offsetY','width','height',
+                  'scale','full_width','full_height'];
+        var badNum=null;
+        for(var ni=0;ni<NUMS.length;ni++){
+          var v=o[NUMS[ni]];
+          if(typeof v!=='number' || !isFinite(v) || v<0){badNum=NUMS[ni];break;}
+        }
+        // The image type is DECIDED BY format, and asserting that link is
+        // stronger than asserting one type. format 1|2 is a JPEG bitstream
+        // (Uint8Array); anything else is legacy raw RGBA (Uint8ClampedArray).
+        // The old check only allowed Uint8ClampedArray -- it predates JPEG
+        // transfer entirely (docs/IMG_TRANSFER_JPEG.md).
+        var ctor=(o.image&&o.image.constructor&&o.image.constructor.name)||
+                 (o.image===null?'null':typeof o.image);
+        var wantCtor=(o.format===1||o.format===2)?'Uint8Array':'Uint8ClampedArray';
+        var imgOK=(o.image===null)||(ctor===wantCtor);
+        if(badNum||!imgOK){
           inv++;
-          if(!sample)sample={i:i,hex:hex(ab),cam:o.camera_id,ses:o.session_id,
-            imgCtor:(o.image&&o.image.constructor&&o.image.constructor.name)||null};
+          if(!sample)sample={i:i,hex:hex(ab),badNum:badNum,
+            badVal:badNum?o[badNum]:undefined,
+            format:o.format,imgCtor:ctor,wantCtor:wantCtor};
         }
       }catch(e){
         throws++;

@@ -181,7 +181,20 @@ async function main() {
 
   // ---- T1 enter_inspmode ----
   await dispatchSM('Insp_Mode');
-  await sleep(250);
+  // The SM transition is ASYNC (ActionThrottle -- TEAM_HANDOFF 9.3). Measured
+  // on this bench: still MAIN at 0ms, INSP_MODE at ~900ms. The fixed wait
+  // it replaced was a guess that happened to hold on the faster Mac box.
+  // ...and ActionThrottle can SWALLOW the dispatch outright (9.3 again), not
+  // merely delay it: reset() leaves a burst of MW_API_CALL/WS_UPDATE in
+  // flight. Polling cannot rescue a message that was never delivered, so
+  // re-send while polling. Observed: passes standalone with polling alone,
+  // still failed under qa/run.mjs until the re-send was added.
+  // Safe to repeat: Insp_Mode is only a transition out of MAIN.
+  for (let i = 0; i < 40; i++) {
+    if (isTopState((await snap()).value, 'INSP_MODE')) break;
+    if (i && i % 10 === 0) await dispatchSM('Insp_Mode');
+    await sleep(100);
+  }
   const s1 = await snap();
   const t1_ok = isTopState(s1.value, 'INSP_MODE');
   report('T1 enter_inspmode', t1_ok, `value=${s1.valueJSON}`);

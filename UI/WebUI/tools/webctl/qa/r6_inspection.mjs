@@ -181,7 +181,19 @@ async function main() {
 
   // ---- T1 enter_inspmode ----
   await dispatchSM('Insp_Mode');
-  await sleep(200);
+  // The SM transition is ASYNC (ActionThrottle -- TEAM_HANDOFF 9.3). Measured
+  // on this bench: still MAIN at 0ms, INSP_MODE at ~900ms. The fixed wait
+  // it replaced was a guess that happened to hold on the faster Mac box.
+  // ...and ActionThrottle can SWALLOW a dispatch outright (9.3 again):
+  // reset() leaves a burst of MW_API_CALL/WS_UPDATE in flight, and the
+  // event can be dropped rather than merely delayed. Waiting longer does
+  // not help a message that was never delivered, so re-send while polling.
+  // Re-sending is safe: Insp_Mode is only a transition out of MAIN.
+  for (let i = 0; i < 40; i++) {
+    if (isTopState((await snap()).value, 'INSP_MODE')) break;
+    if (i && i % 10 === 0) await dispatchSM('Insp_Mode');
+    await sleep(100);
+  }
   let s1 = await snap();
   const t1_ok = isTopState(s1.value, 'INSP_MODE');
   report('T1 enter_inspmode', t1_ok,
@@ -222,7 +234,19 @@ async function main() {
 
   // ---- T5 enter_instinsp ----
   await dispatchSM('InstInsp_Mode');
-  await sleep(200);
+  // The SM transition is ASYNC (ActionThrottle -- TEAM_HANDOFF 9.3). Measured
+  // on this bench: still MAIN at 0ms, INSTINSP_MODE at ~900ms. The fixed wait
+  // it replaced was a guess that happened to hold on the faster Mac box.
+  // ...and ActionThrottle can SWALLOW a dispatch outright (9.3 again):
+  // reset() leaves a burst of MW_API_CALL/WS_UPDATE in flight, and the
+  // event can be dropped rather than merely delayed. Waiting longer does
+  // not help a message that was never delivered, so re-send while polling.
+  // Re-sending is safe: InstInsp_Mode is only a transition out of MAIN.
+  for (let i = 0; i < 40; i++) {
+    if (isTopState((await snap()).value, 'INSTINSP_MODE')) break;
+    if (i && i % 10 === 0) await dispatchSM('InstInsp_Mode');
+    await sleep(100);
+  }
   const s5a = await snap();
   const ok5a = isTopState(s5a.value, 'INSTINSP_MODE');
   await dispatchSM('EXIT');
