@@ -1294,6 +1294,23 @@ class PerifChannel:public Data_JsonRaw_Layer
     int64_t  tid  = (int64_t)atoll(ptid + 6);
     uint64_t t_us = (uint64_t)atoll(pts + 7);
     if (t_us == 0) return;
+    // Answer ONLY triggers that have a part behind them.
+    //
+    // Answering everything raises INSP_RESULT_MATCHES_NO_OBJECT (error 1, "a
+    // verdict arrived for no known object") and the device halts -- measured:
+    // one part judged correctly, then 112 on the next announcement. Two kinds
+    // of trigger carry no object:
+    //
+    //   "sync":1        a clock-sync pulse. It teaches CAM_SYNC through a
+    //                   different path and must not be given a verdict.
+    //   gate_pulse:0    a manual trig_cam_pulse -- the firmware says so
+    //                   itself: "no pipeline object behind a manual pulse".
+    //
+    // Calibration still converges: sync pulses are paired by bySync, not by
+    // the report we would have sent them.
+    if (strstr(p, "\"sync\":1") != NULL) return;
+    const char *pgp = strstr(p, "\"gate_pulse\":");
+    if (pgp && atoll(pgp + 13) == 0) return;
     uint64_t cam_ts = (uint64_t)((double)t_us * camTsSynthMult())
                     + (uint64_t)camTsSynthOffsetUs();
     // host_us = 0: nothing was held in the core, and claiming otherwise would
