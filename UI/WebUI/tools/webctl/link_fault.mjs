@@ -5,7 +5,28 @@
 //  4. kill the listener -> writes fail -> tx_fail moves, suspect flips
 //  5. PD CONNECT same desc -> must REOPEN (not reuse); fails (no listener) -> connected=false
 //  6. with frames still flowing -> dropped_no_channel moves
-import WebSocket from 'ws';
+//  7. RESTORE: hand the peripheral slot back to the real board
+//
+// Step 7 is not decoration. This probe steals the one peripheral channel the
+// core has and points it at a fake TCP listener that it then kills. Without a
+// restore the run ends with the machine disconnected and the link SUSPECT,
+// every later test on the bench reads a dead link, and the failure looks like
+// whatever ran next. That is REGRESSION_TESTS trap 13, and it has cost real
+// bench time (a suite_nohw run and a console session, 2026-08-19).
+//
+// Restoring is two things, not one:
+//   a) PD CONNECT back to the real UART, and
+//   b) leave something ATTACHED that owns it.
+// The channel belongs to the BPG client that opened it and is torn down when
+// that client's websocket closes -- so this process cannot both restore the
+// link and exit. It re-spawns perif_hold.mjs (detached) to hold the slot.
+//
+//   --uart COM3     the board to hand back to (default COM3)
+//   --no-restore    leave the link where the test left it, for debugging
+import WebSocket from 'ws';
+import { spawn } from 'node:child_process';
+
+
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import net from 'node:net';
@@ -61,4 +82,28 @@ console.log('reCONNECT   :', JSON.stringify(await link()));
 // 6: frames still flowing with no channel
 await new Promise(r=>setTimeout(r,5000));
 console.log('no channel  :', JSON.stringify(await link()));
-ws.close(); process.exit(0);
+
+// 7: give the slot back
+const ARGV = process.argv.slice(2);
+const UART = (() => { const i = ARGV.indexOf('--uart'); return i >= 0 ? ARGV[i + 1] : 'COM3'; })();
+if (ARGV.includes('--no-restore')) {
+  console.log('restore    : SKIPPED (--no-restore) -- the link is still on the dead fake board');
+  ws.close(); process.exit(0);
+}
+console.log(`restore    : PD CONNECT ${UART} (reboots the board) + detached holder`);
+ws.send(frame('PD',0,pg++,{type:'CONNECT',uart_name:UART,baudrate:230400,
+  machine_type:'uInspESP32',cam_idx:1,pairing:'timestamp',cat_ng:1,cat_ok:3}));
+await new Promise(r=>setTimeout(r,3000));
+console.log('restored   :', JSON.stringify(await link()));
+
+// Hand ownership to a process that will outlive this one, THEN close. Started
+// before the close so the gap with no owner is as short as possible; the
+// holder's own CONNECT is what actually re-establishes the channel.
+{
+  const holder = path.join(path.dirname(fileURLToPath(import.meta.url)), 'perif_hold.mjs');
+  spawn(process.execPath,[holder,'--uart',UART],{detached:true,stdio:'ignore'}).unref();
+  await new Promise(r=>setTimeout(r,4000));
+}
+ws.close();
+await new Promise(r=>setTimeout(r,500));
+process.exit(0);

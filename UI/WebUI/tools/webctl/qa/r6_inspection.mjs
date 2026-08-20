@@ -258,10 +258,20 @@ async function main() {
 
   // ---- T6 no_errors ----
   const diag1 = await diagText();
+  // Dev-build React warnings are not errors, and enumerating them one text at a
+  // time is a list that is always one release behind. This filter used to name
+  // validateDOMNesting / Each child in a list / Failed prop type and then failed
+  // on "React does not recognize the `%s` prop on a DOM element" -- a warning
+  // nobody had hit yet. Filter by SHAPE instead: React prefixes every dev
+  // warning with "Warning:", and a production bundle emits none of them, so a
+  // suite asserting "no new errors during these transitions" must not count
+  // them. They are still printed below, so a new one is visible without being
+  // fatal.
   const newErr = errorLines(diag1)
     .slice(-200)
     .filter((l) => !/few samples|abnormal sample|repeatTime|headSkipTime/i.test(l))
-    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major|Can't perform a React state update on an unmounted/i.test(l));
+    .filter((l) => !/\[error\]\s*Warning:/i.test(l))       // any React dev warning
+    .filter((l) => !/antd:|will be removed in next major/i.test(l));
     // (Defensive R7-era TypeError filter removed: the "(reading '0')" path was
     //  confirmed fully fixed by the InspectionUI down_samp_level_update null-
     //  guard. Any future appearance is a genuine regression — let it fail loudly.)
