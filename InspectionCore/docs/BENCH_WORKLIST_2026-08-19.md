@@ -265,6 +265,23 @@ export PATH="/c/msys64/mingw64/bin:<repo>/InspectionCore/build/win-mingw-msys:<r
 **相機接上之後就不可以 `taskkill /F` core** —— 要換 build 就趁 core 還沒握到
 相機的時候換。
 
+**這條的界線在「有沒有在串流」,2026-08-20 兩次實測**:
+
+| core 死法 | 相機當時狀態 | 結果 |
+|---|---|---|
+| `ud2` 崩潰(完全沒有清理) | `TriggerMode(2)`,一張都沒抓過 | **相機沒事**,重開 core 直接接上 |
+| `taskkill /F` | `trigger_mode 0` 自由運轉 10fps | **相機卡死**:Windows PnP 還顯示 OK,但 `MV_CC_EnumDevices` 回 0 台,core 陷入無窮 discovery 迴圈(68 次還在跑) |
+
+我從第一列推論「這台相機不怕突然死」然後套用到第二列 —— **推論跨過了唯一有差別的
+那個變數**,結果就是把相機弄卡。
+
+**復原**:實體拔插 USB。`pnputil /restart-device` 和 `Disable-PnpDevice` 都要系統
+管理員權限,一般 shell 兩個都會失敗。
+
+**所以正確做法是用 `run_core.sh` 前景啟動、用 Ctrl-C 關閉。** 背景啟動會讓
+graceful 路徑(SIGINT → `g_shutdownRequested` → `terminationFlag`)變成不可達,
+Windows 只剩 `/F` 可用,而 `/F` 在串流中就是這一格。
+
 **沒有畫面不一定是壞掉。** `getCamera()` 開機就設 `TriggerMode(2)` = 硬體觸發,
 一個邊緣一張圖。`plate.freq=0` 時沒有 gate 脈衝、沒有 CAM1 stage 脈衝,
 所以**一張都不會有**,而這是正確行為。要在沒有轉盤的情況下看畫面:
