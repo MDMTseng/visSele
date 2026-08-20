@@ -87,6 +87,12 @@ insp.log
 insp.log.*
 crash_*.dump
 
+# Windows minidumps from the SetUnhandledExceptionFilter handler. Only useful
+# against the exact exe that produced them, and a few MB each. What matters
+# from a crash -- exception code, RIP module offset, the symbolized frames --
+# belongs in the write-up, not in the tree.
+insp_crash_*.dmp
+
 # On-demand log snapshot: fixed name, rewritten every time the operator
 # presses 傾印核心日誌. 8-9MB of churn per press, and it is never a source file.
 latest_dump.dump
