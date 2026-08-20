@@ -12,6 +12,135 @@ found it and nobody has confirmed it yet — treat those as leads, not facts.
 
 ## P1 — silent wrong answers
 
+**One malformed line kills the core process, deterministically** — VERIFIED
+2026-08-19, three independent reproductions in one second each
+(`UI/WebUI/tools/webctl/quote_crash.mjs`). Two bugs in series:
+
+    {"type":"ping"} "AAAA"
+
+1. The DEVICE interpolates unescaped bytes into a JSON debug message.
+   `MData_JR::recv_ERROR` (`LegacyFirmware.cpp:4285`) escapes `dataBuff` but
+   passes `string((char*)recv_data,0,9)` raw into `dbg_printf`, which wraps its
+   output in `{"dbg":"..."}`. A `"` among those nine bytes ends the string early
+   and the device emits a malformed frame. `recv_data` is non-NULL for exactly
+   one error type, `INIT_CHAR_ERROR` — a byte outside a frame.
+2. The CORE runs `ud2` on any malformed frame (the entry above).
+
+The realistic trigger needs no console and no attacker: a device reset or a
+dropped frame while the core is mid-write leaves the tail of a JSON message on
+the wire, and a JSON tail is full of quotes. Every DTR toggle and every power
+blip is an entry to this path.
+
+Why the obvious trigger does not work, and why this took a day to pin: an empty
+container latches the device through `JSON_FORMAT_ERROR`, which passes
+`recv_data == NULL` — no raw bytes, valid JSON out, core survives. Measured
+40/40 latch-and-recover cycles with `latch_loop.mjs`. The quote is the entire
+difference. Fix either half and the chain breaks; both are wrong.
+
+**Four functions in the shipped binary are a single `ud2`** — VERIFIED on the
+bench 2026-08-19, one of them by an actual core crash. Details, minidump and
+the scan command in `CONSOLE_ABUSE_2026-08-19.md` F1.
+
+`PerifChannel::recv_ERROR` and `PerifChannel::recv_RESET`
+(`wiringPanel.cpp:1496,1500`) are declared `int` with an empty body. Falling
+off the end of a non-void function is UB and gcc -O2 emits the whole function
+as `ud2`, so calling either one is ILLEGAL_INSTRUCTION and a dead process.
+
+`recv_ERROR` is the core's handler for **every** peripheral protocol error —
+five call sites in `common_lib/Data_Layer_Protocol.cpp`, of which `:231`
+`INIT_CHAR_ERROR` fires on any single byte outside a frame that is not `{` or
+whitespace, and `:525` `RAW_CRC_ERROR` fires on one flipped bit in a CRC
+trailer. On a real machine that is cable noise, a device reboot mid-frame, or
+a half-written frame. `recv_RESET` is on the RECOVERY path (`:303`), so the
+fault and its recovery are both `ud2`.
+
+Crashed live 17:42 on 2026-08-19,
+`InspectionCore/Core0_1/insp_crash_4616_20260819_174252.dmp`, RIP resolved to
+`wiringPanel.cpp:1500` from `Data_UART_Layer::recv_data_thread`. Not every
+oversized line reproduces it (0/6 on a retry — the link RESYNCs and recovers in
+7–9s instead); the defect itself has no probability in it, only its trigger
+does.
+
+The other two, `angledOffsetTable::sampleAngleOffset(acv_XY)` and
+`nodeInfoIdxCorrection` (`common_lib/ImageSampler.cpp:628,746`), are `//TODO`
+stubs in the inspection path with no callers today. One overload-resolution
+change or one new call site turns each into an immediate crash.
+
+Fix is one `return` per function plus `-Werror=return-type`. Not applied: it
+changes the binary under test mid-campaign, and the rebuild is the one that has
+to be watched for the OpenCV 5 pin.
+
+**The device's JSON parser cannot represent `{}` or `[]`, and rejecting them
+latches the machine** — VERIFIED on the bench 2026-08-19, reproduced on three
+different commands and on a bare `{}` frame.
+
+`json_seg_parser::newChar` pushes `OBJ_KEY` unconditionally on `{`
+(`src/comm/json_seg_parser.cpp`, `case NUL` and `case DAT`), and `case OBJ_KEY`
+accepts only `"` or whitespace -- so the `}` of an empty object is a format
+error. `[` pushes `ARR_END, DAT` and the `]` of an empty array falls into
+`case DAT`'s final `else`, which reads it as the first character of a scalar.
+Both are valid JSON.
+
+A format error becomes `JSON_FORMAT_ERROR` -> `recv_ERROR` ->
+`SERIAL_PROTOCOL_ERROR`, which is LATCHED: the board keeps emitting SYSTIME and
+accepts no command at all, so from the host it looks alive. `clear_error`
+recovers it every time.
+
+Latched by `{"type":"ping","x":[]}`, `{"type":"ping","x":{}}`,
+`{"type":"get_running_stat","x":[]}`, `{"type":"set_setup","plate":{}}`, and by
+the frame `{}` on its own. Not latched by `[1]`, `{"a":1}` or `""`.
+
+The realistic trigger is a settings save that sends an untouched group as an
+empty object. Fix: accept `}` in `OBJ_KEY` when the object is empty, and `]` in
+`DAT` when the enclosing state is `ARR_END`. See `CONSOLE_ABUSE_2026-08-19.md`
+A1-1.
+
+**An unknown command `type` gets no reply at all** — VERIFIED 2026-08-19. All 49
+real commands answer; 20 non-commands (including `get_versionn`, a
+one-character typo) produce silence -- not `ack:false`, nothing. This is the
+actual mechanism of the `plate.freq` trap, which had been recorded as
+"acked and ignored"; it is not acked at all. A caller cannot distinguish a typo
+from a dead board. Fix: one `else` at the end of the dispatch chain answering
+`ack:false`. See `CONSOLE_ABUSE_2026-08-19.md` A1-2.
+
+**Synth sender is an immortal detached thread on a freed channel** — VERIFIED,
+two crashes 2026-08-19. BENCH ONLY: the whole path is gated on
+`INSP_CAM_TS_SYNTH=1`, so a shipped machine never starts the thread.
+
+`PerifChannel::startSynthSender` (`wiringPanel.cpp:1293`) launches
+`std::thread([this]{ while(true) ... }).detach()` with no exit condition and no
+join, capturing the channel. `delete_PeripheralChannel()` frees that channel on
+every DISCONNECT, every reopen and every last-BPG-client-close; the thread does
+not find out and keeps reading `synthPendTail` / `synthPend[]` and calling
+`sendReportTo_perifCH(this, ...)` on freed memory at 500us intervals. Because
+`synthSenderUp` is a member, every new channel starts another one — reconnect
+ten times and nine leaked threads are polling freed objects.
+
+Crashed twice on the bench, both ACCESS_VIOLATION READ inside the lambda:
+`insp_crash_11284_20260819_180031.dmp` at `wiringPanel.cpp:1300` and
+`insp_crash_2972_20260819_182026.dmp` at `:1305`.
+
+Worse than the crash: before the memory is reused, the leaked thread can still
+SEND a verdict on the dead channel. Any pairing or counting measurement taken
+after a reconnect is suspect unless no leaked sender existed at the time.
+
+Fix: an atomic stop flag checked each iteration, set by `~PerifChannel`, with
+the destructor waiting for the thread to acknowledge. Workaround until then:
+minimise DISCONNECT/CONNECT, and restart the core after any link-lifecycle test
+before taking numbers. See `CONSOLE_ABUSE_2026-08-19.md` F6.
+
+**`!TL` console injection has never worked, and reports success anyway** —
+VERIFIED 2026-08-19. `GenStrBPGData` sets `size = strlen(jsonStr)`, so the
+terminator sits one byte outside the declared length and the NUL guard at
+`wiringPanel.cpp:3167` refuses every packet. The console prints
+`{"core":"PD injected"}` before sending, so nothing looks wrong. It went
+unnoticed all day because a leftover Playwright headless Chromium on `:4090`
+was doing the PD CONNECT; killing the browser breaks headless bring-up
+outright. `bareboard_up.mjs` now sends CONNECT over the BPG websocket and works
+with no browser; the console path is still broken. See
+`CONSOLE_ABUSE_2026-08-19.md` F3.
+
+
 **Memory safety: write past `dataBuff`** — VERIFIED and FIXED 2026-08-19.
 The corruption is real; the mechanism reported was not the one.
 

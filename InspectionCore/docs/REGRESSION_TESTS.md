@@ -389,3 +389,26 @@ Verified after recovery: 193 pulses at 20/s → 193 RP, zero loss.
 
 `fullframe_run.sh` now restores the crop itself. Any new harness that opens the
 sensor must do the same.
+
+### Trap 15 — a leftover headless browser makes the console look like it works
+
+`!TL` injection (`!pd CONNECT`, `!ld ...`) is refused by the core's NUL guard
+and has never worked; the console acks `{"core":"PD injected"}` before sending,
+so it looks fine. Any Playwright leftover still attached to `:4090` is doing the
+PD CONNECT for you, and every "headless" bring-up on this bench was riding on
+one until 2026-08-19.
+
+Before trusting a headless run:
+
+    tasklist | grep -i chrome-headless      # must be empty
+    taskkill //IM chrome-headless-shell.exe //F
+
+`bareboard_up.mjs` sends CONNECT over the BPG websocket now and is safe. Any
+other tool that uses `!TL` is not. See `CONSOLE_ABUSE_2026-08-19.md` F3.
+
+### Trap 16 — a console line over ~2048 bytes stops the machine, and may kill the core
+
+The console caps lines at 4096; the device frame buffer is 2048. Anything above
+it latches the device (`SERIAL_PROTOCOL_ERROR` 11) for 7-9s until link RESYNC,
+and can take the core with it (`recv_ERROR` is a `ud2` — AUDIT_BACKLOG P1).
+`console_abuse.mjs --no-latch` skips the cases that do this.
