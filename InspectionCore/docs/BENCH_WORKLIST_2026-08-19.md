@@ -40,6 +40,19 @@ int recv_ERROR(ERROR_TYPE errorcode){ /* 空 */ }
 `ImageSampler.cpp:628,746` 兩個同型空殼(`sampleAngleOffset(acv_XY)`、
 `nodeInfoIdxCorrection`)一起補掉 —— 它們今天沒有呼叫者,但都在檢測管線裡。
 
+**2026-08-20 更新 —— 這條已經不是理論了。** 接上真相機、用 WebUI 實際操作時,
+**使用者按了板子上的 reset,core 就死了**(`insp_crash_9396_20260820_105559.dmp`,
+RIP 同樣落在 `recv_ERROR`,呼叫端是 `Data_Layer_Protocol.cpp:237` 的
+`INIT_CHAR_ERROR`)。
+
+機制完全平凡:板子重開時 boot ROM 用 **115200** 印開機訊息,而 core 正以
+**230400** 在讀 —— 於是 frame 外出現一串垃圾位元組。log 裡崩潰前最後幾行就是
+`WARN:: UART:COM3 channel still has residue data length:34` 加一堆亂碼。
+
+沒有 console、沒有 fuzz、沒有惡意輸入。**按一下 reset 鍵就會殺掉 core。**
+`win-mingw-msys`(真相機那個 build)的 `recv_ERROR` 同樣是一條 `ud2` —— 同一份
+原始碼,每個 build 都一樣。
+
 **為什麼排第一,而且不只是「一個待修缺陷」**:A2 剩下的形狀和整個 A4 都是靠
 **大量產生鏈路錯誤**來測的,而每產生一個就得重啟 core。在這條修好之前,那兩項
 不是難做,是做不出乾淨結果。
@@ -132,6 +145,7 @@ DISCONNECT / reopen / 最後一個 BPG 客戶端關閉時釋放它。`synthSende
 | 2.5 | `get_version` 走 framing 層回覆並丟掉呼叫端 id | `LegacyFirmware.cpp:5131` | 讓它走一般回覆路徑,或至少回填 id | 未做 |
 | 2.6 | SEL 的 trace 事件 tid 恆為 0 | `LegacyFirmware.cpp:3306-3368` | 傳入 `pli->tid`,和 CAM/L1A/L2A 一致 | 未做 |
 | 2.7 | `FindInspShapeObject` 預設參數陷阱 | `UI/WebUI/src/UTIL/InspectionEditorLogic.js` | 每個區塊先判斷 list 存在;或讓 `FindShape` 被明確傳入 `undefined` 時不退回 `this.shapeList`(較徹底,要先確認沒有呼叫端依賴退回) | 未做 |
+| 2.8b | `cam_1.cur_width` / `cur_height` 回報未初始化記憶體 | `wiringPanel.cpp:3886` | 兩個欄位取自 `calib_bacpac.sampler->getCalibMap()->fullFrameW/H` —— 是**校正圖**不是相機,名字卻叫 `cur_width`。實測值 `1936534903` = `0x736F6C77`(ASCII 位元組),重開相機後不變。目前 `UI/WebUI/src` 沒有人讀它,所以還沒害到人;但一個叫 `cur_width` 的欄位吐未初始化記憶體,下一個相信它的人就會中。要嘛改成真的相機尺寸,要嘛改名並確保 calib map 有初始化 | 未做 |
 | 2.8 | `webctld` 瀏覽器死掉不重建;預設 URL 是 8080 | `tools/webctl/webctld.mjs` | `page.isClosed()` 時重建 context/page;預設 URL 改 8081 或啟動時大聲抱怨 | 未做 |
 
 **2.6 值得單獨說**:它不是缺陷而是**儀器缺口**。沒有 tid,SEL 只能量「脈衝多寬」,
@@ -230,6 +244,38 @@ node UI/WebUI/tools/webctl/bareboard_up.mjs --freq 15000
 # WebUI 測試另外需要:
 WEBCTL_HEADLESS=1 WEBCTL_URL=http://localhost:8081 node UI/WebUI/tools/webctl/webctld.mjs &
 ```
+
+### 接真相機時(2026-08-20 實測)
+
+```sh
+# build 要選對:nohik-cv4 是 FEATURE_HIKROBOT=OFF,看不到相機,而且畫面上
+# 不會有任何異狀 —— 它只會列舉到 BMP carousel 然後給你一台假相機。
+#   nohik-cv4       HikRobot=OFF  OpenCV 4.13
+#   win-mingw-msys  HikRobot=ON   OpenCV 4.13   <- 真相機用這個
+#
+# PATH 要三段,不是兩段:
+#   mingw64/bin                        OpenCV / libgomp
+#   build/win-mingw-msys               自己的 build
+#   build/nohik-cv4                    MVCAMSDK_X64.DLL 只有這裡有(MindVision
+#                                      的 link-time 相依,即使沒有 MindVision 相機)
+#   MVS/Runtime/Win64_x64              MvCameraControl.dll(HikRobot)
+export PATH="/c/msys64/mingw64/bin:<repo>/InspectionCore/build/win-mingw-msys:<repo>/InspectionCore/build/nohik-cv4:/c/Program Files (x86)/Common Files/MVS/Runtime/Win64_x64:$PATH"
+```
+
+**相機接上之後就不可以 `taskkill /F` core** —— 要換 build 就趁 core 還沒握到
+相機的時候換。
+
+**沒有畫面不一定是壞掉。** `getCamera()` 開機就設 `TriggerMode(2)` = 硬體觸發,
+一個邊緣一張圖。`plate.freq=0` 時沒有 gate 脈衝、沒有 CAM1 stage 脈衝,
+所以**一張都不會有**,而這是正確行為。要在沒有轉盤的情況下看畫面:
+
+```sh
+node UI/WebUI/tools/webctl/trigmode.mjs 0     # 自由運轉 10fps
+node UI/WebUI/tools/webctl/snap_probe.mjs     # 驗證:IM=y SG=y 才是真的通了
+```
+
+Inspection UI 自己會把相機設回硬體觸發,所以進檢測模式後可能又靜止 ——
+那不是退步,那是它在要求實際運轉需要的模式。
 
 **沒有 shutdown 指令**,只能 `taskkill /IM visSele.exe /F`。這台是 BMP_carousel
 假相機,沒有實體 USB handle,所以 `/F` 不會卡死相機;**接上真相機時不可以這樣做**。
