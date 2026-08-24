@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>stream_lab</title>
+<style>
+  html,body{margin:0;height:100%;background:#101418;color:#e6e9ee;
+            font:13px ui-monospace,Consolas,monospace;display:flex;flex-direction:column}
+  #hdr{padding:6px 10px;border-bottom:1px solid #262c35;color:#4ea3ff}
+  #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000}
+  canvas{max-width:100%;max-height:100%}
+  #log{margin:0;height:190px;overflow:auto;padding:8px 10px;background:#0b0e12;
+       border-top:1px solid #262c35;white-space:pre-wrap}
+</style>
+<body>
+  <div id="hdr">starting…</div>
+  <div id="stage"><canvas id="view"></canvas><canvas id="view2d"></canvas></div>
+  <pre id="log"></pre>
+  <script src="lab.js"></script>
+</body>

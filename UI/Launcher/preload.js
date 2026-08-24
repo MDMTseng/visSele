@@ -1,0 +1,44 @@
+// The entire surface the renderer gets. Everything else -- fs, child_process,
+// net, the whole of Node -- stays in the main process.
+//
+// Both pages load with this preload: the launcher's own shell, and the
+// application's UI. They do not get the same powers, but that is enforced in
+// the MAIN process (assertShell / assertStopped in main.js), not here: a check
+// in preload runs in the renderer's world and is only as trustworthy as the
+// renderer. Here the list is flat and the main side decides what is allowed in
+// the current state.
+'use strict';
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+const on = (channel, fn) => {
+  const wrapped = (_event, data) => fn(data);
+  ipcRenderer.on(channel, wrapped);
+  return () => ipcRenderer.removeListener(channel, wrapped);
+};
+
+contextBridge.exposeInMainWorld('launcher', {
+  // Available everywhere -----------------------------------------------
+  //
+  // The application's UI uses pickFolder for its own directory buttons. Guard
+  // the call site with `window.launcher?.pickFolder` -- in a plain browser (a
+  // dev server) there is no preload and the property is absent, which is
+  // exactly the condition that should leave such a button disabled.
+  pickFolder: (options) => ipcRenderer.invoke('launcher:pickFolder', options),
+  status: () => ipcRenderer.invoke('launcher:status'),
+  stopCore: () => ipcRenderer.invoke('launcher:stopCore'),
+
+  // Launcher shell only; refused by the main process while the app UI is up.
+  startCore: () => ipcRenderer.invoke('launcher:startCore'),
+  selectVersion: (v) => ipcRenderer.invoke('launcher:selectVersion', v),
+  chooseAndInstall: () => ipcRenderer.invoke('launcher:chooseAndInstall'),
+  pickAppRoot: () => ipcRenderer.invoke('launcher:pickAppRoot'),
+  pickWorkingDir: () => ipcRenderer.invoke('launcher:pickWorkingDir'),
+  openFolder: (which) => ipcRenderer.invoke('launcher:openFolder', which),
+
+  // Events
+  onLog: (fn) => on('launcher:log', fn),
+  onCoreLine: (fn) => on('launcher:coreline', fn),
+  onHealth: (fn) => on('launcher:health', fn),
+  onReason: (fn) => on('launcher:reason', fn),
+});

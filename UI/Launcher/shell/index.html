@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <!-- No remote anything. The shell is local files and IPC; a CSP this strict
+       means a mistake in the markup cannot turn into a network request. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:;">
+  <title>Xception INSP</title>
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <header>
+    <div class="brand">XCEPTION <span>tech</span></div>
+    <div class="ident" id="ident"></div>
+  </header>
+
+  <main>
+    <section id="banner" class="banner hidden"></section>
+
+    <section class="panel">
+      <h2>狀態</h2>
+      <div class="row" id="coreStatus">讀取中…</div>
+      <div class="actions">
+        <button id="btnStart">啟動</button>
+        <button id="btnStop" class="ghost">停止</button>
+        <button id="btnLogs" class="ghost">開啟日誌資料夾</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>啟動描述</h2>
+      <div class="settings" id="plan"></div>
+    </section>
+
+    <section class="panel">
+      <h2>版本</h2>
+      <table id="versions"><tbody></tbody></table>
+      <div class="actions">
+        <button id="btnInstall">安裝更新包…</button>
+      </div>
+      <p class="hint">更新包是一個 zip。安裝時會逐檔比對 manifest 裡的 SHA256,
+        全部通過才會放進應用資料夾;放進去之後仍然是舊版在跑,要按「設為現行」才會切換。
+        切換只寫一個 current.json,失敗不會動到正在用的版本。
+        安裝過程不會讀寫工作目錄。</p>
+    </section>
+
+    <section class="panel">
+      <h2>路徑</h2>
+      <div class="settings" id="settings"></div>
+    </section>
+
+    <section class="panel grow">
+      <h2>記錄</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <script src="shell.js"></script>
+</body>
+</html>
