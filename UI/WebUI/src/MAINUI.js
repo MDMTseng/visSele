@@ -278,6 +278,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
 
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
+  const shapeListForRank = useSelector(state => state.UIData.edit_info._obj.shapeList);
   const CAM1_ID_CONN_INFO = useSelector(state => state.ConnInfo.CAM1_ID_CONN_INFO);
   const uInsp_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.uInsp_API_ID));
   const SLID_API_ID_CONN_INFO = usePerifConn(useSelector(state => state.ConnInfo.SLID_API_ID));
@@ -572,6 +573,31 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           maxCount:1,
           tags:Object.keys(Info_decorator.control_margin_info)
         },...new_tagGroupsPreset]
+    }
+
+    // 檢測等級, offered as tags because that is how every other per-part choice
+    // is already made here -- and because the level has to travel with the
+    // part, not sit in a slider. A rankN tag folds itself into
+    // quality_essential when inspection starts (see componentDidMount in
+    // InspectionUI), so the level reaches the wire def and the core reduces on
+    // the same field the screen does. A slider could never do that: the core
+    // has no notion of rank and cannot be told about one after the def is sent.
+    //
+    // Generated from the ranks the recipe actually uses, so the list cannot
+    // offer a level that selects nothing, and omitted entirely when every
+    // measurement sits at the same rank -- there is no choice to make then.
+    {
+      const ranks = [...new Set((shapeListForRank||[])
+        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure && sh.rank !== undefined)
+        .map(sh => sh.rank))].sort((a,b)=>a-b);
+      if (ranks.length > 1) {
+        new_tagGroupsPreset=[
+          {
+            name:"檢測等級",
+            maxCount:1,
+            tags:ranks.map(r=>"rank"+r)
+          },...new_tagGroupsPreset]
+      }
     }
 
     let isFileOK=(DefFileHash!==undefined&&isSystemReadyForInsp) ;

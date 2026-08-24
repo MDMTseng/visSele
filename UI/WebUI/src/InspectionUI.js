@@ -62,6 +62,7 @@ import {
   CaretDownOutlined,
   BarChartOutlined,
   SaveOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 
 
@@ -734,19 +735,50 @@ class InspectionResultDisplay extends React.PureComponent {
     // one thing on the card that answers "is this drifting?", which neither the
     // value nor the verdict can: 2.785 mm means nothing without its limits, and
     // OK covers everything from dead-on to one micron inside the line.
+    // THE EFFECTIVE LIMITS, and everything on this row reads them.
+    //
+    // rep.lim is stamped by the reducer from the same margin info that produced
+    // the verdict (see resultGrading), so it already carries the 製程 overrides
+    // and the flipped-part _b fields. shape_def carries the ROOT limits.
+    //
+    // The bubble used to read shape_def while the scale and the colour read
+    // rep.lim: with a 製程 selected it stated one set of numbers beside a
+    // verdict computed from another, and nothing on screen said which applied.
+    // A reading is only meaningful against the limits it was judged by.
+    const lim = rep.lim || {};
+    const L = { LSL: num(lim.LSL, def.LSL), USL: num(lim.USL, def.USL),
+                TGT: num(lim.value, def.value),
+                LCL: num(lim.LCL, undefined), UCL: num(lim.UCL, undefined) };
+
+    // Say so when the row is not being judged by the recipe's own numbers --
+    // otherwise an operator comparing the bubble against the def sees a
+    // discrepancy and has no way to tell an override from a fault.
+    const overridden = (L.LSL !== def.LSL) || (L.USL !== def.USL) || (L.TGT !== def.value);
+
     let ratio;
-    if (numeric !== undefined && def.value !== undefined) {
-      const span = numeric > def.value ? (def.USL - def.value) : (def.value - def.LSL);
-      if (span > 0) ratio = (numeric - def.value) / span;
+    if (numeric !== undefined && L.TGT !== undefined) {
+      const span = numeric > L.TGT ? (L.USL - L.TGT) : (L.TGT - L.LSL);
+      if (span > 0) ratio = (numeric - L.TGT) / span;
     }
 
+    const show = (v) => (v === undefined ? "—" : v);
     const detailInfo = <>
       類型:{dictLookUp(def.subtype, this.props.DICT)} <br/>
-      目標:{def.value}<br/>
-      上限:{def.USL}<br/>
-      下限:{def.LSL}<br/>
+      目標:{show(L.TGT)}<br/>
+      規格上限:{show(L.USL)}<br/>
+      規格下限:{show(L.LSL)}<br/>
+      {(L.UCL !== undefined || L.LCL !== undefined) && <>
+        管制上限:{show(L.UCL)}<br/>
+        管制下限:{show(L.LCL)}<br/>
+      </>}
       檢測值:{shown}<br/>
       界限比例:{ratio === undefined ? "—" : ratio.toFixed(2)}<br/>
+      {overridden && <span style={{ color: "#c89000" }}>
+        製程界限(非配方原始值)<br/>
+      </span>}
+      {!essential && <span style={{ color: "#8c8c8c" }}>
+        參考項目 · 不列入件判定<br/>
+      </span>}
     </>;
 
 
@@ -764,16 +796,6 @@ class InspectionResultDisplay extends React.PureComponent {
     // Every line is drawn with a gradient, so the whole scale costs zero DOM
     // nodes on a row that is redrawn at the frame rate.
     //
-    // The limits come from rep.lim -- stamped by the reducer from the same
-    // margin info that produced the verdict (see resultGrading). Reading them
-    // off shape_def instead would draw the root limits next to a verdict
-    // computed from the 製程 overrides, with nothing on screen to say which
-    // applied.
-    const lim = rep.lim || {};
-    const L = { LSL: num(lim.LSL, def.LSL), USL: num(lim.USL, def.USL),
-                TGT: num(lim.value, def.value),
-                LCL: num(lim.LCL, undefined), UCL: num(lim.UCL, undefined) };
-
     // Where a raw value sits, in the row's 8..92% coordinates.
     //
     // ONLY the spec limits are normalised: LSL is always 8%, USL always 92%,
@@ -915,20 +937,35 @@ class InspectionResultDisplay extends React.PureComponent {
       <>
       <tr style={{ display: hide }}>
         <td style={{ ...cell, overflow: "hidden", textOverflow: "ellipsis",
-                     whiteSpace: "nowrap", fontSize: 12,
-                     color: essential ? "#595959" : "#bfbfbf" }}
-            title={rep.name}>
+                     whiteSpace: "nowrap", fontSize: 12, color: "#595959" }}
+            title={essential ? rep.name : rep.name + "(不列入判定)"}>
+          {/* The same eye the canvas overlay already draws on these shapes, so
+              the two views name the thing the same way. A row only reaches here
+              if it is IN rank -- out-of-rank rows are filtered out upstream --
+              so this mark always means "shown, measured, and not counted",
+              never "hidden". */}
+          {!essential && <EyeInvisibleOutlined
+              style={{ fontSize: 11, marginRight: 4, color: "#8c8c8c" }} />}
           {rep.name}
         </td>
         <td style={{ ...cell, textAlign: "right", padding: "3px 6px",
                      fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
                      fontSize: 18, lineHeight: "20px",
                      fontWeight: ink.w,
-                     color: essential ? ink.fg : "#bfbfbf" }}>
+                     color: ink.fg, position: "relative" }}>
           <Popover content={detailInfo} placement="bottomLeft" trigger={["click", "hover"]}>
             <span>{shown}<span style={{ fontSize: 11, marginLeft: 2, opacity: .65 }}>
               {blank ? "" : unit}</span></span>
           </Popover>
+          {/* A TINT, NOT A COLOUR CHANGE. The reading keeps the ink its status
+              earned -- a reference dimension that is out of tolerance is still
+              red, because it IS out of tolerance -- and the wash says only that
+              it does not decide the part. Repainting it grey instead would use
+              the one colour that already means NA or empty slot, so a real NG
+              that happens not to count would look like no reading at all. */}
+          {!essential && <span style={{
+              position: "absolute", inset: 0, pointerEvents: "none",
+              background: "rgba(140,140,140,0.22)" }} />}
         </td>
       </tr>
       <tr style={{ display: hide }}>
@@ -1265,9 +1302,40 @@ class ObjInfoList extends React.Component {
       });
 
 
-      let finalResult = judgeInRank.reduce((res, rep) => {
-        if(rep.def.quality_essential==false)return res;
-        return MEASURERSULTRESION_reducer(res, rep.detailStatus);
+      // WHAT DECIDES THE PART.
+      //
+      //   effective quality_essential = (rank <= N) AND quality_essential
+      //
+      // and the fold happens once, on mount, into shape_list -- see the rankN
+      // tag handling in componentDidMount. rank never decided anything in the
+      // core, which has no notion of it, so folding it into the flag the core
+      // DOES reduce on is what makes one rule instead of two. Before this,
+      // finalResult reduced over
+      // the rank-filtered list while the core (InspStatusReduce in
+      // wiringPanel.cpp) walked every report and tested quality_essential
+      // only: turning the display level down made a part the machine was about
+      // to reject read OK, which is what confused the sorting station.
+      //
+      // NAasNG / NGasNA are applied HERE, per item, before the reduction --
+      // exactly where the core applies them. They are per-measurement switches,
+      // they ride the def to the core, the core honours them, and this side
+      // never did; any def using one of them had a screen verdict that could
+      // not agree with the sorter. gradeMismatch cannot see that class of
+      // divergence, because it compares ITEM status and these two act on the
+      // roll-up.
+      let finalResult = judgeReports.reduce((res, rep) => {
+        const rdef = this.props.shape_def.find(d => d.id == rep.id);
+        if (!rdef) return res;
+        // quality_essential ALONE, because the level was already folded into it
+        // when the 製程 overrides were written into shape_list on mount. Testing
+        // rank again here would be a second copy of the rule, and the copy the
+        // core does not have.
+        if (rdef.quality_essential === false) return res;
+
+        let st = rep.detailStatus;
+        if (rdef.NAasNG && st === MEASURERSULTRESION.NA) st = MEASURERSULTRESION.NG;
+        if (rdef.NGasNA && NG_STATUSES.has(st)) st = MEASURERSULTRESION.NA;
+        return MEASURERSULTRESION_reducer(res, st);
       }, undefined);
 
       // DATA, not elements. See the note below.
@@ -2472,49 +2540,83 @@ class APP_INSP_MODE extends React.Component {
 
       let ctrlMarginInfos=GetObjElement(this.props.info_decorator,["control_margin_info"]);
 
-      if(ctrlMarginInfos!==undefined)
-      {
-        let curMarginInfo_name=this.props.inspOptionalTag.find(tag=>ctrlMarginInfos[tag]!==undefined)//find the tag name that is in ctrlMarginInfo
-        let curMarginInfo=ctrlMarginInfos[curMarginInfo_name];
+      // ONE FOLD, ONE FIELD, ONE TRUTH.
+      //
+      // Two things are written into the editor's shape_list before the wire def
+      // is generated from it: the 製程's limit overrides, and the inspection
+      // level. The level arrives as a tag named rankN -- so which level applies
+      // is chosen the same way everything else per-製程 is chosen, by which tag
+      // is on the part.
+      //
+      // The level is folded INTO quality_essential:
+      //
+      //   quality_essential := (rank <= N) AND quality_essential
+      //
+      // and after that nobody needs to know about rank again. The screen's
+      // roll-up, the wire def and the core's InspStatusReduce all read the one
+      // field, so they cannot disagree -- which they did until now, because the
+      // core has no notion of rank and never had one.
+      //
+      // Without a rankN tag there is no fold and rank decides nothing. That is
+      // deliberate: the 檢測等級 slider is a viewing control, and a viewing
+      // control must never be able to change what a part is.
+      const rankTag = (this.props.inspOptionalTag || [])
+        .map((t) => /^rank(\d+)$/i.exec(String(t)))
+        .find((m) => m !== null);
+      const rankLimit = rankTag ? Number(rankTag[1]) : undefined;
 
-        if(curMarginInfo!==undefined)
-        {
-          // Remember the ORIGINAL SHAPES the tag overrides touch, keyed by
-          // id, so unmount can put the values back. This dispatch writes the
-          // tag's limits into the EDITOR's shape_list (the canvas overlays
-          // and the def generation below both need them there), but it used
-          // to be one-way: after a single inspection run the editor reported
-          // unsaved changes the operator never made, and saving then baked
-          // the tag's limits into the base def -- with a recorded def hash
-          // that no longer matched any file on disk.
-          //
-          // By VALUE per overridden id, not by list identity: this very
-          // mount changes the list identity again two dispatches later
-          // (Define_File_Update), so an identity-compared snapshot never
-          // matches at unmount and a restore gated on it silently never
-          // runs (caught by the inspCycle flow's console trace).
-          this._preInspById = {};
-          this._preInspDefName = (this.props.edit_info.loadedDefFile||{}).name;
-          let newShapeList = [...this.props.shape_list];
+      const curMarginInfo_name = ctrlMarginInfos === undefined ? undefined
+        : (this.props.inspOptionalTag||[]).find(tag=>ctrlMarginInfos[tag]!==undefined);
+      const curMarginInfo = curMarginInfo_name === undefined ? undefined
+        : ctrlMarginInfos[curMarginInfo_name];
+
+      if(curMarginInfo!==undefined || rankLimit!==undefined)
+      {
+        // Remember the ORIGINAL SHAPES this touches, keyed by id, so unmount
+        // can put the values back. The write is into the EDITOR's shape_list
+        // (the canvas overlays and the def generation below both need them
+        // there), but it used to be one-way: after a single inspection run the
+        // editor reported unsaved changes the operator never made, and saving
+        // then baked the tag's limits into the base def -- with a recorded def
+        // hash that no longer matched any file on disk.
+        //
+        // By VALUE per overridden id, not by list identity: this very mount
+        // changes the list identity again two dispatches later
+        // (Define_File_Update), so an identity-compared snapshot never matches
+        // at unmount and a restore gated on it silently never runs (caught by
+        // the inspCycle flow's console trace).
+        this._preInspById = {};
+        this._preInspDefName = (this.props.edit_info.loadedDefFile||{}).name;
+        let newShapeList = [...this.props.shape_list];
+
+        const remember = (idx) => {
+          const sh = newShapeList[idx];
+          if (this._preInspById[sh.id] === undefined) this._preInspById[sh.id] = sh;
+        };
+
+        if (curMarginInfo !== undefined) {
           curMarginInfo.forEach(info=>{
             let cur_shape_idx = newShapeList.findIndex(shape=>shape.id==info.id);
             if(cur_shape_idx!==-1)
             {
-              this._preInspById[info.id] = newShapeList[cur_shape_idx];
-              newShapeList[cur_shape_idx]=
-              {
-                ...newShapeList[cur_shape_idx],
-                ...info
-              }
+              remember(cur_shape_idx);
+              newShapeList[cur_shape_idx]= { ...newShapeList[cur_shape_idx], ...info };
             }
-
-
           });
-          this.props.ACT_Shape_List_Update_EXPRESS(newShapeList);
-
-          // console.log("ACT_Shape_List_Update<<<<<<");
         }
 
+        // AFTER the margin overrides, because a 製程 may override rank itself
+        // and the level must be applied to the rank that ends up in force.
+        if (rankLimit !== undefined) {
+          newShapeList = newShapeList.map((shape, idx) => {
+            if (shape.rank === undefined || shape.rank <= rankLimit) return shape;
+            if (shape.quality_essential === false) return shape;
+            remember(idx);
+            return { ...shape, quality_essential: false };
+          });
+        }
+
+        this.props.ACT_Shape_List_Update_EXPRESS(newShapeList);
       }
 
     }

@@ -645,6 +645,11 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       edible:"input",
       title:DICT.measure.rank
     },{
+      key:"quality_essential",
+      width: '110px',
+      edible:"tristate",
+      title:DICT.measure.quality_essential
+    },{
       key:"value",
       edible:"input",
       title:DICT.measure.value
@@ -722,6 +727,40 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
           }
           break;
 
+
+        // THREE STATES, BECAUSE AN OVERRIDE TABLE HAS THREE.
+        //
+        // A switch has two, and a two-state control cannot say "this 製程 does
+        // not have an opinion" -- putting one here would silently write an
+        // opinion into every row the moment the table rendered, which is the
+        // dashed-button bug inside out. Empty means inherit, exactly as it does
+        // for the numeric columns beside it, and the inherited value is printed
+        // on the 未設定 button so the row still reads as an answer rather than
+        // as a blank.
+        case "tristate":
+          render=(value,objInfo) => {
+            const rootMInfo=_measureInfo.find(m=>m.id===objInfo.id);
+            if(rootMInfo===undefined)return undefined;
+            const rootOn = rootMInfo.quality_essential !== false;
+            const set=(v)=>{
+              let new_obj={...objInfo};
+              if(v===undefined) delete new_obj[col.key];
+              else new_obj[col.key]=v;
+              objInfo.update(new_obj);
+            };
+            const btn=(label,v,active)=>(
+              <Button size="small" type={active?"primary":"default"}
+                style={{ padding:'0 6px', minWidth: 26 }}
+                onClick={()=>set(v)}>{label}</Button>);
+            return (
+              <Button.Group>
+                {btn(rootOn?"—(是)":"—(否)", undefined, value===undefined)}
+                {btn("是", true,  value===true)}
+                {btn("否", false, value===false)}
+              </Button.Group>
+            );
+          }
+          break;
 
         default:
           render=(dara) => (DICT._[dara]===undefined)?dara:DICT._[dara]

@@ -343,34 +343,52 @@ export function installDiagProbe(store) {
       // acted on. Must stay 0; anything else means the screen and the sorter
       // are describing different parts. See resultGrading.
       gradeMismatch: window.__gradeMismatch || 0,
-      // Do the tag's limits actually reach both consumers?
+      // Do the tag's limits actually reach the verdict?
       //
-      // The wire def is generated from _obj.shapeList after the tag overrides
-      // are merged in, and the local grading overlays the same tag table -- so
-      // in THEORY core and screen judge with identical numbers. This checks it
-      // in practice: for the active tag, every override row must match what
-      // shapeList now holds. tagApplied counts rows checked; tagDrift counts
-      // rows where any of the five limits differ, and must stay 0.
+      // THE FIRST VERSION OF THIS CHECK PROVED NOTHING. It compared the tag's
+      // override rows against _obj.shapeList and required them to be equal --
+      // but shapeList is the ROOT table, and resultGrading merges the override
+      // onto it per report (see root_MarginInfo / cur_MarginInfo there). Equal
+      // therefore meant the override changed nothing, and a run of zeroes was
+      // read as "the 製程 limits are applied" when it said the opposite.
+      //
+      // What settles it is jud.lim: the limits the verdict was actually
+      // computed from, stamped alongside it. For every graded report whose id
+      // has an override, lim must equal the OVERRIDE, not the root. Flipped
+      // parts are skipped rather than guessed at -- effectiveLimits may pick a
+      // _b field there, and a check that cannot tell an override from a flip
+      // is the same mistake again.
       ...(function () {
         try {
-          const ei = store.getState().UIData.edit_info;
+          const st = store.getState();
+          const ei = st.UIData.edit_info;
           const tags = ei.inspOptionalTag || [];
           const cmi = (ei.__decorator || {}).control_margin_info || {};
           const tag = tags.find((t) => cmi[t] !== undefined);
           if (tag === undefined) return { tagActive: '', tagApplied: 0, tagDrift: 0 };
+          const byId = new Map();
+          for (const row of cmi[tag]) byId.set(row.id, row);
+          const root = new Map();
+          for (const sh of ei._obj.shapeList) root.set(sh.id, sh);
+
+          const tw = (st.UIData.reportStatisticState || {}).trackingWindow || [];
           let applied = 0, drift = 0;
-          for (const row of cmi[tag]) {
-            const shape = ei._obj.shapeList.find((s) => s.id === row.id);
-            if (!shape) continue;
-            let touched = false, differs = false;
-            for (const k of ['value', 'USL', 'LSL', 'UCL', 'LCL']) {
-              if (row[k] === undefined) continue;
-              touched = true;
-              if (shape[k] !== row[k]) differs = true;
+          for (const closeRep of tw) {
+            if (closeRep.isFlipped) continue;
+            for (const jud of (closeRep.reports || [])) {
+              const row = byId.get(jud.id);
+              if (!row || !jud.lim) continue;
+              for (const k of ['value', 'USL', 'LSL', 'UCL', 'LCL']) {
+                if (row[k] === undefined) continue;
+                const r = root.get(jud.id);
+                // An override equal to the root proves nothing either way, so
+                // it is not counted -- otherwise the coverage number flatters
+                // itself with rows that cannot fail.
+                if (r && r[k] === row[k]) continue;
+                applied++;
+                if (jud.lim[k] !== row[k]) drift++;
+              }
             }
-            if (!touched) continue;
-            applied++;
-            if (differs) drift++;
           }
           return { tagActive: tag, tagApplied: applied, tagDrift: drift };
         } catch { return { tagActive: '?', tagApplied: -1, tagDrift: -1 }; }

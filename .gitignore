@@ -101,3 +101,4 @@ latest_dump.dump
 export_v2/
 # scratch log from a hand-run core
 InspectionCore/Core0_1/core.log
+UI/Launcher/release-builds
