@@ -290,6 +290,50 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
   if (img_cv.empty()) return -1;
   if (!img_cv.isContinuous()) img_cv = img_cv.clone();
 
+  // ---- no-candidate frame: locate nothing, measure nothing ----------------
+  //
+  // The station's clean area was dirty, so the part is already rejected and any
+  // measurement taken from this frame is work whose result is thrown away
+  // (~11-14 ms/frame, and this station blocks ~82% of frames).  Return the
+  // frame with an EMPTY candidate list rather than skipping the engine.
+  //
+  // Three things have to stay true and all three are load-bearing:
+  //   * ldData empty  -> the sub-features locate nothing, so no measurement
+  //     runs.  This is the actual saving; binarize -> cage -> CCL never happen.
+  //   * the sub-features are still CALLED -> each one refreshes its own report
+  //     to a natural zero-object one.  Skip the call and GetReport() hands back
+  //     the PREVIOUS part's measurements (see wiringPanel.cpp, GetReport
+  //     returns the engine's last report).
+  //   * error stays NONE and report.type/bacpac are untouched -> the WebUI
+  //     reducer still matches the feature type and still counts the part, as
+  //     an empty report.  ClearReport() would erase the type and lose it.
+  //
+  // Both localization schemes route through here: the raw-gray fast path below
+  // and the legacy binarize/CCL path both consume this same ldData, and the
+  // sub-feature guard (sig360's FeatureMatching) covers whichever of its two
+  // engines the def selected.
+  if (no_candidate_frame)
+  {
+    report.bacpac = bacpac;
+    error = FeatureReport_ERROR::NONE;
+    ldData.resize(0);
+    const int dsampLevel0 = (inspection_downsample > 0) ? inspection_downsample : 1;
+    for (size_t i = 0; i < binaryFeatureBundle.size(); i++)
+    {
+      binaryFeatureBundle[i]->setOriginalImage(img_cv);
+      binaryFeatureBundle[i]->setLabeledData(&ldData);
+      binaryFeatureBundle[i]->setBacPac(bacpac);
+      binaryFeatureBundle[i]->setLabelDownSampLevel(dsampLevel0);
+      binaryFeatureBundle[i]->setNoCandidateFrame(true);
+      binaryFeatureBundle[i]->FeatureMatching(img_cv);
+    }
+    return 0;
+  }
+  // Normal frame: make sure a sub-feature left blocked by the previous frame is
+  // released again.  The flag lives on the manager, so it is sticky.
+  for (size_t i = 0; i < binaryFeatureBundle.size(); i++)
+    binaryFeatureBundle[i]->setNoCandidateFrame(false);
+
   // Fast path: when no sub-feature needs the binary silhouette (e.g. a
   // shape-based locator works on the raw grayscale), skip binarize -> cage ->
   // CCL -> intrusion entirely. Old sig360 defs still take the full path below.

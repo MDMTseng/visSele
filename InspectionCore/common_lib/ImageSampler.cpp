@@ -624,8 +624,23 @@ int angledOffsetTable::findRange(acv_XY Vec)
   }
   return curLen - 1;
 }
+// Declared int/float with no return statement, and falling off the end of a
+// non-void function is undefined behaviour -- gcc -O2 treats the path as
+// unreachable and emits the WHOLE function as a single `ud2`. Calling it is
+// not a wrong answer, it is ILLEGAL_INSTRUCTION and a dead process. That is
+// the same defect that made `recv_ERROR` kill the core when someone pressed
+// the board's reset button (wiringPanel.cpp), so both of these shells get a
+// defined value even though neither has a caller today.
+//
+// Still a stub. The vector overload is the path MatchingCore.cpp:1167 wants
+// ("should calc angle.... but ..." -- it passes a hardcoded 0 instead), but
+// guessing the vector-to-angle convention here would trade a crash for a
+// silently wrong offset in the inspection pipeline. preOffset is what the
+// angle overload itself returns for an empty table, i.e. "no angular
+// correction known" -- the neutral answer, not an invented one.
 float angledOffsetTable::sampleAngleOffset(acv_XY Vec)
-{ //TODO
+{ //TODO: convert Vec to an angle and delegate to the float overload
+  return preOffset;
 }
 
 float angledOffsetTable::sampleAngleOffset(float angle_rad) //in rad
@@ -742,8 +757,12 @@ int angledOffsetTable::CLONE(angledOffsetTable *dst, angledOffsetTable *src)
   return 0;
 }
 
+// Same empty-shell ud2 as above, no caller today. Returning targetIdx is the
+// identity correction: "no correction applied", which is what an unimplemented
+// index fixup should degrade to.
 int nodeInfoIdxCorrection(std::vector<BGLightNodeInfo> &infoArr, int targetIdx, int idxW)
-{
+{ //TODO
+  return targetIdx;
 }
 
 

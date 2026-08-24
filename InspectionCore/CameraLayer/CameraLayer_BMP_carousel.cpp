@@ -66,7 +66,7 @@ CameraLayer_BMP_carousel::~CameraLayer_BMP_carousel()
 {
     LOGI("Descructor...");
     // The thread outlived the object it runs on. Nothing here stopped it, and
-    // StopAquisition was the base-class no-op, so after `delete camera` the
+    // StopAcquisition was the base-class no-op, so after `delete camera` the
     // acquisition thread kept calling LoadNext -> updateFolder on a freed
     // files_in_folder and kept handing frames to the pipeline through a
     // callback belonging to a destroyed layer. See the crash dumps behind
@@ -455,7 +455,7 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
             // thread sets this on its first line, but until it is scheduled
             // the flag still reads false -- and the join above, taken on a
             // thread that is in fact about to run forever in continuous mode,
-            // never returns. StartAquisition() right after a TriggerMode(0)
+            // never returns. StartAcquisition() right after a TriggerMode(0)
             // walks straight into that window.
             isThreadWorking = true;
             cameraThread = new std::thread(&CameraLayer_BMP_carousel::ContTriggerThread, this);
@@ -469,16 +469,16 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 }
 
 // Acquisition here is the carousel thread, nothing else. CameraSetup() brackets
-// its writes with StopAquisition()/StartAquisition(), so the start side has to
+// its writes with StopAcquisition()/StartAcquisition(), so the start side has to
 // exist -- otherwise a settings refresh without a "trigger_mode" key would stop
 // the fake camera for good.
-CameraLayer::status CameraLayer_BMP_carousel::StopAquisition()
+CameraLayer::status CameraLayer_BMP_carousel::StopAcquisition()
 {
   StopThread();
   return ACK;
 }
 
-CameraLayer::status CameraLayer_BMP_carousel::StartAquisition()
+CameraLayer::status CameraLayer_BMP_carousel::StartAcquisition()
 {
   // Same start as TriggerMode's, deliberately: in trigger mode (triggerMode!=0
   // with nothing pending) the loop just exits again, which is what it did

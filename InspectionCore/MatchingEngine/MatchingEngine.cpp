@@ -154,6 +154,12 @@ static inline double me_proc_cpu_ms()
   return 0.0;
 }
 
+void MatchingEngine::setNoCandidateFrame(bool v)
+{
+  for (size_t i = 0; i < featureBundle.size(); i++)
+    featureBundle[i]->setNoCandidateFrame(v);
+}
+
 int MatchingEngine::FeatureMatching(cv::Mat &img_cv)
 {
   const int n = (int)featureBundle.size();

@@ -114,6 +114,18 @@ class FeatureManager {
   // destructor releases the last one (without this the whole tree leaked on
   // every ResetFeature()/def load).
   cJSON *root;
+  // "This frame has no candidate objects."  Set per frame by the caller (see
+  // MatchingEngine::setNoCandidateFrame) when something OUTSIDE the engine has
+  // already decided the part cannot be judged -- today that is the station's
+  // clean-area gate.  A manager that honours it must still produce its NORMAL
+  // report: same `type`, same container, `bacpac` untouched, error NONE -- only
+  // the located-object list is empty.  That is exactly the shape a genuine
+  // "found nothing" frame produces, which is why the UI needs no new case for
+  // it (a third shape is what the old skip-the-inspection path died of).
+  //
+  // Deliberately NOT ClearReport(): that one erases report.type and detaches
+  // bacpac, which drops the part out of the UI statistics entirely.
+  bool no_candidate_frame = false;
   virtual int parse_jobj()=0;
 public :
   FeatureManager(const char *json_str){
@@ -133,6 +145,8 @@ public :
   // in object-frame mm, or NULL if this manager has no trained shape localizer. Groups
   // forward to their sub-features. Caller owns the returned cJSON.
   virtual cJSON * getShapeFeaturePointsJson(){return NULL;}
+  // Sticky until the next call: the caller sets it every frame.
+  virtual void setNoCandidateFrame(bool v){ no_candidate_frame = v; }
   virtual const FeatureReport* GetReport(){return &report;};
   virtual void ClearReport(){
     bacpac=NULL;

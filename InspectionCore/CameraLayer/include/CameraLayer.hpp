@@ -250,11 +250,11 @@ class CameraLayer{
     virtual CameraLayer::status Trigger(){return NAK;}
 
 
-    virtual CameraLayer::status StartAquisition()
+    virtual CameraLayer::status StartAcquisition()
     {
         return CameraLayer::NAK;
     }
-    virtual CameraLayer::status StopAquisition()
+    virtual CameraLayer::status StopAcquisition()
     {
         return CameraLayer::NAK;
     }

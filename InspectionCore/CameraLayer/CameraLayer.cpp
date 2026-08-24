@@ -105,7 +105,7 @@ CameraLayer::status  CameraLayer::SnapFrame(CameraLayer_Callback snap_cb,void *c
     // Idempotent where it is implemented (Aravis returns ACK immediately when
     // already streaming) and a no-op where it is not, so this costs nothing on
     // the paths that were already correct -- notably FI, which is streaming.
-    StartAquisition();
+    StartAcquisition();
 
     LOGI(">>>>");
     if(type==0)

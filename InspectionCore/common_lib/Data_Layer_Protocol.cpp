@@ -193,7 +193,11 @@ int Data_JsonRaw_Layer::send_data(int head_room,uint8_t *data,int len,int leg_ro
 }
 int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
-
+  // A resync asked for from another thread, applied here where the parser
+  // state is ours. See request_rx_resync(). Do it BEFORE looking at this
+  // chunk: the whole point is to stop interpreting what came before it.
+  if(rxResyncPending.exchange(false, std::memory_order_relaxed))
+    RESET();
 
   if(recvType!=RTYPE::INIT)
   {

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <cstddef>
 #include <stdarg.h>
+#include <atomic>
 
 class Data_JsonRaw_Layer:public Data_Layer_IF
 {
@@ -15,6 +16,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   json_seg_parser jsegp;
   int jlevel=0;
   int rawRECVL;
+  std::atomic<bool> rxResyncPending{false};   // see request_rx_resync()
 
 
   const int base_headerLen=1+1+4+1;//0x1(start 1B)| resv&opcode(1B)| crc(4B) | base length field(1B (+2 or +8))
@@ -33,6 +35,33 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int ask_JsonRaw_version();
   int rsp_JsonRaw_version();
   int send_RESET();
+
+  // Ask the RECEIVE parser to resynchronise, from any thread.
+  //
+  // send_RESET() heals the PEER: it puts RESET_PACKET on the wire, and the
+  // peer's parser leaves its error state when it matches those bytes. Nothing
+  // heals US. Our own parser leaves ERROR_SEC on exactly one thing -- an
+  // inbound RESET_PACKET -- and the uInspESP32 answers a RESET with
+  // msg_printf("RESET_OK") (LegacyFirmware.cpp recv_RESET), an ORDINARY frame.
+  // So a latched core stays latched: every well-formed reply is swallowed as
+  // more error-section garbage.
+  //
+  // Observed 2026-08-20: the core opens COM3, DTR resets the board, the boot
+  // ROM prints at 115200 while we read at 230400, our parser latches on the
+  // garbage, and "perif: link RESYNC requested" then repeats every 9s FOREVER.
+  // The board was measured healthy the whole time (ping -> pong, error_hist
+  // []). Recovery was one-directional.
+  //
+  // A flag, not a direct RESET(): the parser state belongs to the UART receive
+  // thread (Data_UART_Layer::recv_data_thread), and clearing buffIdx underneath
+  // it from the BPG thread is a data race. recv_data() consumes this at a frame
+  // boundary it owns.
+  //
+  // Consumed only when bytes next arrive. That is the right coupling -- there
+  // is nothing to resynchronise on a silent link -- but it does mean a peer
+  // that has gone completely quiet is not recovered by this alone.
+  void request_rx_resync() { rxResyncPending.store(true, std::memory_order_relaxed); }
+
   virtual int RESET()
   {
     sprintf((char*)dataBuff,"");

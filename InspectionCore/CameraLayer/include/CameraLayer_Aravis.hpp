@@ -60,7 +60,7 @@ protected:
   static constexpr size_t ERROR_LIST_MAX = 256;
   void pushErrorCode(uint64_t code);
 
-  // The stream pushes this many buffers; StartAquisition re-pushes the same
+  // The stream pushes this many buffers; StartAcquisition re-pushes the same
   // number after a payload change. It was two independent literal 8s.
   static constexpr int STREAM_BUFFER_COUNT = 8;
 
@@ -174,10 +174,10 @@ public:
   CameraLayer::status GetAnalogGain(int *ret_min, int *ret_max) override;
   CameraLayer::status SetExposureTime(float time_us) override;
   CameraLayer::status GetExposureTime(float *ret_time_us) override;
-  // Aravis-specific overrides so CameraSetup's StopAquisition()/StartAquisition()
+  // Aravis-specific overrides so CameraSetup's StopAcquisition()/StartAcquisition()
   // actually take effect (the base class defaults are no-op NAKs).
-  CameraLayer::status StartAquisition() override;
-  CameraLayer::status StopAquisition() override;
+  CameraLayer::status StartAcquisition() override;
+  CameraLayer::status StopAcquisition() override;
   // (ContTriggerThread, ContTriggerThreadTermination, L_TriggerMode and
   // L_SetFrameRateMode were declared here with no definition anywhere in the
   // tree -- calling any of them was an instant link error. Removed rather than

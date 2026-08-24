@@ -20,7 +20,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
 {
 
   // `m` serialises the compound stop-modify-start sequences (this and
-  // SetMirror). Deliberately NOT taken inside Start/StopAquisition themselves:
+  // SetMirror). Deliberately NOT taken inside Start/StopAcquisition themselves:
   // those are called from in here, and std::mutex is not recursive.
   std::lock_guard<std::mutex> guard(m);
 
@@ -29,9 +29,9 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   // (Core0_1/wiringPanel.cpp:1229 drives it from the UI), so leaving it
   // stopped meant one ROI change silently killed the camera until reconnect.
   // Restore whatever state we found -- the constructor calls SetROI before
-  // StartAquisition, and that path must stay "not grabbing".
+  // StartAcquisition, and that path must stay "not grabbing".
   const bool was_running = acquisition_started;
-  StopAquisition();
+  StopAcquisition();
   int max_w, max_h;
 
   MVCC_INTVALUE_EX WInfo = {0};
@@ -42,7 +42,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   max_h = HInfo.nCurValue;
   if (x >= max_w || y >= max_h || w < 0 || h < 0)
   {
-    if (was_running) StartAquisition();
+    if (was_running) StartAcquisition();
     return CameraLayer::NAK;
   }
   if (x < 0)
@@ -94,7 +94,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
 
   GetROI(&x, &y, &w, &h, NULL,NULL);
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d",x,y,w,h, xret,yret,wret,hret);
-  if (was_running) StartAquisition();
+  if (was_running) StartAcquisition();
 
   return roi_rejected ? CameraLayer::NAK : CameraLayer::ACK;
 }
@@ -747,7 +747,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
 
 
 
-  StartAquisition();
+  StartAcquisition();
   inNoError=true;
   imgQueueThread = std::thread(&CameraLayer_HikRobot_Camera::imgQThreadFunc,this);
 
@@ -881,7 +881,7 @@ CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
   // 3. join it -- after this nothing else touches handle or the frame pool,
   // 4. only then close and destroy the handle.
   if (bDevConnected)
-    StopAquisition();
+    StopAcquisition();
   imgQueue.termination_trigger();
   if (imgQueueThread.joinable())
     imgQueueThread.join();
@@ -932,13 +932,13 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   // Acquisition-control nodes are locked while the camera is grabbing --
   // writing this one mid-stream is rejected by the device. Stop, write, restore.
   const bool burst_was_running = acquisition_started;
-  if (burst_was_running) StopAquisition();
+  if (burst_was_running) StopAcquisition();
 
   int burst_ret = SetIntValue_w_Check("AcquisitionBurstFrameCount", 1);
   if (MV_OK != burst_ret)
     LOGI("AcquisitionBurstFrameCount=1: ret=%x (harmless if the node is absent)", burst_ret);
 
-  if (burst_was_running) StartAquisition();
+  if (burst_was_running) StartAcquisition();
 
   int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_ON);
 
@@ -1030,7 +1030,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
   // unconditionally, so toggling a mirror on a stopped camera silently
   // started it.
   const bool was_running = acquisition_started;
-  StopAquisition();
+  StopAcquisition();
   bool ben=(en!=0);
   if(Dir==0)
   {
@@ -1041,7 +1041,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     SetBoolValue("ReverseY", ben);
   }
   mirrorFlag[Dir] = en;
-  if (was_running) StartAquisition();
+  if (was_running) StartAcquisition();
   return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROIMirror(int Dir, int en)
@@ -1179,20 +1179,44 @@ void CameraLayer_HikRobot_Camera::refreshExposureFloor()
        _floor_us, (double)fv.fCurValue);
 }
 
-CameraLayer::status CameraLayer_HikRobot_Camera::StartAquisition()
+CameraLayer::status CameraLayer_HikRobot_Camera::StartAcquisition()
 {
   int ret = MV_CC_StartGrabbing(handle);
   if (MV_OK == ret)
   {
     acquisition_started = true;
     refreshExposureFloor();
+    LOGI("camera: grabbing STARTED");
+    return CameraLayer::ACK;
   }
-  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
+  // SAY SO. This returned NAK silently for its whole life, and the caller does
+  // not check: the core carries on grabbing nothing, the board pulses the
+  // trigger, no frame ever arrives, and the only symptom that reaches a human is
+  // the board's CAM_CLOCK_CAL_FAILED -- which reads as a clock fault, a dead
+  // trigger wire or a flaky opto. docs/MACHINE_FLOW.md records two hour-long
+  // misdiagnoses from this silence; 2026-08-20 added a third.
+  //
+  // 0x80000007 is "not connected"; 0x8000000D is "camera busy / already
+  // grabbing"; a wedged camera (a core force-killed before releasing it) fails
+  // here while still enumerating and still accepting settings.
+  LOGE("camera: MV_CC_StartGrabbing FAILED ret=0x%x -- NO FRAMES WILL ARRIVE. "
+       "The board's triggers will look ignored and clock calibration will not "
+       "converge. If the last core was force-killed, the camera is wedged: stop "
+       "the core and run tools/cam_device_reset.py", ret);
+  return CameraLayer::NAK;
 }
-CameraLayer::status CameraLayer_HikRobot_Camera::StopAquisition()
+CameraLayer::status CameraLayer_HikRobot_Camera::StopAcquisition()
 {
   int ret = MV_CC_StopGrabbing(handle);
   if (MV_OK == ret)
+  {
     acquisition_started = false;
-  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
+    return CameraLayer::ACK;
+  }
+  // Quieter than the start failure -- stopping something that is not grabbing is
+  // normal and harmless -- but never silent, because a stop that did not stop
+  // leaves the next ROI/trigger write to be rejected by a still-streaming
+  // device, and that failure surfaces somewhere else entirely.
+  LOGI("camera: MV_CC_StopGrabbing ret=0x%x (harmless if it was not grabbing)", ret);
+  return CameraLayer::NAK;
 }

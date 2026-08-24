@@ -242,10 +242,32 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
         dcbConfig.fParity  = (parity == 'N') ? FALSE : TRUE;
         // Flow control (default OFF).
         dcbConfig.fOutxCtsFlow      = useRtsCts ? TRUE : FALSE;
-        dcbConfig.fRtsControl       = useRtsCts ? RTS_CONTROL_HANDSHAKE : RTS_CONTROL_ENABLE;
+        // DISABLE, not ENABLE, when there is no hardware flow control.
+        //
+        // RTS_CONTROL_ENABLE holds RTS ASSERTED for as long as the port is open.
+        // On a plain 3-wire link that is meaningless -- and on the uInspESP32
+        // bench adapter it is destructive: RTS goes straight to the ESP32's EN
+        // pin (no auto-program transistor pair), so an open port held the board
+        // in reset and it emitted nothing at all.
+        //
+        // Measured 2026-08-21, all four line states; board silent iff RTS high:
+        //     RTS=0 DTR=0 -> running     RTS=1 DTR=0 -> SILENT
+        //     RTS=0 DTR=1 -> running     RTS=1 DTR=1 -> SILENT
+        //
+        // The symptom is not "no data". The core opens the port, sees zero
+        // bytes, its parser never completes a frame, and the link watchdog asks
+        // for a RESYNC every 9s forever -- while the board looks perfectly
+        // healthy the moment anything CLOSES the port and lets RTS drop. That
+        // reads exactly like a protocol fault, and is not one.
+        //
+        // tools/uinsp_test.py's UInspLink has always pinned both lines low
+        // before opening for this reason; the core simply never did.
+        dcbConfig.fRtsControl       = useRtsCts ? RTS_CONTROL_HANDSHAKE : RTS_CONTROL_DISABLE;
         dcbConfig.fOutxDsrFlow      = FALSE;
         dcbConfig.fDsrSensitivity   = FALSE;
-        dcbConfig.fDtrControl       = DTR_CONTROL_ENABLE;
+        // DTR does not gate this board (measured above), but asserting a line
+        // nothing asked for is how the RTS problem got here in the first place.
+        dcbConfig.fDtrControl       = DTR_CONTROL_DISABLE;
         dcbConfig.fOutX             = useXon ? TRUE : FALSE;
         dcbConfig.fInX              = useXon ? TRUE : FALSE;
         dcbConfig.fTXContinueOnXoff = TRUE;

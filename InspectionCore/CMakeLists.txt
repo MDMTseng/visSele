@@ -54,7 +54,14 @@ option(FEATURE_OPENCV     "Build MatchingEngine against OpenCV"    ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- shared compile options (mirrors old FLAGS: -w -O3 + suppressions) ----
+# -w silences everything, which is how a non-void function with no return
+# survived here long enough to become a `ud2` that killed the core on a board
+# reset (wiringPanel.cpp recv_ERROR, 2026-08-20). -Werror= re-enables a
+# specific diagnostic even after -w, so this one class cannot come back
+# silently. It is the only warning worth failing the build over: the compiler
+# is telling us it is about to emit an illegal instruction.
 add_compile_options(-w -Wno-sign-compare -Wno-write-strings -Wno-unused-variable)
+add_compile_options(-Werror=return-type)
 add_compile_options($<$<CONFIG:Release>:-O3>)
 # Ship Release as -O3 AND -g (debug info). The deploy bundle (build.sh) strips
 # the shipped exe and archives the separated symbols (symbols/<exe>-<sha>.debug),

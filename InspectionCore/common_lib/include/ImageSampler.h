@@ -114,7 +114,14 @@ class acvCalibMap
     public:
     float calibPpB=1;
     float calibmmpB=1;
-    int fullFrameW,fullFrameH;
+    // Zero, not indeterminate. These are written only by SET(), and a map that
+    // was never SET (no calibration loaded yet) left them holding whatever the
+    // allocation happened to contain -- wiringPanel reported one as a camera
+    // dimension and it read 1936534903, which is 0x736F6C77: four ASCII bytes.
+    // CLEAR()/RESET() do not touch them either, so nothing downstream could
+    // recover a sane value. 0 is checkable; garbage that survives a camera
+    // reopen looks like a measurement.
+    int fullFrameW = 0, fullFrameH = 0;
     //fullFrameW,fullFrameH is the dimension of original image
     acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
     acvCalibMap();

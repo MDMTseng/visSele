@@ -1090,11 +1090,11 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   // DeviceReset.
   //
   // The production crop survived this by accident. Applying it changes the
-  // payload (5013504 -> 253120), which trips the rebuild in StartAquisition,
+  // payload (5013504 -> 253120), which trips the rebuild in StartAcquisition,
   // and the rebuilt stream is created with the camera already cropped. Full
   // frame leaves the payload equal to the constructor's value, so nothing ever
   // rebuilt it. Rebuilding later does not help either -- measured: the first
-  // frame is already truncated before StartAquisition is ever reached.
+  // frame is already truncated before StartAcquisition is ever reached.
   stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
 
   // GigE jumbo-frame negotiation: try to use the largest packet size the link
@@ -1345,7 +1345,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   else
   {
     acquisition_started=true;
-    // This path starts acquisition inline instead of via StartAquisition(), so
+    // This path starts acquisition inline instead of via StartAcquisition(), so
     // it has to arm the floor watch itself -- the same omission that left
     // AcquisitionBurstFrameCount at its factory default here for so long.
     refreshExposureFloor();
@@ -1482,7 +1482,7 @@ CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
   // acquisition_started was never updated either way -- leaving the flag
   // claiming "stopped" while the camera was actually running.
   const bool was_running = acquisition_started;
-  if (was_running) StopAquisition();
+  if (was_running) StopAcquisition();
 
   GError *err = NULL;
   if(Dir==0)
@@ -1505,7 +1505,7 @@ CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
     ret = CameraLayer::NAK;
   }
 
-  if (was_running) StartAquisition();
+  if (was_running) StartAcquisition();
 
   return ret;
 }
@@ -1596,14 +1596,14 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
   // Was a hardcoded 1000 ms sleep on the caller's thread, used as a "wait for
-  // the camera to settle" after stopping. StopAquisition() already does the
+  // the camera to settle" after stopping. StopAcquisition() already does the
   // same stop plus a 50 ms settle -- the value that was actually tuned for
-  // reliable parameter writes (see the comment on StopAquisition) -- so go
+  // reliable parameter writes (see the comment on StopAcquisition) -- so go
   // through it instead of blocking a full second inside a setter.
   const bool was_running = acquisition_started;
   if (was_running)
   {
-    StopAquisition();
+    StopAcquisition();
   }
 
 
@@ -1628,14 +1628,14 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
   
-  // was_running, NOT acquisition_started: StopAquisition() above cleared the
+  // was_running, NOT acquisition_started: StopAcquisition() above cleared the
   // flag, so testing it here would never restart. Going through
-  // StartAquisition() also re-sizes the buffer pool, which matters precisely
+  // StartAcquisition() also re-sizes the buffer pool, which matters precisely
   // here -- changing the region is what changes the payload, and stale-sized
   // buffers are what produce SIZE_MISMATCH on the first frames back.
   if (was_running)
   {
-    StartAquisition();
+    StartAcquisition();
   }
 
 
@@ -1738,7 +1738,7 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
   //
   // At the production crop the restart succeeds and nothing is noticed. At
   // full frame it does not: the restart fails with the USB3Vision
-  // write_memory error documented at StartAquisition, acquisition_started
+  // write_memory error documented at StartAcquisition, acquisition_started
   // stays false, every later start fails the same way, and the camera is dead
   // until a DeviceReset. Measured 2026-08-11: full frame delivered frames
   // until the first repeat TriggerMode() call and then stopped, at 19 frames
@@ -1754,7 +1754,7 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
     if (!burst_readable || burst_now != 1)
     {
       const bool burst_was_running = acquisition_started;
-      if (burst_was_running) StopAquisition();
+      if (burst_was_running) StopAcquisition();
 
       arv_camera_set_integer(camera, "AcquisitionBurstFrameCount", 1, &burst_err);
       if (burst_err)
@@ -1764,7 +1764,7 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
         g_clear_error(&burst_err);
       }
 
-      if (burst_was_running) StartAquisition();
+      if (burst_was_running) StartAcquisition();
     }
   }
 
@@ -1958,7 +1958,7 @@ CameraLayer::status CameraLayer_Aravis::Trigger()
   // NOT acquisition_started=true here. The start_acquisition call it used to
   // sit next to is commented out, so the flag was simply a lie -- and it is
   // load-bearing: SetROI (stop/restart around the region write) and
-  // StopAquisition both branch on it, so a lying flag made them act on a
+  // StopAcquisition both branch on it, so a lying flag made them act on a
   // camera that was never streaming.
   if (err == NULL)
   {
@@ -2273,14 +2273,14 @@ CameraLayer::status CameraLayer_Aravis::SetExposureTime(float time_us)
   return CameraLayer::NAK;
 }
 
-// Real Aravis StopAquisition / StartAquisition. The base class default returns
-// NAK, so CameraSetup's StopAquisition() call was a silent no-op before --
+// Real Aravis StopAcquisition / StartAcquisition. The base class default returns
+// NAK, so CameraSetup's StopAcquisition() call was a silent no-op before --
 // meaning the first ~1-2 parameter writes after construction would race the
 // streaming pipeline and get dropped by the camera firmware (a well-known
 // GenICam GigE quirk). Now CameraSetup:
 //   stop  -> sleep 50ms (settle)  ->  apply params  ->  start  -> sleep 50ms
 // produces reliable param writes on Aravis cameras.
-CameraLayer::status CameraLayer_Aravis::StopAquisition()
+CameraLayer::status CameraLayer_Aravis::StopAcquisition()
 {
   if (!camera) return CameraLayer::NAK;
   if (!acquisition_started) return CameraLayer::ACK;
@@ -2289,7 +2289,7 @@ CameraLayer::status CameraLayer_Aravis::StopAquisition()
   acquisition_started = false;
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   if (err) {
-    LOGE("StopAquisition: %s", err->message);
+    LOGE("StopAcquisition: %s", err->message);
     g_clear_error(&err);
     return CameraLayer::NAK;
   }
@@ -2326,7 +2326,7 @@ void CameraLayer_Aravis::refreshExposureFloor()
   }
 }
 
-CameraLayer::status CameraLayer_Aravis::StartAquisition()
+CameraLayer::status CameraLayer_Aravis::StartAcquisition()
 {
   if (!camera) return CameraLayer::NAK;
   if (acquisition_started) return CameraLayer::ACK;
@@ -2368,7 +2368,7 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
       fprintf(stderr, "[camdiag] forcing a stream rebuild at payload %d\n", cur_payload);
       fflush(stderr); }
     if (cur_payload > 0 && (cur_payload != payloadSize || force_now)) {
-      LOGI("StartAquisition: payload %d -> %d, rebuilding stream",
+      LOGI("StartAcquisition: payload %d -> %d, rebuilding stream",
            payloadSize, cur_payload);
       payloadSize = cur_payload;
 
@@ -2383,7 +2383,7 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
 
       stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
       if (stream == NULL) {
-        LOGE("StartAquisition: stream rebuild failed -- no frames until reconnect");
+        LOGE("StartAcquisition: stream rebuild failed -- no frames until reconnect");
         return CameraLayer::NAK;
       }
       for (int i = 0; i < STREAM_BUFFER_COUNT; i++)
@@ -2399,7 +2399,7 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
     // A camera left streaming by a process that died rejects AcquisitionStart
     // ("USB3Vision write_memory error (invalid-parameter)") -- it is already
     // acquiring. The new process cannot know that: acquisition_started is
-    // false on a fresh start, so StopAquisition() is skipped and every start
+    // false on a fresh start, so StopAcquisition() is skipped and every start
     // fails forever. The core then runs with no frames at all, and the only
     // cure was unplugging the camera.
     //
@@ -2407,18 +2407,18 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
     // repeatedly during bring-up. So on failure, stop unconditionally and try
     // once more. Costs nothing on the healthy path -- this runs only after a
     // start has already failed.
-    LOGE("StartAquisition: %s -- stopping and retrying once", err->message);
+    LOGE("StartAcquisition: %s -- stopping and retrying once", err->message);
     g_clear_error(&err);
     GError *stop_err = NULL;
     arv_camera_stop_acquisition(camera, &stop_err);
     if (stop_err) g_clear_error(&stop_err);   // expected if it really was idle
     arv_camera_start_acquisition(camera, &err);
     if (err) {
-      LOGE("StartAquisition retry: %s", err->message);
+      LOGE("StartAcquisition retry: %s", err->message);
       g_clear_error(&err);
       return CameraLayer::NAK;
     }
-    LOGI("StartAquisition: recovered a camera left streaming by a dead process");
+    LOGI("StartAcquisition: recovered a camera left streaming by a dead process");
   }
   acquisition_started = true;
   refreshExposureFloor();

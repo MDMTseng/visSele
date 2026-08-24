@@ -38,6 +38,13 @@ enum FeatureReport_ERROR {
   // stays so the codes after it do not shift under anything holding an old report.
   EXTERNAL_INTRUSION_OBJECT       = 3,
   DIRTY_BACKGROUND                = 4,
+  // The inspection region the operator drew is smaller than the part it has to
+  // contain, so the locator has nowhere to place the template and CANNOT find
+  // anything -- at any angle, on any frame. Raised instead of returning an
+  // empty report, because "region too small" and "no part present" are the same
+  // silence otherwise, and the fix (drag the box bigger) is only obvious once
+  // the machine says which one it is.
+  INSP_REGION_TOO_SMALL           = 5,
   END
 };
 typedef struct FeatureReport;

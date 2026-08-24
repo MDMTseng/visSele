@@ -260,8 +260,8 @@ public:
 
   CameraLayer::status SetGamma(float Gamma);
 
-  CameraLayer::status StartAquisition();
-  CameraLayer::status StopAquisition();
+  CameraLayer::status StartAcquisition();
+  CameraLayer::status StopAcquisition();
 
   // Trigger/frame accounting, for reconciling against whatever external source
   // is driving the trigger line. rising==falling means the pulses arrived

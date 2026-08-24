@@ -22,6 +22,12 @@ public:
   cJSON * SetParam(cJSON *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
   int FeatureMatching(cv::Mat &img_cv);     // canonical cv::Mat entry
+  // Tell every manager whether THIS frame has candidate objects at all.
+  // False on a normal frame; true when the caller already knows the part
+  // cannot be judged (station clean area dirty), so localization must yield
+  // nothing and no measurement runs.  Must be set before every FeatureMatching
+  // call -- it is state on the managers, not an argument.
+  void setNoCandidateFrame(bool v);
   // SF round-trip: first trained shape localizer's feature points (object-frame mm),
   // as cJSON {"features":[{x,y}...],"roi":[...]}, or NULL. Caller owns the cJSON.
   cJSON *GetShapeFeaturePoints();

@@ -2131,8 +2131,25 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (smin != NULL && *smin > 0) this->shape_min_score = (float)*smin;
     double *sastep = JFetch_NUMBER(root, "shape_angle_step_deg");
     if (sastep != NULL && *sastep > 0) this->shape_angle_step_deg = (float)*sastep;
+    // shape_match_scale: coarse-stage scene downscale. 1.0 = off.
+    //
+    // The ACTIVE band is (0.1, 1.0) -- sbm::ShapeMatcher tests
+    // `match_scale < 1.0f && match_scale > 0.1f` in three places, and anything
+    // outside it silently falls back to full-resolution matching. This used to
+    // accept (0, 1.0], so 0.1 or 0.05 parsed happily and then did NOTHING: the
+    // def asked for the most aggressive downscale available and got no
+    // downscale at all, with no warning and no way to tell from the outside
+    // except that it ran slower than 0.2. Reject out-of-band values loudly and
+    // keep the default rather than storing a number that cannot take effect.
     double *smscale = JFetch_NUMBER(root, "shape_match_scale");
-    if (smscale != NULL && *smscale > 0 && *smscale <= 1.0) this->shape_match_scale = (float)*smscale;
+    if (smscale != NULL)
+    {
+      if (*smscale > 0.1 && *smscale <= 1.0) this->shape_match_scale = (float)*smscale;
+      else
+        LOGE("shape_match_scale %.4f is outside the usable band (0.1, 1.0] and "
+             "would be ignored by the matcher -- keeping %.4f. Use 1.0 to turn "
+             "the coarse downscale off.", *smscale, this->shape_match_scale);
+    }
 
     // line2Dup feature/pyramid tuning (all optional; defaults preserve behavior).
     double *snf = JFetch_NUMBER(root, "shape_num_features");
@@ -6147,6 +6164,28 @@ FeatureManager_sig360_circle_line::~FeatureManager_sig360_circle_line()
 
 int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 {
+  // No-candidate frame (station clean area dirty): locate nothing.
+  //
+  // Placed above the engine branch on purpose -- it must hold for BOTH
+  // localization schemes.  The shape path would otherwise still run line2Dup
+  // over the whole region (it works off originalImage_cv and never looks at
+  // the group's ldData, so an empty candidate list does not stop it), and the
+  // legacy path would still walk signatures.  One guard, both engines.
+  //
+  // What is produced is a genuine zero-object report, not a cleared one:
+  // `reports` empty, error NONE, region_dropped 0, report.type and bacpac
+  // untouched.  GetReport() then returns the same shape a frame with nothing
+  // in it returns, so the part is still counted by the UI as an empty report.
+  if (no_candidate_frame)
+  {
+    report.bacpac = bacpac;
+    reports.resize(0);
+    report.data.sig360_circle_line.reports = &reports;
+    report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
+    report.data.sig360_circle_line.region_dropped = 0;
+    return 0;
+  }
+
   // Shape-based localizer path: bypass binarize/CCL/signature entirely and
   // locate via line2Dup + ROI refine on the original grayscale. Falls through
   // to the legacy sig360 path when shape training wasn't available.
@@ -7411,7 +7450,42 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   mc.weak_threshold   = shape_weak_thres;
   mc.strong_threshold = shape_strong_thres;
   mc.blur_kernel_size = shape_blur;
-  mc.match_scale      = shape_match_scale;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
+
+  // Coarse downscale, carried across magnifications instead of written per def.
+  //
+  // `scale` here is the model rescale def_mmpp/current_mmpp, so the live model
+  // is `scale` times its taught pixel size. The coarse stage then sees a
+  // template of  W_def * scale * match_scale  pixels. Holding THAT constant at
+  // what the def was taught and validated with (W_def * shape_match_scale) is
+  // the whole point, and it gives
+  //
+  //     match_scale_eff = shape_match_scale / scale
+  //                     = shape_match_scale * (current_mmpp / def_mmpp)
+  //
+  // Note the ratio is CURRENT over DEF, not the other way round: a machine with
+  // a coarser pixel (bigger mmpp) shows the part in FEWER pixels, so it must
+  // downscale LESS, not more. Multiplying by def/current instead turns exactly
+  // the case that needs the most resolution into the one that gets the least.
+  //
+  // At the teach machine scale == 1 and this is a no-op, so an existing def
+  // behaves precisely as before.
+  //
+  // Clamped into the matcher's active band (0.1, 1.0):
+  //   * >= 1.0 -> 1.0, i.e. off. The part is too small in pixels to downscale;
+  //     full resolution is the safe answer, just slower.
+  //   * <= 0.1 -> 0.15. Below the band the matcher silently stops downscaling
+  //     altogether, which is the opposite of what a def asking for 0.05 wants.
+  //     Clamping UP only makes the coarse template larger than validated --
+  //     slower, never blinder.
+  float ms_eff = shape_match_scale;
+  if (scale > 0.0f && std::isfinite(scale)) ms_eff = shape_match_scale / scale;
+  if (ms_eff >= 1.0f)      ms_eff = 1.0f;
+  else if (ms_eff <= 0.1f) ms_eff = 0.15f;
+  if (fabsf(ms_eff - shape_match_scale) > 1e-3f)
+    LOGI("[shape] match_scale %.4f -> %.4f for model scale %.4f "
+         "(def_mmpp %.6f); coarse template stays at its taught pixel size",
+         shape_match_scale, ms_eff, scale, def_mmpp);
+  mc.match_scale      = ms_eff;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
   auto m = std::make_shared<sbm::ShapeMatcher>(mc);
 
   sbm::ModelConfig modc;
@@ -7514,19 +7588,34 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   // (no-op when mmpp matches the teach scale; cached so a fixed camera pays once).
   if (!ensureShapeScale(bacpac->sampler->mmpP_ideal())) return -1;
 
-  // ---- station crop: search where a part can be, not the whole frame --------
+  // ---- station crop: the inspection region IS what the locator can see ------
   //
-  // The station used to be applied to the RESULTS: match the full frame, then
-  // throw away every pose outside it. On a plate carrying several items that
-  // discards most of the work it just paid for. Hand the locator the region
-  // instead.
+  // The scene handed to line2Dup is EXACTLY the inspection region. No pad.
   //
-  // Padded by half the model's diagonal at the scale the matcher is currently
-  // built for, because the keep-rule is "CENTRE inside the station": an object
-  // may legitimately hang half-way out, and a tight crop would clip the very
-  // features it is recognised by -- that would change which objects are found,
-  // not just how fast. With the pad, anything whose centre is inside is fully
-  // visible, so this is a speed change and nothing else.
+  // That is a behaviour contract, not an optimisation. A template can only be
+  // placed where it fits inside the scene it was given, so a part is located
+  // if and only if it is WHOLLY INSIDE the region -- which is what
+  // machine_setting.json's `fit: "contain"` has always claimed and what this
+  // path never actually did (the keep test below degrades to a CENTRE test,
+  // because sbm::MatchResult carries a pose and no extent).
+  //
+  // It used to pad by half the model diagonal so that anything whose centre
+  // was inside was still fully visible, which made the crop provably
+  // result-neutral. That guarantee cost nearly all of the saving: measured
+  // 2026-08-20 on a 280x262 region the pad was 218 px, the crop came out
+  // 716x528 of an 816x528 scene, and 12% was the entire speedup while the
+  // inspection engine was the bottleneck stalling the line -- reports landing
+  // ~330 ms after their frame, the queue pinned at 9/10, and the device
+  // halting on INSP_RESULT_MATCHES_NO_OBJECT because verdicts arrived after
+  // their object had passed SWITCH. The region is now the boundary itself.
+  //
+  // CONSEQUENCE, and it is not subtle: THE REGION MUST BE LARGER THAN THE
+  // TEMPLATE or nothing is ever found. The template is a square crop centred
+  // on the origin, sized to the part's farthest extent from it plus a margin
+  // (trainShapeMatcher), so it is always comfortably bigger than the part
+  // itself -- sizing the region to the part is not enough. The warning below
+  // says so with both numbers, because the symptom (every part NA, no error
+  // raised anywhere) looks nothing like the cause.
   //
   // Scene px = full-sensor px - camera ROI origin; the region is full-sensor.
   // INSP_SHAPE_NOCROP=1 restores full-frame matching with the old result-side
@@ -7544,24 +7633,88 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   if (bacpac && bacpac->hasInspRegion() && !shapeNoCrop)
   {
     acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
-    int pad = 0;
-    if (shapeFeatureSet)
-    {
-      const double tw = (double)shapeFeatureSet->templ_width;
-      const double th = (double)shapeFeatureSet->templ_height;
-      const double s  = (shape_built_scale > 0.f) ? (double)shape_built_scale : 1.0;
-      pad = (int)std::ceil(0.5 * std::sqrt(tw * tw + th * th) * s);
-    }
-    cv::Rect want((int)std::floor(bacpac->insp_region_x - sOff.x) - pad,
-                  (int)std::floor(bacpac->insp_region_y - sOff.y) - pad,
-                  (int)std::ceil(bacpac->insp_region_w) + 2 * pad,
-                  (int)std::ceil(bacpac->insp_region_h) + 2 * pad);
+    cv::Rect want((int)std::floor(bacpac->insp_region_x - sOff.x),
+                  (int)std::floor(bacpac->insp_region_y - sOff.y),
+                  (int)std::ceil(bacpac->insp_region_w),
+                  (int)std::ceil(bacpac->insp_region_h));
     cv::Rect crop = want & cv::Rect(0, 0, scene.cols, scene.rows);
+    // Is the region big enough to hold the part AT EVERY ANGLE?
+    //
+    // The footprint that has to fit is the level-0 FEATURE bounding box, not
+    // templ_width/height -- the template image is a square crop centred on the
+    // origin with a training margin, and warning against that would fire on
+    // regions that are in fact fine. Rotating that bbox sweeps a square of its
+    // own diagonal, so one number covers all 360 degrees.
+    //
+    // Getting this wrong is silent in the worst way: line2Dup does not report
+    // "your window is too small", it just returns nothing, and only for the
+    // angles that do not fit -- so the machine judges some parts and drops the
+    // rest with no error raised anywhere. Print the size that would fix it.
+    if (shapeFeatureSet && !shapeFeatureSet->levels.empty() &&
+        crop.width > 0 && crop.height > 0)
+    {
+      const double s = (shape_built_scale > 0.f) ? (double)shape_built_scale : 1.0;
+      const double fw = (double)shapeFeatureSet->levels[0].width;
+      const double fh = (double)shapeFeatureSet->levels[0].height;
+      const int need = (int)std::ceil(std::sqrt(fw * fw + fh * fh) * s);
+      // Two different questions, and conflating them is what made the first
+      // version of this misleading.
+      //
+      // (a) CAN the template be placed at all? It fits at angle 0 if the part's
+      //     bbox fits, or at 90 if the swapped bbox does; every angle between
+      //     is larger in both dimensions than one of those two, so failing both
+      //     means NO rotation fits and the answer is empty for reasons that
+      //     have nothing to do with what is in the frame. That is the only case
+      //     the operator can be TOLD the box is too small, and it is the only
+      //     case this raises INSP_REGION_TOO_SMALL for.
+      //
+      // (b) Does it fit at EVERY angle? Needs the rotation sweep (the bbox
+      //     diagonal). Falling short only costs coverage at some angles -- the
+      //     part is still found whenever it happens to lie at a fitting one, so
+      //     a miss here is NOT evidence the box is the problem. It stays a log
+      //     line and never reaches the UI, because "no part present" and "wrong
+      //     angle for this box" look identical from a single empty result and
+      //     blaming the box for both is what sends people to redraw a box that
+      //     was fine.
+      // Measured against the box the OPERATOR DREW (want), not the clipped crop.
+      //
+      // `crop` is want ∩ frame, so a perfectly good box dragged to the edge of
+      // the image comes back short through no fault of its size -- and telling
+      // someone their box is too small when they can see it is not is worse
+      // than saying nothing. Moving the box off the part is exactly how you end
+      // up there, which is how this was found. Clipping gets its own line
+      // below; only a box that is genuinely too small raises the error.
+      const int fwp = (int)std::ceil(fw * s), fhp = (int)std::ceil(fh * s);
+      const bool fits_somewhere = (fwp <= want.width && fhp <= want.height) ||
+                                  (fhp <= want.width && fwp <= want.height);
+      if (crop.width < want.width || crop.height < want.height)
+        LOGI_EVERY_N(100, "[shape] inspection region %dx%d is clipped by the frame "
+                     "to %dx%d -- only the visible part is searched. Not an error "
+                     "and NOT the box's size (1 line in 100)",
+                     want.width, want.height, crop.width, crop.height);
+      if (!fits_somewhere)
+      {
+        report.data.sig360_circle_line.error =
+            FeatureReport_ERROR::INSP_REGION_TOO_SMALL;
+        LOGW_EVERY_N(100, "[shape] inspection region %dx%d cannot hold the part "
+                     "(%dx%d px) at ANY angle -- nothing can be found here. NA "
+                     "raised (INSP_REGION_TOO_SMALL); enlarge inspection_region "
+                     "to at least %dx%d px (1 line in 100)",
+                     want.width, want.height, fwp, fhp, need, need);
+        return 0;
+      }
+      if (crop.width < need || crop.height < need)
+        LOGI_EVERY_N(100, "[shape] inspection region %dx%d is under the part's "
+                     "rotation sweep %dx%d: it can be found at some angles but "
+                     "not all. NOT reported as an error -- an empty result here "
+                     "may simply be an absent part (1 line in 100)",
+                     crop.width, crop.height, need, need);
+    }
     if (crop.width > 0 && crop.height > 0 &&
         (crop.width < scene.cols || crop.height < scene.rows))
     {
-      LOGI_EVERY_N(100, "[shape] station crop %dx%d at (%d,%d) pad %d (scene was %dx%d)",
-                   crop.width, crop.height, crop.x, crop.y, pad, scene.cols, scene.rows);
+      LOGI_EVERY_N(100, "[shape] station crop %dx%d at (%d,%d) no pad (scene was %dx%d)",
+                   crop.width, crop.height, crop.x, crop.y, scene.cols, scene.rows);
       scene = scene(crop).clone();     // line2Dup wants a continuous buffer
       sceneCropOff = crop.tl();
     }
@@ -7618,12 +7771,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   {
     sbm::MatchResult &m = ms[mi];
 
-    // Inspection region (the station). No longer the mechanism -- the scene was
-    // cropped to the station before matching -- but still the boundary rule: the
-    // crop is padded by half a model diagonal so objects straddling the edge are
-    // not clipped, which means a pose CENTRED in that pad margin can still come
-    // back. This trims those. It now runs over a handful of candidates instead
-    // of everything in the frame.
+    // Inspection region (the station). No longer the mechanism, and since the
+    // crop has no pad, no longer doing much either: the scene IS the region, so
+    // a returned pose is inside it by construction. Kept because it is the one
+    // place the boundary rule is stated in code, it costs a comparison per
+    // candidate, and it is still load-bearing under INSP_SHAPE_NOCROP=1.
     //
     // m.x/m.y are full-res scene px (crop offset already added back), so only
     // the camera's hardware ROI has to be added to reach full-sensor px.

@@ -116,7 +116,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     std::condition_variable stop_cv;
     // Returns true if a stop was requested during (or before) the wait.
     bool WaitOrStop(int ms);
-    // The one teardown path, shared by TriggerMode(stop), StopAquisition and
+    // The one teardown path, shared by TriggerMode(stop), StopAcquisition and
     // the destructor.
     void StopThread();
     // Read by TriggerMode to decide whether a join would return.
@@ -147,12 +147,12 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     std::vector<std::string> GetFileList();
     std::string GetFolderName() const { std::lock_guard<std::mutex> lk(files_m); return folderName; }
     status TriggerMode(int mode);
-    // camera_ez_reconnect does StopAquisition() then delete. The base class
+    // camera_ez_reconnect does StopAcquisition() then delete. The base class
     // returns NAK and does nothing, so this layer's own thread kept running
     // over the freed object -- LoadNext into a destroyed files_in_folder, and
     // frames injected into the pipeline from a dead camera.
-    status StopAquisition() override;
-    status StartAquisition() override;
+    status StopAcquisition() override;
+    status StartAcquisition() override;
     ~CameraLayer_BMP_carousel();
     static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
 
