@@ -234,24 +234,53 @@ function map_BPG_Packet2Act(parsed_packet)
     case "IM":
     {
       let pkg = parsed_packet;
+      // Counts IMAGE frames specifically, not all traffic: the open question
+      // is whether frames arrive faster than paints retire them, and only
+      // image frames carry anything worth retiring. See UTIL/diagProbe.js.
+      // Bytes AND geometry. The stream resolution is negotiated from the
+      // canvas size, and until now nothing downstream could say what the core
+      // actually settled on -- a preview one step too coarse and a preview
+      // that is correct differ only in how they look, which is exactly the
+      // kind of judgement that should not be left to the eye. pkg.scale is
+      // the core's down-sample level straight out of the IM header.
+      if (typeof window !== 'undefined' && window.__DIAG_WS_TICK__) {
+        window.__DIAG_WS_TICK__(pkg.image ? pkg.image.byteLength : 0,
+                                pkg.width, pkg.height, pkg.scale);
+      }
       // Skip if raw2Obj_IM bailed (bounds/empty payload — image:null).
       if (!pkg.image) break;
       let objx = { ...pkg };
       delete objx.image;
       if (pkg.format === 1 || pkg.format === 2) {
-        // JPEG (1=BGR, 2=grayscale): hand off raw bytes as a Blob; the
-        // canvas decodes via createImageBitmap (zero main-thread cost on a
-        // Worker-capable browser). Copy the bytes — the underlying
-        // ArrayBuffer is the WS message buffer which gets recycled on the
-        // next onmessage.
+        // JPEG (1=BGR, 2=grayscale): hand the ENCODED BYTES on as a
+        // Uint8Array. Copy them — the underlying ArrayBuffer is the WS message
+        // buffer, which gets recycled on the next onmessage.
+        //
+        // NOT A BLOB, and the difference is not cosmetic.
+        //
+        // A Blob's payload lives in Chromium's blob store, OUTSIDE the JS heap,
+        // and V8 has no idea how large it is. Redux keeps only the newest
+        // frame, so the previous ones become garbage immediately -- but their
+        // JS wrappers are a few dozen bytes each, the heap sits at 29.8 MB, and
+        // V8 therefore never feels any reason to collect. Measured 2026-08-23:
+        // renderer RSS climbed 10.4 MB/min for ten minutes with the heap
+        // FLAT and every array in the store unchanged, and one forced
+        // HeapProfiler.collectGarbage handed back 260 MB at once. Nothing was
+        // retained; nothing was collected either.
+        //
+        // An ArrayBuffer's bytes are external memory that V8 DOES account for,
+        // so the same garbage now creates proportional collection pressure and
+        // is reclaimed on the normal schedule. Same data, same copy, visible to
+        // the collector.
         const bytes = new Uint8Array(pkg.image.byteLength);
         bytes.set(pkg.image);
-        objx.jpegBlob = new Blob([bytes], { type: "image/jpeg" });
+        objx.jpegBytes = bytes;
       } else {
         // Raw RGBA (legacy / format === 0).
         objx.img = new ImageData(pkg.image, pkg.width);
       }
       acts.push(UIAct.EV_WS_Image_Update(objx));
+
       break;
     }
     case "IR":

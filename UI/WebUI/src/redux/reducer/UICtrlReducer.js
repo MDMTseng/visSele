@@ -3,7 +3,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString } from 'UTIL/MISC_Util';
-import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRESION } from 'UTIL/InspectionEditorLogic';
+import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
@@ -262,15 +262,46 @@ function StateReducer(newState, action) {
                         && srep_inWindow.headSkipTime == 0) {
                         reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue, srep_inWindow);
 
-                        reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
-                        //limit historyReport length to 2000
-                        if (reportStatisticState.historyReport.length > statSetting.historyReportlimit) {
-                          reportStatisticState.historyReport =
-                            reportStatisticState.historyReport.slice(Math.max(reportStatisticState.historyReport.length - 1000, 1));
-                        }
                         delete srep_inWindow.headSkipTime;
                         delete srep_inWindow.minReportRepeat;
                         delete srep_inWindow.maxReportRepeat;
+
+                        // History keeps the VERDICT, and nothing else.
+                        //
+                        // A KEEP-list, deliberately: everything that reads
+                        // historyReport is known and small. The trend chart
+                        // (ControlChart) reads time_ms plus judgeReports
+                        // {id,name,value,detailStatus}; the stats table is built
+                        // from statisticValue's running aggregates and never
+                        // touches this array; statReducer above already consumed
+                        // the FULL report a few lines up. So a report earns its
+                        // place in the history by those two fields alone.
+                        //
+                        // Measured on a real report from this machine: 22.6 kB per
+                        // object, judgeReports 272 B of it (1.2%), the point clouds
+                        // (searchPoints/detectedLines/detectedCircles/auxPoints)
+                        // 97.6%. Kept 1000 deep that was ~1.2 GB of live heap after
+                        // four minutes at 30/s (bench, 2026-08-20: 600 MB -> 2.5 GB
+                        // running -> 1.8 GB once stopped, i.e. retained not churn).
+                        //
+                        // The geometry still travels in newAddedReport, which the
+                        // DB upload and the line/angle readout consume and which is
+                        // emptied every batch -- nothing that needs the points
+                        // loses them.
+                        reportStatisticState.historyReport.push({
+                          time_ms:      srep_inWindow.time_ms,
+                          judgeReports: srep_inWindow.judgeReports,
+                        });
+                        // Trim to the CONFIGURED limit. This used to slice to a
+                        // hardcoded 1000 regardless of historyReportlimit, so
+                        // lowering the setting did nothing at all -- the buffer sat
+                        // at ~1000 whatever the config said.
+                        const _histLimit = (statSetting.historyReportlimit > 0)
+                          ? statSetting.historyReportlimit : 100;
+                        if (reportStatisticState.historyReport.length > _histLimit) {
+                          reportStatisticState.historyReport =
+                            reportStatisticState.historyReport.slice(-_histLimit);
+                        }
 
                         reportStatisticState.newAddedReport.push(srep_inWindow);
                       }
@@ -306,7 +337,11 @@ function StateReducer(newState, action) {
                           control_margin_info[tag]:marginInfo
                         ,undefined);
                     }
-                    function resultGrading(judgeReports,marginInfo,fallback_marginInfo)
+                    // isFlipped decides which set of limits applies. It is not a
+                    // display detail: the core judges a flipped part against the
+                    // _b limits, so grading without it produces a verdict for the
+                    // other side of the part.
+                    function resultGrading(judgeReports,marginInfo,fallback_marginInfo,isFlipped)
                     {
                       ////marginInfo may be shapelist
                       //it consists [{id,value,USL,LSL,UCL,LCL}....]
@@ -319,9 +354,68 @@ function StateReducer(newState, action) {
                       });
                       judgeReports.forEach((jud)=>{
                         jud.detailStatus=
-                          newState.edit_info._obj.getMeasure_detailStatus(jud,pfilled_marginInfo);
+                          newState.edit_info._obj.getMeasure_detailStatus(jud,pfilled_marginInfo,isFlipped);
 
-                          
+                        // Stamp the limits that were ACTUALLY used, alongside the
+                        // verdict they produced.
+                        //
+                        // The UI draws a scale behind each reading -- spec limits,
+                        // production control limits and target. Its only source for
+                        // those was `shape_def` (the root shapeList), while the
+                        // verdict here comes from pfilled_marginInfo: the root
+                        // overlaid with the per-製程 control margins. Whenever a
+                        // 製程 overrides a limit the drawn scale and the colour
+                        // beside it would have disagreed, and nothing on screen
+                        // would say which one was lying. Taking both from the same
+                        // object makes that impossible rather than unlikely.
+                        const _lim = pfilled_marginInfo.find(m=>m.id==jud.id);
+                        if(_lim!==undefined)
+                        {
+                          // Through effectiveLimits, the same call the verdict
+                          // above went through -- so the scale drawn on the row
+                          // cannot show one side's limits under the other side's
+                          // colour.
+                          jud.lim = effectiveLimits(_lim, isFlipped);
+                        }
+
+                        // The CORE's verdict is the one that acted.
+                        //
+                        // It is what moved the part, and it is computed from the
+                        // def this WebUI sent it -- the core never invents limits,
+                        // it only has what came down FI/CI. So when the two
+                        // disagree it is always this side that has mis-read a def
+                        // it wrote itself, and overwriting the core's answer with
+                        // the local one puts a colour on screen that contradicts
+                        // where the part physically went.
+                        //
+                        // That is what happened with flipped parts for as long as
+                        // this function ignored isFlipped. It was invisible: the
+                        // screen simply looked wrong to nobody in particular. So
+                        // rather than trust that the two implementations agree,
+                        // count the times they do not -- __gradeMismatch is read
+                        // by the diag probe, so a drift becomes a number instead
+                        // of an anecdote.
+                        const _coreSaid = jud.status;
+                        const _localNG =
+                          jud.detailStatus==MEASURERSULTRESION.USNG||
+                          jud.detailStatus==MEASURERSULTRESION.LSNG||
+                          jud.detailStatus==MEASURERSULTRESION.SNG||
+                          jud.detailStatus==MEASURERSULTRESION.NG;
+                        const _localNA = jud.detailStatus==MEASURERSULTRESION.NA;
+                        if(!_localNA && _coreSaid!==undefined
+                           && _coreSaid!==INSPECTION_STATUS.NA
+                           && _localNG!==(_coreSaid===INSPECTION_STATUS.FAILURE))
+                        {
+                          if(typeof window!=='undefined')
+                          {
+                            window.__gradeMismatch=(window.__gradeMismatch||0)+1;
+                            window.__gradeMismatchLast={
+                              id:jud.id, name:jud.name, value:jud.value,
+                              isFlipped:!!isFlipped, core:_coreSaid,
+                              ui:jud.detailStatus, lim:jud.lim };
+                          }
+                        }
+
                         if(jud.detailStatus==MEASURERSULTRESION.NA)
                         {
                           jud.status = INSPECTION_STATUS.NA;
@@ -554,7 +648,7 @@ function StateReducer(newState, action) {
 
                         });
 
-                        resultGrading(closeRep.judgeReports,cur_MarginInfo,root_MarginInfo);
+                        resultGrading(closeRep.judgeReports,cur_MarginInfo,root_MarginInfo,closeRep.isFlipped);
                         //closeRep.seq.push(singleReport);//Push current report into the sequence
                         closeRep.time_ms = currentTime_ms;
                         closeRep.repeatTime += 1;
@@ -576,7 +670,7 @@ function StateReducer(newState, action) {
                         let treport = dclone(singleReport);
 
                         
-                        resultGrading(treport.judgeReports,cur_MarginInfo,root_MarginInfo);
+                        resultGrading(treport.judgeReports,cur_MarginInfo,root_MarginInfo,treport.isFlipped);
 
 
                         treport.time_ms = currentTime_ms;

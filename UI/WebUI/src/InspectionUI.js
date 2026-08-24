@@ -44,33 +44,24 @@ import Tag from 'antd/lib/tag';
 import Input from 'antd/lib/input';
 import InputNumber from 'antd/lib/input-number';
 
-import NumPad from 'react-numpad';
 import Select from 'antd/lib/select';
 import Button, { default as AntButton } from 'antd/lib/button';
 import Menu from 'antd/lib/menu';
 
 
-import { 
+import {
   DisconnectOutlined,
   FileOutlined,
   LinkOutlined,
   ExclamationCircleOutlined,
-  LineOutlined,
-  TagsOutlined,
-  CameraOutlined,
   RedoOutlined,
   ExpandOutlined,
-  HeartTwoTone,
   ArrowLeftOutlined,
   FullscreenOutlined,
-  PaperClipOutlined,
   SettingOutlined,
   CaretDownOutlined,
   BarChartOutlined,
   SaveOutlined,
-  BulbOutlined,
-  ReloadOutlined
-
 } from '@ant-design/icons';
 
 
@@ -282,7 +273,93 @@ class DB extends React.Component {
 }
 
 
-export const OK_NG_BOX_COLOR_TEXT = {
+// How the VALUE cell is painted for each verdict.
+//
+// This replaces the OK/NG tag column. The tag spent a fixed 56 px on every row
+// to repeat what the number itself can carry, and in a 366 px strip that width
+// is better spent on the measurement name. Colouring the value says the same
+// thing in no space at all.
+//
+// Deliberately asymmetric: a passing row stays quiet (no fill, black figures)
+// and a failing one is filled solid. A 全檢 operator is scanning for the
+// exceptions, so the exceptions are what should carry the ink -- a page where
+// every row is coloured is a page where nothing stands out.
+// The FIGURES are coloured, never the cell. A filled cell sits on top of the
+// margin bar, which is painted into the row's own background -- so the fill
+// would hide exactly the thing the row exists to show.
+//
+// Three colours, from the VERDICT -- not a ramp off the margin.
+//
+// A ramp was tried and dropped: with the shade changing continuously there is
+// no fixed thing to recognise, so the colour stops being a category and turns
+// into a second, blurrier copy of the number that is already there. Three
+// states are three states.
+//
+// Where the value sits inside its limits is the BAR's job, and the bar says it
+// precisely.
+// First finite number of the candidates, else undefined. The limits arrive
+// from two places and either can be missing or NaN.
+function num(...xs) {
+  for (const x of xs) if (typeof x === 'number' && Number.isFinite(x)) return x;
+  return undefined;
+}
+
+function valueInk(detailStatus, ratio, blank) {
+  if (blank) return { fg: "#bfbfbf", w: 400 };
+  // NA / UNSET is "no measurement", not "a good measurement".
+  //
+  // The fall-through at the bottom returns green, so simplifying this function
+  // to three states quietly painted every NaN reading as a pass -- the one
+  // colour it must never be. A measurement that did not happen is grey, the
+  // same grey as an empty slot, because that is what it is.
+  if (detailStatus === MEASURERSULTRESION.NA
+      || detailStatus === MEASURERSULTRESION.UNSET
+      || detailStatus === undefined) {
+    return { fg: "#bfbfbf", w: 400 };
+  }
+  if (NG_STATUSES.has(detailStatus)) return { fg: "#f5222d", w: 700 };
+  // Outside the production control limits but still inside spec.
+  //
+  // A traffic light: green, amber, red. The first attempt at this was a green
+  // leaning yellow, chosen so a passing part would never look like a reject --
+  // but it landed close enough to the green that the two were hard to tell
+  // apart at a glance, which loses the warning altogether. Amber is the whole
+  // point of the middle light: unmistakably not green, and unmistakably not
+  // red. Darkened from a pure yellow because these are figures on white that
+  // an operator transcribes, and a bright yellow is not readable there.
+  if (CAUTION_STATUSES.has(detailStatus)) return { fg: "#c89000", w: 700 };
+  return { fg: "#389e0d", w: 400 };
+}
+
+// Which detailStatus values count as a failure worth naming when a group is
+// collapsed. The C-variants are the caution band, which is not a failure.
+const CAUTION_STATUSES = new Set([
+  MEASURERSULTRESION.UCNG, MEASURERSULTRESION.LCNG, MEASURERSULTRESION.CNG,
+]);
+
+const NG_STATUSES = new Set([
+  MEASURERSULTRESION.USNG, MEASURERSULTRESION.LSNG,
+  MEASURERSULTRESION.SNG,  MEASURERSULTRESION.NG,
+]);
+
+// What a slot renders when it currently has no measurement in it.
+//
+// It must go through the SAME JSX as a real row: the point of a slot pool is
+// that the nodes are never created or destroyed, so an empty slot returning
+// null would give back exactly what the pool exists to avoid. The row is
+// hidden with display:none instead, which keeps every node in the document.
+// NOT exported. A module that exports components must export nothing else, or
+// React Fast Refresh gives up on it and invalidates upward -- which turned a
+// one-second style edit back into a full reload of MAINUI.
+const EMPTY_MEASURE_REP = Object.freeze({
+  name: '', value: NaN, status: MEASURERSULTRESION.NA,
+  detailStatus: MEASURERSULTRESION.NA, def: Object.freeze({}),
+});
+
+// Not exported either, and nothing outside this file ever imported it. See the
+// note on EMPTY_MEASURE_REP: one stray non-component export costs Fast Refresh
+// for the whole module.
+const OK_NG_BOX_COLOR_TEXT = {
   [MEASURERSULTRESION.UNSET]: { COLOR: "#999", TEXT: MEASURERSULTRESION.UNSET },
   [MEASURERSULTRESION.NA]: { COLOR: "#aaa", TEXT: MEASURERSULTRESION.NA },
 
@@ -300,6 +377,214 @@ export const OK_NG_BOX_COLOR_TEXT = {
   [MEASURERSULTRESION.NG]: { COLOR: "#f50", TEXT: MEASURERSULTRESION.SNG },
 };
 
+// One measurement group, as its own subtree.
+//
+// Rendered from DATA in both places that show it -- the strip on the left and
+// the fullscreen modal -- so each gets its own DOM and neither can be holding
+// the other's. Passing React ELEMENTS between the two was the previous design
+// and it leaked; see the note on ObjInfoList.render.
+class ResultGroupItems extends React.PureComponent {
+  render() {
+    const { group, DICT, onFullScreen, slots, ghostReports } = this.props;
+    // With no group, fall back to the last list this slot showed. The names
+    // are then guaranteed to match what was actually being measured, in the
+    // same order and the same slots -- which reading them back out of the
+    // recipe would not guarantee.
+    const reports = (group && group.reports) || ghostReports || [];
+    const ghost = !group;
+    // Keyed by SLOT, not by measurement name.
+    //
+    // That is the whole change and also its only real risk: with a name key,
+    // React destroys a row the moment its measurement leaves and builds a new
+    // one when the next arrives, and at 23 parts/s that churn was the entire
+    // 410..1080 swing in getDOMCounters -- 560 nodes that were never in the
+    // document, created and discarded between two samples. With a slot key the
+    // same row object stays mounted and only its text changes.
+    //
+    // The risk is that a slot showing the wrong report puts part A's number on
+    // part B's line, which looks completely normal on screen. Nothing here is
+    // cached across renders: slot j is handed reports[j] every time, so the
+    // mapping cannot drift -- but any future change that memoises per slot has
+    // to preserve that.
+    const n = Math.max(slots || 0, reports.length, 1);
+    const out = [];
+    for (let j = 0; j < n; j++) {
+      out.push(
+        // Slot 0 stays visible even with nothing in it, showing "-". A report
+        // that comes and goes otherwise takes the whole column with it and
+        // everything below jumps.
+        <InspectionResultDisplay DICT={DICT} key={"slot" + j} placeholder={j === 0}
+          ghost={ghost} singleInspection={reports[j]}
+          fullScreenToggleCallback={onFullScreen} />
+      );
+    }
+    // table-layout:fixed so the columns come from the colgroup and not from
+    // the content: a long measurement name must not be able to push the value
+    // column narrower on one row than on the next.
+    // separate, NOT collapse -- see the note on the row background. With
+    // border-collapse:collapse a <tr> has no background box of its own, so
+    // background-size and background-position on it are ignored and the scale
+    // floods the whole row height.
+    //
+    // (A JSX comment here instead would be a second root expression in the
+    // return, which is a parse error -- made twice now.)
+    return (
+      <table style={{ width: "100%", tableLayout: "fixed",
+                      borderCollapse: "separate", borderSpacing: 0,
+                      background: "#fff" }}>
+        <colgroup>
+          <col />
+          <col style={{ width: 108 }} />
+        </colgroup>
+        <tbody>{out}</tbody>
+      </table>
+    );
+  }
+}
+
+// The header of one object's group: identity, verdict, and a collapse toggle.
+//
+// `group` is undefined for an empty slot. Render the same nodes with no text
+// rather than bailing out: returning null here would unmount the icon
+// (span+svg+path) and the badge on every slot that empties, which is the churn
+// the pool exists to remove.
+//
+// It carries its own background. It had none, so it showed whatever was behind
+// it and read as a gap between the cards rather than as the thing that owns
+// them -- and with the cards now on white, a transparent header has nothing to
+// separate them at all.
+function ResultGroupTitle({ group, slot, collapsed, onToggle, onFullScreen }) {
+  // Collapsed, the header IS the readout: which measurements failed. A verdict
+  // alone says a part is bad without saying what about it is bad, and that is
+  // the one thing worth showing when the numbers are hidden.
+  let ngNames = '';
+  if (collapsed && group) {
+    const bad = group.reports.filter(
+      (r) => NG_STATUSES.has(r.detailStatus)).map((r) => r.name);
+    ngNames = bad.length ? bad.join('、') : '';
+  }
+  return (
+    <div data-slot={slot} onClick={onToggle}
+      style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+               background: "#fafafa", borderBottom: "1px solid #e8e8e8",
+               padding: "5px 10px", color: "#595959", userSelect: "none" }}>
+      <span style={{ flex: "0 0 auto", fontSize: 10, color: "#8c8c8c",
+                     transform: collapsed ? "none" : "rotate(90deg)",
+                     transition: "transform .12s" }}>&#9654;</span>
+      {/* Moved up from every row. It opens one modal regardless of which row
+          it was clicked on, so one per group is the same control. */}
+      <FullscreenOutlined onClick={onFullScreen}
+        style={{ flex: "0 0 auto", fontSize: 12, color: "#8c8c8c" }} />
+      <span style={{ flex: "0 0 auto", fontSize: 13 }}>
+        {group ? `${group.idx}  ${group.isFlipped ? "反" : "正"}` : ''}
+      </span>
+      {/* Only when collapsed, and it takes the slack so the badge stays put. */}
+      <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 12, color: "#f50",
+                     overflow: "hidden", textOverflow: "ellipsis",
+                     whiteSpace: "nowrap" }} title={ngNames}>
+        {ngNames}
+      </span>
+      {/* The group verdict, sized for this header rather than for the old
+          card layout -- OK_NG_BOX draws an antd Tag at 20 px, which next to a
+          26 px-tall row reads as the loudest thing on the panel. */}
+      <span style={{ flex: "0 0 auto", display: "inline-block", width: 46,
+                     textAlign: "center", fontSize: 11, fontWeight: 600,
+                     lineHeight: "17px", borderRadius: 3, color: "#fff",
+                     background: (OK_NG_BOX_COLOR_TEXT[
+                       group ? group.finalResult : MEASURERSULTRESION.NA]
+                       || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).COLOR }}>
+        {(OK_NG_BOX_COLOR_TEXT[group ? group.finalResult : MEASURERSULTRESION.NA]
+          || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).TEXT}
+      </span>
+    </div>
+  );
+}
+
+// One measurement, laid out for READING AND WRITING DOWN.
+//
+// The strip on the left and this are the same numbers for two different jobs.
+// On the strip an operator glances at a verdict while the machine sorts; here,
+// in sampling mode, they read the value off and record it -- so the limits and
+// the margin belong on screen, not behind a hover, and the columns have to line
+// up down the page or the digits get transcribed wrong.
+class ResultRowExpanded extends React.PureComponent {
+  render() {
+    const rep = this.props.singleInspection;
+    const def = rep.def || {};
+    const essential = GetObjElement(rep, ["def", "quality_essential"]) !== false;
+
+    // Guarded. An unmapped detailStatus threw right here and took the whole
+    // inspection panel down with it -- the error boundary replaces the screen
+    // and the operator loses the session, which is a very expensive way to
+    // report an unknown enum value.
+    let color = (OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
+                 || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).COLOR;
+    if (!essential) color = Color(color).desaturate(0.6).darken(0.5);
+
+    const numeric = (rep.value === +rep.value) ? +rep.value : undefined;
+    const unit = DEFAULT_UNIT[rep.subtype] || "";
+    const shown = numeric === undefined ? "NaN" : numeric.toFixed(3);
+
+    let ratio;
+    if (numeric !== undefined && def.value !== undefined) {
+      const span = numeric > def.value ? (def.USL - def.value) : (def.value - def.LSL);
+      if (span > 0) ratio = (numeric - def.value) / span;
+    }
+    const OUT = 1.35;
+    const pos = 50 + (ratio === undefined ? 0 : Math.max(-OUT, Math.min(OUT, ratio))) * 42;
+
+    const num = (v) => (v === undefined || v === null ? "—" : Number(v).toFixed(3));
+    const mono = { fontFamily: "ui-monospace, Consolas, monospace",
+                   fontVariantNumeric: "tabular-nums" };
+
+    return (
+      <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 14,
+                         color: essential ? "#262626" : "#bfbfbf",
+                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {rep.name}
+          </span>
+          <span style={{ ...mono, flex: "0 0 auto", fontSize: 30, lineHeight: "34px",
+                         letterSpacing: "-0.01em", textAlign: "right", minWidth: 148,
+                         color: essential ? "#141414" : "#999" }}>
+            {shown}<span style={{ fontSize: 14, color: "#8c8c8c", marginLeft: 4 }}>{unit}</span>
+          </span>
+          <span style={{ flex: "0 0 auto", fontSize: 12, fontWeight: 600, color: "#fff",
+                         background: color, borderRadius: 3, padding: "2px 8px" }}>
+            {(OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
+              || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).TEXT}
+          </span>
+        </div>
+
+        <div style={{ position: "relative", height: 6, borderRadius: 3, marginTop: 7,
+                      background: essential
+                        ? "linear-gradient(90deg,#e8e8e8 0 7.6%,#bdbdbd 7.6% 8.4%,"
+                          + "#e8e8e8 8.4% 49.6%,#8c8c8c 49.6% 50.4%,#e8e8e8 50.4% 91.6%,"
+                          + "#bdbdbd 91.6% 92.4%,#e8e8e8 92.4% 100%)"
+                        : "#f0f0f0" }}>
+          {ratio === undefined ? null : (
+            <span style={{ position: "absolute", top: -2, left: `calc(${pos}% - 1.5px)`,
+                           width: 3, height: 10, borderRadius: 2, background: color,
+                           boxShadow: "0 0 0 1.5px #fff" }} />
+          )}
+        </div>
+
+        {/* The limits, spelled out. On the strip they live behind a hover
+            because there is no room; here there is, and an operator writing a
+            number down needs to see what it is being judged against. */}
+        <div style={{ ...mono, display: "flex", justifyContent: "space-between",
+                      fontSize: 11.5, color: "#8c8c8c", marginTop: 5 }}>
+          <span>{num(def.LSL)}</span>
+          <span>目標 {num(def.value)}</span>
+          <span>{ratio === undefined ? "" : "餘裕 " + (ratio >= 0 ? "+" : "") + ratio.toFixed(2)}</span>
+          <span>{num(def.USL)}</span>
+        </div>
+      </div>
+    );
+  }
+}
+
 export class InspectionResultDisplay_FullScren extends React.Component {
 
   constructor(props) {
@@ -310,64 +595,82 @@ export class InspectionResultDisplay_FullScren extends React.Component {
     }
   }
   render() {
-    // if(!this.props.visible)return;
+    const groups = this.props.groups;
+    if (!Array.isArray(groups)) return null;
 
-    let reports = this.props.IR;
-    if (!Array.isArray(reports)) {
-      return null;
-    }
 
-    // console.log("[XLINX]clone rMenu");
-    // console.log(this.props.resultMenuCopy);
-    let resultMenu_4fullscreenUse = this.props.resultMenuCopy;
-
-    let titleRender = <div>
-      Object List Window
-        </div>;
-    let openAllsubMenuKeyList = resultMenu_4fullscreenUse.map(function (item, index, array) {
-      return "sub1" + index;
-    });
-
-    let separateSubMenu = resultMenu_4fullscreenUse.map(function (item) {
-      return <Col span={8}>
-        <Menu
-          // onClick={this.handleClick}
-          // selectedKeys={[this.current]}
-          selectable={true}
-          // style={{align: 'left', width: 200}}
-          defaultSelectedKeys={['functionMenu']}
-          defaultOpenKeys={openAllsubMenuKeyList}
-          mode="inline">
-          {item}
-        </Menu>
-      </Col>;
-    });
+    // MOUNTED ONLY WHILE OPEN, and destroyed on close -- the same pattern as
+    // the uInspESP32 panel below, and for a stronger reason.
+    //
+    // This modal used to render its whole contents on every parent render,
+    // which on the live path is every image frame. It was handed the very
+    // React elements the visible strip was built from and rendered them into a
+    // SECOND Menu tree, so each frame built two complete copies of the result
+    // list and threw both away. Measured 2026-08-23: 19 detached <div>, 13
+    // <span>, 11 text nodes and one <svg> retained per frame, 3470 DOM nodes
+    // and 478 event listeners per minute, renderer RSS +10 MB/min and no
+    // collection could reclaim any of it -- the tree held them.
+    //
+    // A panel nobody is looking at should not be built at all.
+    const body = this.props.visible ? (
+      // A GRID OF GROUPS, not a row of navigation menus.
+      //
+      // Each group used to be wrapped in its own antd Menu with a SubMenu
+      // inside it -- a navigation widget used purely as a box, carrying its own
+      // open/selected state, keyboard handling and markup for a panel that
+      // never navigates anywhere. Sampling puts several objects down at once,
+      // usually three or fewer, and what the operator wants is those objects
+      // side by side with their numbers lined up.
+      //
+      // auto-fit rather than a fixed span={8}: one object should not be
+      // rendered into a third of the window with two thirds empty.
+      <div style={{ display: "grid", gap: 14, alignItems: "start",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                    maxHeight: "70vh", overflowY: "auto" }}>
+        {groups.map((g, index) => (
+          <div key={"fsc" + index}
+               style={{ border: "1px solid #e8e8e8", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8,
+                          padding: "8px 12px", background: "#fafafa",
+                          borderBottom: "1px solid #e8e8e8", fontSize: 14 }}>
+              <ResultGroupTitle group={g} />
+            </div>
+            {g.reports.map((rep) => (
+              <ResultRowExpanded key={"x" + rep.name} singleInspection={rep} />
+            ))}
+          </div>
+        ))}
+      </div>
+    ) : null;
 
     return (
       <Modal
-        title={titleRender}
+        title={`量測結果 · ${groups.length} 個物件`}
         visible={this.props.visible}
         width={this.props.width === undefined ? 900 : this.props.width}
         onCancel={this.props.onCancel}
         onOk={this.props.onOk}
+        destroyOnClose
         footer={null}
       >
-        <div style={{ height: this.props.height === undefined ? 400 : this.props.height }}>
-          <Row type="flex" justify="start" align="top">
-            {separateSubMenu}
-          </Row>
-        </div>
+        {body}
       </Modal>
     );
   }
 }
 
-class InspectionResultDisplay extends React.Component {
+// PureComponent: with a stable callback identity above, a card whose
+// measurement has not changed does no work at all on the next frame.
+class InspectionResultDisplay extends React.PureComponent {
   constructor(props) {
     super(props);
     this.state = {
       // fullScreen:false
     }
+    // Bound once, for the same reason as toggleFullscreenBound below: a fresh
+    // bound function per render is a fresh object holding `this`, and the heap
+    // snapshot found 1440 of them pointing at 828 of these components.
+    this.clickFullScreenBound = this.clickFullScreen.bind(this);
   }
 
 
@@ -390,65 +693,260 @@ class InspectionResultDisplay extends React.Component {
 
 
   render() {
-    let rep = this.props.singleInspection;
-    let quality_essential = GetObjElement(rep,["def","quality_essential"]);
+    // `empty` is a SLOT with nothing in it, not an error. See EMPTY_MEASURE_REP.
+    //
+    // An empty slot is normally hidden, EXCEPT the first one: reports come and
+    // go, and a column that disappears when there is nothing to report drags
+    // everything below it up and down. `placeholder` keeps one row on screen
+    // showing "-", so the layout has a floor.
+    // Three states, not two:
+    //   a reading      -- name and value
+    //   a GHOST        -- the item is in the list but has no reading right now
+    //   an empty slot  -- nothing at all, hidden unless it is the placeholder
+    // A ghost is what the operator sees between parts. Dropping the row would
+    // make the whole list appear and disappear with every gap in the reports;
+    // dropping just the NAME would leave a column of dashes that says nothing
+    // about what is being measured.
+    const ghost = !!this.props.ghost;
+    const empty = !this.props.singleInspection;
+    const placeholder = empty && this.props.placeholder;
+    const rep = this.props.singleInspection || EMPTY_MEASURE_REP;
+    const blank = empty || ghost;
+    const def = rep.def || {};
+    const essential = GetObjElement(rep, ["def", "quality_essential"]) !== false;
 
+    // Guarded. An unmapped detailStatus threw right here and took the whole
+    // inspection panel down with it -- the error boundary replaces the screen
+    // and the operator loses the session, which is a very expensive way to
+    // report an unknown enum value.
+    let color = (OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
+                 || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).COLOR;
+    if (!essential) color = Color(color).desaturate(0.6).darken(0.5);
 
-    let COLOR=OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR;
-    if(quality_essential==false)
-      COLOR = Color(COLOR).desaturate(0.6).darken(0.5);
+    const shown = blank ? "-" : this.showResultValueCheck(rep);
+    const unit = DEFAULT_UNIT[rep.subtype] || "";
+    const numeric = (rep.value === +rep.value) ? +rep.value : undefined;
 
-    let height=70;
-    
-    let fontStyle={fontSize:25};
-
-    if(quality_essential==false)
-    {
-      height=70;
-      fontStyle={
-        fontSize:25,
-        // textDecoration: "line-through"
-        color:"#999"
-      }
+    // Where the value sits between its limits, as a signed fraction of the
+    // margin: 0 is on target, +1 is exactly at USL, -1 exactly at LSL.
+    //
+    // This number already existed and was buried in the hover text. It is the
+    // one thing on the card that answers "is this drifting?", which neither the
+    // value nor the verdict can: 2.785 mm means nothing without its limits, and
+    // OK covers everything from dead-on to one micron inside the line.
+    let ratio;
+    if (numeric !== undefined && def.value !== undefined) {
+      const span = numeric > def.value ? (def.USL - def.value) : (def.value - def.LSL);
+      if (span > 0) ratio = (numeric - def.value) / span;
     }
 
-
-    let resValue = this.showResultValueCheck(rep);
-    let bundary_ratio=resValue>rep.def.value?
-    (resValue-rep.def.value)/(rep.def.USL-rep.def.value):
-    (resValue-rep.def.value)/(rep.def.LSL-rep.def.value)*-1;
-
-    let detailInfo=<>
-    類型:{dictLookUp(rep.def.subtype,this.props.DICT)} <br/>
-    目標:{rep.def.value}<br/>
-    上限:{rep.def.USL}<br/>
-    下限:{rep.def.LSL}<br/>
-    檢測值:{resValue}<br/>
-    
-    界限比例:{bundary_ratio.toFixed(2)}<br/>
-    </>
+    const detailInfo = <>
+      類型:{dictLookUp(def.subtype, this.props.DICT)} <br/>
+      目標:{def.value}<br/>
+      上限:{def.USL}<br/>
+      下限:{def.LSL}<br/>
+      檢測值:{shown}<br/>
+      界限比例:{ratio === undefined ? "—" : ratio.toFixed(2)}<br/>
+    </>;
 
 
-    // console.log(rep);
-    return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height:height}}>
-      <div className="s width8  HXF">
-        <div className="s vbox height4">
-          <FullscreenOutlined onClick={this.clickFullScreen.bind(this)} />
+    // The scale behind the reading: SIX lines.
+    //
+    //   LSL   LCL      target      UCL   USL        and the value's marker
+    //
+    // Spec limits are pinned to 8% and 92% and the target to 50% on every row,
+    // so the eye can compare one row against the next -- the alternative,
+    // scaling each row to its own numeric range, means the same x means a
+    // different thing on every line and the column stops being scannable.
+    // The control limits then land wherever they fall in between, which is the
+    // one thing that does vary per measurement and is worth seeing.
+    //
+    // Every line is drawn with a gradient, so the whole scale costs zero DOM
+    // nodes on a row that is redrawn at the frame rate.
+    //
+    // The limits come from rep.lim -- stamped by the reducer from the same
+    // margin info that produced the verdict (see resultGrading). Reading them
+    // off shape_def instead would draw the root limits next to a verdict
+    // computed from the 製程 overrides, with nothing on screen to say which
+    // applied.
+    const lim = rep.lim || {};
+    const L = { LSL: num(lim.LSL, def.LSL), USL: num(lim.USL, def.USL),
+                TGT: num(lim.value, def.value),
+                LCL: num(lim.LCL, undefined), UCL: num(lim.UCL, undefined) };
+
+    // Where a raw value sits, in the row's 8..92% coordinates.
+    //
+    // ONLY the spec limits are normalised: LSL is always 8%, USL always 92%,
+    // and everything else -- target, the two production control limits, the
+    // reading -- lands wherever it falls in between. One linear map, no kink.
+    //
+    // The first version pinned the target to 50% as well and scaled each half
+    // separately. That reads well when the tolerance is symmetric and lies when
+    // it is not: with 2.9..3.3 around a target of 3, half the bar covered
+    // 0.1 mm and the other half 0.3, so two markers the same distance apart
+    // meant different things depending on which side of centre they sat.
+    //
+    // Degenerate cases still need the target, because with a limit missing
+    // there is no span to normalise against:
+    //   both limits, USL > LSL   the ordinary case, one linear map
+    //   a limit missing          fall back to the target-anchored side
+    //   limit === target         every value past it is out of spec
+    const OFF = 999;    // sentinel: off-scale, pinned by the caller
+    const twoSided = L.LSL !== undefined && L.USL !== undefined && L.USL > L.LSL;
+    const place = (v) => {
+      if (v === undefined) return undefined;
+      if (twoSided) return 8 + ((v - L.LSL) / (L.USL - L.LSL)) * 84;
+      if (L.TGT === undefined) return undefined;
+      if (v === L.TGT) return 50;
+      if (v > L.TGT) {
+        if (L.USL === undefined) return 50;
+        const span = L.USL - L.TGT;
+        return span > 0 ? 50 + ((v - L.TGT) / span) * 42 : OFF;
+      }
+      if (L.LSL === undefined) return 50;
+      const span = L.TGT - L.LSL;
+      return span > 0 ? 50 - ((L.TGT - v) / span) * 42 : -OFF;
+    };
+
+    // A control limit at or outside its spec limit is TURNED OFF, not broken.
+    //
+    // It is a supported way to say "judge this one on spec alone": the core
+    // never reads UCL/LCL at all -- FeatureManager_sig360_circle_line.cpp
+    // decides SUCCESS/FAILURE from USL/LSL and nothing else -- and the WebUI's
+    // grading checks the spec limits first, so a control limit sitting on its
+    // spec limit can never produce a UCNG/LCNG. Nothing reacts to it, so
+    // nothing should be drawn for it.
+    //
+    // An earlier version painted these in a warning colour as a misconfigured
+    // scale. That was wrong about the intent, and the loud colour would have
+    // been on screen permanently for a setup that is working as asked.
+    const ctlOff = (v, lower) =>
+      v === undefined || (lower
+        ? (L.LSL !== undefined && v <= L.LSL)
+        : (L.USL !== undefined && v >= L.USL));
+
+    // Deduplicated, because a one-sided tolerance puts a spec line exactly on
+    // the target. Two ticks at the same position give a gradient two identical
+    // stops, which is not a drawing error but is a stop ordering the browser
+    // has to resolve -- and the second line adds nothing to look at anyway.
+    const SCALE = [];
+    for (const t of [
+      // The same traffic light as the figures: red is the line that rejects
+      // the part, amber the line that means react. The target is neither -- it
+      // is the reference the other four are measured from -- so it stays
+      // neutral, and being the only grey line makes it the easy one to find.
+      // Paler than the figures by a wide margin. These are a scale, not data:
+      // they have to be locatable without ever competing with the reading that
+      // sits on top of them, and the marker has to stay the most saturated
+      // thing on the row so the eye lands on it first.
+      { at: place(L.LSL), half: 1,   c: "#ffc9c7" },   // spec, the hard limits
+      { at: place(L.USL), half: 1,   c: "#ffc9c7" },
+      { at: ctlOff(L.LCL, true)  ? undefined : place(L.LCL), half: 0.8, c: "#ffe7a3" },
+      { at: ctlOff(L.UCL, false) ? undefined : place(L.UCL), half: 0.8, c: "#ffe7a3" },
+      { at: place(L.TGT), half: 0.7, c: "#cfcfcf" },   // target
+    ]) {
+      if (t.at === undefined) continue;
+      const at = Math.max(1.5, Math.min(98.5, t.at));
+      if (SCALE.some((u) => Math.abs(u.at - at) < 0.6)) continue;
+      SCALE.push({ ...t, at });
+    }
+    SCALE.sort((x, y) => x.at - y.at);
+
+    const tick = (t) =>
+      "transparent calc(" + t.at + "% - " + t.half + "px), "
+      + t.c + " calc(" + t.at + "% - " + t.half + "px), "
+      + t.c + " calc(" + t.at + "% + " + t.half + "px), "
+      + "transparent calc(" + t.at + "% + " + t.half + "px)";
+
+    // The LIMIT LINES carry the colour; the field between them stays white.
+    //
+    // Tinted zones were tried first and dropped: five bands of pale colour is a
+    // lot of surface on a row 26 px tall that already carries a name and a
+    // reading, and the figures end up sitting on whichever band they land in.
+    // Colouring the lines says the same thing -- red is the edge that rejects
+    // the part, amber the one that means react -- in a fraction of the ink, and
+    // leaves the numbers on plain white where they are easiest to read.
+    const track = (essential && SCALE.length)
+      ? "linear-gradient(90deg, " + SCALE.map(tick).join(", ") + ")"
+      : "#fafafa";
+
+    // Out-of-tolerance values are PINNED to the edge and drawn thicker.
+    //
+    // The marker used to be placed at 50 + ratio*42 clamped to +/-1.35, which
+    // puts anything past about 1.2 outside the 0..100% band -- so the further a
+    // value went out of spec the less of its marker was visible, and a really
+    // bad one had no marker at all. That is backwards: the worse it is, the
+    // more it has to show.
+    const ink = valueInk(rep.detailStatus, ratio, blank);
+    // The marker is placed through the SAME mapping as the scale lines, so a
+    // reading sitting on its limit lands on that limit's tick by construction.
+    // It used to be derived from `ratio`, computed separately further up with
+    // its own span logic -- two ways of saying where a number is, which is one
+    // too many.
+    const rawAt = place(numeric);
+    const markerOff = rawAt !== undefined && (rawAt < 0 || rawAt > 100);
+    const outOfSpec = markerOff
+      || (rawAt !== undefined && (rawAt <= 8 - 0.01 || rawAt >= 92 + 0.01));
+    const HALF = outOfSpec ? 2.5 : 1.25;
+    const pos = rawAt === undefined ? 50 : Math.max(1.5, Math.min(98.5, rawAt));
+
+    const barLayers = (rawAt === undefined || blank)
+      ? track
+      : "linear-gradient(90deg, " + tick({ at: pos, half: HALF, c: ink.fg }) + "), "
+        + track;
+
+    // No bottom border here: the scale row below carries the separator, so the
+    // two rows read as one entry rather than as two.
+    const cell = { padding: "3px 4px 1px", verticalAlign: "middle" };
+
+    // TWO rows per measurement: the reading, then a 9 px strip carrying the
+    // scale across both columns.
+    //
+    // The scale wants to be a band along the bottom of the row and not to run
+    // through the figures -- a red spec line landing on the "mm" of a number
+    // someone is copying out. Two attempts to do that with the row's own
+    // background failed: background-size/position are ignored on a <tr> under
+    // border-collapse:collapse, and switching to separate did not fix it
+    // either, so the gradient kept flooding the full height. A td with
+    // colSpan is not a workaround, it is simply the element that has the box
+    // we want -- and it costs two nodes.
+    const hide = (empty && !placeholder) ? "none" : undefined;
+    return (
+      <>
+      <tr style={{ display: hide }}>
+        <td style={{ ...cell, overflow: "hidden", textOverflow: "ellipsis",
+                     whiteSpace: "nowrap", fontSize: 12,
+                     color: essential ? "#595959" : "#bfbfbf" }}
+            title={rep.name}>
           {rep.name}
-        </div>
-        <Popover content={detailInfo} placement="bottomLeft" trigger={["click","hover"]}>
-          <div className="s vbox  height8" style={fontStyle}>
-              {resValue + DEFAULT_UNIT[rep.subtype]}
-          </div>
-        </Popover>
-      </div>
-      <div className="s vbox width4 HXF">
-        <Tag style={{ 'fontSize': 18 }}
-          color={COLOR}>
-          {OK_NG_BOX_COLOR_TEXT[rep.detailStatus].TEXT}
-        </Tag>
-      </div>
-    </div>;
+        </td>
+        <td style={{ ...cell, textAlign: "right", padding: "3px 6px",
+                     fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
+                     fontSize: 18, lineHeight: "20px",
+                     fontWeight: ink.w,
+                     color: essential ? ink.fg : "#bfbfbf" }}>
+          <Popover content={detailInfo} placement="bottomLeft" trigger={["click", "hover"]}>
+            <span>{shown}<span style={{ fontSize: 11, marginLeft: 2, opacity: .65 }}>
+              {blank ? "" : unit}</span></span>
+          </Popover>
+        </td>
+      </tr>
+      <tr style={{ display: hide }}>
+        {/* The separator is heavier than a hairline and stands off the scale.
+            The scale is itself a row of vertical marks, so a 1 px rule tight
+            underneath joined the two into one busy band and the eye could not
+            tell where an entry ended -- which matters more here than usual,
+            because each entry is two rows and the wrong grouping reads as one
+            measurement's scale belonging to the next measurement's number. */}
+        <td colSpan={2} style={{ padding: "0 0 7px", height: 16, lineHeight: 0,
+                                 background: barLayers,
+                                 backgroundRepeat: "no-repeat",
+                                 backgroundPosition: "top",
+                                 backgroundSize: "100% 9px",
+                                 borderBottom: "3px solid #c4c4c4" }} />
+      </tr>
+      </>
+    );
   }
 }
 
@@ -563,9 +1061,10 @@ function UInspMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=
       }
       
       設定目標數量:
-      <NumPad.Number onChange={(value)=>setLimitCD(parseInt(value))} value={limitCD} decimal={0} negative={false}>
-        <input value={limitCD}/>
-      </NumPad.Number>
+      {/* Native input, not the numpad popup: keyboard types directly,
+          inputMode asks a touch device for its numeric keys. */}
+      <InputNumber min={0} precision={0} inputMode="numeric" value={limitCD}
+        onChange={(v)=>{ const n=parseInt(v); if(Number.isFinite(n)) setLimitCD(n); }} />
 
       
       {"  "}
@@ -690,7 +1189,26 @@ class ObjInfoList extends React.Component {
       collapsed: false,
       fullScreen: false,
       perifMISCCtrl_popUp:false,
+      // Which group SLOTS are collapsed, by slot index rather than by object
+      // id. The slot is what stays put; an object id comes and goes several
+      // times a second and would take the operator's choice with it.
+      collapsedSlots: {},
     }
+    // Bound ONCE. `this.toggleFullscreen.bind(this)` inside render produces a
+    // new function identity on every frame, which changes the props of every
+    // card below it and defeats any memoisation they could otherwise do.
+    this.toggleFullscreenBound = this.toggleFullscreen.bind(this);
+    // One bound handler for every slot, for the same reason. The slot index
+    // rides on the event target's dataset instead of a per-slot closure.
+    this.toggleSlotBound = this.toggleSlot.bind(this);
+  }
+
+  toggleSlot(e) {
+    const i = Number(e.currentTarget.dataset.slot);
+    if (!Number.isFinite(i)) return;
+    this.setState((st) => ({
+      collapsedSlots: { ...st.collapsedSlots, [i]: !st.collapsedSlots[i] },
+    }));
   }
 
   toggleCollapsed() {
@@ -747,37 +1265,93 @@ class ObjInfoList extends React.Component {
       });
 
 
-      reportDetail =judgeInRank
-        // .filter(rep=>rep.def.quality_essential!=false)//do not show quality_essential=false result
-        .map((rep, idx_) => (
-          <InspectionResultDisplay DICT={this.props.DICT} key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
-        )
-      );
-
-      // console.log(judgeInRank);
       let finalResult = judgeInRank.reduce((res, rep) => {
         if(rep.def.quality_essential==false)return res;
         return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
-      // console.log(singleReport.isFlipped);
-      return (
-        <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
-          title={
-            <span>
-              <PaperClipOutlined />
-              <span>
-                {`${idx}   ${singleReport.isFlipped?"反":"正"}`} <OK_NG_BOX detailStatus={finalResult} />
-              </span>
-            </span>}>
-          {reportDetail}
-        </SubMenu>
-      )
+
+      // DATA, not elements. See the note below.
+      return { idx, isFlipped: singleReport.isFlipped, finalResult, reports: judgeInRank };
     }
-    )
+    ).filter((g) => g !== null);
 
+    // The measurement groups are described ONCE, as plain objects, and each
+    // place that shows them renders its own tree from that description.
+    //
+    // They used to be built as React elements here and the same element array
+    // was handed to the fullscreen modal as a prop, which rendered them into a
+    // second Menu. Two full copies of the result list, per frame, one of them
+    // never visible -- and the discarded subtrees stayed reachable. Measured
+    // 2026-08-23: renderer RSS +10 MB/min, 3470 DOM nodes and 478 listeners a
+    // minute retained, none of it reclaimable by a forced collection. Turning
+    // the image stream off stopped it dead, which is what pointed here.
+    const resultGroups = resultMenu;
+    // Plain divs, NOT antd SubMenu.
+    //
+    // The modal was moved off Menu/SubMenu first and the growth fell about 20%
+    // -- real, but the panel below kept producing it. The detached-node census
+    // named the remainder outright: after the measurement rows themselves, the
+    // most common thing retained after leaving the document was
+    // `ant-menu-submenu-title`, which is the title of exactly this SubMenu.
+    // rc-menu keeps references to child instances, and a title element rebuilt
+    // on every frame therefore never becomes collectable. Nothing here needs a
+    // menu: these groups are not navigation, they are never collapsed (openKeys
+    // always listed all of them) and nothing is selectable.
+    // A pool of group slots that GROWS and never shrinks.
+    //
+    // Same reasoning as the row slots inside ResultGroupItems, one level up:
+    // the group container plus its title (a PaperClipOutlined icon alone is
+    // span+svg+path) was mounted and unmounted every time the set of objects
+    // in the core's trackingWindow changed. Shrinking the pool again would
+    // reintroduce exactly that, so the high-water mark only ever rises. It is
+    // bounded in practice by how many objects the operator places at once and
+    // by the recipe's measurement count -- there is no need for a fixed cap,
+    // and a cap would only have to fail somehow when exceeded.
+    //
+    // Held on the instance rather than in state: it is derived from the data
+    // already being rendered, so raising it here is used by THIS render and
+    // needs no second pass.
+    // At least one group slot, always. Same reason as the placeholder row: with
+    // no objects in the tracking window the panel would otherwise vanish and
+    // reappear, which is the jitter, not a saving.
+    this._groupSlots = Math.max(this._groupSlots || 0, resultGroups.length, 1);
+    this._rowSlots = resultGroups.reduce(
+      (m, g) => Math.max(m, g.reports.length), this._rowSlots || 0);
 
-    let fullScreenMODAL = <InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
-      onCancel={this.toggleFullscreen.bind(this)} width="90%" />;
+    resultMenu = [];
+    for (let i = 0; i < this._groupSlots; i++) {
+      const g = resultGroups[i];
+      const shut = !!this.state.collapsedSlots[i];
+      // Slot 0 is the one that must never disappear.
+      const showSlot = !!g || i === 0;
+      // Remember what this slot last held, so it can keep showing the item
+      // names while there is no report. Kept on the instance and not in state:
+      // it is a copy of data already rendered, and writing it must not cause
+      // another render.
+      if (!this._lastRows) this._lastRows = [];
+      if (g) this._lastRows[i] = g.reports;
+      resultMenu.push(
+        <div style={{ 'textAlign': 'left', display: showSlot ? undefined : 'none',
+                      border: "1px solid #e8e8e8", borderRadius: 4,
+                      overflow: "hidden", marginBottom: 6, background: "#fff" }}
+          key={"gslot" + i} className="Antd_Menu_Title_AutoHeight">
+          <ResultGroupTitle group={g} slot={i} collapsed={shut}
+            onToggle={this.toggleSlotBound} onFullScreen={this.toggleFullscreenBound} />
+          {/* HIDDEN, not unmounted. Collapsing by dropping the children would
+              destroy the very rows the slot pool keeps alive, so a shift
+              collapses and expands would churn as much DOM as the pool saves. */}
+          <div style={{ display: shut ? "none" : undefined }}>
+            <ResultGroupItems group={g} slots={this._rowSlots} DICT={this.props.DICT}
+              ghostReports={this._lastRows[i]}
+              onFullScreen={this.toggleFullscreenBound} />
+          </div>
+        </div>
+      );
+    }
+
+    let fullScreenMODAL = <InspectionResultDisplay_FullScren
+      groups={resultGroups} DICT={this.props.DICT} visible={this.state.fullScreen}
+      onCancel={this.toggleFullscreenBound} width="90%" />;
 
     let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
     <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
@@ -850,6 +1424,17 @@ class ObjInfoList extends React.Component {
             // with no def reload and no restart.
             this.props.WSCMD_CB("ST", 0,
               { MachineSetting: { ...(this.props.machineSetting||{}), ...patch } });
+          }}
+          onApplyRegionLive={(region) => {
+            // Station only, and NOT a MachineSetting patch.
+            //
+            // setup_machine_setting() also runs load_clean_regions(), which
+            // reads an absent key as "no clean regions" -- so a region-only
+            // MachineSetting would wipe them. It would also re-push this tab's
+            // cached copy of the whole file on every drag, which is the same
+            // stale-cache overwrite onSave had to be fixed for. InspRegionLive
+            // touches the station and nothing else, and never touches disk.
+            this.props.WSCMD_CB("ST", 0, { InspRegionLive: region });
           }}
           onBypass={(on) => {
             // Runtime only, and deliberately NOT part of the MachineSetting
@@ -973,9 +1558,11 @@ class ObjInfoList extends React.Component {
 
     // console.log(this.props.SLID_API_ID_CONN_INFO);
 
-    let openAllsubMenuKeyList = resultMenu.map(function (item, index, array) {
-      return "sub1" + index;
-    });
+    // The result groups no longer live in the Menu, and the note above the
+    // station SubMenu records that openKeys only ever held their keys -- so
+    // this is now empty, and every remaining SubMenu stays closed exactly as
+    // it already did.
+    let openAllsubMenuKeyList = [];
     return (
       <>
         <Menu
@@ -991,10 +1578,9 @@ class ObjInfoList extends React.Component {
           {uInspESP32UI}
           {stationUI}
           {SLIDUI}
-
-          {resultMenu}
-
         </Menu>
+
+        {resultMenu}
         {/* The full setup panel, on demand. Mounted only while open so its 1Hz
             poll does not share the serial link with the strip above for the
             whole shift. */}
@@ -1053,6 +1639,16 @@ class CanvasComponent extends React.Component {
         this.ec_canvas.SetROISettingCallBack(undefined);
       }
     }
+
+    // The stream resolution cannot be chosen until the instrument scale is
+    // known, and lens_calib.json usually arrives AFTER the canvas has taken
+    // its size. The handler bails in that window, and nothing re-emits on its
+    // own -- so the level would stay at 1 for the whole session unless someone
+    // happened to zoom. Negotiate once, as soon as mmpp turns up.
+    if (!(prevProps.instrument_mmpp > 0) && this.props.instrument_mmpp > 0
+        && this.ec_canvas !== undefined) {
+      this.ec_canvas.zoom_emit();
+    }
   }
 
   ec_canvas_EmitEvent(event) {
@@ -1078,27 +1674,58 @@ class CanvasComponent extends React.Component {
         // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
         // console.log(this.props.downSampleFactor);
-        // R7 finding: a NaN/non-finite event.data.down_samp_level made
-        // Math.floor(NaN)+1 = NaN, and both clamp comparisons silently fail,
-        // so NaN shipped to the core. Guard at the source.
-        // Always full-res in InspUI — canvas zoom no longer drives stream
-        // downsampling (matches core default downSampLevel=1).
-        let down_samp_level = 1;
+        // Send only as many pixels as the canvas can show.
+        //
+        // event.data.down_samp_level is world units (mm) per CANVAS pixel, so
+        // dividing by mmpp gives sensor pixels per canvas pixel -- exactly the
+        // factor by which the frame is oversampled for this view. At the usual
+        // zoom-to-fit, a 2448-wide sensor in a ~1200 px canvas is ~2.04.
+        //
+        // This was pinned to 1 in 1b843b32 ("full-res live view"), which cost
+        // 9.04 ms of encode and 269 KB per frame and was paid for by dropping
+        // the CI framerate 15 -> 8. Measured on a real frame (jpeg_bench
+        // "downsamp"), DS 2 with INTER_AREA is 2.30 ms and 39.9 KB -- and it
+        // is NOT softer: 1224 px into a 1200 px canvas is still 1:1. What made
+        // the old behaviour unusable was the factor, not the idea. The old
+        // formula was Math.floor(x / mmpp * 2) + 1, which returns 5 for x=2.04
+        // -- 490 px stretched across 1200, visibly blurred -- on top of the
+        // core's INTER_NEAREST aliasing (both now fixed).
+        //
+        // Quantised to 1/2/4: odd factors have no fast resize path in the core
+        // (DS 3 spends 3.68 ms in resize alone, worse than DS 2 in total).
+        // Rounding DOWN is deliberate -- it can only ever send more pixels
+        // than the canvas needs, never fewer.
+        // Taken from the canvas, not recomputed here. Deriving it from
+        // instrument_mmpp looked equivalent and was not: the canvas builds its
+        // camera transform from a different mmpp, and mixing the two asked for
+        // level 4 where the truth was 0.68 -- a 204 px wide live view. If the
+        // canvas cannot supply it, do nothing rather than guess.
+        const oversample = event.data.sensor_px_per_canvas_px;
+        // Published for the harness. The zoom test kept reporting FAIL and
+        // every attempt to explain it came down to estimating how wide the
+        // part was drawn in a screenshot, which gave a different answer each
+        // time. This is the number the decision is actually made from.
+        if (typeof window !== 'undefined') window.__STREAM_OVERSAMPLE__ = oversample;
+        if (!Number.isFinite(oversample) || oversample <= 0) break;
 
-        // down_samp_level=1;
-        //log.info(crop,down_samp_level);
-        // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        //   {
-            
-        //     down_samp_level,
-        //     // CameraSetting: {
-        //       // down_samp_level
-        //     // },
-        //     ImageTransferSetup: {
-        //       crop
-        //     },
-        //     LAST_FRAME_RESEND:true
-        //   });
+        // A 10% deadband on the way up. Without it a canvas sitting exactly on
+        // a boundary (a maximised window often does) flips between two levels
+        // on every resize event, and each flip is a full re-negotiation.
+        const prev = this._streamDS || 1;
+        const up = 1.1, down = 0.9;
+        let down_samp_level = 1;
+        for (const cand of [4, 2]) {
+          if (oversample >= cand * (cand > prev ? up : down)) { down_samp_level = cand; break; }
+        }
+        if (down_samp_level === prev) break;
+        this._streamDS = down_samp_level;
+
+        log.info(`stream downsample ${prev} -> ${down_samp_level} `
+               + `(${oversample.toFixed(2)} sensor px per canvas px)`);
+        this.props.ACT_WS_SEND_CORE_BPG("ST", 0, {
+          CameraSetting: { down_samp_level },
+          LAST_FRAME_RESEND: true,
+        });
         break;
 
     }
@@ -1489,8 +2116,11 @@ class DataStatsTable extends React.Component {
       if (this.state.drawList[key] == true) {
         let targetMeasure = measureList.find((m) => m.id == key);
 
+        // Math.max(..., 0), not 1. With the history capped at 100 the window is
+        // now SHORTER than lastN, and the old floor of 1 sliced from index 1 --
+        // quietly dropping the oldest point from every chart.
         let lastN = 500;
-        let lastNArr = statstate.historyReport.slice(Math.max(statstate.historyReport.length - lastN, 1));
+        let lastNArr = statstate.historyReport.slice(Math.max(statstate.historyReport.length - lastN, 0));
         return <ControlChart reportArray={lastNArr} targetMeasure={targetMeasure} />
       }
       return null;

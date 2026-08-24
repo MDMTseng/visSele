@@ -50,7 +50,6 @@ import Slider from 'antd/lib/slider';
 import Popover from 'antd/lib/popover';
 
 
-import NumPad from 'react-numpad';
 import { useSelector,useDispatch } from 'react-redux';
 import { 
   VerticalAlignTopOutlined,
@@ -148,7 +147,12 @@ function NumberAccInput({ value, className, onChange, style }) {
         color: '#222', background: 'white', border: '1px solid #ccc',
         borderRadius: 3, width: '100%', ...style,
       }}
-      type="number" step="0.0001" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
+      // inputMode brings up the OS numeric on-screen keyboard on a touch
+      // screen while changing nothing for a physical keyboard -- this is the
+      // whole touch story now that the numpad popup is gone, and unlike the
+      // popup it never takes the field away from the keyboard.
+      type="number" step="0.0001" inputMode="decimal"
+      pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
       value={local}
       onChange={(e) => { editing.current = true; setLocal(e.target.value); }}
       onBlur={commit}
@@ -687,31 +691,34 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
               return undefined;
             }
 
+            // NumberAccInput, not the react-numpad popup it used to be.
+            //
+            // The popup numpad captured the field, so a physical keyboard --
+            // which every bench here has -- fought it instead of typing into
+            // it, and each edit cost an open/peck/confirm round trip.
+            // NumberAccInput is a native input: keyboard types straight in,
+            // commit on blur/Enter, Escape reverts, and inputMode="decimal"
+            // asks a touch device for its numeric on-screen keyboard, so touch
+            // entry still works without owning the field.
             return (
-              <NumPad.Number onChange={(value)=>{
-                
-                let new_obj={...objInfo};
-                let parseNum =value;
-                parseNum=toFixedNum(parseNum,5);
-                if(parseNum!=parseNum)
-                {
-                  if(objInfo.subtype===undefined)
+              <NumberAccInput style={{ width: '100%' }} value={value}
+                onChange={(evt)=>{
+                  let new_obj={...objInfo};
+                  let parseNum=toFixedNum(evt.target.value,5);
+                  if(parseNum!=parseNum)
                   {
-                    new_obj[col.key]=undefined;
+                    if(objInfo.subtype===undefined)
+                    {
+                      new_obj[col.key]=undefined;
+                    }
                   }
-
-                }
-                else
-                {
-                  new_obj[col.key]=parseNum;
-                }
-                objInfo.update(new_obj);
-                // objInfo.update(new_obj);
-              }} value={value}>
-                <Input style={{ width: '100%' }} value={value}/>
-              </NumPad.Number>
+                  else
+                  {
+                    new_obj[col.key]=parseNum;
+                  }
+                  objInfo.update(new_obj);
+                }} />
             );
-            return 
           }
           break;
 
@@ -764,8 +771,26 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
             if(tarIdx!==-1)
             {
               rows[tarIdx]=newObj;
-              newMarginInfo[text]=rows;
             }
+            else
+            {
+              // APPEND, do not drop.
+              //
+              // A tag's array only carries the measures it actually overrides,
+              // so a measure without one is shown from a synthetic row built a
+              // few lines above ({id} only). That row is not in the array,
+              // findIndex returned -1, and this wrote nothing -- while still
+              // calling set_control_margin_info, so React re-rendered the
+              // identical data and the dashed "take the root value" button
+              // looked simply dead.
+              //
+              // completeSingleCtrlMarginInfo does pre-seed a row per measure,
+              // but only when a tag is added from the menu. A tag loaded from
+              // an existing def never goes through it -- which is every tag an
+              // operator actually opens this editor to change.
+              rows.push(newObj);
+            }
+            newMarginInfo[text]=rows;
             set_control_margin_info(newMarginInfo);
           };
           delete obj.subtype

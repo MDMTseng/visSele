@@ -2120,6 +2120,41 @@ export function UINSP_ESP32_MINI() {
           {cnt.UNANSWERED > 0 ? ` · UNANS ${compactN(n0(cnt.UNANSWERED))}` : ''}
         </div>
       )}
+      {/* The two counters that mean a part was NOT sorted the way it was
+          judged -- and neither had anywhere to appear. The board reports both
+          in get_running_stat.count; this panel rendered neither, so on a
+          machine hitting them the operator watched NG/OK/NA/SEL1-3 sit
+          perfectly still while product went the wrong way.
+
+          SEL_SUPPRESSED  a verdict whose actuation was scheduled and not
+                          delivered. Its guard is
+                          PLATE_RUNNING && !SYS_STEPPER_DISABLED && !DRY_RUN,
+                          and stopping the plate does not reach it -- on a real
+                          machine the way in is de-energising the driver while
+                          the plate turns, which lets a loaded plate coast and
+                          throw parts.
+          SEL1_NO_QUOTA   an NG the actuation quota ate: guard passed,
+                          SEL1_ACT_COUNTDOWN spent, so no blow AND no SEL1_Count.
+                          A reject that stayed in the good stream, untraced --
+                          SEL1_Count is what the bin is reconciled against.
+
+          Red, not the #c60 used above: those say "nobody judged this part",
+          these say "the judgement did not reach the part". Same silent-while-
+          zero rule as SKIP/UNANSWERED, because that is what makes a line
+          appearing here mean something. */}
+      {(cnt.SEL_SUPPRESSED > 0 || cnt.SEL1_NO_QUOTA > 0) && (
+        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c00', fontWeight: 600,
+                      marginTop: 2 }}
+             data-testid="uinsp-unsorted"
+             data-suppressed={n0(cnt.SEL_SUPPRESSED)}
+             data-noquota={n0(cnt.SEL1_NO_QUOTA)}
+             title={`SEL_SUPPRESSED ${n0(cnt.SEL_SUPPRESSED).toLocaleString()}`
+                    + ` · SEL1_NO_QUOTA ${n0(cnt.SEL1_NO_QUOTA).toLocaleString()}`}>
+          ⚠ 判定未落實到零件
+          {cnt.SEL_SUPPRESSED > 0 ? ` · 未送達 ${compactN(n0(cnt.SEL_SUPPRESSED))}` : ''}
+          {cnt.SEL1_NO_QUOTA > 0 ? ` · NG未吹除 ${compactN(n0(cnt.SEL1_NO_QUOTA))}` : ''}
+        </div>
+      )}
       {/* Rate, not total. The totals above say what the shift has done; this
           says what the machine is doing right now, which is the number you
           watch while turning the speed up. Three of them because the gaps

@@ -29,7 +29,6 @@ import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
 import Space from 'antd/lib/space'
 
-import NumPad from 'react-numpad';
 
 import { parse } from 'semver';
 const AntButtonGroup = AntButton.Group;

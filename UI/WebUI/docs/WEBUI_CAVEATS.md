@@ -230,7 +230,7 @@ node webctl.mjs eval "[...document.querySelectorAll('.ant-modal-wrap')].map(e=>(
    的一律 NAK),`CameraSetup` 把被拒的名字累積到 `camera_info.setup_failed`——
    那是**唯一**看得到「設了但沒進去」的地方。面板會把它標紅。
 3. **每推一次就 stop/start acquisition 一次。** `CameraSetup` 在 setters 前後
-   Stop/StartAquisition,所以每個按鍵推一次會讓相機起停十幾遍;面板做了 300ms 去抖。
+   Stop/StartAcquisition,所以每個按鍵推一次會讓相機起停十幾遍;面板做了 300ms 去抖。
    同樣的理由:**跑產時不要動這個面板。**
 
 **ROI 故意不可編輯。** 存檔的裁切在 `InspectionROI`,只由「檢測畫面框選後儲存」

@@ -129,7 +129,7 @@ function RectFields({ rect, onChange, showNumbers }) {
  *   onSave(setting) persist                 (SV data/machine_setting.json)
  *   onBypass(bool)  stop/resume enforcing   (ST { InspAreaBypass })
  */
-export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave, onBypass }) {
+export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyRegionLive, onSave, onBypass }) {
   // Empty until the core's machine setting arrives. Never pre-seeded from a
   // stored draft -- see the note at the top of this file.
   const [region, setRegion] = useState(EMPTY_REGION);
@@ -224,12 +224,32 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave, 
       const rs = toStored(r, o);           // canvas px -> full-sensor px
       log.debug('[station] drag', r, '+ roi origin', o, '=', rs);
       setDirty(true);
-      if (aiming === 'region') setRegion((p) => ({ ...p, ...rs }));
+      if (aiming === 'region') setRegion((p) => { const n = { ...p, ...rs }; liveRegion(n); return n; });
       else setClean((cs) => cs.map((c, i) => (i === aiming ? { ...c, ...rs } : c)));
     });
     return () => { if (ecCanvas.SetROISettingCallBack) ecCanvas.SetROISettingCallBack(undefined); };
   }, [aiming, ecCanvas]);
 
+  // Push the station to the core AS IT IS EDITED, not at 套用並存檔.
+  //
+  // The canvas redraws the new box the instant it is drawn; the core kept
+  // judging against the previous one until the save. For the whole tuning loop
+  // the picture and the verdict disagreed -- and the operator is looking at the
+  // picture, so every "I moved the box and nothing changed" came from here.
+  //
+  // Live only. `dirty`/未存檔 and the Save button are untouched, so the file
+  // still changes only when somebody says so: an abandoned experiment dies with
+  // the core instead of becoming the machine's configuration.
+  const liveRegion = (r) => {
+    if (typeof onApplyRegionLive !== 'function') return;
+    onApplyRegionLive((r && r.w > 0 && r.h > 0)
+      ? { ...r, fit: r.fit === 'center' ? 'center' : 'contain' }
+      : null);
+  };
+  // Every path that changes the region goes through here, so the live push
+  // cannot be forgotten by one of them -- which is exactly how the drag ended
+  // up being the only editor that did not apply.
+  const editRegion = (next) => { setDirty(true); setRegion(next); liveRegion(next); };
   const edit = (fn) => { setDirty(true); fn(); };
   // "Cleared" has to be a VALUE, not a missing key.
   //
@@ -364,7 +384,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave, 
       <AimBtn target="region">拉框設定</AimBtn>
       <Select size="small" style={{ width: 112 }}
         value={region.fit === 'center' ? 'center' : 'contain'}
-        onChange={(v) => edit(() => setRegion({ ...region, fit: v }))}
+        onChange={(v) => editRegion({ ...region, fit: v })}
         options={[{ value: 'contain', label: '整顆在框內' },
                   { value: 'center',  label: '只看中心點' }]} />
       <Q>
@@ -376,10 +396,10 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave, 
       {region.w > 0 && region.h > 0 ? (
         <Button size="small" danger type="text" icon={<DeleteOutlined />}
           style={{ padding: '0 4px' }}
-          onClick={() => edit(() => setRegion(EMPTY_REGION))} />
+          onClick={() => editRegion(EMPTY_REGION)} />
       ) : null}
     </Row>
-    {nums ? <RectFields rect={region} showNumbers onChange={(r) => edit(() => setRegion(r))} /> : null}
+    {nums ? <RectFields rect={region} showNumbers onChange={(r) => editRegion(r)} /> : null}
     {station && !inSync && station.region ? (
       <div style={{ fontSize: 11, color: '#d48806', margin: '2px 0' }}>
         核心跑的是 {Math.round(station.region.w)}×{Math.round(station.region.h)}

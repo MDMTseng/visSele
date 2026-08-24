@@ -12,6 +12,33 @@ import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import { SHAPE_TYPE, UI_SM_STATES } from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import dclone from 'clone';
+
+// The limits that apply to ONE reading: the front set, or the back set when
+// the part is flipped and this measurement has a back set configured.
+//
+// A def gets `value_b`/`USL_b`/`LSL_b`/`UCL_b`/`LCL_b` when back_value_setup is
+// switched on (shapes/measure/index.js) and they are deleted again when it is
+// switched off, so "is the key present" is exactly the right test for whether a
+// back-side limit was configured -- per field, because the property sheet lets
+// them be edited one at a time.
+//
+// The core has always judged flipped parts against USL_b/LSL_b
+// (FeatureManager_sig360_circle_line.cpp: `flip_f < 0 ? def->USL_b : def->USL`)
+// while this function only ever read the front limits. With different back
+// limits configured the sorter and the screen disagreed about the same part:
+// the core would accept a reading the UI painted red, or reject one it painted
+// green, and nothing on screen said which of the two had been believed.
+export function effectiveLimits(def, isFlipped) {
+  if (!def) return {};
+  const pick = (a, b) => (isFlipped && def[b] !== undefined ? def[b] : def[a]);
+  return {
+    value: pick('value', 'value_b'),
+    USL:   pick('USL',   'USL_b'),
+    LSL:   pick('LSL',   'LSL_b'),
+    UCL:   pick('UCL',   'UCL_b'),
+    LCL:   pick('LCL',   'LCL_b'),
+  };
+}
 import { mkLog } from 'UTIL/logger';
 
 import JSum from 'jsum';
@@ -606,7 +633,7 @@ export class InspectionEditorLogic {
     return edit_info;
   }
 
-  getMeasure_detailStatus(measureReport,control_Margin_table=this.shapeList)
+  getMeasure_detailStatus(measureReport,control_Margin_table=this.shapeList,isFlipped=false)
   {
     let measureDef = control_Margin_table.find((feature) => feature.id == measureReport.id);
     //console.log(measure, measureDef);
@@ -616,19 +643,20 @@ export class InspectionEditorLogic {
     else if (measureReport.status === INSPECTION_STATUS.UNSET) {
       return MEASURERSULTRESION.UNSET;
     }
-    else if (measureReport.value < measureDef.LSL) {
+    const lim = effectiveLimits(measureDef, isFlipped);
+    if (measureReport.value < lim.LSL) {
       return MEASURERSULTRESION.LSNG;
     }
-    else if (measureReport.value > measureDef.USL) {
+    else if (measureReport.value > lim.USL) {
       return MEASURERSULTRESION.USNG;
     }
-    else if (measureReport.value < measureDef.LCL) {
+    else if (measureReport.value < lim.LCL) {
       return MEASURERSULTRESION.LCNG;
     }
-    else if (measureReport.value > measureDef.UCL) {
+    else if (measureReport.value > lim.UCL) {
       return MEASURERSULTRESION.UCNG;
     }
-    else if (measureReport.value < measureDef.value) {
+    else if (measureReport.value < lim.value) {
       return MEASURERSULTRESION.LOK;
     }
     else {
@@ -791,6 +819,10 @@ export class InspectionEditorLogic {
   }
 
   FindShape(key, val, shapeList = this.shapeList) {
+    // The default above covers `undefined`; it does NOT cover null, an object,
+    // or a list that has not loaded yet, and findIndex throws on all three.
+    // See the note on FindInspShapeObject for why absent lists reach here.
+    if (!Array.isArray(shapeList)) return undefined;
     let idx = shapeList.findIndex((shape) => shape[key] == val);
     return (idx < 0) ? undefined : idx;
   }
@@ -1026,46 +1058,34 @@ export class InspectionEditorLogic {
 
 
 
+  // Every one of these lists is OPTIONAL on a report -- a station that located
+  // no lines sends no detectedLines at all -- and that collided with a default
+  // parameter in a way neither side looks wrong on its own.
+  //
+  // FindShapeIdx(id, shapeList = this.shapeList) takes its default whenever the
+  // argument is `undefined`, which in JavaScript is exactly what a missing
+  // property is. So `FindShapeIdx(id, inspReport.detectedLines)` on a report
+  // without that list did not search nothing -- it searched THE EDITOR'S OWN
+  // shapeList, found the shape there (it is the shape being edited, so it is
+  // always there), and returned an index into a completely different array.
+  // The block then did `inspReport.detectedLines[idx]` and threw, or on the
+  // blocks where a stale array survived, returned a shape from the wrong list.
+  //
+  // Guarding here rather than changing FindShape's default: the default is
+  // correct and depended upon for the no-argument callers, and the bug is
+  // handing it an absent list and calling that "not specified".
   FindInspShapeObject(id, inspReport) {
     if (inspReport == undefined) return undefined;
-    {
-      let inspIdx = this.FindShapeIdx(id, inspReport.detectedCircles);
-      if (inspIdx != undefined) {
-        return inspReport.detectedCircles[inspIdx];
-      }
+    // Search order is the original one -- callers rely on a circle winning over
+    // a judge report for the same id.
+    const INSP_LISTS = ['detectedCircles', 'detectedLines', 'auxPoints',
+                        'searchPoints', 'judgeReports'];
+    for (const name of INSP_LISTS) {
+      const list = inspReport[name];
+      if (!Array.isArray(list)) continue;
+      const inspIdx = this.FindShapeIdx(id, list);
+      if (inspIdx != undefined) return list[inspIdx];
     }
-
-
-
-    {
-      let inspIdx = this.FindShapeIdx(id, inspReport.detectedLines);
-      if (inspIdx != undefined) {
-        return inspReport.detectedLines[inspIdx];
-      }
-    }
-
-
-    {
-      let inspIdx = this.FindShapeIdx(id, inspReport.auxPoints);
-      if (inspIdx != undefined) {
-        return inspReport.auxPoints[inspIdx];
-      }
-    }
-
-    {
-      let inspIdx = this.FindShapeIdx(id, inspReport.searchPoints);
-      if (inspIdx != undefined) {
-        return inspReport.searchPoints[inspIdx];
-      }
-    }
-
-    {
-      let inspIdx = this.FindShapeIdx(id, inspReport.judgeReports);
-      if (inspIdx != undefined) {
-        return inspReport.judgeReports[inspIdx];
-      }
-    }
-
     return undefined;
   }
 

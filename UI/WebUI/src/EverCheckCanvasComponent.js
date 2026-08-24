@@ -316,12 +316,79 @@ class EverCheckCanvasComponent_proto {
     log.debug("resourceClean......")
   }
 
-  // ImageBitmap holds native/GPU memory that only close() frees; ImageData
-  // (the legacy raw path) has no close and needs none.
+  // ImageBitmap and VideoFrame both hold native/GPU memory that only close()
+  // frees; ImageData (the legacy raw path) has no close and needs none.
   releaseRawImg() {
     const prev = this.secCanvas_rawImg;
     this.secCanvas_rawImg = null;
     if (prev && typeof prev.close === 'function') prev.close();
+  }
+
+  // Decode encoded JPEG bytes into something drawable, and hand back the way to
+  // release it. The caller owns the result and MUST call release().
+  //
+  // WebCodecs' ImageDecoder takes the bytes directly, so no Blob is created at
+  // all -- which is the point: a Blob's payload is invisible to V8's collector
+  // (see the note in BPG_Protocol.js). It is also faster, measured on this
+  // bench at 12.6 ms against createImageBitmap's 33.8 ms for a 5 MP frame.
+  //
+  // The fallback is the original path, for any runtime without WebCodecs. It
+  // builds a Blob and therefore reintroduces the invisible-garbage problem --
+  // but the bytes now arrive as a Uint8Array whose external size V8 does
+  // account for, so the pressure exists even there.
+  // DIAGNOSTIC AMPLIFIER -- off unless window.__DIAG_AMPLIFY__ is set.
+  //
+  // Runs the decode-and-draw N extra times for one arriving frame, so the
+  // allocation rate can be multiplied without touching the machine, the plate
+  // or the camera. At the normal operating point the renderer grows 10 MB/min,
+  // which needs twelve minutes before a slope is out of the noise; four
+  // hypotheses were tested that way and three were wrong.
+  //
+  // IT LIVES HERE, NOT AT THE PROTOCOL LAYER. The first attempt dispatched ten
+  // extra Redux actions per frame and changed nothing measurable: actions are
+  // throttled by middleware, and even unthrottled, ten state updates produce
+  // ONE render and therefore one SetImg. The component only ever sees the last
+  // one. An amplifier that amplifies nothing is worse than none, because the
+  // flat result reads as evidence.
+  //
+  // It doubles as a locator: if multiplying THIS path by ten does not multiply
+  // the growth, the growth is not in this path.
+  amplify(info) {
+    const n = (typeof window !== 'undefined' && window.__DIAG_AMPLIFY__) | 0;
+    if (n <= 0) return;
+    const extra = Math.min(64, n);
+    for (let k = 0; k < extra; k++) {
+      this.decodeJpeg(info).then(({ src, release }) => {
+        // Drawn into a scratch canvas, so the visible one is untouched and the
+        // work is the same shape as the real path.
+        if (!this._ampCanvas) this._ampCanvas = document.createElement('canvas');
+        const sw = src.displayWidth || src.width, sh = src.displayHeight || src.height;
+        if (this._ampCanvas.width !== sw || this._ampCanvas.height !== sh) {
+          this._ampCanvas.width = sw; this._ampCanvas.height = sh;
+        }
+        this._ampCanvas.getContext('2d').drawImage(src, 0, 0);
+        release();
+      }).catch(() => {});
+    }
+  }
+
+  decodeJpeg(info) {
+    const bytes = info.jpegBytes;
+    if (bytes && typeof ImageDecoder !== 'undefined') {
+      const dec = new ImageDecoder({ data: bytes, type: 'image/jpeg' });
+      return dec.decode().then(({ image }) => ({
+        src: image,
+        // The decoder is closed with the frame, not before it: the frame is
+        // independent of the decoder once produced, but closing them together
+        // keeps the ownership rule to one sentence.
+        release: () => { try { image.close(); } catch (e) {} try { dec.close(); } catch (e) {} },
+      }));
+    }
+    const blob = info.jpegBlob || new Blob([bytes], { type: 'image/jpeg' });
+    return createImageBitmap(blob).then((bmp) => ({
+      src: bmp,
+      release: () => { try { bmp.close(); } catch (e) {} },
+    }));
   }
 
   SetImg(img_info) {
@@ -336,7 +403,7 @@ class EverCheckCanvasComponent_proto {
     // swap (resize + drawImage + cache). The previous bitmap stays visible
     // on secCanvas until that swap. Token guards against an older in-flight
     // decode clobbering a newer frame.
-    if (img_info.jpegBlob) {
+    if (img_info.jpegBytes || img_info.jpegBlob) {
       const w = img_info.width, h = img_info.height;
       const token = (this._jpegToken = (this._jpegToken || 0) + 1);
       // Announces "a decode is in flight; the draw() at the end of it is the
@@ -347,32 +414,57 @@ class EverCheckCanvasComponent_proto {
       // new-overlay-on-old-image). Callers that check this flag skip the sync
       // draw; callers that don't behave exactly as before.
       this._imgDecodePending = true;
-      createImageBitmap(img_info.jpegBlob).then((bmp) => {
+      this.amplify(img_info);
+      this.decodeJpeg(img_info).then(({ src, release }) => {
         // A stale token means a NEWER SetImg is in flight and owns the
         // pending flag now -- leave it alone.
-        if (this._jpegToken !== token) { if (bmp.close) bmp.close(); return; }
+        if (this._jpegToken !== token) { release(); return; }
         this._imgDecodePending = false;
-        // TEMP probe — confirm decoded bitmap intrinsic size matches header.
-        if (bmp.width !== w || bmp.height !== h) {
+        const sw = src.displayWidth || src.width;
+        const sh = src.displayHeight || src.height;
+        // TEMP probe — confirm the decoded frame's intrinsic size matches the
+        // header.
+        if (sw !== w || sh !== h) {
           console.warn("JPEG size mismatch: header="+w+"x"+h+
-            " bitmap="+bmp.width+"x"+bmp.height+
+            " decoded="+sw+"x"+sh+
             " full="+img_info.full_width+"x"+img_info.full_height+
             " scale="+img_info.scale+" fmt="+img_info.format);
         }
-        this.secCanvas.width = bmp.width;
-        this.secCanvas.height = bmp.height;
+        // ONLY WHEN IT CHANGES.
+        //
+        // Assigning canvas.width reallocates the backing store even when the
+        // value is identical, and this ran on every frame: 816x528x4 = 1.72 MB
+        // discarded five times a second, 8.6 MB/min of GPU-backed buffers that
+        // nothing references and nothing collects until memory pressure
+        // arrives. The GPU process was measured growing 16 MB/min while the JS
+        // heap sat flat, and a forced collection handed 260 MB back at once --
+        // the signature of garbage nobody is retaining and nobody is sweeping.
+        //
+        // resize() a few lines down already guards its own canvas this way;
+        // this one did not.
+        //
+        // Skipping the assignment also skips the implicit clear, which is safe
+        // here for one specific reason: the drawImage on the next line covers
+        // the whole canvas. The clear was never doing anything the draw did not
+        // do again immediately.
+        if (this.secCanvas.width !== sw || this.secCanvas.height !== sh) {
+          this.secCanvas.width = sw;
+          this.secCanvas.height = sh;
+        }
         const ctx2nd = this.secCanvas.getContext('2d');
-        ctx2nd.drawImage(bmp, 0, 0);
-        // Release the bitmap this one replaces. createImageBitmap allocates
-        // OUTSIDE the JS heap (GPU / native), so GC pressure never reflects it
-        // and dropping the last reference is not enough -- at ~6 fps the
-        // previous frames just accumulate. The stale-token branch above
-        // already got this right; the success path did not.
+        ctx2nd.drawImage(src, 0, 0);
+        // Released IMMEDIATELY, not kept until the next frame replaces it.
+        //
+        // The pixels now live in secCanvas; secCanvas_rawImg was only ever
+        // assigned and released, never read, so holding the decoded frame kept
+        // one frame of native memory alive for nothing. The previous version
+        // released the OLD frame here and kept the new one -- correct, but one
+        // frame more than necessary.
         this.releaseRawImg();
-        this.secCanvas_rawImg = bmp;
+        release();
         // Decode is async: the draw() that ran synchronously on mount had no
         // image yet, so the canvas stayed blank until a mousemove forced a
-        // redraw. Redraw now that secCanvas holds the bitmap.
+        // redraw. Redraw now that secCanvas holds the image.
         if (typeof this.draw === 'function') this.draw();
       }).catch((err) => {
         log.warn("SetImg: JPEG decode failed", err);
@@ -389,8 +481,12 @@ class EverCheckCanvasComponent_proto {
 
     // Legacy raw RGBA: img is an ImageData.
     let img = img_info.img;
-    this.secCanvas.width = img.width;
-    this.secCanvas.height = img.height;
+    // Same guard as the JPEG path above: an unchanged size must not
+    // reallocate the backing store.
+    if (this.secCanvas.width !== img.width || this.secCanvas.height !== img.height) {
+      this.secCanvas.width = img.width;
+      this.secCanvas.height = img.height;
+    }
     this.releaseRawImg();
     this.secCanvas_rawImg = img;   // ImageData here, not an ImageBitmap
     let ctx2nd = this.secCanvas.getContext('2d');
@@ -601,6 +697,13 @@ class EverCheckCanvasComponent_proto {
     this.canvas.width = width;
     this.canvas.height = height;
     //this.ctrlLogic();
+    // The stream resolution is chosen from the canvas size, so a canvas that
+    // changes size without saying so leaves the core sending the wrong number
+    // of pixels. Only the mouse handlers emitted this before, which meant the
+    // level was never negotiated at all unless someone zoomed -- including on
+    // first layout, where this is the event that establishes the size.
+    // Throttled (500 ms), so a drag-resize renegotiates once at the end.
+    this.debounce_zoom_emit();
     this.draw();
   }
 
@@ -1248,6 +1351,31 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       this.edit_DB_info = edit_DB_info;
       this.db_obj = edit_DB_info._obj;
       this.rUtil.setEditor_db_obj(this.db_obj);
+      // FREEZE the measurements to this image. A reference is not a snapshot.
+      //
+      // Holding the previous edit_DB_info (the updateImgOnly path below) pairs
+      // the wrapper -- station, _obj -- because the reducer replaces the wrapper
+      // per report. It does NOT pair the measurements: those are read out of
+      // edit_DB_info.reportStatisticState.trackingWindow, which the reducer
+      // MUTATES IN PLACE (push, isCurObj flags, repeat-merges into the existing
+      // entry). Same object graph, so "keeping the old edit_DB_info" kept a live
+      // view of the newest report and drew it over an older picture.
+      //
+      // Invisible at low rate, because the newest report IS the one on screen.
+      // Measured on the bench 2026-08-20: 272 of 400 stream sessions carried a
+      // report with NO image (images are capped at OK/NG/NA_MAX_FPS, reports
+      // never are), so between two pictures the window advances several times
+      // and the overlay runs ahead -- exactly the "overlay does not match the
+      // image at speed" this fixes.
+      //
+      // Deep copy: the entries themselves are updated in place when a repeat
+      // report merges into the tracking window, so copying the array is not
+      // enough. Paid once per IMAGE (~6/s), not per report (25-40/s) -- cheaper
+      // than the per-draw shapeList clone already in drawInspection.
+      const _rss = edit_DB_info.reportStatisticState;
+      const _cur = (_rss && Array.isArray(_rss.trackingWindow))
+        ? _rss.trackingWindow.filter((x) => x.isCurObj) : [];
+      this.frameReportList = dclone(_cur);
     }
     this.SetImg(edit_DB_info.img);
     // cameraParam can be undefined when the def has no embedded cam_param
@@ -1397,7 +1525,25 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
       if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
       if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
+      // The cause, when the core named one. INSP_REGION_TOO_SMALL (5) is the
+      // one an operator can fix on the spot and the one they cannot see: the
+      // box is smaller than the part, so the locator has nowhere to put the
+      // template and NA is the only possible answer, on every frame. Without
+      // this line the picture looks perfectly good and the box looks
+      // deliberate. Codes come from FeatureReport_ERROR in FeatureReport.h.
+      const ERR = { 5: '(檢驗區域小於物件,請放大框選範圍)',
+                    4: '(背景不乾淨)',
+                    2: '(區域內不只一個物件)' };
+      // Two different NAs, and the operator needs to be able to tell them
+      // apart. clean_err means the clean area was dirty, so the part was
+      // never measured at all -- the engine is handed no candidate objects
+      // (FeatureManager::no_candidate_frame) and nothing is judged. Saying
+      // "零件本身 OK" there would be a claim about a measurement
+      // that did not happen; result_obj is STATUS_UNSET (-100), not 0, which
+      // is why that suffix stops appearing on its own.
       return { tone: 'na', text: 'NA → 不動作'
+               + (ERR[ST.insp_err] || '')
+               + (ST.clean_err !== undefined ? '(淨空區不乾淨,未量測)' : '')
                + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
     })();
     const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
@@ -1472,6 +1618,22 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ViewPortH / totalScale];
     
     let down_samp_level = 1.0 * crop[2] / (cW);
+    // Sensor pixels per canvas pixel -- the whole basis for choosing a stream
+    // resolution, computed HERE because this is the only place that holds both
+    // halves of it consistently.
+    //
+    // The first attempt sent mm-per-canvas-pixel and let InspectionUI divide by
+    // its own instrument_mmpp (lens_calib.json). That is the same algebra and
+    // the wrong answer: the camera transform on this canvas is built from
+    // rUtil.get_mmpp(), and when the two disagree the quotient is meaningless.
+    // Measured: it asked for level 4 where the truth was 0.68, and the core
+    // duly streamed a 204 px wide live view.
+    //
+    // Note down_samp_level above is NOT this: crop is the viewport expanded by
+    // alpha on each side, so it carries a 1+2*alpha (=1.4) inflation.
+    const _mmpp_view = this.rUtil.get_mmpp();
+    const sensor_px_per_canvas_px = (_mmpp_view > 0 && totalScale > 0)
+      ? 1.0 / (totalScale * _mmpp_view) : 0;
     if(this.doRotateView==true)
     {
       let mmpp = this.rUtil.get_mmpp();
@@ -1494,6 +1656,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         type: "down_samp_level_update",
         data: {
           down_samp_level,
+          sensor_px_per_canvas_px,
           crop
         }
       }
@@ -1534,7 +1697,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
 
-    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
+    // The list frozen when this image was paired (EditDBInfoSync). Falls back to
+    // live state only before the first image, where there is nothing to be out
+    // of step with yet.
+    let inspectionReportList = (this.frameReportList !== undefined)
+      ? this.frameReportList
+      : this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
 
 
 

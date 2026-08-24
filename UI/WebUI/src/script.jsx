@@ -1,6 +1,6 @@
 'use strict'
 
-import 'regenerator-runtime/runtime' // some legacy deps (react-numpad) expect a global regeneratorRuntime
+import 'regenerator-runtime/runtime' // legacy deps expect a global regeneratorRuntime (react-numpad, its last named consumer, is gone -- kept because other transpiled deps may still reach for it)
 
 import 'STYLE/basis.css'
 import 'STYLE/sp_style.css'
@@ -113,6 +113,18 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
         type: "ATBundle", ActionThrottle_type: "express",
         data: pkts.map(pkt => { let act = BPG_Protocol.map_BPG_Packet2Act(pkt); if (act) act.IGNORE_DEFCONF_LOCK = true; return act; }).filter(Boolean)
       });
+      // Record WHICH def this is -- the packets alone do not.
+      //
+      // "Mirrors DefConfUI.loadDefFile" was not true without this: that flow
+      // also sets defModelPath, and defModelPath is what stampRefImagePath
+      // turns into the shape locator's template (<path>.png). Left at its
+      // default, every harness-driven run sent `_ref_image_path:
+      // "data/DEFAULT.png"`, the core logged "cannot read template image" and
+      // fell back to sig360 -- so the harness has been exercising the FALLBACK
+      // locator, not the shape one the recipe actually asks for, and nothing in
+      // the run said so. Found 2026-08-20 chasing a machine that halted on
+      // "result matched no object".
+      StoreX.dispatch(UIAct.Def_Model_Path_Update(defModelPath));
       resolve(true);
     }).catch(reject);
   });

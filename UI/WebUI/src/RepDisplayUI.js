@@ -602,11 +602,15 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
           .sort((f1,f2) => f1.ctime_ms>f2.ctime_ms);
         setCurFolderPath(folderStruct.path);
         setCachedXREPList(xrepLists);
+        // Same guard as MAINUI's: a selection arriving after the dialog state
+        // has been cleared threw a bare "reading 'callBack'" page error that
+        // said nothing about a file being opened.
+        const cb = fileSelectorInfo && fileSelectorInfo.callBack;
         setFileSelectorInfo(undefined);
-        
+
         let idx = xrepLists.findIndex((xrp)=>xrp.name==fileInfo.name);
         setCurIdx(idx);
-        fileSelectorInfo.callBack(filePath, fileInfo);
+        if (cb) cb(filePath, fileInfo);
       }}
 
       onCancel={() => {

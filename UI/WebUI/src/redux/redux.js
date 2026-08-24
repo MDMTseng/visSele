@@ -1,4 +1,5 @@
 import { applyMiddleware, combineReducers, createStore } from "redux";
+import { installDiagProbe } from "UTIL/diagProbe";
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('editor.reducer');
 import UICtrlReducer from "REDUX_STORE_SRC/reducer/UICtrlReducer";
@@ -157,5 +158,14 @@ export function ReduxStoreSetUp(presistStore){
     reduxCatch(errorHandler)
     );
 
-  return createStore(reducer_C,presistStore,middleware);
+  const store = createStore(reducer_C,presistStore,middleware);
+
+  // Read-only observation point for long-run memory behaviour; see
+  // UTIL/diagProbe.js. Exposes window.__DIAG__() and nothing else, touches no
+  // state, and is wrapped so a probe fault can never stop the app from
+  // starting -- a diagnostic that can break the thing it watches is worse than
+  // no diagnostic.
+  try { installDiagProbe(store); } catch (e) { /* never fatal */ }
+
+  return store;
 }

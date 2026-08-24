@@ -35,7 +35,6 @@ import { BPG_FileBrowser, BPG_FileSavingBrowser,BPG_FileBrowser_varify_info } fr
 
 import { default as AntButton } from 'antd/lib/button';
 
-import NumPad from 'react-numpad';
 import PageHeader from 'antd/lib/page-header';
 import Typography from 'antd/lib/typography';
 import Collapse from 'antd/lib/collapse';
@@ -918,8 +917,16 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         path={DefFileFolder} visible={fileSelectorInfo !== undefined}
         BPG_Channel={(...args) => ACT_WS_SEND_BPG( ...args)}
         onFileSelected={(filePath, fileInfo) => {
+          // Read the callback BEFORE clearing the state, and tolerate it being
+          // gone. setFileSelectorInfo(undefined) does not change this closure's
+          // captured value, but a selection can still arrive after the dialog
+          // has been dismissed some other way -- and then this threw
+          // "Cannot read properties of undefined (reading 'callBack')",
+          // which surfaces as a page error with no hint that a file was being
+          // opened at the time.
+          const cb = fileSelectorInfo && fileSelectorInfo.callBack;
           setFileSelectorInfo(undefined);
-          fileSelectorInfo.callBack(filePath, fileInfo);
+          if (cb) cb(filePath, fileInfo);
         }}
         onCancel={() => {
           setFileSelectorInfo(undefined);
@@ -1075,6 +1082,48 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
 
   let isPlatAPI_ready=Platform_API_ID_CONN_INFO!==undefined && Platform_API_ID_CONN_INFO.type=="WS_CONNECTED"
 
+  // Native folder picker, two ways in.
+  //
+  //   window.launcher.pickFolder   the launcher's contextBridge (UI/Launcher)
+  //   platform_api WS              the old Electron shell's WebSocket
+  //
+  // The WS route existed only for THIS ONE CALL -- a whole express + ws server
+  // running so a button could open a directory dialog -- and it is not
+  // configured on this machine (machine_setting.json has no
+  // platform_api_conn_info, so the log says "platform_api not configured" and
+  // the button has been disabled all along). The launcher exposes the same
+  // capability as a direct IPC call.
+  //
+  // Both are kept: the WS path still works for anyone running the old shell,
+  // and neither exists in a plain browser (the Vite dev server), where the
+  // button stays disabled exactly as it does today.
+  const nativePick = (typeof window !== 'undefined' && window.launcher
+                      && typeof window.launcher.pickFolder === 'function')
+                     ? window.launcher.pickFolder : undefined;
+  const canPickFolder = nativePick !== undefined || isPlatAPI_ready;
+
+  const pickSnapshotFolder = () => {
+    const apply = (filePaths) => {
+      // A cancelled dialog returns an empty list. Writing filePaths[0] without
+      // checking would blank the configured path on every cancel.
+      if (!filePaths || !filePaths.length) return;
+      set_st_machine_custom_setting({...st_machine_custom_setting, InspSampleSavePath: filePaths[0]});
+    };
+    const opts = { title: "Select Directory", defaultPath: "",
+                   properties: ['openDirectory','createDirectory'] };
+    if (nativePick) {
+      nativePick(opts)
+        .then((r) => apply(r && r.filePaths))
+        .catch((e) => log.error("[pickFolder] " + (e && e.message ? e.message : e)));
+      return;
+    }
+    ACT_PLAT_OBJ((obj)=>{
+      obj.showOpenDialog(opts)
+        .then((result) => apply(result && result.filePaths))
+        .catch((e) => log.error("[pickFolder/platform_api] " + (e && e.message ? e.message : e)));
+    });
+  };
+
   return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
     
     測量模式：
@@ -1087,27 +1136,8 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     <br/>
 
     檢測快照儲存位置：
-    <Button size="large" icon={<MonitorOutlined/> }  disabled={!isPlatAPI_ready}//Not open?
-        onClick={() =>{
-
-          ACT_PLAT_OBJ((obj)=>{
-            obj.showOpenDialog({
-              title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']
-            }).then((result) => {
-  
-              set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:result.filePaths[0]});
-            }).catch(err => {
-            }); 
-          })
-
-          // ELECTRON_IPC.send_obj({"type":"showOpenDialog",option:{ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']}})
-          // .then((data)=>{
-          //   set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:data.filePaths[0]});
-          // })
-          // .catch((err)=>{
-          //   console.log(err)
-          // })
-        }}>{st_machine_custom_setting.InspSampleSavePath}</Button>
+    <Button size="large" icon={<MonitorOutlined/> } disabled={!canPickFolder}
+        onClick={pickSnapshotFolder}>{st_machine_custom_setting.InspSampleSavePath}</Button>
     <br/>
 
 
@@ -1118,13 +1148,15 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
 
     <br/>
     全檢儲存NG最大數量： 
-    <NumPad.Number 
-      onChange={(value)=>
-        set_st_machine_custom_setting({...st_machine_custom_setting,FI_INSP_NG_SNAP_MAX_NUM:parseInt(value)})
-      } 
-      value={st_machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM}>
-      <InputNumber value={st_machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM} />
-    </NumPad.Number>
+    {/* The InputNumber that used to sit inside the numpad popup, promoted to
+        BE the control: keyboard types directly, inputMode brings the numeric
+        on-screen keys on touch. */}
+    <InputNumber min={0} precision={0} inputMode="numeric"
+      value={st_machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM}
+      onChange={(v)=>{ const n=parseInt(v);
+        if(Number.isFinite(n))
+          set_st_machine_custom_setting({...st_machine_custom_setting,FI_INSP_NG_SNAP_MAX_NUM:n});
+      }} />
 
     <Divider>RAW</Divider>
     <pre>

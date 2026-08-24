@@ -117,7 +117,20 @@ export class ConsumeQueue{
   deQ()
   {
     if(this.cC.size()==0)return undefined;
-    let data = this.queue[this.cC.r()];
+    const qidx = this.cC.r();
+    let data = this.queue[qidx];
+    // Release the slot. Advancing the cursor does NOT drop the reference: the
+    // array kept every consumed entry alive until that index came round again,
+    // so a 1000-slot queue held 1000 records at ALL times -- even sitting
+    // "empty" with everything long since sent and confirmed.
+    //
+    // For the DB insert queue those entries are whole inspection records
+    // (~71 kB of JSON each on this machine), which is a few hundred MB of live
+    // heap that nothing can reach or reclaim. It fills at the upload rate
+    // rather than all at once, so it reads as a slow leak: measured on the
+    // bench 2026-08-20, ~40 MB/min of steady climb with the queue draining
+    // normally.
+    this.queue[qidx] = undefined;
     this.cC.deQ();
     return data;
   }
