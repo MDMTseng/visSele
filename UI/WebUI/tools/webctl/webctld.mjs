@@ -9,7 +9,12 @@ import { chromium } from 'playwright';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.WEBCTL_PORT || 8765);
-const TARGET_URL = process.env.WEBCTL_URL || 'http://localhost:8080';
+// 8081 is the vite dev server and 8082 the production preview; nothing has
+// served 8080 on this bench for a long time, so the old default silently
+// produced a daemon pointed at a dead port -- every suite then failed on an
+// empty page, which reads as an application fault rather than a wrong URL.
+// The startup probe below says so out loud instead.
+const TARGET_URL = process.env.WEBCTL_URL || 'http://localhost:8081';
 const HEADLESS = process.env.WEBCTL_HEADLESS === '1';
 const USERDATA = path.join(__dirname, '.userdata');
 const LOGFILE = path.join(__dirname, 'console.log');
@@ -48,7 +53,15 @@ const VIEWPORT = (() => {
 const EXPLICIT_VIEWPORT = /^(\d+)x(\d+)$/.test(process.env.WEBCTL_VIEWPORT || '');
 const FIT_WINDOW = !HEADLESS && !EXPLICIT_VIEWPORT;
 
-const context = await chromium.launchPersistentContext(USERDATA, {
+// let, not const, and behind ensurePage() below: the page and the context used
+// to be created once at module load and never again. Close the tab, crash the
+// renderer, or kill Chromium, and every request from then on failed -- so a
+// whole run of suites went red while re-running any one of them alone passed,
+// because that run got a fresh daemon. That is exactly the shape of the three
+// intermittents in worklist 3.3 (doorbell, r6_inspection T1, r7_inspbug T1),
+// and it was watched happening: killing Chromium by hand took the entire
+// runner from green to 21 FAILs in 164ms.
+let context = await chromium.launchPersistentContext(USERDATA, {
   headless: HEADLESS,
   viewport: FIT_WINDOW ? null : VIEWPORT,
   // Size the OS window to match, or a 1920x1080 viewport just gets scrollbars
@@ -57,18 +70,78 @@ const context = await chromium.launchPersistentContext(USERDATA, {
          ...(FIT_WINDOW ? ['--start-maximized']
                         : [`--window-size=${VIEWPORT.width},${VIEWPORT.height + 90}`])],
 });
-const page = context.pages()[0] || (await context.newPage());
+let page = context.pages()[0] || (await context.newPage());
 
-page.on('console', (msg) => record('console.' + msg.type(), msg.text()));
-page.on('pageerror', (err) => record('pageerror', err.message, { stack: err.stack }));
-page.on('requestfailed', (req) =>
-  record('requestfailed', `${req.method()} ${req.url()}`, { error: req.failure()?.errorText })
-);
-page.on('response', (res) => {
-  if (res.status() >= 400) record('http' + res.status(), `${res.request().method()} ${res.url()}`);
-});
+// The listeners belong to a page object, so a rebuilt page needs them again --
+// forgetting that is how a recovered daemon goes quiet in the event log while
+// still answering requests, which is worse than being down.
+function attachHandlers(p) {
+  p.on('console', (msg) => record('console.' + msg.type(), msg.text()));
+  p.on('pageerror', (err) => record('pageerror', err.message, { stack: err.stack }));
+  p.on('requestfailed', (req) =>
+    record('requestfailed', `${req.method()} ${req.url()}`, { error: req.failure()?.errorText })
+  );
+  p.on('response', (res) => {
+    if (res.status() >= 400) record('http' + res.status(), `${res.request().method()} ${res.url()}`);
+  });
+}
+attachHandlers(page);
+
+// Rebuild whatever died, in the order it can die: page first (cheap, common --
+// somebody closed the tab), then the whole browser (Chromium gone).
+//
+// Recovery is RECORDED, not silent. A daemon that quietly re-navigates has
+// thrown away the page state a suite was relying on, and a test that then fails
+// for a different reason is worse to debug than one that fails loudly here.
+let rebuilds = 0;
+async function ensurePage() {
+  if (page && !page.isClosed()) return;
+  rebuilds++;
+  try {
+    // No pre-flight check on the context. An earlier version guarded with
+    // `!context.browser()`, which is version-dependent -- older Playwright
+    // returns null there for a PERSISTENT context, and this daemon uses
+    // launchPersistentContext, so on those versions every closed tab would
+    // have forced a full browser relaunch. Asking newPage() is the check:
+    // it succeeds on a live context and throws on a dead one, which is
+    // exactly the distinction, and it is what actually did the work the one
+    // time this fired for real (Chromium killed by hand, 2026-08-21).
+    page = await context.newPage();
+  } catch (e) {
+    record('daemon.rebuild', `context unusable (${e.message}) -- relaunching Chromium`);
+    try { await context.close(); } catch { /* already gone */ }
+    context = await chromium.launchPersistentContext(USERDATA, {
+      headless: HEADLESS,
+      viewport: FIT_WINDOW ? null : VIEWPORT,
+      args: ['--disable-features=Translate',
+             ...(FIT_WINDOW ? ['--start-maximized']
+                            : [`--window-size=${VIEWPORT.width},${VIEWPORT.height + 90}`])],
+    });
+    page = context.pages()[0] || (await context.newPage());
+  }
+  attachHandlers(page);
+  record('daemon.rebuild', `page rebuilt (#${rebuilds}) -- navigating to ${TARGET_URL}`);
+  await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' })
+            .catch((e) => record('daemon.error', e.message));
+}
 
 record('daemon', `navigating to ${TARGET_URL}`);
+// Complain loudly rather than serving an empty page. A daemon pointed at a
+// port nobody is listening on answers every request perfectly -- with a blank
+// document -- and the suites that follow fail on missing selectors, which is a
+// long way from "the web server is not running".
+try {
+  const probe = await fetch(TARGET_URL, { method: 'GET' });
+  if (!probe.ok) throw new Error(`HTTP ${probe.status}`);
+} catch (e) {
+  const msg = `NOTHING IS SERVING ${TARGET_URL} (${e.message}). `
+            + 'Start the WebUI (npm run dev -> :8081, npm run preview -> :8082) '
+            + 'or set WEBCTL_URL. Every suite will fail on an empty page until then.';
+  record('daemon.error', msg);
+  console.error(`
+  !! ${msg}
+`);
+}
 await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' }).catch((e) => record('daemon.error', e.message));
 
 function json(res, code, obj) {
@@ -97,7 +170,12 @@ const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   const q = u.searchParams;
   try {
-    if (u.pathname === '/health') return json(res, 200, { ok: true, url: page.url(), seq });
+    // Before anything touches `page`. Cheap when the page is alive (one
+    // isClosed() call) and the only thing standing between a closed tab and a
+    // whole run of red suites.
+    await ensurePage();
+    if (u.pathname === '/health')
+      return json(res, 200, { ok: true, url: page.url(), seq, rebuilds });
 
     if (u.pathname === '/url') return json(res, 200, { url: page.url() });
 

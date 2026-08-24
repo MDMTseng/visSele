@@ -185,9 +185,18 @@ async function phaseUnknown() {
                           summary: reply ? JSON.stringify(reply).slice(0, 80) : 'silence' });
   }
   console.log(`${silent}/${UNKNOWN.length} unknown types produced NO REPLY AT ALL.`);
-  console.log('An unknown type is indistinguishable from a dead board. This is');
-  console.log('the plate.freq trap: {"type":"plate","freq":N} is a typo the');
-  console.log('device does not have any way to tell you about.');
+  // Only when it is still true. The paragraph below describes defect 1.3,
+  // fixed in firmware on 2026-08-21; printing it under a "0/20" line states
+  // the opposite of what the run just measured, and a report that argues with
+  // its own numbers is worse than one that says nothing.
+  if (silent > 0) {
+    console.log('An unknown type is indistinguishable from a dead board. This is');
+    console.log('the plate.freq trap: {"type":"plate","freq":N} is a typo the');
+    console.log('device does not have any way to tell you about.');
+  } else {
+    console.log('Every unknown type answered -- a typo is now distinguishable');
+    console.log('from a dead board (defect 1.3, fixed in firmware 2026-08-21).');
+  }
 }
 
 // --- phase 2: wrong types ---------------------------------------------------

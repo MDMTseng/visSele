@@ -50,10 +50,25 @@ async function answered(obj, ms = 1500) {
   return lines.some((l) => l.includes(`"id":${myId}`));
 }
 const healthy = () => answered({ type: 'get_running_stat' }, 2000);
+// Recovery is not instant and the old version assumed it was: ONE clear_error,
+// 1.5s, one health check -- then "UNRECOVERABLE", which aborts the whole run.
+// On 2026-08-21 that verdict fired on `trailing garbage` and stopped the run at
+// probe 6 of 18; checking the board by hand straight afterwards found it awake
+// and answering. A wrong "the board did not come back" is the kind of
+// conclusion that sends someone to pull the power.
+//
+// So: retry, and REPORT HOW LONG IT TOOK. Recovery latency is data -- "it
+// latched and came back in 1.4s" and "it latched and needed 11s" are different
+// answers about the same probe, and the old shape could express neither.
+const RECOVER_TRIES = 6;
 async function recover() {
-  s.write(JSON.stringify({ type: 'clear_error' }) + '\n');
-  await sleep(1500);
-  return healthy();
+  const t0 = Date.now();
+  for (let i = 1; i <= RECOVER_TRIES; i++) {
+    s.write(JSON.stringify({ type: 'clear_error' }) + '\n');
+    await sleep(1200);
+    if (await healthy()) return { ok: true, ms: Date.now() - t0, tries: i };
+  }
+  return { ok: false, ms: Date.now() - t0, tries: RECOVER_TRIES };
 }
 
 // A probe is (name, writer). The writer puts bytes on the socket; everything
@@ -110,10 +125,14 @@ async function runGroup(title, probes, fragment = false) {
     let rec = '';
     if (!ok) {
       const r = await recover();
-      rec = r ? 'clear_error OK' : 'UNRECOVERABLE';
+      rec = r.ok ? `clear_error OK (${(r.ms / 1000).toFixed(1)}s, ${r.tries}x)`
+                 : `UNRECOVERABLE (gave up after ${(r.ms / 1000).toFixed(1)}s)`;
     }
     console.log(`${name.padEnd(27)} ${String(gotSomething).padEnd(9)} ${String(ok).padEnd(14)} ${rec}`);
-    if (rec === 'UNRECOVERABLE') { console.log('stopping: the board did not come back'); return false; }
+    if (rec.startsWith('UNRECOVERABLE')) {
+      console.log(`stopping: the board did not come back after ${RECOVER_TRIES} clear_error attempts`);
+      return false;
+    }
     await sleep(200);
   }
   return true;

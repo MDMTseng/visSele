@@ -177,3 +177,34 @@ export async function enterInspection(ctl, { mode = '測試', log = () => {} } =
   }
   throw new Error('play pressed but the SM never reached INSP_MODE');
 }
+
+// Start the PLATE -- i.e. actually make the machine run.
+//
+// Entering the Inspection UI is not the same thing, and the difference cost a
+// long detour: the UI sat in INSP_MODE_NEUTRAL with the recipe loaded and the
+// station applied, looking entirely correct, while `進料/檢測/OK` were all
+// 0.0/s and the wire carried RP=0 IM=0. The panel said `STOP · 盤停止`. Nothing
+// is triggered until the plate turns, so nothing is captured and nothing is
+// reported. Sending trig_phantom_pulse does NOT substitute: it simulates a part
+// signal, not the plate.
+//
+// The button is identified by what it CONTAINS rather than by position: it is
+// the primary button carrying the caret (play) icon. While running it becomes
+// `danger` and swaps the caret for a white square, so this same selector also
+// tells you the machine is already going -- if it matches nothing, either the
+// panel is closed or the plate is already turning.
+//
+// The firmware refuses to enter inspection mode when the device's plate_freq is
+// 0 (the UI shows a speed, but "啟動時套用" means it is applied on start), in
+// which case the click is accepted and the machine still does not move. That is
+// why the caller should verify with reports on the wire, not with the click's
+// return value.
+export async function startMachine({ api, ev }, { log = () => {} } = {}) {
+  const SEL = '.ant-btn-primary:has(.anticon-caret-right)';
+  const n = await ev(`document.querySelectorAll(${JSON.stringify(SEL)}).length`);
+  if (!n) { log('plate: no run button visible (already running, or panel closed)'); return false; }
+  log('plate: pressing run');
+  await api('/click', { selector: SEL });
+  await sleep(4000);
+  return true;
+}
