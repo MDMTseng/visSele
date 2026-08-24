@@ -43,21 +43,33 @@ warn() { printf '  WARN  %s\n' "$*"; }
 die()  { printf '  STOP  %s\n' "$*" >&2; exit 1; }
 
 # --- which build ------------------------------------------------------------
-# nohik-cv4 is built with FEATURE_HIKROBOT=OFF. With a real camera attached it
-# does not fail -- it enumerates the BMP carousel and hands you a FAKE camera,
-# with nothing on screen looking wrong. Choosing the build is therefore a
-# correctness decision, not a convenience one.
+# There is ONE build now (2026-08-20): the six that had accumulated were deleted
+# and win-mingw-msys rebuilt from scratch. It is HikRobot-capable, so it serves
+# both modes -- --bench differs by environment (synth cam_ts, dev console), not
+# by binary.
+#
+# The name is still not trusted. A build with FEATURE_HIKROBOT=OFF does not fail
+# with a real camera attached: it enumerates the BMP carousel and hands you a
+# FAKE camera, with nothing on screen looking wrong. So the binary is asked what
+# it links, and anything under build/ is accepted as long as it answers yes --
+# that way a differently-named experiment still works without editing this list.
 hik_capable() {   # a build that actually links the HikRobot SDK
   [ -f "$BUILD_DIR/$1/visSele.exe" ] || return 1
   objdump -p "$BUILD_DIR/$1/visSele.exe" 2>/dev/null | grep -qi "MVCameraControl.dll"
 }
 if [ -z "$BUILD" ]; then
-  if [ "$BENCH" = 1 ]; then
-    BUILD="nohik-cv4"
-  else
-    for b in win-mingw-msys nohik-cv4; do hik_capable "$b" && { BUILD="$b"; break; }; done
-    [ -n "$BUILD" ] || die "no build under $BUILD_DIR links MVCameraControl.dll -- rebuild with FEATURE_HIKROBOT=ON"
+  for b in win-mingw-msys; do hik_capable "$b" && { BUILD="$b"; break; }; done
+  if [ -z "$BUILD" ]; then      # any other build that links the SDK
+    for p in "$BUILD_DIR"/*/; do
+      b="$(basename "$p")"; hik_capable "$b" && { BUILD="$b"; break; }
+    done
   fi
+  if [ -z "$BUILD" ] && [ "$BENCH" = 1 ]; then   # bench needs no camera at all
+    for p in "$BUILD_DIR"/*/; do
+      [ -f "$p/visSele.exe" ] && { BUILD="$(basename "$p")"; break; }
+    done
+  fi
+  [ -n "$BUILD" ] || die "no build under $BUILD_DIR links MVCameraControl.dll -- configure with FEATURE_HIKROBOT=ON and build"
 fi
 EXE="$BUILD_DIR/$BUILD/visSele.exe"
 [ -f "$EXE" ] || die "no such build: $EXE"
@@ -70,12 +82,16 @@ say "mode    $([ "$BENCH" = 1 ] && echo 'bench (synth cam_ts, no camera)' || ech
 # Three directories, not one. The exe resolves DLLs through PATH, not through
 # its own directory:
 #   mingw64/bin      OpenCV 4.13 + libgomp
-#   $BUILD           the build's own DLLs
-#   nohik-cv4        MVCAMSDK_X64.DLL lives ONLY here. It is a MindVision
-#                    link-time dependency and is required even though this
-#                    bench has no MindVision camera.
+#   $BUILD           the build's own DLLs, incl. MVCAMSDK_X64.DLL -- a
+#                    MindVision link-time dependency the exe will not start
+#                    without, even though this bench has no MindVision camera.
+#                    It used to be borrowed off a sibling build dir (nohik-cv4),
+#                    so deleting an unrelated build broke every other one. It is
+#                    now copied in from dist/win at build time; the check below
+#                    still verifies it, because a fresh build dir will not have
+#                    it until somebody does.
 #   MVS runtime      MvCameraControl.dll (HikRobot)
-export PATH="$MINGW:$BUILD_DIR/$BUILD:$BUILD_DIR/nohik-cv4:$MVS_RT:$PATH"
+export PATH="$MINGW:$BUILD_DIR/$BUILD:$MVS_RT:$PATH"
 
 # --- preflight --------------------------------------------------------------
 echo "preflight"
@@ -107,7 +123,13 @@ for dll in libopencv_core-413.dll MVCAMSDK_X64.DLL; do
   found=""
   IFS=':' read -ra P <<< "$PATH"
   for d in "${P[@]}"; do [ -f "$d/$dll" ] && { found="$d"; break; }; done
-  [ -n "$found" ] && ok "$dll" || { warn "$dll NOT on PATH -- the exe will refuse to start"; fail=1; }
+  if [ -n "$found" ]; then ok "$dll"
+  else
+    warn "$dll NOT on PATH -- the exe will refuse to start"
+    [ "$dll" = "MVCAMSDK_X64.DLL" ] && \
+      say "      cp \"$HERE/dist/win/MVCAMSDK_X64.DLL\" \"$BUILD_DIR/$BUILD/\""
+    fail=1
+  fi
 done
 if [ "$BENCH" = 0 ]; then
   if [ -f "$MVS_RT/MvCameraControl.dll" ]; then ok "MvCameraControl.dll (HikRobot)"

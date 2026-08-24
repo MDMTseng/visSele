@@ -26,7 +26,7 @@
 
 ## 階段 0 — 解除阻塞
 
-### 0.1 `recv_ERROR` / `recv_RESET` 的 `ud2` — **未做** — P1
+### 0.1 `recv_ERROR` / `recv_RESET` 的 `ud2` — **已完成 2026-08-20** — P1
 
 `wiringPanel.cpp:1496,1500`。宣告 `int` 卻沒有 `return`,gcc -O2 把整個函式編成一條
 `ud2`。**呼叫到就是行程死亡。**
@@ -67,11 +67,101 @@ objdump -d visSele.exe | awk '
   pend==1 && /\t/ { if ($0 ~ /\tud2/) print sym; pend=0 }' | sort -u | c++filt
 ```
 
+### 0.1 的收尾與**它揭出來的下一個缺陷** — 2026-08-20
+
+原始碼裡 `recv_RESET` / `recv_ERROR` 早就補上 `return 0;` 了(清單落後)。今天補完的是
+另外兩個同型空殼與那道防線:
+
+- `common_lib/ImageSampler.cpp` 的 `sampleAngleOffset(acv_XY)`(回 `preOffset`,
+  即角度表為空時的中性值)與 `nodeInfoIdxCorrection`(回 `targetIdx`,恆等修正)。
+  兩者今天都沒有呼叫者,所以給的是**有定義的值**而不是猜出來的語意 —— 猜錯會把
+  當機換成檢測管線裡一個安靜的錯誤偏移。
+- `CMakeLists.txt` 加 `-Werror=return-type`。原本是 `-w`(全域關警告),這正是這類
+  缺陷能活下來的原因;`-Werror=` 即使在 `-w` 之後仍會重新啟用該項診斷。
+
+**全樹重建通過**,代表沒有其他 return-type 違規。驗收掃描:
+
+```
+objdump -d visSele.exe | (ud2-first functions)  ->  0
+```
+
+**`quote_crash.mjs` 3/3,而且這次證明觸發真的發生了。** 第一次跑是空測(當時鏈路
+斷著,裝置沒產生壞 frame);修好鏈路後重跑,裝置的 `error_hist` 變成
+**`[11,11,11]`** —— 三次 `SERIAL_PROTOCOL_ERROR`,正好三次嘗試。core 三次都活著。
+
+**驗收兩項都過:** `ud2` 掃描 0 個 + 觸發三次不當機。
+
+#### 新缺陷:RESYNC 之後鏈路永不恢復(F1 一直遮著它)
+
+core 一啟動就開 COM3,DTR 讓板子重開;板子的 boot ROM 用 115200 印訊息而 core 以
+230400 在讀,於是 frame 外出現垃圾 —— **這正是 F1 崩潰的那條路徑**。修掉 `ud2`
+之後 core 不再死,露出來的是:它也**永遠不會復原**。
+
+```
+[ 4117] perif machine_type: uInspESP32 -> 1          <- 鏈路曾經是好的
+[20173] perif CONNECT reuses the open channel ... (no port reopen, no device reset)
+[26490] perif: link RESYNC requested -- RESET_PACKET sent, port left open
+[35481] perif: link RESYNC requested -- ...          每 ~9 秒,無限
+```
+
+`wiringPanel.cpp:6249`。症狀:console(4099)對任何指令都沉默,
+`perif_hold --status` 說「channel exists but the device did not answer」,
+`bareboard_up.mjs` 停在「board never answered get_running_stat」。
+
+**故障在 core 這一側,不在板子。** 同一時間停掉 core 直接開 COM3:
+
+```
+ping -> {'type':'pong','ack':True}     error_hist -> []     state -> 100
+```
+
+板子乾淨、沒有 latch、狀態正常。所以 RESET_PACKET 沒有讓 core 自己的資料層解開。
+
+**這擋住 3.1 / 3.2 的程度和 F1 一樣** —— 兩者都需要一條能用的鏈路來反覆製造錯誤。
+
+##### 已修 2026-08-20 —— `request_rx_resync()`
+
+`Data_Layer_Protocol.hpp` / `.cpp` / `wiringPanel.cpp:6249`。RESYNC 現在治**兩端**:
+
+```cpp
+perifCH->send_RESET();        // 治裝置(它的 parser 認 RESET_PACKET 位元組)
+perifCH->request_rx_resync(); // 治我們自己(裝置只回普通的 "RESET_OK" frame)
+```
+
+用旗標而不是直接呼叫 `RESET()`:parser 狀態屬於 UART 接收執行緒
+(`Data_UART_Layer::recv_data_thread`),從 BPG 執行緒去清 `buffIdx` 是資料競爭。
+`recv_data()` 在自己擁有的 frame 邊界消化這個旗標。
+
+**代價要講清楚**:旗標只在**下一批位元組抵達時**才被消化。這個耦合是對的
+(沒有流量就沒有東西可以重新同步),但也表示對一條完全靜默的對端,光靠這個
+救不回來。
+
+**實測復原**:
+
+```
+[50665] perif: link RESYNC requested -- RESET_PACKET sent
+[50673] [perif RX] reply={"type":"RESET_OK","data":""}
+[50677] [perif RX] reply={"type":"pong","id":252,"ack":true}   <- 通了
+```
+
+修好之後 `bareboard_up.mjs` 一次到位:**READY at t+9s, valid=true, offset_us=800,
+learned=8**。
+
+**RTS/EN 那個假設是錯的,記下來免得再走一次。** `simple_uart.c:245,248` 確實在
+開埠時把 RTS/DTR 都拉起(`RTS_CONTROL_ENABLE` / `DTR_CONTROL_ENABLE`),而且沒有
+人清掉,看起來完全像「core 持有埠期間板子一直被按在 reset」。**但板子照跑** ——
+1548 個 RX frame、SYSTIME 連續、CAMSYNC 正常。這塊板的 RTS 沒有接到 EN。
+
+##### 附帶發現:每 9 秒的 RESYNC 是孤兒瀏覽器發的
+
+不是 core 的看門狗。`UI/WebUI/src/perif/PerifAPI.js:685`,而且 `LINK_RESYNC_MAX = 2`
+顯然沒有擋住它 —— 鏈路健康時仍每 9 秒發一次,無限。台架上一個忘了關的分頁就會
+一直對機器送 RESYNC。歸到階段 2,未修。
+
 ---
 
 ## 階段 1 — 產品 P1,建議與 0.1 同一次重建
 
-### 1.1 裝置把未逸出的位元組塞進 JSON 除錯訊息 — **未做** — P1
+### 1.1 裝置把未逸出的位元組塞進 JSON 除錯訊息 — **已改碼,未燒錄** — P1
 
 `LegacyFirmware.cpp:4285`。`dataBuff` 有把 `"` 換成 `'`,`recv_data` 沒有:
 
@@ -87,7 +177,7 @@ dbg_printf("recv_ERROR:%d %s dat:%s", errorcode, dataBuff,
 **與 0.1 的關係**:兩個各自修都能斷鏈,**但兩個都是錯的**。0.1 讓 core 不會死,
 1.1 讓裝置不會送出壞 frame。只修一邊會留下一個安靜的協定違規。
 
-### 1.2 `json_seg_parser` 表達不了 `{}` 和 `[]` — **未做** — P1
+### 1.2 `json_seg_parser` 表達不了 `{}` 和 `[]` — **已改碼,未燒錄** — P1
 
 `src/comm/json_seg_parser.cpp`。`{` 之後無條件推 `OBJ_KEY`,而 `case OBJ_KEY` 只接受
 `"` 和空白,所以空物件的 `}` 是格式錯誤;`[` 推 `ARR_END, DAT`,空陣列的 `]` 落到
@@ -104,7 +194,7 @@ SYSTIME**,但不收任何指令 —— 從主機看它是活的,**停不下來**
 **驗收**:`proto_fuzz.mjs --group json` 的 `ping + empty array` / `empty object` /
 `{}` 三個 case 不再 latch。
 
-### 1.3 未知 `type` 完全不回應 — **未做** — P1
+### 1.3 未知 `type` 完全不回應 — **已改碼,未燒錄** — P1
 
 49 個真指令全部有回應;20 個非指令(含只差一個字母的錯字)**全部沉默** ——
 不是 `ack:false`,是零。呼叫端無法分辨「你打錯字」和「板子死了」。
@@ -142,7 +232,7 @@ DISCONNECT / reopen / 最後一個 BPG 客戶端關閉時釋放它。`synthSende
 | 2.2 | `!TL` 注入無條件被拒,而且回報成功 | 同上 | 注入時 `d.size = payload.size() + 1`(`c_str()` 保證終止符,同步呼叫內指標有效) | 未做 |
 | 2.3 | 非 JSON 錯誤回覆寫死 100 bytes,字面值 91 | 同上 | `sizeof(lit) - 1` 或 `strlen` | 未做 |
 | 2.4 | 第二個 console 客戶端靜默排隊,指令延後執行 | 同上 accept 迴圈 | accept 後若已有客戶端就回 `{"err":"console busy"}` 並關掉;或改真多客戶端(才符合現有註解) | 未做 |
-| 2.5 | `get_version` 走 framing 層回覆並丟掉呼叫端 id | `LegacyFirmware.cpp:5131` | 讓它走一般回覆路徑,或至少回填 id | 未做 |
+| 2.5 | `get_version` 走 framing 層回覆並丟掉呼叫端 id | `LegacyFirmware.cpp:5131` | 讓它走一般回覆路徑,或至少回填 id | 未做(2026-08-20 直連 COM3 再次實證:`ping`/`get_running_stat` 都回,只有 `get_version` NO REPLY) |
 | 2.6 | SEL 的 trace 事件 tid 恆為 0 | `LegacyFirmware.cpp:3306-3368` | 傳入 `pli->tid`,和 CAM/L1A/L2A 一致 | 未做 |
 | 2.7 | `FindInspShapeObject` 預設參數陷阱 | `UI/WebUI/src/UTIL/InspectionEditorLogic.js` | 每個區塊先判斷 list 存在;或讓 `FindShape` 被明確傳入 `undefined` 時不退回 `this.shapeList`(較徹底,要先確認沒有呼叫端依賴退回) | 未做 |
 | 2.8b | `cam_1.cur_width` / `cur_height` 回報未初始化記憶體 | `wiringPanel.cpp:3886` | 兩個欄位取自 `calib_bacpac.sampler->getCalibMap()->fullFrameW/H` —— 是**校正圖**不是相機,名字卻叫 `cur_width`。實測值 `1936534903` = `0x736F6C77`(ASCII 位元組),重開相機後不變。目前 `UI/WebUI/src` 沒有人讀它,所以還沒害到人;但一個叫 `cur_width` 的欄位吐未初始化記憶體,下一個相信它的人就會中。要嘛改成真的相機尺寸,要嘛改名並確保 calib map 有初始化 | 未做 |

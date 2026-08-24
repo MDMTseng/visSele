@@ -63,6 +63,55 @@ int main(int argc, char** argv) {
   // capture: isolate the SNAP_Callback per-frame allocation cost --
   // fresh `cv::Mat raw`/`r` every frame vs reused (thread_local) buffers.
   // (ExtractFrame is simulated by a memcpy of the frame bytes into raw.)
+  // downsample mode: what a view-resolution-aware preview actually costs.
+  //
+  // The live stream encodes the full 5 MP frame every time because InspUI pins
+  // down_samp_level to 1, while the canvas it lands in is ~1200 px wide. The
+  // saving is not the encode alone -- the resize has to be paid first -- so
+  // measure the PAIR, which is the only number that decides anything.
+  //
+  // INTER_NEAREST is what the live path asks for today (doNearest=1 at the
+  // ImageDownSampling call); INTER_AREA is the anti-aliased alternative. Both
+  // are measured because the cheaper one aliases, and on a preview of
+  // measurement targets that is a quality question, not only a cost one.
+  if (std::string(mode) == "downsamp") {
+    int N = (iters > 0) ? iters : 50;
+    std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 75 };
+    std::printf("--- downsample + encode (gray, q75), %d iters ---\n", N);
+    std::printf("  %-4s %-9s %9s %9s %9s %10s %9s\n",
+                "DS", "interp", "out W", "resize", "encode", "total", "KB");
+    for (int ds : {1, 2, 3, 4}) {
+      for (int nearest : {1, 0}) {
+        if (ds == 1 && nearest == 0) continue;      // DS 1 skips the resize entirely
+        cv::Mat small;
+        std::vector<unsigned char> buf;
+        // warm-up
+        if (ds == 1) small = gray;
+        else cv::resize(gray, small, cv::Size(W / ds, H / ds), 0, 0,
+                        nearest ? cv::INTER_NEAREST : cv::INTER_AREA);
+        cv::imencode(".jpg", small, buf, params);
+
+        double rms = 0;
+        if (ds > 1) {
+          auto r0 = clk::now();
+          for (int i = 0; i < N; ++i)
+            cv::resize(gray, small, cv::Size(W / ds, H / ds), 0, 0,
+                       nearest ? cv::INTER_NEAREST : cv::INTER_AREA);
+          rms = std::chrono::duration<double, std::milli>(clk::now() - r0).count() / N;
+        }
+        auto e0 = clk::now();
+        for (int i = 0; i < N; ++i) cv::imencode(".jpg", small, buf, params);
+        double ems = std::chrono::duration<double, std::milli>(clk::now() - e0).count() / N;
+
+        std::printf("  %-4d %-9s %9d %8.2fm %8.2fm %9.2fm %8.1f\n",
+                    ds, ds == 1 ? "-" : (nearest ? "NEAREST" : "AREA"),
+                    small.cols, rms, ems, rms + ems, buf.size() / 1024.0);
+        if (ds == 1) break;
+      }
+    }
+    return 0;
+  }
+
   if (std::string(mode) == "capture") {
     int N = (iters > 0) ? iters : 300;
     auto run = [&](bool reuse) {

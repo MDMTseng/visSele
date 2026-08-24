@@ -377,6 +377,36 @@ static uint64_t g_lastInspOffUs = 0;
 static uint64_t g_lastTrigWaitUs = 0;
 // Time spent ACQUIRING matchingEnglock, separate from holding it.
 static uint64_t g_lastEngLockUs = 0;
+// Wall cost of the clean-area scan on the last frame. Reported per frame as
+// station.clean_us: the gate runs on the inspection thread ahead of the engine,
+// and the report JSON is built in another function, so it travels as a global
+// the same way the other per-frame timings here do.
+static uint64_t g_lastCleanEvalUs = 0;
+// ---- what the DEVICE told us, which until now nothing read ---------------
+//
+// wiringPanel.cpp contained zero occurrences of "ack", "err" or
+// serial_error_locked: every ack:false the firmware carefully built landed in
+// the void, and :1190 says so outright ("the common replies (PONG, acks) never
+// reach cJSON").
+//
+// That matters most for ONE reply. A single malformed frame latches the device
+// parser (SERIAL_PROTOCOL_ERROR); from then on every command except RESET is
+// answered `ack:false, err:"serial_error_locked"`, and the device does NOT
+// resync on a frame boundary. The core meanwhile keeps sending PINGs into a
+// deaf device forever -- the one place the core does not listen is the one
+// place the device is shouting.
+//
+// The recovery already exists (RESYNC: two RESET_PACKETs + request_rx_resync)
+// and is reachable ONLY from a WebUI button. All that was missing was noticing.
+static std::atomic<uint32_t> g_perifAckFalse{0};      // any ack:false seen
+static std::atomic<uint32_t> g_perifLockedSeen{0};    // serial_error_locked seen
+static std::atomic<uint32_t> g_perifUnapplied{0};     // set_setup keys that did not land
+static std::atomic<bool>     g_perifAutoResyncReq{false};
+// Camera frames that existed and never reached us -- see the frameNum gap check.
+// Separate from the drop counters: those count frames WE threw away, this counts
+// frames we never had.
+static std::atomic<uint32_t> g_camFrameGapN{0};
+static std::atomic<uint32_t> g_camFrameLost{0};
 static LatHist g_histEngLock;
 // Inside the inspect stage, split three ways. The spikes are 49-72ms of REAL
 // cpu against a ~7.6ms norm, and one number over the whole stage cannot say
@@ -1289,13 +1319,26 @@ class PerifChannel:public Data_JsonRaw_Layer
   std::atomic<uint32_t> synthPendHead{0};
   std::atomic<uint32_t> synthPendTail{0};
   std::atomic<bool>     synthSenderUp{false};
+  // The thread below captures `this` and used to run `while(true)` detached:
+  // no exit condition, no join. delete_PeripheralChannel() frees the channel on
+  // every DISCONNECT, reopen, and last-tab-close, and synthSenderUp is a member,
+  // so each new channel started another one -- and the old ones kept running
+  // against freed memory.
+  //
+  // The crash is not the worst of it. BEFORE crashing, a leaked sender can
+  // still put verdicts on a dead channel, which is why the caveat says any
+  // pairing or count measured after a reconnect is untrustworthy unless you
+  // know none leaked. A measurement you cannot trust is worse than one you
+  // cannot take.
+  std::atomic<bool>     synthSenderStop{false};
+  std::atomic<bool>     synthSenderDone{false};
 
   void startSynthSender()
   {
     bool expected = false;
     if (!synthSenderUp.compare_exchange_strong(expected, true)) return;
     std::thread([this]{
-      while (true)
+      while (!synthSenderStop.load(std::memory_order_acquire))
       {
         uint32_t t = synthPendTail.load(std::memory_order_relaxed);
         uint32_t h = synthPendHead.load(std::memory_order_acquire);
@@ -1313,6 +1356,9 @@ class PerifChannel:public Data_JsonRaw_Layer
         sendReportTo_perifCH(this, e.tid, camTsSynthCat(), e.cam_ts, 0);
         synthPendTail.store(t + 1, std::memory_order_release);
       }
+      // Last thing it touches. The destructor waits on this before letting the
+      // object go, so `this` stays valid for every line above.
+      synthSenderDone.store(true, std::memory_order_release);
     }).detach();
     LOGW("cam_ts synth sender up: holding each reply %ums", camTsSynthDelayMs());
   }
@@ -1339,6 +1385,52 @@ class PerifChannel:public Data_JsonRaw_Layer
       return v;
     }();
     return c;
+  }
+
+  // Read what the device answers. strstr, not cJSON: this runs for every message
+  // on the peripheral RX path, and three substrings are all that is needed.
+  //
+  // Detection only, with one exception. `serial_error_locked` means the device
+  // is latched and will ignore everything until a RESET_PACKET, so that one
+  // arms the existing RESYNC rather than merely counting -- a deaf machine that
+  // nobody notices is precisely the failure this is here to end. Everything
+  // else is counted and logged: acting on it is a policy decision, noticing it
+  // is not.
+  void tap_device_reply(uint8_t *raw, int rawL)
+  {
+    if (rawL <= 0 || rawL > 20480) return;
+    const char *p = (const char *)raw;
+
+    // The device is latched. Nothing else it says matters until this clears.
+    if (strstr(p, "serial_error_locked") != NULL)
+    {
+      const uint32_t n = g_perifLockedSeen.fetch_add(1) + 1;
+      // Arm once and let the owner of the channel do it: this runs on the RX
+      // thread and must not take perif_tx_lock behind a read.
+      g_perifAutoResyncReq.store(true, std::memory_order_release);
+      LOG_EVERY(20, "perif: device answered serial_error_locked (x%u) -- the "
+                "parser is latched and ignoring every command but RESET; "
+                "auto-RESYNC armed", n);
+      return;
+    }
+    // Keys a set_setup named but did not apply (firmware reports them since
+    // 2026-08-22). The command still acks true, so without this the machine
+    // runs on a configuration the caller believes it set.
+    if (strstr(p, "\"unapplied\"") != NULL)
+    {
+      const uint32_t n = g_perifUnapplied.fetch_add(1) + 1;
+      LOGE("perif: set_setup reported UNAPPLIED keys (x%u) -- a setting was "
+           "accepted and did not take effect: %.*s", n,
+           rawL > 400 ? 400 : rawL, p);
+      return;
+    }
+    // Everything else that failed. Counted, not acted on.
+    if (strstr(p, "\"ack\":false") != NULL)
+    {
+      const uint32_t n = g_perifAckFalse.fetch_add(1) + 1;
+      LOG_EVERY(50, "perif: device answered ack:false (x%u): %.*s", n,
+                rawL > 200 ? 200 : rawL, p);
+    }
   }
 
   // Was emptied when host-side pairing was removed (d1ea04c8); the name was
@@ -1411,6 +1503,7 @@ class PerifChannel:public Data_JsonRaw_Layer
     if(opcode==1 )
     {
       tap_trigger_info(raw, rawL);
+      tap_device_reply(raw, rawL);
       tap_device_state(raw, rawL);
       retire_stale_triggers();
       keep_clock_warm();
@@ -1493,13 +1586,38 @@ class PerifChannel:public Data_JsonRaw_Layer
 
   }
 
+  // Both of these MUST return. They are declared int with no return statement,
+  // and falling off the end of a non-void function is undefined behaviour --
+  // gcc -O2 treats the path as unreachable and emits the entire function as a
+  // single `ud2`:
+  //
+  //     0000000140151ff0 <PerifChannel::recv_ERROR>:  0f 0b  ud2
+  //
+  // So calling either one is not a wrong answer, it is ILLEGAL_INSTRUCTION and
+  // a dead core process. recv_ERROR is the handler for EVERY peripheral
+  // protocol error -- five call sites in Data_Layer_Protocol.cpp, of which
+  // INIT_CHAR_ERROR fires on a single byte outside a frame. In practice that
+  // means pressing the reset button on the board kills the core: the boot ROM
+  // prints at 115200 while the core reads at 230400, so a reset puts garbage
+  // between frames. Reproduced three times on 2026-08-20 with a real camera
+  // attached, each time RIP in recv_ERROR.
+  //
+  // recv_RESET is the same shape and sits on the RECOVERY path (the data layer
+  // calls it when it finds a RESET_PACKET while its own parser is latched), so
+  // before this the fault and its recovery were both ud2.
+  //
+  // Returning 0 restores the "observed and ignored" behaviour the empty bodies
+  // were clearly meant to express. Handling these events properly is a
+  // separate question; not executing an illegal instruction is not.
   int recv_RESET()
   {
     // printf("Get recv_RESET\n");
+    return 0;
   }
   int recv_ERROR(ERROR_TYPE errorcode)
   {
     // printf("Get recv_ERROR:%d\n",errorcode);
+    return 0;
   }
   
   void connected(Data_Layer_IF* ch){
@@ -1528,8 +1646,43 @@ class PerifChannel:public Data_JsonRaw_Layer
     g_perifLinkSuspect = true;
   }
 
+  // Stop the synth sender and say whether it actually left.
+  //
+  // Separate from the destructor because the ANSWER matters to the caller.
+  // delete_PeripheralChannel's whole safety argument is that every user of
+  // this channel re-reads the global perifCH under perif_tx_lock, so once the
+  // pointer is swapped to NULL nobody can obtain it again. The synth sender is
+  // the one exception: it captured `this` and never re-reads the global, which
+  // is exactly why it was dangerous. If it will not leave, freeing the object
+  // is a use-after-free in a thread that is actively writing to the machine.
+  //
+  // So the caller can choose to LEAK instead. One abandoned channel on a rare
+  // path is a bounded cost; undefined behaviour is not bounded at all.
+  bool retireSynthSender()
+  {
+    if (!synthSenderUp.load()) return true;
+    synthSenderStop.store(true, std::memory_order_release);
+    // The loop's slowest sleep is 2ms, so it notices well inside this. Bounded
+    // rather than infinite: a teardown that can hang forever wedges the core on
+    // a closed browser tab, and that is a worse failure than the one being
+    // fixed.
+    const int wait_ms = 500;
+    int waited = 0;
+    while (!synthSenderDone.load(std::memory_order_acquire) && waited < wait_ms)
+    { std::this_thread::sleep_for(std::chrono::milliseconds(1)); waited++; }
+    if (!synthSenderDone.load(std::memory_order_acquire)) return false;
+    LOGI("cam_ts synth sender retired in %dms", waited);
+    return true;
+  }
+
   ~PerifChannel()
   {
+    // Belt and braces for any other delete path. The one that matters goes
+    // through delete_PeripheralChannel, which asks first and declines to free
+    // the object if the answer is no.
+    if (!retireSynthSender())
+      LOGE("cam_ts synth sender still running while this channel is destroyed "
+           "-- counts measured after this point are suspect");
     deliberate_close = true;
     close();
     printf("MData_uInsp DISTRUCT:%p\n",this);
@@ -1743,6 +1896,11 @@ struct CleanRegionCfg {
   float dark_ratio_max = NAN;           // dark px / region px
   float dark_area_max  = NAN;           // mm^2
   int   on_fail = FeatureReport_sig360_circle_line_single::STATUS_NA;
+  // Pixel stride for the dark scan. 1 = look at every pixel (default, and the
+  // only value that cannot miss anything). N looks at every Nth pixel in BOTH
+  // axes, so the scan costs 1/N^2 -- see eval_clean_regions for what that
+  // trades away.
+  int   dark_step = 1;
   std::string name;
 };
 struct InspectionContext {
@@ -2249,7 +2407,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     }
   };
   downSampSetup(camera, settingJson);
-  camera.StopAquisition();
+  camera.StopAcquisition();
   double *val = JFetch_NUMBER(&settingJson, "exposure");
   int retV = -1;
   if (val)
@@ -2440,7 +2598,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     }
   }
   
-  camera.StartAquisition();
+  camera.StartAcquisition();
   return 0;
 }
 
@@ -2601,9 +2759,11 @@ static bool &g_area_gates_bypass = g_inspCtx.area_gates_bypass;   // P0 alias (e
 // inspection thread is iterating.
 static std::mutex g_station_cfg_lock;
 
-static void load_insp_region(cJSON *json_mac_setting)
+// Split from load_insp_region so the live-apply command can reuse it with a
+// bare region object. Same lock, same log line, same "absent = not configured"
+// rule -- there must not be two ways for the station to be set.
+static void apply_insp_region(cJSON *r)
 {
-  cJSON *r = cJSON_GetObjectItem(json_mac_setting, "inspection_region");
   InspRegionCfg cfg;
   if (r != NULL && cJSON_IsObject(r))
   {
@@ -2625,6 +2785,11 @@ static void load_insp_region(cJSON *json_mac_setting)
          cfg.fit ? "contain (whole object inside)" : "centre only");
   else
     LOGE("inspection_region: not configured -- every located object is a candidate");
+}
+
+static void load_insp_region(cJSON *json_mac_setting)
+{
+  apply_insp_region(cJSON_GetObjectItem(json_mac_setting, "inspection_region"));
 }
 
 // Clean-space regions: patches of the field that must be EMPTY when the camera
@@ -2666,6 +2831,8 @@ static void load_clean_regions(cJSON *json_mac_setting)
       c.dark_thresh    = (float)JFetch_NUMBER_ex(e, "dark_thresh",    NA);
       c.dark_ratio_max = (float)JFetch_NUMBER_ex(e, "dark_ratio_max", NA);
       c.dark_area_max  = (float)JFetch_NUMBER_ex(e, "dark_area_max",  NA);
+      double *jstep = JFetch_NUMBER(e, "dark_step");
+      c.dark_step = (jstep && *jstep >= 1 && *jstep <= 16) ? (int)*jstep : 1;
       cJSON *jf = cJSON_GetObjectItem(e, "on_fail");
       c.on_fail = (jf && cJSON_IsString(jf) && strcmp(jf->valuestring, "ng") == 0)
                     ? FeatureReport_sig360_circle_line_single::STATUS_FAILURE
@@ -2722,11 +2889,59 @@ static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff,
       continue;
     }
 
-    cv::Mat dark;
-    cv::threshold(g1(r), dark, (double)c.dark_thresh, 255.0, cv::THRESH_BINARY_INV);
-    int dark_px = cv::countNonZero(dark);
-    float ratio = (float)dark_px / (float)(r.width * r.height);
-    float area  = (float)(dark_px * (double)mmpp * (double)mmpp);
+    // One fused pass: compare and count in place, no destination Mat.
+    //
+    // This used to be cv::threshold into a temporary + countNonZero, which
+    // allocates a region-sized 8U buffer every region every frame and walks
+    // the pixels twice. Same arithmetic, one walk, nothing allocated.
+    //
+    // Bit-identical to cv::threshold at step 1, and that is deliberate:
+    // THRESH_BINARY_INV marks a pixel when NOT (src > thresh), and for CV_8U
+    // OpenCV floors the threshold to an int first. Both are reproduced below,
+    // so an existing dark_thresh keeps meaning exactly what it meant.
+    //
+    // STRIDE: dark_step N samples every Nth pixel on both axes, so the scan
+    // costs 1/N^2. What it buys is bounded -- this scan is ~60k pixels, tens
+    // of microseconds -- and what it costs is not:
+    //
+    //   * A speck narrower than N px can fall entirely between samples and be
+    //     missed. This station's gate is dark_area_max 0.001 mm2, which at
+    //     mmpp 0.0139 is FIVE pixels: the specks that matter here are exactly
+    //     the size the stride skips over.
+    //   * The estimate quantises. Each sampled dark pixel now stands for N^2
+    //     real ones, so at N=4 a single sample lands 16 px of area on the
+    //     scale -- three times the whole budget. The check goes from "a few
+    //     dark pixels" to all-or-nothing.
+    //
+    // Hence default 1. N > 1 is for a region whose gate is set in ratio, or
+    // sized in mm2 well above N^2 pixels -- not for a tight speck gate.
+    // INSP_CLEAN_STEP overrides every region, for A/B on a live machine.
+    const int ithr = (int)std::floor((double)c.dark_thresh);
+    static const int stepEnv = []{
+      const char *e = getenv("INSP_CLEAN_STEP");
+      const int v = e ? atoi(e) : 0;
+      if (v > 1) LOGW("INSP_CLEAN_STEP=%d -- clean regions sampled every %d px on "
+                      "both axes; specks smaller than that can be missed", v, v);
+      return v;
+    }();
+    const int step = stepEnv > 0 ? stepEnv : (c.dark_step > 0 ? c.dark_step : 1);
+    int dark_px = 0, sampled = 0;
+    for (int yy = 0; yy < r.height; yy += step)
+    {
+      const uchar *prow = g1.ptr<uchar>(r.y + yy) + r.x;
+      for (int xx = 0; xx < r.width; xx += step)
+      {
+        sampled++;
+        if ((int)prow[xx] <= ithr) dark_px++;   // NOT (src > thresh)
+      }
+    }
+    if (sampled <= 0) continue;
+    float ratio = (float)dark_px / (float)sampled;
+    // Area from the RATIO times the region's real pixel count, not from the
+    // sample count -- so the number means the same mm2 at any step, and is
+    // exactly dark_px * mmpp^2 when step is 1.
+    float area  = (float)(ratio * (double)r.width * (double)r.height
+                          * (double)mmpp * (double)mmpp);
 
     bool bad = false;
     if (!std::isnan(c.dark_ratio_max) && ratio > c.dark_ratio_max) bad = true;
@@ -2735,9 +2950,10 @@ static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff,
     // Two per frame while tuning is the point of this line, and two per
     // frame forever is how the ring gets erased. The same numbers go to the
     // UI below every frame regardless, which is where they are read.
-    LOG_EVERY(200, "clean_region '%s' [%.0f,%.0f %.0fx%.0f] thr %.0f: dark %.4f (%.4f mm2)%s",
-         c.name.c_str(), c.x, c.y, c.w, c.h, c.dark_thresh, ratio, area,
-         bad ? "  -> DIRTY" : "");
+    LOG_EVERY(200, "clean_region '%s' [%.0f,%.0f %.0fx%.0f] thr %.0f step %d: "
+         "dark %.4f (%.4f mm2) from %d samples%s",
+         c.name.c_str(), c.x, c.y, c.w, c.h, c.dark_thresh, step, ratio, area,
+         sampled, bad ? "  -> DIRTY" : "");
 
     // Same numbers to the UI. Setting dark_area_max from a log tail is not a
     // workflow; seeing 1.11 next to 0.0002 while you drag the box is.
@@ -2747,12 +2963,63 @@ static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff,
       cJSON_AddStringToObject(o, "name", c.name.c_str());
       cJSON_AddNumberToObject(o, "dark_ratio", ratio);
       cJSON_AddNumberToObject(o, "dark_area_mm2", area);
+      if (step > 1) cJSON_AddNumberToObject(o, "step", step);
       cJSON_AddBoolToObject(o, "dirty", bad);
       cJSON_AddItemToArray(out_arr, o);
     }
     if (bad) worst = InspStatusReducer(worst, c.on_fail);
   }
   return worst;
+}
+
+// A dirty clean area must not produce dimensional results.
+//
+// The verdict already rejects the part, but rejecting it is not the same as not
+// measuring it: the WebUI draws every measurement it is handed, so a rejected
+// part still appeared on screen with sizes next to it. "This was not inspected"
+// has to be visible in the DATA, not only in a status byte nobody is looking at.
+//
+// Said the way the engine already says "located nothing": keep the per-feature
+// entry, empty ITS object list. That is the exact shape a genuine zero-object
+// frame produces -- captured off this machine 2026-08-21, reports[0] is a
+// sig360_circle_line whose own `reports` is [] -- so this introduces NO new
+// report shape. Not introducing one is the entire reason the old skip path was
+// removed: it emitted a report with no `type` and no `reports`, the reducer
+// dropped it on its first line, and every blocked part vanished from the
+// statistics while the machine went on counting it.
+//
+// It also has to stay countable. reportCount++ lives INSIDE the reducer's
+// per-feature loop (UICtrlReducer.js:240), so emptying the TOP-level array
+// instead would make the loop run zero times and bring that same disappearance
+// straight back. One level down is not a detail, it is the whole difference.
+//
+// SUPERSEDED as the primary mechanism, kept as the backstop. The engine now
+// has the cheaper form: FeatureManager::no_candidate_frame makes the locator
+// yield nothing, so no measurement runs at all (blocked frames measured at
+// 0.002-0.045ms against 12.4ms, 2026-08-21). This function still runs after it
+// and still guarantees the invariant for any sub-feature type that does not
+// honour the flag -- it walks one or two JSON arrays.
+//
+// What it must NOT become is a way to skip the engine from here: GetReport()
+// returns the engine's LAST report, so not calling the engine would publish the
+// PREVIOUS part's measurements as this frame's.
+//
+// Errors are deliberately left untouched. A real zero-object frame carries
+// error 0 at both levels, and the REASON already rides on the same report in
+// station.clean_err. Rewriting them here would make blocked frames differ from
+// genuine empty ones again, in a field the UI does not read.
+static void blank_located_objects(cJSON *report_json)
+{
+  if (report_json == NULL) return;
+  cJSON *feats = cJSON_GetObjectItem(report_json, "reports");
+  if (!cJSON_IsArray(feats)) return;
+  for (int i = 0; i < cJSON_GetArraySize(feats); i++)
+  {
+    cJSON *f = cJSON_GetArrayItem(feats, i);
+    if (f == NULL) continue;
+    if (cJSON_IsArray(cJSON_GetObjectItem(f, "reports")))
+      cJSON_ReplaceItemInObject(f, "reports", cJSON_CreateArray());
+  }
 }
 
 void setup_machine_setting(cJSON *json_mac_setting)
@@ -2852,7 +3119,16 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
   if (doomed)
   {
     LOGI("DELETING");
-    delete doomed;
+    // Ask before freeing. Everything else that writes through this channel
+    // re-reads perifCH under perif_tx_lock and is therefore already safe after
+    // the swap above; the synth sender captured `this` instead and is not.
+    if (doomed->retireSynthSender())
+      delete doomed;
+    else
+      LOGE("LEAKING this peripheral channel on purpose: its cam_ts synth sender "
+           "would not retire, and freeing it while that thread still writes "
+           "through `this` is a use-after-free. One abandoned channel is the "
+           "cheaper failure. Only reachable with INSP_CAM_TS_SYNTH.");
   }
   LOGI("DELETED...");
 }
@@ -3658,6 +3934,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddNumberToObject(lk, "tx_fail_consec", (double)g_perifTxFailConsec.load());
               cJSON_AddNumberToObject(lk, "dropped_no_channel", (double)g_perifNoChannelDrop.load());
               cJSON_AddNumberToObject(lk, "queue_dropped", (double)perifSendDropCount.load());
+              // What the device answered, which nothing read until 2026-08-22.
+              // locked>0 means the framing layer latched at least once and the
+              // core recovered it by itself; unapplied>0 means a setting was
+              // acked and did not take effect.
+              cJSON_AddNumberToObject(lk, "ack_false",  (double)g_perifAckFalse.load());
+              cJSON_AddNumberToObject(lk, "locked_seen",(double)g_perifLockedSeen.load());
+              cJSON_AddNumberToObject(lk, "unapplied",  (double)g_perifUnapplied.load());
             }
             cJSON_AddNumberToObject(robj, "trig_wait_max_ms", g_perifTrigWaitMaxMs);
             // Nonzero skipped is the signature of the 2026-08-10 collapse, and
@@ -3696,6 +3979,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               // A DRIFTING difference is triggers the camera refused.
               cJSON_AddNumberToObject(ct, "trig_minus_frame",
                 (double)g_camTrigMinusFrame.load());
+              // Gaps in the camera's own frame sequence: frames it produced and
+              // we never received. Unlike the three above, this does not need
+              // extTrigCountValid, so it actually reports something.
+              cJSON_AddNumberToObject(ct, "frame_gap_n",
+                (double)g_camFrameGapN.load());
+              cJSON_AddNumberToObject(ct, "frame_lost",
+                (double)g_camFrameLost.load());
             }
             cJSON_AddNumberToObject(robj, "cam_max_fps",
               g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
@@ -3883,8 +4173,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // this reply are what was REQUESTED, not a device read-back, so
             // this field is the only place a refused setter shows up.
             cJSON_AddStringToObject(cam_1, "setup_failed", g_camSetupFailed.c_str());
-            cJSON_AddNumberToObject(cam_1, "cur_width", calib_bacpac.sampler->getCalibMap()->fullFrameW);
-            cJSON_AddNumberToObject(cam_1, "cur_height", calib_bacpac.sampler->getCalibMap()->fullFrameH);
+            // Named for what they are. These come from the CALIBRATION MAP, not
+            // from the camera: they are the frame size the calibration was
+            // built against. Calling them cur_width/cur_height on a cam_1
+            // object invites the next person to read them as the live sensor
+            // size, and they are not that even when they are valid. Nothing in
+            // UI/WebUI/src read the old names, so renaming costs nothing and
+            // stops the misreading before it happens.
+            cJSON_AddNumberToObject(cam_1, "calib_frame_w", calib_bacpac.sampler->getCalibMap()->fullFrameW);
+            cJSON_AddNumberToObject(cam_1, "calib_frame_h", calib_bacpac.sampler->getCalibMap()->fullFrameH);
 
             int M_gain, m_gain;
             CameraLayer::status g_ret = (calib_bacpac.cam != NULL)
@@ -4518,6 +4815,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         saveInspQFullSkipCount=0;
 
         
+        // Session default for the preview ceiling. Deliberate -- each
+        // inspection session starts from a known rate -- but it means
+        // IMG_STREAMING_MAX_FPS* set BEFORE entering inspection mode is wiped
+        // here. Set it after entering (which is what a panel slider during a
+        // run does anyway), or this silently undoes it.
         OK_MAX_FPS=6;
         NG_MAX_FPS=6;
         NA_MAX_FPS=6;
@@ -4913,7 +5215,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
 
         if (camera != NULL)
-          camera->StopAquisition();
+          camera->StopAcquisition();
 
         // The device cannot be opened twice, so the old object has to release
         // its handle before the new one can take it. Nothing may dereference
@@ -5718,6 +6020,29 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         setup_machine_setting(machSetting_JSON);
       }
 
+      // Live station edit: the box the operator is dragging, applied NOW.
+      //
+      // The canvas draws the new box the instant it is drawn, but the core kept
+      // judging against the old one until 套用並存檔 -- so for the whole tuning
+      // loop the picture and the verdict disagreed, and the operator is looking
+      // at the picture. Every "why is it still NA" during setup came from that
+      // gap.
+      //
+      // Deliberately NOT MachineSetting with one key: setup_machine_setting()
+      // runs load_clean_regions() too, and that treats an absent key as "no
+      // clean regions", so a region-only save would silently wipe them. This
+      // touches the station and nothing else.
+      //
+      // Runtime only -- machine_setting.json is still written by 套用並存檔, so
+      // an abandoned drag dies with the process rather than becoming the
+      // machine's configuration.
+      cJSON *inspRegionLive_JSON = JFetch_OBJECT(json, "InspRegionLive");
+      if (inspRegionLive_JSON)
+      {
+        apply_insp_region(inspRegionLive_JSON);
+        LOGI("inspection_region: live edit applied (not saved to disk)");
+      }
+
       auto INSP_NG_SNAP = getDataFromJson(json, "INSP_NG_SNAP", NULL);
       if (INSP_NG_SNAP == cJSON_True)
       {
@@ -5754,10 +6079,44 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         saveInspNASnap = false;
       }
 
-      double *maxImgStFPS = JFetch_NUMBER(json, "IMG_STREAMING_MAX_FPS");
-      if(maxImgStFPS)
+      // Preview frame-rate CAP, applied ON TOP OF the per-class emphasis.
+      //
+      // This key was already accepted, already acked, already logged -- and
+      // went nowhere: it wrote DATA_VIEW_MAX_FPS, which nothing in this core
+      // ever read. What gates the preview is OK/NG/NA_MAX_FPS. It has a reader
+      // now (search maxFPS below), so the CoreStatusPanel field finally means
+      // something.
+      //
+      // It is a CAP, not a setting: it does NOT write OK/NG/NA_MAX_FPS. Those
+      // are InspectionUI's "圖像檢視側重" (ST ImageTransferSetup, :5865), a
+      // feature the customer asked for specifically, and they are asymmetric on
+      // purpose -- 4/8/4 means "show me the NG frames". Collapsing them to one
+      // number would silently destroy that, so the emphasis is kept and only
+      // its WORST case is bounded.
+      //
+      // Worst case is max(OK,NG,NA), NOT the sum: these are per-class
+      // ceilings and a part belongs to exactly one class, so the stream can
+      // only ever run at the ceiling of whichever class is currently arriving.
+      // Capping therefore means "scale nothing, just refuse to exceed C" --
+      // a class asking for 4 stays at 4 under a cap of 20.
+      //
+      // Default 20 against emphasis values of 4-8 means this binds on nothing
+      // today: it is headroom for a slower machine (the target is a 2-core
+      // Surface Go 3), not a change of behaviour. Floor of 1, not 0 -- 0 would
+      // stop the preview dead, and a global field is far too easy to leave at
+      // zero by accident.
       {
-        DATA_VIEW_MAX_FPS=(int)*maxImgStFPS;
+        double *fCap = JFetch_NUMBER(json, "IMG_STREAMING_MAX_FPS");
+        if (fCap)
+        {
+          int c = (int)*fCap;
+          if (c < 1)  c = 1;
+          if (c > 60) c = 60;
+          DATA_VIEW_MAX_FPS = c;
+          LOGI("IMG_STREAMING_MAX_FPS: cap %d fps; emphasis kept "
+               "(OK %.1f / NG %.1f / NA %.1f) -- effective = min of the two",
+               DATA_VIEW_MAX_FPS, OK_MAX_FPS, NG_MAX_FPS, NA_MAX_FPS);
+        }
       }
 
       // JPEG compression for per-event image transfers.  0 keeps the legacy
@@ -6191,6 +6550,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             perifCH->send_RESET();
             perifCH->send_RESET();
           }
+          // BOTH ends. send_RESET() above only heals the device; our own parser
+          // leaves ERROR_SEC on an inbound RESET_PACKET, and the device answers
+          // a RESET with an ordinary "RESET_OK" frame -- which a latched parser
+          // swallows as more garbage. Without this the RESYNC repeats every 9s
+          // forever while the device sits there perfectly healthy (measured
+          // 2026-08-20; see request_rx_resync()).
+          perifCH->request_rx_resync();
           LOGE("perif: link RESYNC requested -- RESET_PACKET sent, port left open");
           session_ACK = true;
         }
@@ -6816,6 +7182,42 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 
     headImgPipe->host_rx_us = perif_now_us();
     beat(g_beatRx, headImgPipe->host_rx_us);
+    // Frames the camera produced and we did NOT receive.
+    //
+    // nFrameNum is the camera's own sequence number, so a jump of more than one
+    // between consecutive deliveries means frames existed and were lost in
+    // transport -- and today that is invisible: the object simply never gets a
+    // report, ends as SKIP, and reads exactly like "the part was not there".
+    //
+    // Costs nothing: frameNum already arrives with every frame
+    // (CameraLayer_HikRobot_Camera.cpp:383). The trigger-count reconciliation
+    // next to this needs extTrigCountValid, which the HikRobot layer never
+    // sets, so it has always been dead -- cam_trig reads 0/0/0. This does not
+    // replace it (a frame the camera never produced is still invisible here),
+    // but it covers the half that costs no extra camera round trip.
+    if (headImgPipe->fi.frameNumValid)
+    {
+      static uint32_t _prevFrameNum = 0;
+      static bool     _haveFrameNum = false;
+      const uint32_t fnow = headImgPipe->fi.frameNum;
+      if (_haveFrameNum)
+      {
+        const uint32_t d = fnow - _prevFrameNum;   // unsigned: wrap is fine
+        if (d > 1)
+        {
+          const uint32_t lost = d - 1;
+          g_camFrameGapN.fetch_add(1, std::memory_order_relaxed);
+          g_camFrameLost.fetch_add(lost, std::memory_order_relaxed);
+          LOG_EVERY(20, "camera frameNum gap: %u -> %u (%u frame(s) produced but "
+                    "not delivered; total gaps %u / frames lost %u)",
+                    _prevFrameNum, fnow, lost,
+                    g_camFrameGapN.load(), g_camFrameLost.load());
+        }
+      }
+      _prevFrameNum = fnow;
+      _haveFrameNum = true;
+    }
+
     if (headImgPipe->fi.extTrigCountValid)
     {
       g_camTrigCount.store(headImgPipe->fi.extTrigCount, std::memory_order_relaxed);
@@ -7332,7 +7734,25 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         iminfo.offsetX = (ImageCropX / _downSampLevel) * _downSampLevel;
         iminfo.offsetY = (ImageCropY / _downSampLevel) * _downSampLevel;
         ImageSampler *sampler = bacpac->sampler;
-        ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 1,
+        // INTER_AREA (doNearest=0), not INTER_NEAREST.
+        //
+        // Nearest looks like the cheap option and is not. Measured on a real
+        // 2448x2048 frame at q75 (tools/jpeg_bench.cpp, "downsamp" mode):
+        //
+        //   DS 1  ---              9.04 ms   269.4 KB
+        //   DS 2  NEAREST          2.80 ms    73.6 KB
+        //   DS 2  AREA             2.30 ms    39.9 KB
+        //
+        // Nearest keeps the sensor's high-frequency noise, so the encoder has
+        // more to describe: it is both SLOWER end to end and nearly twice the
+        // bytes. It also aliases, which on a preview of measurement targets is
+        // a correctness-looking artefact rather than only a soft image -- and
+        // aliasing is the likelier reason the downsampled preview was judged
+        // unusable and switched off in 1b843b32.
+        //
+        // Only even factors have the fast path: DS 3 costs 3.68 ms in resize
+        // alone, more than DS 2 costs in total. The UI quantises to 1/2/4.
+        ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 0,
                           iminfo.offsetX, iminfo.offsetY, ImageCropW, ImageCropH);
         iminfo.img = &test1_buff;
       }
@@ -7700,6 +8120,11 @@ static void perifConsoleEcho(const uint8_t *raw, int rawL)
   }
 }
 
+// Under the device's own frame buffer (2048), with room for the framing the
+// layers below add. Lines longer than this are refused outright -- see the
+// newline branch in the reader.
+static const size_t CONSOLE_LINE_MAX = 1900;
+
 void PerifConsoleThread(bool *terminationflag)
 {
   const char *portStr = getenv("INSP_PERIF_CONSOLE");
@@ -7715,7 +8140,28 @@ void PerifConsoleThread(bool *terminationflag)
   consock_t srv = (consock_t)::socket(AF_INET, SOCK_STREAM, 0);
   if (srv == CONSOCK_BAD) { LOGE("[perif console] socket() failed"); return; }
   int on = 1;
+  // SO_REUSEADDR ON WINDOWS IS NOT WHAT IT IS ON POSIX. There it lets a
+  // listener rebind an address left in TIME_WAIT and nothing more; on
+  // Windows it lets a SECOND PROCESS BIND A PORT THAT IS ALREADY BEING
+  // LISTENED ON. Both sockets end up in LISTENING state and incoming
+  // connections land on one of them more or less arbitrarily.
+  //
+  // That was observed here, not reasoned about: netstat showed pids 8992
+  // and 9820 both LISTENING on 127.0.0.1:4098, and a supervisor pinging
+  // that port got answers from whichever core happened to accept -- so it
+  // health-checked one process and would have sent the shutdown to the
+  // other. A stray core from an earlier session is not an exotic state;
+  // it is Tuesday.
+  //
+  // SO_EXCLUSIVEADDRUSE is the Windows spelling of what SO_REUSEADDR
+  // already means everywhere else: this address is mine, and a second
+  // bind FAILS instead of silently succeeding. A listening socket never
+  // enters TIME_WAIT, so restarting the core still rebinds immediately.
+#ifdef _WIN32
+  ::setsockopt((int)srv, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&on, sizeof(on));
+#else
   ::setsockopt((int)srv, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
+#endif
   struct sockaddr_in a; memset(&a, 0, sizeof(a));
   a.sin_family = AF_INET;
   a.sin_port = htons((uint16_t)port);
@@ -7751,6 +8197,9 @@ void PerifConsoleThread(bool *terminationflag)
     LOGI("[perif console] client attached");
 
     std::string line;
+    // Set when the line ran past the cap: the rest of it is gone, so the line
+    // must be refused rather than sent. See the newline branch below.
+    bool lineOverflow = false;
     while (terminationflag && *terminationflag == false)
     {
       char c;
@@ -7765,11 +8214,65 @@ void PerifConsoleThread(bool *terminationflag)
       if (n < 0)
       {
         if (!consock_wouldblock()) break;
+        // A SECOND client used to sit in the listen backlog until the first
+        // one left, and then have every command it had typed executed at once
+        // -- against a machine that moves parts. It looked connected the whole
+        // time and got no answer: no feedback, and a delayed effect nobody is
+        // watching for any more.
+        //
+        // THIS IS INSIDE THE IDLE BRANCH ON PURPOSE. The obvious place is the
+        // top of the read loop, and that is wrong: between a client closing and
+        // this loop noticing there is a window (one 5ms sleep), and a poll up
+        // there refuses the NEXT client for a slot nobody holds any more.
+        // console_abuse.mjs opens a fresh connection for every liveness check
+        // precisely to catch a leaked slot, and it hit that window on the first
+        // case -- reported as a 30s dead console. Down here we have just read
+        // EWOULDBLOCK, which means the incumbent is connected and merely quiet,
+        // so a pending connection really is a second client.
+        {
+          struct timeval z = {0, 0};
+          fd_set af; FD_ZERO(&af); FD_SET((consock_fd_t)srv, &af);
+          if (::select((int)srv + 1, &af, NULL, NULL, &z) > 0)
+          {
+            consock_t extra = (consock_t)::accept((int)srv, NULL, NULL);
+            if (extra != CONSOCK_BAD)
+            {
+              static const char busy[] = "{\"err\":\"console busy -- one client at a time\"}\n";
+              consock_write(extra, busy, (int)(sizeof(busy) - 1));
+              consock_close(extra);
+              LOGW("[perif console] refused a second client (one at a time)");
+            }
+          }
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
         continue;
       }
       if (c == '\r') continue;
-      if (c != '\n') { if (line.size() < 4096) line += c; continue; }
+      if (c != '\n')
+      {
+        // 4096 was twice the device's 2048-byte frame buffer, and going over
+        // it SILENTLY DROPPED the tail. What then went on the wire still began
+        // with '{', so the JSON guard below waved it through, and the device
+        // received a truncated frame -- precisely the input that latches its
+        // parser. A console that turns "you typed too much" into "the machine
+        // is deaf" is the console's bug.
+        //
+        // So: refuse, do not truncate. Below the device's buffer, not at it.
+        if (line.size() < CONSOLE_LINE_MAX) line += c;
+        else lineOverflow = true;
+        continue;
+      }
+      if (lineOverflow)
+      {
+        char e[160];
+        int en = snprintf(e, sizeof(e),
+                          "{\"err\":\"line over %d bytes -- refused, not "
+                          "truncated (device frame buffer is 2048)\"}\n",
+                          (int)CONSOLE_LINE_MAX);
+        consock_write(cli, e, en);
+        line.clear(); lineOverflow = false;
+        continue;
+      }
       if (line.size() > 4 && line[0] == '!' && line[3] == ' ')
       {
         // Inject a BPG packet with an arbitrary two-letter type -- the same
@@ -7795,9 +8298,24 @@ void PerifConsoleThread(bool *terminationflag)
         BPG_protocol_data d =
           m_BPG_Protocol_Interface::GenStrBPGData(tl, payload.c_str());
         d.pgID = 1;
-        bpg_pi.toUpperLayer(d, NULL);
+        // The injection was REFUSED every single time, and said "injected"
+        // anyway. GenStrBPGData reports a size that stops at the last character
+        // of the payload, while toUpperLayer's guard requires the terminating
+        // NUL to fall INSIDE the declared length -- so nothing ever got past it.
+        // The '!pd' documented at length just above this line has therefore
+        // never worked, which is why perif_hold.mjs exists to hold the channel
+        // from a websocket instead.
+        //
+        // c_str() guarantees the NUL, and the pointer stays valid for this
+        // synchronous call, so counting it is safe as well as correct.
+        d.size = (uint32_t)(payload.size() + 1);
+        int inj = bpg_pi.toUpperLayer(d, NULL);
         char ack[64];
-        int n = snprintf(ack, sizeof(ack), "{\"core\":\"%s injected\"}\n", tl);
+        // Report what actually happened. Saying "injected" regardless is how
+        // the bug above stayed invisible for months.
+        int n = snprintf(ack, sizeof(ack),
+                         "{\"core\":\"%s\",\"injected\":%s,\"rc\":%d}\n",
+                         tl, inj == 0 ? "true" : "false", inj);
         consock_write(cli, ack, n);
       }
       // '?lat' -- the same stage histograms the GS reply carries, as text.
@@ -7895,8 +8413,13 @@ void PerifConsoleThread(bool *terminationflag)
           size_t b = line.find_first_not_of(" \t");
           if (b == std::string::npos || line[b] != '{')
           {
-            consock_write(cli, "{\"err\":\"not JSON -- raw text latches the device "
-                         "parser; use {\\\"type\\\":...}, !TL, or ?lat\"}\n", 100);
+            // The length was hardcoded to 100 while the literal is 91 bytes:
+            // consock_write ran 9 bytes past the end of a string constant on
+            // every malformed line. sizeof-1 cannot drift from the text.
+            static const char notJson[] =
+              "{\"err\":\"not JSON -- raw text latches the device "
+              "parser; use {\\\"type\\\":...}, !TL, or ?lat\"}\n";
+            consock_write(cli, notJson, (int)(sizeof(notJson) - 1));
             line.clear();
             continue;
           }
@@ -7918,6 +8441,215 @@ void PerifConsoleThread(bool *terminationflag)
   }
   ::close(srv);
   LOGI("[perif console] ended");
+}
+
+
+// ---- launcher control socket -----------------------------------------------
+//
+// A loopback TCP line-JSON socket the LAUNCHER owns, distinct from the
+// peripheral dev console above: that one forwards to the device and is opt-in
+// for developers; this one talks to the core itself and is ALWAYS ON, because
+// the launcher needs it on a production machine.
+//
+// It exists because of one specific hole. This core handles SIGINT/SIGTERM
+// properly -- sigroutine() sets g_shutdownRequested, the drainer writes a
+// shutdown dump, everything tears down in order (see the note above
+// sigroutine for what it cost to get there). On Windows that path is
+// UNREACHABLE from a parent process: Node's child.kill('SIGTERM') is
+// TerminateProcess, not a signal, so the old launcher's kill('SIGINT') never
+// once ran it and the taskkill /f on the next line is what actually happened.
+// Every shutdown on the deployed platform was a hard kill of code carefully
+// written to shut down softly.
+//
+// The second command earns its place separately. "The process exists" is not
+// "the core is answering": this machine has been seen alive, with 4090 and
+// 4091 still listening, while its COM3 had closed and never reopened. A
+// supervisor that polls only the process table calls that healthy. ping makes
+// the difference observable.
+//
+// Loopback only, no authentication -- same posture as the dev console, and for
+// the same reason: it can stop a machine that moves physical parts, so it must
+// not be reachable from the network. INSP_CONTROL_PORT overrides the port;
+// setting it to 0 disables the socket entirely.
+// Defined further down, next to the signal handler that is its other writer.
+extern volatile sig_atomic_t g_shutdownRequested;
+#ifdef _WIN32
+#  define CONTROL_SELF_PID() GetCurrentProcessId()
+#else
+#  define CONTROL_SELF_PID() getpid()
+#endif
+static const int CONTROL_PORT_DEFAULT = 4098;
+static const std::chrono::steady_clock::time_point g_coreStartTp =
+    std::chrono::steady_clock::now();
+
+void ControlSocketThread(bool *terminationflag)
+{
+  int port = CONTROL_PORT_DEFAULT;
+  {
+    const char *ps = getenv("INSP_CONTROL_PORT");
+    if (ps != NULL) port = atoi(ps);
+  }
+  if (port <= 0) { LOGI("[control] disabled (INSP_CONTROL_PORT=0)"); return; }
+
+#ifdef _WIN32
+  { WSADATA wsa; static std::atomic<bool> once{false};
+    bool ex = false;
+    if (once.compare_exchange_strong(ex, true)) ::WSAStartup(MAKEWORD(2, 2), &wsa); }
+#endif
+  consock_t srv = (consock_t)::socket(AF_INET, SOCK_STREAM, 0);
+  if (srv == CONSOCK_BAD) { LOGE("[control] socket() failed"); return; }
+  int on = 1;
+  // SO_REUSEADDR ON WINDOWS IS NOT WHAT IT IS ON POSIX. There it lets a
+  // listener rebind an address left in TIME_WAIT and nothing more; on
+  // Windows it lets a SECOND PROCESS BIND A PORT THAT IS ALREADY BEING
+  // LISTENED ON. Both sockets end up in LISTENING state and incoming
+  // connections land on one of them more or less arbitrarily.
+  //
+  // That was observed here, not reasoned about: netstat showed pids 8992
+  // and 9820 both LISTENING on 127.0.0.1:4098, and a supervisor pinging
+  // that port got answers from whichever core happened to accept -- so it
+  // health-checked one process and would have sent the shutdown to the
+  // other. A stray core from an earlier session is not an exotic state;
+  // it is Tuesday.
+  //
+  // SO_EXCLUSIVEADDRUSE is the Windows spelling of what SO_REUSEADDR
+  // already means everywhere else: this address is mine, and a second
+  // bind FAILS instead of silently succeeding. A listening socket never
+  // enters TIME_WAIT, so restarting the core still rebinds immediately.
+#ifdef _WIN32
+  ::setsockopt((int)srv, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&on, sizeof(on));
+#else
+  ::setsockopt((int)srv, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
+#endif
+  struct sockaddr_in a; memset(&a, 0, sizeof(a));
+  a.sin_family = AF_INET;
+  a.sin_port = htons((uint16_t)port);
+  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (::bind((int)srv, (struct sockaddr *)&a, sizeof(a)) < 0 || ::listen((int)srv, 4) < 0)
+  {
+    // Not fatal. A core that cannot open its control port is still a working
+    // inspection machine; it just has to be stopped the hard way. Refusing to
+    // start over this would turn a supervision inconvenience into an outage.
+    //
+    // Since the port is now exclusive on Windows, by far the most likely
+    // cause is that ANOTHER CORE IS ALREADY RUNNING -- which is worth saying
+    // outright, because that is also a much bigger problem than the missing
+    // control channel: two cores fighting over one camera and one serial
+    // port. Naming the likely cause turns a puzzling log line into an
+    // instruction.
+    LOGE("[control] bind/listen on 127.0.0.1:%d failed -- graceful shutdown "
+         "and liveness checks are unavailable this run. Is another core "
+         "already running? Check for a leftover visSele process.", port);
+    consock_close(srv);
+    return;
+  }
+  LOGI("[control] listening on 127.0.0.1:%d", port);
+
+  while (terminationflag && *terminationflag == false)
+  {
+    struct timeval tv = {1, 0};              // so termination is noticed
+    fd_set rf; FD_ZERO(&rf); FD_SET((consock_fd_t)srv, &rf);
+    if (::select((int)srv + 1, &rf, NULL, NULL, &tv) <= 0) continue;
+
+    consock_t cli = (consock_t)::accept((int)srv, NULL, NULL);
+    if (cli == CONSOCK_BAD) continue;
+    consock_nonblock(cli);
+#ifdef SO_NOSIGPIPE
+    { int one = 1; ::setsockopt((int)cli, SOL_SOCKET, SO_NOSIGPIPE, (const char *)&one, sizeof(one)); }
+#endif
+
+    // Unlike the dev console this does not reserve the socket for one client
+    // at a time. Clients are served serially, but a new one is taken as soon
+    // as the previous closes and nothing here is stateful. The dev console
+    // needs exclusivity because its commands reach a machine that moves parts;
+    // ping and shutdown are idempotent, and refusing a health check because
+    // another health check is open would be its own kind of false alarm.
+    std::string line;
+    bool overflow = false;
+    bool stopping = false;
+    while (terminationflag && *terminationflag == false)
+    {
+      char c;
+      int n = consock_read(cli, &c, 1);
+      if (n == 0) break;
+      if (n < 0)
+      {
+        // Non-blocking, so EWOULDBLOCK just means an idle client. Treating
+        // that as a closed connection is the bug the dev console shipped with
+        // on its first Windows build.
+        if (!consock_wouldblock()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        continue;
+      }
+      if (c == '\r') continue;
+      if (c != '\n')
+      {
+        // Commands here are a couple of dozen bytes. Anything long is a client
+        // talking to the wrong port; refuse rather than accumulate.
+        if (line.size() < 256) line += c;
+        else overflow = true;
+        continue;
+      }
+      std::string cmd = line;
+      line.clear();
+      if (overflow)
+      {
+        overflow = false;
+        static const char e[] = "{\"ack\":false,\"err\":\"line too long\"}\n";
+        consock_write(cli, e, (int)(sizeof(e) - 1));
+        continue;
+      }
+      if (cmd.empty()) continue;
+
+      char rsp[512];
+      int rn;
+      if (cmd.find("\"ping\"") != std::string::npos)
+      {
+        const double up = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - g_coreStartTp).count();
+        // The PID is here so a supervisor can tell WHOSE core answered.
+        // A control channel identified only by a port is identified only
+        // by a port: a stray core left over from an earlier session, or a
+        // second launcher, answers on the same 127.0.0.1:4098 and looks
+        // exactly like the child that was just started. That was observed --
+        // a test spawned its own core, health-checked a stranger with an
+        // hour of uptime, and then sent the shutdown to it, stopping the
+        // wrong process while its own child ran on to the force-kill timer.
+        rn = snprintf(rsp, sizeof(rsp),
+                      "{\"type\":\"pong\",\"ack\":true,\"pid\":%ld,\"uptime_s\":%.1f,"
+                      "\"version\":\"" _VERSION_ "\",\"git\":\"%s\","
+                      "\"shutting_down\":%s}\n",
+                      (long)CONTROL_SELF_PID(), up, BUILD_GIT_HASH,
+                      g_shutdownRequested ? "true" : "false");
+        consock_write(cli, rsp, rn);
+      }
+      else if (cmd.find("\"shutdown\"") != std::string::npos)
+      {
+        // Answer BEFORE requesting the stop. Once g_shutdownRequested is set
+        // the teardown can close this socket out from under us, and a
+        // supervisor that never sees the ack cannot tell "stopping cleanly"
+        // from "did not understand" -- so it would escalate to a hard kill of
+        // a graceful shutdown already in progress.
+        rn = snprintf(rsp, sizeof(rsp), "{\"type\":\"shutdown\",\"ack\":true}\n");
+        consock_write(cli, rsp, rn);
+        LOGE("[control] shutdown requested by the launcher -- tearing down");
+        g_shutdownRequested = 1;
+        stopping = true;
+        break;
+      }
+      else
+      {
+        rn = snprintf(rsp, sizeof(rsp),
+                      "{\"ack\":false,\"err\":\"unknown command\","
+                      "\"accepts\":[\"ping\",\"shutdown\"]}\n");
+        consock_write(cli, rsp, rn);
+      }
+    }
+    consock_close(cli);
+    if (stopping) break;
+  }
+  consock_close(srv);
+  LOGI("[control] ended");
 }
 
 
@@ -8810,6 +9542,28 @@ void PerifPingThread(bool *terminationflag)
     // the test above and here, and this thread would be writing to freed
     // memory on a machine that is mid-run.
     if (bpg_pi.perifCH == NULL) continue;
+
+    // The device said serial_error_locked (see tap_device_reply). Pinging a
+    // latched parser accomplishes nothing -- it answers every command but RESET
+    // with the same refusal -- so send the recovery instead of the ping.
+    //
+    // Here rather than on the RX thread because this thread already owns
+    // perif_tx_lock and the channel's lifetime; the RX path only arms the flag.
+    //
+    // Exactly what the WebUI's RESYNC button does, and for the same reason:
+    // RESET_PACKET heals the device, request_rx_resync heals OUR parser, which
+    // would otherwise swallow the device's RESET_OK as more garbage and repeat
+    // this forever against a device that is already fine.
+    if (g_perifAutoResyncReq.exchange(false, std::memory_order_acq_rel))
+    {
+      bpg_pi.perifCH->send_RESET();
+      bpg_pi.perifCH->send_RESET();
+      bpg_pi.perifCH->request_rx_resync();
+      LOGE("perif: AUTO-RESYNC sent (device reported serial_error_locked). "
+           "Port left open; no reconnect, so nothing in flight is lost.");
+      continue;
+    }
+
     bpg_pi.perifCH->last_tx_us = perif_now_us();
     bpg_pi.perifCH->send_json_string(0, (uint8_t *)ping, (int)strlen(ping), 0);
   }
@@ -9182,6 +9936,12 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       // LOGE("repSend:%d imgSend:%d inspSnap:%d",reportSendState,imgSendState,inspSnap);
 
+      // The global cap, applied LAST so the per-class emphasis survives it.
+      // min(), never assignment: the cap can only ever take rate away, and a
+      // class configured below it is left exactly where the operator put it.
+      if (DATA_VIEW_MAX_FPS > 0 && maxFPS > (float)DATA_VIEW_MAX_FPS)
+        maxFPS = (float)DATA_VIEW_MAX_FPS;
+
       InspResultAction(headImgPipe,&skipInspDataTransfer , &skipImageTransfer , &inspSnap, &doPassDown,maxFPS);
       //possible occupationFlag snap save | resendCache
       image_pipe_info_gc(*headImgPipe,bpg_pi.resPool);//if all occupation flag cleared, it will gc the pointer    
@@ -9418,6 +10178,52 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // The other half of that spike was 71.9ms of REAL cpu against a ~7.6ms
     // norm, so the engine itself is also suspect. One number cannot accuse
     // both; two can.
+    // ---- clean-space gate: FIRST, and it can skip the inspection ----------
+    //
+    // "Was the field clean enough for a measurement to mean anything" is a
+    // cheaper question than "what does this part measure", and it can only
+    // subtract from the verdict -- a dirty region forces NA (or NG for a region
+    // marked on_fail:"ng") no matter what the part turns out to be. So asking it
+    // first costs a few ms of thresholding and, when it trips, saves the entire
+    // inspection: the locator, the calipers, the report JSON.
+    //
+    // This used to fold in LAST, after the object had been located and judged,
+    // and the result was thrown away work on exactly the frames that could never
+    // produce a verdict. (The lock comment on g_station_cfg_lock already
+    // described the order it has now -- "eval_clean_regions runs before the
+    // engine is entered" -- which had stopped being true.)
+    //
+    // Deliberately still OUTSIDE matchingEnglock: it reads the station config
+    // under g_station_cfg_lock and touches nothing the engine owns, so it must
+    // not queue behind a def load.
+    int clean_stat = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+    {
+      bool _have_clean_regions;
+      {
+        std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+        _have_clean_regions = !g_clean_regions.empty();
+      }
+      if (_have_clean_regions && !g_area_gates_bypass)
+      {
+        float cr_mmpp = (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : 0.0f;
+        acv_XY cr_off = (bacpac && bacpac->sampler) ? bacpac->sampler->getOriginOffset()
+                                                    : acv_XY{0.f, 0.f};
+        station_clean_json = cJSON_CreateArray();
+        const uint64_t _clT0 = perif_now_us();
+        clean_stat = eval_clean_regions(capImg, cr_mmpp, cr_off, station_clean_json);
+        g_lastCleanEvalUs = perif_now_us() - _clT0;
+      }
+    }
+    // Not merely "not SUCCESS": only a status that actually rejects skips the
+    // inspection. Anything else is still measured.
+    const bool clean_blocked =
+      (clean_stat == FeatureReport_sig360_circle_line_single::STATUS_NA ||
+       clean_stat == FeatureReport_sig360_circle_line_single::STATUS_FAILURE ||
+       clean_stat == FeatureReport_sig360_circle_line_single::STATUS_BAD);
+    if (clean_blocked)
+      LOG_EVERY(100, "clean_regions dirty (status %d) -> verdict rejected; frame "
+                "inspected with no candidate objects (no measurement runs)", clean_stat);
+
     const uint64_t _lkT0 = perif_now_us();
     std::lock_guard<std::mutex> _insp_guard(matchingEnglock);
     g_lastEngLockUs = perif_now_us() - _lkT0;
@@ -9435,6 +10241,32 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // chain measurement taken so far.
     const RUSnap _ru0 = rusnap();
     const uint64_t _mT0 = perif_now_us();
+    // The clean-area result no longer skips the inspection.
+    //
+    // Skipping produced a SECOND REPORT SHAPE: no `type`, no `reports`, only
+    // `station`. The WebUI reducer bails on the first line of
+    // EVENT_Inspection_Report when `type` is undefined, so every blocked part
+    // vanished from the statistics, the chart and historyReport -- counted by
+    // the machine, invisible in the UI -- and edit_info.insp_timing was
+    // overwritten with undefined on the way past.
+    //
+    // What skipping bought was the inspection's cost on a frame that was going
+    // to be rejected anyway. Measured 2026-08-21 at 13.6 rpm, both ways:
+    // match 21.641ms enforced vs 22.109ms bypassed, e2e 25.113 vs 24.599 --
+    // inside the noise. It bought nothing and cost a whole report shape.
+    //
+    // The rejection itself is unchanged: clean_stat is still reduced into
+    // `stat` below, so a dirty area still refuses the part.
+    //
+    // What a dirty clean area does to the inspection is now decided INSIDE the
+    // engine: the frame is inspected, but with no candidate objects, so the
+    // localizer yields nothing and no measurement runs.  Same report shape,
+    // zero located objects, and none of the cost of measuring a part that has
+    // already been rejected.  See FeatureManager::no_candidate_frame.
+    //
+    // Set every frame, both ways: the flag is state on the managers, so a
+    // false here is what releases the engine after a blocked frame.
+    matchingEng.setNoCandidateFrame(clean_blocked);
     if (!skip_inspection())
       ret = ImgInspection(matchingEng, capImg, bacpac, frameCam, 1);
     g_lastMatchUs = perif_now_us() - _mT0;
@@ -9509,6 +10341,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         if (!slowFrameQueue.push(sf)) g_slowDropped.fetch_add(1);
       }
     }
+    // NULL on BOTH skipped paths. GetReport() returns the engine's LAST report,
+    // so reading it after an inspection that did not run would publish the
+    // PREVIOUS part's measurements as this frame's. The verdict path is
+    // null-guarded throughout, so handing it nothing is the honest answer.
     const FeatureReport *report = skip_inspection() ? NULL
                                 : matchingEng.GetReport();
 
@@ -9679,33 +10515,24 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       }
     }
 
-    // Clean-space regions fold in LAST, on the full frame, after the object has
-    // been judged. Not inside the guard above: whether the plate is clean does
-    // not depend on whether an object was located, and a dirty field is worth
-    // logging on an empty frame too.
+    // Fold in the clean-space result evaluated ABOVE (before the inspection).
     //
     // STATUS_NA is absorbing in InspStatusReducer, so the default on_fail takes
     // the part out of the verdict rather than ejecting it -- it goes round again
     // and is measured on a clean field. A region marked on_fail:"ng" reports
     // FAILURE and does eject.
-    bool _have_clean_regions;
+    //
+    // Still folded here rather than at the gate: this is where every other
+    // contribution to `stat` meets, and on a frame that was NOT blocked the
+    // clean result has to combine with the part's own verdict, not replace it.
+    // On a blocked frame `stat` is still its NA default (nothing measured), so
+    // the same reduce produces the same answer with no special case.
+    if (clean_stat != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
     {
-      std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
-      _have_clean_regions = !g_clean_regions.empty();
-    }
-    if (_have_clean_regions && !g_area_gates_bypass)
-    {
-      float cr_mmpp = (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : 0.0f;
-      acv_XY cr_off = (bacpac && bacpac->sampler) ? bacpac->sampler->getOriginOffset()
-                                                  : acv_XY{0.f, 0.f};
-      station_clean_json = cJSON_CreateArray();
-      int cs = eval_clean_regions(capImg, cr_mmpp, cr_off, station_clean_json);
-      if (cs != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
-      {
-        LOG_EVERY(100, "clean_regions dirty -> part status %d (was %d)",
-                  InspStatusReducer(stat, cs), stat);
-        stat = InspStatusReducer(stat, cs);
-      }
+      LOG_EVERY(100, "clean_regions dirty -> part status %d (was %d)%s",
+                InspStatusReducer(stat, clean_stat), stat,
+                clean_blocked ? " [rejecting]" : "");
+      stat = InspStatusReducer(stat, clean_stat);
     }
 
     imgPipe->datViewInfo.uInspStatus = stat;
@@ -9718,9 +10545,21 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // Skipping the inspection also skips building its report: the JSON is
      // ~553 nodes and is part of the per-frame cost being removed. Downstream
      // adds fields to this object, so it must still exist.
+     // Downstream adds fields to this object, so it must exist even when there
+     // is nothing to report -- same contract the INSP_SKIP_INSPECTION path has
+     // always had, now shared with the clean-gate skip.
      imgPipe->datViewInfo.report_json = skip_inspection()
        ? cJSON_CreateObject()
        : matchingEng.FeatureReport2Json(report);
+      // Dirty clean area -> the part is rejected, so it has no measurements to
+      // show. Same report shape, zero located objects. See blank_located_objects.
+      //
+      // The engine's no_candidate_frame path (set above) already produces this
+      // shape for the sig360 sub-features. This stays as the backstop that
+      // makes the invariant hold for ANY sub-feature type, including one that
+      // does not honour the flag -- it is a walk over one or two JSON arrays.
+      if (clean_blocked)
+        blank_located_objects(imgPipe->datViewInfo.report_json);
       g_lastRepJsonUs = perif_now_us() - _jT0;
       g_histRepJson.add(g_lastRepJsonUs / 1000.0);
     }
@@ -9961,10 +10800,66 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // on the station box.
     cJSON_AddNumberToObject(st, "result", imgPipe->datViewInfo.uInspStatus);
     cJSON_AddNumberToObject(st, "result_obj", imgPipe->datViewInfo.finspStatus);
+    // WHY the verdict is NA, when the inspection knows.
+    //
+    // An NA with no reason sends the operator to the lighting, the def and the
+    // camera in turn, and the actual cause can be that the box they drew is
+    // smaller than the part -- which no amount of staring at the image shows,
+    // because the image looks fine. The locator already raises a coded error
+    // for that (INSP_REGION_TOO_SMALL); it is buried in the per-feature report,
+    // which the station box does not read. Lift it here, where the verdict is
+    // assembled, so the canvas can print the cause under the NA it already
+    // draws. Absent key = nothing to add, which is what every non-erroring
+    // frame emits -- readers predating this key are unaffected.
+    if (imgPipe->datViewInfo.report_json)
+    {
+      cJSON *_reps = cJSON_GetObjectItem(imgPipe->datViewInfo.report_json, "reports");
+      cJSON *_r0   = _reps ? cJSON_GetArrayItem(_reps, 0) : NULL;
+      cJSON *_err  = _r0 ? cJSON_GetObjectItem(_r0, "error") : NULL;
+      if (cJSON_IsNumber(_err) && _err->valueint != 0)
+        cJSON_AddNumberToObject(st, "insp_err", _err->valueint);
+    }
+    // The clean-area verdict as a CODE, not just as the per-region numbers.
+    //
+    // FeatureReport_ERROR has carried EXTERNAL_INTRUSION_OBJECT and
+    // DIRTY_BACKGROUND since it was written and nothing has ever set either --
+    // the clean gate took its own exit instead of reporting through the channel
+    // the report already had. This is that channel.
+    //
+    // EXTERNAL_INTRUSION_OBJECT rather than DIRTY_BACKGROUND: this is a BACKLIT
+    // station, so `dark` in a clean region means something is BLOCKING the
+    // light there, and the regions sit either side of the working position
+    // (station x1222..1588; clean at x1097..1223 and x1589..1674) -- they watch
+    // the neighbouring slots. A dark reading is a neighbour encroaching, which
+    // is the case for not blowing. Genuine dirt on a lit field reads bright and
+    // never trips this.
+    // Read it back out of the payload rather than hoisting clean_blocked up
+    // here: that flag lives inside the block that holds the engine lock, and
+    // widening a variable's scope to reach a reporting line is how the two
+    // drift apart later. This asks the same array the UI is about to be given.
+    if (station_clean_json)
+    {
+      bool _any_dirty = false;
+      for (int _i = 0; _i < cJSON_GetArraySize(station_clean_json); _i++)
+      {
+        cJSON *_c = cJSON_GetArrayItem(station_clean_json, _i);
+        if (cJSON_IsTrue(cJSON_GetObjectItem(_c, "dirty"))) { _any_dirty = true; break; }
+      }
+      if (_any_dirty)
+        cJSON_AddNumberToObject(st, "clean_err",
+                                (int)FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT);
+    }
     if (bpg_pi.perifCH != NULL)
       cJSON_AddNumberToObject(st, "cat",
         perif_status_to_cat(bpg_pi.perifCH, imgPipe->datViewInfo.uInspStatus));
-    if (station_clean_json) cJSON_AddItemToObject(st, "clean", station_clean_json);
+    if (station_clean_json)
+    {
+      // What the gate itself cost this frame. It is the number that decides
+      // whether making this scan cheaper is worth anything at all: it is
+      // measured against a ~12 ms inspection.
+      cJSON_AddNumberToObject(st, "clean_us", (double)g_lastCleanEvalUs);
+      cJSON_AddItemToObject(st, "clean", station_clean_json);
+    }
     cJSON_AddItemToObject(imgPipe->datViewInfo.report_json, "station", st);
   }
 
@@ -10190,6 +11085,61 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       LOGI("OPENING peer %s:%d  sock:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr),
            ntohs(data.peer->getAddr().sin_port), data.peer->getSocket());
+
+      // ONE CLIENT. A second connection is refused at the door.
+      //
+      // It used to be allowed in, and that was worse than it sounds: the extra
+      // client could send commands -- change the inspection mode, load a def,
+      // start and stop the plate -- while receiving no stream at all, because
+      // streaming is granted only to the first peer (see below) and the WebUI
+      // never sends SB to ask for it. So the second window was fully able to
+      // steer the machine while showing a frozen picture, and "browser B
+      // undoing browser A's InspectionMode" is a thing that actually happened
+      // here. Refusing the connection turns a silent, confusing state into an
+      // obvious one.
+      //
+      // Not supposed to happen in normal operation: one bench, one screen. It
+      // is the abnormal cases this is for -- a forgotten second tab, a test
+      // harness left connected, a tool started before the operator's browser.
+      // That last one is the nasty one: whoever connects FIRST gets the stream,
+      // so a tool that beat the browser to it left the operator with a UI that
+      // looked completely normal and updated nothing.
+      //
+      // A browser RELOAD can land here while the old socket's CLOSING is still
+      // in flight -- the code below documents that ordering -- so a reload can
+      // be refused once. The WebUI's auto-reconnect retries every 5s and gets
+      // in as soon as the old peer is reaped, so the cost is a few seconds, not
+      // a lockout.
+      //
+      // INSP_ALLOW_MULTI_CLIENT=1 restores the old behaviour for bench work:
+      // tools/webctl's harnesses (soak, dv_bench, run_machine, fi_watch) all
+      // connect ALONGSIDE the UI and would otherwise be refused.
+      {
+        static const bool _allow_multi = (getenv("INSP_ALLOW_MULTI_CLIENT") != NULL);
+        bool _refuse = false;
+        {
+          std::lock_guard<std::mutex> _peer_guard(bpg_pi.subscribersLock);
+          _refuse = (!_allow_multi && !peers.empty());
+        }
+        if (_refuse)
+        {
+          LOGE("REFUSED second client %s:%d -- this core serves ONE client at a "
+               "time (set INSP_ALLOW_MULTI_CLIENT=1 for bench tooling)",
+               inet_ntoa(data.peer->getAddr().sin_addr),
+               ntohs(data.peer->getAddr().sin_port));
+          // shutdown(), not close(): the socket belongs to the ws server, and
+          // breaking it here makes its own read loop see the peer go away and
+          // run the normal CLOSING path -- buffers freed, peer erased, no
+          // special case. Closing the fd from another thread would leave the
+          // server holding a dangling descriptor.
+#ifdef _WIN32
+          shutdown(data.peer->getSocket(), SD_BOTH);
+#else
+          shutdown(data.peer->getSocket(), SHUT_RDWR);
+#endif
+          return 0;
+        }
+      }
 
       {
         // Same guard the CLOSING handler holds for these fields: the UART
@@ -10420,6 +11370,9 @@ int mainLoop(bool realCamera = false)
 
   // Returns immediately unless INSP_PERIF_CONSOLE is set.
   std::thread _perifConsoleThread(PerifConsoleThread, &terminationFlag);
+  // Always on, unlike the console above: the launcher needs it in
+  // production. See the block comment at ControlSocketThread.
+  std::thread _controlSocketThread(ControlSocketThread, &terminationFlag);
 
   {
 
@@ -11188,12 +12141,12 @@ int cp_main(int argc, char **argv)
     if (!cam) { LOGE("--insp-cont: connectCamera failed"); return 5; }
     if (isBMP) cam->SetFrameRate(120);   // cycle the carousel quickly
     cam->TriggerMode(0);                  // continuous / free-run
-    cam->StartAquisition();
+    cam->StartAcquisition();
 
     LOGE("[INSP-CONT] running %d frames ...", N);
     for (int waited = 0; g_inspCont.idx < N && waited < 120000; waited += 10)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    cam->StopAquisition();
+    cam->StopAcquisition();
 
     int done = g_inspCont.idx;
     if (done > 0)
@@ -11254,7 +12207,9 @@ int cp_main(int argc, char **argv)
         doMatch=true;
         CamInitStyle = 1;
       }
-      else if (strcmp(str, "1") == 0)
+      // Was a second `strcmp(str, "1")`, identical to the branch above, so
+      // CamInitStyle 2 was unreachable and cam=2 fell through as unrecognised.
+      else if (strcmp(str, "2") == 0)
       {
         doMatch=true;
         CamInitStyle = 2;
@@ -11274,7 +12229,19 @@ int cp_main(int argc, char **argv)
     {
       LOGI("parse....   chdir=%s",str);
       doMatch=true;
-      chdir(str);
+      // The return value used to be dropped. When the directory did not exist
+      // the core carried on in whatever cwd it was launched from and loaded a
+      // DIFFERENT data/ -- a different machine_setting.json, a different
+      // calibration -- while reporting nothing at all. The launcher passes this
+      // argument on every start, so a typo in its config would silently run the
+      // machine on the wrong recipe. Fail loudly instead; there is no sensible
+      // fallback for "inspect with settings the operator did not choose".
+      if (chdir(str) != 0)
+      {
+        LOGE("chdir(%s) FAILED (%s) -- refusing to run from the wrong data "
+             "directory", str, strerror(errno));
+        return -1;
+      }
     }
 
     if (doMatch)

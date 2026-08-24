@@ -47,10 +47,15 @@ function Die  ($m) { Write-Host "  STOP  $m" -ForegroundColor Red; exit 1 }
 $env:PATH = "$Mingw;$env:PATH"
 
 # --- which build -------------------------------------------------------------
-# nohik-cv4 is built with FEATURE_HIKROBOT=OFF. With a real camera attached it
-# does not fail -- it enumerates the BMP carousel and hands you a FAKE camera,
-# with nothing on screen looking wrong. So the build is asked what it actually
-# links, rather than trusted for its name.
+# There is ONE build now (2026-08-20): the six that had accumulated were deleted
+# and win-mingw-msys rebuilt from scratch. It is HikRobot-capable, so it serves
+# both modes -- -Bench differs by environment (synth cam_ts, dev console), not
+# by binary.
+#
+# The name is still not trusted. A build with FEATURE_HIKROBOT=OFF does not fail
+# with a real camera attached: it enumerates the BMP carousel and hands you a
+# FAKE camera, with nothing on screen looking wrong. So the binary is asked what
+# it links, and anything under build\ is accepted as long as it answers yes.
 function Test-HikCapable ($name) {
   $exe = Join-Path (Join-Path $BuildDir $name) 'visSele.exe'
   if (-not (Test-Path $exe)) { return $false }
@@ -59,15 +64,19 @@ function Test-HikCapable ($name) {
 }
 
 if ([string]::IsNullOrEmpty($Build)) {
-  if ($Bench) {
-    $Build = 'nohik-cv4'
-  } else {
-    foreach ($b in @('win-mingw-msys', 'nohik-cv4')) {
-      if (Test-HikCapable $b) { $Build = $b; break }
+  if (Test-HikCapable 'win-mingw-msys') { $Build = 'win-mingw-msys' }
+  if ([string]::IsNullOrEmpty($Build)) {          # any other build linking the SDK
+    foreach ($d in (Get-ChildItem -Path $BuildDir -Directory -ErrorAction SilentlyContinue)) {
+      if (Test-HikCapable $d.Name) { $Build = $d.Name; break }
     }
-    if ([string]::IsNullOrEmpty($Build)) {
-      Die "no build under $BuildDir links MVCameraControl.dll -- rebuild with FEATURE_HIKROBOT=ON"
+  }
+  if ([string]::IsNullOrEmpty($Build) -and $Bench) {   # bench needs no camera
+    foreach ($d in (Get-ChildItem -Path $BuildDir -Directory -ErrorAction SilentlyContinue)) {
+      if (Test-Path (Join-Path $d.FullName 'visSele.exe')) { $Build = $d.Name; break }
     }
+  }
+  if ([string]::IsNullOrEmpty($Build)) {
+    Die "no build under $BuildDir links MVCameraControl.dll -- configure with FEATURE_HIKROBOT=ON and build"
   }
 }
 $Exe = Join-Path (Join-Path $BuildDir $Build) 'visSele.exe'
@@ -78,14 +87,16 @@ Say "build   $Build"
 if ($Bench) { Say "mode    bench (synth cam_ts, no camera)" } else { Say "mode    real camera" }
 
 # --- PATH --------------------------------------------------------------------
-# Four directories. The exe resolves DLLs through PATH, not through its own
+# Three directories. The exe resolves DLLs through PATH, not through its own
 # directory:
 #   mingw64\bin   OpenCV 4.13 + libgomp
-#   <build>       the build's own DLLs
-#   nohik-cv4     MVCAMSDK_X64.DLL lives ONLY here -- a MindVision link-time
-#                 dependency, required even though there is no MindVision camera
+#   <build>       the build's own DLLs, incl. MVCAMSDK_X64.DLL -- a MindVision
+#                 link-time dependency the exe will not start without, even
+#                 though there is no MindVision camera. It used to be borrowed
+#                 off a sibling build dir (nohik-cv4), so deleting an unrelated
+#                 build broke every other one. Now copied in from dist\win.
 #   MVS runtime   MvCameraControl.dll (HikRobot)
-$env:PATH = "$Mingw;$(Join-Path $BuildDir $Build);$(Join-Path $BuildDir 'nohik-cv4');$MvsRt;$env:PATH"
+$env:PATH = "$Mingw;$(Join-Path $BuildDir $Build);$MvsRt;$env:PATH"
 
 # --- preflight ---------------------------------------------------------------
 Write-Host "preflight"
@@ -120,7 +131,15 @@ foreach ($dll in @('libopencv_core-413.dll', 'MVCAMSDK_X64.DLL')) {
     if ([string]::IsNullOrWhiteSpace($d)) { continue }
     if (Test-Path (Join-Path $d $dll)) { $hit = $d; break }
   }
-  if ($hit) { OK $dll } else { Warn "$dll NOT on PATH -- the exe will refuse to start"; $fail = 1 }
+  if ($hit) {
+    OK $dll
+  } else {
+    Warn "$dll NOT on PATH -- the exe will refuse to start"
+    if ($dll -eq 'MVCAMSDK_X64.DLL') {
+      Say "      Copy-Item '$(Join-Path $Here 'dist\win\MVCAMSDK_X64.DLL')' '$(Join-Path $BuildDir $Build)\'"
+    }
+    $fail = 1
+  }
 }
 
 if (-not $Bench) {

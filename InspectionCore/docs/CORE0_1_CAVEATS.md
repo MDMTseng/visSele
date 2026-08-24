@@ -700,7 +700,7 @@ soft cam, which the UI read as "camera lost", which fired another reconnect.
 **Failure guaranteed the next failure.**
 
 **3. Reconnect was a use-after-free.** The body was `delete camera; camera =
-NULL; camera = getCamera(1);` — no `StopAquisition()`, no drain, no lock — run
+NULL; camera = getCamera(1);` — no `StopAcquisition()`, no drain, no lock — run
 from the BPG thread while `ImgPipeProcessThread` was mid-frame holding the same
 pointer (`ImgInspection` takes it as `cam` and hands it to the matcher via
 `bacpac->cam`). `crash_20260806T035429Z.dump` ends:
@@ -713,7 +713,7 @@ ImgInspection 7.942000ms
 ```
 
 **Fixed** (2026-08-06): a `camera_lifetime_lock` held for the whole of one
-frame's inspection and by anyone destroying the camera; `StopAquisition()`
+frame's inspection and by anyone destroying the camera; `StopAcquisition()`
 before `delete`; a 3-second floor between reconnects; and **no BMP substitution
 on the reconnect path** — a failed reconnect now leaves no camera at all, and
 every reader is NULL-guarded. A fake camera that looks live is worse than none.
@@ -942,7 +942,7 @@ That is the "sometimes": the first press after **anything** that starts
 acquisition (a CI session, `camera_ez_reconnect`, an ROI or exposure change)
 succeeds and re-arms nothing. Every press after it waits out the full timeout.
 
-Fix: `SnapFrame` calls `StartAquisition()` before triggering. Idempotent on
+Fix: `SnapFrame` calls `StartAcquisition()` before triggering. Idempotent on
 Aravis (immediate ACK when already streaming) and a no-op elsewhere, so the
 paths that were already correct — FI, which streams — pay nothing.
 
@@ -1555,3 +1555,17 @@ Mac bench 上請改看 `~/Library/Logs/DiagnosticReports/*.ips`(OS 的報告本�
 一個重複的判定會把 NG 升級成 OK,壞件跟著好料出去,而計數器名字不變。
 core 原本只檢查 `!= 0`。現在 `wiringPanel.cpp` 會**拒絕** `cat_ng >= cat_ok`
 並讓分料維持關閉(全部回流是停著且看得見的;偶爾升級 NG 兩者皆非)。
+
+### `StartAquisition` was renamed to `StartAcquisition` (2026-08-20)
+
+The camera-layer methods were spelled `StartAquisition` / `StopAquisition` --
+one 'c' short -- for their whole life, in code and in these notes. It cost real
+time: chasing a camera that delivered no frames, `grep AcquisitionStart` and
+`grep aquisition` over the log ring both came back empty, and the natural
+reading of an empty result is "that path never ran", not "you spelled it the way
+the compiler accepted".
+
+Renamed everywhere in code, and in this file. **Older logs, dumps and reports
+still carry the old spelling**, so when searching anything captured before this
+date, grep `Aquisition` too. The vendor SDK's own `AcquisitionStart` node was
+always spelled correctly -- only our wrapper was not.
