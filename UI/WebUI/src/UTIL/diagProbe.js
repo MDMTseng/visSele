@@ -149,22 +149,49 @@ export function installDiagProbe(store) {
   // the window is occluded, so a long gap there is ambiguous and a long gap
   // here is not.
   const STALL_MS = 250;
-  const stall = { worst: 0, count: 0, last: 0 };
+  // 1000 ms was too high to be useful: the field report is "frequent", and a
+  // bench run sat at a 818 ms maximum without ever tripping it, so the log said
+  // nothing while the instrument had the answer. What matters is the
+  // DISTRIBUTION -- a screen that misses a few frames and a screen that freezes
+  // for ten seconds are different faults, and a single threshold cannot tell
+  // them apart. Buckets do.
+  const STALL_WARN_MS = 400;
+  const stall = { worst: 0, count: 0, last: 0, b400: 0, b1s: 0, b3s: 0, maxDropMB: 0 };
   try {
+    // The heap is read on the SAME tick as the lateness, because a collection's
+    // fingerprint is a sharp drop in used heap and the only way to attribute a
+    // stall to one is to have both numbers from the same instant. --trace-gc
+    // would say it directly, but Electron on Windows does not surface the
+    // renderer's stdout, so the flag produced nothing.
+    const heap = () => {
+      const m = performance.memory;
+      return m ? m.usedJSHeapSize / 1048576 : 0;
+    };
+    let prevHeap = heap();
     let due = performance.now() + STALL_MS;
     setInterval(() => {
       const now = performance.now();
       const late = now - due;
       due = now + STALL_MS;
+      const h = heap();
+      const drop = prevHeap - h;
+      prevHeap = h;
+      if (drop > stall.maxDropMB) stall.maxDropMB = drop;
       if (late <= 100) return;
       if (late > stall.worst) stall.worst = late;
-      if (late > 1000) {
+      if (late > 400) stall.b400++;
+      if (late > 1000) stall.b1s++;
+      if (late > 3000) stall.b3s++;
+      if (late > STALL_WARN_MS) {
         stall.count++;
         stall.last = Date.now();
         // Loud on purpose: this is the one event where the log timestamp is
         // worth more than the counter, because it can be lined up against the
         // core's own log to say which side stopped first.
-        try { console.warn(`[stall] main thread blocked ${Math.round(late)} ms`); } catch {}
+        try {
+          console.warn(`[stall] main thread blocked ${Math.round(late)} ms `
+            + `heap ${h.toFixed(1)} MB drop ${drop.toFixed(1)} MB`);
+        } catch {}
       }
     }, STALL_MS);
   } catch { /* a probe must never break the app */ }
@@ -369,8 +396,12 @@ export function installDiagProbe(store) {
       // one second. A frozen screen with a running machine lands here.
       ...(function () {
         const o = { stallMaxMs: Math.round(stall.worst), stallCount: stall.count,
+                    stall400: stall.b400, stall1s: stall.b1s, stall3s: stall.b3s,
+                    heapDropMB: +stall.maxDropMB.toFixed(1),
                     taskMaxMs: Math.round(tasks.worst), taskWorst: tasks.worstName };
-        stall.worst = 0; stall.count = 0; tasks.worst = 0; tasks.worstName = '';
+        stall.worst = 0; stall.count = 0;
+        stall.b400 = 0; stall.b1s = 0; stall.b3s = 0; stall.maxDropMB = 0;
+        tasks.worst = 0; tasks.worstName = '';
         return o;
       })(),
       // Nodes MANUFACTURED since the last sample, whether or not they ever

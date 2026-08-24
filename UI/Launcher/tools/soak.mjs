@@ -106,6 +106,23 @@ const IDLE = process.env.SOAK_IDLE === '1';
 const LEAVE_UI = process.env.SOAK_LEAVE_UI === '1';
 // Skip the canvas's two SVG icons. See drawIcon in canvas/renderUTIL.js.
 const NO_ICONS = process.env.SOAK_NO_ICONS === '1';
+// Exercise the UI the way an operator does, instead of staring at one screen.
+//
+// The freeze was reported while WORKING with the machine -- opening the chart,
+// collapsing a group, switching around -- and a soak that only watches will
+// never walk those paths. Deliberately narrow: everything here is inside the
+// Inspection UI and reversible. Leaving the page stops inspection (state drops
+// to 100), which would change the very workload being measured, and anything
+// that writes a file or edits the recipe has no place in an unattended run.
+const POKE = process.env.SOAK_POKE === '1';
+// Retained-object census via Runtime.queryObjects. See the note at its call
+// site: it stalls the renderer for seconds, so it is opt-in.
+const LIVEDOM = process.env.SOAK_LIVEDOM === '1';
+// Make V8 say when it collects. The stall bursts are periodic, burn renderer
+// CPU on threads that are not the main one, and produce no longtask -- which is
+// the signature of concurrent GC, but a signature is not a timestamp. With this
+// on, every collection prints a line that can be lined up against [stall].
+const TRACE_GC = process.env.SOAK_TRACE_GC === '1';
 
 const edges = (s) => (s && s.yield && s.yield.gate ? s.yield.gate.in : -1);
 
@@ -140,10 +157,19 @@ console.log(`    appRoot     ${APP_ROOT}`);
 console.log(`    workingDir  ${WORKING_DIR}`);
 
 const app = await electron.launch({
-  args: [APP_DIR, `--user-data-dir=${userData}`],
+  args: [APP_DIR, `--user-data-dir=${userData}`,
+         ...(TRACE_GC ? ['--js-flags=--trace-gc'] : [])],
   // The board console is the only way to ask the device anything while the core
   // owns the serial port. boot.js passes it through if it is set.
   env: { ...process.env, INSP_PERIF_CONSOLE: String(PERIF_CONSOLE) },
+});
+// V8 writes --trace-gc to stdout, which nothing was reading.
+if (TRACE_GC) app.process().stdout.on('data', (d) => {
+  for (const line of String(d).split(String.fromCharCode(10))) {
+    if (/Scavenge|Mark-Compact|Mark-Sweep/.test(line)) {
+      console.log(`  ${new Date().toISOString()} [gc] ${line.trim().slice(0, 120)}`);
+    }
+  }
 });
 app.process().stderr.on('data', (d) => {
   const s = String(d).trim();
@@ -181,6 +207,16 @@ await page.addInitScript(() => {
   };
 });
 page.on('pageerror', (e) => console.log('  [pageerror]', e.message.slice(0, 110)));
+
+// The stall warnings, and ONLY those. A stall's value is its wall-clock time --
+// it is what lets a frozen screen be lined up against the core's own log to see
+// which side stopped first -- and a per-sample maximum throws that away. The
+// filter is deliberate: forwarding the whole console would bury the one line
+// this run exists to catch.
+page.on('console', (m) => {
+  const t = m.text();
+  if (t.startsWith('[stall]')) console.log(`  ${new Date().toISOString()} ${t}`);
+});
 
 console.log('[1] waiting for the launcher to start the core and hand over the window');
 let onApp = false;
@@ -821,9 +857,10 @@ console.log('t_min,heapMB,totalMB,elRSS_MB,elCPU,rendMB,gpuMB,coreRSS_MB,coreCPU
           + 'resid_us,resid_max_us,dmax_us,ts_rej,cal_fail,cal_lost,win_us,drift_us_s,'
           + 'rafHz,imgHz,imgKBps,frameKB,imgW,imgScale,gradeMismatch,tagActive,tagApplied,tagDrift,vis,arrays,nodes,gc_before,gc_after,gc_freed,'
           + 'dom_nodes,dom_listeners,dom_docs,'
-          + 'churn_add,churn_rem,made,stall_max_ms,stall_n,task_max_ms,err,panel,census,domcensus,livedom,divsample,churntop,madetop,taskworst');
+          + 'churn_add,churn_rem,made,stall_max_ms,stall_n,stall_400,stall_1s,stall_3s,heap_drop_mb,task_max_ms,err,panel,census,domcensus,livedom,divsample,churntop,madetop,taskworst');
 const t0 = Date.now();
 let faults = 0;
+let pokeMiss = 0;
 let shotCards = false;
 
 // Zoom test: does zooming IN restore full resolution?
@@ -946,7 +983,22 @@ for (let i = 0; i <= TICKS; i++) {
   const dg = await diag();
   const dc = await domCounters();
   // Expensive (it collects first), so only every fourth sample.
-  const ld = (i % 4 === 0) ? await liveDom() : null;
+  // OFF BY DEFAULT, AND THE REASON IS THE WHOLE POINT OF THIS RUN.
+  //
+  // Runtime.queryObjects forces a full collection and then materialises an
+  // array of every live instance of each class asked for. On a two-core machine
+  // that work runs on the renderer's background threads and starves its main
+  // thread for about eight seconds -- which this soak then faithfully recorded
+  // as a stall burst. Four hypotheses were tested against those bursts (the
+  // image stream, the SVG icons, the core stealing CPU, V8's GC) and all four
+  // were wrong, because the bursts were the instrument, not the application:
+  // every one of them landed in the sample straight after a queryObjects tick,
+  // four times out of four, and nowhere else.
+  //
+  // It stays available because it is still the only way to ask what is RETAINED
+  // rather than what is merely uncollected. But a probe that manufactures the
+  // symptom being hunted cannot be on by default.
+  const ld = (LIVEDOM && i % 4 === 0) ? await liveDom() : null;
 
   // Every tenth minute, and only then: forcing a collection changes what is
   // being measured, so it must not happen on every sample.
@@ -1034,6 +1086,9 @@ for (let i = 0; i <= TICKS; i++) {
                dg && dg.churn ? dg.churn.removed : '',
                dg && dg.made ? dg.made.total : '',
                dg ? (dg.stallMaxMs ?? '') : '', dg ? (dg.stallCount ?? '') : '',
+               dg ? (dg.stall400 ?? '') : '', dg ? (dg.stall1s ?? '') : '',
+               dg ? (dg.stall3s ?? '') : '',
+               dg ? (dg.heapDropMB ?? '') : '',
                dg ? (dg.taskMaxMs ?? '') : '',
                errs, '"' + pt.slice(0, 90) + '"',
                // The census goes LAST and quoted: it is a list, it is wide, and
@@ -1105,6 +1160,18 @@ for (let i = 0; i <= TICKS; i++) {
   if (i === 2) await page.screenshot({ path: OUT + '/esoak_t2.png' });
   if (i % Math.max(1, Math.round(3600 / TICK_S)) === 0 && i) {
     await page.screenshot({ path: OUT + `/esoak_t${Math.round(i * TICK_S / 60)}min.png` });
+  }
+  if (POKE) {
+    // Named for what it opens, not for a selector: if the button is renamed the
+    // run must fail loudly here rather than quietly stop poking.
+    const chart = await rawClickText('資料圖表', 'button').catch(() => false);
+    if (chart) { await sleep(2500); await closeDrawers(); await sleep(500); }
+    // Collapse and re-expand the first measurement group.
+    await page.evaluate(() => {
+      const h = document.querySelector('.insp-group-head') || document.querySelector('tbody tr');
+      if (h && h.click) { h.click(); setTimeout(() => h.click(), 800); }
+    }).catch(() => {});
+    if (!chart) pokeMiss++;
   }
   await sleep(TICK_S * 1000);
 }
