@@ -125,10 +125,21 @@ const panels = [
     // left its whole subtree reachable. A forced collection returned none of
     // it. Flat here means the retention is gone; any sustained upward slope
     // means it is not, however small the numbers look early on.
-    note: '修正前這兩條每分鐘漲 +2725..+3600 與 +366..+493 且不回落。'
-        + '平的才是對的 —— 只要持續向上,不論起點多低,保留就還在。',
+    // THREE INSTRUMENTS, AND ONLY ONE OF THEM IS ABOUT THIS UI.
+    //
+    // 文件內 walks the document, so it is what the page actually holds.
+    // getDOMCounters does NOT collect before answering, so its 節點 is the
+    // document PLUS whatever garbage has not been reclaimed yet -- which is why
+    // it can swing three-fold while the document itself never moves. Reading
+    // the swing as churn was the mistake this panel used to invite; a
+    // MutationObserver over the whole tree records exactly zero insertions and
+    // zero removals per sample in steady state.
+    note: '三條線量的不是同一件事。「文件內」是這個 UI 真正掛著的節點,平的才對。'
+        + '「節點」來自 getDOMCounters,回答前不做回收,所以是文件內 + 尚未回收的垃圾 —— '
+        + '它的起伏是回收時機,不是 UI 的行為(churn 實測為 0)。',
     lines: [
-      { name: '節點', data: series('dom_nodes'), color: 'var(--t1)', width: 2 },
+      { name: '文件內', data: series('domNodes'), color: 'var(--t3)', width: 2 },
+      { name: '節點(未回收)', data: series('dom_nodes'), color: 'var(--t1)', width: 2 },
       { name: '事件監聽器', data: series('dom_listeners'), color: 'var(--t2)' },
       { name: 'documents', data: series('dom_docs'), color: 'var(--t4)' },
     ],

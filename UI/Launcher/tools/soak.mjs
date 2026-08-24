@@ -95,6 +95,20 @@ const SNAP_S = Number(process.env.SOAK_SNAPSHOT_S || 0);
 // the soak needs it only to recognise the page when it appears.
 const INSP_UI_DEV_URL = process.env.INSP_UI_DEV_URL || '';
 const SHOT_EVERY_TICK = process.env.SOAK_SHOT_EVERY === '1';
+// Bring everything up, then DO NOT start the machine: the UI sits on a live
+// core with no parts, no reports and no image stream. It is the control for
+// every "is this the app or is this the instrument" question -- a number that
+// still moves with nothing to measure is measuring the instrument.
+const IDLE = process.env.SOAK_IDLE === '1';
+// Start the machine, then LEAVE the Inspection UI. The core keeps inspecting at
+// full rate; the page that draws the results is unmounted. Pairs with SOAK_IDLE
+// to separate the two halves of "is it the work or is it the screen".
+const LEAVE_UI = process.env.SOAK_LEAVE_UI === '1';
+// Skip the canvas's two SVG icons. See drawIcon in canvas/renderUTIL.js.
+const NO_ICONS = process.env.SOAK_NO_ICONS === '1';
+
+const edges = (s) => (s && s.yield && s.yield.gate ? s.yield.gate.in : -1);
+
 const PERIF_CONSOLE = 4099;
 const OUT = 'C:/Users/w2110/Downloads/pw';
 const MSET = path.join(WORKING_DIR, 'data', 'machine_setting.json');
@@ -469,6 +483,13 @@ if (NOCLEAN) {
   await sleep(4000);
 }
 
+if (IDLE) {
+  console.log('[9] SOAK_IDLE -- machine deliberately NOT started');
+  await closeDrawers();
+  await page.evaluate(() => { const x = document.querySelector('.ant-drawer-close');
+    if (x && x.offsetParent) x.click(); });
+  await sleep(2000);
+} else {
 console.log('[9] start the machine');
 await closeDrawers();
 await clickIcon('anticon-caret-right'); await sleep(9000);
@@ -479,7 +500,6 @@ await page.evaluate(() => { const x = document.querySelector('.ant-drawer-close'
   if (x && x.offsetParent) x.click(); });
 await sleep(2000);
 
-const edges = (s) => (s && s.yield && s.yield.gate ? s.yield.gate.in : -1);
 const a0 = await ask({ type: 'get_running_stat' }, 1800);
 await sleep(10000);
 const b0 = await ask({ type: 'get_running_stat' }, 1800);
@@ -494,6 +514,7 @@ if (!b0 || b0.state !== 101 || edges(b0) <= edges(a0)) {
              + '-- the plate is not turning');
 }
 await page.screenshot({ path: OUT + '/esoak_start.png' });
+}
 
 // Applied AFTER the machine is up, so the run's first samples are already at
 // the accelerated rate rather than showing a step in the middle of the data.
@@ -533,6 +554,23 @@ if (AMP > 0) {
   console.log(`[11] amplifier x${ok} (each frame replayed ${ok} extra times through the full path)`);
   await sleep(3000);
 }
+if (LEAVE_UI) {
+  await rawClickIcon('anticon-arrow-left', 0);
+  await sleep(3000);
+  const gone = !(await seeText('工位'));
+  console.log(`[10b] left the Inspection UI: ${gone ? 'yes' : 'NO -- still showing it'}`);
+  if (!gone) {
+    await page.screenshot({ path: OUT + '/esoak_FAILED.png' });
+    await die(app, 'SOAK_LEAVE_UI could not leave the Inspection UI');
+  }
+  await page.screenshot({ path: OUT + '/esoak_left.png' });
+}
+
+if (NO_ICONS) {
+  await page.evaluate(() => { window.__DIAG_NO_ICONS__ = 1; });
+  console.log('[10c] canvas SVG icons: OFF');
+}
+
 if (TICK_S !== 60) console.log(`[11] sampling every ${TICK_S}s`);
 
 // ---- sampling ---------------------------------------------------------------
@@ -783,7 +821,7 @@ console.log('t_min,heapMB,totalMB,elRSS_MB,elCPU,rendMB,gpuMB,coreRSS_MB,coreCPU
           + 'resid_us,resid_max_us,dmax_us,ts_rej,cal_fail,cal_lost,win_us,drift_us_s,'
           + 'rafHz,imgHz,imgKBps,frameKB,imgW,imgScale,gradeMismatch,tagActive,tagApplied,tagDrift,vis,arrays,nodes,gc_before,gc_after,gc_freed,'
           + 'dom_nodes,dom_listeners,dom_docs,'
-          + 'err,panel,census,domcensus,livedom,divsample');
+          + 'churn_add,churn_rem,made,stall_max_ms,stall_n,task_max_ms,err,panel,census,domcensus,livedom,divsample,churntop,madetop,taskworst');
 const t0 = Date.now();
 let faults = 0;
 let shotCards = false;
@@ -989,6 +1027,14 @@ for (let i = 0; i <= TICKS; i++) {
                dg ? dg.arrayCount : '', dg ? dg.nodes : '',
                gcBefore, gcAfter, gcFreed,
                dc ? dc.nodes : '', dc ? dc.jsEventListeners : '', dc ? dc.documents : '',
+               // Nodes created and destroyed since the previous sample. This is
+               // the number getDOMCounters cannot give: a rate, and one that a
+               // collection cannot flatter.
+               dg && dg.churn ? dg.churn.added : '',
+               dg && dg.churn ? dg.churn.removed : '',
+               dg && dg.made ? dg.made.total : '',
+               dg ? (dg.stallMaxMs ?? '') : '', dg ? (dg.stallCount ?? '') : '',
+               dg ? (dg.taskMaxMs ?? '') : '',
                errs, '"' + pt.slice(0, 90) + '"',
                // The census goes LAST and quoted: it is a list, it is wide, and
                // nothing after it needs a stable column position. Two samples
@@ -997,7 +1043,10 @@ for (let i = 0; i <= TICKS; i++) {
                '"' + (dg && dg.dom ? dg.dom.top.join(' ') : '') + '"',
                '"' + (ld ? Object.entries(ld).filter(([k]) => k !== '__sample')
                               .map(([k, v]) => k + '=' + v).join(' ') : '') + '"',
-               '"' + (ld && ld.__sample ? String(ld.__sample).replace(/"/g, "'") : '') + '"'].join(','));
+               '"' + (ld && ld.__sample ? String(ld.__sample).replace(/"/g, "'") : '') + '"',
+               '"' + (dg && dg.churn ? dg.churn.top.join(' ') : '') + '"',
+               '"' + (dg && dg.made ? dg.made.top.join(' | ').replace(/"/g, "'") : '') + '"',
+               '"' + (dg ? String(dg.taskWorst || '').replace(/"/g, "'") : '') + '"'].join(','));
   prev = cur;
 
   // Report a fault, do NOT abort: how the machine behaves after one is part of

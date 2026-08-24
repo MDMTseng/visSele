@@ -75,6 +75,15 @@ class renderUTIL {
   // where resource/image/*.svg wasn't bundled. A missing decorative icon must
   // degrade to "not drawn", never crash the render.
   drawIcon(ctx, name, x, y, w, h) {
+    // DIAGNOSTIC SWITCH -- off unless window.__DIAG_NO_ICONS__ is set.
+    //
+    // These two icons are SVG, and an SVG <img> is not a bitmap: Blink keeps a
+    // whole document for it and rasterises that document on demand. Drawing one
+    // per frame is therefore a candidate for the node count that swings by
+    // thousands while the page creates nothing and mutates nothing. Skipping
+    // the draw is the only way to ask the question without changing anything
+    // else about the render.
+    if (typeof window !== 'undefined' && window.__DIAG_NO_ICONS__) return;
     const img = this.iconSet[name];
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x, y, w, h);

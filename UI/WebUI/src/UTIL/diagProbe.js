@@ -135,6 +135,57 @@ export function installDiagProbe(store) {
   const beat = () => { rafTicks++; requestAnimationFrame(beat); };
   requestAnimationFrame(beat);
 
+  // MAIN-THREAD STALLS.
+  //
+  // Reported from the field: the screen freezes for seconds at a time while the
+  // plate keeps turning and the core keeps inspecting. That shape says the
+  // renderer's main thread is held by one synchronous task -- the core runs in
+  // its own process and cannot be affected by it -- and nothing here recorded
+  // it, so every occurrence was an anecdote.
+  //
+  // A timer that should fire every 250 ms cannot fire late unless the thread
+  // was busy, so its lateness IS the stall, measured in the only place that can
+  // see it. rAF cannot do this job: Chromium throttles animation frames when
+  // the window is occluded, so a long gap there is ambiguous and a long gap
+  // here is not.
+  const STALL_MS = 250;
+  const stall = { worst: 0, count: 0, last: 0 };
+  try {
+    let due = performance.now() + STALL_MS;
+    setInterval(() => {
+      const now = performance.now();
+      const late = now - due;
+      due = now + STALL_MS;
+      if (late <= 100) return;
+      if (late > stall.worst) stall.worst = late;
+      if (late > 1000) {
+        stall.count++;
+        stall.last = Date.now();
+        // Loud on purpose: this is the one event where the log timestamp is
+        // worth more than the counter, because it can be lined up against the
+        // core's own log to say which side stopped first.
+        try { console.warn(`[stall] main thread blocked ${Math.round(late)} ms`); } catch {}
+      }
+    }, STALL_MS);
+  } catch { /* a probe must never break the app */ }
+
+  // The stall counter says WHEN and HOW LONG; longtask says WHO. Chromium
+  // reports any task over 50 ms here, with an attribution naming the frame it
+  // ran in -- which separates "our JS" from "an extension, the compositor, or
+  // the embedder" without a profiler attached to a machine on a factory floor.
+  const tasks = { worst: 0, worstName: '' };
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration <= tasks.worst) continue;
+        tasks.worst = e.duration;
+        const a = (e.attribution && e.attribution[0]) || {};
+        tasks.worstName = [e.name, a.containerType, a.containerName, a.containerSrc]
+          .filter(Boolean).join('/').slice(0, 60);
+      }
+    }).observe({ entryTypes: ['longtask'] });
+  } catch { /* not every runtime reports longtask */ }
+
   // Same for messages: if frames arrive and paints do not, the ratio says so.
   //
   // The byte count matters as much as the rate. Renderer RSS was growing
@@ -156,6 +207,88 @@ export function installDiagProbe(store) {
 
   // Called by the harness once it knows which key grew.
   window.__DIAG_WHERE__ = (key) => domWhere(key);
+
+  // CHURN, not level. Memory.getDOMCounters reports a level, and the level is
+  // "the document plus whatever garbage has not been collected yet" -- which is
+  // why it swings three-fold between samples while the document itself never
+  // moves. A level can say how much; it can never say WHO. A MutationObserver
+  // sees each insertion and removal at the moment it happens, so the churn
+  // names the component that has to be fixed instead of a number that has to be
+  // interpreted. Subtrees are counted whole: removing one row throws away its
+  // cells too, and those are the nodes that end up as garbage.
+  const churn = { added: 0, removed: 0, by: Object.create(null) };
+  try {
+    const key = (n) => {
+      if (n.nodeType === 3) return '#text';
+      if (n.nodeType !== 1) return '#n' + n.nodeType;
+      let k = n.tagName;
+      const c = n.getAttribute && n.getAttribute('class');
+      if (c) k += '.' + String(c).trim().split(/\s+/).slice(0, 2).join('.');
+      return k;
+    };
+    const bump = (n) => {
+      const k = key(n);
+      churn.by[k] = (churn.by[k] || 0) + 1;
+      let total = 1;
+      const kids = n.childNodes;
+      if (kids) for (let i = 0; i < kids.length; i++) total += bump(kids[i]);
+      return total;
+    };
+    new MutationObserver((recs) => {
+      for (const r of recs) {
+        for (const n of r.addedNodes) churn.added += bump(n);
+        for (const n of r.removedNodes) churn.removed += bump(n);
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch { /* a probe must never break the app */ }
+
+  // WHERE THE UNCOLLECTED NODES COME FROM.
+  //
+  // The observer above sees only nodes that ENTER THE TREE. A node created and
+  // never inserted is invisible to it -- which is exactly the shape of what
+  // getDOMCounters keeps reporting: churn reads zero, the document is frozen at
+  // its slot-pool size, and the counter still swings by a thousand. So the
+  // creation side has to be instrumented separately, at the factory rather than
+  // at the tree.
+  //
+  // Counting is a bare increment on a hot path, so it must stay a bare
+  // increment. The stack is what actually names the caller, and capturing one
+  // costs far too much to do per call -- so exactly one is taken per distinct
+  // kind per sample window, on that kind's first appearance. That is enough to
+  // name a creator and cheap enough to leave on.
+  const made = { total: 0, by: Object.create(null), where: Object.create(null) };
+  try {
+    const tally = (kind) => {
+      made.total++;
+      made.by[kind] = (made.by[kind] || 0) + 1;
+      if (made.where[kind] === undefined) {
+        const st = (new Error().stack || '').split('\n').slice(2, 5)
+          .map((l) => l.trim().replace(/^at\s+/, '').slice(0, 70)).join(' < ');
+        made.where[kind] = st;
+      }
+    };
+    const wrap = (obj, name, kindOf) => {
+      const orig = obj[name];
+      if (typeof orig !== 'function') return;
+      obj[name] = function (...a) {
+        try { tally(kindOf(a)); } catch { /* never break the app */ }
+        return orig.apply(this, a);
+      };
+    };
+    wrap(Document.prototype, 'createElement', (a) => String(a[0]).toLowerCase());
+    wrap(Document.prototype, 'createElementNS', (a) => String(a[1]).toLowerCase() + ':ns');
+    wrap(Document.prototype, 'createTextNode', () => '#text');
+    wrap(Document.prototype, 'createDocumentFragment', () => '#fragment');
+    wrap(Node.prototype, 'cloneNode', function (a) { return 'clone' + (a[0] ? ':deep' : ''); });
+    // innerHTML parses markup into nodes without ever calling createElement.
+    const ih = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    if (ih && ih.set) {
+      Object.defineProperty(Element.prototype, 'innerHTML', {
+        ...ih,
+        set(v) { try { tally('innerHTML'); } catch {} return ih.set.call(this, v); },
+      });
+    }
+  } catch { /* a probe must never break the app */ }
 
   window.__DIAG__ = () => {
     const now = performance.now();
@@ -224,6 +357,33 @@ export function installDiagProbe(store) {
       // "path=length", biggest first. Diff two samples and the growing one is
       // the leak.
       top: c.top.map(([p, n]) => p + '=' + n),
+      // Per-sample, then reset: a rate, not a running total.
+      churn: (() => {
+        const top = Object.entries(churn.by)
+          .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => k + '=' + n);
+        const o = { added: churn.added, removed: churn.removed, top };
+        churn.added = 0; churn.removed = 0; churn.by = Object.create(null);
+        return o;
+      })(),
+      // Worst main-thread stall since the last sample, and how many exceeded
+      // one second. A frozen screen with a running machine lands here.
+      ...(function () {
+        const o = { stallMaxMs: Math.round(stall.worst), stallCount: stall.count,
+                    taskMaxMs: Math.round(tasks.worst), taskWorst: tasks.worstName };
+        stall.worst = 0; stall.count = 0; tasks.worst = 0; tasks.worstName = '';
+        return o;
+      })(),
+      // Nodes MANUFACTURED since the last sample, whether or not they ever
+      // reached the tree. made.total minus churn.added is the part that never
+      // did -- the part the counter has been showing all along.
+      made: (() => {
+        const top = Object.entries(made.by)
+          .sort((a, b) => b[1] - a[1]).slice(0, 10)
+          .map(([k, n]) => k + '=' + n + (made.where[k] ? '@' + made.where[k] : ''));
+        const o = { total: made.total, top };
+        made.total = 0; made.by = Object.create(null); made.where = Object.create(null);
+        return o;
+      })(),
       dom: (() => { const d = domCensus();
         return { total: d.total, top: d.top.map(([k, n]) => k + '=' + n) }; })(),
     };
