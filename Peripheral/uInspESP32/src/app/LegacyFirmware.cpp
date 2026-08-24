@@ -79,6 +79,36 @@ static const struct { const char *name; int pin; int idx; } IO_POL_TAB[] = {
   {"FEEDER",FEEDER_PIN, IOI_FEEDER},
 };
 
+// Every pin this firmware drives or reads, reported by get_setup as `io_map`.
+//
+// Until now the only way to answer "which pin is SEL2" was to open
+// HardwareConfig.hpp -- and the running firmware is the authoritative answer,
+// not a header that may belong to a different build. This table is a superset
+// of IO_POL_TAB above: that one exists to map io_on_level, so it stops at the
+// eight polarity-controlled outputs, and a technician looking for the gate
+// input or the stepper pins would still have to go and read the source.
+//
+// `dir` is stated rather than implied: an input reported next to seven outputs
+// with no direction is exactly the sort of table that gets misread once.
+// `pol` is the IO_POL_TAB index, or -1 for a pin with no polarity setting (the
+// gate input and the three stepper pins). -1 rather than a default of 0,
+// because reporting on_level:0 for a pin that has no such setting is a lie
+// that reads exactly like a real value.
+static const struct { const char *name; int pin; const char *dir; int pol; } IO_MAP_TAB[] = {
+  {"L1A",         PIN_O_L1A,       "out", IOI_L1A   },
+  {"CAM1",        PIN_O_CAM1,      "out", IOI_CAM1  },
+  {"L2A",         PIN_O_L2A,       "out", IOI_L2A   },
+  {"CAM2",        PIN_O_CAM2,      "out", IOI_CAM2  },
+  {"SEL1",        PIN_O_SEL1,      "out", IOI_SEL1  },
+  {"SEL2",        PIN_O_SEL2,      "out", IOI_SEL2  },
+  {"SEL3",        PIN_O_SEL3,      "out", IOI_SEL3  },
+  {"FEEDER",      FEEDER_PIN,      "out", IOI_FEEDER},
+  {"GATE",        PIN_I_GATE,      "in" , -1        },
+  {"STEPPER_PLS", STEPPER_PLS_PIN, "out", -1        },
+  {"STEPPER_DIR", STEPPER_DIR_PIN, "out", -1        },
+  {"STEPPER_EN",  STEPPER_EN_PIN,  "out", -1        },
+};
+
 // Whether the eight actuator pins have been configured as outputs at all.
 //
 // They are not, until a config has been read that says what ON means on this
@@ -637,13 +667,8 @@ struct CamClockSync
     {
       rejected++;
       miss_delta_last_us = nearest_delta;
-      // Same envelope as delta_max_us, and for the same reason -- see there.
+      // Peak-hold, same as delta_max_us and for the same reason -- see there.
       if(nearest_delta > miss_delta_max_us) miss_delta_max_us = nearest_delta;
-      else if(miss_delta_max_us > 0)
-      {
-        int64_t d2 = miss_delta_max_us - (miss_delta_max_us / 1000) - 1;
-        miss_delta_max_us = d2 > 0 ? d2 : 0;
-      }
       if(++consec_reject >= LOST_N)
       {
         valid = false;
@@ -665,17 +690,18 @@ struct CamClockSync
     // have moved. And on a running machine one outlier from an hour ago is
     // still the headline while the machine has been fine since.
     //
-    // max = max(delta, max*0.999): a new peak is taken instantly, and an old
-    // one fades with a ~1000-sample time constant. What it reports is "the
-    // worst of the recent past", which is the question being asked of it.
-    // Integer, and the -1 floor stops it from sticking one count above zero
-    // forever on the way down.
+    // WAS a decaying envelope (max*0.999 per sample). Removed 2026-08-22: the
+    // decay is what a peak-hold does when it has no way to be cleared, and it
+    // silently defeats any observer slower than the decay. At 23 samples/s the
+    // -1 floor alone empties a 1000us peak in ~43s and a 7us one in 0.3s, so a
+    // soak sampling once a minute reads "the last third of a second", not "the
+    // worst since I last looked" -- and reports a clean run either way.
+    //
+    // Now a true peak-hold, bounded instead by get_running_stat's opt-in
+    // `reset_stat_maximum`. Every reader gets "the worst since YOUR last read",
+    // at whatever cadence it polls; a 1Hz operator display gets a better answer
+    // than the envelope ever gave it.
     if(nearest_delta > delta_max_us) delta_max_us = nearest_delta;
-    else if(delta_max_us > 0)
-    {
-      int64_t decayed = delta_max_us - (delta_max_us / 1000) - 1;
-      delta_max_us = decayed > 0 ? decayed : 0;
-    }
     // Distribution, not just the high-water mark.
     //
     // delta_max over a four-minute run says nothing about the tail a machine
@@ -696,16 +722,11 @@ struct CamClockSync
       delta_hist[b]++;
     }
     last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
-    // Decaying too, keeping the SIGN of the peak it is holding -- the sign is
-    // the whole tell for a drift, and an envelope that forgets it would report
-    // a magnitude with no direction.
+    // Peak-hold on MAGNITUDE, keeping the SIGN of the peak it holds -- the sign
+    // is the whole tell for a drift, and a magnitude with no direction says
+    // much less. The decay this used to carry was removed 2026-08-22 for the
+    // reason given at delta_max_us above.
     if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
-    else if(max_resid_us != 0)
-    {
-      int64_t m = llabs(max_resid_us);
-      m = m - (m / 1000) - 1;
-      max_resid_us = (m > 0) ? ((max_resid_us < 0) ? -m : m) : 0;
-    }
     last_gap_us = est_cam_us ? ((int64_t)nearest_cam_us - (int64_t)est_cam_us) : 0;
 
     // Learn the slope, but only from samples that already passed the window.
@@ -865,6 +886,23 @@ uint32_t REP_REPEAT_N=0, REP_REPEAT_DIFF_N=0, REP_REPEAT_WORSE_N=0;
 uint32_t REP_LAT_N=0;
 uint64_t REP_LAT_SUM_US=0;
 uint32_t REP_LAT_MAX_US=0;
+// Peak-hold bookkeeping for get_running_stat's `reset_stat_maximum`.
+// STAT_MAX_SINCE_MS is when the current max window opened; STAT_MAX_RESET_REQ
+// is set while the reply is being built and applied after it is sent, so the
+// reply reports the peaks it is about to clear rather than clearing them first.
+uint32_t STAT_MAX_SINCE_MS=0;
+uint32_t STAT_MAX_RESET_REQ=0;
+// NOMATCH accounting. A report that placed itself resets CONSEC_NOMATCH, so
+// the threshold means "in a row", not "in total" -- one stray frame an hour is
+// not the same machine as eight in a row, and only the second has stopped
+// working. ORPHAN and WINDOW are split because they need different fixes: an
+// orphan is a late/duplicate report with nothing to pair to, a window miss is
+// the clock. Neither is cleared by reset_stat_maximum: they are counts.
+uint32_t NOMATCH_ORPHAN_N=0, NOMATCH_WINDOW_N=0, CONSEC_NOMATCH=0;
+// Consecutive tolerated NOMATCHes before the machine stops anyway. 8 is
+// deliberately well under the pipeline depth (~22 registered objects) so a
+// genuinely lost pipeline halts long before a full lap of unjudged parts.
+int32_t  NOMATCH_STOP_AFTER=8;
 
 // The SAME statistic measured from the camera trigger instead of from the gate.
 //
@@ -1002,7 +1040,13 @@ volatile bool COMM_LOST_BACKUP=false;
 // Health high-water marks (reset with reset_running_stat).
 volatile uint32_t ISR_GAP_MAX_CY=0;   // max inter-tick gap, CPU cycles
 // Step-ISR DURATION, the other half of the tick budget. See onTimer.
-volatile uint32_t ISR_DUR_MAX_CY=0, ISR_DUR_LAST_CY=0, ISR_OVERRUN_N=0, ISR_DUR_N=0;
+volatile uint32_t ISR_DUR_MAX_CY=0, ISR_DUR_LAST_CY=0, ISR_OVERRUN_N=0;
+// 64-bit because it is the DENOMINATOR of isr_dur_avg_us and the numerator
+// (ISR_DUR_SUM_CY) is already 64-bit. At the measured 4307 Hz a uint32 wraps in
+// 11.5 days, and the average then becomes nonsense while the sum keeps
+// climbing -- a number that reads as "the ISR suddenly got catastrophically
+// slow" on a machine that is fine. Long runs are the point of this counter.
+volatile uint64_t ISR_DUR_N=0;
 volatile uint64_t ISR_DUR_SUM_CY=0;
 // The tick the step ISR must fit inside, in CPU cycles. Computed in the ramp
 // service (main loop) because the ISR must not touch the FPU -- see onTimer.
@@ -3395,6 +3439,17 @@ inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
+
+#define CFG_UNAPPLIED_MAX 12
+static const char *CFG_UNAPPLIED[CFG_UNAPPLIED_MAX];
+static uint8_t     CFG_UNAPPLIED_N = 0;
+static uint8_t     CFG_UNAPPLIED_LOST = 0;   // over the cap; never silently dropped
+static inline void cfgNoteUnapplied(const char *key)
+{
+  if(CFG_UNAPPLIED_N < CFG_UNAPPLIED_MAX) CFG_UNAPPLIED[CFG_UNAPPLIED_N++] = key;
+  else CFG_UNAPPLIED_LOST++;
+}
+
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
 {
@@ -4292,7 +4347,28 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
   dataBuff[buffIdx]='\0';
 
   if(recv_data)
-    dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
+  {
+    // HEX, not the raw bytes. Two defects in the line this replaces:
+    //
+    // 1. dbg_printf wraps its output in {"dbg":"..."} and dataBuff above is
+    //    escaped for exactly that reason -- recv_data was not. A single `"`
+    //    among those bytes closed the string early and the device emitted a
+    //    malformed frame, from inside its own protocol-error handler.
+    // 2. string((char*)recv_data,0,9) constructs a std::string from the
+    //    pointer FIRST, so it reads to the next NUL, not to 9. On a buffer
+    //    that is by definition not text and not NUL-terminated, that is an
+    //    overread. dataL bounds it now.
+    //
+    // Hex is also simply the right format here: these are the bytes that fell
+    // outside a frame, and "0D 0A 1B 5B" says more than mojibake does.
+    char hex[32];
+    int hn=0;
+    size_t show = (dataL < 9) ? dataL : 9;
+    for(size_t i=0;i<show && hn+3<(int)sizeof(hex);i++)
+      hn += snprintf(hex+hn,sizeof(hex)-hn,"%02X ",(unsigned)recv_data[i]);
+    if(hn>0) hex[hn-1]='\0'; else hex[0]='\0';
+    dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,hex);
+  }
   else 
     dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
   if(commsErrorLatched==false)
@@ -5134,7 +5210,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     const char* _version = doc["version"];
     if(_version)
     {
-      strcpy(peerVERSION,_version);
+      // Bounded: peerVERSION is char[20] and _version comes straight off the
+      // wire, reachable from the WebUI passthrough. An unbounded strcpy here
+      // was a remote overwrite of whatever follows it in memory.
+      snprintf(peerVERSION,sizeof(peerVERSION),"%s",_version);
     }
     return this->rsp_JsonRaw_version();
   }
@@ -5478,7 +5557,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     else {
     doRsp=true;
-    }
+
+    // The `else` this block spent its life without.
+    //
+    // The guard above set err+ack:false and then FELL THROUGH: pinMode() ran
+    // anyway on whatever GPIO was asked for, and rspAck was overwritten back to
+    // true at the bottom. So the reply carried BOTH `err:"must be in IDLE..."`
+    // and `ack:true`, while the pin was reconfigured mid-run -- exactly what
+    // the comment above says must not happen (SEL1 is 25, STEPPER_EN is 13).
+    // Reachable from the WebUI passthrough (wiringPanel.cpp:6461-6491).
     int PIN_Mode=INPUT;
     if(doc["mode"].is<String>()==true)
     {
@@ -5509,6 +5596,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     else
     {
       rspAck=false;
+    }
     }
   }
 
@@ -5776,6 +5864,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       }
     }
 
+    // Keys that were SENT but did not land, because the JSON type did not match
+    // the C++ variable's. These pass the unknown-key check (they ARE in the
+    // schema) and would otherwise be acked as applied. See JSON_SETIF_ABLE.
+    //
+    // Named, not counted: "3 keys did not apply" cannot be acted on; a list can.
+    if(CFG_UNAPPLIED_N)
+    {
+      JsonArray ja = retdoc.createNestedArray("unapplied");
+      for(uint8_t i=0;i<CFG_UNAPPLIED_N;i++) ja.add(CFG_UNAPPLIED[i]);
+      if(CFG_UNAPPLIED_LOST) retdoc["unapplied_more"]=CFG_UNAPPLIED_LOST;
+      djrl.dbg_printf("SET_SETUP: %u key(s) present but NOT applied (type mismatch)",
+                      (unsigned)CFG_UNAPPLIED_N);
+    }
+
     doRsp=true;
     rspAck=persistAck;
     }                       // end of the report_match_pcnt-clean body
@@ -6038,6 +6140,32 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"get_running_stat")==0)
   {
+    // reset_stat_maximum:true -- clear the PEAK-HOLD fields after reporting
+    // them, so this reply means "the worst since YOUR last read".
+    //
+    // Opt-in, and that is the whole safety of it. Several readers poll this
+    // machine at once (the WebUI for display, bench tools, board_rescue), and
+    // an implicit read-and-clear would let whichever asked first silently steal
+    // the peak from the others. A reader that only wants to display omits the
+    // flag and disturbs nobody.
+    //
+    // COUNTS ARE NOT TOUCHED. skip / unanswered / tx_fail / gate.loss_n and
+    // every other cumulative total must survive this, or a soak polling once a
+    // minute erases its own baseline and "74 skips, then 364 minutes with none"
+    // becomes unanswerable. reset_running_stat is the coarse one that zeroes
+    // counts; this is deliberately not that.
+    //
+    // stat_max_window_ms rides along so the reader can PROVE what the max
+    // covers: ask for a 60s window, and if the reply says 1.2s then somebody
+    // else reset in between. Without it, "no peak" and "somebody took the peak"
+    // are the same reply.
+    {
+      const bool wantRstMax = doc["reset_stat_maximum"].is<bool>()
+                              ? (bool)doc["reset_stat_maximum"] : false;
+      const uint32_t now_ms = (uint32_t)(esp_timer_get_time()/1000);
+      retdoc["stat_max_window_ms"] = (uint32_t)(now_ms - STAT_MAX_SINCE_MS);
+      if(wantRstMax) STAT_MAX_RESET_REQ = now_ms;   // applied after the reply is built
+    }
 
     {
       JsonArray jERROR_HIST = retdoc.createNestedArray("error_hist");
@@ -6173,6 +6301,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // SKIP raises no error. So SKIP is the honest count of parts that went
     // through without a verdict, and err=2 systematically under-reports it.
     jCountInfo["SKIP"]=SKIP_Count;
+    // Reports that could not be placed. Split because they need different
+    // fixes: ORPHAN is a late/duplicate report with no object to pair to,
+    // WINDOW is the clock drifting out of the match window (and that one is
+    // CAM_CLOCK_LOST's to escalate). CONSEC is what the stop threshold reads.
+    jCountInfo["NOMATCH_ORPHAN"]=NOMATCH_ORPHAN_N;
+    jCountInfo["NOMATCH_WINDOW"]=NOMATCH_WINDOW_N;
+    jCountInfo["NOMATCH_CONSEC"]=CONSEC_NOMATCH;
 
     //current state
     retdoc["state"]=(int)sysinfo.state;
@@ -6232,7 +6367,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["isr_dur_last_us"]=ISR_DUR_LAST_CY/240;
       jHl["isr_dur_avg_us"]=ISR_DUR_N ? (uint32_t)(ISR_DUR_SUM_CY/ISR_DUR_N/240) : 0;
       jHl["isr_overrun_n"]=ISR_OVERRUN_N;
-      jHl["isr_ticks"]=ISR_DUR_N;
+      jHl["isr_ticks"]=(double)ISR_DUR_N;
       // In CPU CYCLES, not us: StepGo is under a microsecond and integer-
       // dividing by 240 here would report it as 0 and make the split unreadable.
       // Order is [step, gate, phantom, acts]; the reader divides.
@@ -6448,6 +6583,55 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // and unparseable, which is a far worse failure than not having the
       // detail. Anything new goes in its own command until this one is cut down.
       jL["spike_n"]=REP_SPIKE_N;
+    }
+
+
+    // Now that the reply is fully built, clear what the caller asked to reset.
+    // AFTER, not before: the reply must report the peaks it is clearing, or a
+    // reader that resets every poll would never see anything at all.
+    if(STAT_MAX_RESET_REQ)
+    {
+      // ONLY peaks this reply actually reports, and only those no other
+      // consumer holds as a lifetime mark. Getting this list wrong is how a
+      // measurement tool silently disarms somebody else's alarm.
+      //
+      // DELIBERATELY NOT CLEARED, each for a named reason:
+      //
+      //   REP_LAT_MAX_US      the WebUI's SWITCH-deadline alarm reads it as a
+      //                       LIFETIME peak (uInspESP32_UI.jsx:1375-1383).
+      //                       Clearing it here let a bench tool polling once a
+      //                       minute disarm that alarm. The soak reads
+      //                       cam_max_us instead, so both are served without a
+      //                       second field.
+      //   REP_ACQLAT_MAX_US   reported by get_spikes (:5637), NOT here.
+      //   ACT_LATE_MAX        reported by poll (:6030), NOT here.
+      //                       Clearing a peak this reply does not show means
+      //                       the caller destroys what it cannot see -- the
+      //                       exact cross-reader theft the opt-in exists to
+      //                       prevent.
+      //   rbuf_peak / stack_hwm / min_heap
+      //                       lifetime marks by construction, left alone on
+      //                       purpose: they answer "was it ever bad", not
+      //                       "was it bad since you last looked".
+      CAM_SYNC.max_resid_us = 0;
+      CAM_SYNC.delta_max_us = 0;
+      CAM_SYNC.miss_delta_max_us = 0;
+      REP_CAMLAT_MAX_US     = 0;
+      ISR_GAP_MAX_CY        = 0;
+      ISR_DUR_MAX_CY        = 0;
+      NPE_MAX_CY            = 0;
+      CAM1_PW_MAX_US        = 0;
+      CAM1_PW_MIN_US        = 0xFFFFFFFFu;
+      CAM1_PW_ERR_MAX_US    = 0;
+      ACT_CAP_MAX_T         = 0;
+      GATE_W_MAX            = 0;
+      GATE_W_MIN            = 0xFFFFFFFFu;
+      // Cleared as a PAIR -- :6304 emits them from one loop, so clearing only
+      // one leaves the two arrays describing different eras with nothing
+      // saying so.
+      for(int i=0;i<ISR_SEG_N;i++){ ISR_SEG_MAX_CY[i]=0; ISR_WORST_SEG_CY[i]=0; }
+      STAT_MAX_SINCE_MS  = STAT_MAX_RESET_REQ;
+      STAT_MAX_RESET_REQ = 0;
     }
 
     doRsp=rspAck=true;
@@ -6746,6 +6930,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // recorded. Feed the machine a verdict pattern keyed on the object id
       // (INSP_PERIF_VERDICT_PATTERN in the core) and a slip shows up here as
       // the block boundary sitting on the wrong tid.
+      CONSEC_NOMATCH = 0;   // a report placed itself: the run is not lost
       VERD_LOG[VERD_W].tid = tarP->tid;
       VERD_LOG[VERD_W].cat = tarP->insp_status;
       VERD_W = (uint16_t)((VERD_W+1)%VERD_LOG_N);
@@ -6774,7 +6959,65 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
                       (int)sysinfo.state, tid, (unsigned long long)cam_ts,
                       (int)CAM_SYNC.valid, nearest!=NULL?1:0,
                       (long long)nearestDelta, rb_real, rb_sync, syncOutstanding);
-      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_MATCHES_NO_OBJECT);
+      // Not every NOMATCH is worth stopping the line for, and stopping on the
+      // first one made the machine's own hysteresis unreachable.
+      //
+      // CAM_CLOCK_LOST(13) could never fire on a running machine: gate()
+      // refuses at `nearest_delta > TOL_US` and byTs is set at
+      // `nearestDelta <= TOL_US` -- the same variable against the same
+      // threshold, complementary -- so a frame gate() refused ALWAYS lands
+      // here with byTs==NULL, and this line stopped the machine while
+      // consec_reject had only reached 1 of LOST_N=2. The second frame never
+      // came, because the machine was already stopped. Measured 2026-08-19,
+      // three runs, rejected=1 rebuilds=0 every time, error 13 never once.
+      //
+      // The safety rule is "a frame the clock cannot place must not be
+      // SORTED", and refusing to actuate already satisfies it -- the report is
+      // discarded, nothing fires, the part recirculates. Halting is a
+      // separate, stronger action, and mis-pairing needs a WRONG match, not
+      // NO match: by definition this branch did not mis-pair.
+      //
+      // So split by what the evidence actually says:
+      //
+      //   clock not valid      -> stop now. This is the case the safety rule
+      //                           was written for and the one where a later
+      //                           frame could be placed confidently wrong.
+      //   nearest == NULL      -> there is no object to confuse it with.
+      //                           Halting protects nothing. Count it.
+      //   outside the window   -> exactly what CAM_SYNC.gate() judges, and it
+      //                           already has LOST_N=2. Let it own the
+      //                           decision instead of pre-empting it, so the
+      //                           "one stray frame is not the clock"
+      //                           tolerance finally works as designed.
+      //
+      // Tolerance must not be silent, and it must be bounded: CONSEC_NOMATCH
+      // still stops the machine at NOMATCH_STOP_AFTER in a row, and both
+      // counters ride in get_running_stat. A single stray is absorbed; a
+      // pipeline that has genuinely lost its place still halts.
+      //
+      // The window branch only defers when gate() actually ran -- same
+      // condition as the call site above. If it did not (cat==-1, or no
+      // cam_ts), nothing is accumulating consec_reject and deferring would
+      // defer forever.
+      const bool gateWatching = (cam_ts != 0 && cat != -1 && nearest != NULL);
+      bool fatal;
+      const char *why;
+      if(!CAM_SYNC.valid)      { fatal = true;  why = "clock-invalid"; }
+      else if(nearest == NULL) { fatal = false; why = "no-object";     NOMATCH_ORPHAN_N++; }
+      else if(gateWatching)    { fatal = false; why = "out-of-window"; NOMATCH_WINDOW_N++; }
+      else                     { fatal = true;  why = "unwatched";     }
+
+      if(!fatal && ++CONSEC_NOMATCH >= (uint32_t)NOMATCH_STOP_AFTER)
+      {
+        fatal = true;
+        why = "consecutive";
+      }
+      djrl.dbg_printf("NOMATCH %s consec=%u orphan=%u window=%u -> %s",
+                      why, (unsigned)CONSEC_NOMATCH,
+                      (unsigned)NOMATCH_ORPHAN_N, (unsigned)NOMATCH_WINDOW_N,
+                      fatal ? "STOP" : "tolerated");
+      if(fatal)
+        SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_MATCHES_NO_OBJECT);
       rspAck=false;
     }
 
@@ -6912,10 +7155,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(doc["pin"].is<int>()==true)
     {
       int pin=doc["pin"];
-
       digitalWrite(pin,LOW);
+      doRsp=rspAck=true;
     }
-    doRsp=rspAck=true;
+    else
+    {
+      // See pin_on: ack:true with no `pin` drove nothing and reported success.
+      retdoc["err"]="pin_required";
+      doRsp=true; rspAck=false;
+    }
     }
   }
   // Polarity-aware light hold. pin_on/pin_off above are RAW digitalWrite, and
@@ -7179,10 +7427,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"set_gate_disable")==0)
   {
+    // ack only for a value that was actually applied. `"on":1` (an int, not a
+    // bool) used to leave the gate untouched, answer ack:true, and echo the OLD
+    // value back -- which reads exactly like confirmation.
+    bool _gd_ok = false;
     if(doc["on"].is<bool>()==true)
-      GATE_DISABLED = (bool)doc["on"];
+    { GATE_DISABLED = (bool)doc["on"]; _gd_ok = true; }
+    else
+    { retdoc["err"]="on_must_be_bool"; }
     retdoc["gate_disabled"]=(bool)GATE_DISABLED;
-    doRsp=rspAck=true;
+    doRsp=true; rspAck=_gd_ok;
   }
 
   else if(strcmp(type,"trig_phantom_pulse")==0)
@@ -7217,6 +7471,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(doc["on"].is<bool>()==true) TRIG_REPORT_ON = (bool)doc["on"];
     retdoc["on"]=(bool)TRIG_REPORT_ON;
     retdoc["suppressed"]=TRIG_REPORT_SUPPRESSED;
+    // rspAck was never set here, so this replied ack:false on every call --
+    // including the ones that did exactly what was asked. A command that works
+    // and reports failure is worse than one that fails: a caller that checks
+    // ack (fw_tolerance.mjs did) concludes the machine refused, and goes
+    // looking for a reason that does not exist. Found 2026-08-21; a sweep of
+    // the whole dispatch chain for the same shape found no others.
+    rspAck=true;
     doRsp=true;
   }
   else if(strcmp(type,"virt_pulse")==0)
@@ -7609,6 +7870,80 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["host_timeout_ms"]=host_timeout_ms;
     doRsp=rspAck=true;
   }
+  else if(strcmp(type,"io_test")==0)
+  {
+    // Fire ONE named output for a bounded time, so wiring can be checked
+    // without reading the source and without guessing.
+    //
+    // The specification is sel_act's, because sel_act already got it right --
+    // this only widens it from three selectors to every output in IO_MAP_TAB
+    // and keys it by NAME. `idx` was how sel_act shipped a silent bug: absent
+    // meant 0 and fell through the switch. A name cannot do that.
+    //
+    // io_drive(), NOT digitalWrite: it applies IO_INV_MASK, so this drives the
+    // pin exactly the way the machine drives it in production. That is the
+    // whole point of a wiring test -- pin_on/pin_off are raw and
+    // polarity-blind, so on this machine's active-low channels their "on" is
+    // physically OFF, and a test that passes through a different path than
+    // production proves nothing about production.
+    //
+    // IDLE-only for sel_act's reason: this blocks the main loop, which in READY
+    // is the loop draining ISRTrigQ and servicing report -- 200ms there pushes
+    // parts past SWITCH unanswered. And it fires an actuator at whatever
+    // happens to be under it.
+    retdoc["type"]="io_test";
+    const char* deny_io = cfgPersistDeny();
+    if(deny_io != NULL)
+    {
+      retdoc["err"]=deny_io;
+      retdoc["state"]=(int)sysinfo.state;
+      doRsp=true; rspAck=false;
+    }
+    else if(!doc["name"].is<const char*>())
+    {
+      retdoc["err"]="name_required";
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      const char *want = doc["name"];
+      int ms = doc["ms"].is<int>() ? (int)doc["ms"] : 50;
+      if(ms < 0)    ms = 0;
+      if(ms > 2000) ms = 2000;      // sel_act's ceiling: past any real blow,
+                                    // still bounded, still watchdog-safe
+      int hit = -1;
+      for(unsigned i=0;i<sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]);i++)
+        if(strcmp(want, IO_POL_TAB[i].name)==0) { hit=(int)i; break; }
+
+      if(hit < 0)
+      {
+        // Name the legal set rather than just refusing: the caller is a person
+        // at the machine, and "which names are there" is the next question.
+        char names[160]; names[0]=0;
+        for(unsigned i=0;i<sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]);i++)
+        {
+          if(i) strncat(names, ",", sizeof(names)-strlen(names)-1);
+          strncat(names, IO_POL_TAB[i].name, sizeof(names)-strlen(names)-1);
+        }
+        retdoc["err"]="unknown_name";
+        retdoc["names"]=names;
+        doRsp=true; rspAck=false;
+      }
+      else
+      {
+        const int pin = IO_POL_TAB[hit].pin;
+        const int idx = IO_POL_TAB[hit].idx;
+        io_drive(pin, idx, true);
+        delay(ms);
+        io_drive(pin, idx, false);   // always released: never leave an output on
+        retdoc["name"]=IO_POL_TAB[hit].name;
+        retdoc["pin"]=pin;
+        retdoc["ms"]=ms;
+        retdoc["inverted"]=(bool)IO_IS_INV(idx);
+        doRsp=true; rspAck=true;
+      }
+    }
+  }
   else if(strcmp(type,"sel_act")==0)
   {
     // Blocking the main loop is only safe with the plate stopped, which is the
@@ -7719,6 +8054,23 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }      
   else if(AUX_Task_Try_Read(doc,type,retdoc,doRsp,rspAck))
   {
+  }
+  else
+  {
+    // EVERY command answers; a non-command used to answer NOTHING -- not
+    // ack:false, zero bytes. So a caller could not tell "you typed it wrong"
+    // from "the board is dead", and both look like a timeout.
+    //
+    // That is the real mechanism behind the plate.freq trap: a flat
+    // {"type":"plate","freq":12} is not a command, so it vanished, and the
+    // note that it was "acked but ignored" was wrong -- nothing acked it.
+    // Half an hour went into a command that was never received.
+    //
+    // Naming the type back matters more than the ack: it is the difference
+    // between "unknown" and "unknown: palte".
+    doRsp=true; rspAck=false;
+    retdoc["err"]="unknown_type";
+    retdoc["type"]=type;   // ArduinoJson escapes on serialize; safe to echo
   }
 
 
@@ -8904,6 +9256,10 @@ void genMachineSetup(JsonDocument &jdoc)
     // for on a bench, and a machine that silently declines a setting is worse
     // than one that tells you what you chose.
     if(UNANSWERED_POLICY!=1) jSP["unsafe"]=true;
+    // Consecutive unplaceable REPORTS before stopping, the report-side twin of
+    // stop_after. Lives here rather than in its own object so the two "how
+    // many in a row before we stop" numbers sit together.
+    jSP["nomatch_stop_after"] = NOMATCH_STOP_AFTER;
   }
 
   {
@@ -8932,6 +9288,32 @@ void genMachineSetup(JsonDocument &jdoc)
   // merely being slow. The get_setup handler adds it once, at the top.
   jdoc["host_timeout_ms"]=host_timeout_ms;
 
+  // The IO layer in one place: what is wired where, and what ON means there.
+  //
+  // Deliberately IO only -- pin, direction, polarity. Station TIMING
+  // (stage_pulse_offset / _width_us / _center) stays in its own objects: the
+  // two change for different reasons and at different rates. Wiring changes
+  // when the hardware does; timing changes every time the process is tuned.
+  //
+  // Read-only, and `io_on_level` remains the settable key -- this view is
+  // derived from it, not a second place to write. Pins are still compile-time;
+  // this reports them because "which pin is SEL2" should not require reading
+  // the source of whichever build happens to be on this board, and because a
+  // wiring check needs the map before it can check anything (see io_test).
+  {
+    JsonArray jm = jdoc.createNestedArray("io_map");
+    for(unsigned i=0;i<sizeof(IO_MAP_TAB)/sizeof(IO_MAP_TAB[0]);i++)
+    {
+      JsonObject o = jm.createNestedObject();
+      o["name"] = IO_MAP_TAB[i].name;
+      o["pin"]  = IO_MAP_TAB[i].pin;
+      o["dir"]  = IO_MAP_TAB[i].dir;
+      // on_level only where there is one. Absent, not 0, for the rest.
+      if(IO_MAP_TAB[i].pol >= 0)
+        o["on_level"] = IO_IS_INV(IO_MAP_TAB[i].pol) ? 0 : 1;
+    }
+  }
+
   // reset_reason / xtal_mhz / error_hist / cur_state / step_count are NOT
   // here any more. This document's own contract is that it IS the persisted
   // config, and none of those are persisted or config -- they made it bigger
@@ -8945,8 +9327,31 @@ void genMachineSetup(JsonDocument &jdoc)
 
 
 
-#define JSON_SETIF_ABLE(tarVar,jsonObj,key) \
-  {if(jsonObj[key].is<typeof(tarVar)>()  ) tarVar=jsonObj[key];}
+// Keys the caller SENT that this pass did not apply, because the JSON type did
+// not match the C++ variable's type.
+//
+// This is the silent failure this project keeps meeting: the key is in the
+// schema, so cfgUnknownKeys passes it, so set_setup answers ack:true -- and the
+// value never lands.
+//
+// The direction that bites is FLOAT INTO AN INTEGER TARGET, not the reverse:
+// ArduinoJson's is<float>() is true for an integer, so a host writing 12 for a
+// float setting is fine. `is<uint32_t>()` on 14286.5 is false, and that key
+// then vanishes. The firmware already works around exactly this by hand for
+// match_tolerance_mm (an int32 target "silently never matches" a value a host
+// wrote as 0.3); every other call site still has it.
+//
+// Verified 2026-08-22 by testing the wrong direction first and getting a pass
+// -- worth stating, because the wrong test looks like a working guard.
+//
+// Reported rather than refused: a machine already living with a mismatch would
+// otherwise stop accepting a config it has always accepted. The reply now says
+// what did NOT take, so a caller can compare what it sent against what landed.
+// Deciding to stop on that is the caller's.
+
+// isNull() is ArduinoJson's "the key is not there at all", so a key that is
+// simply absent is not reported -- only one that was SENT and did not fit.
+#define JSON_SETIF_ABLE(tarVar,jsonObj,key)   { if(jsonObj[key].is<typeof(tarVar)>()) tarVar=jsonObj[key];     else if(!jsonObj[key].isNull()) cfgNoteUnapplied(key); }
 
 
 // apply_hw=false assigns the globals and touches nothing else.
@@ -9126,6 +9531,10 @@ int cfgUnknownKeys(JsonObject in, char *out, size_t outN)
 
 void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 {
+  // Fresh per call: the list describes THIS document, not the history.
+  CFG_UNAPPLIED_N = 0;
+  CFG_UNAPPLIED_LOST = 0;
+
   if(jdoc["CAM1_ID"].is<const char*>()  )
   { 
     CAM1_ID=jdoc["CAM1_ID"].as<const char*>();
@@ -9416,6 +9825,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
         UNANSWERED_POLICY=0;
     }
     if(jSP["stop_after"].is<int>()){ int v=jSP["stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
+    if(jSP["nomatch_stop_after"].is<int>()){ int v=jSP["nomatch_stop_after"]; NOMATCH_STOP_AFTER=(v<1)?1:v; }
   }
   JSON_SETIF_ABLE(host_timeout_ms,jdoc,"host_timeout_ms");
   JSON_SETIF_ABLE(pulses_per_rev,jP,"pulses_per_rev");

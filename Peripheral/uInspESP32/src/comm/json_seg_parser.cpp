@@ -67,6 +67,43 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         strEscapePending=false;
         return RESULT::KEY_START;
       }
+      else if(ch=='}')
+      {
+        // The EMPTY OBJECT. `{` unconditionally pushes OBJ_KEY expecting a key
+        // to follow, so `{}` -- valid JSON -- used to land here and be rejected
+        // as a format error. That error latches SERIAL_PROTOCOL_ERROR: the
+        // board keeps emitting SYSTIME so it looks alive from the host, but it
+        // accepts no further command and therefore CANNOT BE STOPPED.
+        //
+        // Not hypothetical: one WebUI save where a group was untouched sends
+        // `"plate":{}` and latches the machine.
+        //
+        // Unwind the three frames `{` speculatively pushed for the key/sep/
+        // value it now turns out has none, which uncovers the OBJ_END that was
+        // pushed first, and let that case emit OBJECT_COMPLETE. Only do it when
+        // the stack really has that shape, so a corrupt stack still errors out
+        // instead of popping into whatever is underneath.
+        //
+        // SIDE EFFECT, on purpose: this also accepts a trailing comma,
+        // `{"a":1,}`. The `,` branch of OBJ_END pushes the same three frames a
+        // `{` does, so the stack shape is identical and this cannot tell them
+        // apart. That is the right trade here -- the array side has always
+        // accepted `[1,]` through VAL, this layer is a SEGMENTER and not a
+        // validator, and ArduinoJson downstream rejects it cleanly with an
+        // error the host can read. The alternative is what we are fixing:
+        // refusing it by latching the machine.
+        if(getStackHead(1)!=JSonState::OBJ_SEP ||
+           getStackHead(2)!=JSonState::DAT ||
+           getStackHead(3)!=JSonState::OBJ_END)
+        {
+          return RESULT::ERROR;
+        }
+        if(!popStackHead() || !popStackHead() || !popStackHead())
+        {
+          return RESULT::ERROR;
+        }
+        return newChar(ch);//instant run again, now against OBJ_END
+      }
       else if(isWhitespace(ch))
       {
         return RESULT::WAIT_NEXT;
@@ -162,6 +199,22 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         }
         strEscapePending=false;
         return RESULT::STR_START;
+      }
+      else if(ch==']' && getStackHead(1)==JSonState::ARR_END)
+      {
+        // The EMPTY ARRAY, the other half of the same bug. `[` pushes
+        // ARR_END,DAT expecting an element; for `[]` the `]` arrives while we
+        // are still in DAT and fell through to the scalar branch below, which
+        // read it as the first character of a value. Pop the element we were
+        // promised and hand the `]` to ARR_END.
+        //
+        // The guard matters: a `]` in DAT is only ever legal when the frame
+        // directly under us is the array it closes.
+        if(!popStackHead())
+        {
+          return RESULT::ERROR;
+        }
+        return newChar(ch);//instant run again, now against ARR_END
       }
       else 
       {
