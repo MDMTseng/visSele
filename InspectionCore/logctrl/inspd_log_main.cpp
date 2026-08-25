@@ -21,6 +21,8 @@
 
 #include <log_ring.h>
 #include "inspd_log_ws.h"
+#include <frame_ring.h>   /* the producer's last-N-frames ring; see write_frame_dump */
+#include <sp.hpp>
 
 #include <log_modules_region.h>
 #include <logctrl.h>
@@ -528,6 +530,130 @@ void prune_crash_dumps(const std::string &dir, int keep) {
     }
 }
 
+/* The image half of a crash dump.
+ *
+ * The producer keeps the last N inspection frames in a shared-memory ring
+ * (frame_ring.h) and never writes them anywhere. This process, which outlives
+ * the producer by design, is what turns them into files -- and only when
+ * something actually went wrong. That is the whole trade: zero disk writes
+ * while the machine is healthy, and the frames still exist at the moment the
+ * question gets asked.
+ *
+ * Written next to the dump as <dump-stem>_frames/NNNNN_<verdict>.jpg (+ .json),
+ * oldest first, so the directory listing reads in the order the machine saw
+ * them.
+ *
+ * Attaches lazily and tolerates absence: an older producer has no such region,
+ * and a missing image half must never cost us the text dump.
+ */
+static void *g_frames = nullptr;
+static uint32_t g_frames_slots = 0;
+
+/* MUST be called while the producer is still ALIVE, and the handle held from
+ * then on.
+ *
+ * On Windows a named file mapping exists only while some process holds a
+ * handle to it. The producer creates the ring; if this process waits until
+ * dump time to attach, the producer is already dead by definition, its handle
+ * is closed, the region is gone, and every crash silently produces a dump with
+ * no frames -- which is exactly what the first end-to-end test did. Attaching
+ * early is not an optimisation; it is what keeps the memory alive long enough
+ * to be written down.
+ *
+ * Called repeatedly from the drain loop because the producer opens its ring
+ * well after start-up (~28 s in on this bench: camera bring-up comes first). */
+static void frames_attach(const Config &cfg) {
+    if (g_frames) return;
+    std::string name = cfg.ring_name + "_frames";
+    /* The slot count is the producer's to choose, so probe the header with a
+     * minimal mapping first, then map for real. Mapping with the wrong size is
+     * how you read a ring as though it had a different geometry. */
+    for (uint32_t slots : { FRAME_RING_SLOTS_DEFAULT, 4u, 8u, 32u, 64u, 128u, 256u }) {
+        ShareMemoryInfo fi = {};
+        if (connSharedMemory(name, frame_ring_total_bytes(slots), &fi) != 0 || !fi.ptr)
+            continue;
+        auto *fh = static_cast<FrameRingHeader *>(fi.ptr);
+        if (fh->magic == FRAME_RING_MAGIC && fh->version == FRAME_RING_VERSION &&
+            fh->slot_size == FRAME_SLOT_BYTES && fh->slot_count == slots) {
+            g_frames = fi.ptr;
+            g_frames_slots = slots;
+            std::fprintf(stderr, "[inspd_log] frame ring '%s' attached (%u slots)\n",
+                         name.c_str(), slots);
+            return;
+        }
+        /* Right region, different geometry: believe its header and stop. */
+        if (fh->magic == FRAME_RING_MAGIC && fh->slot_count > 0 &&
+            fh->slot_count <= 256 && fh->slot_size == FRAME_SLOT_BYTES) {
+            ShareMemoryInfo f2 = {};
+            if (connSharedMemory(name, frame_ring_total_bytes(fh->slot_count), &f2) == 0 && f2.ptr) {
+                g_frames = f2.ptr;
+                g_frames_slots = static_cast<FrameRingHeader *>(f2.ptr)->slot_count;
+                std::fprintf(stderr, "[inspd_log] frame ring '%s' attached (%u slots)\n",
+                             name.c_str(), g_frames_slots);
+            }
+            return;
+        }
+    }
+}
+
+static int write_frame_dump(const Config &cfg, const std::string &dump_path) {
+    if (!g_frames || dump_path.empty()) return 0;
+    auto *fh = static_cast<FrameRingHeader *>(g_frames);
+
+    std::string dir = dump_path;
+    size_t dot = dir.find_last_of('.');
+    if (dot != std::string::npos) dir = dir.substr(0, dot);
+    dir += "_frames";
+    mkdir_p_one(dir.c_str());
+
+    const uint64_t head = fh->head.load(std::memory_order_acquire);
+    const uint64_t n = head < g_frames_slots ? head : g_frames_slots;
+    int written = 0;
+    for (uint64_t k = 0; k < n; ++k) {
+        /* Oldest first. */
+        uint64_t idx = head - n + k;
+        FrameSlot *sl = frame_ring_slot(g_frames, idx);
+
+        /* Tear protocol: odd seq means the producer stopped mid-write -- which
+         * is exactly what a crash looks like. Skipping that slot is the point;
+         * a half-written JPEG that opens is worse than one that is absent. */
+        uint64_t before = sl->seq.load(std::memory_order_acquire);
+        if (before & 1) continue;
+        uint32_t img_len = sl->img_len, rep_len = sl->rep_len;
+        uint64_t ts = sl->ts_ms, fid = sl->frame_id;
+        uint32_t verdict = sl->verdict;
+        if ((uint64_t)img_len + rep_len > FRAME_PAYLOAD_MAX) continue;
+        std::vector<uint8_t> buf(img_len + rep_len);
+        if (!buf.empty()) std::memcpy(buf.data(), sl->payload, buf.size());
+        uint64_t after = sl->seq.load(std::memory_order_acquire);
+        if (after != before) continue;   /* overwritten while we copied */
+        if (fid == 0) continue;          /* never filled */
+
+        const char *vn = verdict == FRAME_V_OK ? "OK" : verdict == FRAME_V_NG ? "NG" : "NA";
+        char stem[512];
+        std::snprintf(stem, sizeof(stem), "%s/%05llu_%s_%llums",
+                      dir.c_str(), (unsigned long long)fid, vn,
+                      (unsigned long long)ts);
+        if (img_len) {
+            std::string f = std::string(stem) + ".jpg";
+            if (FILE *fp = std::fopen(f.c_str(), "wb")) {
+                std::fwrite(buf.data(), 1, img_len, fp);
+                std::fclose(fp);
+            }
+        }
+        if (rep_len) {
+            std::string f = std::string(stem) + ".json";
+            if (FILE *fp = std::fopen(f.c_str(), "wb")) {
+                std::fwrite(buf.data() + img_len, 1, rep_len, fp);
+                std::fclose(fp);
+            }
+        }
+        written++;
+    }
+    std::fprintf(stderr, "[inspd_log] %d frame(s) -> %s\n", written, dir.c_str());
+    return written;
+}
+
 std::string write_crash_dump(const Config &cfg,
                              LogRingHeader *h,
                              const EphemeralBuf &eph,
@@ -814,7 +940,12 @@ int run(const Config &cfg) {
          * snapshots. Writes the fixed-name latest_dump.dump (overwritten) so
          * repeated manual snapshots don't grow the disk. */
         ws->set_dump_handler([&cfg, h, &ephemeral]() -> std::string {
-            return write_crash_dump(cfg, h, ephemeral, LOG_CRASH_OTHER, /*fixed_name=*/true);
+            std::string p = write_crash_dump(cfg, h, ephemeral, LOG_CRASH_OTHER, /*fixed_name=*/true);
+            /* The operator pressing this is looking at something odd RIGHT NOW;
+             * the frames are the half that shows what. */
+            frames_attach(cfg);
+            write_frame_dump(cfg, p);
+            return p;
         });
 
         /* setLevel: convert OTel severityNumber to producer's LOG_LV_*,
@@ -904,8 +1035,16 @@ int run(const Config &cfg) {
     }
 #endif
 
+    /* Poll for the frame ring until it exists, then hold it open for the life of
+     * this process. Cheap: one OpenFileMapping every ~100 drain iterations (a
+     * few seconds while idle) until it lands, then nothing at all. See
+     * frames_attach for why it cannot wait for the crash. */
+    uint64_t frames_probe_tick = 0;
+
     while (!parent_dead) {
         uint64_t head = h->head.load(std::memory_order_acquire);
+
+        if (!g_frames && (frames_probe_tick++ % 100) == 0) frames_attach(cfg);
 
         /* Crash marker -- drain whatever we can, then dump. A real crash dumps
          * and EXITS; an on-demand snapshot (LOG_CRASH_DUMP_REQUEST) dumps,
@@ -946,6 +1085,8 @@ int run(const Config &cfg) {
             std::string dump_path = write_crash_dump(cfg, h, ephemeral,
                                        on_demand ? LOG_CRASH_OTHER : cm,
                                        /*fixed_name=*/on_demand); // snapshot -> latest_dump; crash -> crash_<utc>
+            frames_attach(cfg);
+            write_frame_dump(cfg, dump_path);
             if (on_demand) {
                 /* Acknowledge so we don't re-dump every poll, then keep running. */
                 h->crash_marker.store(LOG_CRASH_NONE, std::memory_order_release);
@@ -1129,6 +1270,10 @@ int run(const Config &cfg) {
             write_crash_dump(cfg, h, ephemeral,
                              graceful ? LOG_CRASH_SHUTDOWN : LOG_CRASH_PRODUCER_DIED,
                              /*fixed_name=*/graceful);
+        /* Frames on an UNEXPECTED death only. A graceful close is not a
+         * mystery, and writing a few hundred KB of images on every normal
+         * shutdown is how the disk cost quietly comes back. */
+        if (!graceful) { frames_attach(cfg); write_frame_dump(cfg, dump_path); }
         std::fprintf(stderr,
             "[inspd_log] producer died (%s) -> wrote dump: %s\n",
             graceful ? "graceful" : "unexpected", dump_path.c_str());

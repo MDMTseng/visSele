@@ -2518,6 +2518,128 @@ const CaliperHitsSwitch_rdx = connect(
       dispatch(UIAct.EV_WS_SEND_BPG(coreId, "ST", 0, { DEBUG_EMIT: { cal_hits: on } })),
   }))(CaliperHitsSwitch);
 
+// What this machine writes to disk, per verdict and per part.
+//
+// Measured on the bench before this existed: 146 KB a part (103 KB image +
+// 43 KB report) at ~11 parts/s into a folder capped at 8 files -- ~138 GB a
+// day written to retain 1.2 MB, because every NA part was saved whole and
+// removeOldestRep() deleted it within a second. The image is 70% of those
+// bytes and is usually NOT the evidence: a report says what the machine
+// decided, an image says what it saw. Being able to keep one without the
+// other is what makes routine evidence affordable.
+//
+// Persisted in machine_custom_setting (FI_INSP_SNAP_POLICY) because the core
+// zeroes its own policy at the start of every inspection session -- the
+// machine setting is the only record of what was chosen, and it is re-pushed
+// on entering inspection.
+const SNAP_VERDICTS = [
+  { key: 'NG', label: 'NG 不良' },
+  { key: 'NA', label: 'NA 無判定' },
+  { key: 'OK', label: 'OK 良品' },
+];
+
+// Matches the core's own initialisers (wiringPanel.cpp g_snap_policy):
+// everything off. A machine writes to its disk because someone asked it to,
+// not because nobody turned it off.
+export const SNAP_POLICY_DEFAULT = {
+  OK: { img: false, rep: false },
+  NG: { img: false, rep: false },
+  NA: { img: false, rep: false },
+};
+
+export function snapPolicyOf(machine_custom_setting) {
+  const mcs = machine_custom_setting || {};
+  const stored = mcs.FI_INSP_SNAP_POLICY;
+  if (stored) {
+    return {
+      OK: { ...SNAP_POLICY_DEFAULT.OK, ...(stored.OK || {}) },
+      NG: { ...SNAP_POLICY_DEFAULT.NG, ...(stored.NG || {}) },
+      NA: { ...SNAP_POLICY_DEFAULT.NA, ...(stored.NA || {}) },
+    };
+  }
+  // No policy stored yet: everything off, deliberately NOT derived from the
+  // legacy FI_INSP_NG_SNAP. That key defaults to true on existing machines,
+  // and inheriting it would mean the new all-off default never actually
+  // applies anywhere it matters. The legacy ST keys are still accepted by the
+  // core, so an older WebUI driving this core is unaffected.
+  return { OK: { ...SNAP_POLICY_DEFAULT.OK },
+           NG: { ...SNAP_POLICY_DEFAULT.NG },
+           NA: { ...SNAP_POLICY_DEFAULT.NA } };
+}
+
+const SnapPolicyPanel = (props) => {
+  const { CORE_ID, machine_custom_setting, SEND_ST, ACT_machine_custom_setting_Update } = props;
+  const pol = snapPolicyOf(machine_custom_setting);
+  const maxNum = (machine_custom_setting || {}).FI_INSP_NG_SNAP_MAX_NUM || 1000;
+
+  const set = (verdict, part, val) => {
+    const next = { ...pol, [verdict]: { ...pol[verdict], [part]: val } };
+    ACT_machine_custom_setting_Update({
+      ...(machine_custom_setting || {}),
+      FI_INSP_SNAP_POLICY: next,
+      // Keep the legacy key in step so the 設定 page and an older core still
+      // see something truthful rather than a stale value.
+      FI_INSP_NG_SNAP: next.NG.img || next.NG.rep,
+    });
+    if (CORE_ID !== undefined) SEND_ST(CORE_ID, { INSP_SNAP_POLICY: next });
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>快照儲存 / Snapshot to disk</div>
+      <table style={{ borderCollapse: 'collapse' }}>
+        <tbody>
+          <tr style={{ color: '#888', fontSize: 12 }}>
+            <td style={{ padding: '2px 10px 2px 0' }}></td>
+            <td style={{ padding: '2px 10px' }}>影像 .jpg</td>
+            <td style={{ padding: '2px 10px' }}>報告 .xreps</td>
+          </tr>
+          {SNAP_VERDICTS.map((v) => (
+            <tr key={v.key}>
+              <td style={{ padding: '2px 10px 2px 0' }}>{v.label}</td>
+              <td style={{ padding: '2px 10px' }}>
+                <Switch size="small" checked={pol[v.key].img}
+                  onChange={(c) => set(v.key, 'img', c)} />
+              </td>
+              <td style={{ padding: '2px 10px' }}>
+                <Switch size="small" checked={pol[v.key].rep}
+                  onChange={(c) => set(v.key, 'rep', c)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ marginTop: 6 }}>
+        每資料夾上限:
+        <InputNumber size="small" min={1} max={100000} step={1} value={maxNum}
+          style={{ marginLeft: 6, width: 90 }}
+          onChange={(v) => {
+            const n = Math.max(1, Math.round(v || 1));
+            ACT_machine_custom_setting_Update({
+              ...(machine_custom_setting || {}), FI_INSP_NG_SNAP_MAX_NUM: n });
+            if (CORE_ID !== undefined) SEND_ST(CORE_ID, { INSP_NG_SNAP_MAX_NUM: n });
+          }} />
+      </div>
+      <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
+        存到 <code>data/SAMPLE/日期/配方/</code>。滿了就刪最舊的一組。
+        每組約 146 KB（影像 103 KB + 報告 43 KB），所以全開時 20 件/秒 ≈ 每天上百 GB
+        寫入——而資料夾只留最後 {maxNum} 組，其餘全部是白寫的。
+      </div>
+    </div>
+  );
+};
+
+const SnapPolicyPanel_rdx = connect(
+  (state) => ({
+    machine_custom_setting: state.UIData.machine_custom_setting,
+    CORE_ID: state.ConnInfo.CORE_ID,
+  }),
+  (dispatch) => ({
+    ACT_machine_custom_setting_Update: (setting) =>
+      dispatch(UIAct.EV_machine_custom_setting_Update(setting)),
+    SEND_ST: (coreId, obj) => dispatch(UIAct.EV_WS_SEND_BPG(coreId, "ST", 0, obj)),
+  }))(SnapPolicyPanel);
+
 class APP_INSP_MODE extends React.Component {
 
   
@@ -2703,10 +2825,15 @@ class APP_INSP_MODE extends React.Component {
           } 
         });
         this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
+        // The core zeroes its snapshot policy at the start of every CI/FI
+        // session, so this push is what the machine actually records -- not a
+        // convenience. INSP_SNAP_POLICY carries all three verdicts and both
+        // parts; the legacy INSP_NG_SNAP is deliberately NOT sent alongside it,
+        // because it would overwrite NG with "both" after the policy set it.
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { 
-          INSP_NG_SNAP:this.props.machine_custom_setting.FI_INSP_NG_SNAP==true,
-          INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||100
+          INSP_SNAP_POLICY: snapPolicyOf(this.props.machine_custom_setting),
+          INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||1000
         });
         this.CameraCtrl.setCameraSpeed_HIGHEST();
       }
@@ -3085,6 +3212,9 @@ class APP_INSP_MODE extends React.Component {
             whose def has locating != 'caliper' (cal_hits is absent then).
             Gates the CORE's emission -- see the note on CaliperHitsSwitch_rdx. */}
         <CaliperHitsSwitch_rdx key="caliper-hits-toggle" />
+
+        <Divider orientation="left" key="div-snap">快照</Divider>
+        <SnapPolicyPanel_rdx key="snap-policy" />
 
 
         <Divider orientation="left" key="img_tran_weight">圖像檢視側重</Divider>
