@@ -425,6 +425,11 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
 
   const cfg = GetObjElement(CONN, ['machineSetup']) || {};
   const dev = GetObjElement(CONN, ['deviceState']) || {};
+  // cfg is the board's own settings, filled only by a get_setup reply.
+  // Empty means "not read", which is NOT the same as "read, and it said
+  // compile defaults" -- see the tag below.
+  const cfgRead = Object.keys(GetObjElement(CONN, ['machineSetup']) || {}).length > 0;
+  const cfgTries = GetObjElement(CONN, ['cfgResyncTries']) || 0;
   const connected = GetObjElement(CONN, ['type']) === 'WS_CONNECTED';
   const spo = cfg.stage_pulse_offset || {};
   // Per-station widths in microseconds; {} on firmware that predates them.
@@ -733,9 +738,29 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
         {noReply && (
           <Tag color="red">無回應 {Math.round(staleMs / 1000)}s</Tag>
         )}
-        <Tag color={dev.cfg_from_nvs ? 'green' : 'orange'}>
-          {dev.cfg_from_nvs ? '設定來自 NVS' : '設定非 NVS(編譯預設值)'}
-        </Tag>
+        {/* Three states, because there are three.
+            cfg_from_nvs is a fact the BOARD reports in its get_setup reply --
+            so before that reply lands there is nothing to report, and a
+            two-state tag has to guess. It guessed "compile defaults", which
+            reads as "the board's NVS is empty" and sends whoever is standing
+            at the machine to go and look at the hardware. On a fresh PC whose
+            renderer froze for 153 seconds the reply never landed at all, the
+            config resync gave up, and the tag confidently described a board
+            whose NVS was perfectly intact the whole time. Say "not read yet"
+            when that is what is true. */}
+        {cfgRead ? (
+          <Tag color={dev.cfg_from_nvs ? 'green' : 'orange'}>
+            {dev.cfg_from_nvs ? '設定來自 NVS' : '設定非 NVS(編譯預設值)'}
+          </Tag>
+        ) : (
+          <Tooltip title={'尚未收到板子的 get_setup 回應,所以還不知道它的設定從哪裡來。'
+                        + '這不代表 NVS 是空的。主機會一直重試(前 10 次每秒,之後每 5 秒)。'
+                        + (cfgTries > 10 ? ' 重試很多次仍無回應:先看主執行緒有沒有被卡住(下載診斷紀錄裡的 [stall]),再看序列鏈路。' : '')}>
+            <Tag color={cfgTries > 10 ? 'red' : 'default'}>
+              設定尚未讀取{cfgTries ? ` (重試 ${cfgTries})` : ''}
+            </Tag>
+          </Tooltip>
+        )}
         {dev.machine_id ? <Tag>{dev.machine_id}</Tag> : null}
       </div>
 

@@ -258,28 +258,55 @@ const HIT_COLOR = {
 // `style`: 'cross' (default — X marker, used by line/arc) or 'dot' (filled
 // circle, used by search_point where many hits sit on a short search vector
 // and crosses overlap visually).
+// ONE path per colour, not one per hit.
+//
+// There are ~300 hits per shape and the inspection screen redraws them at part
+// rate: the previous shape -- beginPath/stroke for every single hit -- was on
+// the order of 18,000 independent stroke() calls a second on this bench. Each
+// one is a separate rasteriser submission, and on a machine with no GPU
+// acceleration (a fresh PC still on the Microsoft Basic Display Adapter,
+// software-rasterising) that is the difference between a responsive screen and
+// a renderer blocked three quarters of every second.
+//
+// Hits only ever take two visible colours, so two paths cover the whole
+// overlay: collect the segments, stroke twice. Same pixels, same order of
+// colours (outlier over inlier is not meaningful -- they do not overlap).
 export function drawCaliperHits(ctx, hits, renderer, { style = 'cross' } = {}) {
-  //console.log(">>drawCaliperHits",hits);
   if (!hits || hits.length === 0) return;
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();
   const a = renderer.getPointSize() * 1.0;
-  
+
+  // Bucket by the colour actually used, so an unexpected st value still lands
+  // somewhere rather than being dropped.
+  const byColor = new Map();
   for (const h of hits) {
     if (h.st === 0) continue;  // missed — box-grayed instead
     const color = HIT_COLOR[h.st] || HIT_COLOR[1];
+    let arr = byColor.get(color);
+    if (arr === undefined) { arr = []; byColor.set(color, arr); }
+    arr.push(h);
+  }
+
+  for (const [color, list] of byColor) {
+    ctx.beginPath();
     if (style === 'dot') {
+      for (const h of list) {
+        // moveTo before arc: without it the path carries a line from the end
+        // of the previous arc to the start of this one.
+        ctx.moveTo(h.x + a * 0.6, h.y);
+        ctx.arc(h.x, h.y, a * 0.6, 0, Math.PI * 2);
+      }
       ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(h.x, h.y, a * 0.6, 0, Math.PI * 2);
       ctx.fill();
     } else {
+      for (const h of list) {
+        ctx.moveTo(h.x - a, h.y - a);
+        ctx.lineTo(h.x + a, h.y + a);
+        ctx.moveTo(h.x - a, h.y + a);
+        ctx.lineTo(h.x + a, h.y - a);
+      }
       ctx.strokeStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(h.x - a, h.y - a);
-      ctx.lineTo(h.x + a, h.y + a);
-      ctx.moveTo(h.x - a, h.y + a);
-      ctx.lineTo(h.x + a, h.y - a);
       ctx.stroke();
     }
   }

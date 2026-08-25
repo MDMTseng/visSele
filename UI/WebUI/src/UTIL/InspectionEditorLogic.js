@@ -1145,9 +1145,29 @@ export class InspectionEditorLogic {
     // they must be forward-transformed to follow the shape pts. DefConfUI
     // (oriBase=true) keeps its canvas origin at the object center, so hits
     // already line up — leave them in object-frame.
+    // Inlined, and allocating exactly ONE object per hit.
+    //
+    // It used to be map(Object.assign({}, h, pointForwardTrans({x,y}))), which
+    // is four objects per hit -- the literal, the rotate's return, the assign's
+    // target and the spread source. At ~300 hits a shape and 20 parts a second
+    // that is tens of thousands of short-lived objects a second, for a picture.
+    // The overlay is drawn from x/y/st alone (see drawCaliperHits), so the
+    // copy only has to carry those three.
     function cal_hits_forward(hits) {
       if (!hits || oriBase) return hits;
-      return hits.map((h) => Object.assign({}, h, pointForwardTrans({x: h.x, y: h.y})));
+      const f = flip_f;   // already +-1 in this scope; PtRotate2d_sc normalises the same way
+      const cx = InspResult.cx, cy = InspResult.cy;
+      const out = new Array(hits.length);
+      for (let i = 0; i < hits.length; i++) {
+        const h = hits[i];
+        out[i] = {
+          x: h.x * cos_v - f * h.y * sin_v + cx,
+          y: h.x * sin_v + f * h.y * cos_v + cy,
+          st: h.st,
+          s: h.s,
+        };
+      }
+      return out;
     }
     function pointInvTrans(_pt)
     {

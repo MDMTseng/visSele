@@ -703,8 +703,23 @@ export class uInspESP32_API extends Perif_API_Base {
   // Opening the serial port toggles DTR, which hard-resets the ESP32 -- see
   // the full account in the original script.jsx comment. Retry the config
   // resync until it actually arrives instead of trusting the first attempt.
+  //
+  // It used to stop after 10 tries at 1 s and never ask again -- and giving up
+  // is not a neutral act: without cfg the panel reports "compile defaults" for
+  // a board whose NVS is perfectly intact, and the operator goes looking at the
+  // hardware. That happened. On a machine whose renderer was blocked for 153
+  // SECONDS in one stretch (a fresh PC with no GPU driver, software-rasterising
+  // full-resolution frames), all ten timers burned inside the freeze, the board
+  // never got a question it could answer in time, and the config stayed empty
+  // for the rest of the session.
+  //
+  // So: never give up while the link is up. The cost of asking is one small
+  // packet; the cost of not asking is a machine nobody can configure. Fast at
+  // first, because the usual case is a board still booting after the DTR reset,
+  // then backed off to a heartbeat so a genuinely mute device is not spammed.
   static RESYNC_RETRY_MS = 1000;
-  static RESYNC_MAX_TRIES = 10;
+  static RESYNC_FAST_TRIES = 10;      // 1 s apart -- covers the boot after reset
+  static RESYNC_SLOW_MS = 5000;       // then keep asking, quietly, forever
 
   machineSetupReSync() {
     this._resyncTries = 0;
@@ -712,15 +727,30 @@ export class uInspESP32_API extends Perif_API_Base {
   }
 
   _resyncKick() {
-    if (Object.keys(this.cfg || {}).length > 0) return;   // got it, stop
-    if (this.CONN_ID === undefined) return;             // a reconnect will restart this
-    if (this._resyncTries >= uInspESP32_API.RESYNC_MAX_TRIES) {
-      log.warn('[uInspESP32] config resync gave up after', this._resyncTries, 'tries');
-      return;
+    if (Object.keys(this.cfg || {}).length > 0) {
+      if (this._resyncTries > 0) {
+        log.info('[uInspESP32] config resync arrived after', this._resyncTries, 'tries');
+        this._resyncTries = 0;
+        publish(this.id, { cfgResyncTries: 0 });
+      }
+      return;                                  // got it, stop
     }
+    if (this.CONN_ID === undefined) return;    // a reconnect will restart this
+
     this._resyncTries++;
+    // Published so the panel can say "not read yet, N tries" instead of
+    // claiming the board is running compile defaults -- which is a different
+    // fact, and the one that sends someone to the wrong place.
+    publish(this.id, { cfgResyncTries: this._resyncTries });
+    if (this._resyncTries === uInspESP32_API.RESYNC_FAST_TRIES) {
+      log.warn('[uInspESP32] config resync still empty after',
+               this._resyncTries, 'tries -- backing off, still trying');
+    }
     super.machineSetupReSync();
-    setTimeout(() => this._resyncKick(), uInspESP32_API.RESYNC_RETRY_MS);
+    const wait = this._resyncTries >= uInspESP32_API.RESYNC_FAST_TRIES
+      ? uInspESP32_API.RESYNC_SLOW_MS
+      : uInspESP32_API.RESYNC_RETRY_MS;
+    setTimeout(() => this._resyncKick(), wait);
   }
 
   // Everything the firmware's set_setup handler actually consumes
