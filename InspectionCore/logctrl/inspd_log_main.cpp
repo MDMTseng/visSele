@@ -486,6 +486,39 @@ static bool a2l_resolve(const std::string &a2l, const std::string &sym,
     return true;
 }
 
+/* mkdir -p. mkdir_p_one is a single level, and the dump directory is three
+ * deep (data/crash_reports/<date>) the first time a machine ever crashes. */
+static void mkdir_p(const std::string &path) {
+    std::string acc;
+    for (size_t i = 0; i <= path.size(); ++i) {
+        if (i == path.size() || path[i] == '/' || path[i] == '\\') {
+            if (!acc.empty() && !(acc.size() == 2 && acc[1] == ':'))
+                mkdir_p_one(acc.c_str());
+            if (i == path.size()) break;
+        }
+        acc.push_back(path[i]);
+    }
+}
+
+/* Where a dump and its frames go: <log_dir>/crash_reports/<YYYYMMDD>/.
+ *
+ * log_dir is the MACHINE's data directory (the producer points us at it after
+ * its chdir; see main.cpp). Dumps used to land in the drainer's cwd, which is
+ * wherever the executable happens to sit -- so the evidence for a machine
+ * ended up beside the binary, in a directory that a version update replaces,
+ * rather than beside that machine's own data.
+ *
+ * Dated because a machine that crashes twice in a week should not make the
+ * operator read timestamps to find out which day they are looking at. */
+static std::string dump_dir_for_today(const Config &cfg) {
+    time_t now = std::time(nullptr);
+    char day[16];
+    std::strftime(day, sizeof(day), "%Y%m%d", std::gmtime(&now));
+    std::string dir = cfg.log_dir + "/crash_reports/" + day;
+    mkdir_p(dir);
+    return dir;
+}
+
 /* Keep only the newest N crash_<utc>.dump files.
  *
  * There was no retention at all: found 107 of them, 903 MB, on a bench that
@@ -604,7 +637,7 @@ static int write_frame_dump(const Config &cfg, const std::string &dump_path) {
     size_t dot = dir.find_last_of('.');
     if (dot != std::string::npos) dir = dir.substr(0, dot);
     dir += "_frames";
-    mkdir_p_one(dir.c_str());
+    mkdir_p(dir);
 
     const uint64_t head = fh->head.load(std::memory_order_acquire);
     const uint64_t n = head < g_frames_slots ? head : g_frames_slots;
@@ -666,13 +699,14 @@ std::string write_crash_dump(const Config &cfg,
     time_t now = std::time(nullptr);
     char ts[64];
     std::strftime(ts, sizeof(ts), "%Y%m%dT%H%M%SZ", std::gmtime(&now));
-    char fname[256];
+    const std::string ddir = dump_dir_for_today(cfg);
+    char fname[512];
     if (fixed_name)
         std::snprintf(fname, sizeof(fname),
-                      "%s/latest_dump.dump", cfg.log_dir.c_str());
+                      "%s/latest_dump.dump", ddir.c_str());
     else
         std::snprintf(fname, sizeof(fname),
-                      "%s/crash_%s.dump", cfg.log_dir.c_str(), ts);
+                      "%s/crash_%s.dump", ddir.c_str(), ts);
 
     FILE *fp = std::fopen(fname, "w");
     if (!fp) {
@@ -815,7 +849,12 @@ std::string write_crash_dump(const Config &cfg,
     std::fprintf(fp, "=== end of dump ===\n");
     std::fclose(fp);
     std::fprintf(stderr, "[inspd_log] crash dump written to %s\n", fname);
-    if (!fixed_name) prune_crash_dumps(cfg.log_dir, cfg.dump_keep);
+    /* Pruned PER DAY, since that is the directory we just wrote into: at most
+     * dump_keep dumps survive for any one date. Older date folders are left
+     * alone -- a day's worth of evidence is a unit someone may want to keep or
+     * ship whole, and silently deleting last week's crashes is not this
+     * process's call to make. */
+    if (!fixed_name) prune_crash_dumps(ddir, cfg.dump_keep);
     return std::string(fname);
 }
 

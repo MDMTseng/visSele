@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <cstdlib>
+#include <cstring>   // strncmp, for reading chdir= out of argv
 #include <string>
+#ifdef _WIN32
+#include <windows.h>  // SetEnvironmentVariableA: the drainer inherits OUR environment
+#endif
 #include <main.h>
 #include "tmpCodes.hpp"
 #include "polyfit.h"
@@ -142,6 +146,34 @@ int main(int argc, char **argv)
         std::string a0 = argv[0];
         auto slash = a0.find_last_of("/\\");
         if (slash != std::string::npos) exe = a0.substr(0, slash + 1) + "inspd_log";
+      }
+      /* Point the drainer at THIS MACHINE's data directory before spawning it.
+       *
+       * The drainer inherits our cwd, and we do not chdir() to the machine's
+       * working directory until the argument parser runs inside mainLoop --
+       * long after this. So its dumps landed next to the executable, in a
+       * directory that a version update replaces, instead of beside the data
+       * of the machine they describe. The chdir target is already in argv;
+       * read it here rather than waiting for the parser that consumes it.
+       *
+       * Not overridden if the environment already says where logs go: an
+       * explicit INSP_LOG_DIR is someone's deliberate choice. */
+      if (!std::getenv("INSP_LOG_DIR")) {
+        for (int i = 1; i < argc; i++) {
+          const char *a = argv[i];
+          if (std::strncmp(a, "chdir=", 6) != 0) continue;
+          std::string data_dir = std::string(a + 6);
+          if (!data_dir.empty() &&
+              (data_dir.back() == '/' || data_dir.back() == '\\'))
+            data_dir.pop_back();
+          data_dir += "/data";
+#ifdef _WIN32
+          SetEnvironmentVariableA("INSP_LOG_DIR", data_dir.c_str());
+#else
+          setenv("INSP_LOG_DIR", data_dir.c_str(), 0);
+#endif
+          break;
+        }
       }
       log_open_shm_ring(nullptr, 0);  /* defaults: 16 MB, name "insp_log_ring" */
       log_install_crash_handlers();
