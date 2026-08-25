@@ -690,6 +690,16 @@ class APPMasterX extends React.Component {
             {
               this.cQ.kick();//when connected kick start
               comp.props.DISPATCH({type:"WS_CONNECTED",id,data:info})
+              // The backlog is not only a reload problem.
+              //
+              // The in-memory queue holds 200; the durable mirror holds 100k.
+              // An outage longer than ~9 s at 22 parts/s therefore fills cQ,
+              // enQ starts refusing, and those records sit in IndexedDB --
+              // persisted, correct, and going nowhere. Replay ran ONLY in the
+              // constructor, so they waited for someone to reload the page.
+              // Which means "it will catch up when the network comes back" was
+              // true for the first 200 records and false for the rest.
+              this._replayPending();
             }
             else if(os=="CONNECTED")//exit connection state
             {
@@ -810,10 +820,65 @@ class APPMasterX extends React.Component {
         // Replay records left over from a previous session/reload that were never
         // confirmed: re-queue them (without re-persisting) so they send once the
         // socket connects. Live disconnect retries are handled by cQ.kick() above.
-        getPendingBySource(this.id)
+        this._replayPending();
+      }
+
+      // Send everything still unconfirmed in IndexedDB.
+      //
+      // ONLY when the live queue is empty. Anything in cQ is in flight and
+      // still present in IndexedDB (it is deleted on insert-OK), so replaying
+      // over it would insert the same record twice -- and a duplicated
+      // traceability record is worse than a late one. Waiting for cQ to drain
+      // makes "still in IndexedDB" mean "stranded" rather than "in progress".
+      _replayPending()
+      {
+        if (this._replaying) return;
+        this._replaying = true;
+        const started = Date.now();
+        const armed = () => {
+          if (this.curr_ws_state !== "CONNECTED") { this._replaying = false; return; }
+          if (this.cQ && this.cQ.size() > 0) {
+            // Give the live queue as long as it needs; a busy link is not an
+            // error. The cap only stops this polling forever on a dead one.
+            if (Date.now() - started > 10 * 60 * 1000) { this._replaying = false; return; }
+            setTimeout(armed, 500);
+            return;
+          }
+          this._doReplay().finally(() => { this._replaying = false; });
+        };
+        armed();
+      }
+
+      _doReplay()
+      {
+        // Replay in CHUNKS, yielding between them.
+        //
+        // This used to be one forEach over everything pending. That was fine
+        // while the buffer held 1000 records; the cap is now 100k, which is an
+        // hour of production, and pushing 100k sends onto the queue in a single
+        // task would block the renderer for as long as it takes -- turning
+        // "the network came back" into "the screen froze". The machine keeps
+        // inspecting through that, so the freeze also costs live parts.
+        //
+        // 200 per task at 0 ms: fast enough that a real backlog drains in
+        // seconds, small enough that the frame in between still gets to run.
+        return getPendingBySource(this.id)
           .then((items) => {
-            if (items.length) log.info("DB_WS[" + this.id + "] replaying " + items.length + " buffered inserts");
-            items.forEach((it) => { try { this.send({ data: it.record, __replaySeq: it.seq }); } catch (e) { log.error("replay send failed", e); } });
+            if (!items.length) return;
+            log.info("DB_WS[" + this.id + "] replaying " + items.length + " buffered inserts");
+            const CHUNK = 200;
+            let i = 0;
+            const pump = () => {
+              const end = Math.min(i + CHUNK, items.length);
+              for (; i < end; i++) {
+                const it = items[i];
+                try { this.send({ data: it.record, __replaySeq: it.seq }); }
+                catch (e) { log.error("replay send failed", e); }
+              }
+              if (i < items.length) setTimeout(pump, 0);
+              else log.info("DB_WS[" + this.id + "] replay queued " + items.length);
+            };
+            pump();
           })
           .catch((e) => log.error("getPendingBySource failed", e));
 

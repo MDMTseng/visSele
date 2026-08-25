@@ -14,7 +14,27 @@
 
 const DB_NAME = "visSele_local";
 const STORE = "pending_inserts";
-const MAX_RECORDS = 1000;
+
+// How long an outage this survives, expressed in records.
+//
+// 1000 was ~45 SECONDS at this bench's 22 parts/s -- and the records are lean
+// (stripOverlayOnly runs before the send), about 3.5 kB each, so the old cap
+// bought 3.5 MB of safety. IndexedDB is not the constraint here and never was:
+// 100k records is ~350 MB and a little over an hour of production at full rate,
+// which is the difference between surviving a network blip and surviving
+// someone rebooting a switch.
+//
+// Overridable because the right number depends on the record rate and the disk,
+// and neither belongs in this file.
+const MAX_RECORDS = Number(
+  (typeof window !== "undefined" && window.__INSP_DB_QUEUE_MAX__) || 100000);
+
+// Records this process has DELETED to stay under the cap -- evidence destroyed,
+// not evidence delayed. Read by the UI so an operator can see it happening;
+// dropping silently is how an outage becomes a hole in the traceability record
+// that nobody knows the size of.
+let droppedTotal = 0;
+export function droppedCount() { return droppedTotal; }
 
 let dbPromise = null;
 
@@ -81,10 +101,18 @@ export async function pendingInsertCount(source) {
 }
 
 // Drop oldest entries until at most MAX_RECORDS remain (global cap across sources).
+//
+// This is the only place in the pipeline that destroys a record rather than
+// delaying it, so it says so. It used to delete silently: past the cap the
+// oldest inspection results disappeared one per part, and the only thing on
+// screen was a "disconnected" banner that looked exactly the same at second 44
+// as at second 45. An operator could watch an outage for an hour believing the
+// data was waiting for them.
 async function trimToCap(db) {
   const count = await reqP(store(db, "readonly").count());
   let toDrop = count - MAX_RECORDS;
   if (toDrop <= 0) return;
+  const asked = toDrop;
   await new Promise((resolve, reject) => {
     const cur = store(db, "readwrite").openCursor(); // autoIncrement seq → oldest first
     cur.onsuccess = () => {
@@ -94,4 +122,15 @@ async function trimToCap(db) {
     };
     cur.onerror = () => reject(cur.error);
   });
+  droppedTotal += asked;
+  // Rate-limited so a sustained outage does not bury the console, but the FIRST
+  // one is always printed: the transition from "buffering" to "losing" is the
+  // event worth timestamping.
+  if (droppedTotal === asked || droppedTotal % 100 < asked) {
+    try {
+      console.error("[inspDBQueue] buffer full at " + MAX_RECORDS
+        + " -- DISCARDED " + droppedTotal + " oldest inspection record(s); "
+        + "these are gone, not queued");
+    } catch { /* a logger must never take the queue with it */ }
+  }
 }

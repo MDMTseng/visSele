@@ -65,6 +65,7 @@ import {
   EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { stripOverlayOnly } from './UTIL/dbRecord';
+import { pendingInsertCount, droppedCount } from './UTIL/inspDBQueue';
 
 
 
@@ -138,6 +139,30 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
+
+  // How much is waiting, and how much has been thrown away.
+  //
+  // The banner said "disconnected" and then three send counters, which answer
+  // "is it up" and "how many did I try". Neither answers the question an
+  // operator actually has during an outage: is my data safe, and for how much
+  // longer. Second 44 and second 45 of an outage looked identical while the
+  // second one was destroying records.
+  //
+  // Polled slowly on purpose. It is an IndexedDB count on the renderer thread,
+  // it changes at part rate, and nobody needs it to the second -- 2 s is often
+  // enough to watch a buffer fill and cheap enough to leave running.
+  const [dbQ, setDbQ] = useState({ pending: 0, dropped: 0 });
+  useEffect(() => {
+    let live = true;
+    const tick = () => {
+      Promise.resolve(pendingInsertCount())
+        .then((n) => { if (live) setDbQ({ pending: n, dropped: droppedCount() }); })
+        .catch(() => {});
+    };
+    tick();
+    const h = setInterval(tick, 2000);
+    return () => { live = false; clearInterval(h); };
+  }, []);
   
   useEffect(()=>{
     if(newAddedReport===undefined || 
@@ -200,7 +225,14 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
     icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
         {(isConnected ? LANG_DICT.connection.server_connected : LANG_DICT.connection.server_disconnected)
-        + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip}
+        + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip
+        + (dbQ.pending ? "  待補傳 " + dbQ.pending : "")}
+        {/* Loud and separate. A discarded record is not a delayed one, and it
+            must not read as another counter in the same grey run-on. */}
+        {dbQ.dropped ? <span style={{ marginLeft: 8, padding: '0 6px', borderRadius: 3,
+                                      background: '#a8071a', color: '#fff', fontWeight: 700 }}>
+          已丟棄 {dbQ.dropped}
+        </span> : null}
     </Button>
 }
 
