@@ -140,12 +140,19 @@ const log = mkLog("editor.reducer");
 
       let nv_val = new_rep.value;
 
+      // Always count it, including the first one.
+      //
+      // This used to set an unseen status to 0 and increment only on the
+      // SECOND occurrence, so any detailStatus the initialiser does not know
+      // about was permanently one short. The seven known tags are pre-created
+      // in InspectionEditorLogic (count_stat: {NA, UOK, LOK, UCNG, LCNG, USNG,
+      // LSNG}), so this never bit -- it was waiting for the next status the
+      // core learns to emit, which is exactly when nobody would be looking at
+      // this line.
       if (stat.count_stat[new_rep.detailStatus] === undefined) {
         stat.count_stat[new_rep.detailStatus] = 0;
       }
-      else {
-        stat.count_stat[new_rep.detailStatus]++;
-      }
+      stat.count_stat[new_rep.detailStatus]++;
 
       stat.count++;
       stat.sum += nv_val;

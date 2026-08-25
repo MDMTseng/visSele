@@ -2132,10 +2132,23 @@ class DataStatsTable extends React.Component {
         sigma: round(measure.statistic.sigma, 0.0001),
 
 
-        OK: ["UOK", "LOK", "UCNG", "LCNG"].reduce((sum, tag) => sum + measure.statistic.count_stat[tag], 0),
-        NG: ["USNG", "LSNG"].reduce((sum, tag) => sum + measure.statistic.count_stat[tag], 0),
+        // OK and NA are summed from the tags that MEAN them; NG is whatever is
+        // left of the count. Both halves used to be hardcoded lists, so a
+        // detailStatus the core learns to emit later would land in neither and
+        // the row would silently stop adding up -- count says 900, OK+NG+NA
+        // says 880, and nothing says where the twenty went.
+        //
+        // Deriving NG makes the row reconcile by construction, and puts an
+        // unrecognised status on the NG side rather than the OK side. That is
+        // the safe direction: a part whose verdict this UI cannot name is not
+        // one to quietly count as good.
+        OK: ["UOK", "LOK", "UCNG", "LCNG"].reduce((sum, tag) => sum + (measure.statistic.count_stat[tag] || 0), 0),
+        NG: Math.max(0, measure.statistic.count
+              - ["UOK", "LOK", "UCNG", "LCNG"].reduce((sum, tag) => sum + (measure.statistic.count_stat[tag] || 0), 0)),
+        // count excludes NA (statReducer returns before count++ on an NA), so
+        // NA is its own tally and does not belong in the subtraction above.
         NA: measure.statistic.count_stat.NA,
-        WARN: ["UCNG", "LCNG"].reduce((sum, tag) => sum + measure.statistic.count_stat[tag], 0),
+        WARN: ["UCNG", "LCNG"].reduce((sum, tag) => sum + (measure.statistic.count_stat[tag] || 0), 0),
 
         CK: round(measure.statistic.CK, 0.001),
         // CPU:round(measure.statistic.CPU,0.001),
