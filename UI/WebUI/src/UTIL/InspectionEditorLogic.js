@@ -112,6 +112,15 @@ export function Shape_Attr_Fill(shapeObject) {
   return shapeObject;
 }
 
+// Optional debug payloads moved under one "extra" key so the traceability
+// archive can exclude all of them structurally (UTIL/dbRecord.js). The old
+// top-level field is still read, because a core older than that change still
+// sends it there. DefConf reads it the same way (EverCheckCanvasComponent).
+function InspectionEditorLogic_CalHitsOf(r) {
+  if (!r) return undefined;
+  return (r.extra && r.extra.cal_hits) || r.cal_hits;
+}
+
 export class InspectionEditorLogic {
   constructor() {
     this.reset();
@@ -1115,8 +1124,9 @@ export class InspectionEditorLogic {
       // missed → gray box no X, outlier → red X, inlier → green X.
       delete eObject._pt1; delete eObject._pt2;
       delete eObject.adj_pt1;
-      if (inspAdjObj && inspAdjObj.cal_hits) {
-        eObject.cal_hits = inspAdjObj.cal_hits;
+      const _naHits = InspectionEditorLogic_CalHitsOf(inspAdjObj);
+      if (_naHits) {
+        eObject.cal_hits = _naHits;
       } else {
         delete eObject.cal_hits;
       }
@@ -1173,8 +1183,9 @@ export class InspectionEditorLogic {
           // canvas is rendering in. When the whole fit FAILED (status != SUCCESS),
           // force every hit to status=0 so the WebUI grays all boxes.
           // Pass through unchanged — per-hit st (0/1/2) drives the visual.
-          if (inspAdjObj.cal_hits) {
-            eObject.cal_hits = cal_hits_forward(inspAdjObj.cal_hits);
+          const _hits = InspectionEditorLogic_CalHitsOf(inspAdjObj);
+          if (_hits) {
+            eObject.cal_hits = cal_hits_forward(_hits);
           }
           // console.log(dclone(eObject));
           // if (InspResult.isFlipped) {
@@ -1203,8 +1214,9 @@ export class InspectionEditorLogic {
           });
           // Caliper-mode per-caliper hits — see line case for the rationale.
           // Pass through unchanged — per-hit st (0/1/2) drives the visual.
-          if (inspAdjObj.cal_hits) {
-            eObject.cal_hits = cal_hits_forward(inspAdjObj.cal_hits);
+          const _hits = InspectionEditorLogic_CalHitsOf(inspAdjObj);
+          if (_hits) {
+            eObject.cal_hits = cal_hits_forward(_hits);
           }
         }
         break;
@@ -1242,8 +1254,9 @@ export class InspectionEditorLogic {
           eObject.pt1=o_pt1;
           // Per-hit caliper points (caliper-mode search_point only). Passed
           // through unchanged — drawn as dots in search_point's draw.
-          if (inspAdjObj.cal_hits) {
-            eObject.cal_hits = cal_hits_forward(inspAdjObj.cal_hits);
+          const _hits = InspectionEditorLogic_CalHitsOf(inspAdjObj);
+          if (_hits) {
+            eObject.cal_hits = cal_hits_forward(_hits);
           }
           // {
           //   let vec = this.shapeVectorParse(eObject, shapeList);

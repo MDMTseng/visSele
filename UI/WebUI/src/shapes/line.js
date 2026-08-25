@@ -123,7 +123,6 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   // shape.caliper may be undefined just after the user toggles locating to
   // 'caliper' — the helper falls back to the core defaults.
   if (inFullDisplay && isCaliper) {
-    console.log(">>",shape.cal_hits);
     // Per-caliper hits drive two visuals: the box's stroke color
     // (gray when status=missed) and the X marker (inlier=green, outlier=red).
     // Sources: shape.cal_hits (inspection-mode merge by

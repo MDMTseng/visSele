@@ -2458,6 +2458,66 @@ function RestrictiveCircleREdit ({initR,onRChanged}){
 }
 
 
+// The caliper-hit toggle. It controls whether the CORE EMITS the payload, not
+// whether the WebUI draws it -- one gate, at the source. With no hits in the
+// report there is nothing to draw, so the overlay follows for free, and the
+// ~85% of the inspection record that cal_hits costs (measured: 22 KB -> 3.5 KB
+// at ~300 hits a part) is actually saved rather than merely hidden.
+//
+//   ST { "DEBUG_EMIT": { "cal_hits": bool } }   <- ROOT level
+//
+// Sent at the ST root, NOT inside MachineSetting: that path runs
+// setup_machine_setting() -> load_clean_regions(), where an absent key means
+// "no clean regions", so a one-key MachineSetting silently wipes the station's
+// clean areas. Unknown names are logged and ignored by the core, so an older
+// core degrades to "not sent" rather than to a rejected command.
+//
+// It is subscribed to the store on its own rather than reading APP_INSP_MODE's
+// props: the modal that hosts it is built ONCE into this.state.additionalUI
+// (setInspectionRankUI) as already-created elements, so `checked` would be
+// frozen at the value it had when the modal was opened; and APP_INSP_MODE's
+// shouldComponentUpdate gates re-render on the report counter, so a prop-only
+// change would be swallowed anyway.
+//
+// The core has no read-back for DEBUG_EMIT and resets to its built-in default
+// (cal_hits: true) whenever it restarts, so the UI's remembered position is the
+// only record of intent -- it is re-sent on mount to make the core agree.
+const CaliperHitsSwitch = (props) => {
+  const { CORE_ID, System_Setting, SEND_ST, ACT_System_Setting_Update } = props;
+  const on = System_Setting?.EMIT_CALIPER_HITS !== false;
+
+  useEffect(() => {
+    if (CORE_ID === undefined) return;
+    SEND_ST(CORE_ID, on);
+  }, [CORE_ID]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <Switch
+        size="small"
+        checked={on}
+        onChange={(val) => {
+          ACT_System_Setting_Update({ ...System_Setting, EMIT_CALIPER_HITS: val });
+          if (CORE_ID !== undefined) SEND_ST(CORE_ID, val);
+        }}
+      />
+      <span>核心送出卡尺命中點 / Emit caliper hits</span>
+    </div>
+  );
+};
+
+const CaliperHitsSwitch_rdx = connect(
+  (state) => ({
+    System_Setting: state.UIData.System_Setting,
+    CORE_ID: state.ConnInfo.CORE_ID,
+  }),
+  (dispatch) => ({
+    ACT_System_Setting_Update: (sysSetting) =>
+      dispatch({ type: "System_Setting_Update", data: sysSetting }),
+    SEND_ST: (coreId, on) =>
+      dispatch(UIAct.EV_WS_SEND_BPG(coreId, "ST", 0, { DEBUG_EMIT: { cal_hits: on } })),
+  }))(CaliperHitsSwitch);
+
 class APP_INSP_MODE extends React.Component {
 
   
@@ -3022,21 +3082,10 @@ class APP_INSP_MODE extends React.Component {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
 
-        {/* Per-caliper hit overlay toggle. Default on; ignored for shapes
-            whose def has locating != 'caliper' (cal_hits is absent then). */}
-        <div key="caliper-hits-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <Switch
-            size="small"
-            checked={this.props.System_Setting?.SHOW_CALIPER_HITS_INSP !== false}
-            onChange={(val) => {
-              this.props.ACT_System_Setting_Update({
-                ...this.props.System_Setting,
-                SHOW_CALIPER_HITS_INSP: val,
-              });
-            }}
-          />
-          <span>顯示卡尺命中點 / Show caliper hits</span>
-        </div>
+        {/* Per-caliper hit payload toggle. Default on; irrelevant for shapes
+            whose def has locating != 'caliper' (cal_hits is absent then).
+            Gates the CORE's emission -- see the note on CaliperHitsSwitch_rdx. */}
+        <CaliperHitsSwitch_rdx key="caliper-hits-toggle" />
 
 
         <Divider orientation="left" key="img_tran_weight">圖像檢視側重</Divider>
