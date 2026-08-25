@@ -25,6 +25,7 @@ import Modal from 'antd/lib/modal';
 import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
 import Tooltip from 'antd/lib/tooltip';
+import Popover from 'antd/lib/popover';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 import CaretRightOutlined from '@ant-design/icons/CaretRightOutlined';
@@ -32,7 +33,7 @@ import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
-import { compactN, exactN, numFontPx } from '../perif/fmt.mjs';
+import { compactN, exactN } from '../perif/fmt.mjs';
 import message from 'antd/lib/message';
 const log = mkLog('ui.uinsp2');
 
@@ -253,6 +254,57 @@ const fmtWhen = (t) => {
 // enough for a grouped nine-digit count ("1,982,530") at 12px, because these
 // cells now print counts in full -- see exactN.
 const HIST_W = { label: 88, n: 78, feed: 84 };
+// The counts in full, one tap away from the strip.
+//
+// The strip abbreviates on purpose (see compactN): five characters is what
+// keeps three counts legible at a glance in a third of a sidebar each. But an
+// operator who is writing the shift total onto a sheet needs every digit, and
+// "1.9M" is not a number anyone can write down -- a shift that made 1,982,530
+// parts did not make 1.9 million of them.
+//
+// It used to be on `title`, which is a HOVER affordance. This panel runs on a
+// touchscreen, so on the machine it is standing on, the exact value had nowhere
+// to be read at all.
+//
+// All three together, and the selector each one resolved to. The bin-to-outlet
+// mapping is exactly what the rendered digits throw away, and a column reading
+// zero all shift is only checkable against the machine if the outlet is named.
+function CountsBubble({ cnt, gate, selOK, selNG }) {
+  const n0v = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
+  const rows = selOK && selNG
+    ? [['NG', n0v(cnt[selNG]), '#c33', selNG],
+       ['OK', n0v(cnt[selOK]), '#389e0d', selOK]]
+    : [['SEL1', n0v(cnt.SEL1), undefined, 'SEL1'],
+       ['SEL2', n0v(cnt.SEL2), undefined, 'SEL2'],
+       ['SEL3', n0v(cnt.SEL3), undefined, 'SEL3']];
+  rows.push(['NA', n0v(cnt.NA), undefined, 'NA']);
+  if (gate && typeof gate.accept === 'number') rows.push(['進料', gate.accept, '#888', 'gate']);
+  const total = rows.filter(([n]) => n !== '進料').reduce((a, [, v]) => a + v, 0);
+  return (
+    <div data-testid="uinsp-counts-bubble" style={{ fontSize: 13, lineHeight: 1.9 }}>
+      {rows.map(([name, v, color, sel]) => (
+        <div key={name} style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
+          <span style={{ color: color || undefined, fontWeight: 600 }}>
+            {name}
+            {sel && sel !== name ? <span style={{ color: '#888', fontWeight: 400 }}> {sel}</span> : null}
+          </span>
+          <span data-bin={name} data-value={v}
+                style={{ fontVariantNumeric: 'tabular-nums' }}>{exactN(v)}</span>
+        </div>
+      ))}
+      {/* Stated, not left to be added up in the head: the three bins are
+          supposed to account for every part, and a total that does not match
+          the feed is the first sign that one of them is going somewhere else. */}
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between',
+                    borderTop: '1px solid #eee', marginTop: 4, paddingTop: 3,
+                    color: '#888' }}>
+        <span>已判定合計</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{exactN(total)}</span>
+      </div>
+    </div>
+  );
+}
+
 const histRow = { display: 'flex', alignItems: 'center', fontSize: 12,
                   padding: '3px 0', lineHeight: 1.3 };
 const n0 = (v) => (typeof v === 'number' ? v : 0);
@@ -1883,8 +1935,8 @@ export function UINSP_ESP32_MINI() {
   // width (which it does not).
   //
   // tabular-nums so the three boxes do not jitter as digits change under a
-  // proportional face. The tile prints the count IN FULL and shrinks the font
-  // to fit (numFontPx); the title keeps a grouped copy for hovering.
+  // proportional face; title carries the exact value compactN rounded away,
+  // for a mouse. For a finger, the whole row opens CountsBubble.
   // data-testid / data-bin / data-sel / data-value: hooks for the regression
   // probes, and the reason they carry SEMANTICS rather than just marking the
   // node.
@@ -1908,18 +1960,15 @@ export function UINSP_ESP32_MINI() {
                   textAlign: 'center', lineHeight: named ? 1.05 : '22px',
                   overflow: 'hidden' }}>
       {named ? <div style={{ fontSize: 9, opacity: 0.75, letterSpacing: 0.2 }}>{name}</div> : null}
-      {/* EXACT, not compactN. These are the counts an operator reads off the
-          machine and writes on a sheet, and "1.9M" cannot be written on a
-          sheet -- a shift that made 1,982,530 parts did not make 1.9 million
-          of them. The room comes out of the font instead of out of the value;
-          see numFontPx. overflow:hidden stays as a backstop, but at these
-          sizes a nine-digit count fits. */}
-      <div style={{ fontSize: (v === undefined || v === null)
-                      ? (named ? 14 : 15)
-                      : numFontPx(exactN(v), named ? 14 : 15),
-                    fontWeight: 600,
+      {/* compactN stays. The strip is glanced at, and a five-character cap is
+          what keeps three counts legible in a third of a sidebar each. The
+          exact digits live one tap away -- see CountsBubble below, which exists
+          because `title` is a hover affordance and this machine has a
+          touchscreen, so on the panel it is standing on, the exact value had
+          nowhere to be read at all. */}
+      <div style={{ fontSize: named ? 14 : 15, fontWeight: 600,
                     fontVariantNumeric: 'tabular-nums' }}>
-        {v === undefined || v === null ? '—' : exactN(v)}
+        {v === undefined || v === null ? '—' : compactN(v)}
       </div>
     </Tag>
   );
@@ -2128,17 +2177,28 @@ export function UINSP_ESP32_MINI() {
           showed 0. The mapping now comes from conn_info via the core, and when
           the core has not answered yet the raw selectors are shown rather than
           labelled wrongly. */}
-      <div style={{ display: 'flex', gap: 4 }}>
-        {selOK && selNG ? (<>
-          {tag('NG', cnt[selNG], 'red',   undefined, selNG)}
-          {tag('OK', cnt[selOK], 'green', undefined, selOK)}
-        </>) : (<>
-          {tag('SEL1', cnt.SEL1, undefined, true)}
-          {tag('SEL2', cnt.SEL2, undefined, true)}
-          {tag('SEL3', cnt.SEL3, undefined, true)}
-        </>)}
-        {tag('NA', cnt.NA)}
-      </div>
+      {/* Hover OR click, because the two are different users. A mouse gets the
+          per-tile title; a finger gets nothing from a title, and this panel
+          runs on a touchscreen -- so the exact counts had no reachable home at
+          all. One bubble for the whole row rather than one per tile: the
+          question is almost never "what is NG exactly", it is "read me the
+          numbers", and three taps to answer that is two too many. */}
+      <Popover trigger={['hover', 'click']} placement="right"
+               overlayStyle={{ maxWidth: 280 }}
+               content={<CountsBubble cnt={cnt} gate={gate} selOK={selOK} selNG={selNG} />}>
+        <div style={{ display: 'flex', gap: 4, cursor: 'pointer' }}
+             data-testid="uinsp-counts-row">
+          {selOK && selNG ? (<>
+            {tag('NG', cnt[selNG], 'red',   undefined, selNG)}
+            {tag('OK', cnt[selOK], 'green', undefined, selOK)}
+          </>) : (<>
+            {tag('SEL1', cnt.SEL1, undefined, true)}
+            {tag('SEL2', cnt.SEL2, undefined, true)}
+            {tag('SEL3', cnt.SEL3, undefined, true)}
+          </>)}
+          {tag('NA', cnt.NA)}
+        </div>
+      </Popover>
       {/* The selectors conn_info does NOT name get no column: they read 0
           forever on a given machine and a permanent 0 teaches people to stop
           looking. They are not unwatched though -- a count on one of them means

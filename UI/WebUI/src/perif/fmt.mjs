@@ -45,29 +45,14 @@ export const compactN = (v) => {
 // sheet, and "1.9M" cannot be written on a sheet. A shift that made 1,982,530
 // parts did not make 1.9 million of them.
 //
-// So keep every digit and buy the room from the FONT instead of from the value.
+// So the strip keeps compactN and the exact digits live one tap away, in the
+// bubble the counts row opens (CountsBubble). That was `title` before, which is
+// a hover affordance -- on the touchscreen this machine actually runs on, the
+// exact value had nowhere to be read at all.
+//
 // Grouped, because seven ungrouped digits are read wrong more often than they
 // are read slowly.
 export const exactN = (v) => {
   if (typeof v !== 'number' || !isFinite(v)) return '—';
   return Math.round(v).toLocaleString('en-US');
-};
-
-// Font size that keeps `text` inside a tile of the strip's width.
-//
-// The strip gives each tile about a third of the sidebar, so the sizes below
-// are what fits there measured, not guessed: 15px comfortably holds 5
-// characters, and every step down buys roughly two more. Returned as a number
-// of px so a caller can put it straight into a style.
-//
-// This is the same job compactN does -- make it fit -- done by the only other
-// means available. Which one a caller wants depends on whether the exact digits
-// matter, and for a verdict count they do.
-export const numFontPx = (text, base = 15) => {
-  const n = String(text).length;
-  if (n <= 5)  return base;
-  if (n === 6) return base - 2;
-  if (n === 7) return base - 3;
-  if (n <= 9)  return base - 4.5;
-  return base - 6;
 };
