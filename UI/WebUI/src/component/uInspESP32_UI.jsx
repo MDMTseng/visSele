@@ -32,7 +32,7 @@ import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
-import { compactN } from '../perif/fmt.mjs';
+import { compactN, exactN, numFontPx } from '../perif/fmt.mjs';
 import message from 'antd/lib/message';
 const log = mkLog('ui.uinsp2');
 
@@ -246,6 +246,13 @@ const fmtWhen = (t) => {
 // One row of the history table, and the current-counts row above it -- same
 // columns, because the point of showing "now" there is that you can read it
 // against the rows below without translating.
+// Column widths for the reset-history table, in ONE place.
+//
+// They were five copies of 52/60/96 across four rows, which is four chances for
+// the header to stop lining up with the body. The numeric columns are wide
+// enough for a grouped nine-digit count ("1,982,530") at 12px, because these
+// cells now print counts in full -- see exactN.
+const HIST_W = { label: 88, n: 78, feed: 84 };
 const histRow = { display: 'flex', alignItems: 'center', fontSize: 12,
                   padding: '3px 0', lineHeight: 1.3 };
 const n0 = (v) => (typeof v === 'number' ? v : 0);
@@ -1876,7 +1883,8 @@ export function UINSP_ESP32_MINI() {
   // width (which it does not).
   //
   // tabular-nums so the three boxes do not jitter as digits change under a
-  // proportional face; title carries the exact value compactN rounded away.
+  // proportional face. The tile prints the count IN FULL and shrinks the font
+  // to fit (numFontPx); the title keeps a grouped copy for hovering.
   // data-testid / data-bin / data-sel / data-value: hooks for the regression
   // probes, and the reason they carry SEMANTICS rather than just marking the
   // node.
@@ -1889,7 +1897,8 @@ export function UINSP_ESP32_MINI() {
   // amount of DOM archaeology recovers that: the mapping is exactly what the
   // rendered text has thrown away. So publish it. data-bin is the claim
   // (NG/OK/NA/SELn), data-sel is which physical outlet it resolved to, and
-  // data-value is the unrounded count compactN was about to abbreviate.
+  // data-value is the raw count as a number, for a probe that would rather not
+  // parse thousands separators back out of the rendered text.
   const tag = (name, v, color, named, sel) => (
     <Tag key={name} color={color}
          data-testid="uinsp-count" data-bin={name}
@@ -1899,9 +1908,18 @@ export function UINSP_ESP32_MINI() {
                   textAlign: 'center', lineHeight: named ? 1.05 : '22px',
                   overflow: 'hidden' }}>
       {named ? <div style={{ fontSize: 9, opacity: 0.75, letterSpacing: 0.2 }}>{name}</div> : null}
-      <div style={{ fontSize: named ? 14 : 15, fontWeight: 600,
+      {/* EXACT, not compactN. These are the counts an operator reads off the
+          machine and writes on a sheet, and "1.9M" cannot be written on a
+          sheet -- a shift that made 1,982,530 parts did not make 1.9 million
+          of them. The room comes out of the font instead of out of the value;
+          see numFontPx. overflow:hidden stays as a backstop, but at these
+          sizes a nine-digit count fits. */}
+      <div style={{ fontSize: (v === undefined || v === null)
+                      ? (named ? 14 : 15)
+                      : numFontPx(exactN(v), named ? 14 : 15),
+                    fontWeight: 600,
                     fontVariantNumeric: 'tabular-nums' }}>
-        {v === undefined || v === null ? '—' : compactN(v)}
+        {v === undefined || v === null ? '—' : exactN(v)}
       </div>
     </Tag>
   );
@@ -2031,8 +2049,12 @@ export function UINSP_ESP32_MINI() {
           instead of sitting inside it: it is a cumulative counter, not a fact
           about the current state, and reading "STOP · 盤停止 · 進料 19239" as
           one clause invites the 19239 to be read as part of the condition. And
-          it goes through compactN like every other counter here, because it is
-          the same size as they are. */}
+          it stays on compactN, unlike the verdict tiles and the history table,
+          which now print in full. Not an oversight: this sits inline in a
+          header that is already fighting for width, and it is a feed total
+          rather than a number anyone copies onto a sheet. The exact value is on
+          the title. If it ever needs to be read exactly, it wants its own row,
+          not a wider clause. */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6,
                     fontSize: 11, lineHeight: 1.35, marginBottom: 3,
                     whiteSpace: 'normal' }}>
@@ -2234,21 +2256,21 @@ export function UINSP_ESP32_MINI() {
             what the rendered digits have discarded. */}
         <div data-testid="uinsp-hist-current"
              style={{ ...histRow, fontWeight: 600, borderBottom: '1px solid #eee' }}>
-          <span style={{ width: 96 }}>目前</span>
+          <span style={{ width: HIST_W.label }}>目前</span>
           <span data-testid="uinsp-hist-cell" data-bin="NG" data-sel={selNG || ''}
                 data-value={typeof cnt[selNG] === 'number' ? cnt[selNG] : ''}
-                style={{ width: 52, textAlign: 'right', color: '#c33' }}>
-            {selNG ? compactN(n0(cnt[selNG])) : '—'}</span>
+                style={{ width: HIST_W.n, textAlign: 'right', color: '#c33' }}>
+            {selNG ? exactN(n0(cnt[selNG])) : '—'}</span>
           <span data-testid="uinsp-hist-cell" data-bin="OK" data-sel={selOK || ''}
                 data-value={typeof cnt[selOK] === 'number' ? cnt[selOK] : ''}
-                style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>
-            {selOK ? compactN(n0(cnt[selOK])) : '—'}</span>
+                style={{ width: HIST_W.n, textAlign: 'right', color: '#389e0d' }}>
+            {selOK ? exactN(n0(cnt[selOK])) : '—'}</span>
           <span data-testid="uinsp-hist-cell" data-bin="NA" data-sel="NA"
                 data-value={typeof cnt.NA === 'number' ? cnt.NA : ''}
-                style={{ width: 52, textAlign: 'right' }}>{compactN(n0(cnt.NA))}</span>
+                style={{ width: HIST_W.n, textAlign: 'right' }}>{exactN(n0(cnt.NA))}</span>
           <span data-testid="uinsp-hist-cell" data-bin="feed" data-sel="gate"
                 data-value={gate && typeof gate.accept === 'number' ? gate.accept : ''}
-                style={{ width: 60, textAlign: 'right' }}>{compactN(n0(gate && gate.accept))}</span>
+                style={{ width: HIST_W.feed, textAlign: 'right' }}>{exactN(n0(gate && gate.accept))}</span>
           <span style={{ flex: 1 }} />
         </div>
         <div style={{ ...histRow, fontSize: 10, color: '#888' }}>
@@ -2256,11 +2278,11 @@ export function UINSP_ESP32_MINI() {
               let a wrong mapping sit here unnoticed -- with the selector
               printed, a column reading zero all shift is checkable against the
               machine instead of believed. */}
-          <span style={{ width: 96 }}>歸零時間</span>
-          <span style={{ width: 52, textAlign: 'right' }}>NG{selNG ? ` ${selNG}` : ''}</span>
-          <span style={{ width: 52, textAlign: 'right' }}>OK{selOK ? ` ${selOK}` : ''}</span>
-          <span style={{ width: 52, textAlign: 'right' }}>NA</span>
-          <span style={{ width: 60, textAlign: 'right' }}>進料</span>
+          <span style={{ width: HIST_W.label }}>歸零時間</span>
+          <span style={{ width: HIST_W.n, textAlign: 'right' }}>NG{selNG ? ` ${selNG}` : ''}</span>
+          <span style={{ width: HIST_W.n, textAlign: 'right' }}>OK{selOK ? ` ${selOK}` : ''}</span>
+          <span style={{ width: HIST_W.n, textAlign: 'right' }}>NA</span>
+          <span style={{ width: HIST_W.feed, textAlign: 'right' }}>進料</span>
           <span style={{ flex: 1, textAlign: 'right' }}>區間</span>
         </div>
 
@@ -2269,19 +2291,19 @@ export function UINSP_ESP32_MINI() {
             ? <div style={{ color: '#888', padding: '12px 0' }}>還沒有紀錄。第一次歸零就會建立一筆。</div>
             : hist.map((h) => (
               <div key={h.t} style={{ ...histRow, borderBottom: '1px solid #f5f5f5' }}>
-                <span style={{ width: 96 }}>{fmtWhen(h.t)}</span>
+                <span style={{ width: HIST_W.label }}>{fmtWhen(h.t)}</span>
                 {/* Rows are safe: doReset resolved selNG/selOK at snapshot
                     time, so h.NG/h.OK already name the right bin. Only the
                     "目前" row above had to read the wiring live. */}
-                <span style={{ width: 52, textAlign: 'right',
+                <span style={{ width: HIST_W.n, textAlign: 'right',
                                color: h.NG > 0 ? '#c33' : undefined }}
-                      title={String(n0(h.NG))}>{compactN(n0(h.NG))}</span>
-                <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}
-                      title={String(n0(h.OK))}>{compactN(n0(h.OK))}</span>
-                <span style={{ width: 52, textAlign: 'right' }}
-                      title={String(n0(h.NA))}>{compactN(n0(h.NA))}</span>
-                <span style={{ width: 60, textAlign: 'right' }}
-                      title={String(n0(h.feed))}>{compactN(n0(h.feed))}</span>
+                      title={String(n0(h.NG))}>{exactN(n0(h.NG))}</span>
+                <span style={{ width: HIST_W.n, textAlign: 'right', color: '#389e0d' }}
+                      title={String(n0(h.OK))}>{exactN(n0(h.OK))}</span>
+                <span style={{ width: HIST_W.n, textAlign: 'right' }}
+                      title={String(n0(h.NA))}>{exactN(n0(h.NA))}</span>
+                <span style={{ width: HIST_W.feed, textAlign: 'right' }}
+                      title={String(n0(h.feed))}>{exactN(n0(h.feed))}</span>
                 <span style={{ flex: 1, textAlign: 'right', fontSize: 10, color: '#888' }}>
                   {h.since ? fmtDur(h.t - h.since) : ''}
                   {/* The quiet ones travel with the batch they happened in --
