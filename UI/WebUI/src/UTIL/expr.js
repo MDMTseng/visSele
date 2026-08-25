@@ -188,3 +188,37 @@ function ExpCalcBasic(postExp_,funcSet,fallbackFunctionSet) {
 
   return PostfixExpCalc(postExp, funcSet)[0];
 }
+
+// What the CORE can evaluate — the only set that matters for a saved def.
+//
+// judge_CALC (InspectionCore/MatchingEngine/JudgeCALC.cpp) implements exactly
+// six operators and returns -2 for anything else. The UI's own evaluator
+// implements a SUPERSET (it has $^$), and the editor's validity check runs the
+// UI evaluator — so an expression using ^ computes a number on screen, saves
+// cleanly, and then makes the core return -2 for every part. That path sets the
+// judge status to STATUS_UNSET and never clears it: the measurement is NA
+// forever, and nothing says the operator does not exist.
+//
+// Keep this list in step with JudgeCALC.cpp. It is the contract, not a
+// convenience.
+export const CORE_CALC_OPS = ['$+$', '$-$', '$*$', '$/$', 'max$', 'min$'];
+
+// A token is an operand (a number, or a [id] reference) rather than an operator.
+const isOperand = (t) => !t.includes('$');
+// The core's isParamsCache(): '$', '$,$', '$,$,$' … mark how many arguments the
+// following function consumes.
+const isParamsCache = (t) => /^\$(,\$)*$/.test(t);
+
+// Operators in a compiled expression that the core cannot run. Empty means the
+// core can execute it.
+export function unsupportedCoreOps(postExp) {
+  if (!Array.isArray(postExp)) return [];
+  const bad = [];
+  postExp.forEach((t) => {
+    const tok = String(t);
+    if (isOperand(tok) || isParamsCache(tok)) return;
+    if (CORE_CALC_OPS.indexOf(tok) >= 0) return;
+    if (bad.indexOf(tok) < 0) bad.push(tok);
+  });
+  return bad;
+}

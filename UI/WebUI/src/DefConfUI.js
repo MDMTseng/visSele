@@ -17,6 +17,7 @@ let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
 import { DEF_EXTENSION, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { SBMSetupView } from './SBMStudio';
@@ -38,6 +39,7 @@ import Menu from "antd/lib/menu";
 import Button from "antd/lib/button";
 import Icon from 'antd/lib/icon';
 import Tag from 'antd/lib/tag';
+import message from 'antd/lib/message';
 import Table  from 'antd/lib/table';
 import Checkbox from "antd/lib/checkbox";
 import InputNumber from 'antd/lib/input-number';
@@ -465,7 +467,23 @@ function SimpleAcc({ value, onChange,target,lastKey, props }) {
 
 
 
+// Two questions, not one: does this expression MEAN anything, and can the
+// machine actually run it?
+//
+// This used to ask only the first, using the UI's own evaluator -- which
+// implements a SUPERSET of what judge_CALC does in the core ($^$ being the one
+// that exists here and not there). So `a^2` computed a number on screen, saved
+// cleanly, and then made the core return -2 for every part. That path leaves
+// the judge at STATUS_UNSET and never clears it: the measurement reads NA for
+// the rest of the recipe's life, with nothing anywhere naming the operator.
+//
+// Returns { ok, unsupported } so the caller can say WHICH operator is the
+// problem. "Invalid expression" on a formula that evaluates fine in front of
+// you is not a message anyone can act on.
 function parseCheckExpressionValid(postExp, idArr) {
+
+  const unsupported = unsupportedCoreOps(postExp);
+  if (unsupported.length) return { ok: false, unsupported };
 
   let funcSet = {}
 
@@ -478,7 +496,7 @@ function parseCheckExpressionValid(postExp, idArr) {
   // console.log(res);
   res=res.flat();
   // console.log(postExp,res);
-  return (res.length==1)&&res[0]==res[0];
+  return { ok: (res.length==1)&&res[0]==res[0], unsupported: [] };
 }
 
 
@@ -1027,7 +1045,15 @@ export function Measure_Calc_Editor({ target, onChange, className, renderContext
         postExp = Exp2PostfixExp(newExp);
 
       }
-      let isAvail = parseCheckExpressionValid(postExp, measureIDInfo.map(info => info.id_exp));
+      const chk = parseCheckExpressionValid(postExp, measureIDInfo.map(info => info.id_exp));
+      if (!chk.ok && chk.unsupported.length) {
+        // Named, not just refused. The core's operator set is six entries long
+        // (JudgeCALC.cpp); an operator outside it is a permanent NA, so say
+        // which one rather than letting it be saved and discovered on the line.
+        message.error('核心不支援的運算: ' + chk.unsupported.join(' ')
+          + ' (可用: + - * / max min)');
+      }
+      let isAvail = chk.ok;
       if (isAvail) {
         //onChange();
         onChange(target, "input", {
@@ -1065,7 +1091,11 @@ export function Measure_Calc_Editor({ target, onChange, className, renderContext
   useEffect(() => {
     let idMap = measure_list.map(m => "[" + m.id + "]");
     let postExp = Exp2PostfixExp(fx.exp);
-    let isAvail = parseCheckExpressionValid(postExp, idMap);
+    // .ok — the check returns { ok, unsupported } now. Reading the object as a
+    // boolean would make this mount-time validation always pass, which is worse
+    // than the bug it was added for: a def opened with an expression the core
+    // cannot run would look healthy.
+    let isAvail = parseCheckExpressionValid(postExp, idMap).ok;
     setFxOK(isAvail);
   }, [])
 
