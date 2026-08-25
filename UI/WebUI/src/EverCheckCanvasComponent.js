@@ -2643,7 +2643,13 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   // quantity leaking into a mm field and therefore moves with
                   // the lens. 0.01mm states it in the field's own unit.
                   edge: {
-                    method: 'first', polarity: 'any', nth: 0,
+                    // 'falling', not 'any': that is what the core has actually
+                    // run for every search_point ever created, because ANY fell
+                    // through to the LIGHT_TO_DARK initialiser. ANY now really
+                    // means bidirectional, so seeding it would quietly opt every
+                    // new feature into a scan nobody asked for. It stays a
+                    // choice; it is no longer the default.
+                    method: 'first', polarity: 'falling', nth: 0,
                     min_strength: 60, include_range: 0.01, manual_offset: 0,
                   },
                   ref: [{

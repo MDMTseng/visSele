@@ -17,7 +17,9 @@ export const type = 'search_point';
 // core but unrelated semantically. When `locating == 'caliper'` the core runs
 // a single caliper_measure along the search vector (no cal_count geometry,
 // unlike line/arc), so search_point gets the `edge` sub-group only.
-// Defaults match core (search_point: method='first', polarity='any').
+// Defaults match what the core RUNS (method='first', polarity='falling').
+// The core's parse default is ANY, which used to be executed as falling and is
+// now bidirectional -- see FeatureManager_sig360_circle_line.cpp.
 export const fields = {
   angleDeg:         { editor: 'AngleRangeSetup' },
   search_far:       {
@@ -30,7 +32,9 @@ export const fields = {
     default: 'contour',
     normalize: (v) => (v === 'caliper' ? 'caliper' : 'contour'),
   },
-  edge:             edgeField({ method: 'first', polarity: 'any' }),
+  // See EverCheckCanvasComponent's seed: 'falling' is what the core has always
+  // run here; ANY now means bidirectional and must be chosen deliberately.
+  edge:             edgeField({ method: 'first', polarity: 'falling' }),
   locating_anchor:  { editor: 'switch', default: false, normalize: (v) => v === true },
   // Anchor corner tag (used by the morph: corner => 2D-localized, constrains both
   // axes; edge => 1D, constrains only along the search normal). Only meaningful

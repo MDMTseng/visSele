@@ -41,7 +41,7 @@ export function SearchPointPropertySheet({
       // and arriving there with min_strength 0 / include_range 0 is what makes
       // caliper look unreliable on first contact.
       patch.edge = {
-        method: 'first', polarity: 'any', nth: 0,
+        method: 'first', polarity: 'falling', nth: 0,
         min_strength: 60, include_range: 0.01, manual_offset: 0,
       };
     }

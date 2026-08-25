@@ -1159,9 +1159,30 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // Default to the OUTER silhouette edge: parts are dark objects on a bright
       // backlit background, so entering the object from outside is bright->dark
       // (LIGHT_TO_DARK). Explicit def polarity still overrides.
+      //
+      // ANY now means what the word says: EITHER direction (SP_BOTH, which
+      // search_point_cv implements as e = fabsf(e)). It used to fall through
+      // this chain to the LIGHT_TO_DARK initialiser, so a def that asked for
+      // "any" silently got "falling" -- the UI offered three choices and the
+      // machine ran two, with nothing anywhere saying which. SP_BOTH existed
+      // in the enum and in the scanner the whole time and was simply
+      // unreachable from a def.
+      //
+      // This CHANGES BEHAVIOUR for a def that relies on ANY meaning "the
+      // sensible default for a backlit silhouette". None exists on this bench
+      // (test1.hydef sets falling on all 11 edges), but one elsewhere might, so
+      // it is logged: a bidirectional scan takes the first edge of either sign,
+      // which on a noisy background can be an earlier one than the silhouette.
+      // A def that wants the outer edge should say `falling`, and the UI now
+      // seeds exactly that.
       SPEdgeType sp_et = SP_LIGHT_TO_DARK;
       if (def.edge_polarity == EdgeSelectParams::RISING)  sp_et = SP_DARK_TO_LIGHT;
       else if (def.edge_polarity == EdgeSelectParams::FALLING) sp_et = SP_LIGHT_TO_DARK;
+      else {
+        sp_et = SP_BOTH;
+        LOGI_EVERY_N(200, "search_point: edge polarity 'any' -> bidirectional scan "
+                          "(was silently 'falling' before 2026-08-25)");
+      }
       // labeled image shares eT image's frame only when cropOffset==0 (current
       // non-crop pipeline). Mask out background (dilated object label) so the scan
       // can't lock onto background specks; dilate ~8px to keep the boundary edge.
