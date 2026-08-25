@@ -282,6 +282,14 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   const [repImgInfo,SetRepImgInfo]=useState(undefined);
   const [cachedXREPList,setCachedXREPList]=useState(undefined);
+  // The WHOLE folder listing, not just the reports.
+  //
+  // A saved record is two files sharing a stem -- <ms>.xreps and its image --
+  // and the image extension depends on WHICH tool wrote it: the core's
+  // automatic NG/NA snapshots use .jpg (SNAP_IMG_EXTENSION), while the manual
+  // 檢測快照 button sends img_extension:"png". Playback cannot know which, so
+  // it looks in the listing instead of guessing.
+  const [cachedFileList,setCachedFileList]=useState(undefined);
   const [curIdx,setCurIdx]=useState(-1);
   const [repDispInfo,setRepDispInfo]=useState(undefined);
 
@@ -297,13 +305,45 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   // });
   let xreps="xreps";
   
+  // Which file on disk holds this record's picture.
+  //
+  // `imgsrc` used to be the stem with NO extension, and the core hands imgsrc
+  // straight to cv::imread (wiringPanel.cpp, the LD handler) -- it does not
+  // append anything. So imread("....../1787643715922") failed for every record
+  // ever saved, by either tool, and the reply came back with no IM packet: the
+  // report rendered and the picture never did.
+  //
+  // Resolved from the folder listing rather than guessed, because the two
+  // producers disagree about the extension (.jpg from the core's automatic
+  // snapshots, .png from the manual 檢測快照). Returns undefined when the
+  // record genuinely has no image beside it -- a report saved when the image
+  // half was switched off -- so the caller can say so instead of asking the
+  // core to fail.
+  const IMG_EXT = ["jpg", "jpeg", "png", "bmp"];
+  function siblingImagePath(filePath, stem)
+  {
+    const files = cachedFileList;
+    if (!Array.isArray(files)) return undefined;
+    const base = String(stem || "").replace("." + xreps, "");
+    const hit = files.find((f) => f && f.type === "REG" && typeof f.name === "string"
+      && IMG_EXT.some((e) => f.name.toLowerCase() === (base + "." + e).toLowerCase()));
+    if (!hit) return undefined;
+    // Prefer the listing's own path when it carries one; otherwise rebuild it
+    // from the report's path, which is the same folder by construction.
+    return hit.path || (filePath + "." + hit.name.split(".").pop());
+  }
+
   function LoadNewFile(filePath,fileInfo)
   {
     filePath = filePath.replace("." + xreps, "");
     // console.log(filePath);
     // console.log(fileInfo);
     _this.latest_filename=fileInfo.name.replace("." + xreps, "");
-    BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:1 },undefined,
+    const imgPath = siblingImagePath(filePath, fileInfo && fileInfo.name);
+    if (!imgPath) log.warn("[playback] no image beside " + filePath + " -- showing the report only");
+    BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,
+                           ...(imgPath ? { imgsrc: imgPath } : {}),
+                           down_samp_level:1 },undefined,
     { resolve:(pkts,action_channal)=>{
       let SS=pkts.find(pkt=>pkt.type=="SS");
       let FL=pkts.find(pkt=>pkt.type=="FL");
@@ -313,7 +353,9 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       let reports = FL.data.reports;
       if(Array.isArray(reports)==false)
         reports=[reports]
-      let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
+      // IM is optional now: a record with no image still has a report worth
+      // showing, and map_BPG_Packet2Act(undefined) threw before this.
+      let img_pros = IM ? BPG_Protocol.map_BPG_Packet2Act(IM) : undefined;
 
       setRepDispInfo({
         camera_param:FL.data.camera_param,
@@ -323,7 +365,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       
       setInfoDispParam(default_infoDispParam())
 
-      SetRepImgInfo(img_pros.data);
+      SetRepImgInfo(img_pros ? img_pros.data : undefined);
 
             
     }, reject:(e)=>{
@@ -602,6 +644,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
           .sort((f1,f2) => f1.ctime_ms>f2.ctime_ms);
         setCurFolderPath(folderStruct.path);
         setCachedXREPList(xrepLists);
+        setCachedFileList(folderStruct.files);
         // Same guard as MAINUI's: a selection arriving after the dialog state
         // has been cleared threw a bare "reading 'callBack'" page error that
         // said nothing about a file being opened.
