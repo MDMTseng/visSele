@@ -56,11 +56,25 @@ export function initPerifModule(d) {
 
 // ---- link-state store (useSyncExternalStore contract) ----------------------
 
-// How often the PING watchdog ticks, and how late a tick has to be before the
-// silence is read as ours rather than the device's. 1.5x is deliberately loose:
-// a tick that is merely a bit late still counts, because a device that really
-// has gone quiet must still be recovered.
-const PING_INTERVAL_MS = 3000;
+// How often the PING watchdog ticks, how many unanswered ticks it tolerates,
+// and how late a tick has to be before the silence is read as ours rather than
+// the device's.
+//
+// The cadence and the tolerance are TWO knobs for one quantity -- how long the
+// link may be silent before the host resets the board -- and they must be
+// changed together. At 3000ms x 2 that was ~6 s. Pinging once a second with the
+// same count of 2 would have cut it to ~2 s, which on a machine that stutters
+// is not a faster diagnosis, it is a faster board reset. So the count carries
+// the interval: 1000ms x 6, still ~6 s of real silence, sampled three times as
+// often.
+//
+// A faster tick is worth having on its own: link health is fresher on screen,
+// a recovered link is noticed sooner, and each individual starved tick costs
+// less, because the starvation guard below judges ticks one at a time.
+const PING_INTERVAL_MS = 1000;
+const PING_UNANSWERED_MAX = 6;      // x PING_INTERVAL_MS = the real tolerance
+// 1.5x is deliberately loose: a tick that is merely a bit late still counts,
+// because a device that really has gone quiet must still be recovered.
 const PING_STARVED_RATIO = 1.5;
 
 // links[id] = { state: 'DISCONNECTED'|'CONNECTING'|'CONNECTED'|'SUSPECT',
@@ -499,7 +513,7 @@ export class Perif_API_Base {
     // of silence we were never awake to hear.
     if (!starvationChecked && this._pingTickStarved()) { this.triggerPing(); return; }
 
-    if (this.PINGCount >= 2) {
+    if (this.PINGCount >= PING_UNANSWERED_MAX) {
       //time to disconnect
       this.PINGCount = 0;
       publish(this.id, { state: 'SUSPECT', suspectSrc: 'local' });   // face first, then reconnect
@@ -718,7 +732,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // reset two ticks later. See _pingTickStarved.
     if (this._pingTickStarved()) { this.triggerPing(); return; }
 
-    if (this.PINGCount >= 2) {
+    if (this.PINGCount >= PING_UNANSWERED_MAX) {
       if (this._linkResyncTries < LINK_RESYNC_MAX) {
         this._linkResyncTries++;
         perifLog.warn('[link] PING unanswered -- trying RESET before reconnect',
