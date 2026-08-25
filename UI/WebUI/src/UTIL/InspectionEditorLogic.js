@@ -79,27 +79,44 @@ export const MEASURERSULTRESION_priority =
 
 };
 
+// Fold one measurement's status into the part's verdict. `res` is the
+// accumulator, `measure_result_region` the item just read.
+//
+// Driven by MEASURERSULTRESION_priority, which was exported above and imported
+// nowhere -- the reduction was a hand-written cascade that named USNG/LSNG and
+// UCNG/LCNG explicitly and let everything else fall through to "the new item
+// wins". Three statuses in the table were missing from that cascade: NG, SNG
+// and CNG.
+//
+// NG is the one that mattered. It is what InspectionUI produces from a def's
+// NAasNG switch, so an accumulated NG was overwritten by the next item's UOK
+// and survived only when the failing measurement happened to be the LAST
+// essential one in the list. The core converts the same item to STATUS_FAILURE
+// and never loses it: the part was physically rejected while the panel showed a
+// green verdict, and gradeMismatch cannot see it -- that counter compares ITEM
+// status, and this acts on the roll-up.
+//
+// Using the table makes it the specification it always looked like, and means a
+// status added to the enum is handled by adding one line to one place.
+//
+// Lower number wins: NA/UNSET 0, the SNG family 1, the CNG family 2, the OK
+// family 3. Ties keep the ACCUMULATOR. The old cascade kept the accumulator on
+// an NG-class tie but took the newer value on an OK-class tie; the part verdict
+// is identical either way, so the only visible change is which OK variant
+// labels a part whose items are all OK.
 export function MEASURERSULTRESION_reducer(res, measure_result_region) {
-  if(measure_result_region===undefined)
-    measure_result_region =MEASURERSULTRESION.NA;
-  if (res == MEASURERSULTRESION.NA) return res;
+  if (measure_result_region === undefined)
+    measure_result_region = MEASURERSULTRESION.NA;
+  if (res === undefined) return measure_result_region;   // nothing folded yet
 
-  if (res == MEASURERSULTRESION.USNG || res == MEASURERSULTRESION.LSNG) {
-    if (measure_result_region == MEASURERSULTRESION.NA)
-      return measure_result_region;
-    return res;
-  }
-
-  if (res == MEASURERSULTRESION.UCNG || res == MEASURERSULTRESION.LCNG) {
-    if (measure_result_region == MEASURERSULTRESION.NA ||
-      measure_result_region == MEASURERSULTRESION.USNG ||
-      measure_result_region == MEASURERSULTRESION.LSNG
-    )
-      return measure_result_region;
-    return res;
-  }
-  //If the res is undefined/UOK/LOK then the new result is the return value
-  return measure_result_region;
+  const rank = (v) => {
+    const p = MEASURERSULTRESION_priority[v];
+    // A status the table does not know is treated as the worst thing it could
+    // be. Guessing "probably fine" about a verdict nobody has classified is how
+    // a new status ships as a silent pass.
+    return p === undefined ? 0 : p;
+  };
+  return rank(measure_result_region) < rank(res) ? measure_result_region : res;
 }
 
 // Shape_Attr_Fill — fills in per-shape-type defaults expected by the editor.
