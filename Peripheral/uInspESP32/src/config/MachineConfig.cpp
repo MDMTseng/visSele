@@ -290,9 +290,37 @@ namespace MachineConfig
           if (grp) snprintf(dotted, sizeof(dotted), "%s.%s", grp, k);
           else     snprintf(dotted, sizeof(dotted), "%s", k);
           if (!strstr(staleKeys, dotted)) return;
-          char one[64]; one[0]='\0';
-          serializeJson(v, one, sizeof(one));
-          if (strlen(staleVals)+strlen(dotted)+strlen(one)+3 >= sizeof(staleVals)) return;
+          // serializeJson does NOT null-terminate when the value does not fit:
+          // it fills the buffer to capacity and returns the byte count. The old
+          // code ignored that count and ran strlen/strcat over an unterminated
+          // buffer, so whatever followed `one` on the stack was copied into
+          // staleVals and shipped inside a JSON string.
+          //
+          // This board hit it. io_map is a long array, so cfg_stale_values came
+          // out with raw bytes in the middle of a string value, the whole
+          // get_setup reply was then invalid JSON, the host dropped the frame,
+          // and the WebUI reported the board's NVS as unreadable while the
+          // board was perfectly healthy. Every symptom pointed somewhere else.
+          //
+          // A value too long to show is reported as its SIZE. The operator is
+          // being told what is about to be lost, and "an array of 210 bytes" is
+          // honest where a truncated array is not -- that would read as a
+          // shorter io_map, which is a different setting.
+          char one[64];
+          size_t oneN = serializeJson(v, one, sizeof(one));
+          if (oneN >= sizeof(one))
+          {
+            CFG_STALE_TRUNC = 1;
+            snprintf(one, sizeof(one), "<%u bytes>", (unsigned)measureJson(v));
+          }
+          else one[oneN] = '\0';
+          if (strlen(staleVals)+strlen(dotted)+strlen(one)+3 >= sizeof(staleVals))
+          {
+            // Was a bare `return`: the count said N and the list showed fewer,
+            // with nothing to say which.
+            CFG_STALE_TRUNC = 1;
+            return;
+          }
           if (staleVals[0]) strcat(staleVals, ",");
           strcat(staleVals, dotted); strcat(staleVals, "="); strcat(staleVals, one);
         };
