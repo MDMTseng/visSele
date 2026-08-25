@@ -94,6 +94,7 @@ export { websocket_autoReconnect, websocket_reqTrack, websocket_aliveTracking } 
 
   
 import { mkLog } from 'UTIL/logger';
+import { BACK_SIDE_LIMITS_ENABLED, stripBackSideLimits } from 'UTIL/backSideLimits';
 const _i18nLog = mkLog('i18n');
 
 export function dictLookUp(key,dict,theme) {
@@ -385,6 +386,12 @@ export function defFileGeneration(edit_info)
     }
   }
 
+  // BEFORE the hash, deliberately. featureSet_sha1 identifies the def the core
+  // is actually given; stripping after it would make the hash describe a
+  // document that was never sent. A def carrying _b keys therefore hashes
+  // differently while the feature is off -- correct, because it IS a different
+  // def now, and that makes the change visible rather than silent.
+  if (!BACK_SIDE_LIMITS_ENABLED) stripBackSideLimits(report.featureSet);
   let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
   report.featureSet[0]["__decorator"] = edit_info.__decorator;
   // 訓練好的 shape 特徵: 由 SBMStudio「生成特徵點」從核心取回, 存進 def 之後載入

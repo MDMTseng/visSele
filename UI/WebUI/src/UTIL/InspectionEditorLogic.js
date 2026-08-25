@@ -28,9 +28,16 @@ import dclone from 'clone';
 // limits configured the sorter and the screen disagreed about the same part:
 // the core would accept a reading the UI painted red, or reject one it painted
 // green, and nothing on screen said which of the two had been believed.
+// Back-side limits are DISABLED -- see UTIL/backSideLimits.js for the audit
+// that turned them off and for what re-enabling has to fix first. Re-exported
+// so existing importers of this module keep working.
+export { BACK_SIDE_LIMITS_ENABLED, BACK_SIDE_KEYS } from './backSideLimits';
+import { BACK_SIDE_LIMITS_ENABLED } from './backSideLimits';
+
 export function effectiveLimits(def, isFlipped) {
   if (!def) return {};
-  const pick = (a, b) => (isFlipped && def[b] !== undefined ? def[b] : def[a]);
+  const useBack = BACK_SIDE_LIMITS_ENABLED && isFlipped;
+  const pick = (a, b) => (useBack && def[b] !== undefined ? def[b] : def[a]);
   return {
     value: pick('value', 'value_b'),
     USL:   pick('USL',   'USL_b'),

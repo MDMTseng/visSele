@@ -52,11 +52,15 @@ const couple_value    = (obj, prev) => { if (obj.value === undefined) return;
   obj.UCL = round(obj.UCL - prev + obj.value, 0.001);
   obj.LSL = round(obj.LSL - prev + obj.value, 0.001);
   obj.USL = round(obj.USL - prev + obj.value, 0.001); };
-const couple_value_b  = (obj, prev) => { if (obj.value === undefined) return;
-  obj.LCL_b = round(obj.LCL_b - prev + obj.value, 0.001);
-  obj.UCL_b = round(obj.UCL_b - prev + obj.value, 0.001);
-  obj.LSL_b = round(obj.LSL_b - prev + obj.value, 0.001);
-  obj.USL_b = round(obj.USL_b - prev + obj.value, 0.001); };
+// value_b, not value. Every line here read obj.value, so editing the back target
+// re-centred the back limits on the FRONT one and they did not move at all --
+// e.g. value_b 10 -> 20 left LSL_b/USL_b at 9/11. Fixed even though the feature
+// is disabled: a bug left in place is one that comes back with the flag.
+const couple_value_b  = (obj, prev) => { if (obj.value_b === undefined) return;
+  obj.LCL_b = round(obj.LCL_b - prev + obj.value_b, 0.001);
+  obj.UCL_b = round(obj.UCL_b - prev + obj.value_b, 0.001);
+  obj.LSL_b = round(obj.LSL_b - prev + obj.value_b, 0.001);
+  obj.USL_b = round(obj.USL_b - prev + obj.value_b, 0.001); };
 const couple_LSL = (obj) => { if (obj.value === undefined) return;
   obj.LCL = round(obj.value + (obj.LSL - obj.value) * 2 / 3, 0.001); };
 const couple_USL = (obj) => { if (obj.value === undefined) return;

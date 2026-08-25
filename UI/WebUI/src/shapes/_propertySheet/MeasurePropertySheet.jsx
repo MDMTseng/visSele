@@ -15,6 +15,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { fields as measureFields } from '../measure';
+import { BACK_SIDE_LIMITS_ENABLED } from 'UTIL/backSideLimits';
 import { Measure_Calc_Editor } from 'JSSRCROOT/DefConfUI';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
@@ -86,10 +87,16 @@ export function MeasurePropertySheet({
     </Section>
 
     {/* Back-side limit set (toggle + nested copy) */}
-    <SwitchField label={t('back_value_setup')}
+    {/* Back-side limits are disabled (UTIL/backSideLimits.js). The switch is
+        hidden rather than merely ignored: leaving a control that configures
+        nothing is how someone spends an afternoon setting numbers the machine
+        will not use -- which is most of what the audit found. A def that
+        already carries _b values keeps them; they are stripped from the wire
+        def, so the core stops applying them too. */}
+    {BACK_SIDE_LIMITS_ENABLED && <SwitchField label={t('back_value_setup')}
       checked={!!shape.back_value_setup}
-      onChange={(v) => commitField(shape, 'back_value_setup', v, onUpdate)} />
-    {shape.back_value_setup && <Section label="back">
+      onChange={(v) => commitField(shape, 'back_value_setup', v, onUpdate)} />}
+    {BACK_SIDE_LIMITS_ENABLED && shape.back_value_setup && <Section label="back">
       <NumberField label="value_b" value={shape.value_b}
         onCommit={set('value_b')} tweak={limitTweak} />
       <NumberField label="USL_b" value={shape.USL_b}
