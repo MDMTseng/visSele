@@ -957,9 +957,13 @@ export class InspectionEditorLogic {
   findLostRefShapes(shapeList = this.shapeList, inherentShapeList = this.inherentShapeList) {
     let totalList = shapeList.concat(inherentShapeList);
     let lostRefShape = totalList.filter(shape => {
+      // Either reference kind is enough to make this shape interesting, but
+      // BOTH have to be handled once we are past the guard. The test was an
+      // `&&`, so a shape carrying only ref_baseLine fell through and then
+      // spread `shape.ref` -- undefined -- and threw, taking def load with it.
       if (shape.ref === undefined && shape.ref_baseLine === undefined)
         return false;
-      let totalRef = shape.ref;
+      let totalRef = shape.ref || [];
       if (GetObjElement(shape, ["ref_baseLine", "id"]) !== undefined) {
         totalRef = [...totalRef, shape.ref_baseLine];
       }
@@ -978,9 +982,13 @@ export class InspectionEditorLogic {
   FindShapeRefTree(id, shapeList = this.shapeList, inherentShapeList = this.inherentShapeList) {
     let totalList = shapeList.concat(inherentShapeList);
     let ref_layer = totalList.filter(shape => {
+      // Same as findLostRefShapes: past this guard `ref` may still be absent
+      // while ref_baseLine is present. Calling .find on undefined here killed
+      // the delete-cascade dialog, which is the one place an operator finds out
+      // what a deletion is about to take with it.
       if (shape.ref === undefined && shape.ref_baseLine === undefined)
         return false;
-      let hasRef = shape.ref.find(ref => ref.id == id) !== undefined;
+      let hasRef = (shape.ref || []).find(ref => ref.id == id) !== undefined;
       if (hasRef) return true;
 
       if (GetObjElement(shape, ["ref_baseLine", "id"]) == id)
@@ -1379,6 +1387,13 @@ export class InspectionEditorLogic {
         case SHAPE_TYPE.aux_point:
           {
             let point = this.auxPointParse(shape);
+            // auxPointParse returns undefined for any ref it cannot resolve --
+            // a deleted source, a keyTrace that misses, a slot emptied by an
+            // edit. distance_point_point reads .x off it with no guard, so an
+            // aux point with a broken reference threw on MOUSE MOVE: the editor
+            // died the moment the pointer crossed the canvas, which is the same
+            // failure shape as the sig360 empty-list bug.
+            if (!point) break;
             tmpDist = distance_point_point(point, location);
             if (pt_info.dist > tmpDist) {
               pt_info.shape = shape;
@@ -1405,6 +1420,7 @@ export class InspectionEditorLogic {
       if (ishape == null) return;
       if (ishape.type != SHAPE_TYPE.aux_point) return;
       let point = this.auxPointParse(ishape);
+      if (!point) return;   // same reason as FindClosestCtrlPointInfo above
       let tmpDist = distance_point_point(point, location);
       if (pt_info.dist > tmpDist) {
         pt_info.shape = ishape;

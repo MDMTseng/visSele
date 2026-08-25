@@ -1,6 +1,16 @@
 
+// Returns Infinity rather than throwing when either point is missing.
+//
+// Callers compare the result against a running minimum, so Infinity means "not
+// this one" and the search carries on -- which is what every caller wanted. The
+// unguarded version turned one unresolved aux reference into a TypeError on
+// mouse move, and the error boundary then replaced the editor.
+//
+// A guard here is not a substitute for the caller checking: it makes a missing
+// point unable to CRASH, not able to be correct. The callers still skip.
 export function distance_point_point(pt1, pt2)
 {
+  if (!pt1 || !pt2) return Number.POSITIVE_INFINITY;
   return Math.hypot(pt1.x-pt2.x,pt1.y-pt2.y);
 }
 export function closestPointOnPoints(pt, pts)
