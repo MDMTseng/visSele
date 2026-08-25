@@ -65,6 +65,7 @@ import {
   EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { stripOverlayOnly } from './UTIL/dbRecord';
+import { pickCtrlMargin } from './UTIL/ctrlMarginPick';
 import { pendingInsertCount, droppedCount } from './UTIL/inspDBQueue';
 
 
@@ -2744,10 +2745,12 @@ class APP_INSP_MODE extends React.Component {
       // core was told about, and a slider is a thing the core can never learn.
       this.setState({ measureDisplayRank: rankLimit === undefined ? Infinity : rankLimit });
 
-      const curMarginInfo_name = ctrlMarginInfos === undefined ? undefined
-        : (this.props.inspOptionalTag||[]).find(tag=>ctrlMarginInfos[tag]!==undefined);
-      const curMarginInfo = curMarginInfo_name === undefined ? undefined
-        : ctrlMarginInfos[curMarginInfo_name];
+      // The SAME pick the grading path uses (UTIL/ctrlMarginPick.js). This one
+      // decides what the core is told; that one decides what the screen shows.
+      // They took different tags until 2026-08-26.
+      const _mpick = pickCtrlMargin(this.props.inspOptionalTag, ctrlMarginInfos);
+      const curMarginInfo_name = _mpick.tag;
+      const curMarginInfo = _mpick.info;
 
       if(curMarginInfo!==undefined || rankLimit!==undefined)
       {

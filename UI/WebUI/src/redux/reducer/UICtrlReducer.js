@@ -4,6 +4,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString } from 'UTIL/MISC_Util';
 import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
+import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
@@ -329,13 +330,18 @@ function StateReducer(newState, action) {
                   {//Do matching in tracking_window
                     
                     
+                    // Shared with InspectionUI's fold, which is what the WIRE
+                    // DEF is built from. This reduce kept the LAST matching tag
+                    // while that side takes the FIRST, so a part carrying two
+                    // tags with rows was sorted by one 製程 and coloured by the
+                    // other. See UTIL/ctrlMarginPick.js.
                     function MarginInfoExtraction(tags,control_margin_info=newState.edit_info.__decorator.control_margin_info)
                     {
-                      if(control_margin_info===undefined)return undefined;
-                      return tags.reduce((marginInfo,tag)=>
-                        (control_margin_info[tag]!==undefined)?
-                          control_margin_info[tag]:marginInfo
-                        ,undefined);
+                      const pick = pickCtrlMargin(tags, control_margin_info);
+                      if (pick.ambiguous.length)
+                        log.warn('[margin] more than one 製程 has a control-margin row for this part: '
+                          + pick.ambiguous.join(', ') + ' -- using ' + pick.tag);
+                      return pick.info;
                     }
                     // isFlipped decides which set of limits applies. It is not a
                     // display detail: the core judges a flipped part against the
