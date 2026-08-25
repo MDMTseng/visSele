@@ -677,6 +677,22 @@ export class InspectionEditorLogic {
       return MEASURERSULTRESION.UNSET;
     }
     const lim = effectiveLimits(measureDef, isFlipped);
+
+    // A missing spec limit is NA, not a pass.
+    //
+    // Every test below is a `<` or `>`, and both are FALSE against undefined or
+    // NaN -- so a measure whose USL/LSL never got set fell through the whole
+    // chain and returned UOK. Green. A measurement with no specification became
+    // a measurement that met it.
+    //
+    // The core guards a NaN measured VALUE explicitly and has no equivalent
+    // guard for a NaN LIMIT, so this side is where it has to be caught. NA is
+    // the honest answer: nothing was compared, and NA is the status that says
+    // exactly that. UCL/LCL are deliberately not required -- the core does not
+    // parse control limits at all, so a def may legitimately carry none.
+    const specMissing = !isFinite(Number(lim.USL)) || !isFinite(Number(lim.LSL));
+    if (specMissing) return MEASURERSULTRESION.NA;
+
     if (measureReport.value < lim.LSL) {
       return MEASURERSULTRESION.LSNG;
     }
