@@ -4,6 +4,7 @@
 // Arc-specific bits vs line:
 //   - `direction` switch (stored as ±1, not bool — coerce in the handler).
 //   - caliper width auto-default = arc length / count (not chord length).
+import { caliperConfigProblem } from '../_caliperFields';
 import React, { useEffect } from 'react';
 import { threePointToArc } from 'UTIL/MathTools';
 import {
@@ -96,6 +97,15 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
         <NumberField label="max_error" value={shape.caliper?.max_error}
           onCommit={(max_error) => updateSub('caliper', { max_error })}
           tweak={defaultTweak} />
+        {/* Same as the line sheet: said beside the fields that cause it,
+            because the overlay draws green inlier crosses on a shape this
+            configuration can never let succeed. */}
+        {caliperConfigProblem(shape.caliper) && (
+          <div style={{ gridColumn: '1 / -1', color: '#c33', fontSize: 12,
+                        lineHeight: 1.5, padding: '2px 0' }}>
+            ⚠ {caliperConfigProblem(shape.caliper)}
+          </div>
+        )}
       </Section>
       <Section label="edge">
         <DropdownField label="method" value={shape.edge?.method}

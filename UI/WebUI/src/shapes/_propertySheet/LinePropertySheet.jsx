@@ -11,6 +11,7 @@
 //   shapeList     — for ref resolution (search_point/aux_* only — line
 //                   doesn't reference other shapes itself, so unused here)
 //   dict / theme  — i18n
+import { caliperConfigProblem } from '../_caliperFields';
 import React, { useEffect } from 'react';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
@@ -94,6 +95,16 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
         <NumberField label="max_error" value={shape.caliper?.max_error}
           onCommit={(max_error) => updateSub('caliper', { max_error })}
           tweak ={defaultTweak}/>
+        {/* Said HERE, beside the fields that cause it. The overlay draws
+            `count` green inlier crosses on a shape this configuration can never
+            let succeed, so the picture actively argues against the NA -- see
+            caliperConfigProblem. */}
+        {caliperConfigProblem(shape.caliper) && (
+          <div style={{ gridColumn: '1 / -1', color: '#c33', fontSize: 12,
+                        lineHeight: 1.5, padding: '2px 0' }}>
+            ⚠ {caliperConfigProblem(shape.caliper)}
+          </div>
+        )}
       </Section>
       <Section label="edge">
         <DropdownField label="method" value={shape.edge?.method}

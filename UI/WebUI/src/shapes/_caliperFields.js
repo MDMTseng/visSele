@@ -358,3 +358,29 @@ export function drawEdgePolarityArrow(ctx, x, y, dir, polarity, len, renderer) {
   }
   ctx.restore();
 }
+
+
+// Is this caliper configuration one the core can ever satisfy?
+//
+// min_inliers is compared against the number of calipers that FOUND an edge, so
+// min_inliers > count can never be met: `ok` is false for every part, forever,
+// and the shape reports NA. Nothing says why -- and the overlay makes it worse
+// than silent, because it draws `count` perfectly good green inlier crosses on
+// the edge. The one screen that could explain the NA argues against it.
+//
+// Returns a human sentence or null. The caller decides how loudly to say it;
+// this decides what is true.
+export function caliperConfigProblem(caliper) {
+  if (!caliper) return null;
+  const n = Number(caliper.count);
+  const mi = Number(caliper.min_inliers);
+  if (!isFinite(n) || !isFinite(mi)) return null;
+  if (mi > n)
+    return `min_inliers (${mi}) 大於 count (${n}) — 永遠無法滿足,這個特徵會一直是 NA`;
+  // The core floors count at 2 for a line fit and 3 for an arc; below that it
+  // silently runs more calipers than the def asked for, so the overlay and the
+  // fit disagree about how many there are.
+  if (n > 0 && n < 2)
+    return `count (${n}) 太小 — 核心至少會跑 2 支(弧為 3),畫面與實際不符`;
+  return null;
+}
