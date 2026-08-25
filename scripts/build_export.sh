@@ -3,8 +3,14 @@
 # Build everything and lay it out so it can be copied to a machine that has
 # nothing installed on it.
 #
-#   scripts/build_export.sh <dest>            e.g. scripts/build_export.sh export_v2
-#   scripts/build_export.sh <dest> --no-zip   skip the installable package
+#   scripts/build_export.sh <dest>                 e.g. scripts/build_export.sh export_v2
+#   scripts/build_export.sh <dest> --no-zip        skip the installable package
+#   scripts/build_export.sh <dest> --app-only      core + WebUI only, no launcher
+#
+# The launcher changes far less often than the application and is the slow half
+# (npm install + an Electron pack). --app-only is the edit-build-run loop: it
+# leaves an already-exported launcher/ in place, so the same folder stays
+# runnable. Combine with --no-zip to skip the SHA256 pass over ~250 MB as well.
 #
 # What comes out:
 #
@@ -43,9 +49,11 @@ if [[ -z "$DEST" || "$DEST" == -* ]]; then
 fi
 shift
 WANT_ZIP=1
+WANT_LAUNCHER=1
 for a in "$@"; do
   case "$a" in
     --no-zip) WANT_ZIP=0 ;;
+    --app-only|--no-launcher) WANT_LAUNCHER=0 ;;
     *) echo "unknown option: $a" >&2; exit 2 ;;
   esac
 done
@@ -112,23 +120,37 @@ if [[ "$WANT_ZIP" == 1 ]]; then
 fi
 
 # --- 5. the launcher ---------------------------------------------------------
-say "building the launcher"
-(
-  cd UI/Launcher
-  npm install --no-audit --no-fund
-  npm run package
-)
-rm -rf "$LAUNCHER_OUT"
-mkdir -p "$LAUNCHER_OUT"
-cp -r UI/Launcher/release-builds/. "$LAUNCHER_OUT/"
+if [[ "$WANT_LAUNCHER" == 1 ]]; then
+  say "building the launcher"
+  (
+    cd UI/Launcher
+    npm install --no-audit --no-fund
+    npm run package
+  )
+  # Replaced wholesale rather than copied over: a stale file from a previous
+  # Electron version left behind in there is the kind of thing that only fails
+  # on the target machine.
+  rm -rf "$LAUNCHER_OUT"
+  mkdir -p "$LAUNCHER_OUT"
+  cp -r UI/Launcher/release-builds/. "$LAUNCHER_OUT/"
 
-# electron-packager --prune=true prunes node_modules IN PLACE, in the source
-# tree, not in a copy. Every packaging run therefore strips this repo's dev
-# dependencies -- including playwright, which the soak and the launcher test
-# suites need. Put them back, so the next `node tools/soak.mjs` in this
-# checkout works instead of failing with a missing module.
-say "restoring the launcher's dev dependencies (packaging pruned them in place)"
-( cd UI/Launcher && npm install --include=dev --no-audit --no-fund )
+  # electron-packager --prune=true prunes node_modules IN PLACE, in the source
+  # tree, not in a copy. Every packaging run therefore strips this repo's dev
+  # dependencies -- including playwright, which the soak and the launcher test
+  # suites need. Put them back, so the next `node tools/soak.mjs` in this
+  # checkout works instead of failing with a missing module.
+  say "restoring the launcher's dev dependencies (packaging pruned them in place)"
+  ( cd UI/Launcher && npm install --include=dev --no-audit --no-fund )
+else
+  # Deliberately NOT deleted: the point of --app-only is that the folder stays
+  # runnable, and on a build machine that has never packaged one there is
+  # nothing to keep -- so say which of the two just happened.
+  if [[ -d "$LAUNCHER_OUT" ]]; then
+    say "skipping the launcher (--app-only); keeping the one already in $LAUNCHER_OUT"
+  else
+    say "skipping the launcher (--app-only); there is none in $LAUNCHER_OUT yet"
+  fi
+fi
 
 # --- 6. dependency audit -----------------------------------------------------
 #
@@ -278,12 +300,26 @@ echo "      app/$VERSION/                   the application"
 if [[ "$WANT_ZIP" == 1 ]]; then
   echo "      app/update_${VERSION}_win.zip     installable, hash-verified"
 fi
-echo "      launcher/                       the launcher (bundled Electron)"
+if [[ "$WANT_LAUNCHER" == 1 ]]; then
+  echo "      launcher/                       the launcher (bundled Electron)"
+elif [[ -d "$LAUNCHER_OUT" ]]; then
+  echo "      launcher/                       unchanged (--app-only)"
+else
+  echo "      launcher/                       NOT BUILT (--app-only) -- run without it to ship"
+fi
 echo "      DEPENDENCIES.txt                read this before copying to a new PC"
 echo ""
-echo "    copy the whole of $DEST to the target machine, then run"
-echo "      launcher/Xception INSP-win32-x64/Xception INSP.exe"
-echo "    and point its app root at the copied app/ folder."
+if [[ "$WANT_LAUNCHER" == 1 || -d "$LAUNCHER_OUT" ]]; then
+  echo "    copy the whole of $DEST to the target machine, then run"
+  echo "      launcher/Xception INSP-win32-x64/Xception INSP.exe"
+  echo "    and point its app root at the copied app/ folder."
+else
+  # Saying "copy this and run the launcher" when no launcher was built is how
+  # someone ends up shipping half an application.
+  echo "    app/ only. To ship this folder, run again without --app-only so a"
+  echo "    launcher is built alongside it -- or drop app/$VERSION into the app"
+  echo "    root of a machine that already has one."
+fi
 
 if [[ "$AUDIT" != 0 ]]; then
   echo ""
