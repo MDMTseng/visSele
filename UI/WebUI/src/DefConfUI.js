@@ -623,6 +623,7 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       dump.measureInfo =[...dump.measureInfo].map(m=>{
         let c = {...m};   // same element-copy rule as ctrlMarg above
         delete c.update;
+        delete c.__root;  // view state, not def data -- see where it is set
         return c;
       })
     }
@@ -777,6 +778,18 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
               <Button size="small" type={active?"primary":"default"}
                 style={{ padding:'0 6px', minWidth: 26 }}
                 onClick={()=>set(v)}>{label}</Button>);
+            // The root row has no row above it to inherit from, so offering
+            // "inherit" there is offering a state that cannot mean anything --
+            // and it was the state the row always fell back to, which is how
+            // the dead control looked like a working one.
+            if (objInfo.__root) {
+              return (
+                <Button.Group>
+                  {btn("是", true,  value!==false)}
+                  {btn("否", false, value===false)}
+                </Button.Group>
+              );
+            }
             return (
               <Button.Group>
                 {btn(rootOn?"—(是)":"—(否)", undefined, value===undefined)}
@@ -897,6 +910,19 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
         LSL:shape.LSL,
         UCL:shape.UCL,
         LCL:shape.LCL,
+        // The root row was missing this while the 品質必需 column was rendered
+        // on it anyway, and its update() wrote back six keys that did not
+        // include it -- so clicking 是/否 here was accepted and discarded, and
+        // the button then redrew as "inherit". quality_essential is the single
+        // field deciding whether a measurement counts toward the part, so the
+        // symptom was "I disabled that measurement and it still rejects parts".
+        quality_essential:shape.quality_essential,
+        // Marks the root for the tristate renderer: the root has nothing to
+        // inherit FROM, so it gets two states, not three. Stripped in
+        // cleanUpDumpInfo beside `update` -- a double-underscore key that
+        // reached the def would ride the full-spread merge into the wire def,
+        // which is the trap documented on the 製程 override rows.
+        __root:true,
         
         update:(newObj)=>{
           let newMeasureInfo = [..._measureInfo];
@@ -907,6 +933,10 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
             LSL:newObj.LSL,
             UCL:newObj.UCL,
             LCL:newObj.LCL,
+            // Explicit, like the five above. An override row may legitimately
+            // carry undefined here ("inherit"); the ROOT may not -- it is the
+            // thing being inherited from -- so it is normalised to a boolean.
+            quality_essential:newObj.quality_essential!==false,
           };
           set_MeasureInfo(newMeasureInfo);
         }
