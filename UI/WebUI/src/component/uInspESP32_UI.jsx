@@ -254,23 +254,30 @@ const fmtWhen = (t) => {
 // enough for a grouped nine-digit count ("1,982,530") at 12px, because these
 // cells now print counts in full -- see exactN.
 const HIST_W = { label: 88, n: 78, feed: 84 };
-// The counts in full, one tap away from the strip.
+// The machine at a glance, one tap away from the strip.
 //
 // The strip abbreviates on purpose (see compactN): five characters is what
-// keeps three counts legible at a glance in a third of a sidebar each. But an
-// operator who is writing the shift total onto a sheet needs every digit, and
-// "1.9M" is not a number anyone can write down -- a shift that made 1,982,530
-// parts did not make 1.9 million of them.
+// keeps three counts legible in a third of a sidebar each. What was missing was
+// anywhere to read the exact digits -- they were on `title`, which a mouse can
+// reach and a finger cannot, and this panel runs on a touchscreen.
 //
-// It used to be on `title`, which is a HOVER affordance. This panel runs on a
-// touchscreen, so on the machine it is standing on, the exact value had nowhere
-// to be read at all.
+// Having opened a surface with room on it, the counts are not the only thing
+// worth putting there. The numbers below are the ones that let someone standing
+// at the machine answer "is it healthy" without opening three panels, and they
+// are grouped by the question they answer rather than by where they came from.
 //
-// All three together, and the selector each one resolved to. The bin-to-outlet
-// mapping is exactly what the rendered digits throw away, and a column reading
-// zero all shift is only checkable against the machine if the outlet is named.
-function CountsBubble({ cnt, gate, selOK, selNG }) {
+// The one worth explaining is 判定期限. A part is photographed at CAM1_on and
+// must have a verdict by the time it reaches SWITCH; that gap is the whole
+// budget the inspection gets, and the report latency is what it actually
+// spends. When the margin between them goes to zero, parts start arriving at
+// SWITCH undecided -- which is device error 2 and the SKIP counter, and by then
+// it is being read as a sorting fault rather than as the machine simply running
+// out of time. Stated as a margin, it is a number that can be watched BEFORE it
+// becomes a defect.
+function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
   const n0v = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
+  const has = (v) => typeof v === 'number' && isFinite(v);
+
   const rows = selOK && selNG
     ? [['NG', n0v(cnt[selNG]), '#c33', selNG],
        ['OK', n0v(cnt[selOK]), '#389e0d', selOK]]
@@ -278,29 +285,84 @@ function CountsBubble({ cnt, gate, selOK, selNG }) {
        ['SEL2', n0v(cnt.SEL2), undefined, 'SEL2'],
        ['SEL3', n0v(cnt.SEL3), undefined, 'SEL3']];
   rows.push(['NA', n0v(cnt.NA), undefined, 'NA']);
-  if (gate && typeof gate.accept === 'number') rows.push(['進料', gate.accept, '#888', 'gate']);
-  const total = rows.filter(([n]) => n !== '進料').reduce((a, [, v]) => a + v, 0);
+  const judged = rows.reduce((a, [, v]) => a + v, 0);
+
+  const lat  = (stat && stat.report_latency) || {};
+  const pipe = (stat && stat.pipe) || {};
+  const hz   = n0v(cfg && cfg.plate_freq);
+  const off  = (cfg && cfg.stage_pulse_offset) || {};
+  // Budget = camera to deadline. Both are stage-timer ticks at 2x plate_freq.
+  const budgetMs = (hz > 0 && has(off.SWITCH) && has(off.CAM1_on))
+    ? ticksToMs(off.SWITCH - off.CAM1_on, hz) : NaN;
+  const spentMs  = has(lat.max_us) ? lat.max_us / 1000 : NaN;
+  const marginMs = (isFinite(budgetMs) && isFinite(spentMs)) ? budgetMs - spentMs : NaN;
+
+  const Row = ({ label, sub, value, color, warn }) => (
+    <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
+      <span style={{ color: color || undefined, fontWeight: color ? 600 : 400 }}>
+        {label}{sub ? <span style={{ color: '#888', fontWeight: 400 }}> {sub}</span> : null}
+      </span>
+      <span style={{ fontVariantNumeric: 'tabular-nums',
+                     color: warn ? '#c33' : undefined, fontWeight: warn ? 600 : undefined }}>
+        {value}
+      </span>
+    </div>
+  );
+  const Head = ({ children }) => (
+    <div style={{ color: '#888', fontSize: 11, marginTop: 6, borderTop: '1px solid #eee',
+                  paddingTop: 3 }}>{children}</div>
+  );
+
   return (
-    <div data-testid="uinsp-counts-bubble" style={{ fontSize: 13, lineHeight: 1.9 }}>
+    <div data-testid="uinsp-counts-bubble" style={{ fontSize: 13, lineHeight: 1.8, minWidth: 240 }}>
       {rows.map(([name, v, color, sel]) => (
-        <div key={name} style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
-          <span style={{ color: color || undefined, fontWeight: 600 }}>
-            {name}
-            {sel && sel !== name ? <span style={{ color: '#888', fontWeight: 400 }}> {sel}</span> : null}
-          </span>
-          <span data-bin={name} data-value={v}
-                style={{ fontVariantNumeric: 'tabular-nums' }}>{exactN(v)}</span>
+        <div key={name} data-bin={name} data-value={v}>
+          <Row label={name} sub={sel !== name ? sel : ''} value={exactN(v)} color={color} />
         </div>
       ))}
-      {/* Stated, not left to be added up in the head: the three bins are
-          supposed to account for every part, and a total that does not match
-          the feed is the first sign that one of them is going somewhere else. */}
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between',
-                    borderTop: '1px solid #eee', marginTop: 4, paddingTop: 3,
-                    color: '#888' }}>
-        <span>已判定合計</span>
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{exactN(total)}</span>
-      </div>
+      <Row label="已判定合計" value={exactN(judged)} />
+      {gate && has(gate.accept)
+        ? <Row label="進料" sub="gate" value={exactN(gate.accept)} /> : null}
+
+      <Head>速度</Head>
+      {rate ? (<>
+        <Row label="進料" value={`${rate.g.toFixed(1)} /s`} />
+        <Row label="檢測" value={`${rate.i.toFixed(1)} /s`} />
+        <Row label="OK"   value={`${rate.o.toFixed(1)} /s`} color="#389e0d" />
+      </>) : <Row label="—" value="尚未取樣" />}
+      {hz > 0 ? <Row label="轉速"
+                     value={`${plateRpm(hz).toFixed(1)} rpm · ${plateMmS(hz).toFixed(0)} mm/s`} /> : null}
+
+      <Head>判定期限（相機 → SWITCH）</Head>
+      <Row label="可用時間" value={isFinite(budgetMs) ? `${budgetMs.toFixed(0)} ms` : '—'} />
+      <Row label="回報 平均 / 最慢"
+           value={has(lat.avg_us) ? `${(lat.avg_us/1000).toFixed(1)} / ${(lat.max_us/1000).toFixed(1)} ms` : '—'} />
+      {/* Red once the slowest report has eaten the budget: past zero, a part
+          reaches SWITCH with nothing decided about it. */}
+      <Row label="餘裕" value={isFinite(marginMs) ? `${marginMs.toFixed(0)} ms` : '—'}
+           warn={isFinite(marginMs) && marginMs <= 0} />
+      {has(pipe.waiting) || has(pipe.registered)
+        ? <Row label="在製 等待 / 登記"
+               value={`${n0v(pipe.waiting)} / ${n0v(pipe.registered)}`} /> : null}
+
+      <Head>時間配對（核心）</Head>
+      {pairing ? (<>
+        <Row label="殘差 現在 / 最大"
+             value={`${Math.round(n0v(pairing.resid_last_us))} / ${Math.round(n0v(pairing.resid_max_us))} µs`} />
+        <Row label="已配對" value={exactN(n0v(pairing.matched))} />
+        <Row label="待配 / 丟棄"
+             value={`${n0v(pairing.pending)} / ${n0v(pairing.drops)}`}
+             warn={n0v(pairing.drops) > 0} />
+        {has(pairing.offset_ms)
+          ? <Row label="時鐘偏移" value={`${pairing.offset_ms.toFixed(1)} ms`}
+                 warn={pairing.offset_valid === false} /> : null}
+      </>) : <Row label="—" value="核心尚未回報" />}
+
+      {(n0v(cnt.SKIP) > 0 || n0v(cnt.UNANSWERED) > 0) ? (<>
+        <Head>未判定</Head>
+        <Row label="SKIP" value={exactN(n0v(cnt.SKIP))} warn />
+        <Row label="UNANS" value={exactN(n0v(cnt.UNANSWERED))} warn />
+      </>) : null}
     </div>
   );
 }
@@ -1704,6 +1766,45 @@ export function UINSP_ESP32_MINI() {
     const h = setInterval(() => { if (!outletsRef.current) ask(); }, 10000);
     return () => { live = false; clearInterval(h); };
   }, [CORE_ID]);
+  // Live pairing residue for the bubble -- fetched ONLY while it is open.
+  //
+  // The cost of this query is not theoretical: the runaway above measured
+  // 420 GS/s, 99.7% of everything the core received, rebuilding perif_pairing
+  // JSON under the core's locks while the machine was inspecting. A poll that
+  // runs so a bubble MIGHT be opened would pay that every second of every
+  // shift, on a machine that is often a fanless tablet, to answer a question
+  // nobody asked.
+  //
+  // So it is gated on the popover: closed costs exactly nothing, open costs one
+  // GS a second and only while a person is looking at it. Everything else in
+  // the bubble -- counts, rates, latency, pipe depth, the SWITCH budget --
+  // comes from get_running_stat and machineSetup, which this strip already
+  // polls. Opening the bubble adds no serial traffic to the board at all.
+  //
+  // pairLive is NOT a dependency of the effect. That is exactly the mistake
+  // documented above: the reply is a fresh object every time, so listing it
+  // would re-arm the effect on every answer and rebuild the loop.
+  const [bubbleOpen, setBubbleOpen] = useState(false);
+  const [pairLive, setPairLive] = useState(null);
+  useEffect(() => {
+    if (!bubbleOpen) return undefined;
+    let live = true;
+    const ask = () => {
+      dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "GS", 0, { items: ["perif_pairing"] },
+        undefined, {
+          resolve: (pkts) => {
+            const gs = pkts.find((p) => p.type === "GS");
+            const pv = gs && gs.data && gs.data.perif_pairing;
+            if (live && pv) setPairLive(pv);
+          },
+          reject: () => {},
+        }));
+    };
+    ask();
+    const h = setInterval(ask, 1000);
+    return () => { live = false; clearInterval(h); };
+  }, [bubbleOpen, CORE_ID]);
+
   // Presses on the reset button, within a 5s window. Three, because inside a
   // modal the risk is no longer a stray click (you had to open it) -- it is
   // pressing the wrong button while looking at the history you came to read.
@@ -2184,8 +2285,10 @@ export function UINSP_ESP32_MINI() {
           question is almost never "what is NG exactly", it is "read me the
           numbers", and three taps to answer that is two too many. */}
       <Popover trigger={['hover', 'click']} placement="right"
-               overlayStyle={{ maxWidth: 280 }}
-               content={<CountsBubble cnt={cnt} gate={gate} selOK={selOK} selNG={selNG} />}>
+               overlayStyle={{ maxWidth: 320 }}
+               visible={bubbleOpen} onVisibleChange={setBubbleOpen}
+               content={<CountsBubble cnt={cnt} gate={gate} selOK={selOK} selNG={selNG}
+                                      rate={rate} pairing={pairLive} stat={stat} cfg={cfg} />}>
         <div style={{ display: 'flex', gap: 4, cursor: 'pointer' }}
              data-testid="uinsp-counts-row">
           {selOK && selNG ? (<>
