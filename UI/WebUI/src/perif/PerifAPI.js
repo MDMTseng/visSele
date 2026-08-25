@@ -56,6 +56,13 @@ export function initPerifModule(d) {
 
 // ---- link-state store (useSyncExternalStore contract) ----------------------
 
+// How often the PING watchdog ticks, and how late a tick has to be before the
+// silence is read as ours rather than the device's. 1.5x is deliberately loose:
+// a tick that is merely a bit late still counts, because a device that really
+// has gone quiet must still be recovered.
+const PING_INTERVAL_MS = 3000;
+const PING_STARVED_RATIO = 1.5;
+
 // links[id] = { state: 'DISCONNECTED'|'CONNECTING'|'CONNECTED'|'SUSPECT',
 //               connInfo, machineStatus, machineSetup, deviceState,
 //               runningStat, linkHealth (core perif_pairing.link), ... }
@@ -213,7 +220,7 @@ export class Perif_API_Base {
     this._nextAttemptAt = 0;
 
     this.checkReconnectionInterval = setInterval(() => this.checkReConnection(), 3000);
-    this.runPINGInterval = setInterval(() => this._sendPing(), 3000);
+    this.runPINGInterval = setInterval(() => this._sendPing(), PING_INTERVAL_MS);
 
     publish(this.id, { state: 'DISCONNECTED' });
   }
@@ -458,8 +465,39 @@ export class Perif_API_Base {
 
   // ---- PING watchdog ---------------------------------------------------
 
-  _sendPing() {
+  // The watchdog runs on the renderer's main thread -- the same thread that
+  // can be starved. When it is, this timer fires late and its replies sit
+  // unprocessed, so the watchdog reads its OWN starvation as the device having
+  // gone silent, and escalates: SUSPECT, RESYNC, then a reconnect that reopens
+  // the port, toggles DTR, and hard-resets the board. The board comes back, the
+  // thread is still starved, and it happens again. Observed on a fresh PC whose
+  // renderer was blocked 750 ms out of every second (no GPU driver, software
+  // rasterisation): a link that flapped continuously while the wire was fine.
+  //
+  // A watchdog that cannot tell "no reply" from "I was not running" will blame
+  // the peer for its own fault. So measure the tick's own lateness -- this
+  // timer knows how far apart its ticks are supposed to be -- and when it was
+  // starved, ping without counting it against the device.
+  _pingTickStarved() {
+    const now = Date.now();
+    const prev = this._lastPingTickAt;
+    this._lastPingTickAt = now;
+    if (prev === undefined) return false;
+    const gap = now - prev;
+    if (gap < PING_INTERVAL_MS * PING_STARVED_RATIO) return false;
+    perifLog.warn('[link] ping watchdog tick ' + gap + 'ms apart (expected '
+      + PING_INTERVAL_MS + 'ms) -- the main thread was blocked, not the device. '
+      + 'Not counting this as an unanswered PING.');
+    return true;
+  }
+
+  _sendPing(starvationChecked = false) {
     if (this.CONN_ID === undefined) return;
+
+    // Ping anyway -- exercising the link is free and a reply clears PINGCount.
+    // What must not happen is escalating toward a board reset on the strength
+    // of silence we were never awake to hear.
+    if (!starvationChecked && this._pingTickStarved()) { this.triggerPing(); return; }
 
     if (this.PINGCount >= 2) {
       //time to disconnect
@@ -676,6 +714,10 @@ export class uInspESP32_API extends Perif_API_Base {
   _sendPing() {
     if (this.CONN_ID === undefined) return;
 
+    // Before anything escalates -- this override's RESYNC path costs a board
+    // reset two ticks later. See _pingTickStarved.
+    if (this._pingTickStarved()) { this.triggerPing(); return; }
+
     if (this.PINGCount >= 2) {
       if (this._linkResyncTries < LINK_RESYNC_MAX) {
         this._linkResyncTries++;
@@ -697,7 +739,7 @@ export class uInspESP32_API extends Perif_API_Base {
         publish(this.id, { state: 'CONNECTED', suspectSrc: null });
     }
 
-    super._sendPing();
+    super._sendPing(true);   // starvation already checked for this tick
   }
 
   // Opening the serial port toggles DTR, which hard-resets the ESP32 -- see
