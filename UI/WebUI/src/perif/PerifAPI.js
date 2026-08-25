@@ -233,8 +233,13 @@ export class Perif_API_Base {
     this._failN = 0;             // consecutive failed connects, drives backoff
     this._nextAttemptAt = 0;
 
+    // Per instance, because the right tolerance depends on the machine this is
+    // running on -- see _applyPingTuning.
+    this._pingIntervalMs = PING_INTERVAL_MS;
+    this._pingUnansweredMax = PING_UNANSWERED_MAX;
+
     this.checkReconnectionInterval = setInterval(() => this.checkReConnection(), 3000);
-    this.runPINGInterval = setInterval(() => this._sendPing(), PING_INTERVAL_MS);
+    this._armPingTimer();
 
     publish(this.id, { state: 'DISCONNECTED' });
   }
@@ -272,6 +277,7 @@ export class Perif_API_Base {
 
     publish(this.id, { state: 'CONNECTING', connInfo });
     this.connInfo = connInfo;
+    this._applyPingTuning(connInfo);
     this.inReconnection = true;
     // Not every machine keeps its configuration on the host. See
     // loadSettingFileOnConnect.
@@ -479,6 +485,43 @@ export class Perif_API_Base {
 
   // ---- PING watchdog ---------------------------------------------------
 
+  _armPingTimer() {
+    if (this.runPINGInterval !== undefined) clearInterval(this.runPINGInterval);
+    this.runPINGInterval = setInterval(() => this._sendPing(), this._pingIntervalMs);
+  }
+
+  // Both knobs, from the peripheral's own block in machine_setting.json:
+  //
+  //   "uInspESP32_peripheral_conn_info": {
+  //     "uart_name": "COM3", ...,
+  //     "ping_interval_ms": 1000,       // how often to ask
+  //     "ping_unanswered_max": 6        // how many silent ticks before acting
+  //   }
+  //
+  // They belong to the MACHINE, not to the code: a fanless 2-core tablet
+  // running the core and the UI together needs a longer rope than a bench PC,
+  // and the alternative to a setting is editing a constant and rebuilding for
+  // one site. The product of the two is what matters -- how long the link may
+  // be silent before the host resets the board -- so the log prints it.
+  //
+  // Clamped, because these arrive from a file someone edits by hand: a ping
+  // every 10 ms would flood the serial link, and a tolerance of 0 would reset
+  // the board on the first missed reply.
+  _applyPingTuning(connInfo) {
+    const clamp = (v, lo, hi, dflt) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : dflt;
+    };
+    const iv = clamp((connInfo || {}).ping_interval_ms, 200, 30000, PING_INTERVAL_MS);
+    const mx = clamp((connInfo || {}).ping_unanswered_max, 1, 100, PING_UNANSWERED_MAX);
+    if (iv === this._pingIntervalMs && mx === this._pingUnansweredMax) return;
+    this._pingIntervalMs = iv;
+    this._pingUnansweredMax = mx;
+    perifLog.info('[link] ping watchdog ' + iv + 'ms x ' + mx
+      + ' = ' + (iv * mx / 1000).toFixed(1) + 's of silence before the link is reset');
+    this._armPingTimer();
+  }
+
   // The watchdog runs on the renderer's main thread -- the same thread that
   // can be starved. When it is, this timer fires late and its replies sit
   // unprocessed, so the watchdog reads its OWN starvation as the device having
@@ -498,9 +541,9 @@ export class Perif_API_Base {
     this._lastPingTickAt = now;
     if (prev === undefined) return false;
     const gap = now - prev;
-    if (gap < PING_INTERVAL_MS * PING_STARVED_RATIO) return false;
+    if (gap < this._pingIntervalMs * PING_STARVED_RATIO) return false;
     perifLog.warn('[link] ping watchdog tick ' + gap + 'ms apart (expected '
-      + PING_INTERVAL_MS + 'ms) -- the main thread was blocked, not the device. '
+      + this._pingIntervalMs + 'ms) -- the main thread was blocked, not the device. '
       + 'Not counting this as an unanswered PING.');
     return true;
   }
@@ -513,7 +556,7 @@ export class Perif_API_Base {
     // of silence we were never awake to hear.
     if (!starvationChecked && this._pingTickStarved()) { this.triggerPing(); return; }
 
-    if (this.PINGCount >= PING_UNANSWERED_MAX) {
+    if (this.PINGCount >= this._pingUnansweredMax) {
       //time to disconnect
       this.PINGCount = 0;
       publish(this.id, { state: 'SUSPECT', suspectSrc: 'local' });   // face first, then reconnect
@@ -732,7 +775,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // reset two ticks later. See _pingTickStarved.
     if (this._pingTickStarved()) { this.triggerPing(); return; }
 
-    if (this.PINGCount >= PING_UNANSWERED_MAX) {
+    if (this.PINGCount >= this._pingUnansweredMax) {
       if (this._linkResyncTries < LINK_RESYNC_MAX) {
         this._linkResyncTries++;
         perifLog.warn('[link] PING unanswered -- trying RESET before reconnect',
