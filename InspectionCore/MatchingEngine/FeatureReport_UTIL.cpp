@@ -1,3 +1,5 @@
+#include <map>
+#include <string>
 #include "FeatureReport_UTIL.h"
 #include "FeatureReport.h"
 #include "FeatureManager_sig360_circle_line.h"
@@ -136,8 +138,75 @@ cJSON* JudgeReportVector2JSON(const vector< FeatureReport_judgeReport> &judges ,
 // confidence (strength*unambiguity*sharpness). Missed entries still emit
 // (status=0) so the WebUI can render a placeholder where a caliper tried and
 // failed. Opt-in: contour-mode reports have hits.empty() so the field is absent.
+// Runtime switch for the whole caliper-hit overlay. Default on.
+//
+// The hits are a by-product of a fit that has already happened, so keeping
+// them in memory is nearly free -- what costs is exactly this function.
+// Measured on the bench: ~300 hits per part, 85.4% of a 22 KB inspection
+// record, i.e. 1200 doubles printed by cJSON at full precision plus a cJSON
+// object per hit, twenty times a second. Every one of those bytes is also
+// archived, because the record goes to the traceability DB whole.
+//
+// Gated HERE rather than at the producers because there are three of those
+// (line/arc caliper, search-point, circle fit) and only one exit. Switching
+// the overlay off therefore removes the serialisation, the wire bytes and the
+// archive in one place.
+//
+// Deliberately all-or-nothing: a missed caliper (status 0) is as informative
+// as a hit, so there is no "send only the ones that worked" mode.
+// WHAT THE REPORT MAY CARRY BEYOND THE MEASUREMENT.
+//
+// One registry, one wire slot. Anything a human might want to look at while
+// setting a recipe up -- caliper hits today, edge-strength profiles next --
+// goes under the report's "extra" object and is named here. Two properties
+// follow from that and are the reason for the shape:
+//
+//   * the archive strips ONE key. The traceability DB gets the record whole,
+//     so every debug field added over the years would otherwise have to be
+//     remembered and removed one by one. "extra" makes exclusion structural:
+//     a payload added tomorrow is out of the archive by construction.
+//   * an unknown name is ignored, not an error. A newer WebUI asking an older
+//     core for a payload it has never heard of must degrade to "not sent",
+//     never to a rejected command.
+//
+// Default OFF for anything expensive. cal_hits is the exception only because
+// the inspection overlay has always drawn it; measured, it is 85% of a 22 KB
+// record at ~300 hits a part, so it is the first thing to turn off on a line
+// that does not need the overlay.
+static std::map<std::string, bool> g_dbg_emit = {
+    {"cal_hits", true},
+};
+
+bool DbgEmit(const char *name)
+{
+  auto it = g_dbg_emit.find(name);
+  return (it != g_dbg_emit.end()) && it->second;
+}
+
+// Returns the number of names understood, so the caller can log what it ignored.
+int DbgEmitSet(cJSON *cfg)
+{
+  int taken = 0;
+  if (!cfg || !cJSON_IsObject(cfg)) return 0;
+  for (cJSON *it = cfg->child; it; it = it->next)
+  {
+    if (!it->string) continue;
+    auto f = g_dbg_emit.find(it->string);
+    if (f == g_dbg_emit.end())
+    {
+      LOGW("DEBUG_EMIT: ignoring unknown payload \"%s\"", it->string);
+      continue;
+    }
+    f->second = cJSON_IsTrue(it);
+    LOGI("DEBUG_EMIT %s=%d", it->string, (int)f->second);
+    taken++;
+  }
+  return taken;
+}
+
 static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, acv_XY center_offset)
 {
+  if (!DbgEmit("cal_hits")) return;
   if (hits.empty()) return;
   cJSON *arr = cJSON_CreateArray();
   for (const CaliperHit &h : hits) {
@@ -148,7 +217,16 @@ static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, 
     cJSON_AddNumberToObject(o, "s",  h.strength);
     cJSON_AddItemToArray(arr, o);
   }
-  cJSON_AddItemToObject(parent, "cal_hits", arr);
+  // UNDER "extra", not beside the measurement. The archive strips that one key
+  // (see UTIL/dbRecord.js in the WebUI), so nothing here is ever written to the
+  // traceability DB no matter how many payloads are added later.
+  cJSON *extra = cJSON_GetObjectItem(parent, "extra");
+  if (!extra)
+  {
+    extra = cJSON_CreateObject();
+    cJSON_AddItemToObject(parent, "extra", extra);
+  }
+  cJSON_AddItemToObject(extra, "cal_hits", arr);
 }
 
 cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, acv_XY center_offset)

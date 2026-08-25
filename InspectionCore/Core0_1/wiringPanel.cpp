@@ -5808,6 +5808,21 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         fromUpperLayer(bpg_dat, peer);
         free(jstr);
       }
+      // TOP LEVEL, not inside ImageTransferSetup. Put in that sub-block it
+      // was never reached: the setting is sent on its own, and everything
+      // under ImTranseSetup only runs when the payload carries that object.
+      // The same trap is noted at IGNORE_DYNAMIC_VIEW further up.
+      // Which optional payloads the reports carry under "extra".
+      //   ST { "DEBUG_EMIT": { "cal_hits": false } }
+      // Names come from the registry in FeatureReport_UTIL.cpp; unknown ones
+      // are logged and ignored, so a newer WebUI asking for a payload this
+      // core has never heard of degrades to "not sent" rather than to a
+      // rejected command. Turning cal_hits off removes ~85% of an inspection
+      // record (measured: 22 KB -> 3.2 KB at ~300 hits a part) and the cJSON
+      // work that prints it.
+      cJSON *dbgEmit = cJSON_GetObjectItem(json, "DEBUG_EMIT");
+      if (dbgEmit) DbgEmitSet(dbgEmit);
+
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
       // IGNORE_DYNAMIC_VIEW=1 skips ONLY the crop-application sub-step
       // below; `enable`, OK/NG/NA_MAX_FPS etc. on the same setup must

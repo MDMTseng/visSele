@@ -587,9 +587,24 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     // offer a level that selects nothing, and omitted entirely when every
     // measurement sits at the same rank -- there is no choice to make then.
     {
-      const ranks = [...new Set((shapeListForRank||[])
-        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure && sh.rank !== undefined)
-        .map(sh => sh.rank))].sort((a,b)=>a-b);
+      // THE UNION OF ROOT AND OVERRIDE RANKS.
+      //
+      // Asking only the root shapeList found nothing: in a real recipe the
+      // measures carry no rank of their own and every level is expressed
+      // per-製程, in the control margin rows -- which is where an operator sets
+      // them, in the margin editor. Reading one source offered an empty list
+      // and no way to choose a level at all.
+      const mids = new Set((shapeListForRank||[])
+        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure).map(sh => sh.id));
+      const cmi = (Info_decorator||{}).control_margin_info || {};
+      const ranks = [...new Set([
+        ...(shapeListForRank||[])
+          .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure && sh.rank !== undefined)
+          .map(sh => sh.rank),
+        ...Object.values(cmi).flat()
+          .filter(r => r && r.rank !== undefined && mids.has(r.id))
+          .map(r => r.rank),
+      ])].sort((a,b)=>a-b);
       if (ranks.length > 1) {
         new_tagGroupsPreset=[
           {

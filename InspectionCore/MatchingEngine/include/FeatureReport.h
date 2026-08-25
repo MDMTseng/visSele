@@ -1,6 +1,13 @@
 #ifndef FeatureREPORT_HPP
 #define FeatureREPORT_HPP
 
+// Optional debug payloads carried under a report's "extra" object. See the
+// registry in FeatureReport_UTIL.cpp for what exists, what it costs, and why
+// the archive can strip all of it by removing one key.
+struct cJSON;
+bool DbgEmit(const char *name);
+int  DbgEmitSet(cJSON *cfg);
+
 
 #include "vis_geom.h"
 #include <vector>

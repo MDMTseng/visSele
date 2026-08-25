@@ -279,6 +279,13 @@ class EverCheckCanvasComponent_proto {
     this.secCanvas_rawImg = null;
 
     this.secCanvas = document.createElement('canvas');
+    // DIAGNOSTIC HANDLE. secCanvas holds the decoded frame at its own
+    // resolution, before any view transform -- so a shot taken from here is
+    // what the camera sent, not what the viewport happens to be pointed at.
+    // Reading the visible canvas instead means a zoom or a pan silently
+    // changes the evidence, which is exactly what went wrong trying to
+    // photograph a black frame by scrolling the wheel at it.
+    if (typeof window !== 'undefined') window.__DIAG_SECCANVAS__ = this.secCanvas;
 
     this.identityMat = new DOMMatrix();
     this.Mouse2SecCanvas = new DOMMatrix();
@@ -2240,7 +2247,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       const collect = (arr) => {
         if (!arr) return;
         for (const r of arr) {
-          if (!(r && r.cal_hits && r.id !== undefined)) continue;
+          // extra.cal_hits: optional debug payloads moved under one key so
+          // the archive can exclude all of them structurally. The old
+          // top-level field is still read, because a core older than that
+          // change still sends it there.
+          const _hits = (r && ((r.extra && r.extra.cal_hits) || r.cal_hits));
+          if (!(_hits && r.id !== undefined)) continue;
           const cur = byId.get(r.id);
           if (cur && fps[r.id] !== undefined && fpOf(cur) !== fps[r.id]) continue; // stale
           // Pass per-hit status through unchanged so each caliper renders
@@ -2248,7 +2260,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           // 2=inlier → green X. Whole-fit success/fail does NOT override
           // per-hit state — a failed fit with no found edges should look
           // distinctly different from a failed fit with many outliers.
-          this.rUtil.cal_hits_by_id[r.id] = r.cal_hits;
+          this.rUtil.cal_hits_by_id[r.id] = _hits;
         }
       };
       collect(single.detectedLines);

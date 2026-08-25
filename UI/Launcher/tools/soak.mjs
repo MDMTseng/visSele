@@ -106,6 +106,31 @@ const IDLE = process.env.SOAK_IDLE === '1';
 const LEAVE_UI = process.env.SOAK_LEAVE_UI === '1';
 // Skip the canvas's two SVG icons. See drawIcon in canvas/renderUTIL.js.
 const NO_ICONS = process.env.SOAK_NO_ICONS === '1';
+// Turn the core's caliper-hit overlay off for the run, to measure what it
+// costs. '0' disables, '1' forces on, unset leaves the core's default.
+const CAL_HITS = process.env.SOAK_CAL_HITS;
+// Zoom the live view in by N wheel notches once the machine is running, then
+// shoot it. Negative deltaY is zoom IN and the step is small -- twelve notches
+// move the drawn part about 1.14x -- so this wants hundreds, not tens. Driven
+// as a dispatched wheel event on the canvas because page.mouse.wheel never
+// reaches it (see the note at ZOOM_TEST).
+const ZOOM_IN = Number(process.env.SOAK_ZOOM_IN || 0);
+// Save the DECODED FRAME itself every tick, straight off the offscreen canvas
+// the component decodes into. Untouched by zoom, pan or the panel drawn over
+// it -- a screenshot of the window answers "what does the operator see", and
+// the question here is "what did the camera send".
+const FRAME_PNG = process.env.SOAK_FRAME_PNG === '1';
+// One LIT frame on a stopped plate, then stop.
+//
+// The backlight is a 600 us strobe fired by the stage task, so during
+// inspection it is never on long enough to photograph -- and the firmware
+// refuses a manual hold outside IDLE, because those pins belong to the stage
+// then. On an idle machine it can be held steady, which is what the device's
+// own camSnapWithLight does: light, settle, shutter, drop. The hold carries a
+// timeout as a backstop; a backlight built for microsecond pulses is not
+// something to leave switched on.
+const LIT_SNAP = process.env.SOAK_LIT_SNAP === '1';
+const LIT_CH = process.env.SOAK_LIT_CH || 'L1A';
 // Exercise the UI the way an operator does, instead of staring at one screen.
 //
 // The freeze was reported while WORKING with the machine -- opening the chart,
@@ -191,6 +216,28 @@ await page.addInitScript(() => {
   };
   window.WebSocket.prototype = Native.prototype;
   Object.assign(window.WebSocket, Native);
+  // ST at the ROOT, with no MachineSetting wrapper.
+  //
+  // __SEND_ST__ wraps everything in MachineSetting, and that is not a place to
+  // put a general setting: the core answers a MachineSetting object by running
+  // setup_machine_setting(), which calls load_clean_regions() -- and an absent
+  // key there means "no clean regions", so a one-key MachineSetting silently
+  // wipes the station's clean areas (wiringPanel.cpp:6046 warns about exactly
+  // this). Root-level settings must therefore travel unwrapped.
+  window.__SEND_ST_RAW__ = (obj) => {
+    const ws = window.__APPWS__;
+    if (!ws || ws.readyState !== 1) return 'no app socket';
+    const b = new TextEncoder().encode(JSON.stringify(obj));
+    const u = new Uint8Array(9 + b.length + 1);
+    u[0] = 83; u[1] = 84; u[2] = 0;
+    const g = (window.__STPG__ = (window.__STPG__ || 50000) + 1);
+    u[3] = g >> 8; u[4] = g & 255;
+    const l = u.length - 9;
+    u[5] = l >>> 24; u[6] = (l >> 16) & 255; u[7] = (l >> 8) & 255; u[8] = l & 255;
+    u.set(b, 9);
+    ws.send(u);
+    return 'sent';
+  };
   window.__SEND_ST__ = (mset) => {
     const ws = window.__APPWS__;
     if (!ws || ws.readyState !== 1) return 'no app socket';
@@ -402,7 +449,12 @@ const sepNow = sc && sc.gate ? sc.gate.min_detect_sep_us : -1;
 console.log(`[4] min_detect_sep_us = ${sepNow} (${sepNow > 0 ? (1e6 / sepNow).toFixed(1) : '?'}/s ceiling)`);
 if (sepNow !== SEP) await die(app, `gate ceiling did not take (wanted ${SEP})`);
 
-const fr = await ask({ type: 'set_setup', plate: { freq: FREQ } }, 1800);
+// ZERO IN IDLE, and set before anything else touches the plate. SOAK_IDLE
+// means "bring the machine up but do not run it" -- setting the production
+// frequency first and stopping it later still spins the plate for several
+// seconds, which is not idle to anyone standing at the machine with parts laid
+// out by hand.
+const fr = await ask({ type: 'set_setup', plate: { freq: IDLE ? 0 : FREQ } }, 1800);
 console.log(`[5] plate freq = ${FREQ}${FREQ_WANT > FREQ ? ` (capped from ${FREQ_WANT})` : ''}`
           + ` -> ${fr && fr.ack ? 'ack' : 'NOT ACKED'}`);
 
@@ -479,7 +531,11 @@ const defScopeCount = () => page.evaluate(() => {
 // waiting for the target, closing a drawer that would swallow the click, and
 // asserting the outcome afterwards.
 await closeDrawers();
-await clickText('11沖壓成形'); await sleep(1200);
+// Which 製程 to run. The default is the original bring-up's, unchanged --
+// see the note above about the ambiguity being load-bearing -- but a run has to
+// be able to pick another one, because "detection fails under THIS tag" is not
+// a question that can be asked with the tag hard-coded.
+await clickText(process.env.SOAK_TAG || '11沖壓成形'); await sleep(1200);
 await closeDrawers();
 await clickText('全檢'); await sleep(1500);
 
@@ -605,6 +661,128 @@ if (LEAVE_UI) {
 if (NO_ICONS) {
   await page.evaluate(() => { window.__DIAG_NO_ICONS__ = 1; });
   console.log('[10c] canvas SVG icons: OFF');
+}
+
+if (ZOOM_IN > 0) {
+  const ok = await page.evaluate((n) => {
+    let best = null;
+    for (const c of document.querySelectorAll('canvas')) {
+      const r = c.getBoundingClientRect();
+      if (r.width < 50 || r.height < 50) continue;
+      if (!best || r.width * r.height > best.a) best = { el: c, r, a: r.width * r.height };
+    }
+    if (!best) return false;
+    const cx = best.r.x + best.r.width / 2, cy = best.r.y + best.r.height / 2;
+    best.el.dispatchEvent(new MouseEvent('mousemove', { clientX: cx, clientY: cy, bubbles: true }));
+    for (let i = 0; i < n; i++) {
+      best.el.dispatchEvent(new WheelEvent('wheel',
+        { deltaY: -100, clientX: cx, clientY: cy, bubbles: true, cancelable: true }));
+    }
+    return true;
+  }, ZOOM_IN).catch(() => false);
+  // The emit is throttled at 500 ms and the core then has to encode and send at
+  // least one frame at the new level; shooting sooner photographs the old one.
+  await sleep(5000);
+  const z = await page.evaluate(() => ({
+    ov: window.__STREAM_OVERSAMPLE__,
+    dg: window.__DIAG__ ? window.__DIAG__() : null })).catch(() => null);
+  await page.screenshot({ path: OUT + '/esoak_zoomed.png' }).catch(() => {});
+  console.log(`[10z] zoom in ${ZOOM_IN} notches: ${ok ? 'sent' : 'NO CANVAS'}`
+    + (z && z.dg ? `  imgW=${z.dg.imgW} scale=${z.dg.imgScale}`
+       + ` oversample=${z.ov == null ? '?' : (+z.ov).toFixed(2)}` : ''));
+}
+
+if (LIT_SNAP) {
+  // A FINGERPRINT BEFORE AND AFTER THE SHUTTER.
+  //
+  // secCanvas holds the LAST decoded frame, so reading it after a trigger
+  // cannot tell "photographed something black" from "no new frame arrived and
+  // this is the previous one". Those two have completely different causes --
+  // one is optics or lighting, the other is trigger or transport -- and the
+  // pixel statistics alone cannot separate them. The signature is a cheap sum
+  // over sampled pixels: it does not need to identify the image, only to
+  // change when the image does.
+  const probe = () => page.evaluate(() => {
+    const c = window.__DIAG_SECCANVAS__;
+    if (!c || !c.width) return null;
+    const g = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let lo = 255, hi = 0, sum = 0, sig = 0;
+    for (let i = 0; i < g.length; i += 4) {
+      const v = g[i];
+      if (v < lo) lo = v; if (v > hi) hi = v; sum += v;
+      sig = (sig * 31 + v) >>> 0;            // order-sensitive, so a shift shows
+    }
+    return { w: c.width, h: c.height, lo, hi, mean: sum / (g.length / 4), sig };
+  }).catch(() => null);
+
+  const shot = async (label, lightOn) => {
+    if (lightOn) {
+      const r = await ask({ type: 'light', ch: LIT_CH, on: true, timeout_ms: 20000 }, 1200);
+      console.log(`  [lit] light ${LIT_CH} on -> ${r ? JSON.stringify(r).slice(0, 90) : 'NO REPLY'}`);
+      if (r && r.ack === false) console.log('  [lit] REFUSED -- the device is not idle');
+      await sleep(400);
+    }
+    const before = await probe();
+    const t = await ask({ type: 'trig_cam_pulse' }, 1500);
+    await sleep(1800);
+    const after = await probe();
+    if (!after) { console.log(`  [lit] ${label}: no decoded frame at all`); return; }
+    const fresh = !before || before.sig !== after.sig || before.w !== after.w;
+    console.log(`  [lit] ${label}: shutter ${t && t.ack ? 'ack' : 'NO ACK'}`
+      + `  ${after.w}x${after.h} min=${after.lo} max=${after.hi} mean=${after.mean.toFixed(2)}`);
+    console.log(`  [lit] ${label}: frame ${fresh ? 'CHANGED (a new one arrived)'
+      : 'IDENTICAL to before the shutter -- NO new frame'}`
+      + `  sig ${before ? before.sig : '?'} -> ${after.sig}`);
+    const url = await page.evaluate(() => {
+      const c = window.__DIAG_SECCANVAS__;
+      return c && c.width ? c.toDataURL('image/png') : null;
+    }).catch(() => null);
+    if (url) fs.writeFileSync(`${OUT}/lit_${label}.png`,
+      Buffer.from(url.split(',')[1], 'base64'));
+  };
+
+  // The firmware refuses a manual light hold while the plate turns -- those
+  // pins belong to the stage task then -- so stop it first. Without this the
+  // hold comes back {ack:false,"set plate_freq to 0 first"} and the "lit"
+  // frame is simply another dark one, which reads as a dead backlight.
+  const z = await ask({ type: 'set_setup', plate: { freq: 0 } }, 1800);
+  console.log(`  [lit] plate freq -> 0: ${z ? (z.ack ? 'ok' : JSON.stringify(z).slice(0,80)) : 'NO REPLY'}`);
+  await sleep(2500);
+
+  // ON CUE. Bring everything up, keep the plate still, and then WAIT -- so the
+  // parts can be laid out by hand while the machine is already up, and the
+  // shutter fires when someone says so rather than on a timer.
+  if (process.env.SOAK_LIT_CUE === '1') {
+    const cue = OUT + '/shoot.cue';
+    let n = 0;
+    console.log(`  [lit] READY. plate stopped, waiting for ${cue}`);
+    const until = Date.now() + MIN * 60000;
+    while (Date.now() < until) {
+      if (fs.existsSync(cue)) {
+        try { fs.unlinkSync(cue); } catch {}
+        await shot('cue' + (++n), true);
+        await ask({ type: 'light', ch: LIT_CH, on: false, timeout_ms: 0 }, 800);
+        console.log(`  [lit] ready for the next cue`);
+      }
+      await sleep(2000);
+    }
+    console.log('  [lit] cue window closed');
+  } else {
+    // Dark first, so the lit frame has something to be compared against. One
+    // shot with no light is the control the whole test rests on.
+    await shot('dark', false);
+    await shot('lit', true);
+  }
+  await ask({ type: 'light', ch: LIT_CH, on: false, timeout_ms: 0 }, 1200);
+  console.log('  [lit] light off');
+}
+
+if (CAL_HITS === '0' || CAL_HITS === '1') {
+  const sent = await page.evaluate((on) =>
+      window.__SEND_ST_RAW__({ DEBUG_EMIT: { cal_hits: on } }),
+      CAL_HITS === '1').catch(() => 'failed');
+  console.log(`[10h] DEBUG_EMIT cal_hits=${CAL_HITS === '1'} : ${sent}`);
+  await sleep(2000);
 }
 
 if (TICK_S !== 60) console.log(`[11] sampling every ${TICK_S}s`);
@@ -855,7 +1033,7 @@ console.log('t_min,heapMB,totalMB,elRSS_MB,elCPU,rendMB,gpuMB,coreRSS_MB,coreCPU
           + 'ackfalse,locked,unapplied,frame_gap,frame_lost,'
           + 'lat_avg_ms,lat_max_ms,lat_tail_n,'
           + 'resid_us,resid_max_us,dmax_us,ts_rej,cal_fail,cal_lost,win_us,drift_us_s,'
-          + 'rafHz,imgHz,imgKBps,frameKB,imgW,imgScale,gradeMismatch,tagActive,tagApplied,tagDrift,vis,arrays,nodes,gc_before,gc_after,gc_freed,'
+          + 'rafHz,imgHz,imgKBps,frameKB,imgW,imgScale,gradeMismatch,tagActive,tagApplied,tagDrift,tagSeen,tagWhy,rep_bytes,rep_lean,cal_hits,vis,arrays,nodes,gc_before,gc_after,gc_freed,'
           + 'dom_nodes,dom_listeners,dom_docs,'
           + 'churn_add,churn_rem,made,stall_max_ms,stall_n,stall_400,stall_1s,stall_3s,heap_drop_mb,task_max_ms,err,panel,census,domcensus,livedom,divsample,churntop,madetop,taskworst');
 const t0 = Date.now();
@@ -1074,7 +1252,9 @@ for (let i = 0; i <= TICKS; i++) {
                dg ? (dg.imgW ?? '') : '', dg ? (dg.imgScale ?? '') : '',
                dg ? (dg.gradeMismatch ?? '') : '',
                dg ? (dg.tagActive ?? '') : '', dg ? (dg.tagApplied ?? '') : '',
-               dg ? (dg.tagDrift ?? '') : '',
+               dg ? (dg.tagDrift ?? '') : '', dg ? (dg.tagSeen ?? '') : '', '"' + (dg ? (dg.tagWhy ?? '') : '') + '"',
+               dg ? (dg.repBytes ?? '') : '', dg ? (dg.repBytesLean ?? '') : '',
+               dg ? (dg.calHits ?? '') : '',
                dg ? (dg.vis + (dg.hidden ? '/hidden' : '')) : '',
                dg ? dg.arrayCount : '', dg ? dg.nodes : '',
                gcBefore, gcAfter, gcFreed,
@@ -1140,6 +1320,21 @@ for (let i = 0; i <= TICKS; i++) {
   // machine. The card shot fires once and then never again, which is right for
   // a soak and useless for a style change: every edit needs a new picture, and
   // restarting the run to get one costs the whole bring-up.
+  if (FRAME_PNG) {
+    const url = await page.evaluate(() => {
+      const c = window.__DIAG_SECCANVAS__;
+      if (!c || !c.width) return null;
+      return { w: c.width, h: c.height, url: c.toDataURL('image/png') };
+    }).catch(() => null);
+    if (url && url.url) {
+      fs.writeFileSync(OUT + '/frame_live.png',
+        Buffer.from(url.url.split(',')[1], 'base64'));
+      console.log(`  [frame] ${url.w}x${url.h} -> frame_live.png`);
+    } else {
+      console.log('  [frame] no decoded frame available');
+    }
+  }
+
   if (SHOT_EVERY_TICK) {
     await page.screenshot({ path: OUT + '/esoak_live.png' }).catch(() => {});
   }

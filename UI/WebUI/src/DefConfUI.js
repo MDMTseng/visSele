@@ -217,6 +217,9 @@ class CanvasComponent extends React.Component {
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
         this.ec_canvas.SetState(ec_state);
+        // Mirrored before the draw, exactly as the inspection view does it:
+        // per-shape drawInspection reads renderer.show_caliper_hits.
+        this.ec_canvas.rUtil.show_caliper_hits = props.showCaliperHits !== false;
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
       }
@@ -257,7 +260,11 @@ const mapStateToProps_CanvasComponent = (state) => {
   return {
     c_state: state.UIData.c_state,
     edit_info: state.UIData.edit_info,
-
+    // The SAME setting the inspection view reads. renderUTIL defaults
+    // show_caliper_hits to true and only InspectionUI ever mirrored it, so the
+    // switch turned the overlay off on one screen and left it on here -- with
+    // no control on this screen at all.
+    showCaliperHits: (state.UIData.System_Setting||{}).SHOW_CALIPER_HITS_INSP,
   }
 }
 
@@ -800,7 +807,31 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
             obj.rank=cur_rank;
           }
           obj.name=<><PlusOutlined/>{text}</>;
-          obj.update=(newObj)=>{
+          // WHITELIST WHAT GETS PERSISTED. The row object carries display-only
+          // members -- obj.name is a React element assigned a few lines up, and
+          // obj.update is this very closure -- and newObj is a spread of the
+          // whole row, so writing it back stored them in the def.
+          //
+          // The function vanished in JSON.stringify. The element did not, and
+          // downstream the override is merged into the shape with a full spread
+          // ({...shape, ...info}) on entering inspection, which replaced the
+          // shape's name with an object in the wire def. The core could then
+          // not match that feature at all: every part came back NA, the plate
+          // ran at 20/s and sorted 0.0/s, and only under the ONE 製程 whose
+          // rows had been touched in this editor. Stripping the element and
+          // changing nothing else restored 19.6/s.
+          //
+          // A whitelist rather than `delete obj.name`, because the merge
+          // downstream copies every key: anything display-shaped that is added
+          // to a row later would land on the shape the same way.
+          const PERSIST = ['id', 'rank', 'value', 'USL', 'LSL', 'UCL', 'LCL',
+                           'quality_essential'];
+          const cleanRow = (o) => PERSIST.reduce((r, k) => {
+            if (o[k] !== undefined) r[k] = o[k];
+            return r;
+          }, {});
+          obj.update=(newObj_raw)=>{
+            const newObj = cleanRow(newObj_raw);
             let newMarginInfo = {..._control_margin_info};
             // Copy the row array too: the top-level spread above still shares
             // the per-tag arrays, so writing rows[tarIdx] in place edited

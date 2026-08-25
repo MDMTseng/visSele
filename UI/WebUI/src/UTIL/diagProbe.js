@@ -22,6 +22,8 @@
 // the guessing failed.
 'use strict';
 
+import { stripOverlayOnly } from './dbRecord';
+
 // Bounded so the walk cannot itself become a cost. A store with a large def
 // loaded has deep object graphs, and this runs on the main thread.
 const MAX_DEPTH = 7;
@@ -368,30 +370,68 @@ export function installDiagProbe(store) {
           if (tag === undefined) return { tagActive: '', tagApplied: 0, tagDrift: 0 };
           const byId = new Map();
           for (const row of cmi[tag]) byId.set(row.id, row);
+          // ROOT COMES FROM THE LOADED FILE, NOT FROM shapeList.
+          //
+          // On entering inspection the tag's overrides are written INTO
+          // _obj.shapeList (see the write-through in InspectionUI's
+          // componentDidMount), so by the time this runs shapeList already
+          // holds the overridden numbers. Comparing against it made every
+          // override look identical to its own root, every field was skipped as
+          // "changes nothing", and tagApplied reported a confident zero on a
+          // machine that was applying them correctly. loadedDefFile is the
+          // recipe as it sits on disk and is the only untouched copy.
           const root = new Map();
-          for (const sh of ei._obj.shapeList) root.set(sh.id, sh);
+          const froot = (((ei.loadedDefFile || {}).featureSet || [])[0] || {}).features || [];
+          for (const f of froot) root.set(f.id, f);
 
-          const tw = (st.UIData.reportStatisticState || {}).trackingWindow || [];
-          let applied = 0, drift = 0;
+          // edit_info.reportStatisticState, NOT UIData.reportStatisticState.
+          // The wrong path yielded undefined, the loop ran zero times, and the
+          // probe reported a confident tagApplied=0 for two soaks -- a check
+          // that cannot fail is not a check. seen counts the reports actually
+          // examined, so a zero can be told apart from a blind spot.
+          const tw = ((st.UIData.edit_info || {}).reportStatisticState || {}).trackingWindow || [];
+          let applied = 0, drift = 0, seen = 0, flipped = 0, nolim = 0, norow = 0;
           for (const closeRep of tw) {
-            if (closeRep.isFlipped) continue;
-            for (const jud of (closeRep.reports || [])) {
+            // judgeReports, NOT reports. The graded entries -- the ones
+            // resultGrading stamped jud.lim onto -- live under judgeReports;
+            // `reports` is undefined on a tracking entry, so the loop ran zero
+            // times and the probe reported a confident zero. Third defect in
+            // this one check: wrong state path, wrong field, and a counter that
+            // sat behind a filter. seen is now incremented before ANY skip,
+            // precisely so "saw nothing" can never again read as "found nothing".
+            for (const jud of (closeRep.judgeReports || [])) {
+              seen++;
+              if (closeRep.isFlipped) { flipped++; continue; }
               const row = byId.get(jud.id);
-              if (!row || !jud.lim) continue;
+              if (!row) { norow++; continue; }
+              if (!jud.lim) { nolim++; continue; }
+              // EVERY FIELD THE OVERRIDE DEFINES, with no "does it differ from
+              // the root" filter.
+              //
+              // That filter was the right idea and unimplementable here: there
+              // is no untouched root at runtime. Entering inspection writes the
+              // overrides into _obj.shapeList, and loadedDefFile is regenerated
+              // from it when the wire def is sent, so both copies already agree
+              // with the override -- every field was skipped as "changes
+              // nothing" and the probe reported zero on a machine applying them
+              // correctly.
+              //
+              // Whether an override differs from the recipe's own number is a
+              // property of the RECIPE. What the software has to answer is
+              // narrower, and is what this counts: did the verdict use the
+              // 製程's number? applied is the coverage, drift must stay 0.
               for (const k of ['value', 'USL', 'LSL', 'UCL', 'LCL']) {
                 if (row[k] === undefined) continue;
-                const r = root.get(jud.id);
-                // An override equal to the root proves nothing either way, so
-                // it is not counted -- otherwise the coverage number flatters
-                // itself with rows that cannot fail.
-                if (r && r[k] === row[k]) continue;
                 applied++;
                 if (jud.lim[k] !== row[k]) drift++;
               }
             }
           }
-          return { tagActive: tag, tagApplied: applied, tagDrift: drift };
-        } catch { return { tagActive: '?', tagApplied: -1, tagDrift: -1 }; }
+          // Why an applied of zero is zero. Without these, 'no override took'
+          // and 'every part was flipped so nothing was checked' look the same.
+          return { tagActive: tag, tagApplied: applied, tagDrift: drift, tagSeen: seen,
+                   tagWhy: `flip=${flipped} norow=${norow} nolim=${nolim}` };
+        } catch { return { tagActive: '?', tagApplied: -1, tagDrift: -1, tagSeen: -1 }; }
       })(),
       vis: (typeof document !== 'undefined' && document.visibilityState) || '?',
       hidden: (typeof document !== 'undefined' && document.hidden) || false,
@@ -421,6 +461,35 @@ export function installDiagProbe(store) {
         stall.b400 = 0; stall.b1s = 0; stall.b3s = 0; stall.maxDropMB = 0;
         tasks.worst = 0; tasks.worstName = '';
         return o;
+      })(),
+      // WHAT THE REPORT COSTS, split by what is in it.
+      //
+      // The overlay fields are archived with the measurements unless they are
+      // pruned, and "it feels big" is not a number. This measures the report as
+      // it stands and again with the overlay-only fields removed, so the share
+      // is a fact rather than an estimate -- and the same figure bounds what
+      // the core spends printing them, since cJSON writes every one of those
+      // doubles at full precision.
+      ...(function () {
+        try {
+          const st = store.getState();
+          const rs = (st.UIData.edit_info || {}).reportStatisticState || {};
+          const rep = rs.newAddedReport;
+          if (!rep || !rep.length) return { repBytes: 0, repBytesLean: 0, calHits: 0 };
+          const full = JSON.stringify(rep).length;
+          const lean = JSON.stringify(stripOverlayOnly(rep)).length;
+          let hits = 0;
+          const count = (n) => {
+            if (Array.isArray(n)) { n.forEach(count); return; }
+            if (!n || typeof n !== 'object') return;
+            for (const k of Object.keys(n)) {
+              if (k === 'cal_hits' && Array.isArray(n[k])) hits += n[k].length;
+              else count(n[k]);
+            }
+          };
+          count(rep);
+          return { repBytes: full, repBytesLean: lean, calHits: hits };
+        } catch { return { repBytes: -1, repBytesLean: -1, calHits: -1 }; }
       })(),
       // Nodes MANUFACTURED since the last sample, whether or not they ever
       // reached the tree. made.total minus churn.added is the part that never

@@ -64,6 +64,7 @@ import {
   SaveOutlined,
   EyeInvisibleOutlined,
 } from '@ant-design/icons';
+import { stripOverlayOnly } from './UTIL/dbRecord';
 
 
 
@@ -160,7 +161,10 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     }
 
     _this.sendCounter++;
-    WS_SEND(Insp_DB_W_ID,newAddedReport)
+    // Overlay-only fields never reach the archive. See UTIL/dbRecord.js for
+    // what is dropped and why; the screen still has the full report, because
+    // the prune shares structure and copies nothing that it does not change.
+    WS_SEND(Insp_DB_W_ID,stripOverlayOnly(newAddedReport))
     .then(retInfo=>{
       _this.sendedCounter++;
       onDBInsertSuccess(retInfo);
@@ -2427,63 +2431,6 @@ class AngledCalibrationHelper extends React.Component {
 
 }
 
-function MeasureRankEdit ({shape_list,info_decorator,initRank=0,onRankChange}){
-      
-  const [sliderV,setSliderV]=useState(0);
-  let measureList = shape_list
-    .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
-  let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
-  let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,0);
-  // console.log(rankMin,"----",rankMax);
-  if(rankMin==1000)
-  {
-    rankMin=0;
-    rankMax=0;
-  }
-  if(rankMin==rankMax)
-  {
-    rankMin=0;
-  }
-  let marks = {};
-
-
-  marks[rankMin]=rankMin+"";
-  marks[rankMax]=rankMax+"";
-  measureList.forEach((m)=>{
-    if(m.rank!==undefined)
-    {
-      marks[m.rank]=m.rank+"";
-    }
-  });
-
-
-  useEffect(()=>{
-    setSliderV(initRank);
-    
-  },[])
-  useEffect(()=>{
-    if(onRankChange!==undefined)
-    {
-      onRankChange(sliderV);
-    }
-  },[sliderV])
-
-  return <>
-  
-    <Slider
-      min={rankMin}
-      max={rankMax}
-      onChange={setSliderV}
-      marks={marks}
-      value={sliderV}
-    />
-    {measureList.filter(m=>m.rank<=sliderV||m.rank===undefined).map(m=><Tag>{m.name}</Tag>)}
-  
-  </>;
-}
-
-
-
 function RestrictiveCircleREdit ({initR,onRChanged}){
       
   let rankMin=0;
@@ -2564,6 +2511,11 @@ class APP_INSP_MODE extends React.Component {
         .map((t) => /^rank(\d+)$/i.exec(String(t)))
         .find((m) => m !== null);
       const rankLimit = rankTag ? Number(rankTag[1]) : undefined;
+      // The SAME level the fold used, kept for the display filter. There used
+      // to be a 檢測等級 slider here deciding what was drawn; a viewing control
+      // that hides measurements is fine, but it has to agree with the one the
+      // core was told about, and a slider is a thing the core can never learn.
+      this.setState({ measureDisplayRank: rankLimit === undefined ? Infinity : rankLimit });
 
       const curMarginInfo_name = ctrlMarginInfos === undefined ? undefined
         : (this.props.inspOptionalTag||[]).find(tag=>ctrlMarginInfos[tag]!==undefined);
@@ -2840,7 +2792,10 @@ class APP_INSP_MODE extends React.Component {
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
       onROISettingCallBack:undefined,
-      measureDisplayRank:0,
+      // Infinity until a rankN tag says otherwise: with no level chosen,
+      // rank hides nothing. 0 hid every measurement above the lowest level
+      // before anyone had asked for that.
+      measureDisplayRank:Infinity,
       isInSettingUI:false,
       SettingParamInfo:undefined,
       modalInfo:undefined,
@@ -3054,15 +3009,12 @@ class APP_INSP_MODE extends React.Component {
       >
         
         
-        <Divider orientation="left" key="div1">檢測等級</Divider>
-
-        <MeasureRankEdit shape_list={this.props.shape_list} 
-          info_decorator = {this.props.info_decorator}
-          initRank={this.state.measureDisplayRank}
-          onRankChange={(rank)=>{
-            this.setState({measureDisplayRank: rank });
-          }}/>
-        
+        {/* The 檢測等級 slider stood here. It filtered what was drawn AND, until
+            the roll-up was fixed, what the screen's verdict was computed from --
+            so an operator could change a part's verdict by moving a viewing
+            control the core had never heard of. The level now arrives as a
+            rankN tag chosen with every other per-part tag, which reaches the
+            wire def and therefore both sides. */}
         <Divider orientation="left" key="div2"></Divider>
 
         <Button key="opt uInsp" icon={<SettingOutlined/>}
