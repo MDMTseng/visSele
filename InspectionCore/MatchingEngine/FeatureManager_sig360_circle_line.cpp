@@ -2533,14 +2533,14 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (rc == -2)
     {
       snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
-               "def has no trained SBM features -- open the SBM studio, press "
-               "generate, and save");
+               "SBM features not trained (sig360 fallback in use) -- open the "
+               "SBM studio, press generate, and save");
       LOGW("[shape] %s", shape_untrained_reason);
     }
     else if (rc != 0)
     {
       snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
-               "SBM training failed; falling back to sig360");
+               "SBM training failed (sig360 fallback in use)");
       LOGW("[shape] %s", shape_untrained_reason);
     }
   }
@@ -6957,6 +6957,13 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
     LOGW("[shape] cache stale; re-extracting || was: %s || now: %s",
          (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
          fingerprint.c_str());
+    // Also on stderr under SHAPE_DBG: the ring log is not reachable from a
+    // shell, and this is the message that says whether ONE def needs
+    // regenerating or every def does.
+    if (getenv("SHAPE_DBG"))
+      fprintf(stderr, "[SHAPE_DBG] cache stale\n  was: %s\n  now: %s\n",
+              (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
+              fingerprint.c_str());
     return false;
   }
   cJSON *c = cJSON_GetObjectItem(cache, "crop");

@@ -252,6 +252,17 @@ function ctrlScene(g, canvas, ctx_state) {
                     t: { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y } };
     } else if (g.mouseEdge && st.status === 0 && work.line) {
       const { o, t } = work.line;
+      // A CLICK is not a registration. atan2(0,0) is 0, so releasing without
+      // dragging used to write angle: 0 and move the origin to wherever the
+      // pointer happened to be -- silently replacing a registration somebody
+      // measured. And because angle_offset_deg is in the shape cache's
+      // fingerprint, that also invalidates the trained features: the def then
+      // falls back to sig360 and still locates, so nothing looks wrong.
+      //
+      // 12 px in world units, the same threshold the polygon tool uses to
+      // decide a click from a drag.
+      const minLen = 12 / (canvas.camera.GetCameraScale() || 100);
+      if (Math.hypot(t.x - o.x, t.y - o.y) < minLen) { work.line = null; return; }
       // NEGATED, because def_image_reg.angle is in ROTATE space and this drag
       // measures an IMAGE angle. DefConfUI writes the field as `angle:
       // reg.rotate` straight off an inspection report, and the canvas rectifies

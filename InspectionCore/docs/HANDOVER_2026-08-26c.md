@@ -53,6 +53,66 @@ deliberately does not (that is a documented fix in the II handler). Use
 | **T4** | Flash the firmware fixes to a production board | only the COM3 bench board has them |
 | **T5** | Regenerate `test1_ms1.hydef` and `test1_x0.5.hydef` | both are shape_based with NO cache, so under the armed gate they will refuse until 生成特徵點 + save |
 
+## What was measured after arming, and one thing that broke
+
+### The cache does not change the answer — verified
+
+Same def, same image, once from the cache and once forced to re-extract:
+
+```
+leaves 1391 vs 1391, differing 0
+```
+
+That is the invariant the cache code claims for itself ("a cache that changes
+the answer is worse than no cache"), and it now has a number behind it. **Run
+the cache-free copy BESIDE the sidecar**: the first attempt put it in a temp
+directory, so the template resolved to a `.png` that did not exist, training
+failed, and the "difference" was two failures agreeing with each other.
+
+### The bench def stopped using SBM, and nothing looked wrong
+
+`data/test1.hydef` was rewritten at 19:18 with **`def_image_reg.angle` set to
+exactly 0** (it was -0.00221875). `angle_offset_deg` is in the cache
+fingerprint, so that invalidated the features generated eight minutes earlier:
+
+```
+was: ...|roi1:11|ao-0.1271|1.4028,-0.5096|...
+now: ...|roi1:11|ao 0.0000|1.4028,-0.5096|...
+```
+
+With the gate armed the def then falls back to sig360 — and on its own training
+image sig360 still locates it, 9/9 points, no NG. **So the screen looks fine
+while the localizer the def was built around is not running at all.** That is
+the failure mode to watch for, and it is why the report now says
+`SBM features not trained (sig360 fallback in use)` rather than implying the
+object was missed.
+
+**Exactly 0** is the signature of a zero-length drag: `atan2(0,0)` is 0.
+Releasing the locline tool without moving rewrote a registration somebody had
+measured, and moved the origin to wherever the pointer was. Guarded now — a
+release under 12 px is discarded, the same threshold the polygon tool uses.
+
+**It self-heals**: press 生成特徵點 and save, and the new cache is fingerprinted
+against `ao0.0000`, which matches.
+
+### These frames do not match this def
+
+| image | with the gate | with SBM forced to run |
+|---|---|---|
+| `snap_2026-08-25_06-23-41-214` | 0 objects | 0 objects, no reason given |
+| `snap_2026-08-25_06-24-01-990` | 0 objects | 0 objects, no reason given |
+| `test1_20260813_170712` | 0 objects | 0 objects, no candidate |
+| `test1_20260813_170720` | 0 objects | 0 objects, no candidate |
+
+So the def matches its own training image and nothing else on this bench. They
+may simply be a different product or setup — but it means **there is no second
+image here to test a def against**, which is what the robustness sweep exists to
+work around.
+
+The two `snap_*` frames return no `locate` comment at all, which is its own
+small gap: "no object and nothing to say" is the one case the field was added to
+remove.
+
 ## Decisions waiting
 
 | | question | options as they stand |
