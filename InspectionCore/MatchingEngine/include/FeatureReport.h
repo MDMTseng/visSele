@@ -204,10 +204,41 @@ typedef struct featureDef_searchPoint{
   //   blur:        gaussian kernel along the edge before X-sobel.
   //   alpha_keep:  outlier-prune fraction in the WLS apex average (0 = none).
   //   mask_dilate: object-label mask dilation (px) — keep border edges.
-  // 0 / sentinels mean "use the algorithm's tuned default".
-  int   blur;              // default 0 → 3
-  float alpha_keep;        // default 0
-  int   mask_dilate;       // default 0 → 8
+  // NO LONGER "0 means use the tuned default" -- see edge_set below. 0 is a
+  // value the def can mean, and it is honoured.
+  int   blur;
+  float alpha_keep;
+  int   mask_dilate;
+  // WHICH of the edge knobs the def actually said something about.
+  //
+  // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
+  // "the operator deliberately wrote 0" the same thing. They are different
+  // intentions: 0 for a strength floor means "no floor", and the machine was
+  // quietly running 10 instead. A number typed on a screen was not the number
+  // the machine used, with nothing anywhere saying so.
+  //
+  // Present -- INCLUDING 0 -- is now honoured exactly. Absent is answered per
+  // knob, because the knobs are not the same kind of thing:
+  //
+  //   REQUIRED (min_strength, in caliper mode): the measurement is NA and says
+  //     which knob was missing. A base value the result depends on must not be
+  //     guessed; guessing it is deciding a verdict.
+  //   OPTIONAL (include_range, mask_dilate): absent, or an explicit 0, means
+  //     the step is not applied. `maskDilate > 0` was already the guard inside
+  //     search_point_cv, so 0-means-off is the convention this code had; only
+  //     the def-side `? : 8` hid it.
+  //
+  // blur is in the list for completeness and is NOT READ by search_point_cv at
+  // all -- see the note at the call site.
+  uint32_t edge_set;
+  enum EdgeSetBit {
+    EDGE_SET_MIN_STRENGTH = 1u << 0,
+    EDGE_SET_INCLUDE_RANGE= 1u << 1,
+    EDGE_SET_MANUAL_OFFSET= 1u << 2,
+    EDGE_SET_BLUR         = 1u << 3,
+    EDGE_SET_ALPHA_KEEP   = 1u << 4,
+    EDGE_SET_MASK_DILATE  = 1u << 5,
+  };
   union data{
     struct anglefollow{
       acv_XY position;
@@ -376,6 +407,12 @@ typedef struct FeatureReport_searchPointReport{
   featureDef_searchPoint *def;
   acv_XY pt;
   int status;
+  // Why this point is NA, when the answer is "the recipe did not say".
+  //
+  // An NA with no reason is the same disease as a silent substitution: the
+  // screen cannot explain what the machine did. Empty unless a required knob
+  // was missing.
+  char na_reason[48];
   // Per-edge points produced by the caliper-mode scan (one per strength-gated
   // row edge). status: 2 = within considerRange of the top (used in the final
   // average), 1 = strength-gated edge outside the consider band. Empty in

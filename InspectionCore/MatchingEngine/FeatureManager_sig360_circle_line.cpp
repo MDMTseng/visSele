@@ -1062,6 +1062,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 {
   FeatureReport_searchPointReport rep;
   rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+  rep.na_reason[0] = 0;   // no reason yet
   rep.def = &def;
   def.tmp_pt.size();
   switch (def.subtype)
@@ -1188,14 +1189,51 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // can't lock onto background specks; dilate ~8px to keep the boundary edge.
       // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
       cv::Mat labelImg; // (off.x == 0 && off.y == 0) ? m_labeledImg_cv : empty();
-      float includeRangePx = (def.include_range > 0) ? def.include_range : 2.0f;
-      // edgeSuppress = def's edge.min_strength (gradient floor). Fall back to
-      // a small non-zero default when the user hasn't set one so noise specks
-      // don't dominate the first-hit pick.
-      float edgeSuppress = (def.edge_min_strength > 0) ? def.edge_min_strength : 10.0f;
-      int   blur        = (def.blur > 0)        ? def.blur        : 3;
-      float alphaKeep   = def.alpha_keep;            // 0 = none (algorithm default)
-      int   maskDilate  = (def.mask_dilate > 0) ? def.mask_dilate : 8;
+      // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
+      // edge_set for why those are different questions.
+      const uint32_t said = def.edge_set;
+
+      // min_strength is a REQUIRED base value in caliper mode: the gradient
+      // floor decides which edges exist at all, so a guess here is a guess at
+      // the measurement. Missing means NA, and the NA says which knob.
+      if (!(said & featureDef_searchPoint::EDGE_SET_MIN_STRENGTH))
+      {
+        snprintf(rep.na_reason, sizeof(rep.na_reason), "edge.min_strength unset");
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+        LOGE_EVERY_N(50, "search_point id=%d: edge.min_strength is not set -- NA. "
+                         "A strength floor cannot be guessed; it decides which "
+                         "edges exist.", def.id);
+        break;
+      }
+      float edgeSuppress = def.edge_min_strength;
+
+      // include_range is an OPTIONAL band: absent means the step is not
+      // applied, and an explicit 0 means the same thing said out loud. Both
+      // used to become 2.0 px.
+      float includeRangePx = (said & featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE)
+                             ? def.include_range : 0.0f;
+
+      // mask_dilate is OPTIONAL on the same rule: absent, or an explicit 0,
+      // means the ring mask is not applied. `maskDilate > 0` was already the
+      // guard inside search_point_cv, so 0-means-off is the convention this
+      // code already had -- it was only the def-side `? : 8` that hid it.
+      //
+      // Nothing changes on this bench either way: the ring mask is gated on
+      // useMask, and the call site below passes a deliberately empty labelImg
+      // ("temporarily DISABLED for edge-finding debugging"), so maskDilate has
+      // had no effect at all. Worth knowing before anyone tunes it.
+      int   maskDilate = (said & featureDef_searchPoint::EDGE_SET_MASK_DILATE)
+                         ? def.mask_dilate : 0;
+
+      // blur is passed for signature compatibility and IS NOT READ. search_point_cv
+      // takes a blurSize parameter and never uses it -- the fused 3x3 Sobel
+      // "subsumes the old blur along the edge", as the note in there says. So
+      // this is not a knob that is off; it is a knob that does not exist.
+      // Deliberately NOT surfaced in DefConfUI: a control that does nothing is
+      // the exact defect class this audit is clearing out.
+      int   blur       = (said & featureDef_searchPoint::EDGE_SET_BLUR)
+                         ? def.blur : 0;
+      float alphaKeep  = def.alpha_keep;            // 0 = none (algorithm default)
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
                            margin, width, sp_et, blur, edgeSuppress,
                            includeRangePx, alphaKeep,
@@ -1450,6 +1488,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.blur = 0;
   searchPoint.alpha_keep = 0;
   searchPoint.mask_dilate = 0;
+  searchPoint.edge_set = 0;
   {
     char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) searchPoint.locating = 1;
@@ -1458,12 +1497,28 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       searchPoint.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
       searchPoint.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       searchPoint.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
-      searchPoint.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
-      searchPoint.include_range = JFetch_NUMBER_ex(edgeo, "include_range", 0);
-      searchPoint.manual_offset = JFetch_NUMBER_ex(edgeo, "manual_offset", 0);
-      searchPoint.blur        = (int)JFetch_NUMBER_ex(edgeo, "blur", 0);
-      searchPoint.alpha_keep  = JFetch_NUMBER_ex(edgeo, "alpha_keep", 0);
-      searchPoint.mask_dilate = (int)JFetch_NUMBER_ex(edgeo, "mask_dilate", 0);
+      // JFetch_NUMBER_ex defaults to NAN, and that NaN is the only thing that
+      // tells "the def never mentioned this" apart from "the def said 0".
+      // Keep both: the bit records that the def spoke, the value records what
+      // it said.
+      auto take = [&](const char *key, uint32_t bit, float *dst) -> void {
+        double v = JFetch_NUMBER_ex(edgeo, key);
+        if (std::isnan(v)) return;
+        *dst = (float)v;
+        searchPoint.edge_set |= bit;
+      };
+      auto takeInt = [&](const char *key, uint32_t bit, int *dst) -> void {
+        double v = JFetch_NUMBER_ex(edgeo, key);
+        if (std::isnan(v)) return;
+        *dst = (int)v;
+        searchPoint.edge_set |= bit;
+      };
+      take   ("min_strength",  featureDef_searchPoint::EDGE_SET_MIN_STRENGTH,  &searchPoint.edge_min_strength);
+      take   ("include_range", featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE, &searchPoint.include_range);
+      take   ("manual_offset", featureDef_searchPoint::EDGE_SET_MANUAL_OFFSET, &searchPoint.manual_offset);
+      take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
+      takeInt("blur",          featureDef_searchPoint::EDGE_SET_BLUR,          &searchPoint.blur);
+      takeInt("mask_dilate",   featureDef_searchPoint::EDGE_SET_MASK_DILATE,   &searchPoint.mask_dilate);
     }
   }
 

@@ -309,6 +309,13 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
       cJSON_AddNumberToObject(spj, "x", vec[j].pt.x);
       cJSON_AddNumberToObject(spj, "y", vec[j].pt.y);
     }
+    // Why it is NA, when the answer is "the recipe did not say". Only present
+    // when there is one -- an NA with no reason is the same disease as a
+    // silent substitution: the screen cannot explain what the machine did.
+    else if(vec[j].na_reason[0] != 0)
+    {
+      cJSON_AddStringToObject(spj, "na_reason", vec[j].na_reason);
+    }
     AddCalHits2JSON(spj, vec[j].cal_hits, center_offset);
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
 
