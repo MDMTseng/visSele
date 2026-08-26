@@ -47,6 +47,16 @@ let StateReducer = (state, action) => {
           // make visible.
           if(GetObjElement(state,["CORE_ID_CONN_INFO","type"]) == action.type
              && action.core_restarted !== true)break;
+          // Carry the core's session id forward across states. The inspection
+          // screen is KEYED on it, so a new core process remounts it and the
+          // whole arming sequence -- def, 製程 margins, snap policy, trigger
+          // mode -- runs again from the one place that knows how. A
+          // WS_DISCONNECTED must not blank it, or the reconnect would look like
+          // a different core and remount for nothing.
+          if (action.core_session === undefined) {
+            const carried = GetObjElement(state, ["CORE_ID_CONN_INFO", "core_session"]);
+            if (carried !== undefined) action = { ...action, core_session: carried };
+          }
           log.debug("[core-conn-info]", action);
           return {...state,CORE_ID_CONN_INFO:action}
           break;

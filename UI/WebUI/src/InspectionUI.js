@@ -138,6 +138,29 @@ const MenuItemGroup = Menu.ItemGroup;
 //
 // So it gets a banner rather than a status pill. Somebody has to be told that
 // the recipe on the screen is not the recipe being executed.
+// THE CORE RESTARTED AND HAS BEEN RE-ARMED — or has not yet.
+//
+// The link goes red the moment a different core session is seen, because a core
+// that came back holds no recipe. Remounting the inspection screen re-runs the
+// whole arming sequence; this says which side of that we are on, because
+// "restarted" and "restarted and recovered" are not the same thing to somebody
+// deciding whether to trust the next part.
+function CoreRestartBanner() {
+  const info = useSelector((s) => s.ConnInfo.CORE_ID_CONN_INFO);
+  const [armed, setArmed] = useState(false);
+  const sess = info && info.core_session;
+  // Mount happens BECAUSE the session changed (the screen is keyed on it), so
+  // reaching here at all means the arming sequence has just run.
+  useEffect(() => { setArmed(true); }, [sess]);
+  if (!(info && info.core_restarted)) return null;
+  return <div style={{ background: armed ? '#613400' : '#a8071a', color: '#fff',
+      padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>
+    {armed
+      ? '運算核心重新啟動過,已重新送出配方與設定。統計數字從這裡重新累計。'
+      : '⚠ 運算核心重新啟動 — 正在重新送出配方與設定'}
+  </div>;
+}
+
 function LocateNoteBanner() {
   const note = useSelector((s) => s.UIData.edit_info.locateNote);
   if (!note) return null;
@@ -3817,6 +3840,7 @@ class APP_INSP_MODE extends React.Component {
           + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
       </Button> */}
       
+      <CoreRestartBanner />
       <LocateNoteBanner />
       <InspectionReportInsert2DB 
         // newAddedReport={this.props.reportStatisticState.newAddedReport} 

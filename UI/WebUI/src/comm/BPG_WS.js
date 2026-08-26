@@ -183,7 +183,8 @@ function urlConcat(base, add) {
                     + "). Nothing re-sends the def on reconnect, so this core is "
                     + "holding no recipe. Re-enter inspection mode.");
                 this.store.dispatch({type:"WS_CONNECTED",id:this.comp.props.CORE_ID,data:HR,
-                                     brief_info:version, core_restarted: swapped});
+                                     brief_info:version, core_restarted: swapped,
+                                     core_session: sess});
                 
                 this.isConnected=true;
               }

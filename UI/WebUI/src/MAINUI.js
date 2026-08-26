@@ -1953,7 +1953,23 @@ class APPMain extends React.Component {
       UI = <APP_DEFCONF_MODE_rdx />;
     }
     else if (stateObj.state === UIAct.UI_SM_STATES.INSP_MODE) {
-      UI = <APP_INSP_MODE_rdx />;
+      // KEYED ON THE CORE SESSION.
+      //
+      // Entering inspection is not one message: it is the wire def with the
+      // 製程 margins folded in, plus ST settings, plus the snap policy, plus
+      // the trigger mode -- and the core resets all of it on entry by design.
+      // Nothing re-sent any of it on reconnect, so a core that came back held
+      // NO recipe while the link showed green.
+      //
+      // The arming sequence lives in APP_INSP_MODE's componentDidMount, and the
+      // honest way to run it again is to mount the component again. Keying on
+      // the session id does exactly that, once per core process, reusing the
+      // one path that knows the whole sequence instead of a second copy of it
+      // that would drift.
+      //
+      // The id is carried across WS_DISCONNECTED (see ConnectionInfoReducer) so
+      // an ordinary reconnect does not remount for nothing.
+      UI = <APP_INSP_MODE_rdx key={'core:' + (this.props.CORE_SESSION || 'x')} />;
 
     }
 
@@ -1985,6 +2001,10 @@ const mapStateToProps_APPMain = (state) => {
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     isp_db: state.UIData.edit_info._obj,
     CORE_ID: state.ConnInfo.CORE_ID,
+    // The core's per-process session id. The inspection screen is keyed on it so
+    // a restarted core re-arms -- see the note at the mount site.
+    CORE_SESSION: state.ConnInfo.CORE_ID_CONN_INFO
+      && state.ConnInfo.CORE_ID_CONN_INFO.core_session,
     version_map_info: state.UIData.version_map_info,
     WebUI_info: state.UIData.WebUI_info,
 
