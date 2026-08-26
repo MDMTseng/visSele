@@ -41,6 +41,8 @@ void Data_JsonRaw_Layer::enterProtocolError(ERROR_TYPE err,uint8_t *recv_data,si
     // Counted on the transition, not per byte. Nothing recorded this before, so
     // a link that had gone deaf looked exactly like one that was idle.
     rx_latch_n++;
+    discardedSinceLatch=0;
+    latchedAtMs=millis();
     recv_ERROR(err,recv_data,dataL);
   }
 }
@@ -48,6 +50,8 @@ void Data_JsonRaw_Layer::enterProtocolError(ERROR_TYPE err,uint8_t *recv_data,si
 void Data_JsonRaw_Layer::clearProtocolError()
 {
   protocolErrorActive=false;
+  discardedSinceLatch=0;
+  latchedAtMs=0;
   errorCode=ERROR_TYPE::NONE;
   recvType=RTYPE::INIT;
   buffIdx=0;
@@ -332,6 +336,12 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
   for(i=0;i<len;i++)
   {
     char c=data[i];
+    // Every byte that arrives while the link is latched is a byte the host
+    // sent and we will not act on. Counted HERE and not in the RESYNC branch:
+    // RESYNC is only entered by a recovery command, so it never sees the
+    // traffic that arrives during the latch itself -- which is exactly the
+    // traffic worth reporting. See the beacon in LegacyFirmware's loop.
+    if(protocolErrorActive) discardedSinceLatch++;
 
 
     if(recvType==RTYPE::INIT)

@@ -26,6 +26,11 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   uint8_t dataBuff[2048];
   int buffIdx=0;
   bool protocolErrorActive=false;
+  // Bytes RESYNC has thrown away since the link latched. This is the number
+  // that turns "the board has gone silent" into "the board is discarding what
+  // you send", which are the same symptom and completely different problems.
+  uint32_t discardedSinceLatch=0;
+  unsigned long latchedAtMs=0;
 
   
   char peerVERSION[20];
@@ -51,6 +56,8 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
 
   virtual int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
   bool hasProtocolError() const { return protocolErrorActive; }
+  uint32_t discardedBytes() const { return discardedSinceLatch; }
+  unsigned long latchedAt() const { return latchedAtMs; }
   enum RTYPE
   {
     INIT,

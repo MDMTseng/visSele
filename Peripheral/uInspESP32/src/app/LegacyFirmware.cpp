@@ -3486,6 +3486,7 @@ class MData_JR:public Data_JsonRaw_Layer
     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
     return msg_printf("CLEAR_ERROR_OK","");
   } 
+  bool isCommsLatched() const { return commsErrorLatched; }
   int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
   void connected(Data_Layer_IF* ch){}
@@ -5228,9 +5229,23 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   const char* type = doc["type"];
   if(type==NULL)
   {
-    dbg_printf("JSON missing type field");
-    enterProtocolError(ERROR_TYPE::JSON_FORMAT_ERROR,raw,rawL);
-    return -1;
+    // A missing field is a SEMANTIC error, not a protocol one, and it used to
+    // latch the link -- which needs a clear_error to escape and leaves the
+    // machine looking alive but deaf. The framing worked perfectly here: the
+    // bytes arrived, the CRC matched, the JSON parsed. Punishing that the same
+    // way as a corrupt frame is out of all proportion, and `{}` on its own was
+    // enough to do it.
+    //
+    // Answer, do not latch. Saying why is the whole point -- silence is what
+    // made this class of fault expensive to diagnose.
+    retdoc.clear();
+    retdoc["type"]="resp";
+    if(!doc["id"].isNull()) retdoc["id"]=doc["id"];
+    retdoc["ack"]=false;
+    retdoc["err"]="missing_type";
+    uint8_t buff[128];
+    send_json_or_error(*this,retdoc,buff,sizeof(buff),"missing_type");
+    return 0;
   }
 
   HACK_cur_cmd_id=-1;
@@ -8714,6 +8729,41 @@ void firmwareLoop()
     if (currentTime - lastPrintTime >= 1000) {
       djrl.dbg_printf("SYSTIME: %lu ms", currentTime);
       lastPrintTime = currentTime;
+    }
+  }
+
+  // While the link is latched, say so once a second, and say why.
+  //
+  // This is a SEPARATE frame rather than a field on SYSTIME because three
+  // diagnostic tools parse that line's exact text -- cmd_sweep.mjs matches
+  // /SYSTIME: (\d+) ms/ to detect a reboot -- and a heartbeat whose format
+  // moves is a heartbeat those tools stop trusting.
+  //
+  // It costs nothing on a healthy board: nothing is emitted unless the link is
+  // actually latched. And it is the only thing that CAN speak in that state --
+  // a latched parser is in RESYNC discarding everything up to the next
+  // newline, so the per-command `serial_error_locked` reply is never reached,
+  // because the command is never parsed.
+  //
+  // `discarded` is the field that matters. "The board went silent" and "the
+  // board is throwing away everything you send" look identical from the host
+  // and are completely different problems; this is the number that tells them
+  // apart. The documented symptom for years was 從主機看它是活的 -- it looks
+  // alive from the host -- because the only periodic message said the time.
+  {
+    static unsigned long lastLatchNag = 0;
+    unsigned long now = millis();
+    bool latched = djrl.hasProtocolError() || djrl.isCommsLatched();
+    if (latched && (now - lastLatchNag >= 1000)) {
+      lastLatchNag = now;
+      unsigned long since = djrl.latchedAt() ? (now - djrl.latchedAt()) : 0;
+      djrl.msg_printf("latched",
+                      "err=%s since_ms=%lu discarded=%lu send=clear_error",
+                      djrl.hasProtocolError() ? "serial_protocol_error"
+                                              : "comms_error_latched",
+                      since, (unsigned long)djrl.discardedBytes());
+    } else if (!latched) {
+      lastLatchNag = 0;
     }
   }
   {
