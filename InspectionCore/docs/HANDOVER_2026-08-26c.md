@@ -217,6 +217,41 @@ The one thing it does NOT do is signal anything outward, so an unattended
 machine shows a screen nobody is looking at. Whether that needs an alarm is a
 question for the peripheral layer, not the launcher.
 
+### I3 follow-up — unattended recovery is a SESSION problem, and there is a
+### live hole in it
+
+Raised while the above was being written, and it changes the shape of the
+question: restarting the core is not the hard part. **The session is defined by
+what the UI pushed**, and entering inspection is a `CI`/`FI` carrying the wire
+def with the 製程 margins already folded into `shape_list`, plus `ST` settings,
+plus the snap policy, plus the trigger mode. The core resets all of it on entry
+by design — `g_snap_policy` to false/false/false, `SKIP_NA_DATA_VIEW`, the FPS
+ceilings, `saveInspQFullSkipCount`.
+
+So a core that comes back holds **no recipe**. And:
+
+**Nothing re-pushes any of it on reconnect.** `WS_CONNECTED` is consumed for
+link COLOUR and for gating panels — that is all it does. There is no re-arm
+path anywhere.
+
+That is a present-day property, not a hypothetical about a feature nobody built:
+if the core is restarted by any means while the UI stays up, the link goes
+**green** and the machine holds nothing. Green link, no recipe, a line that
+looks like it is running.
+
+It could not even be detected before, because `HR` carried build provenance and
+the same binary restarted is byte-identical provenance. `HR` now carries a
+**session id**, generated once per core process. The WebUI remembers it, and a
+CHANGED id means "a different run of the core than the one I configured":
+
+- logged as an error naming both ids,
+- and the core link renders **red**, not green.
+
+This does not restore anything — that is the bigger decision — but the machine
+no longer looks healthy while holding no recipe. **Anyone who later adds
+automatic restart must add session replay first**, or the auto-restart makes
+this failure routine instead of rare.
+
 ### I2 — 「跑全部影像」
 
 A sweep degrades ONE image and asks how much it survives. The question people

@@ -161,7 +161,29 @@ function urlConcat(base, add) {
                 this.store.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(HR));
                 
                 let version = GetObjElement(HR,["data","version"])||"_";
-                this.store.dispatch({type:"WS_CONNECTED",id:this.comp.props.CORE_ID,data:HR,brief_info:version});
+                // A CHANGED session id means this is a different RUN of the
+                // core, not the one we configured.
+                //
+                // Nothing re-pushes the def, the 製程 margins, the snap policy
+                // or the trigger mode on reconnect -- entering inspection is a
+                // CI/FI carrying all of that, sent once. So a core that comes
+                // back holds no recipe, and the only thing the screen would
+                // otherwise show is a green link. Green link, no recipe, and a
+                // line that looks like it is running.
+                //
+                // This does not fix it -- restoring a session is a bigger
+                // decision than a reconnect handler -- but it stops the machine
+                // LOOKING healthy while it is not.
+                const sess = GetObjElement(HR,["data","session"]);
+                const prev = this._coreSession;
+                const swapped = !!(prev && sess && prev !== sess);
+                if (sess) this._coreSession = sess;
+                if (swapped)
+                  log.error("[hr] the core RESTARTED (session " + prev + " -> " + sess
+                    + "). Nothing re-sends the def on reconnect, so this core is "
+                    + "holding no recipe. Re-enter inspection mode.");
+                this.store.dispatch({type:"WS_CONNECTED",id:this.comp.props.CORE_ID,data:HR,
+                                     brief_info:version, core_restarted: swapped});
                 
                 this.isConnected=true;
               }

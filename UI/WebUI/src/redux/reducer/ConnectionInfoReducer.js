@@ -40,7 +40,13 @@ let StateReducer = (state, action) => {
             delete action["type"];
             return {...state,CORE_ID_CONN_INFO:{...state.CORE_ID_CONN_INFO,...action}}
           }
-          if(GetObjElement(state,["CORE_ID_CONN_INFO","type"]) == action.type)break;
+          // A same-type update is normally noise and is dropped. core_restarted
+          // is the exception: it arrives on a WS_CONNECTED that may follow
+          // another WS_CONNECTED, and swallowing it would leave the link green
+          // on a core holding no recipe -- the one state this flag exists to
+          // make visible.
+          if(GetObjElement(state,["CORE_ID_CONN_INFO","type"]) == action.type
+             && action.core_restarted !== true)break;
           log.debug("[core-conn-info]", action);
           return {...state,CORE_ID_CONN_INFO:action}
           break;

@@ -11460,11 +11460,29 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 
       // Greet every new client with HR so each can initialize independently.
       // Carry full build provenance so the WebUI can show what core it's talking to.
-      char hr_json[640];
+      //
+      // AND a session id, which the build fields cannot substitute for: the same
+      // binary restarted is byte-identical provenance, so a client that
+      // reconnects has no way to tell "the core I configured" from "a fresh core
+      // holding no recipe at all". Nothing re-pushes the def on reconnect, so
+      // without this the link goes green on a core that would inspect nothing.
+      // Generated once per process; every client in this run sees the same value.
+      static char session_id[40] = {0};
+      if (session_id[0] == 0)
+        snprintf(session_id, sizeof(session_id), "%llx-%d",
+                 (unsigned long long)time(NULL), (int)
+#ifdef _WIN32
+                 GetCurrentProcessId()
+#else
+                 getpid()
+#endif
+                 );
+      char hr_json[720];
       snprintf(hr_json, sizeof(hr_json),
-        "{\"version\":\"" _VERSION_ "\",\"build\":{"
+        "{\"version\":\"" _VERSION_ "\",\"session\":\"%s\",\"build\":{"
         "\"time\":\"%s\",\"git_hash\":\"%s\",\"git_branch\":\"%s\","
         "\"git_describe\":\"%s\",\"config\":\"%s\"}}",
+        session_id,
         BUILD_TIME_UTC, BUILD_GIT_HASH, BUILD_GIT_BRANCH, BUILD_GIT_DESCRIBE, BUILD_CONFIG);
       BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", hr_json);
       bpg_dat.pgID = 0xFF;

@@ -198,6 +198,11 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   function connectionStatus2CSSColor(conn_info)
   {
     let connType=GetObjElement(conn_info,["type"]);
+    // A core that RESTARTED is connected and useless: nothing re-sends the def
+    // on reconnect, so it is holding no recipe. Green would be the most
+    // dangerous colour available -- a line that looks like it is running.
+    if (GetObjElement(conn_info,["core_restarted"]) === true)
+      return "color-error-anim";
     // console.log(conn_info,connType);
     switch(connType)
     {
