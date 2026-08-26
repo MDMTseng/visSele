@@ -7023,26 +7023,29 @@ bool shape_force_extract() { return g_shape_force_extract; }
 
 bool shape_extract_allowed()
 {
-  // NOT ARMED YET, and that is deliberate. See T1 in HANDOVER_2026-08-26c.
+  // ARMED 2026-08-26, after the test it was waiting on.
   //
-  // The rule is implemented and the refusal is real, but turning it on can
-  // strand a machine: a def whose cache is stale or unusable stops locating,
-  // and on this bench data/test1.hydef is exactly that -- its cache differs in
-  // one field and fails to build a model even when the fingerprint is forced to
-  // match. Whether a cache produced by TODAY's build loads back cannot be
-  // answered from a shell, so it needs one press of 生成特徵點 on a machine
-  // somebody is sitting at.
+  // The question was whether a cache produced by this build loads back and
+  // builds a working model, and it could only be answered at a machine. It was:
+  // 生成特徵點 then save, then --insp with this refusal ARMED --
   //
-  // Until that has happened, the refusal is opt-in: SBM_STRICT_EXTRACT=1 arms
-  // it. Flipping the default afterwards is deleting the next four lines.
+  //   objects=1  sim 0.9935  rot -0.1395 deg  cx 15.026 cy 9.305
+  //   searchPoints 9/9 ok, 3 judgements, none NG or NA
   //
-  // SBM_ALLOW_IMPLICIT_EXTRACT stays as the escape hatch for when it IS armed:
-  // an env var rather than a def key, so it cannot be baked into a recipe and
-  // forgotten, and it says so in the log every time.
-  static int strict = -1;
-  if (strict < 0) strict = (getenv("SBM_STRICT_EXTRACT") != NULL) ? 1 : 0;
-  if (strict == 0) return true;
-
+  // The gate did not fire, so the cache was taken; the pose lands 0.0124 deg
+  // and a few microns from def_image_reg, which is the localization error and
+  // not a fault.
+  //
+  // (INSP_AREA_BYPASS=1 was needed for that run and is not part of the result:
+  // machine_setting's inspection_region is x1269 w285 while the part in the
+  // TRAINING image sits at x920-1244, so the station filter -- correctly --
+  // excluded it. --insp enforces the station; the II path deliberately does
+  // not. That is the whole reason an earlier note here called --insp broken
+  // for SBM defs. It is not.)
+  //
+  // SBM_ALLOW_IMPLICIT_EXTRACT is the escape hatch: an env var rather than a
+  // def key so it cannot be baked into a recipe and forgotten, and it says so
+  // in the log every time.
   static int env = -1;
   if (env < 0) env = (getenv("SBM_ALLOW_IMPLICIT_EXTRACT") != NULL) ? 1 : 0;
   if (env == 1)

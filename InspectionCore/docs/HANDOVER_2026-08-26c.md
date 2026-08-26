@@ -8,55 +8,50 @@ and what it turned up.
 `178542d4`. `current.json` points at 1.1.105, `previous` is 1.1.104. **1.1.104
 is untouched and still shippable.**
 
-**The extraction gate is deployed but NOT ARMED.** The refusal only happens
-with `SBM_STRICT_EXTRACT=1`; without it the core behaves exactly as it did
-before (verified: same report, same reason string). Arming it is deleting four
-lines in `shape_extract_allowed()`, and it waits for T1 — see below.
+**The extraction gate is deployed and ARMED.** T1 passed — see below.
 
 ---
 
-## Blocked on the machine
+## T1 — done, and it passed
 
-| | what to do | why it is blocking |
+Regenerated from the studio (生成特徵點 then save), then run with the refusal
+armed:
+
+```
+objects=1  sim 0.9935  rot -0.1395 deg  cx 15.026 cy 9.305
+searchPoints 9/9 ok, 3 judgements, none NG or NA
+```
+
+The gate did not fire, so the cache was taken and built a working model. The
+pose lands 0.0124 deg and a few microns from `def_image_reg`, which is the
+localization error, not a fault. A rotation sweep through the same armed path:
+
+| applied | sim | reported | residual | points |
+|---|---|---|---|---|
+| 0 | 0.9935 | -0.1395 | — | 9/9 |
+| +5 | 0.9903 | +4.7130 | -0.1475 | 9/9 |
+| -8 | 0.9984 | -8.1669 | -0.0274 | 9/9 |
+| +15 | 0.9968 | +14.6130 | -0.2475 | 9/9 |
+
+Residuals grow with angle (-0.03 at 8 deg, -0.25 at 15 deg), which is worth a
+look on its own but is not what this test was about.
+
+### An earlier note in this file was WRONG and is retracted
+
+`--insp` is **not** broken for SBM defs. `machine_setting`'s
+`inspection_region` is `x1269 w285`, and the part in the TRAINING image sits at
+`x920-1244`, so the station filter correctly excluded it and line2Dup was handed
+a scene with no part in it. `--insp` enforces the station; the II path
+deliberately does not (that is a documented fix in the II handler). Use
+`INSP_AREA_BYPASS=1` when inspecting a training image from a shell.
+
+## Still blocked on the machine
+
+| | what to do | why |
 |---|---|---|
-| **T1** | In the SBM studio press 生成特徵點, save, re-open, run 跑一次檢驗 | Decides whether the gate is safe to ARM |
-| **T2** | Arm it once T1 passes: delete the `SBM_STRICT_EXTRACT` early-out in `shape_extract_allowed()` | it is deployed already, just not armed |
-| **T3** | 1.1.104 on the bench, watching the yield | 6 edges change: one `min_strength` 10→0, five `include_range` 2.0px→0 |
+| **T3** | 1.1.104 on the bench, watching the yield | 6 edges change: one `min_strength` 10 to 0, five `include_range` 2.0px to 0 |
 | **T4** | Flash the firmware fixes to a production board | only the COM3 bench board has them |
-
-### T1 in detail, because there is a real risk behind it
-
-The gate stops the core extracting line2Dup features during a def *parse*. It
-still takes a cached feature set at any time. So a def needs a **usable**
-`__shape_cache` or it stops locating.
-
-`Core0_1/data/test1.hydef` has a cache and it is **stale**. The core now prints
-both fingerprints on a mismatch, and exactly one field differs:
-
-```
-was: ...|w50.00|s80.00|roi1:11|ao0.0014|1.4028,-0.5096|...
-now: ...|w50.00|s80.00|roi1:11|ao-0.1271|1.4028,-0.5096|...
-                                  ^^^^^^^
-```
-
-Image dimensions, the image content sum (833348291, verified identical), both
-thresholds, the pyramid, the feature count and all eleven ROI points match to
-the digit. Only `ao` — `angle_offset_deg`, i.e. `def_image_reg.angle` — moved,
-from 0.0014 deg to -0.1271 deg.
-
-**`def_image_reg` drifts on every save.** DefConfUI rewrites it from a fresh
-inspection result (`angle: reg.rotate`), so an ordinary save moves it by a hair
-and invalidates the shape cache. That is the root cause and it is not specific
-to this def.
-
-And the reason T1 cannot be skipped: with the reg angle put *back* so the
-fingerprint matches, the cache still fails — `addModel from cache failed`. So
-that cache is unusable regardless. Whether a cache produced by *today's* build
-loads back correctly is what T1 answers, and it cannot be answered from a shell:
-`--insp` does not emit the cache, and a WS probe cannot run beside a live
-session because the core drops the second client.
-
----
+| **T5** | Regenerate `test1_ms1.hydef` and `test1_x0.5.hydef` | both are shape_based with NO cache, so under the armed gate they will refuse until 生成特徵點 + save |
 
 ## Decisions waiting
 
