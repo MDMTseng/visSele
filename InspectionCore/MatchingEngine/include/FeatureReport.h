@@ -204,11 +204,14 @@ typedef struct featureDef_searchPoint{
   //   (blur was removed: search_point_cv never read it -- the fused 3x3 Sobel
   //    subsumes it -- so it was a knob that did not exist. 2026-08-26)
   //   alpha_keep:  outlier-prune fraction in the WLS apex average (0 = none).
-  //   mask_dilate: object-label mask dilation (px) — keep border edges.
+  //   (mask_dilate was removed for the same reason as blur, 2026-08-26: it
+  //    dilated an object-label mask that had had no producer since 2026-05-29,
+  //    so it was honoured all the way into search_point_cv and then had nothing
+  //    to act on. A def that still carries the key is warned about, not
+  //    silently obeyed.)
   // NO LONGER "0 means use the tuned default" -- see edge_set below. 0 is a
   // value the def can mean, and it is honoured.
   float alpha_keep;
-  int   mask_dilate;
   // WHICH of the edge knobs the def actually said something about.
   //
   // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
@@ -230,10 +233,9 @@ typedef struct featureDef_searchPoint{
   //     nothing is required, present means somebody chose caliper mode. A bare
   //     new scalar could never be required, because every def written before
   //     it existed would go NA. See the contract in HANDOVER_2026-08-26.
-  //   OPTIONAL (include_range, mask_dilate): absent, or an explicit 0, means
-  //     the step is not applied. `maskDilate > 0` was already the guard inside
-  //     search_point_cv, so 0-means-off is the convention this code had; only
-  //     the def-side `? : 8` hid it.
+  //   OPTIONAL (include_range): absent, or an explicit 0, means the step is
+  //     not applied. That was already the guard inside search_point_cv; only
+  //     the def-side `? : 2.0` hid it.
 
   uint32_t edge_set;
   enum EdgeSetBit {
@@ -241,7 +243,9 @@ typedef struct featureDef_searchPoint{
     EDGE_SET_INCLUDE_RANGE= 1u << 1,
     EDGE_SET_MANUAL_OFFSET= 1u << 2,
     EDGE_SET_ALPHA_KEEP   = 1u << 4,
-    EDGE_SET_MASK_DILATE  = 1u << 5,
+    // 1u << 5 was EDGE_SET_MASK_DILATE. Left as a hole rather than reused: a
+    // new knob taking that bit would read as "set" on nothing, but the number
+    // is in dumps and logs going back months and a reused bit makes those lie.
   };
   union data{
     struct anglefollow{

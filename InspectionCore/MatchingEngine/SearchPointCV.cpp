@@ -9,30 +9,29 @@
 // acvVecNormal(s)) + the polarity-signed gradient peak that produced it.
 struct SPEdgePt { float searchCoord, perpCoord, peak; };
 
-// Is this labeled-image pixel part of an OBJECT (vs white background)?
-// The labeling marks: background = white (R=G=B=255); object interior = small
-// label value (R channel 0); object contour = (B,G,R)=(1,128,1). A THIN wire is
-// almost all contour (no interior), so matching a specific label index fails and
-// masks the wire itself. Instead treat "not white background" as object: the R
-// channel (ch2) is 255 only on background, 0/1 on object interior/contour.
-static inline bool isObjectPx(const cv::Mat &L, int x, int y)
-{
-  if (L.empty() || x < 0 || y < 0 || x >= L.cols || y >= L.rows) return false;
-  const uint8_t *p = L.ptr<uint8_t>(y) + x * 3;
-  return !(p[0] == 255 && p[1] == 255 && p[2] == 255); // non-white => object
-}
-static inline int labelAt(const cv::Mat &L, int x, int y)
-{
-  if (L.empty() || x < 0 || y < 0 || x >= L.cols || y >= L.rows) return -1;
-  const uint8_t *p = L.ptr<uint8_t>(y) + x * 3;
-  return (int)p[0] | ((int)p[1] << 8) | ((int)p[2] << 16);
-}
+// The background mask that used to live here is GONE, and this is the note that
+// stops it being reinvented.
+//
+// It masked the sobel response outside a dilated object silhouette so the scan
+// could not lock onto a background speck. It was switched off on 2026-05-29 in a
+// wip commit ("temporarily ... for edge-finding debugging"), the labeled image it
+// read was deleted, and it then sat here for three months as a parameter the call
+// site passed empty -- taking `maskDilate` with it, a knob honoured all the way
+// down to nothing.
+//
+// A polygon successor was built on 2026-08-26 and rejected the same day, on a
+// better argument than the feature: the caliper's own margin/width ALREADY
+// define the band the scan walks, so an outer polygon is a second, coarser copy
+// of the same constraint -- and the search point follows the part through the
+// morph while a polygon is rigid, so on a deforming part the fence stops
+// tracking and becomes a new source of false NA. If a scan is picking up the
+// wrong edge, tighten the primitive's own region, or let the morph follow the
+// part more closely. Do not put a mask back here.
 
 bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
-                     const cv::Mat &labelImg, int objLabel, int maskDilate,
                      acv_XY *outPt, float *outW, int spId,
                      std::vector<CaliperHit> *outHits)
 {
@@ -62,7 +61,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // The failure Caliper.cpp guards with CELL_LIMIT, and the same realistic
   // trigger: not a hostile def, but a pixel figure typed into a field that
   // wants millimetres. Measured before this guard: margin=width=3e4 allocated
-  // ~900M cells across g/valid/mask and ran to completion, and margin=1e9 threw
+  // ~900M cells across g/valid and ran to completion, and margin=1e9 threw
   // cv::Exception out of the allocator. The live path catches that (the
   // acquisition callback drops the frame), but it cannot catch the one that
   // merely succeeds and eats gigabytes. A real search point is a few tens of px
@@ -82,41 +81,23 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 
   const bool dbg = (getenv("SPCV_DUMP") != nullptr);
-  const bool useMask = (!labelImg.empty() && objLabel >= 0);
   int gW = gray.cols, gH = gray.rows;
   cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
   cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
-  cv::Mat mask;                                 // object-allow mask; only built when labelImg given
-  if (useMask) mask = cv::Mat(nS, nP, CV_8U, cv::Scalar(255));
   for (int i = 0; i < nS; i++)
   {
     float searchCoord = cs - i;
     unsigned char *d = g.ptr<unsigned char>(i), *vv = valid.ptr<unsigned char>(i);
-    unsigned char *m = useMask ? mask.ptr<unsigned char>(i) : nullptr;
     for (int j = 0; j < nP; j++)
     {
       acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
-      if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1) { d[j] = 0; vv[j] = 0; if (m) m[j] = 0; continue; }
+      if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1) { d[j] = 0; vv[j] = 0; continue; }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       // !(v > 0) catches NaN as well as negatives: the backlight factor is
       // NaN outside the calibration grid, and casting a NaN float to
       // unsigned char is UB, not "some grey value".
       d[j] = !(v > 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
-      if (m) m[j] = isObjectPx(labelImg, (int)(q.x + 0.5f), (int)(q.y + 0.5f)) ? 255 : 0;
-    }
-  }
-
-  // Optional object-boundary RING mask (silhouette only): ring = dilate AND NOT erode,
-  // so interior gradients are excluded. Disabled unless labelImg is provided.
-  if (useMask && maskDilate > 0)
-  {
-    int k = 2 * maskDilate + 1;
-    cv::Mat se = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(k, k)), md, me;
-    cv::dilate(mask, md, se); cv::erode(mask, me, se);
-    for (int i = 0; i < nS; i++) {
-      unsigned char *pd = md.ptr<unsigned char>(i), *pe = me.ptr<unsigned char>(i), *m = mask.ptr<unsigned char>(i);
-      for (int j = 0; j < nP; j++) m[j] = (pd[j] && !pe[j]) ? 255 : 0;
     }
   }
 
@@ -160,7 +141,6 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     const unsigned char *v0 = valid.ptr<unsigned char>(i-1);
     const unsigned char *vr = valid.ptr<unsigned char>(i);
     const unsigned char *v2 = valid.ptr<unsigned char>(i+1);
-    const unsigned char *m = useMask ? mask.ptr<unsigned char>(i) : nullptr;
     int16_t *sv = dbg ? sobViz.ptr<int16_t>(i) : nullptr;
     eline[0] = eline[nP-1] = 0.f;
     for (int j = 1; j < nP - 1; j++)
@@ -170,7 +150,6 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       float e = sgn(gx);
       if (!vr[j-1] || !vr[j] || !vr[j+1] ||
           !v0[j-1] || !v0[j+1] || !v2[j-1] || !v2[j+1]) e = 0;  // off-image -> drop spurious border edge
-      if (useMask && !m[j]) e = 0;
       eline[j] = e;
     }
     for (int j = 1; j < nP - 1; j++)               // local maxima along the contiguous perp line
@@ -227,21 +206,18 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (!std::isfinite(eS) || !std::isfinite(eP)) return false;
   if (dbg) fprintf(stderr, "[SPCV] n=%.1f nUsed=%d final(search,perp)=(%.2f,%.2f)\n", considerRange, nUsed, eS, eP);
 
-  if (dbg) // debug: save rectified gray | mask | edge marker
+  if (dbg) // debug: save rectified gray | edge marker
   {
     // buffer pos of a centered coord: col = perpCoord + cp, row = cs - searchCoord
     auto bx = [&](float perpCoord){ return (int)lroundf(perpCoord + cp); };
     auto by = [&](float searchCoord){ return (int)lroundf(cs - searchCoord); };
     cv::Mat vis; std::vector<cv::Mat> ch = {g, g, g}; cv::merge(ch, vis);
-    if (useMask) for (int i=0;i<nS;i++){ unsigned char*m=mask.ptr<unsigned char>(i); unsigned char*v=vis.ptr<unsigned char>(i);
-        for(int j=0;j<nP;j++) if(!m[j]) v[j*3+2]=(unsigned char)std::min(255,v[j*3+2]+90); } // background tinted red
     for (auto &e: eps){ int xx=bx(e.perpCoord), yy=by(e.searchCoord); if(yy>=0&&yy<nS&&xx>=0&&xx<nP) cv::circle(vis,cv::Point(xx,yy),2,cv::Scalar(0,255,0),-1); }
     { int xx=bx(eP), yy=by(eS); if(yy>=0&&yy<nS&&xx>=0&&xx<nP){ cv::circle(vis,cv::Point(xx,yy),5,cv::Scalar(255,0,0),2); cv::drawMarker(vis,cv::Point(xx,yy),cv::Scalar(255,0,0),cv::MARKER_CROSS,11,1);} } // final blue
     int sc = (std::max(nS, nP) < 400) ? 3 : 1;  // uniform upscale for small remaps (keep aspect ratio)
     cv::Mat visBig; cv::resize(vis, visBig, cv::Size(), sc, sc, cv::INTER_NEAREST);
     char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.x,(int)pt.y,nP,nS); cv::imwrite(fn,visBig);
     char fn2[256]; snprintf(fn2,sizeof(fn2),"/tmp/spcvraw_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn2,g);
-    if (useMask) { char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn3,mask); }
     // signed gradient mapped to 8U: 128 = zero gradient, brighter = +grad, darker = -grad.
     cv::Mat sob8; sobViz.convertTo(sob8, CV_8U, 0.5, 128.0);
     char fn4[256]; snprintf(fn4,sizeof(fn4),"/tmp/spcvsobel_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn4,sob8);

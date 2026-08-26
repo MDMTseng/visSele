@@ -142,8 +142,11 @@ diagnostic tools parse that line's exact text.
   three months every caliper search point has been free to pick one. **Do not
   restore it** — SBM produces no labels at all (`FeatureManager_group` takes a
   raw-gray fast path that skips binarize/CCL/contour and leaves `ldData` empty),
-  so there is nothing to restore it from. `mask_dilate` is inert until a
-  successor exists.
+  so there is nothing to restore it from. **There is no successor**: a polygon
+  fence was built and rejected on 2026-08-26 (the caliper's own margin/width
+  already bound the scan, and unlike a rigid polygon a search point follows the
+  morph). `search_point_cv` no longer takes a mask, and `mask_dilate` was
+  retired with it. See BACKLOG_2026-08-26.
 - **`localization_include`/`localization_exclude` are NOT that successor**, and
   this document said they were until it was corrected. They are the **feature
   generation** mask — where line2Dup extracts features in order to *find* the

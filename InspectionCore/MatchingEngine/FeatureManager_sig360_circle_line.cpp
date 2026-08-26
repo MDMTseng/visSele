@@ -1199,42 +1199,6 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGI_EVERY_N(200, "search_point: edge polarity 'any' -> bidirectional scan "
                           "(was silently 'falling' before 2026-08-25)");
       }
-      // THE BACKGROUND MASK IS OFF, AND HAS BEEN SINCE 2026-05-29.
-      //
-      // Its job: mask out background using the dilated object label so the scan
-      // cannot lock onto background specks. It was switched off in a wip commit
-      // "temporarily ... for edge-finding debugging" -- 1024 commits ago -- and
-      // the member it read, m_labeledImg_cv, has since been deleted, so the
-      // expression below could not compile even if it were uncommented.
-      //
-      // That makes mask_dilate inert too: useMask is (!labelImg.empty() &&
-      // objLabel >= 0), and this is always empty. The knob is honoured all the
-      // way to search_point_cv and then has nothing to act on.
-      //
-      // Consequence, stated plainly because nothing else says it: for three
-      // months every caliper search point has been free to pick a background
-      // speck over the real edge.
-      //
-      // Do NOT fix this by restoring m_labeledImg_cv: the labeling pipeline is
-      // what SBM replaces, and SBM produces no labels at all (see the raw-gray
-      // fast path in FeatureManager_group -- binarize/CCL/contour are skipped
-      // outright and ldData is left empty).
-      //
-      // And do NOT wire localization_include/localization_exclude in here
-      // either, however close they look. Those polygons are the FEATURE
-      // GENERATION mask: they say where line2Dup extracts features in order to
-      // FIND the part. This is a MEASUREMENT mask: it says where a caliper scan
-      // may pick up an edge once the part has been found. Two different jobs,
-      // and using the localization ROI to bound a measurement would silently
-      // restrict where edges can be measured to wherever somebody happened to
-      // draw the matching region.
-      //
-      // The successor is a separate object polygon mask, planned but NOT yet
-      // specified anywhere. The consumer inside search_point_cv is reusable
-      // as-is when it arrives -- it only needs a binary mask -- but the
-      // labelImg/objLabel pair should become one, since isObjectPx is a
-      // label-specific test. See BACKLOG_2026-08-26.
-      cv::Mat labelImg;
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.
       const uint32_t said = def.edge_set;
@@ -1259,23 +1223,11 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       float includeRangePx = (said & featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE)
                              ? def.include_range : 0.0f;
 
-      // mask_dilate is OPTIONAL on the same rule: absent, or an explicit 0,
-      // means the ring mask is not applied. `maskDilate > 0` was already the
-      // guard inside search_point_cv, so 0-means-off is the convention this
-      // code already had -- it was only the def-side `? : 8` that hid it.
-      //
-      // Nothing changes on this bench either way: the ring mask is gated on
-      // useMask, and the call site below passes a deliberately empty labelImg
-      // ("temporarily DISABLED for edge-finding debugging"), so maskDilate has
-      // had no effect at all. Worth knowing before anyone tunes it.
-      int   maskDilate = (said & featureDef_searchPoint::EDGE_SET_MASK_DILATE)
-                         ? def.mask_dilate : 0;
-
       float alphaKeep  = def.alpha_keep;            // 0 = none (algorithm default)
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
                            margin, width, sp_et, edgeSuppress,
                            includeRangePx, alphaKeep,
-                           eT.getBacpac(), labelImg, m_objLabel, maskDilate,
+                           eT.getBacpac(),
                            &out, &str, def.id, &rep.cal_hits);
       // Lens correction (full-image px). A search point is a single robust
       // centroid (no line/circle fit), so undistorting the final point is the
@@ -1318,6 +1270,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       {
         rep.pt.x = NAN; rep.pt.y = NAN;
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+        // Say something, rather than leaving the reason blank. An NA with no
+        // reason is indistinguishable on screen from every other kind of NA,
+        // and this one has a specific meaning: the scan ran and found no edge
+        // that cleared min_strength inside the band -- so the band or the floor
+        // is where to look, not the def.
+        snprintf(rep.na_reason, sizeof(rep.na_reason),
+                 "no edge over min_strength in the search band");
       }
       LOGV("caliper spoint rep.pt:%f %f, status:%d", rep.pt.x, rep.pt.y, rep.status);
       break;
@@ -1524,7 +1483,6 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.include_range = 0;
   searchPoint.manual_offset = 0;
   searchPoint.alpha_keep = 0;
-  searchPoint.mask_dilate = 0;
   searchPoint.edge_set = 0;
   {
     char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
@@ -1554,7 +1512,13 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("include_range", featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE, &searchPoint.include_range);
       take   ("manual_offset", featureDef_searchPoint::EDGE_SET_MANUAL_OFFSET, &searchPoint.manual_offset);
       take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
-      takeInt("mask_dilate",   featureDef_searchPoint::EDGE_SET_MASK_DILATE,   &searchPoint.mask_dilate);
+      // mask_dilate is gone (2026-08-26). Say so rather than ignoring it: a def
+      // that carries the key was tuned by somebody who believed it did
+      // something, and silently dropping it is how a knob becomes folklore.
+      if (!std::isnan(JFetch_NUMBER_ex(edgeo, "mask_dilate")))
+        LOGE_EVERY_N(50, "search_point id=%d: edge.mask_dilate is no longer a "
+                         "knob and is ignored -- it dilated an object mask that "
+                         "has had no producer since 2026-05-29.", searchPoint.id);
     }
   }
 
@@ -6541,7 +6505,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     p_cropImg_cv = labeledBuff_cv;
     cropOffset.x=0;
     cropOffset.y=0;
-    m_objLabel = i;
     acv_LabeledData curLableDat=(acv_LabeledData){
       .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
       .RBBound=acvVecSub(ldData[i].RBBound,cropOffset),

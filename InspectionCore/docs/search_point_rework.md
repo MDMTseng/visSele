@@ -107,11 +107,15 @@ defs (opt-in via `locating:"caliper"`), producing a superset report.
 2. **Blur** along the edge only (`cv::blur(Size(1,blurSize))`, blurSize=3) — denoise
    without moving the edge.
 3. **Sobel** along the search direction (`cv::Sobel(CV_16S, 1, 0)`).
-4. **Mask (currently DISABLED for debugging):** when enabled, keep sobel only on the
-   silhouette **boundary ring** = `dilate(mask) AND NOT erode(mask)` (±maskDilate px,
-   default 8), so interior gradients are excluded. Mask predicate = "not white
-   background" (`isObjectPx`). NOTE: as of this writing `labelImg` is passed `nullptr`
-   in the caller (mask off) — see `FeatureManager...cpp` ~1412.
+4. ~~**Mask**~~ — **REMOVED 2026-08-26, and step 6 below is why.** It kept sobel
+   only on the silhouette boundary ring (`dilate AND NOT erode`, ±`maskDilate` px)
+   using a "not white background" predicate over the labeled image. The caller had
+   passed `nullptr` since 2026-05-29 and the labeled image was later deleted, so it
+   was a parameter that could not be supplied. A polygon fence was built as a
+   replacement on 2026-08-26 and rejected the same day: the caliper's own
+   `margin`/`width` already bound the scan, and a rigid polygon stops tracking a
+   deforming part that the search point still follows through the morph.
+   `search_point_cv` now takes no mask, and `edge.mask_dilate` is retired.
 5. **Per-row edge** (`rowEdgeCenter`): strongest gradient blob centroid in the row,
    after polarity + `edgeSuppress` (=10) noise subtraction. Returns centroid, summed
    weight `w`, spread `sigma`, and **peak gradient**.
@@ -132,9 +136,12 @@ Default `SP_LIGHT_TO_DARK` (outer silhouette: dark object on bright backlit
 background → entering object is bright→dark). Def `polarity` overrides: RISING →
 `SP_DARK_TO_LIGHT`, FALLING → `SP_LIGHT_TO_DARK`.
 
-### Current call params (caller ~1405)
-`blur=3, suppress=10, considerRange=2 (lateral px), alphaKeep=0, maskDilate=8,
-labelImg=nullptr (mask OFF), polarity=SP_LIGHT_TO_DARK default`.
+### Current call params
+Read them off the call site rather than from here — this section has been wrong
+before. As of 2026-08-26 there is no `blur` (never read; removed), no
+`maskDilate` and no `labelImg` (removed with the mask), `min_strength` is
+REQUIRED in caliper mode rather than defaulted to 10, and `include_range` absent
+or 0 means the step is skipped rather than 2 px.
 
 ### `search_point_scan` (non-OpenCV fallback)
 `MatchingEngine/Caliper.cpp` provides an interim acv-only scan used when

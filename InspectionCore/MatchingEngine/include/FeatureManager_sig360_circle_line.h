@@ -266,9 +266,6 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
 
   cv::Mat p_cropImg_cv;       // currently labeled-image or original-image view
   acv_XY cropOffset;
-  // labeled image + this object's label idx, kept so search_point_cv can mask out
-  // background (dilated object label) and not lock onto background specks/dust.
-  int m_objLabel = -1;
 
 
   vector<ContourFetch::ptInfo > tmp_points;
