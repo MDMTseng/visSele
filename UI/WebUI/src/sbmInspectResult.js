@@ -113,7 +113,11 @@ export function inspectSummary(rp, authoredReg) {
         ? '完全沒有候選 — 不是門檻的問題,要看訓練/取景/縮放'
         : L.reason;
     } else if (dropped > 0) {
-      why = `檢驗區把 ${dropped} 個物件擋掉了 — 定位器沒跑到`;
+      // The locator RAN and succeeded; the working region rejected what it
+      // found. Saying "the locator did not run" here was backwards, and it is
+      // the difference between "this def is broken" and "the part is not at the
+      // station" -- which are looked for in completely different places.
+      why = `定位器找到了 ${dropped} 個,但都被檢驗區擋掉 — 零件不在工位範圍內`;
     } else {
       why = (top && top.error) || (rp && rp.error) || '核心沒有給原因';
     }

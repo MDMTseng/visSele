@@ -355,8 +355,8 @@ console.log('\n=== a locate FAILURE says which kind of failure it was ===');
      nada.why);
 
   const dropped = fail({ region_dropped: 3 });
-  ok(/3/.test(dropped.why),
-     'the working region ate it before the locator ran -> say so',
+  ok(/3/.test(dropped.why) && !/沒跑到/.test(dropped.why),
+     'the working region rejected what the locator FOUND -> say that, not that it never ran',
      dropped.why);
 
   const silent = fail({});
