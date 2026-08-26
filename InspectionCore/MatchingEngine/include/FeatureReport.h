@@ -223,6 +223,13 @@ typedef struct featureDef_searchPoint{
   //   REQUIRED (min_strength, in caliper mode): the measurement is NA and says
   //     which knob was missing. A base value the result depends on must not be
   //     guessed; guessing it is deciding a verdict.
+  //
+  //     Note WHY that can be required at all, because it constrains every
+  //     field added after this one: requiredness only works inside an opt-in
+  //     container. `edge` is that container -- absent means contour mode and
+  //     nothing is required, present means somebody chose caliper mode. A bare
+  //     new scalar could never be required, because every def written before
+  //     it existed would go NA. See the contract in HANDOVER_2026-08-26.
   //   OPTIONAL (include_range, mask_dilate): absent, or an explicit 0, means
   //     the step is not applied. `maskDilate > 0` was already the guard inside
   //     search_point_cv, so 0-means-off is the convention this code had; only

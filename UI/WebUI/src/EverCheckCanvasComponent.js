@@ -2638,10 +2638,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   // onto noise as readily as onto the part. 60 is what the line
                   // primitives on this machine run at.
                   //
-                  // include_range is a perpendicular band in def-mm; 0 means
-                  // "unset" and the core substitutes 2px, which is a pixel
-                  // quantity leaking into a mm field and therefore moves with
-                  // the lens. 0.01mm states it in the field's own unit.
+                  // include_range is a perpendicular band in def-mm. It USED to
+                  // be that 0 meant "unset" and the core substituted 2px -- a
+                  // pixel quantity leaking into a mm field, so it moved with the
+                  // lens. Since 2026-08-26 the core honours 0 as "no band", so
+                  // the substitution is gone; 0.01mm stays as the seed because a
+                  // hair-thin band is a better starting point than none.
                   edge: {
                     // 'falling', not 'any': that is what the core has actually
                     // run for every search_point ever created, because ANY fell

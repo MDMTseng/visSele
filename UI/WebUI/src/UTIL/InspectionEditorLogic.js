@@ -1320,6 +1320,12 @@ export class InspectionEditorLogic {
             eObject.adj_pt1= pointInvTrans(eObject.adj_pt1);
           }
           eObject.pt1=o_pt1;
+          // Why an NA is NA. The core sets this only when the recipe left out
+          // a knob the result depends on; without carrying it, the overlay can
+          // say "NA" and nothing else — which is the same silence the hidden
+          // substitutions had, just one step later.
+          if (inspAdjObj.na_reason) eObject.na_reason = inspAdjObj.na_reason;
+          else delete eObject.na_reason;
           // Per-hit caliper points (caliper-mode search_point only). Passed
           // through unchanged — drawn as dots in search_point's draw.
           const _hits = InspectionEditorLogic_CalHitsOf(inspAdjObj);

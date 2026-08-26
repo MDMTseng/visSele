@@ -154,4 +154,15 @@ export function drawInspection(ctx, shape, renderer) {
   if (renderer.show_caliper_hits !== false && shape.cal_hits) {
     drawCaliperHits(ctx, shape.cal_hits, renderer, { style: 'dot' });
   }
+  // Why this point is NA, written next to it. The core sets na_reason only
+  // when the recipe left out a knob the result depends on -- so this is the
+  // difference between "NA" and "NA because edge.min_strength is not set",
+  // which is the difference between an hour of guessing and a fix.
+  if (shape.na_reason) {
+    const save = ctx.fillStyle;
+    ctx.fillStyle = 'rgba(255, 210, 60, 0.95)';
+    const off = renderer.getPointSize() * 3.5;
+    renderer.drawText(ctx, shape.na_reason, shape.pt1.x + off, shape.pt1.y - off);
+    ctx.fillStyle = save;
+  }
 }

@@ -49,13 +49,26 @@ export function caliperField(countDefault, geomLengthFn) {
 
 // `edge` field decl, parameterized by per-shape defaults. line/arc default to
 // {strongest, falling}; search_point defaults to {first, any} (matches core).
-export function edgeField({ method = 'strongest', polarity = 'falling', min_strength = 0 } = {}) {
+// The min_strength default here is a LEGACY-MIGRATION value, not a "good
+// starting point": `derive` fills a field that an existing def left undefined,
+// so whatever it writes becomes what that shape runs from then on.
+//
+// 10 is what the core silently substituted for an absent or 0 min_strength
+// before 2026-08-26, so writing 10 keeps such a shape doing what it has always
+// done. 0 would NOT be neutral any more -- the core now honours it, and 0 means
+// no gradient floor at all, which locks onto noise as readily as onto the part.
+// A NEW point is seeded 60 where it is created (EverCheckCanvasComponent), and
+// that is the right place for a judgement about a good starting value.
+export function edgeField({ method = 'strongest', polarity = 'falling', min_strength = 10 } = {}) {
   return {
     editor: (ctx) => (ctx.edit_tar.locating === 'caliper') ? {
       __OBJ__: 'div',
       method:       { __OBJ__: ctx.renderMethods.Dropdown_List, list: EDGE_METHODS },
       polarity:     { __OBJ__: ctx.renderMethods.Dropdown_List, list: EDGE_POLARITIES },
       nth:          'input-number',
+      // Required, and there is no safe default: the gradient floor decides
+      // which edges exist at all. The core answers a missing one with NA and
+      // says so, rather than guessing and thereby deciding the verdict.
       min_strength: 'input-number',
     } : undefined,
     derive: (shape) => (shape.locating === 'caliper') ? {
