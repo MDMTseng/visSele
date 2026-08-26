@@ -4,7 +4,7 @@ import { connect } from 'react-redux'
 import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
-import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION, defFileFilter } from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
 import JSum from 'jsum'
 import dclone from 'clone';
@@ -881,7 +881,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               { name: "history", list: getLocalStorage_RecentFiles() },
               
             ];
-            let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
+            let fileSelectFilter = defFileFilter;
 
             setFileSelectorInfo({
               callBack:fileSelectedCallBack,

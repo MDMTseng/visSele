@@ -13,7 +13,7 @@ import  Tabs  from 'antd/lib/tabs';
 import { useSelector,useDispatch } from 'react-redux';
 
 import Table from 'antd/lib/table';
-import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { defFileFilter } from 'UTIL/BPG_Protocol';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import dclone from 'clone';
 import Layout from 'antd/lib/layout';
@@ -46,7 +46,7 @@ function Array_NtoM(N,M)
 function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel,onDelete }) {
   const [displayEditInfo, setDisplayEditInfo] = useState(undefined);
 
-  let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
+  let fileSelectFilter = defFileFilter;
   const [fileBrowserInfo, setFileBrowserInfo] = useState(undefined);
 
   useEffect(() => {

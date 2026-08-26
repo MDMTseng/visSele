@@ -363,6 +363,56 @@ export function BPG_ExpCalc(postExp_,funcSet,fallbackFunctionSet) {//no $ and # 
 export const DEF_EXTENSION = "hydef";
 
 
+// ---------------------------------------------------------------------------
+// File-browser filters.
+//
+// The def folder is a Resilio Sync share: the whole fleet reads and writes it,
+// so a directory listing contains more than recipes. Three kinds of impostor
+// pass a naive `name.includes(".hydef")`, and each one looks like a working
+// recipe in the picker:
+//
+//   test1.hydef.!sync                a download still in progress — a partial file
+//   test1.Conflict.2026-08-26.hydef  another machine's version of the same recipe
+//   .sync/  .SyncArchive/            Resilio's own state, and its history of every
+//                                    def anyone ever deleted or overwrote
+//
+// Picking the first loads half a def; the second silently runs someone else's
+// recipe; the third offers a browsable museum of stale versions. So: match the
+// extension at the END of the name, and hide the sync machinery outright.
+// ---------------------------------------------------------------------------
+
+const SYNC_DIR_NAMES = new Set([".sync", ".syncarchive", ".syncid", ".synctemp", ".bts"]);
+// Resilio has used both `.!sync` and the older `.bts` for in-progress files, as a
+// suffix and (for hidden placeholders) as a prefix. Conflict copies carry
+// `.Conflict.` or, in older builds, `.conflict_`.
+const SYNC_PARTIAL_RE = /(^\.!sync|\.!sync$|^\.bts$|\.bts$)/i;
+const SYNC_CONFLICT_RE = /\.conflict[._]/i;
+
+/** True for anything Resilio put in the folder that is not a user file. */
+export function isSyncArtifact(fileInfo) {
+  const name = (fileInfo && fileInfo.name) || "";
+  if (fileInfo && fileInfo.type === "DIR") return SYNC_DIR_NAMES.has(name.toLowerCase());
+  return SYNC_PARTIAL_RE.test(name) || SYNC_CONFLICT_RE.test(name);
+}
+
+/**
+ * Browser filter for one file extension: directories through, files only when
+ * the name actually ends in `.<ext>`, sync artefacts never.
+ */
+export function makeExtensionFilter(ext) {
+  const suffix = "." + String(ext).toLowerCase();
+  return (fileInfo) => {
+    if (isSyncArtifact(fileInfo)) return false;
+    if (fileInfo && fileInfo.type === "DIR") return true;
+    const name = (fileInfo && fileInfo.name) || "";
+    return name.toLowerCase().endsWith(suffix);
+  };
+}
+
+/** The def-file filter. Use this rather than open-coding the extension test. */
+export const defFileFilter = makeExtensionFilter(DEF_EXTENSION);
+
+
 
 // R-quick-wins: renamed from CameraCtrl to avoid a footgun name collision with
 // canvas/CameraCtrl.ts (the viewport controller). This one is the hardware-camera

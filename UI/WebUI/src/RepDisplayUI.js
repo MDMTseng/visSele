@@ -15,7 +15,7 @@ import { BPG_FileBrowser, BPG_FileSavingBrowser } from './component/baseComponen
 
 import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 
-import BPG_Protocol from 'UTIL/BPG_Protocol.js';
+import BPG_Protocol, { isSyncArtifact, makeExtensionFilter } from 'UTIL/BPG_Protocol.js';
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
@@ -393,7 +393,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     let fileGroups = [
       // { name: "history", list: getLocalStorage_RecentFiles() }
     ];
-    let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("."+xreps);
+    let fileSelectFilter = makeExtensionFilter(xreps);
 
     setFileSelectorInfo({
       filter:fileSelectFilter,
@@ -640,7 +640,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
       onFileSelected={(filePath, fileInfo,folderStruct) => {
         let xrepLists=folderStruct.files
-          .filter(f=>(f.type=="REG"&&f.name.endsWith(xreps)))
+          .filter(f=>(f.type=="REG"&&f.name.endsWith("."+xreps)&&!isSyncArtifact(f)))
           .sort((f1,f2) => f1.ctime_ms>f2.ctime_ms);
         setCurFolderPath(folderStruct.path);
         setCachedXREPList(xrepLists);
