@@ -1215,13 +1215,25 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // months every caliper search point has been free to pick a background
       // speck over the real edge.
       //
-      // Do NOT fix this by restoring m_labeledImg_cv. The labeling pipeline is
-      // what SBM replaces; the mask's successor is the object POLYGON mask that
-      // pure_sbm_def_design.md already specifies (localization_include /
-      // localization_exclude, object-frame mm). When that lands, the consumer
-      // inside search_point_cv is reusable as-is -- it only needs a binary mask
-      // -- but the labelImg/objLabel parameter pair should become one, since
-      // isObjectPx is a label-specific test. See BACKLOG_2026-08-26.
+      // Do NOT fix this by restoring m_labeledImg_cv: the labeling pipeline is
+      // what SBM replaces, and SBM produces no labels at all (see the raw-gray
+      // fast path in FeatureManager_group -- binarize/CCL/contour are skipped
+      // outright and ldData is left empty).
+      //
+      // And do NOT wire localization_include/localization_exclude in here
+      // either, however close they look. Those polygons are the FEATURE
+      // GENERATION mask: they say where line2Dup extracts features in order to
+      // FIND the part. This is a MEASUREMENT mask: it says where a caliper scan
+      // may pick up an edge once the part has been found. Two different jobs,
+      // and using the localization ROI to bound a measurement would silently
+      // restrict where edges can be measured to wherever somebody happened to
+      // draw the matching region.
+      //
+      // The successor is a separate object polygon mask, planned but NOT yet
+      // specified anywhere. The consumer inside search_point_cv is reusable
+      // as-is when it arrives -- it only needs a binary mask -- but the
+      // labelImg/objLabel pair should become one, since isObjectPx is a
+      // label-specific test. See BACKLOG_2026-08-26.
       cv::Mat labelImg;
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.

@@ -140,8 +140,18 @@ diagnostic tools parse that line's exact text.
   `m_labeledImg_cv` has since been deleted, so the commented line could not even
   compile. Its job is to stop the scan locking onto background specks, so for
   three months every caliper search point has been free to pick one. **Do not
-  restore it** — its successor is the SBM object polygon mask
-  (`pure_sbm_def_design.md`). `mask_dilate` is inert until then.
+  restore it** — SBM produces no labels at all (`FeatureManager_group` takes a
+  raw-gray fast path that skips binarize/CCL/contour and leaves `ldData` empty),
+  so there is nothing to restore it from. `mask_dilate` is inert until a
+  successor exists.
+- **`localization_include`/`localization_exclude` are NOT that successor**, and
+  this document said they were until it was corrected. They are the **feature
+  generation** mask — where line2Dup extracts features in order to *find* the
+  part, authored in `SBMStudio`. The dead mask is a **measurement** mask — where
+  a caliper scan may pick up an edge once the part *has been* found. Wiring the
+  first into the second would bound measurement by wherever somebody drew the
+  matching region. The real successor is a separate object polygon mask, planned
+  and not yet specified.
 - **`blur` was a knob that did not exist.** `search_point_cv` took a `blurSize`
   and never read it. Deleted rather than surfaced in the UI: a control that does
   nothing is the defect class this audit exists to remove.
