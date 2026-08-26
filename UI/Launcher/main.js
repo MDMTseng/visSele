@@ -250,6 +250,7 @@ let setupGate = null;
 // one, and a machine that is killed must not be able to claim a stretch it did
 // not finish.
 let goodTimer = null;
+let lastStartedVersion = null;
 
 function armGoodTimer(version) {
   clearGoodTimer();
@@ -281,6 +282,10 @@ async function startCore() {
            + `falling back to ${target.version}`);
   }
   shellLog(`starting ${plan.name || target.version}`);
+  // current.json can be repointed while this run continues, so it stops being
+  // the answer to "what is executing" the moment an update is applied. Keep
+  // the real one.
+  lastStartedVersion = target.version;
 
   setupGate = { armed: true, requested: false, since: Date.now() };
   send('launcher:setupGate', { ms: Number(cfg.values.splashHoldMs) || 0 });
@@ -506,6 +511,60 @@ function registerIpc() {
     // launcher through the side door.
     const { error } = await currentPlan();
     return { ok: true, workingDir: cfg.workingDir, planError: error || null };
+  });
+
+  // --- update, from the application's UI --------------------------------------
+  //
+  // These two are callable while the application is running, which none of the
+  // other version actions are. That is not a loosened guard, it is the shape of
+  // the thing: INSTALLING only ever writes a new directory under appRoot -- it
+  // cannot touch the version that is executing (install() refuses to replace
+  // the selected one) and never touches the working directory at all. And
+  // SELECTING is one small write to current.json, which is read at start and
+  // never again, so it decides the NEXT run and cannot disturb this one.
+  //
+  // So the operator gets told there is a version waiting and picks the moment
+  // to restart, instead of the machine choosing 3am for them.
+  ipcMain.handle('launcher:updateCheck', async () => {
+    const scan = updater.scanSource();
+    const current = apps.currentVersion();
+    const running = supervisor.running ? (lastStartedVersion || current) : null;
+    const wanted = scan.release ? scan.release.version : null;
+    // "Pending" means the pointer already names something other than what is
+    // executing: installed and selected, waiting only for a restart. It does
+    // not matter who repointed it -- this UI, the shell, or a hand edit.
+    const pending = running && current && current !== running ? current : null;
+    return {
+      ok: true,
+      source: scan.source, error: scan.error,
+      release: scan.release, packages: scan.packages,
+      current, running,
+      pending,
+      // What the app UI should offer to do, decided here rather than in the
+      // renderer -- it is the same question the shell answers and it should not
+      // be answered twice.
+      available: wanted && wanted !== current
+        ? (scan.packages.find((p) => p.version === wanted) || null)
+        : null,
+    };
+  });
+
+  ipcMain.handle('launcher:updateApply', async (_e, file) => {
+    const scan = updater.scanSource();
+    const pkg = scan.packages.find((p) => p.file === file);
+    if (!pkg) return { ok: false, error: 'that package is not in the update folder' };
+    if (pkg.version === (lastStartedVersion || apps.currentVersion()) && supervisor.running) {
+      return { ok: false, error: 'that version is the one already running' };
+    }
+    try {
+      if (!pkg.installed) await updater.install(pkg.path, shellLog);
+      apps.setCurrent(pkg.version);
+      shellLog(`${pkg.version} 已安裝並設為現行 -- 下次重新啟動時生效`);
+      return { ok: true, version: pkg.version, appliesAt: 'next-start' };
+    } catch (e) {
+      shellLog(`UPDATE FAILED: ${e.message}`);
+      return { ok: false, error: e.message };
+    }
   });
 
   ipcMain.handle('launcher:pickUpdateSource', async () => {

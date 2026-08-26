@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('launcher', {
   pickFolder: (options) => ipcRenderer.invoke('launcher:pickFolder', options),
   status: () => ipcRenderer.invoke('launcher:status'),
   stopCore: () => ipcRenderer.invoke('launcher:stopCore'),
+  // Update, from the application's UI. Installing writes only a new version
+  // directory and selecting decides the NEXT start, so neither disturbs the run
+  // in progress -- see the note on the handlers.
+  updateCheck: () => ipcRenderer.invoke('launcher:updateCheck'),
+  updateApply: (file) => ipcRenderer.invoke('launcher:updateApply', file),
 
   // Launcher shell only; refused by the main process while the app UI is up.
   startCore: () => ipcRenderer.invoke('launcher:startCore'),

@@ -72,6 +72,7 @@ export const NAMESPACES = Object.freeze({
   'ui.uinsp2':     'info',   // component/uInspESP32_UI.jsx (2nd-gen sorter panel)
   'ui.camparam':   'info',   // component/CameraParamPanel.jsx (exposure/gain/...)
   'ui.core':       'info',   // component/CoreStatusPanel.jsx (queues + core knobs)
+  'ui.update':     'info',   // component/UpdateNotice.jsx (launcher update notices)
   'ui.boundary':   'warn',   // ComponentBoundary / RootErrorBoundary
   'db.idb':        'info',   // local IndexedDB queue
   'i18n':          'warn',   // dictLookUp warnings only

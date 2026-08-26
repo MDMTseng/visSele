@@ -34,6 +34,7 @@ import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 // import LocaleProvider from 'antd/lib/locale-provider';
 
 import Modal from "antd/lib/modal";
+import UpdateNotice from './component/UpdateNotice.jsx';
 import SettingOutlined from "@ant-design/icons/SettingOutlined";
 import Divider from 'antd/lib/divider';
 import APPMain_rdx from './MAINUI';
@@ -1791,6 +1792,7 @@ ReactDOM.render(
     <Provider store={StoreX}>
         <APPMasterX_rdx />
         <DefIntegrityGuard />
+        <UpdateNotice />
 
     </Provider>
   </RootErrorBoundary>, document.getElementById('container'));
