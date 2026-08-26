@@ -338,6 +338,72 @@ This is also where a headless `--sbm-train` belongs (see I4): if defs are
 published from one place, regenerating caches for the fleet is one command
 there, and it does not become a second extraction path on every machine.
 
+#### D2 — how to actually do it
+
+Three stages, cheapest first. **Stage 0 alone removes the accident**; the rest
+is about making a deliberate publish safe and revertible.
+
+**What the code does today.** `SV` (`Core0_1/wiringPanel.cpp:3742`) writes to
+whatever `filename` the UI sends — no root, no check. The save browser
+(`DefConfUI.js:2296`) is rooted at `DefFileFolder`, which is just the folder the
+open def came from. So "the def folder" is wherever the operator navigated, and
+on these machines that is the share. Nothing in code writes backups; the `.bak_`
+files in `data/` are ad-hoc.
+
+---
+
+**Stage 0 — make it visible, and refusable. (~half a day)**
+
+1. `machine_setting.json` gains `def_share_root` (string) and
+   `def_share_writable` (bool, **default false**).
+2. **The refusal goes in the CORE**, in the `SV` handler: target under
+   `def_share_root` and not writable → refuse, with the reason in the reply. It
+   cannot live only in the WebUI — a UI check is a suggestion, and the WebUI is
+   not the only thing that can send `SV`.
+3. The save dialog shows a banner when the target is under the share ("這個資料夾
+   會同步到 N 台機器"), and disables OK with the reason when it is not writable.
+
+One machine gets `def_share_writable: true`. Everyone else physically cannot
+write to the share. **That is the whole fleet risk, gone, for a config key and
+a path comparison.**
+
+**Stage 1 — edit locally, publish deliberately. (~1-2 days)**
+
+4. `def_root_local` in `machine_setting.json` (default `data/defs/`).
+5. Opening a def from the share copies it to local first; editing and saving
+   always happen locally. The share is now a publication target, not a
+   workspace.
+6. A new core command — `DP`, def publish — copies local to share **atomically**
+   (write `.tmp`, rename) with a **compare-and-swap**: the UI sends the hash of
+   the share copy as it was when the def was opened, the core hashes the share
+   copy now, and a mismatch refuses with the current file's size and mtime so
+   the operator knows somebody else published in between.
+   Use a plain file hash, **not** `featureSet_sha1` — that deliberately ignores
+   `__shape_cache`, so a cache-only change would publish silently over someone.
+7. DefConfUI gets 「發布到共享」, shown only when a share is configured, with a
+   summary of what changed before it commits.
+
+**Stage 2 — make a bad publish revertible. (~half a day)**
+
+8. Publish first copies the CURRENT share file to
+   `<share>/.history/<name>/<stamp>.hydef`. Reverting is publishing an older
+   entry. History lives in the share on purpose: every machine then has the
+   revert, not just the one that made the mistake.
+
+---
+
+**What this does NOT solve, stated plainly:**
+
+- **A delete still propagates as a delete.** Resilio has no tombstone anyone can
+  review. Mitigation is policy, not code: the UI must never delete from the
+  share — "retire" moves the file into `.history` instead.
+- **Simultaneous publishes** inside one sync window can still both land and
+  produce a `.Conflict.` copy. The compare-and-swap catches the ordinary case
+  (B holds a base from an hour ago), not a true race.
+- **None of this can be tested from this bench** — there is no second machine
+  and no share here. Stage 0 is testable (point `def_share_root` at any folder
+  and try to save into it); Stages 1 and 2 need two machines.
+
 ### D3 — `updateSource` per machine, and one real end-to-end update
 
 `updateSource` defaults to `null` in `UI/Launcher/src/config.js`; each machine
