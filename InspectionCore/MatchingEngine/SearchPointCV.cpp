@@ -9,30 +9,24 @@
 // acvVecNormal(s)) + the polarity-signed gradient peak that produced it.
 struct SPEdgePt { float searchCoord, perpCoord, peak; };
 
-// Is this labeled-image pixel part of an OBJECT (vs white background)?
-// The labeling marks: background = white (R=G=B=255); object interior = small
-// label value (R channel 0); object contour = (B,G,R)=(1,128,1). A THIN wire is
-// almost all contour (no interior), so matching a specific label index fails and
-// masks the wire itself. Instead treat "not white background" as object: the R
-// channel (ch2) is 255 only on background, 0/1 on object interior/contour.
-static inline bool isObjectPx(const cv::Mat &L, int x, int y)
+// Is this pixel inside the MEASUREMENT FENCE?
+//
+// The fence is a plain CV_8U mask in `gray`'s coordinate frame: nonzero means a
+// caliper scan is allowed to pick up an edge here. It replaces the labeled-image
+// test that used to live here, which asked "is this pixel non-white background"
+// -- a question only the old labeling pipeline could answer, and SBM produces no
+// labels at all. See BACKLOG_2026-08-26.
+static inline bool isInFence(const cv::Mat &F, int x, int y)
 {
-  if (L.empty() || x < 0 || y < 0 || x >= L.cols || y >= L.rows) return false;
-  const uint8_t *p = L.ptr<uint8_t>(y) + x * 3;
-  return !(p[0] == 255 && p[1] == 255 && p[2] == 255); // non-white => object
-}
-static inline int labelAt(const cv::Mat &L, int x, int y)
-{
-  if (L.empty() || x < 0 || y < 0 || x >= L.cols || y >= L.rows) return -1;
-  const uint8_t *p = L.ptr<uint8_t>(y) + x * 3;
-  return (int)p[0] | ((int)p[1] << 8) | ((int)p[2] << 16);
+  if (F.empty() || x < 0 || y < 0 || x >= F.cols || y >= F.rows) return false;
+  return F.at<uint8_t>(y, x) != 0;
 }
 
 bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
-                     const cv::Mat &labelImg, int objLabel, int maskDilate,
+                     const cv::Mat &fenceMask, int maskDilate,
                      acv_XY *outPt, float *outW, int spId,
                      std::vector<CaliperHit> *outHits)
 {
@@ -82,11 +76,11 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 
   const bool dbg = (getenv("SPCV_DUMP") != nullptr);
-  const bool useMask = (!labelImg.empty() && objLabel >= 0);
+  const bool useMask = !fenceMask.empty();
   int gW = gray.cols, gH = gray.rows;
   cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
   cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
-  cv::Mat mask;                                 // object-allow mask; only built when labelImg given
+  cv::Mat mask;                                 // fence-allow mask; only built when a fence is given
   if (useMask) mask = cv::Mat(nS, nP, CV_8U, cv::Scalar(255));
   for (int i = 0; i < nS; i++)
   {
@@ -103,21 +97,28 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       // NaN outside the calibration grid, and casting a NaN float to
       // unsigned char is UB, not "some grey value".
       d[j] = !(v > 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
-      if (m) m[j] = isObjectPx(labelImg, (int)(q.x + 0.5f), (int)(q.y + 0.5f)) ? 255 : 0;
+      if (m) m[j] = isInFence(fenceMask, (int)(q.x + 0.5f), (int)(q.y + 0.5f)) ? 255 : 0;
     }
   }
 
-  // Optional object-boundary RING mask (silhouette only): ring = dilate AND NOT erode,
-  // so interior gradients are excluded. Disabled unless labelImg is provided.
+  // maskDilate GROWS the allowed region by that many px, and no longer builds a
+  // ring.
+  //
+  // The ring (dilate AND NOT erode) was correct for the mask this used to take:
+  // an object silhouette, where only the boundary gradient is wanted and the
+  // interior is noise. A fence is not a silhouette -- it is an allow-region, and
+  // reducing it to its own outline would forbid measurement everywhere except a
+  // thin band along the polygon the operator drew, which is the opposite of what
+  // drawing it means.
+  //
+  // Reusing the knob rather than retiring it is safe because it has never done
+  // anything: useMask required a labelImg that the call site has passed empty
+  // since 2026-05-29. Its units and its name both still fit -- px of slack,
+  // which is what a fence needs to absorb localization error.
   if (useMask && maskDilate > 0)
   {
     int k = 2 * maskDilate + 1;
-    cv::Mat se = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(k, k)), md, me;
-    cv::dilate(mask, md, se); cv::erode(mask, me, se);
-    for (int i = 0; i < nS; i++) {
-      unsigned char *pd = md.ptr<unsigned char>(i), *pe = me.ptr<unsigned char>(i), *m = mask.ptr<unsigned char>(i);
-      for (int j = 0; j < nP; j++) m[j] = (pd[j] && !pe[j]) ? 255 : 0;
-    }
+    cv::dilate(mask, mask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(k, k)));
   }
 
   // FUSED PASS: per interior search row, walk the contiguous perp line once. Gradient along
@@ -241,7 +242,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     cv::Mat visBig; cv::resize(vis, visBig, cv::Size(), sc, sc, cv::INTER_NEAREST);
     char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.x,(int)pt.y,nP,nS); cv::imwrite(fn,visBig);
     char fn2[256]; snprintf(fn2,sizeof(fn2),"/tmp/spcvraw_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn2,g);
-    if (useMask) { char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn3,mask); }
+    if (useMask) { char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvfence_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn3,mask); }
     // signed gradient mapped to 8U: 128 = zero gradient, brighter = +grad, darker = -grad.
     cv::Mat sob8; sobViz.convertTo(sob8, CV_8U, 0.5, 128.0);
     char fn4[256]; snprintf(fn4,sizeof(fn4),"/tmp/spcvsobel_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn4,sob8);

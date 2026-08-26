@@ -1199,42 +1199,31 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGI_EVERY_N(200, "search_point: edge polarity 'any' -> bidirectional scan "
                           "(was silently 'falling' before 2026-08-25)");
       }
-      // THE BACKGROUND MASK IS OFF, AND HAS BEEN SINCE 2026-05-29.
+      // THE MEASUREMENT FENCE. This replaces the background mask that was off
+      // from 2026-05-29 to 2026-08-26 -- switched off in a wip commit
+      // "temporarily ... for edge-finding debugging", after which the member it
+      // read (m_labeledImg_cv) was deleted, so for three months every caliper
+      // search point was free to pick a background speck over the real edge.
       //
-      // Its job: mask out background using the dilated object label so the scan
-      // cannot lock onto background specks. It was switched off in a wip commit
-      // "temporarily ... for edge-finding debugging" -- 1024 commits ago -- and
-      // the member it read, m_labeledImg_cv, has since been deleted, so the
-      // expression below could not compile even if it were uncommented.
-      //
-      // That makes mask_dilate inert too: useMask is (!labelImg.empty() &&
-      // objLabel >= 0), and this is always empty. The knob is honoured all the
-      // way to search_point_cv and then has nothing to act on.
-      //
-      // Consequence, stated plainly because nothing else says it: for three
-      // months every caliper search point has been free to pick a background
-      // speck over the real edge.
-      //
-      // Do NOT fix this by restoring m_labeledImg_cv: the labeling pipeline is
-      // what SBM replaces, and SBM produces no labels at all (see the raw-gray
+      // It is a replacement and not a restoration. The old mask came from the
+      // labeling pipeline, and SBM produces no labels at all (see the raw-gray
       // fast path in FeatureManager_group -- binarize/CCL/contour are skipped
-      // outright and ldData is left empty).
+      // and ldData is left empty), so there was nothing left to restore. The
+      // fence is authored instead: polygons drawn by the operator in
+      // object-frame mm, "measure inside here, not out there".
       //
-      // And do NOT wire localization_include/localization_exclude in here
-      // either, however close they look. Those polygons are the FEATURE
-      // GENERATION mask: they say where line2Dup extracts features in order to
-      // FIND the part. This is a MEASUREMENT mask: it says where a caliper scan
-      // may pick up an edge once the part has been found. Two different jobs,
-      // and using the localization ROI to bound a measurement would silently
-      // restrict where edges can be measured to wherever somebody happened to
-      // draw the matching region.
+      // It is NOT localization_include/localization_exclude, however close those
+      // look. Those say where line2Dup extracts features in order to FIND the
+      // part; this says where a caliper may pick up an edge once the part HAS
+      // been found. Bounding a measurement by the matching region would restrict
+      // where edges can be measured to wherever somebody drew the template.
       //
-      // The successor is a separate object polygon mask, planned but NOT yet
-      // specified anywhere. The consumer inside search_point_cv is reusable
-      // as-is when it arrives -- it only needs a binary mask -- but the
-      // labelImg/objLabel pair should become one, since isObjectPx is a
-      // label-specific test. See BACKLOG_2026-08-26.
-      cv::Mat labelImg;
+      // A def with no fence polygons gets an empty mask, which means "measure
+      // everywhere" -- i.e. exactly today's behaviour. A def WITH them will
+      // measure differently, and that is the point.
+      // Rasterised by fenceMaskFor(), called from SPointMatching_ReportGen --
+      // that is where the pose and mmpp are.
+      const cv::Mat &fenceMask = m_fenceMask_cv;
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.
       const uint32_t said = def.edge_set;
@@ -1275,7 +1264,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
                            margin, width, sp_et, edgeSuppress,
                            includeRangePx, alphaKeep,
-                           eT.getBacpac(), labelImg, m_objLabel, maskDilate,
+                           eT.getBacpac(), fenceMask, maskDilate,
                            &out, &str, def.id, &rep.cal_hits);
       // Lens correction (full-image px). A search point is a single robust
       // centroid (no line/circle fit), so undistorting the final point is the
@@ -1318,6 +1307,17 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       {
         rep.pt.x = NAN; rep.pt.y = NAN;
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+        // Say WHY there was no edge, because "found nothing" and "was not
+        // allowed to look" are different problems and they look identical on
+        // the screen. A fenced-out search point is usually the fence being
+        // drawn slightly too tight, and without this the operator gets a blank
+        // NA on a point that measured fine yesterday. Measured on the bench:
+        // a fence over half the part turned 4 of 12 points into exactly this.
+        if (!fenceMask.empty())
+          snprintf(rep.na_reason, sizeof(rep.na_reason),
+                   "no edge inside the measure fence");
+        else
+          snprintf(rep.na_reason, sizeof(rep.na_reason), "no edge found");
       }
       LOGV("caliper spoint rep.pt:%f %f, status:%d", rep.pt.x, rep.pt.y, rep.status);
       break;
@@ -2212,6 +2212,14 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     };
     parse_poly_array(cJSON_GetObjectItem(root, "localization_include"), this->loc_incl_mm);
     parse_poly_array(cJSON_GetObjectItem(root, "localization_exclude"), this->loc_excl_mm);
+
+    // The MEASUREMENT FENCE, and note where this is: OUTSIDE the shape_based
+    // branch, because it is not a localization setting. A def measures with
+    // calipers whichever locator found the part, so gating the fence on the
+    // locating engine would make it silently do nothing on a sig360 def --
+    // exactly the kind of knob-that-does-nothing this audit exists to remove.
+    parse_poly_array(cJSON_GetObjectItem(root, "measure_fence_include"), this->fence_incl_mm);
+    parse_poly_array(cJSON_GetObjectItem(root, "measure_fence_exclude"), this->fence_excl_mm);
 
     // Explicit ROI refine points (object-frame mm flat array). Presence of the key
     // (even an empty array) switches the localizer to user-points mode; absence keeps
@@ -4254,6 +4262,126 @@ float SigMatchErrorNormalize(float error,ContourSignature &sig)
 
 // }
 
+// Rasterise the measurement fence into the edgeTracking crop's frame.
+//
+// WHY IT IS BUILT HERE AND NOT AT TRAIN TIME
+// The feature-extraction mask in trainShapeMatcher is rendered once, in the
+// TEMPLATE image's pixels, because the template does not move. The fence has to
+// follow the part: it is authored in object-frame mm and the part lands
+// somewhere different in every frame, so it is rendered per inspection through
+// the pose that was just found -- the same (sine, cosine, flip, calibCen, mmpp)
+// the search points themselves are placed with. Reusing the train-time raster
+// would fence the part's TRAINED position, which is only correct on the one
+// frame the def was made from.
+//
+// WHY IT IS CACHED RATHER THAN CLEARED
+// TreeExecution walks search points one id at a time and re-enters this for each
+// of them, so a naive rebuild would rasterise the same polygons once per search
+// point. The key is the whole transform plus the crop geometry, so a genuinely
+// new pose rebuilds and a repeat within one object does not. Rebuilding on a
+// pose that only nearly matches is harmless -- the raster is a pure function of
+// the key.
+//
+// The fence is RIGID: the morph (cm.convert) that relaxes each search point onto
+// a deformed part is deliberately not applied to the polygons. A fence is an
+// operator saying "don't look over there", and it should not breathe with the
+// part -- maskDilate is the knob for slack. Worth knowing if a def ever fences
+// a heavily morphing region tightly.
+const cv::Mat &FeatureManager_sig360_circle_line::fenceMaskFor(
+  edgeTracking &eT, acv_XY calibCen, float mmpp,
+  float cosine, float sine, float flip_f)
+{
+  cv::Mat &img = eT.getImageCv();
+  acv_XY off = eT.getImgOffset();
+
+  if (fence_incl_mm.empty() && fence_excl_mm.empty())
+  {
+    // No fence authored -> an empty mask, which search_point_cv reads as
+    // "measure everywhere". Release any raster from a previous def.
+    if (!m_fenceMask_cv.empty()) m_fenceMask_cv.release();
+    m_fencePose.valid = false;
+    return m_fenceMask_cv;
+  }
+  if (img.empty() || !(mmpp > 0))
+  {
+    if (!m_fenceMask_cv.empty()) m_fenceMask_cv.release();
+    m_fencePose.valid = false;
+    return m_fenceMask_cv;
+  }
+
+  const FencePose k = { true, sine, cosine, flip_f, mmpp, calibCen, off,
+                        img.cols, img.rows };
+  if (m_fencePose.valid && !m_fenceMask_cv.empty() &&
+      m_fencePose.sine == k.sine && m_fencePose.cosine == k.cosine &&
+      m_fencePose.flip == k.flip && m_fencePose.mmpp == k.mmpp &&
+      m_fencePose.cen.x == k.cen.x && m_fencePose.cen.y == k.cen.y &&
+      m_fencePose.off.x == k.off.x && m_fencePose.off.y == k.off.y &&
+      m_fencePose.w == k.w && m_fencePose.h == k.h)
+    return m_fenceMask_cv;
+
+  // Object-frame mm -> full-image px (the pose) -> crop px (minus the eT
+  // offset), which is the frame search_point_cv samples in.
+  auto render_px = [&](const vector<acv_XY> &poly_mm) {
+    std::vector<cv::Point> px;
+    px.reserve(poly_mm.size());
+    for (const acv_XY &q : poly_mm)
+    {
+      acv_XY p = TemplateDomain_TO_PixDomain(q, sine, cosine, flip_f, calibCen, mmpp);
+      px.push_back(cv::Point((int)lround(p.x - off.x), (int)lround(p.y - off.y)));
+    }
+    return px;
+  };
+
+  // An empty include list means the whole image, so a def that only carves
+  // exclusions reads the way it looks. Requiring an include would make
+  // "exclude this reflective patch" silently fence out everything else.
+  cv::Mat m;
+  int filled = 0;
+  if (!fence_incl_mm.empty())
+  {
+    m = cv::Mat::zeros(img.size(), CV_8U);
+    for (const auto &poly : fence_incl_mm)
+    {
+      std::vector<cv::Point> px = render_px(poly);
+      if (px.size() >= 3) { std::vector<std::vector<cv::Point>> ps{px}; cv::fillPoly(m, ps, cv::Scalar(255)); filled++; }
+    }
+    // Every include polygon degenerate after projection (all under 3 points)
+    // would leave an all-zero mask, i.e. measure NOWHERE -- every search point
+    // returning nothing, with no reason given. Fall back to no fence and say so.
+    if (filled == 0)
+    {
+      LOGE_EVERY_N(50, "measure fence: %zu include polygon(s) all projected to "
+                       "fewer than 3 points -- fence ignored for this frame",
+                   fence_incl_mm.size());
+      m.release();
+    }
+  }
+  if (m.empty()) m = cv::Mat(img.size(), CV_8U, cv::Scalar(255));
+
+  for (const auto &poly : fence_excl_mm)
+  {
+    std::vector<cv::Point> px = render_px(poly);
+    if (px.size() >= 3) { std::vector<std::vector<cv::Point>> ps{px}; cv::fillPoly(m, ps, cv::Scalar(0)); }
+  }
+
+  m_fenceMask_cv = m;
+  m_fencePose = k;
+
+  if (getenv("SP_FENCE_DUMP"))
+  {
+    cv::Mat vis; cv::cvtColor(img, vis, cv::COLOR_GRAY2BGR);
+    cv::Mat red = vis.clone();
+    red.setTo(cv::Scalar(0, 0, 255), m);
+    cv::addWeighted(vis, 0.6, red, 0.4, 0, vis);
+    try { cv::imwrite(getenv("SP_FENCE_DUMP"), vis);
+          fprintf(stderr, "[FENCE] dumped %s (incl=%zu excl=%zu allowed=%d px)\n",
+                  getenv("SP_FENCE_DUMP"), fence_incl_mm.size(), fence_excl_mm.size(),
+                  cv::countNonZero(m)); }
+    catch (const cv::Exception &e) { fprintf(stderr, "[FENCE] dump failed: %s\n", e.what()); }
+  }
+  return m_fenceMask_cv;
+}
+
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatching_ReportGen(
   featureDef_searchPoint *def,
   FeatureReport_sig360_circle_line_single &singleReport,
@@ -4262,6 +4390,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
 
 {
 // thres, spoint
+
+  fenceMaskFor(eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
 
   featureDef_searchPoint spoint = *def;
   spoint.margin /= mmpp;
@@ -6541,7 +6671,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     p_cropImg_cv = labeledBuff_cv;
     cropOffset.x=0;
     cropOffset.y=0;
-    m_objLabel = i;
     acv_LabeledData curLableDat=(acv_LabeledData){
       .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
       .RBBound=acvVecSub(ldData[i].RBBound,cropOffset),

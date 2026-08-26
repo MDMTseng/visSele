@@ -52,6 +52,8 @@ export const SHAPE_TYPE = {
   search_point:"search_point",
   loc_include:"loc_include",
   loc_exclude:"loc_exclude",
+  fence_include:"fence_include",
+  fence_exclude:"fence_exclude",
   loc_reg:"loc_reg",
   obj_detect:"obj_detect",
 

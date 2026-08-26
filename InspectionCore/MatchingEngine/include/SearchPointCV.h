@@ -25,12 +25,16 @@ enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 // margin = search half-depth (px, region spans +/-margin along searchDir).
 // width  = band across the edge (px). polarity per SPEdgeType (search-dir gradient
 // sign). On success fills the sub-pixel edge point (image px) + total weight.
-// labelImg/objLabel (optional): the labeled image + this object's label. When
-// provided, a DILATED object mask (label==objLabel, grown by maskDilate px) zeroes
-// the sobel response in background BEFORE the local-max search, so the scan can't
-// lock onto background specks/dust (matches the legacy contour search's object
-// constraint while staying grayscale -> still tunable for soft edges). labelImg
-// must share `gray`'s coordinate frame (same crop/offset). Pass null to skip.
+// fenceMask (optional): the MEASUREMENT FENCE -- a CV_8U mask in `gray`'s
+// coordinate frame (same crop/offset) where nonzero means "a caliper scan may
+// pick up an edge here". Sobel response outside it is zeroed BEFORE the
+// local-max search, so the scan cannot lock onto a background speck or a
+// neighbouring feature. Pass an empty Mat to measure everywhere.
+//
+// maskDilate GROWS the fence by that many px (0 = exact). It is slack for
+// localization error, not a ring: this parameter used to build a silhouette
+// ring out of a labeled image, and that mask has had no producer since
+// 2026-05-29. See BACKLOG_2026-08-26.
 // outHits (optional): when non-null, populated with one CaliperHit per
 // strength-gated row edge (the `eps` set). status=2 if within considerRange
 // of the perp-top (contributed to the final point), else 1; strength=peak
@@ -39,7 +43,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
-                     const cv::Mat &labelImg, int objLabel, int maskDilate,
+                     const cv::Mat &fenceMask, int maskDilate,
                      acv_XY *outPt, float *outW, int spId = -1,
                      std::vector<CaliperHit> *outHits = nullptr);
 

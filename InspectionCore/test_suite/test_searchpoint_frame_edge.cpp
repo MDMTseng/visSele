@@ -64,7 +64,7 @@ static void probe(const char *name, const cv::Mat &img, acv_XY pt, acv_XY dir,
   std::vector<CaliperHit> hits;
   bool ok = search_point_cv(img, pt, dir, margin, width, SP_BOTH,
                             0.f, 2.f, 0.5f, nullptr,
-                            cv::Mat(), -1, 0, &out, &w, -1, &hits);
+                            cv::Mat(), 0, &out, &w, -1, &hits);
   bool pass;
   char detail[160];
   if (expectY < 0)

@@ -266,9 +266,21 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
 
   cv::Mat p_cropImg_cv;       // currently labeled-image or original-image view
   acv_XY cropOffset;
-  // labeled image + this object's label idx, kept so search_point_cv can mask out
-  // background (dilated object label) and not lock onto background specks/dust.
-  int m_objLabel = -1;
+  // The MEASUREMENT FENCE, rasterised for the current frame: a CV_8U mask in the
+  // edgeTracking crop's frame, nonzero where a caliper scan may pick up an edge.
+  // Empty means "measure everywhere", which is what every def without fence
+  // polygons gets. Rebuilt by fenceMaskFor() whenever the pose behind it changes,
+  // which in practice is once per inspected object -- see the note there about
+  // why it is keyed rather than cleared.
+  cv::Mat m_fenceMask_cv;
+  struct FencePose {
+    bool  valid = false;
+    float sine = 0, cosine = 0, flip = 0, mmpp = 0;
+    acv_XY cen = {0, 0}, off = {0, 0};
+    int   w = 0, h = 0;
+  } m_fencePose;
+  const cv::Mat &fenceMaskFor(edgeTracking &eT, acv_XY calibCen, float mmpp,
+                              float cosine, float sine, float flip_f);
 
 
   vector<ContourFetch::ptInfo > tmp_points;
@@ -362,6 +374,18 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // Otsu (see trainShapeMatcher mask-priority).
   vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
   vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
+  // The MEASUREMENT FENCE (object-frame mm, origin-relative), and NOT the same
+  // thing as the two above however similar they look. Those say where line2Dup
+  // extracts features in order to FIND the part; these say where a caliper scan
+  // may pick up an edge once the part HAS been found. Using the localization ROI
+  // for the second job would silently bound measurement by wherever somebody drew
+  // the matching region.
+  //
+  // fence = union(fence_incl_mm) AND-NOT union(fence_excl_mm). An empty include
+  // list means the whole image is allowed, so a def with only excludes still
+  // works and reads the way it looks: carve these areas out.
+  vector<vector<acv_XY>> fence_incl_mm;
+  vector<vector<acv_XY>> fence_excl_mm;
   // Explicit user ROI refine points (object-frame mm). When the def carries the
   // "roi_refine_points" key the localizer uses EXACTLY these (empty => no ROI refine,
   // coarse pose only); when the key is absent the matcher auto-selects (legacy).

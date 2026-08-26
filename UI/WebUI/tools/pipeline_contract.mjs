@@ -57,7 +57,7 @@ export { InspectionEditorLogic, effectiveLimits, MEASURERSULTRESION,
          MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 export { statReducer, initMeasureStatistic } from 'REDUX_STORE_SRC/reducer/spcStats';
 export { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
-export { shapeDefFingerprint, shapeDefProjection } from 'UTIL/MISC_Util';
+export { shapeDefFingerprint, shapeDefProjection, defFileGeneration } from 'UTIL/MISC_Util';
 export { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 `);
 
@@ -177,6 +177,50 @@ console.log('\n=== limits, and the disabled back side ===');
   ok(M.effectiveLimits(def, true).USL === 11,
      'and for a FLIPPED part too, because back-side limits are disabled',
      'if this fails, BACK_SIDE_LIMITS_ENABLED was turned on -- see backSideLimits.js');
+}
+
+console.log('\n=== the measurement fence survives a def round trip ===');
+{
+  // The fence is the ONE region that nothing re-derives: the localization
+  // polygons get re-baked from the sig360 signature at save, so losing them on
+  // load is invisible, but a fence exists only as the shapes the operator drew.
+  // Drop it anywhere along def -> shapes -> def and their work is silently gone.
+  const FENCE = [[{ x: -5, y: -3 }, { x: 5, y: -3 }, { x: 5, y: 3 }, { x: -5, y: 3 }]];
+  const HOLE  = [[{ x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }]];
+
+  const roundTrip = (locatingEngine) => {
+    const ed = new M.InspectionEditorLogic();
+    ed.SetDefInfo({
+      features: [{ id: 1, type: 'line', pt1: { x: 0, y: 0 }, pt2: { x: 1, y: 1 } }],
+      measure_fence_include: FENCE,
+      measure_fence_exclude: HOLE,
+    });
+    const out = M.defFileGeneration({
+      _obj: ed, DefFileName: 'x', DefFileTag: '', locating_engine: locatingEngine,
+    });
+    return { ed, fs0: out.featureSet[0] };
+  };
+
+  const { ed, fs0 } = roundTrip('shape_based');
+  ok(ed.shapeList.filter((s) => s.type === 'fence_include').length === 1,
+     'loading a def rebuilds the fence as an editable shape',
+     `${ed.shapeList.filter((s) => s.type === 'fence_include').length} include shape(s)`);
+  ok(JSON.stringify(fs0.measure_fence_include) === JSON.stringify(FENCE),
+     'and saving emits the same polygon back, unchanged',
+     JSON.stringify(fs0.measure_fence_include));
+  ok(JSON.stringify(fs0.measure_fence_exclude) === JSON.stringify(HOLE),
+     'exclude polygons too -- a fence of only holes is a legal fence');
+  ok(!fs0.features.some((s) => s && String(s.type).startsWith('fence_')),
+     'the fence never ships inside features[] -- the core rejects an unknown '
+     + 'feature type and takes the WHOLE def down with it');
+
+  // The difference from localization_*, asserted rather than commented.
+  const legacy = roundTrip('sig360').fs0;
+  ok(JSON.stringify(legacy.measure_fence_include) === JSON.stringify(FENCE),
+     'the fence is emitted for a NON-shape_based def too',
+     'a caliper measures whichever locator found the part');
+  ok(legacy.localization_include === undefined,
+     'while localization_include is not -- it only means something to shape_based');
 }
 
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }

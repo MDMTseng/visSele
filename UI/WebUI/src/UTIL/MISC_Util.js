@@ -348,12 +348,39 @@ export function defFileGeneration(edit_info)
   // disk and the def pushed over the wire could disagree.
   const _featsAll = Array.isArray(report.featureSet[0].features)
     ? report.featureSet[0].features : [];
-  const _locIncl = _featsAll.filter((s) => s && s.type === 'loc_include');
-  const _locExcl = _featsAll.filter((s) => s && s.type === 'loc_exclude');
-  if (_locIncl.length || _locExcl.length) {
+  //
+  // The measurement fence (fence_include / fence_exclude) is stripped by the
+  // same rule and for the same reason -- it is a region, not a feature, and
+  // sig360's parser would reject it and take the whole def down with it.
+  const REGION_TYPES = ['loc_include', 'loc_exclude', 'fence_include', 'fence_exclude'];
+  const byType = (t) => _featsAll.filter((s) => s && s.type === t);
+  const _locIncl = byType('loc_include');
+  const _locExcl = byType('loc_exclude');
+  const _fenceIncl = byType('fence_include');
+  const _fenceExcl = byType('fence_exclude');
+  if (_locIncl.length || _locExcl.length || _fenceIncl.length || _fenceExcl.length) {
     report.featureSet[0].features = _featsAll.filter(
-      (s) => s && s.type !== 'loc_include' && s.type !== 'loc_exclude');
+      (s) => s && !REGION_TYPES.includes(s.type));
   }
+
+  // Object-frame mm, straight copy -- a region shape's points are already in the
+  // same frame as a line's pt1. A polygon under 3 points is not a polygon.
+  const toPolys = (shapes) => shapes
+    .map((s) => (Array.isArray(s.points) ? s.points.map((p) => ({ x: p.x, y: p.y })) : []))
+    .filter((p) => p.length >= 3);
+
+  // THE MEASUREMENT FENCE -- emitted regardless of locating_engine, unlike the
+  // localization polygons below.
+  //
+  // That difference is the point, not an oversight. localization_* only mean
+  // something to the shape_based locator. The fence bounds where a CALIPER may
+  // pick up an edge, and a def measures with calipers whichever locator found
+  // the part -- so gating it on the engine would make an operator's drawn fence
+  // silently do nothing on a sig360 def.
+  const _fenceInclPolys = toPolys(_fenceIncl);
+  const _fenceExclPolys = toPolys(_fenceExcl);
+  if (_fenceInclPolys.length) report.featureSet[0].measure_fence_include = _fenceInclPolys;
+  if (_fenceExclPolys.length) report.featureSet[0].measure_fence_exclude = _fenceExclPolys;
 
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
@@ -381,13 +408,11 @@ export function defFileGeneration(edit_info)
     // already mm, so a bin (R mm, theta rad) -> {x:R*cos, y:R*sin}: the pixel->unit
     // step that makes the locator magnification-portable and sig360-independent.
     // Already pulled out of features[] above, whatever the locator.
-    const inclShapes = _locIncl;
-    const exclShapes = _locExcl;
-    const toPolys = (shapes) => shapes
-      .map((s) => (Array.isArray(s.points) ? s.points.map((p) => ({ x: p.x, y: p.y })) : []))
-      .filter((p) => p.length >= 3);
-    const inclPolys = toPolys(inclShapes);
-    const exclPolys = toPolys(exclShapes);
+    // toPolys is declared once, above, and shared with the fence. It used to be
+    // redeclared here; a second copy of "what counts as a polygon" is exactly
+    // the duplication that produced this project's worst geometry bugs.
+    const inclPolys = toPolys(_locIncl);
+    const exclPolys = toPolys(_locExcl);
 
     if (inclPolys.length) {
       report.featureSet[0].localization_include = inclPolys;

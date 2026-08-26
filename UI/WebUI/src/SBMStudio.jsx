@@ -97,15 +97,17 @@ function drawScene(g, canvas, ctx_state) {
     return;
   }
 
-  // include / exclude regions (filled).
+  // The four polygon regions, filled. Kept as one table rather than a chain of
+  // type tests: two of these were added later and the colours, the toolbar and
+  // the delete buttons all have to agree about them, which is the shape of bug
+  // this file has produced before.
   for (const s of shapeList) {
-    if (s.type !== 'loc_include' && s.type !== 'loc_exclude') continue;
+    const R = REGION_KINDS[s.type];
+    if (!R) continue;
     const pts = s.points || []; if (pts.length < 2) continue;
-    const inc = (s.type === 'loc_include');
     poly(ctx, pts, true);
-    ctx.fillStyle = inc ? 'rgba(0,200,80,0.16)' : 'rgba(255,70,70,0.20)';
-    ctx.fill();
-    ctx.lineWidth = lw; ctx.strokeStyle = inc ? '#00c853' : '#ff5252'; ctx.stroke();
+    ctx.fillStyle = R.fill; ctx.fill();
+    ctx.lineWidth = lw; ctx.strokeStyle = R.stroke; ctx.stroke();
   }
 
   // generated line2Dup feature points (blue) from the round-trip — what the localizer
@@ -170,7 +172,8 @@ function ctrlScene(g, canvas, ctx_state) {
     return;
   }
 
-  if (tool === 'include' || tool === 'exclude') {
+  const REG = REGION_BY_TOOL[tool];
+  if (REG) {
     work.cursor = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
     if (g.mouseEdge && st.status === 0) {                 // mouse-up edge
       const movedPx = Math.hypot(st.x - st.px, st.y - st.py);
@@ -180,7 +183,7 @@ function ctrlScene(g, canvas, ctx_state) {
           const f = work.poly[0];
           const closeW = 12 / scale;                       // ~12px in world units
           if (Math.hypot(p.x - f.x, p.y - f.y) < closeW) {
-            onPoly(tool === 'include' ? 'loc_include' : 'loc_exclude', work.poly.slice());
+            onPoly(REG.shapeType, work.poly.slice());
             work.poly = []; work.cursor = null; return;
           }
         }
@@ -198,6 +201,33 @@ function ctrlScene(g, canvas, ctx_state) {
     }
   }
 }
+
+// The polygon regions this studio authors. TWO DIFFERENT JOBS, and the reason
+// they are separate entries rather than one pair with a flag:
+//
+//   loc_*    the FEATURE GENERATION mask -- where line2Dup extracts features in
+//            order to FIND the part. Consumed at train time.
+//   fence_*  the MEASUREMENT FENCE -- where a caliper may pick up an edge once
+//            the part HAS been found. Consumed at inspect time.
+//
+// Using the first for the second bounds measurement by wherever somebody drew
+// the matching region, which is why the core keeps them in separate members too.
+export const REGION_KINDS = {
+  loc_include:   { tool: 'include',   shapeType: 'loc_include',
+                   name: '@__LOC_INCLUDE__',   stroke: '#00c853', fill: 'rgba(0,200,80,0.16)',
+                   label: '＋ include 生成區' },
+  loc_exclude:   { tool: 'exclude',   shapeType: 'loc_exclude',
+                   name: '@__LOC_EXCLUDE__',   stroke: '#ff5252', fill: 'rgba(255,70,70,0.20)',
+                   label: '－ exclude 避免區' },
+  fence_include: { tool: 'fence_in',  shapeType: 'fence_include',
+                   name: '@__FENCE_INCLUDE__', stroke: '#2979ff', fill: 'rgba(41,121,255,0.16)',
+                   label: '＋ 量測範圍 fence' },
+  fence_exclude: { tool: 'fence_out', shapeType: 'fence_exclude',
+                   name: '@__FENCE_EXCLUDE__', stroke: '#ff9100', fill: 'rgba(255,145,0,0.20)',
+                   label: '－ 量測禁區 fence' },
+};
+const REGION_BY_TOOL = Object.fromEntries(
+  Object.values(REGION_KINDS).map((R) => [R.tool, R]));
 
 // ── The studio view. ───────────────────────────────────────────────────────────
 export function SBMSetupView({ sendBPG, onSave, onClose }) {
@@ -223,7 +253,7 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const onPoly = useCallback((type, pts) => {
     dispatch(DefConfAct.Shape_Set({
       shape: { type, points: pts.map((p) => ({ x: p.x, y: p.y })),
-               name: type === 'loc_include' ? '@__LOC_INCLUDE__' : '@__LOC_EXCLUDE__' },
+               name: (REGION_KINDS[type] || {}).name || type },
       id: undefined,
     }));
   }, [dispatch]);
@@ -300,8 +330,19 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
     const last = [...shapeList].reverse().find((s) => s.type === type);
     if (last) dispatch(DefConfAct.Shape_Set({ shape: null, id: last.id }));
   };
-  const nIncl = shapeList.filter((s) => s.type === 'loc_include').length;
-  const nExcl = shapeList.filter((s) => s.type === 'loc_exclude').length;
+  // One row per region kind: the toggle (with a live count) and its delete.
+  // Driven off REGION_KINDS so a kind cannot exist in the drawing code and be
+  // missing from the toolbar.
+  const RegionTools = ({ kinds }) => <>
+    {kinds.map((k) => {
+      const R = REGION_KINDS[k];
+      const n = shapeList.filter((s) => s.type === k).length;
+      return <div key={k} style={{ display: 'flex', gap: 4, alignItems: 'stretch', marginBottom: 2 }}>
+        <div style={{ flex: 1 }}><TBtn id={R.tool}>{R.label}（{n}）</TBtn></div>
+        <Button size="small" disabled={n === 0} onClick={() => delLast(k)}>刪last</Button>
+      </div>;
+    })}
+  </>;
 
   return <div style={{ display: 'flex', height: '84vh', gap: 8 }}>
     <div style={{ width: 240, overflowY: 'auto', fontSize: 12, paddingRight: 6 }}>
@@ -311,15 +352,17 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
         origin(mm): {reg.cx !== undefined ? `${(reg.cx).toFixed(2)}, ${(reg.cy).toFixed(2)}` : '—'} ／ angle: {reg.angle !== undefined ? `${(reg.angle * 180 / Math.PI).toFixed(1)}°` : '—'}
       </div>
 
-      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>特徵範圍 regions</Divider>
-      <TBtn id="include">＋ include 生成區（{nIncl}）</TBtn>
-      <TBtn id="exclude">－ exclude 避免區（{nExcl}）</TBtn>
-      <div style={{ display: 'flex', gap: 4 }}>
-        <Button size="small" onClick={() => delLast('loc_include')}>刪last include</Button>
-        <Button size="small" onClick={() => delLast('loc_exclude')}>刪last exclude</Button>
-      </div>
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>特徵範圍 regions（定位用）</Divider>
+      <RegionTools kinds={['loc_include', 'loc_exclude']} />
       <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-        點頂點圍住零件,點回第一個頂點收尾。拖曳=平移視角,滾輪=縮放。
+        線上定位時用來生成特徵的範圍。點頂點圍住零件,點回第一個頂點收尾。拖曳=平移視角,滾輪=縮放。
+      </div>
+
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>量測範圍 fence（檢驗用）</Divider>
+      <RegionTools kinds={['fence_include', 'fence_exclude']} />
+      <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+        定位完成後,caliper 只能在 fence 內抓邊。不畫 = 全圖都能量(和以前一樣)。
+        只畫禁區也可以:fence 從全圖開始,禁區在上面挖洞。
       </div>
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>ROI 取樣點（{roiPts.length}）</Divider>
