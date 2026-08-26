@@ -621,7 +621,8 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
         {
           cJSON *loc = cJSON_CreateObject();
           cJSON_AddItemToObject(report_jobj, "locate", loc);
-          cJSON_AddStringToObject(loc, "reason", L.reason);
+          cJSON_AddStringToObject(loc, "reason", L.reason);
+          if (L.code[0]) cJSON_AddStringToObject(loc, "code", L.code);
           cJSON_AddNumberToObject(loc, "candidates", L.candidates);
           // best/thres only when a score was actually computed. Emitting NaN
           // would serialise as `null` and read on screen as "scored zero",

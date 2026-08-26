@@ -169,6 +169,25 @@ function StateReducer(newState, action) {
             mmpcampix = camParam.mmpb2b / camParam.ppb2b;
           }
 
+          // THE LOCATOR'S OWN COMMENT, kept so the inspection screen can show it.
+          //
+          // The core emits `locate` only when it has something to say, and the
+          // case that matters is not "no object" -- it is "SBM features not
+          // trained (sig360 fallback in use)", which arrives on runs that
+          // LOCATE FINE. A def whose shape cache no longer matches falls back,
+          // sig360 picks the part up, every measurement passes, and nothing on
+          // screen distinguishes it from the def running as designed. That is
+          // the one state worth interrupting somebody about, and until now it
+          // existed only in a field nobody read.
+          {
+            const env = GetObjElement(action, ["data", "reports", 0]) || {};
+            const note = env.locate;
+            const dropped = env.region_dropped || 0;
+            newState.edit_info.locateNote =
+              (note && note.reason) ? { ...note, dropped, at: currentTime_ms }
+              : (dropped > 0 ? { reason: null, dropped, at: currentTime_ms } : undefined);
+          }
+
           let subFeatureDefSha1 = action.data.subFeatureDefSha1;
           let machine_hash = action.data.machine_hash;
           // if(typeof subFeatureDefSha1 == "string")

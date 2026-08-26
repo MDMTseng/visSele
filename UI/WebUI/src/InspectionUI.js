@@ -128,6 +128,39 @@ const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
 
+// THE LOCATOR IS NOT THE ONE THE DEF WAS BUILT AROUND.
+//
+// This is the quiet failure the whole SBM cache mechanism can produce: the
+// trained features stop matching the def's own settings, the core refuses them,
+// and sig360 picks the part up instead. Every measurement then passes, the
+// verdict panel is green, and the ONLY difference from the def running as
+// designed is a string in the report envelope.
+//
+// So it gets a banner rather than a status pill. Somebody has to be told that
+// the recipe on the screen is not the recipe being executed.
+function LocateNoteBanner() {
+  const note = useSelector((s) => s.UIData.edit_info.locateNote);
+  if (!note) return null;
+  // On the CODE, never on the prose. `reason` is written for a human and will
+  // be reworded; a screen that branches on its wording stops working that day
+  // and shows nothing, which is the same silence this banner exists to break.
+  //
+  // A working region that rejected objects is a DIFFERENT problem -- the part
+  // is not at the station -- and it is normal on an empty conveyor, so it is
+  // not shouted about. Only the two fallback codes take the banner.
+  const isFallback = note.code === 'untrained' || note.code === 'train_failed';
+  if (!isFallback) return null;
+  return <div style={{
+      background: '#a8071a', color: '#fff', padding: '4px 10px',
+      fontSize: 13, fontWeight: 600, display: 'flex', gap: 10, alignItems: 'center' }}>
+    <span>⚠ 這個 def 沒有在用 SBM 定位</span>
+    <span style={{ fontWeight: 400, fontSize: 12, opacity: 0.9 }}>
+      訓練好的特徵與設定不符,已退回 sig360。量測結果看起來正常,但用的不是這個 def 設計的定位方式
+      —— 進 Shape-based 定位設定按「生成特徵點」再存檔。
+    </span>
+  </div>;
+}
+
 function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=0})
 {
 
@@ -3784,6 +3817,7 @@ class APP_INSP_MODE extends React.Component {
           + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
       </Button> */}
       
+      <LocateNoteBanner />
       <InspectionReportInsert2DB 
         // newAddedReport={this.props.reportStatisticState.newAddedReport} 
         LANG_DICT={this.props.DICT}

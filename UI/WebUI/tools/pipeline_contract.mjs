@@ -349,7 +349,7 @@ console.log('\n=== a locate FAILURE says which kind of failure it was ===');
      near.why);
 
   const nada = fail({ locate: { reason: 'shape matcher returned no candidate',
-                                candidates: 0 } });
+                                code: 'no_candidate', candidates: 0 } });
   ok(!/0\.00/.test(nada.why) && nada.why !== near.why,
      'nothing scored at all -> NOT reported as a score of zero',
      nada.why);

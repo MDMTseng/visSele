@@ -506,6 +506,12 @@ typedef struct FeatureReport_sig360_circle_line{
     // point of the field -- it is what the operator reads instead of a blank
     // "not found". A reason that stops mid-instruction is worse than none.
     char  reason[160]; // empty when the locate succeeded
+    // The same thing as a STABLE TOKEN, because `reason` is prose meant for a
+    // human and a screen that branches on prose breaks the day somebody
+    // rewords it -- silently, since a regex that stops matching just shows
+    // nothing. One of: untrained | train_failed | no_candidate | below_thres |
+    // no_region. Empty when there is nothing to say.
+    char  code[16];
   } locate;
 };
 

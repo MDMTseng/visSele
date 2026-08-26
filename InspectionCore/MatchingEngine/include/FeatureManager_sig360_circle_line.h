@@ -381,6 +381,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // Why the shape locator has nothing to work with, kept so the REPORT can say
   // it. Empty when training succeeded or the def is not shape_based.
   char shape_untrained_reason[128] = {0};
+  char shape_untrained_code[16] = {0};
   vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
   vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
   // Explicit user ROI refine points (object-frame mm). When the def carries the

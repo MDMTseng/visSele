@@ -2529,9 +2529,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     // Remembered, not just logged. A def with no features locates nothing, and
     // "no candidate" on screen would send somebody hunting a lighting or
     // threshold problem that is not there. The reason travels with the report.
-    shape_untrained_reason[0] = 0;
+    shape_untrained_reason[0] = 0; shape_untrained_code[0] = 0;
     if (rc == -2)
     {
+      snprintf(shape_untrained_code, sizeof(shape_untrained_code), "untrained");
       snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
                "SBM features not trained (sig360 fallback in use) -- open the "
                "SBM studio, press generate, and save");
@@ -2539,6 +2540,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     else if (rc != 0)
     {
+      snprintf(shape_untrained_code, sizeof(shape_untrained_code), "train_failed");
       snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
                "SBM training failed (sig360 fallback in use)");
       LOGW("[shape] %s", shape_untrained_reason);
@@ -2596,7 +2598,7 @@ void FeatureManager_sig360_circle_line::ClearReport()
   report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
   report.data.sig360_circle_line.region_dropped = 0;
   auto &LOC = report.data.sig360_circle_line.locate;
-  LOC.best = NAN; LOC.thres = NAN; LOC.candidates = 0; LOC.reason[0] = 0;
+  LOC.best = NAN; LOC.thres = NAN; LOC.candidates = 0; LOC.reason[0] = 0; LOC.code[0] = 0;
   reports.resize(0);
   report.data.sig360_circle_line.reports = &reports;
   FeatureManager_binary_processing::ClearReport();
@@ -5555,6 +5557,7 @@ void FeatureManager_sig360_circle_line::noteLocateMiss(float best, float thres,
   const bool haveBest = (L.best == L.best);
   if (haveBest && !(best > L.best)) return;
   L.best = best; L.thres = thres;
+  snprintf(L.code, sizeof(L.code), "below_thres");
   snprintf(L.reason, sizeof(L.reason), "%s", reason);
 }
 
@@ -6302,6 +6305,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     {
       auto &L = report.data.sig360_circle_line.locate;
       L.best = NAN; L.thres = NAN; L.candidates = 0;
+      snprintf(L.code, sizeof(L.code), "no_region");
       snprintf(L.reason, sizeof(L.reason), "no candidate region in the frame");
     }
     return 0;
@@ -6314,6 +6318,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   {
     auto &L = report.data.sig360_circle_line.locate;
     L.best = NAN; L.thres = NAN; L.candidates = 0;
+    snprintf(L.code, sizeof(L.code), "%s", shape_untrained_code);
     snprintf(L.reason, sizeof(L.reason), "%s", shape_untrained_reason);
   }
   if (locating_engine == 1 && shape_ready)
@@ -7990,6 +7995,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     // points at training, framing or scale, not at a threshold.
     auto &L = report.data.sig360_circle_line.locate;
     L.best = NAN; L.thres = NAN; L.candidates = 0;
+    snprintf(L.code, sizeof(L.code), "no_candidate");
     snprintf(L.reason, sizeof(L.reason), "shape matcher returned no candidate");
     return 0;
   }

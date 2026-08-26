@@ -109,7 +109,8 @@ export function inspectSummary(rp, authoredReg) {
       why = `最佳比對 ${L.best.toFixed(4)}，門檻 ${L.thres.toFixed(2)}`
           + `（差 ${(L.thres - L.best).toFixed(4)}，試了 ${L.candidates} 個候選）`;
     } else if (L) {
-      why = L.reason === 'shape matcher returned no candidate'
+      // On the code, not the wording -- see the note in InspectionUI's banner.
+      why = L.code === 'no_candidate'
         ? '完全沒有候選 — 不是門檻的問題,要看訓練/取景/縮放'
         : L.reason;
     } else if (dropped > 0) {
