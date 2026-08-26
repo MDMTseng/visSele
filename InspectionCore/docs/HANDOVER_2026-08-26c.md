@@ -525,7 +525,7 @@ anything.** This may be finished work that nobody connected.
 | **D1** | The `def_image_reg` drift above | quantise `ao` in the fingerprint (0.13 deg cannot change a mask meaningfully), or stop DefConfUI rewriting the reg when it has not really changed. The second is the root fix; the first is one line. |
 | **D2** | Def-file write policy on the Resilio share | still the one fleet risk with **no mitigation at all** (U4) |
 | **D3** | `updateSource` per machine, and one real end-to-end update | U2/U3 |
-| **D4** | Where per-item failure statistics live | S3; they do not persist today |
+| **D4** | ~~Where per-item failure statistics live~~ | **CLOSED — the data is already in the DB. See below.** |
 
 ---
 
@@ -549,6 +549,39 @@ anything.** This may be finished work that nobody connected.
   specifics. Verify each before acting; do not transcribe.
 
 ---
+
+## D4 — closed. There is nothing to build.
+
+`WS_SEND(Insp_DB_W_ID, stripOverlayOnly(newAddedReport))` sends the WHOLE
+report per part, minus only `extra`/`cal_hits`, which are overlay data nothing
+reads back. So the database already holds, for every part inspected:
+
+| | |
+|---|---|
+| every judgement | `{status, id, name, value, subtype}` |
+| every search point | `{status, id, name, x, y}` and `na_reason` when NA |
+| lines / circles / aux points | the same shape |
+| the object | `cx, cy, rotate, isFlipped, similarity, area, scale` |
+| the envelope | `error`, `region_dropped`, and **`locate`** when the locator had a comment |
+| provenance | `subFeatureDefSha1`, `machine_hash`, tag, timestamps |
+
+The def itself is inserted separately (`/insert/def`), so a measurement joins to
+the recipe that produced it.
+
+**"Per-item failure statistics do not persist" was never a storage problem.**
+Every failure, with its reason and the def and machine that produced it, is
+already archived. What the renderer loses on restart is only the live ROLLUP --
+counts, histogram, Cpk -- and that is a query against data that exists, not a
+schema to design.
+
+Worth noticing while we are here: because `locate` rides along, the archive
+records **which parts were measured while the def was running on the sig360
+fallback**. That is real traceability nobody asked for and nobody knew they had.
+
+The remaining question is not engineering: does the existing dashboard
+(`inspection_monitor_url`) already show this? Not probed from here — it is
+company infrastructure, and reading the code answered the question that
+mattered.
 
 ## Caveat worth having in writing
 
