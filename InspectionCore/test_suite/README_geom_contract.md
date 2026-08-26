@@ -105,6 +105,24 @@ at all: row two already has an authoritative answer available and does not use
 it to check anything, and row three receives one (`cal_hits` carry coordinates,
 search points carry x/y) and recomputes anyway.
 
+### Do NOT make the commit round trip automatic
+
+The obvious-looking improvement is to fire that `II` round trip on mouse-up so
+the operator always sees the machine's answer. **Don't.**
+
+Operators deliberately leave a shape in an imperfect state — parked mid-edit, or
+positioned badly on purpose to see what the machine makes of it. Recomputing a
+fit on every release either destroys that state or answers a question nobody
+asked, and the one thing an editor must not do is quietly undo what somebody
+meant.
+
+CHECK stays manual. That is a decision, not an omission.
+
+What CAN hang off it: when the operator does press CHECK, the core's reply is
+right there next to what the UI drew. Comparing them at that moment costs
+nothing, needs no new trigger, and catches drift **in the field** rather than
+only in this test at build time. The trigger stays the operator's.
+
 ## When it fails
 
 Do **not** regenerate the vectors to make it green. The vectors are what the
