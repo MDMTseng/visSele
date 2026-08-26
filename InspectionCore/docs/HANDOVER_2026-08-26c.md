@@ -352,20 +352,50 @@ files in `data/` are ad-hoc.
 
 ---
 
-**Stage 0 — make it visible, and refusable. (~half a day)**
+**Stage 0 as first described was WRONG, and the reason is worth keeping.**
 
-1. `machine_setting.json` gains `def_share_root` (string) and
-   `def_share_writable` (bool, **default false**).
+It said: refuse the write on every machine but one. But **the machine runs its
+def straight out of the share** — so refusing the write refuses the adjustment
+as well. An inspector nudging a threshold on machine 7 could not change what
+machine 7 runs. That does not stop the accident, it stops the work.
+
+Blocking only becomes honest once there is somewhere else to save, which is
+stage 1. So stage 0 is the CONFIRM, and the block is the mechanism that waits
+for stage 1.
+
+**Stage 0 — make it visible. (done)**
+
+1. `machine_setting.json` gains `def_share_root` (string),
+   `def_share_writable` (bool, default false) and optional
+   `def_share_machines` (a count, only used to make the warning concrete).
+   **`def_share_root` absent means no restriction and no warning** — which is
+   every machine today, so nothing changes until somebody configures it.
 2. **The refusal goes in the CORE**, in the `SV` handler: target under
    `def_share_root` and not writable → refuse, with the reason in the reply. It
    cannot live only in the WebUI — a UI check is a suggestion, and the WebUI is
    not the only thing that can send `SV`.
-3. The save dialog shows a banner when the target is under the share ("這個資料夾
-   會同步到 N 台機器"), and disables OK with the reason when it is not writable.
+3. Saving into the share now asks first — "存檔會同步到 N 台機器,不只這一台" —
+   so a fleet-wide write is a decision instead of a side effect. It does NOT
+   block, for the reason above.
+4. **A refused save is no longer silent.** `ACT_Report_Save` fired and forgot:
+   no promise callbacks, so a full disk, an unwritable path, or this refusal
+   all landed nowhere while the dialog closed as though it had worked. Both
+   copies of it now surface `errMsg` in a modal.
 
-One machine gets `def_share_writable: true`. Everyone else physically cannot
-write to the share. **That is the whole fleet risk, gone, for a config key and
-a path comparison.**
+The UI's `pathIsUnder` mirrors the core's `path_is_under` — normalised
+separators, trailing separator on the root so `defs_old` is not "inside"
+`defs`, case-insensitive for Windows. Checked against six cases including
+those two traps. The core is what ENFORCES; the UI copy only decides whether
+to warn.
+
+Verified end to end against a live core, by filesystem rather than by reply:
+
+```
+def_share_writable=false   in-share: REFUSED with the reason, file not created
+                           outside:  written
+def_share_writable=true    in-share: written
+                           outside:  written
+```
 
 **Stage 1 — edit locally, publish deliberately. (~1-2 days)**
 

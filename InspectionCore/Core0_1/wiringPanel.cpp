@@ -3210,10 +3210,73 @@ static void blank_located_objects(cJSON *report_json)
   }
 }
 
+// THE SHARED DEF FOLDER, and whether this machine may write into it.
+//
+// Every def lives in a Resilio-synced folder shared by the whole fleet, so a
+// save here is a save on fifteen machines and a delete is a delete on fifteen
+// machines. There is no versioning and no review step; a Resilio conflict
+// produces a `.Conflict.` copy that only the display layer notices.
+//
+// So: one machine publishes, the rest cannot write there at all.
+//
+// THE REFUSAL IS HERE AND NOT IN THE WEBUI on purpose. A check in the editor is
+// a suggestion -- it can be bypassed by any other client, by a script, or by a
+// future screen that forgets. This is the only place every write passes
+// through.
+//
+// Absent def_share_root => no restriction, which is exactly today's behaviour,
+// so a machine whose setting file predates this keeps working.
+static std::mutex def_share_lock;
+static std::string def_share_root;          // empty = feature off
+static bool        def_share_writable = false;
+
+// Is `target` inside `root`? Compared on normalised separators and with a
+// trailing separator on the root, so "/data/defs_old" is not treated as being
+// inside "/data/defs".
+static bool path_is_under(const std::string &target, const std::string &root)
+{
+  if (root.empty()) return false;
+  auto norm = [](std::string p) {
+    for (char &ch : p) if (ch == '\\') ch = '/';
+    // collapse "//" so a joined path does not miss the prefix
+    std::string o; o.reserve(p.size());
+    for (size_t i = 0; i < p.size(); i++)
+      if (!(p[i] == '/' && !o.empty() && o.back() == '/')) o += p[i];
+#ifdef _WIN32
+    for (char &ch : o) ch = (char)tolower((unsigned char)ch);   // NTFS is case-insensitive
+#endif
+    return o;
+  };
+  std::string t = norm(target), r = norm(root);
+  if (!r.empty() && r.back() != '/') r += '/';
+  return t.compare(0, r.size(), r) == 0;
+}
+
+// Returns NULL when the write is allowed, or the reason it is not.
+static const char *def_share_write_refusal(const char *fileName)
+{
+  std::lock_guard<std::mutex> _g(def_share_lock);
+  if (def_share_root.empty() || def_share_writable) return NULL;
+  if (!path_is_under(fileName ? fileName : "", def_share_root)) return NULL;
+  return "this machine may not write into the shared def folder "
+         "(machine_setting def_share_writable is false). Save locally, and "
+         "publish from the machine that owns the share.";
+}
+
 void setup_machine_setting(cJSON *json_mac_setting)
 {
   load_insp_region(json_mac_setting);
   load_clean_regions(json_mac_setting);
+  {
+    char *sr = JFetch_STRING(json_mac_setting, "def_share_root");
+    cJSON *sw = cJSON_GetObjectItem(json_mac_setting, "def_share_writable");
+    std::lock_guard<std::mutex> _g(def_share_lock);
+    def_share_root = sr ? sr : "";
+    def_share_writable = cJSON_IsTrue(sw) ? true : false;
+    if (!def_share_root.empty())
+      LOGE("def share: root=%s writable=%s", def_share_root.c_str(),
+           def_share_writable ? "YES (this machine publishes)" : "no");
+  }
 
   char *path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
 
@@ -3781,6 +3844,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         }
 
         LOGE("fileName: %s", fileName);
+
+        // The shared-folder guard. Before any write, including the image
+        // branches below -- a def's sidecar png is as fleet-visible as the def.
+        if (const char *refusal = def_share_write_refusal(fileName))
+        {
+          snprintf(err_str, sizeof(err_str), "%s", refusal);
+          LOGE("SV refused: %s -- %s", fileName, refusal);
+          break;
+        }
 
         // Defensive write for the __CACHE_IMG__ family. Three reasons:
         //   1. cv::imwrite throws cv::Exception when it can't pick an

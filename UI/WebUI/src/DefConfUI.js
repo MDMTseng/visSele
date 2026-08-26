@@ -1632,10 +1632,29 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   const ACT_Def_Model_Path_Update= (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) };
     
+  // A FAILED SAVE MUST NOT LOOK LIKE A SAVE.
+  //
+  // This fired and forgot: no promise callbacks, so every refusal from the core
+  // -- a full disk, an unwritable path, and now "this machine may not write into
+  // the shared def folder" -- landed nowhere and the operator watched the dialog
+  // close as if it had worked. The core carries the reason in errMsg; show it.
   const ACT_Report_Save=(id, fileName, content) => {
     let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
       { filename: fileName },
-      content
+      content,
+      { resolve: (darr) => {
+          const ack = (darr || []).map((p) => p && p.data)
+            .find((d) => d && d.cmd === 'SV');
+          if (ack && ack.ACK === false) {
+            log.error('[action] report-save REFUSED', fileName, ack.errMsg);
+            Modal.error({ title: '存檔被拒絕',
+              content: (ack.errMsg || '核心沒有給原因') + '　（' + fileName + '）' });
+          }
+        }, reject: (e) => {
+          log.error('[action] report-save no reply', fileName, e);
+          Modal.error({ title: '存檔沒有回應',
+            content: '核心沒有回覆存檔結果,檔案可能沒有寫入。' });
+        } }
     )
     dispatch(act);
   };
@@ -1687,6 +1706,39 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       // Scope: only when the target IS the loaded def's path. Overwriting a
       // DIFFERENT existing file is the file picker's own confirm; our
       // load-time hash says nothing about that file.
+      // SAVING INTO THE SHARED FOLDER IS A SAVE ON EVERY MACHINE.
+      //
+      // Every def lives in a Resilio-synced folder shared by the fleet, so this
+      // write lands on all of them within a sync window. That is usually not
+      // what somebody adjusting one machine's threshold means to do, and today
+      // nothing anywhere says it is happening.
+      //
+      // This CONFIRMS, it does not block. Blocking needs somewhere else to save
+      // -- the machine runs the def straight out of the share, so refusing the
+      // write refuses the adjustment as well. That is stage 1 (a local
+      // workspace and a deliberate publish); until it exists, turning an
+      // accident into a decision is the whole of what can be done honestly.
+      const shareRoot = machine_custom_setting && machine_custom_setting.def_share_root;
+      const underShare = !!(shareRoot && pathIsUnder(fileNamePath, shareRoot));
+      const proceed = () => {
+        const sameFile2 = existed && edit_info.defModelPath === fileNamePath;
+        if (!sameFile2 || edit_info.DefFileHash === undefined) { commitSave(); return; }
+        checkHashThenSave();
+      };
+      if (underShare) {
+        const n = machine_custom_setting.def_share_machines;
+        Modal.confirm({
+          title: '這個資料夾是共享的',
+          content: n ? `存檔會同步到 ${n} 台機器,不只這一台。確定要存嗎?`
+                     : '存檔會同步到共享資料夾的所有機器,不只這一台。確定要存嗎?',
+          okText: '存檔', cancelText: '取消',
+          onOk: proceed,
+        });
+        return;
+      }
+      proceed();
+
+      function checkHashThenSave() {
       const sameFile = existed && edit_info.defModelPath === fileNamePath;
       if (!sameFile || edit_info.DefFileHash === undefined) { commitSave(); return; }
       ACT_WS_SEND_BPG(CORE_ID, "LD", 0, { filename: fileNamePath + '.' + DEF_EXTENSION }, undefined, {
@@ -1712,6 +1764,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           commitSave();
         },
       });
+      }
     });
   };
 
@@ -2479,6 +2532,18 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
 // frame; it discovers the def's sibling images (<base>*.{png,...}) and lets the
 // editor swap the background ON THE FLY (image-only load + re-orient) without
 // ever touching the deffile / shapes / edit mode.
+// Is `p` inside `root`? Mirrors the core's path_is_under (wiringPanel.cpp) --
+// normalised separators, a trailing one on the root so "defs_old" is not
+// treated as inside "defs", and case-insensitive because these are Windows
+// paths. The core is the one that ENFORCES; this only decides whether to warn.
+export function pathIsUnder(p, root) {
+  if (!p || !root) return false;
+  const n = (x) => String(x).split('\\').join('/').replace(/[/]{2,}/g, '/').toLowerCase();
+  let t = n(p), r = n(root);
+  if (!r.endsWith('/')) r += '/';
+  return t.startsWith(r);
+}
+
 function DefConfImageSwitcher() {
   const dispatch = useDispatch();
   const edit_info = useSelector(state => state.UIData.edit_info);
@@ -3110,10 +3175,23 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_Matching_Angle_Margin_Deg_Update: (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) },
     ACT_Matching_Face_Update: (faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) },//-1(back)/0(both)/1(front)
     ACT_DefFileHash_Update: (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) },
+    // Same as the hook copy above: a refusal must reach the operator. Two
+    // definitions of "save a def" is one too many, but they are wired into
+    // different components; if a third appears, extract it.
     ACT_Report_Save: (id, fileName, content) => {
       let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
         { filename: fileName },
-        content
+        content,
+        { resolve: (darr) => {
+            const ack = (darr || []).map((p) => p && p.data)
+              .find((d) => d && d.cmd === 'SV');
+            if (ack && ack.ACK === false)
+              Modal.error({ title: '存檔被拒絕',
+                content: (ack.errMsg || '核心沒有給原因') + '　（' + fileName + '）' });
+          }, reject: () => {
+            Modal.error({ title: '存檔沒有回應',
+              content: '核心沒有回覆存檔結果,檔案可能沒有寫入。' });
+          } }
       )
       dispatch(act);
     },
