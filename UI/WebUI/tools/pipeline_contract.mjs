@@ -57,7 +57,7 @@ export { InspectionEditorLogic, effectiveLimits, MEASURERSULTRESION,
          MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 export { statReducer, initMeasureStatistic } from 'REDUX_STORE_SRC/reducer/spcStats';
 export { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
-export { shapeDefFingerprint, shapeDefProjection } from 'UTIL/MISC_Util';
+export { shapeDefFingerprint, shapeDefProjection, defFileGeneration } from 'UTIL/MISC_Util';
 export { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 export { inspectSummary, objFromImage, angleDelta } from 'JSSRCROOT/sbmInspectResult';
 export { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from 'JSSRCROOT/sbmSweep';
@@ -560,6 +560,37 @@ console.log('\n=== a namespace import only reads what the module NAMED ===');
   }
   ok(bad.length === 0, 'every NS.member resolves to a real named export',
      bad.length ? bad.slice(0, 6).join('; ') : 'checked ' + walk(r('src')).length + ' files');
+}
+
+console.log('\n=== the trained SBM features survive a save ===');
+{
+  // __shape_cache is the trained line2Dup FeatureSet. Without it the core
+  // re-extracts on every def PARSE -- which is every def load and every II, so
+  // once per step of a robustness sweep. It was written on save and never read
+  // on load, so it survived exactly one save and every later open-and-save
+  // dropped it in silence.
+  const CACHE = { fp: 'v1|100x100|1|nf128|T4,8,|w30.00|s60.00|roi0:0|ao0.0000',
+                  n: 2, x: [1, 2], y: [3, 4] };
+  const ed = new M.InspectionEditorLogic();
+  ed.SetDefInfo({ features: [{ id: 1, type: 'line', pt1: { x: 0, y: 0 }, pt2: { x: 1, y: 1 } }] });
+  const out = M.defFileGeneration({
+    _obj: ed, DefFileName: 'x', DefFileTag: '',
+    locating_engine: 'shape_based', __shape_cache: CACHE,
+  });
+  ok(JSON.stringify(out.featureSet[0].__shape_cache) === JSON.stringify(CACHE),
+     'a cache in the editor state is emitted into the def unchanged');
+
+  // And it must NOT change the def identity: a def with a cache and the same
+  // def without one are the same recipe, so they must hash the same or every
+  // consumer keyed on featureSet_sha1 sees a phantom edit.
+  const bare = M.defFileGeneration({
+    _obj: ed, DefFileName: 'x', DefFileTag: '', locating_engine: 'shape_based',
+  });
+  ok(out.featureSet_sha1 === bare.featureSet_sha1,
+     'and it does NOT change featureSet_sha1 -- a cache is not a recipe change',
+     `${String(out.featureSet_sha1).slice(0, 12)} vs ${String(bare.featureSet_sha1).slice(0, 12)}`);
+  ok(bare.featureSet[0].__shape_cache === undefined,
+     'no cache in, no cache out -- the key is never invented');
 }
 
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }

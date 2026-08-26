@@ -449,6 +449,24 @@ export function defFileGeneration(edit_info)
   // 算出不同的 featureSet_sha1, 也就是同一份 def 因為多了快取而被當成另一份。
   if (edit_info.__shape_cache)
     report.featureSet[0]["__shape_cache"] = edit_info.__shape_cache;
+  else {
+    // A def that ARRIVED with a cache and is leaving without one is losing it.
+    //
+    // That is exactly what happened between 2026-08 and this note: the write
+    // above existed and nothing read the key back on load, so the cache
+    // survived one save and every later open-and-save dropped it silently. The
+    // only symptom is that the core re-extracts features on every parse -- once
+    // per def load, and once per II, which is once per step of a robustness
+    // sweep -- and nothing anywhere says why it got slower.
+    const had = edit_info.loadedDefFile
+      && edit_info.loadedDefFile.featureSet
+      && edit_info.loadedDefFile.featureSet[0]
+      && edit_info.loadedDefFile.featureSet[0].__shape_cache;
+    if (had)
+      console.error('defFileGeneration: this def arrived with a __shape_cache and is '
+              + 'being saved without one -- the loader is not carrying it. The core '
+              + 'will re-extract line2Dup features on every parse.');
+  }
 
 
 

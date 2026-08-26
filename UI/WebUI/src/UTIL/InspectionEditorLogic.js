@@ -348,6 +348,21 @@ export class InspectionEditorLogic {
               // the core auto-selects; an empty array here keeps "auto".
               if (Array.isArray(report.roi_refine_points))
                 edit_info.roi_refine_points = report.roi_refine_points;
+              // The trained line2Dup FeatureSet, carried back so a re-save keeps it.
+              //
+              // It was written on save (MISC_Util) and never read here, so it
+              // survived exactly ONE save -- the session in which somebody
+              // pressed 生成特徵點 -- and every later open-and-save silently
+              // dropped it. A def then re-extracts on every parse, which is
+              // every def load AND every II round trip: the studio's test
+              // button, and once per step of a robustness sweep.
+              //
+              // Not silently trusted: the core fingerprints the cache against
+              // the reference image and the extraction parameters, and
+              // re-extracts loudly if anything moved. Carrying it here can make
+              // it stale, it cannot make it wrong.
+              if (report.__shape_cache)
+                edit_info.__shape_cache = report.__shape_cache;
 
 
               edit_info = Object.assign({}, edit_info);
