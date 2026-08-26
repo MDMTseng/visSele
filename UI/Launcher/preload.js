@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld('launcher', {
 
   // Launcher shell only; refused by the main process while the app UI is up.
   startCore: () => ipcRenderer.invoke('launcher:startCore'),
+  // The three-tap gate on the splash. Shell only, and only while the gate is
+  // open -- the main process checks both.
+  requestSetup: () => ipcRenderer.invoke('launcher:requestSetup'),
   selectVersion: (v) => ipcRenderer.invoke('launcher:selectVersion', v),
   chooseAndInstall: () => ipcRenderer.invoke('launcher:chooseAndInstall'),
   pickAppRoot: () => ipcRenderer.invoke('launcher:pickAppRoot'),
@@ -41,4 +44,5 @@ contextBridge.exposeInMainWorld('launcher', {
   onCoreLine: (fn) => on('launcher:coreline', fn),
   onHealth: (fn) => on('launcher:health', fn),
   onReason: (fn) => on('launcher:reason', fn),
+  onSetupGate: (fn) => on('launcher:setupGate', fn),
 });

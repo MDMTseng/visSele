@@ -101,6 +101,12 @@ function showReason(reason) {
     case 'spawn-failed':
       banner('bad', '無法啟動', reason.error);
       break;
+    case 'setup-requested': {
+      banner('info', '設定模式',
+        '核心已停止,現在可以更改路徑、切換版本或安裝更新包。'
+        + '完成後按「啟動」,或關閉視窗。');
+      break;
+    }
     case 'core-exited': {
       const how = reason.expected
         ? (reason.forced ? '被強制結束(未能在期限內乾淨關機)' : '已正常停止')
@@ -347,6 +353,62 @@ $('btnLogs').onclick = () => L.openFolder('logs');
 L.onLog(({ message }) => appendLog(message, 'lnc'));
 L.onCoreLine((line) => appendLog(line, line.startsWith('[err]') ? 'err' : undefined));
 L.onHealth(() => refresh());
+// --- the three-tap setup gate ------------------------------------------------
+//
+// While the core boots, this screen is what is on the display. Three taps
+// anywhere on it during that window stop the start and keep the launcher up --
+// the only way into the settings on a machine with no keyboard.
+//
+// Taps must be close together to count, so that three unrelated prods over the
+// course of a minute do not add up to a request nobody made.
+const TAP_WINDOW_MS = 900;
+const TAPS_NEEDED = 3;
+
+let gateDeadline = 0;
+let gateTimer = null;
+let taps = [];
+
+function gateOpen() { return gateDeadline > Date.now(); }
+
+function paintGate() {
+  if (!gateOpen()) {
+    clearInterval(gateTimer); gateTimer = null;
+    if ($('gate')) $('gate').className = 'gate hidden';
+    return;
+  }
+  const left = Math.ceil((gateDeadline - Date.now()) / 1000);
+  const got = taps.length;
+  $('gate').className = 'gate';
+  $('gate').replaceChildren(
+    el('div', 'gate-main', `啟動中… ${left} 秒`),
+    el('div', 'gate-hint', got
+      ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
+      : `連點三下進入設定模式`));
+}
+
+L.onSetupGate((info) => {
+  if (!info || !info.ms) { gateDeadline = 0; taps = []; paintGate(); return; }
+  gateDeadline = Date.now() + info.ms;
+  taps = [];
+  if (!gateTimer) gateTimer = setInterval(paintGate, 100);
+  paintGate();
+});
+
+async function onGateTap() {
+  if (!gateOpen()) return;
+  const now = Date.now();
+  taps = taps.filter((t) => now - t < TAP_WINDOW_MS);
+  taps.push(now);
+  if (taps.length < TAPS_NEEDED) { paintGate(); return; }
+  gateDeadline = 0; taps = [];
+  paintGate();
+  const r = await L.requestSetup();
+  if (!r || !r.ok) appendLog(`[launcher] 設定模式未開啟:${(r && r.error) || '未知原因'}`, 'err');
+}
+// Capture phase, so a tap on a button counts too -- the operator is tapping the
+// screen, not aiming at anything.
+document.addEventListener('pointerdown', onGateTap, true);
+
 L.onReason((reason) => showReason(reason));
 
 refresh();

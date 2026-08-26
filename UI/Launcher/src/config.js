@@ -18,6 +18,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULTS = {
+  // How long the launcher screen stays up before the application's UI takes
+  // the window, and therefore how long the three-tap setup gate is open.
+  //
+  // It is a FLOOR, not a delay: the core is spawned first and normally takes
+  // far longer than this to answer, so on a normal boot the taps overlap with
+  // a startup that was happening anyway and cost nothing. The floor exists for
+  // the day the core comes up fast, when otherwise the window would be
+  // whatever the machine happened to be quick at that morning.
+  //
+  // Set to 0 to close the gate entirely -- on a machine where the only way in
+  // should be editing this file.
+  splashHoldMs: 3000,
+
   // Where installed application versions live, and the current.json that says
   // which one runs. Operator-settable: it may belong on a data drive, or be
   // shared between accounts. Defaults to <userData>/apps.

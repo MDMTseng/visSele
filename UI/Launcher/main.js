@@ -223,6 +223,25 @@ function planForDisplay(plan) {
   };
 }
 
+// --- the setup gate ----------------------------------------------------------
+//
+// The bench machines are touch-only, and once the application's UI takes the
+// window there is no way back to the launcher's settings: assertShell refuses
+// every one of them. Until now the only ways in were killing the core from Task
+// Manager or hand-editing launcher.json, neither of which an operator can be
+// asked to do.
+//
+// So the launcher screen -- which is on the display anyway while the core boots
+// -- counts taps. Three of them stop the start and keep the launcher up. It is
+// deliberately not a button: a button on the application's UI is something an
+// operator can press by accident mid-shift, and this is a thing you have to
+// mean.
+//
+// The window costs no boot time. The core is spawned FIRST and the taps
+// overlap with a startup that was happening regardless; splashHoldMs only
+// guarantees a floor for the day the core answers quickly.
+let setupGate = null;
+
 async function startCore() {
   const { target, plan, error } = await currentPlan();
   lastPlanError = error || null;
@@ -234,9 +253,13 @@ async function startCore() {
   }
   shellLog(`starting ${plan.name || target.version}`);
 
+  setupGate = { armed: true, requested: false, since: Date.now() };
+  send('launcher:setupGate', { ms: Number(cfg.values.splashHoldMs) || 0 });
+
   try {
     supervisor.start(plan);
   } catch (e) {
+    setupGate = null;
     await showShell({ kind: 'spawn-failed', error: e.message });
     return;
   }
@@ -251,6 +274,16 @@ async function startCore() {
   const pong = await supervisor.waitUntilReady((m) => shellLog(m));
   if (pong) shellLog(`answered: ${pong.version || ''} ${pong.git || ''}`.trim());
   if (!supervisor.running) return;         // the exit handler owns this case
+
+  // Hold the launcher screen for the rest of the gate, then close it. Taps that
+  // land during this are acted on the moment they arrive (see the IPC handler),
+  // so nobody is left waiting on a countdown for something they already did.
+  const hold = Number(cfg.values.splashHoldMs) || 0;
+  const left = hold - (Date.now() - setupGate.since);
+  if (left > 0) await new Promise((r) => setTimeout(r, left));
+  if (setupGate.requested) return;          // the exit handler owns this case too
+  setupGate.armed = false;
+  send('launcher:setupGate', null);
 
   // target.version, not current.json: resolve() may have fallen back to the
   // newest valid version, and that is the one now executing. Passing it stops
@@ -287,6 +320,13 @@ function wireSupervisor() {
     // whether a part passes; a supervisor that silently brings it back after an
     // unexplained death can let bad parts through while the line keeps running.
     // An operator decides.
+    if (setupGate && setupGate.requested) {
+      // Not a crash. Somebody asked for the launcher and we stopped the core to
+      // give it to them; saying "the core exited unexpectedly" would be a lie
+      // that sends an operator looking for a fault that is not there.
+      await showShell({ kind: 'setup-requested' });
+      return;
+    }
     await showShell({ kind: 'core-exited', ...info });
   });
   supervisor.on('health', (st) => send('launcher:health', st));
@@ -358,6 +398,22 @@ function registerIpc() {
   });
 
   ipcMain.handle('launcher:stopCore', async () => ({ ok: true, ...(await supervisor.stop()) }));
+
+  // Only from the launcher's own screen, and only while the gate is open. Once
+  // the application's UI has the window there is no gate to open -- by then the
+  // renderer is the application, and this must not be a door it can walk
+  // through on its own.
+  ipcMain.handle('launcher:requestSetup', async () => {
+    if (uiState !== 'shell' || !setupGate || !setupGate.armed) {
+      return { ok: false, error: 'the setup gate is not open' };
+    }
+    setupGate.armed = false;
+    setupGate.requested = true;
+    send('launcher:setupGate', null);
+    shellLog('進入設定模式 -- 停止核心,留在啟動器畫面');
+    await supervisor.stop();
+    return { ok: true };
+  });
 
   ipcMain.handle('launcher:selectVersion', (_e, version) => {
     assertShell('selecting a version');

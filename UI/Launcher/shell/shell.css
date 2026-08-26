@@ -114,3 +114,20 @@ pre#log {
 }
 pre#log .err { color: var(--bad); }
 pre#log .lnc { color: var(--accent); }
+
+/* The splash gate: the countdown, and the invitation to tap through it. Sized
+   to be readable from arm's length at a bench, because that is where it is
+   read from. */
+.gate {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 14px 18px;
+  background: #101820;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.gate.hidden { display: none; }
+.gate .gate-main { font-size: 19px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.gate .gate-hint { color: var(--ink-dim); font-size: 15px; }
