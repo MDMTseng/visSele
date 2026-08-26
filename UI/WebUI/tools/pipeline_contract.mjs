@@ -286,6 +286,57 @@ console.log('\n=== the summary answers what a test run is for ===');
      'placed by the SAME canvas transform -- one image, one frame, N objects',
      'rectifying to a found pose could only ever straighten one of them');
 
+  // THE ORIENTATION STUB. It is drawn from two transformed points, not from an
+  // angle recomposed by hand -- composing the canvas rotation with the found
+  // rotation needs the sign of ctx.rotate, where the flip lands in the order,
+  // and whether the reg angle adds or subtracts. Three chances to be wrong, and
+  // every wrong answer still draws a plausible line, so it is not
+  // self-checking. It was wrong on the bench.
+  const axisOf = (found, reg) => {
+    const P = M.inspectSummary({ reports: [{ reports: [
+      { cx: 0, cy: 0, rotate: found, isFlipped: !!(reg && reg.isFlipped), similarity: 1,
+        searchPoints: [] } ] }] }, reg).poses[0];
+    return Math.atan2(P.axis.y - P.at.y, P.axis.x - P.at.x) * 180 / Math.PI;
+  };
+  const near = (a, b) => Math.abs(M.angleDelta(a * Math.PI / 180, b * Math.PI / 180)) < 1e-6;
+
+  ok(near(axisOf(0, { cx: 0, cy: 0, angle: 0 }), 0),
+     'an unrotated object on an unrotated reg points along +x');
+  ok(near(axisOf(Math.PI / 2, { cx: 0, cy: 0, angle: 0 }), 90),
+     'a 90deg object points 90deg -- the found rotation is not dropped');
+  // A change in the found rotation moves the stub by the SAME amount, whatever
+  // the reg is. This is the property that survives not knowing the reg's sign
+  // convention (see the note below), and it is what makes the stub readable as
+  // "how far off this part is" rather than as an absolute bearing.
+  const A = 0.7, D = 0.2;
+  ok(near(M.angleDelta(axisOf(A + D, { cx: 0, cy: 0, angle: A }) * Math.PI / 180,
+                       axisOf(A, { cx: 0, cy: 0, angle: A }) * Math.PI / 180) * 180 / Math.PI,
+          D * 180 / Math.PI),
+     'a part 0.2 rad further round moves the stub by exactly 0.2 rad',
+     'true regardless of what the reg angle does');
+
+  // WHAT IS NOT ASSERTED HERE, and why.
+  //
+  // The obvious expectation -- an object sitting exactly AT the authored reg
+  // should point along the world +x axis, because rectifying is what a reg is
+  // for -- FAILS: it comes out at 2x the reg angle. That is either a real sign
+  // error in the canvas transform or a wrong assumption about what
+  // def_image_reg.angle means, and NOTHING ON THIS BENCH CAN TELL THEM APART:
+  // every def here has angle ~= 2.4e-05, i.e. zero, so the sign has never been
+  // exercised by anything.
+  //
+  // The stub is therefore built from the SAME transform as the measurement
+  // points rather than from an angle composed by hand. That does not resolve
+  // the question -- it guarantees the overlay cannot disagree with itself. If
+  // the rotation sign is wrong, the points and the stub are wrong TOGETHER and
+  // visibly, on the first def with a real reg angle, instead of quietly
+  // contradicting each other.
+  //
+  // Do not "fix" this by adding a minus sign until a def with a non-zero reg
+  // angle has been looked at on a machine.
+  ok(near(axisOf(0.3, { cx: 0, cy: 0, angle: 0, isFlipped: true }), -0.3 * 180 / Math.PI),
+     'and a flipped reg mirrors the direction rather than ignoring the flip');
+
   const none = M.inspectSummary({ reports: [] }, undefined);
   ok(!none.located && none.rows.length === 0,
      'no object found is a stated verdict, not a crash', none.why);

@@ -144,13 +144,23 @@ function drawScene(g, canvas, ctx_state) {
       if (!P.at || !Number.isFinite(P.at.x)) continue;
       ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = lw * 1.2;
       ctx.beginPath(); ctx.arc(P.at.x, P.at.y, pr * 4, 0, 7); ctx.stroke();
-      // A stub along the found 0-degree axis, so a flipped or rotated match is
-      // visible as a direction and not only as a number in the panel.
-      const ang = (P.rotate || 0) - (reg.angle || 0);
-      const L = 3;                                   // mm
-      ctx.beginPath(); ctx.moveTo(P.at.x, P.at.y);
-      ctx.lineTo(P.at.x + L * Math.cos(ang), P.at.y + L * Math.sin(ang));
-      ctx.stroke();
+      // A stub along the found 0-degree axis, so a rotated or flipped match
+      // reads as a direction and not only as a number in the panel.
+      //
+      // Direction from the two transformed points, never from an angle
+      // recomposed here. Length in SCREEN terms like every other marker on this
+      // canvas -- the first version used 3 mm, which at this def's ~0.009 mm/px
+      // is about 340 px and ran off the edge of the frame.
+      if (P.axis && Number.isFinite(P.axis.x)) {
+        const dx = P.axis.x - P.at.x, dy = P.axis.y - P.at.y;
+        const n = Math.hypot(dx, dy);
+        if (n > 1e-9) {
+          const L = pr * 9;
+          ctx.beginPath(); ctx.moveTo(P.at.x, P.at.y);
+          ctx.lineTo(P.at.x + (dx / n) * L, P.at.y + (dy / n) * L);
+          ctx.stroke();
+        }
+      }
     }
 
     for (const r of insp.rows) {

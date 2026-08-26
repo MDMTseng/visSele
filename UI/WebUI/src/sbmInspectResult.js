@@ -145,6 +145,17 @@ export function inspectSummary(rp, authoredReg) {
     const pose = { cx: obj.cx, cy: obj.cy, rotate: obj.rotate,
                    isFlipped: !!obj.isFlipped, similarity: obj.similarity };
     pose.at = toCanvas({ x: pose.cx, y: pose.cy });     // where to draw its marker
+    // The object's 0-degree axis, as a SECOND POINT through the same transform
+    // rather than as an angle through a formula.
+    //
+    // Composing the canvas rotation with the found rotation by hand needs the
+    // sign of ctx.rotate, the order the flip lands in, and whether the reg
+    // angle adds or subtracts -- three chances to be wrong, and the result
+    // looks plausible whichever way it comes out, so it is not self-checking.
+    // Mapping a point one mm along the axis cannot get any of that wrong,
+    // because it is the same call that puts the measurements on the part.
+    pose.axis = toCanvas({ x: pose.cx + Math.cos(pose.rotate || 0),
+                           y: pose.cy + Math.sin(pose.rotate || 0) });
     if (authoredReg && Number.isFinite(authoredReg.cx) && Number.isFinite(pose.cx)) {
       const d = {
         dx: pose.cx - authoredReg.cx,
