@@ -1725,6 +1725,46 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         if (!sameFile2 || edit_info.DefFileHash === undefined) { commitSave(); return; }
         checkHashThenSave();
       };
+      // A DEF MUST NOT LEAVE THE STUDIO UNABLE TO LOCATE WITH ITS OWN LOCATOR.
+      //
+      // If the registration or the ROI points changed, the trained features no
+      // longer match and the core will refuse them -- the def then silently
+      // falls back to sig360, which on a good image still locates, so nothing
+      // looks wrong until it does. This is the last moment it can be fixed, so
+      // it is asked here rather than left to be discovered on a line.
+      //
+      // Three ways out, and the third is deliberately available: an operator
+      // who knows the def is being handed off mid-edit should not be trapped.
+      const staleWhy = edit_info.__shape_stale;
+      const lastGood = edit_info.__shape_lastGood;
+      const isShape = edit_info.locating_engine === 'shape_based';
+      if (isShape && staleWhy) {
+        Modal.confirm({
+          title: 'SBM 特徵與目前設定不符',
+          width: 520,
+          content: '改了' + (staleWhy === 'def_image_reg' ? '定位'
+                          : staleWhy === 'roi_refine_points' ? 'ROI 點' : '定位和 ROI 點')
+                 + ',現有特徵已經不適用。這樣存檔的話,這個 def 不會用 SBM 定位——'
+                 + '它會退回 sig360,而且畫面上看不出來。',
+          okText: '還原上一版定位設定',
+          cancelText: '仍要存檔',
+          // Restoring all three together makes the cache valid again by
+          // construction: it is exactly the settings it was trained against.
+          onOk: () => {
+            dispatch(DefConfAct.EditInfo_Patch({
+              def_image_reg: lastGood && lastGood.def_image_reg,
+              roi_refine_points: lastGood && lastGood.roi_refine_points,
+              __shape_cache: lastGood && lastGood.cache,
+              __shape_stale: undefined, __shape_lastGood: undefined,
+            }));
+            Modal.info({ title: '已還原', content:
+              '定位設定與特徵都回到上一個可用的版本。請重新存檔。' });
+          },
+          onCancel: () => { log.warn('[save] saving with STALE sbm features'); proceed(); },
+        });
+        return;
+      }
+
       if (underShare) {
         const n = machine_custom_setting.def_share_machines;
         Modal.confirm({
@@ -2267,7 +2307,38 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           width: "96vw",
           style: { top: 12 },
           bodyStyle: { padding: 8 },
-          onCancel: () => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); },
+          // The X is guarded too, because the studio applies LIVE: closing it does
+          // not discard anything, so leaving by the corner commits exactly the
+          // same broken state as 完成 would. Greying one and leaving the other
+          // open would just be theatre.
+          //
+          // It asks rather than refuses. A def whose reference image cannot be
+          // read can never regenerate, and a modal with no way out is worse than
+          // the state it is protecting against -- so "仍要離開" stays, and the
+          // save path asks once more before anything reaches disk.
+          onCancel: () => {
+            const closeIt = () => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); };
+            const lg = edit_info.__shape_lastGood;
+            if (!edit_info.__shape_stale) { closeIt(); return; }
+            Modal.confirm({
+              title: '特徵已失效', width: 500,
+              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
+                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
+              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
+              cancelText: '仍要離開',
+              onOk: () => {
+                if (lg) {
+                  dispatch(DefConfAct.EditInfo_Patch({
+                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
+                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
+                  }));
+                  closeIt();
+                }
+                // No last-good version: stay in the studio, where 生成特徵點 is.
+              },
+              onCancel: closeIt,
+            });
+          },
           view: <SBMSetupView
             sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
             onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); }}

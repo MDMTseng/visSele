@@ -6,7 +6,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import ReactResizeDetector from 'react-resize-detector';
-import { Button, Divider, Checkbox, InputNumber, Select } from 'antd';
+import { Button, Divider, Checkbox, InputNumber, Select, Modal } from 'antd';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -531,10 +531,33 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       .then((pkts) => {
         const sf = (pkts || []).find((p) => p.type === 'SF');
         setFeatPts(sf && sf.data ? sf.data : { features: [], roi: [] });
+        // A GENERATION THAT PRODUCED NOTHING MUST NOT LOOK LIKE ONE THAT WORKED.
+        //
+        // The cache is only patched below when the reply carries one, so a
+        // failure already leaves the previous features alone -- which is right.
+        // What was missing is saying so: the panel went to "0" and the operator
+        // had no way to tell "this def has no features" from "the core could
+        // not read the reference image".
+        const nFeat = ((sf && sf.data && sf.data.features) || []).length;
+        const gotCache = !!(sf && sf.data && sf.data.shape_cache);
+        if (!gotCache || nFeat === 0) {
+          Modal.error({
+            title: '生成特徵失敗',
+            content: nFeat === 0
+              ? '核心沒有抽到任何特徵。通常是參考影像讀不到,或特徵範圍把零件整個排除了。'
+                + '先前的特徵沒有被覆蓋。'
+              : '核心抽到了特徵但沒有回傳可儲存的結果。先前的特徵沒有被覆蓋。',
+          });
+        }
         // 把核心訓練出來的特徵存進 def, 之後載入不必重抽 (見 MISC_Util 的
         // __shape_cache 說明)。點在畫面上只是視覺化, 這一行才是真的留下來的。
         if (sf && sf.data && sf.data.shape_cache)
-          dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: sf.data.shape_cache }));
+          // Clearing __shape_stale is the point: these features were trained
+          // against the settings as they stand NOW, so the def is consistent
+          // again and the save guard has nothing to complain about.
+          dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: sf.data.shape_cache,
+                                               __shape_stale: undefined,
+                                               __shape_lastGood: undefined }));
       })
       .catch(() => {})
       .finally(() => setGenBusy(false));
@@ -731,6 +754,38 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
 
   return <div style={{ display: 'flex', height: '84vh', gap: 8 }}>
     <div style={{ width: 240, overflowY: 'auto', fontSize: 12, paddingRight: 6 }}>
+      {/* NOT a note. A def in this state leaves the studio unable to locate with
+          its own locator, and the failure is invisible afterwards -- sig360
+          picks it up and the screen looks fine. So it takes the top of the
+          panel, it is loud, and it carries both ways out. */}
+      {edit_info.__shape_stale &&
+        <div style={{ border: '2px solid #d4380d', background: '#2a1215', borderRadius: 4,
+                      padding: 8, marginBottom: 6 }}>
+          <div style={{ color: '#ff7875', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+            ⚠ 特徵已失效
+          </div>
+          <div style={{ color: '#e0b4b4', fontSize: 11, lineHeight: 1.6 }}>
+            你改了{edit_info.__shape_stale === 'def_image_reg' ? '定位' :
+                   edit_info.__shape_stale === 'roi_refine_points' ? 'ROI 點' : '定位和 ROI 點'}
+            ,目前的 SBM 特徵跟它對不上了。<b style={{ color: '#ff7875' }}>
+            這樣離開的話,這個 def 不會用 SBM 定位</b>——它會退回 sig360,而且畫面上看不出來。
+          </div>
+          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+            <Button size="small" type="primary" danger style={{ flex: 1 }}
+              loading={genBusy} onClick={() => genFeatures(true)}>重新生成特徵</Button>
+            <Button size="small" style={{ flex: 1 }} disabled={!edit_info.__shape_lastGood}
+              onClick={() => {
+                const lg = edit_info.__shape_lastGood;
+                dispatch(DefConfAct.EditInfo_Patch({
+                  def_image_reg: lg.def_image_reg,
+                  roi_refine_points: lg.roi_refine_points,
+                  __shape_cache: lg.cache,
+                  __shape_stale: undefined, __shape_lastGood: undefined,
+                }));
+              }}>還原上一版</Button>
+          </div>
+        </div>}
+
       {imageList.length > 1 &&
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
           <span style={{ flex: '0 0 auto', color: '#999' }}>影像</span>
@@ -858,8 +913,26 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       </div>
 
       <div style={{ borderTop: '1px solid #444', marginTop: 10, paddingTop: 8 }}>
-        <Button type="primary" size="small" block onClick={() => onClose && onClose()}>完成(套用到編輯暫存)</Button>
-        <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>設定即時套用到編輯暫存;回主編輯器按「存檔」才寫入磁碟。</div>
+        {/* GREYED while the features do not match the settings.
+            Leaving is what commits this state to the editor buffer, and from
+            there a save writes a def that cannot use its own locator. The two
+            ways out are in the red panel at the top -- regenerate, or revert to
+            the last set that worked -- and both clear this.
+            「取消」 is deliberately NOT blocked: abandoning the edit must always
+            be possible, or an operator who cannot regenerate is trapped in a
+            modal. */}
+        <Button type="primary" size="small" block
+          disabled={!!edit_info.__shape_stale}
+          title={edit_info.__shape_stale
+            ? '特徵與目前設定不符 — 請先「重新生成特徵」或「還原上一版」'
+            : undefined}
+          onClick={() => onClose && onClose()}>完成(套用到編輯暫存)</Button>
+        {edit_info.__shape_stale
+          ? <div style={{ fontSize: 11, color: '#ff7875', marginTop: 4 }}>
+              要先處理上面的「特徵已失效」才能完成。（設定是即時套用的,關閉視窗不會還原——
+              要退回請按上面的「還原上一版」。）
+            </div>
+          : <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>設定即時套用到編輯暫存;回主編輯器按「存檔」才寫入磁碟。</div>}
       </div>
     </div>
 

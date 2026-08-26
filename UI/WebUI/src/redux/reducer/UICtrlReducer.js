@@ -1099,30 +1099,41 @@ function StateReducer(newState, action) {
               // Generic shallow merge into edit_info (localization settings:
               // def_image_reg, roi_refine_points). New object ref so selectors re-run.
               if (action.data && typeof action.data === 'object') {
+                // Held before the merge: the snapshot below has to record the
+                // settings the cache was trained against, not the new ones.
+                const prevEditInfo = newState.edit_info;
                 newState.edit_info = { ...newState.edit_info, ...action.data };
                 // CHANGING THE REGISTRATION OR THE ROI POINTS INVALIDATES THE
-                // TRAINED FEATURES, so drop the cache with them.
+                // TRAINED FEATURES — but do NOT throw them away.
                 //
                 // The core fingerprints __shape_cache over the reference image,
                 // the extraction thresholds, the ROI points AND
-                // def_image_reg.angle. Keeping a cache past a change to any of
-                // those means the next save writes a def whose cache cannot
-                // match its own registration -- and the failure is quiet: the
-                // core falls back to sig360, which on a good image still
-                // locates, so the screen looks right while the localizer the
-                // def was built around is not running.
+                // def_image_reg.angle, so after a change the cache no longer
+                // matches and the def falls back to sig360.
                 //
-                // Measured on this bench: the reg angle went to 0, the cache
-                // stayed at ao-0.1271, and the def inspected fine in the studio
-                // (fresh cache in memory) while the saved file did not use SBM
-                // at all.
+                // Deleting it was the first fix and it made things worse: the
+                // def then leaves the studio with NO features at all, which is
+                // strictly less recoverable than a stale set. Keep the last one
+                // that WORKED, together with the settings it was trained
+                // against, so there is always something to go back to.
+                //
+                // Nothing here decides what to do about it. The save path does,
+                // because that is the last moment a def can still be fixed.
                 const touched = ['def_image_reg', 'roi_refine_points']
                   .filter((k) => k in action.data);
-                if (touched.length && newState.edit_info.__shape_cache) {
-                  delete newState.edit_info.__shape_cache;
-                  console.warn('__shape_cache dropped: ' + touched.join('+')
-                    + ' changed, so the trained features no longer match. '
-                    + 'Press 生成特徵點 before saving.');
+                if (touched.length && newState.edit_info.__shape_cache
+                    && !newState.edit_info.__shape_stale) {
+                  newState.edit_info.__shape_stale = touched.join('+');
+                  // The snapshot IS the revert: cache plus the two fields that
+                  // fingerprint it. Restoring all three together makes the
+                  // cache valid again by construction.
+                  newState.edit_info.__shape_lastGood = {
+                    cache: newState.edit_info.__shape_cache,
+                    def_image_reg: prevEditInfo.def_image_reg,
+                    roi_refine_points: prevEditInfo.roi_refine_points,
+                  };
+                  console.warn('__shape_cache is now stale (' + touched.join('+')
+                    + ' changed). Press 生成特徵點 before saving, or revert.');
                 }
               }
               break;
