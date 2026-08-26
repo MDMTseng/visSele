@@ -182,6 +182,60 @@ The two `snap_*` frames return no `locate` comment at all, which is its own
 small gap: "no object and nothing to say" is the one case the field was added to
 remove.
 
+## The I family — closed
+
+### I1 — the rotation residual does NOT grow with angle. I was wrong.
+
+Swept to 30 deg:
+
+| applied | sim | reported | angle residual | obj-frame residual |
+|---|---|---|---|---|
+| 0 | 0.9894 | -0.1271 | — | 2.2 um mean |
+| 4 | 0.9858 | +3.8904 | +0.0175 | 3.0 um |
+| 8 | 0.9929 | +7.7500 | -0.1229 | 5.0 um |
+| 16 | 0.9965 | +15.6750 | -0.1979 | 7.6 um |
+| 20 | 0.9929 | +20.0105 | +0.1377 | 5.3 um |
+| 30 | 0.9929 | +29.8544 | -0.0185 | 4.3 um |
+
+**Flat scatter of +-0.2 deg, not a slope**, and 9/9 points at every angle with a
+2-8 um object-frame residual throughout. The "-0.03 at 8 deg, -0.25 at 15 deg"
+in the earlier note was a pattern read into four noisy samples. The +-0.2 deg is
+what ROI refine leaves of the 1.0 deg line2Dup grid.
+
+**Result worth keeping: this def locates over at least +-30 deg with no
+measurable degradation.**
+
+### I3 — not a defect. The launcher refuses to restart the core ON PURPOSE.
+
+Stated in two places (`src/supervisor.js` header, `main.js`): *"The core decides
+whether a part passes. A supervisor that quietly brings it back after an
+unexplained death lets bad parts through while the line keeps running."* And the
+operator is not left guessing — the exit raises the launcher shell with
+`kind: 'core-exited'`. The earlier note here was wrong to call it a possible gap.
+
+The one thing it does NOT do is signal anything outward, so an unattended
+machine shows a screen nobody is looking at. Whether that needs an alarm is a
+question for the peripheral layer, not the launcher.
+
+### I2 — 「跑全部影像」
+
+A sweep degrades ONE image and asks how much it survives. The question people
+actually ask out loud is the other one — "I tried five samples and three were
+off" — and that needed switching images by hand and remembering. The studio now
+runs the same test once per sample beside the def, and reports how many located
+plus the worst pose offset among them. It awaits each image switch, because the
+core holds one cached image and a fire-and-forget switch would inspect whichever
+was loaded. It puts you back on the image you were looking at.
+
+### I4 — still needs one press each
+
+`test1_ms1.hydef` and `test1_x0.5.hydef` have no `__shape_cache`, so under the
+armed gate they refuse. Open each, press 生成特徵點, save. **A headless
+regenerator (`--sbm-train`) would fix this for a fleet in one command and is
+deliberately NOT built yet** — it would be a second place that extracts
+features, which is the thing the gate exists to prevent. Worth deciding
+alongside D2 rather than on its own.
+
 ## Decisions waiting
 
 | | question | options as they stand |

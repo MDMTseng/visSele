@@ -412,6 +412,49 @@ function SweepPanel({ sweep, floor }) {
   </div>;
 }
 
+// The same test across every sample beside the def. One row per image, and the
+// summary line is the sentence somebody would otherwise have to assemble by
+// hand: how many located, and the worst pose offset among them.
+function BatchPanel({ batch, onClear }) {
+  if (!batch) return null;
+  const done = batch.rows.filter((r) => r.sum);
+  const found = done.filter((r) => r.sum.located);
+  const offs = found.map((r) => (r.sum.poseDelta ? r.sum.poseDelta.dist : NaN))
+                    .filter(Number.isFinite);
+  return <div style={{ marginTop: 4 }}>
+    <div style={{ fontSize: 11, color: '#999' }}>
+      {batch.done}/{batch.total}{batch.aborted ? '（已中止）' : ''}
+    </div>
+    {batch.done === batch.total && <div style={{ fontSize: 11, color: '#69c0ff',
+        margin: '3px 0', lineHeight: 1.5 }}>
+      {found.length}/{done.length} 張定位成功
+      {offs.length ? `，位姿偏差最大 ${Math.max(...offs).toFixed(3)}mm` : ''}
+      {found.length < done.length ? '　⚠ 有影像定位不到' : ''}
+    </div>}
+    <div style={{ maxHeight: 190, overflowY: 'auto', marginTop: 3 }}>
+      {batch.rows.map((r, i) => {
+        const s = r.sum, ok = s && s.located;
+        return <div key={i} style={{ borderTop: '1px solid #333', padding: '2px 0',
+                     fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden',
+                           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                           color: ok ? '#ccc' : '#ff5252' }} title={r.name}>{r.name}</span>
+            {ok && <span style={{ color: '#888' }}>{s.pose.similarity.toFixed(3)}</span>}
+            {ok && s.poseDelta &&
+              <span style={{ color: s.poseDelta.dist > 0.1 ? '#ff9100' : '#888' }}>
+                {s.poseDelta.dist.toFixed(3)}mm</span>}
+            {ok && <span style={{ color: s.counts.na + s.counts.ng ? '#ff1744' : '#00c853' }}>
+              {s.counts.ok}/{s.counts.ok + s.counts.na + s.counts.ng}</span>}
+          </div>
+          {!ok && s && <div style={{ color: '#c77' }}>{s.why}</div>}
+        </div>;
+      })}
+    </div>
+    <Button size="small" type="link" onClick={onClear}>清除</Button>
+  </div>;
+}
+
 export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const dispatch = useDispatch();
   const edit_info = useSelector((s) => s.UIData.edit_info);
@@ -424,6 +467,7 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const [inspBusy, setInspBusy] = useState(false);
   const [sweep, setSweep] = useState(undefined);       // {axis, from, to, steps, rows, verdict}
   const [sweepAxis, setSweepAxis] = useState('rot');
+  const [batch, setBatch] = useState(undefined);       // {rows, done, total}
   const [sweepRange, setSweepRange] = useState({});    // axis -> {from,to,steps}
   const abortRef = useRef(false);
   // Which floor a match has to clear, per the locator this def actually uses.
@@ -619,6 +663,44 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
                              aborted: abortRef.current } : sw));
   }, [sweepAxis, sweepRange, inspectOnce]);
 
+  // "跑全部影像": the same test, once per sample sitting next to the def.
+  //
+  // A sweep degrades ONE image and asks how much it survives. This asks the
+  // other question -- does the def hold up across the samples somebody actually
+  // collected -- and that is the one that gets asked out loud ("I tried five
+  // and three were off"). Until now the answer had to be assembled by switching
+  // images by hand and remembering.
+  //
+  // Sequential, and it AWAITS the switch: the core holds one cached image, so
+  // firing these together would inspect whichever image happened to be loaded.
+  const runBatch = useCallback(async () => {
+    if (!imageList.length) return;
+    const started = currentImagePath;
+    abortRef.current = false;
+    setBatch({ rows: [], done: 0, total: imageList.length });
+    const rows = [];
+    for (let i = 0; i < imageList.length; i++) {
+      if (abortRef.current) break;
+      const im = imageList[i];
+      let sum;
+      try {
+        await switchImage(im.path);
+        sum = await inspectOnce(null);
+      } catch (e) {
+        sum = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                why: 'core 沒有回應' };
+      }
+      rows.push({ name: im.name, path: im.path, sum });
+      setBatch((b) => (b ? { ...b, rows: [...rows], done: i + 1 } : b));
+    }
+    // Put the operator back on the image they were looking at. A test that
+    // silently leaves you on the last sample is one you have to undo.
+    if (started && started !== imageList[imageList.length - 1].path) {
+      try { await switchImage(started); } catch (e) { /* best effort */ }
+    }
+    setBatch((b) => (b ? { ...b, aborted: abortRef.current } : b));
+  }, [imageList, currentImagePath, switchImage, inspectOnce]);
+
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = captureDrag;
     const ctx_state = { reg, mmpp, shapeList, work: work.current,
@@ -699,6 +781,17 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
         title="用目前(尚未存檔)的設定跑一次真正的檢驗,把結果疊回畫面。不會改到 def。">
         ▶ 跑一次檢驗</Button>
       {insp && <InspectPanel insp={insp} onClear={() => setInsp(undefined)} />}
+      {imageList.length > 1 && <>
+        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+          <Button size="small" style={{ flex: 1 }} onClick={runBatch}
+            disabled={!!(batch && batch.done < batch.total && !batch.aborted)}
+            title="對資料夾裡每一張樣本各跑一次檢驗,跑完會回到你原本看的那張。">
+            ▶ 跑全部影像（{imageList.length}）</Button>
+          <Button size="small" danger onClick={() => { abortRef.current = true; }}
+            disabled={!(batch && batch.done < batch.total && !batch.aborted)}>中止</Button>
+        </div>
+        <BatchPanel batch={batch} onClear={() => setBatch(undefined)} />
+      </>}
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>定位強健性掃描</Divider>
       <Select size="small" style={{ width: '100%', marginBottom: 3 }}

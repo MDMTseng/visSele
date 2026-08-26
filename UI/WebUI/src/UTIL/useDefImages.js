@@ -106,9 +106,14 @@ export function useDefImages({ afterLoad } = {}) {
   // Image-only swap: LD with imgsrc and NO deffile, so the def, the shapes, the
   // selection and the edit mode are all untouched. IGNORE_DEFCONF_LOCK is what
   // lets the resulting IM through the post-load display lock.
+  // Returns a promise that settles when the CORE is holding the new image, so
+  // a caller that inspects afterwards is not racing the load. Anything that
+  // runs a test per image needs that; a fire-and-forget switch would measure
+  // whichever image happened to be cached when the II arrived.
   const switchImage = useCallback((imgPath) => {
-    if (!CORE_ID || !imgPath) return;
+    if (!CORE_ID || !imgPath) return Promise.reject(new Error('no image'));
     setCurrentImagePath(imgPath);
+    return new Promise((done, fail) => {
     send('LD', 0, { imgsrc: imgPath, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
          undefined, { resolve: (darr) => {
       const IM = (darr || []).find((p) => p.type === 'IM');
@@ -128,7 +133,9 @@ export function useDefImages({ afterLoad } = {}) {
       // different image -- re-orient, or throw away a test result that was
       // measured on the previous one.
       if (afterLoad) afterLoad(imgPath);
-    }, reject: () => {} });
+      done(imgPath);
+    }, reject: (e) => fail(e instanceof Error ? e : new Error(String(e))) });
+    });
   }, [CORE_ID, send, dispatch, afterLoad]);
 
   return { imageList, currentImagePath, switchImage };
