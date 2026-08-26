@@ -55,19 +55,21 @@ deliberately does not (that is a documented fix in the II handler). Use
 
 ## What was measured after arming, and one thing that broke
 
-### The cache does not change the answer — verified
+### ~~The cache does not change the answer — verified~~ RETRACTED
 
-Same def, same image, once from the cache and once forced to re-extract:
+That measurement was unsound and the end-to-end contract caught it later the
+same day. Both sides of the comparison had been forced to extract: the def's
+cache was already stale, so the "cached" run never used a cache. Two extractions
+agreeing with each other says nothing about caching.
 
-```
-leaves 1391 vs 1391, differing 0
-```
+Running it honestly needs a def whose cache actually MATCHES, which the bench
+def is not until it is regenerated. `insp_contract.py` now checks
+`locate.code` before comparing and SKIPS with that reason rather than reporting
+a number it cannot stand behind.
 
-That is the invariant the cache code claims for itself ("a cache that changes
-the answer is worse than no cache"), and it now has a number behind it. **Run
-the cache-free copy BESIDE the sidecar**: the first attempt put it in a temp
-directory, so the template resolved to a `.png` that did not exist, training
-failed, and the "difference" was two failures agreeing with each other.
+The claim itself is still plausible -- the cache stores exactly what
+extractFeatures produced -- but it is **unverified**, and the earlier "1391
+leaves, 0 differ" should not be quoted.
 
 ### The bench def stopped using SBM, and nothing looked wrong
 
