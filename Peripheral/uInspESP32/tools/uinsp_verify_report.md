@@ -1,20 +1,15 @@
 # uInspESP32 hardware verification run
 
-Run at 2026-08-08 20:50:57
+Run at 2026-08-26 11:06:52
 
 | # | Check | Result | Detail |
 |---|---|---|---|
-| B.0 | widen the selector window for a bare-board round trip | PASS | SWITCH 29900 -> 9914 (600 steps past the camera trigger) |
-| B.1 | set plate_freq=1000 | PASS | {'type': 'set_setup', 'id': 1010, 'ack': True} |
-| B.2 | enter_insp_mode | PASS | {'id': 1011, 'ack': True} |
-| B.3 | timer ISR ticking at speed | PASS | steady ~2980 steps/s |
-| B.4 | state is INSPECTION_MODE_READY | PASS | state=101 (INSPECTION_MODE_READY) |
-| B.5 | one object per pulse, announced twice (CAM1+CAM2) | PASS | fired=10 objects=10 announcements=20 |
-| B.6 | tid strictly increasing by 1 | PASS | tid 1..10 |
-| B.7 | no error state after a full reported run | PASS | state=101 (INSPECTION_MODE_READY) ERROR_HIST=[] |
-| B.8 | SEL1 counter advanced by the reported parts | PASS | SEL1: 0 -> 10 (reported 10) |
-| B.9 | unknown tid faults the machine | PASS | state=112 (INSPECTION_MODE_ERROR) ERROR_HIST=[1] (expect INSP_RESULT_MATCHES_NO_OBJECT=1) |
-| B.10 | clear_error recovers | PASS | state=101 (INSPECTION_MODE_READY) |
-| B.11 | board still answers after the ISR error path | PASS | no reply = hang/reboot = regression |
-| B.12 | unjudged part faults cleanly | PASS | state=112 (INSPECTION_MODE_ERROR) ERROR_HIST=[1, 2] (expect OBJECT_HAS_NO_INSP_RESULT=2 after 10 unjudged parts) |
-| B.13 | returned to IDLE, window + plate_freq restored | PASS | state=100 SWITCH=29900 plate_freq=0 |
+| 0.1 | PING -> PONG | PASS | {'type': 'pong', 'id': 1002, 'ack': True} |
+| 0.2 | get_setup returns machine config | PASS | {"ver": "0.0.0 Alpha", "name": "uInspESP32", "stage_pulse_offset": {"L1A_on": 9515, "L1A_off": 9320, "CAM1_on": 9515, "CAM1_off": 9369, "L2A_on": 9317, "L2A_off": 9371, "CAM2_on": 9317, "CAM2_off": 9371, "SWITCH": 29900, "SEL1_on": 30000, "SEL1_off": 30800, "SEL2_on": 30010, "SEL2_off": 30810, "SEL3_on": 30020, "SEL3_off": 30820}, "plate": {"freq": 0, "accel": 2000, "pulses_per_rev": 70400, "diame |
+| 0.2 |   field present: machine_id | PASS | 'uI-F80D5E12CFA4' |
+| 0.2 |   field present: cfg_from_nvs | PASS | True |
+| 0.2 |   field present: pulse_min_width | PASS | 120 |
+| 0.2 |   field present: pulse_max_width | PASS | 1000 |
+| 0.3 | cfg_from_nvs reported | PASS | cfg_from_nvs=True (False on a board that has never been persisted) |
+| 0.4 | set_setup persist machine_id=T110652 | PASS | {'type': 'set_setup', 'persisted': True, 'id': 1004, 'ack': True} |
+| 0.4 | machine_id readable before power cycle | **FAIL** | machine_id=uI-F80D5E12CFA4 |
