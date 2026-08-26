@@ -137,6 +137,48 @@ class AppStore {
     return version;
   }
 
+  // Put back anything an interrupted install left parked.
+  //
+  // install() renames the old directory into .replaced/ before renaming the new
+  // one in, so that a failed rename cannot lose both. If the process dies
+  // BETWEEN those two renames -- a power cut, a kill -- the version is intact
+  // but not where it belongs, and the machine comes up believing it is not
+  // installed. Nothing else would ever put it back.
+  //
+  // Only ever restores into an empty slot: if the destination now exists, the
+  // install completed and the parked copy is the superseded one, so it goes.
+  recoverInterrupted(log = () => {}) {
+    const parked = path.join(this.dir, REPLACED);
+    let entries;
+    try { entries = fs.readdirSync(parked, { withFileTypes: true }).filter((d) => d.isDirectory()); }
+    catch { return { restored: [], discarded: [] }; }
+
+    const restored = [];
+    const discarded = [];
+    for (const d of entries) {
+      // "<version>-<timestamp>" -- the timestamp is what makes it unique, and
+      // the version is everything before the last dash.
+      const cut = d.name.lastIndexOf('-');
+      const version = cut > 0 ? d.name.slice(0, cut) : d.name;
+      const src = path.join(parked, d.name);
+      const dest = this.versionDir(version);
+      try {
+        if (fs.existsSync(dest)) {
+          fs.rmSync(src, { recursive: true, force: true });
+          discarded.push(version);
+        } else {
+          fs.renameSync(src, dest);
+          restored.push(version);
+          log(`an interrupted install had parked ${version}; put it back`);
+        }
+      } catch (e) {
+        log(`could not tidy the parked copy of ${version}: ${e.message}`);
+      }
+    }
+    try { fs.rmdirSync(parked); } catch { /* not empty, or not there */ }
+    return { restored, discarded };
+  }
+
   previousVersion() {
     try {
       const j = JSON.parse(fs.readFileSync(this.currentFile, 'utf8'));

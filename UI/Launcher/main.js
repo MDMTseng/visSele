@@ -273,6 +273,12 @@ function clearGoodTimer() {
 }
 
 async function startCore() {
+  // Before anything reads the version list: an install interrupted between its
+  // two renames leaves a version parked rather than lost, and this is the only
+  // thing that puts it back.
+  const rec = apps.recoverInterrupted(shellLog);
+  if (rec.discarded.length) shellLog(`removed superseded copies: ${rec.discarded.join(', ')}`);
+
   const { target, plan, error } = await currentPlan();
   lastPlanError = error || null;
   if (error) { await showShell(error); return; }
