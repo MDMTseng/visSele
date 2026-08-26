@@ -287,6 +287,10 @@ cJSON* acv_AuxPointReport2JSON(const vector< FeatureReport_auxPointReport> &vec,
       cJSON_AddNumberToObject(apj, "x", vec[j].pt.x);
       cJSON_AddNumberToObject(apj, "y", vec[j].pt.y);
     }
+    else if(vec[j].na_reason[0] != 0)
+    {
+      cJSON_AddStringToObject(apj, "na_reason", vec[j].na_reason);
+    }
     cJSON_AddItemToArray(detectedAuxPoint_jarr, apj );
 
   }

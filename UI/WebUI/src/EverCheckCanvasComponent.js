@@ -1103,7 +1103,8 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
     this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
-    this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
+    this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList,
+                                     this.edit_DB_info._obj.shapeList);
 
     
   }
@@ -2405,7 +2406,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     }
 
-    this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
+    this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList,
+                                     this.edit_DB_info._obj.shapeList);
 
 
     if (this.EditPoint != null) {

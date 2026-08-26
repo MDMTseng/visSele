@@ -107,7 +107,18 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
   if (shape.id === undefined) return;
 
   ctx.lineWidth = renderer.getIndicationLineSize();
-  let point = renderer.db_obj.auxPointParse(shape, shapeList);
+  // The core's own point first. It reports x/y for every non-NA aux_point and
+  // the UI used to ignore them, re-deriving the intersection in JS -- so the
+  // cross was drawn where the BROWSER thought the lines met, not where the
+  // machine measured.
+  //
+  // The JS derivation stays as a fallback for a report that has no point: a
+  // core older than this change, and the def-conf preview before anything has
+  // run. It is drawn differently so the two cannot be mistaken for each other.
+  const reported = shape.reported_pt;
+  const derived  = renderer.db_obj.auxPointParse(shape, shapeList);
+  let point = reported || derived;
+  const isReported = !!reported;
   if (point !== undefined && subObjs.length == 2) {
     ctx.setLineDash([renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
     for (const sub of subObjs) {
@@ -119,15 +130,33 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
       ctx.stroke();
     }
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'gray';
-    renderer.drawcross(ctx, point, renderer.getPointSize() * 2);
+    // Gray for the core's answer, hollow amber for a JS guess. A guess that
+    // looks identical to a measurement is how the divergence stayed invisible.
+    ctx.strokeStyle = isReported ? 'gray' : 'rgba(255, 190, 60, 0.9)';
+    renderer.drawcross(ctx, point, renderer.getPointSize() * (isReported ? 2 : 1.4));
+  }
+  if (shape.na_reason) {
+    const save = ctx.fillStyle;
+    ctx.fillStyle = 'rgba(255, 210, 60, 0.95)';
+    const off = renderer.getPointSize() * 3;
+    renderer.drawText(ctx, shape.na_reason, shape.pt1 ? shape.pt1.x + off : off,
+                      shape.pt1 ? shape.pt1.y - off : off);
+    ctx.fillStyle = save;
   }
 }
 
 // Inherent-shape-list draw — a black rect at the resolved aux_point.
 // Extracted from renderUTIL.drawInherentShapeList.case SHAPE_TYPE.aux_point.
-export function drawInherent(ctx, shape, renderer) {
-  let point = renderer.db_obj.auxPointParse(shape);
+export function drawInherent(ctx, shape, renderer, { shapeList } = {}) {
+  // X7: this passed NO shapeList, so auxPointParse fell back to the DEF and the
+  // marker was drawn at the taught position while everything around it was
+  // drawn at the measured one. During inspection that is a black rect sitting
+  // where the part is not.
+  //
+  // The core's reported point wins here too, for the same reason as above.
+  let point = shape.reported_pt
+    || (shapeList ? renderer.db_obj.auxPointParse(shape, shapeList)
+                  : renderer.db_obj.auxPointParse(shape));
   if (point != null) {
     ctx.strokeStyle = 'black';
     renderer.drawpoint(ctx, point, 'rect');

@@ -1358,10 +1358,40 @@ export class InspectionEditorLogic {
           //console.log(eObject);
         }
         break;
+
+      case SHAPE_TYPE.aux_point:
+        {
+          // USE THE POINT THE CORE SENT.
+          //
+          // There was no case here at all, so an aux_point took only its
+          // status and the overlay re-derived the intersection in JS from the
+          // adjusted refs. Two independent implementations of one piece of
+          // geometry, and the drawn point was therefore not necessarily where
+          // the measurement was taken -- the same class of divergence as the
+          // caliper boxes, but with no way to notice, because the JS answer is
+          // usually close enough to look right.
+          //
+          // The core has always reported x/y here (acv_AuxPointReport2JSON).
+          // It was simply never read.
+          if (Number.isFinite(inspAdjObj.x) && Number.isFinite(inspAdjObj.y)) {
+            eObject.reported_pt = { x: inspAdjObj.x, y: inspAdjObj.y };
+          } else {
+            // Absent, or null from a core that emitted a NaN intersection.
+            // Falling back to the JS derivation is better than drawing nothing,
+            // but it must not look authoritative -- see aux_point's draw.
+            delete eObject.reported_pt;
+          }
+          if (inspAdjObj.na_reason) eObject.na_reason = inspAdjObj.na_reason;
+          else delete eObject.na_reason;
+        }
+        break;
     }
     if (oriBase)//rotate back to original orientation
     {
-      ["pt1", "pt2", "pt3"].forEach((key) => {
+      // reported_pt rides with the rest: it is in the same frame as pt1..pt3,
+      // and leaving it out would put the core's own point in a different frame
+      // from everything drawn beside it.
+      ["pt1", "pt2", "pt3", "reported_pt"].forEach((key) => {
         if (eObject[key] === undefined) return;
         
         eObject[key] = pointInvTrans(eObject[key]);

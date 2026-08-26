@@ -1014,6 +1014,7 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::APointMatching_R
       // }
   FeatureReport_auxPointReport rep;
   rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+  rep.na_reason[0] = 0;
   rep.def = def;
   switch (def->subtype)
   {
@@ -1026,6 +1027,20 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::APointMatching_R
     if (ret < 0)
     {
       return rep;
+    }
+    // acvIntersectPoint returns (NAN, NAN) for parallel or degenerate lines --
+    // it guards its own denominator -- but nothing here checked the result, so
+    // the report went out as SUCCESS with a position that is not a number. The
+    // JSON prints that as `x: null`, and a consumer trusting the status takes
+    // NaN into its geometry, where it spreads silently.
+    //
+    // A point that is not a number is not a successful measurement.
+    if (!std::isfinite(cross.x) || !std::isfinite(cross.y))
+    {
+      snprintf(rep.na_reason, sizeof(rep.na_reason), "lines are parallel");
+      LOGE_EVERY_N(50, "aux_point id=%d: line %d and line %d do not intersect -- NA",
+                   def->id, def->data.lineCross.line1_id, def->data.lineCross.line2_id);
+      return rep;   // still STATUS_NA
     }
 
     rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;

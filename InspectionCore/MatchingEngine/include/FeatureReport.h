@@ -394,6 +394,9 @@ typedef struct FeatureReport_auxPointReport{
   featureDef_auxPoint *def;
   acv_XY pt;
   int status;
+  // Same field, same reason, as the search point's: an NA that cannot say why
+  // is as unhelpful as a silent substitution. Empty unless there is a reason.
+  char na_reason[48];
 }FeatureReport_auxPointReport;
 
 

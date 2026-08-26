@@ -244,7 +244,11 @@ class renderUTIL {
   }
 
 
-  drawInherentShapeList(ctx, inherentShapeList) {
+  // shapeList is optional and is the INSPECTION-ADJUSTED list when there is
+  // one. Without it an inherent shape that resolves through refs falls back to
+  // the def, and gets drawn at the taught position while everything around it
+  // is at the measured one -- see aux_point.drawInherent.
+  drawInherentShapeList(ctx, inherentShapeList, shapeList) {
     if (inherentShapeList === undefined || inherentShapeList == null) return;
 
     inherentShapeList.forEach((ishape) => {
@@ -254,7 +258,7 @@ class renderUTIL {
       // already an empty block).
       const mod = getShapeModule(ishape.type);
       if (mod && mod.drawInherent) {
-        mod.drawInherent(ctx, ishape, this);
+        mod.drawInherent(ctx, ishape, this, { shapeList });
       }
     });
   }
