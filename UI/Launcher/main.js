@@ -252,8 +252,19 @@ async function startCore() {
   if (pong) shellLog(`answered: ${pong.version || ''} ${pong.git || ''}`.trim());
   if (!supervisor.running) return;         // the exit handler owns this case
 
-  const removed = apps.prune(cfg.values.keepVersions);
-  if (removed.length) shellLog(`removed old versions: ${removed.join(', ')}`);
+  // target.version, not current.json: resolve() may have fallen back to the
+  // newest valid version, and that is the one now executing. Passing it stops
+  // prune from deleting the running directory out from under the process.
+  const pruned = apps.prune(cfg.values.keepVersions, target.version);
+  if (pruned.removed.length)
+    shellLog(`removed old versions: ${pruned.removed.join(', ')} (kept ${pruned.kept})`);
+  // Said out loud, every start. A folder in the application root that is not a
+  // version means the root is probably pointing somewhere it should not -- at a
+  // machine's working directory, most dangerously -- and prune deliberately
+  // leaves it alone rather than deleting what it does not understand.
+  if (pruned.foreign.length)
+    shellLog(`NOT versions, left alone: ${pruned.foreign.join(', ')} `
+           + `-- if these are machine data, the application folder is set wrong`);
 
   // An application without a UI is legitimate -- a headless soak build, say --
   // and the shell is then the right thing to keep showing.

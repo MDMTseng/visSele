@@ -147,10 +147,36 @@ class AppStore {
   // This only ever touches directories under appRoot. The machine's working
   // directory is elsewhere by construction (see config.js) and nothing in this
   // file can reach it.
-  prune(keep) {
-    const cur = this.currentVersion();
+  // `running` is the version the launcher ACTUALLY started, which is not always
+  // the one current.json names -- resolve() deliberately falls back to the
+  // newest valid version when the pointer is missing or broken, and then starts
+  // it. Re-deriving "current" here would put that running version in the doomed
+  // list like any other and delete its directory out from under the live
+  // process, so the caller passes what it started.
+  prune(keep, running) {
+    const cur = running || this.currentVersion();
+
+    // Delete ONLY directories this store recognises as versions.
+    //
+    // list() returns every subdirectory, valid or not -- that is right for the
+    // shell, which should show a broken install rather than hide it, and wrong
+    // here. prune's whole input used to be that list, so anything sharing the
+    // folder was a deletion candidate: point appRoot at a machine's working
+    // directory by mistake and the next SUCCESSFUL start silently removes
+    // data/, the calibration and the recipes, with rmSync force and no
+    // confirmation. The comment on this class says the working directory is
+    // elsewhere "by construction"; that was an assumption, not a check.
+    //
+    // Skipping the unrecognised ones makes a misconfigured appRoot fail by
+    // doing NOTHING rather than by destroying something. It is also why the
+    // skipped names are returned: silence here is what made the old behaviour
+    // invisible.
+    const keepN = Number.isFinite(Number(keep)) ? Math.max(1, Math.floor(Number(keep))) : 3;
     const all = this.list().filter((e) => e.version !== cur);
-    const doomed = all.slice(Math.max(0, keep - 1));
+    const versions = all.filter((e) => e.valid);
+    const foreign = all.filter((e) => !e.valid).map((e) => e.version);
+
+    const doomed = versions.slice(Math.max(0, keepN - 1));
     const removed = [];
     for (const e of doomed) {
       try {
@@ -158,7 +184,7 @@ class AppStore {
         removed.push(e.version);
       } catch { /* a locked file is not worth failing a start over */ }
     }
-    return removed;
+    return { removed, foreign, kept: versions.length - removed.length };
   }
 }
 
