@@ -721,6 +721,14 @@ have claimed 50% more tolerance than a sensor gives.
 
 ---
 
+## The def format itself
+
+Moved out of this handover into `DEF_FILE_FORMAT.md` — it is a reference, not a
+status report, and it was going to rot inside a dated file. Two fields moved
+into `featureSet[0]` on 2026-08-27 (`def_image_reg`, and the trained SBM
+features as `@__SBM_INFO__`) and both are now inside `featureSet_sha1`; the
+reference explains what that costs and why.
+
 ## Start here next time
 
 ```bash

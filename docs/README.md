@@ -50,7 +50,9 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 你要做的事 | 讀這個 | 狀態 |
 |---|---|---|
 | **新 agent 接手整個系統:三方大地圖(板×core×WebUI)、邊界合約、跑產不干擾矩陣** | `docs/SYSTEM_MAP.md` | **2026-08-18 全面校準,從這裡開始** |
-| **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-18.md` | **現況地圖,最新** |
+| **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-26c.md` → `_26b` → `_26` | **最新,2026-08-27**;三份接續,c 最新。`HANDOVER_2026-08-18.md` 是上一輪的地圖 |
+| **def 檔長什麼樣、哪些欄位在 hash 裡、改哪個會讓訓練特徵失效** | `InspectionCore/docs/DEF_FILE_FORMAT.md` | **2026-08-27 新增**;結構、指紋、閉集字彙的地雷 |
+| SBM 定位:studio 怎麼用、強健性怎麼量、特徵快取怎麼運作 | `InspectionCore/docs/HANDOVER_2026-08-26c.md` | 2026-08-27;含實測數字(ROI refine 值 15 倍、±30° 不退化) |
 | 想知道有哪些已知 bug / 哪些已修 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-18.md`(本輪)、`AUDIT_BACKLOG_2026-08-15.md`(上一輪) | 逐項標 VERIFIED/REPORTED、FIXED/OPEN |
 | 要測 / 想知道有哪些回歸測試 | `InspectionCore/docs/REGRESSION_TESTS.md` | **2026-08-19 更新**,四層測試的總索引 + 13 條坑 |
 | **要寫或改 WebUI 的自動化測試** | `UI/WebUI/docs/TEAM_HANDOFF.md` §7 §13、`UI/WebUI/tools/webctl/qa/SUMMARY.md` | **2026-08-19 更新**;選元素的規則、五層架構、七個失敗各是什麼(沒有一個是新缺陷) |
