@@ -1671,17 +1671,35 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       log.debug("[file-exists]", { folderInfo, fileName, existed });
       let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
       var enc = new TextEncoder();
-      let report = defFileGeneration(edit_info);
+      // SEED def_image_reg BEFORE generating, never after.
+      //
+      // It used to be written onto the finished report, which was fine while the
+      // field sat at the def top level and outside the hash. Now it lives in
+      // featureSet[0] and IS hashed, and defFileGeneration digests deliberately
+      // BEFORE adding the __-prefixed keys -- so re-hashing out here would fold
+      // __decorator and __shape_cache into the digest and quietly change what
+      // featureSet_sha1 means. Seeding the input instead keeps one hash, computed
+      // in one place, over one definition of the def.
+      //
+      // AND IT ONLY SEEDS AN ABSENT FIELD. This branch used to fire on every save
+      // the file browser reported as new, overwriting a measured registration
+      // with whatever the last inspection happened to say -- including a run that
+      // used the sig360 FALLBACK, which is how a recipe field ends up sourced
+      // from whichever locator was running at the time. Seeding what is missing
+      // is the legitimate job; overwriting what somebody measured is not.
+      let _ei = edit_info;
+      if (!edit_info.def_image_reg) {
+        const reg = edit_info.inspReport && edit_info.inspReport.reports && edit_info.inspReport.reports[0];
+        if (reg && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
+          const seed = { cx: reg.cx, cy: reg.cy, angle: reg.rotate, isFlipped: !!reg.isFlipped };
+          _ei = { ...edit_info, def_image_reg: seed };
+          log.info("[action] def_image_reg seeded (was absent)", seed);
+        }
+      }
+      let report = defFileGeneration(_ei);
       if (report.name === undefined || report.name.length == 0) {
         report.name = fileName;
         ACT_DefFileName_Update(fileName);
-      }
-      if (!existed) {
-        const reg = edit_info.inspReport && edit_info.inspReport.reports && edit_info.inspReport.reports[0];
-        if (reg && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
-          report.def_image_reg = { cx: reg.cx, cy: reg.cy, angle: reg.rotate, isFlipped: !!reg.isFlipped };
-          log.info("[action] def_image_reg stored", report.def_image_reg);
-        }
       }
       const commitSave = () => {
         ACT_DefFileHash_Update(report.featureSet_sha1);

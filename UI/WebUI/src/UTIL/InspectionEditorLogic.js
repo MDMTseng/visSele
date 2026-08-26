@@ -293,7 +293,13 @@ export class InspectionEditorLogic {
       // recorded at save time. Lets the main-UI canvas transform that image to align
       // with the def features (which live in the reference/init frame). Absent on
       // legacy defs -> canvas leaves the image untransformed (current behaviour).
-      edit_info.def_image_reg = root_defFile.def_image_reg;
+      // def_image_reg MOVED into featureSet[0] (2026-08-26). Read both, prefer
+      // the sub-feature copy, so a def written either way loads correctly.
+      // See the note at the write site in MISC_Util for why it moved.
+      edit_info.def_image_reg =
+        (root_defFile.featureSet && root_defFile.featureSet[0]
+         && root_defFile.featureSet[0].def_image_reg)
+        || root_defFile.def_image_reg;
 
 
       
@@ -342,7 +348,9 @@ export class InspectionEditorLogic {
               // Shape-locator registration (origin+angle) lives at the def top level;
               // load it so a re-save preserves it (MISC_Util carries edit_info.def_image_reg)
               // and the localization-settings editor can re-set it.
-              if (root_defFile.def_image_reg)
+              // Same precedence as above: the sub-feature copy wins.
+              if (report.def_image_reg) edit_info.def_image_reg = report.def_image_reg;
+              else if (root_defFile.def_image_reg)
                 edit_info.def_image_reg = root_defFile.def_image_reg;
               // Optional user-overridden ROI-refine points (object-frame mm). Absent =>
               // the core auto-selects; an empty array here keeps "auto".

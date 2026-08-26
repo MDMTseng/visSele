@@ -593,6 +593,39 @@ console.log('\n=== the trained SBM features survive a save ===');
      'no cache in, no cache out -- the key is never invented');
 }
 
+console.log('\n=== def_image_reg lives in featureSet[0], and the hash says so ===');
+{
+  const REG = { cx: 15.02, cy: 9.30, angle: -0.0022, isFlipped: false };
+  const ed = new M.InspectionEditorLogic();
+  ed.SetDefInfo({ features: [{ id: 1, type: 'line', pt1: { x: 0, y: 0 }, pt2: { x: 1, y: 1 } }] });
+  const gen = (ei) => M.defFileGeneration({ _obj: ed, DefFileName: 'x', DefFileTag: '', ...ei });
+
+  const out = gen({ def_image_reg: REG });
+  ok(JSON.stringify(out.featureSet[0].def_image_reg) === JSON.stringify(REG),
+     'it is written into featureSet[0]');
+  ok(out.def_image_reg === undefined,
+     'and the top-level key is REMOVED -- two places holding one value is how '
+     + 'they come to disagree');
+
+  // THE POINT OF MOVING IT. featureSet_sha1 hashes featureSet only, so while
+  // this sat at the top level a registration change did not change the def
+  // hash: the save-conflict check could not see a reg-only edit, and
+  // subFeatureDefSha1 -- which rides every report into the database -- was
+  // identical either side of a change of coordinate system.
+  const moved = gen({ def_image_reg: { ...REG, angle: 0 } });
+  ok(out.featureSet_sha1 !== moved.featureSet_sha1,
+     'changing the registration now CHANGES featureSet_sha1',
+     `${String(out.featureSet_sha1).slice(0, 10)} vs ${String(moved.featureSet_sha1).slice(0, 10)}`);
+  ok(gen({ def_image_reg: REG }).featureSet_sha1 === out.featureSet_sha1,
+     'and the same registration still hashes the same');
+
+  // A cache must NOT move the hash -- it is not a recipe change. Checked here
+  // too because def_image_reg now sits next to it in the same object.
+  ok(gen({ def_image_reg: REG, __shape_cache: { fp: 'z', n: 1 } }).featureSet_sha1
+       === out.featureSet_sha1,
+     'while __shape_cache still does not, because it is not a recipe change');
+}
+
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }
 console.log(fails ? `\n${fails} FAILURES` : '\n--- the pipeline behaves as specified ---');
 process.exit(fails ? 1 : 0);

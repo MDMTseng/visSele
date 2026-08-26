@@ -273,6 +273,56 @@ deliberately NOT built yet** — it would be a second place that extracts
 features, which is the thing the gate exists to prevent. Worth deciding
 alongside D2 rather than on its own.
 
+## def_image_reg moved into featureSet[0] — and a def hash that means something
+
+Done 2026-08-26, while the def population is still small enough to migrate.
+
+It sat at the def TOP level, and that cost two things.
+
+**One:** the sub-feature parser only sees `featureSet[i]`, so a helper existed
+purely to copy it down (`def_stamp_context`), called from four places. Missing
+the call does not fail — `has_reg` goes false and the object origin falls back
+to the Otsu interior-blob centroid, **silently relocating the frame every
+measurement in the def is expressed in**.
+
+**Two, and this is what decided it:** `featureSet_sha1` hashes `featureSet`
+only. So a registration change did not change the def hash —
+
+- the save-conflict check could not see a reg-only edit, and
+- `subFeatureDefSha1`, which rides **every inspection report into the
+  database**, was identical either side of a change of coordinate system.
+
+A def whose registration moved IS a different recipe, and the hash said it was
+not. Now it is one.
+
+**Migration is free in both directions.** The reader prefers the sub-feature
+copy and falls back to the root, so old defs load. Old cores keep working
+because `def_stamp_context` only stamps when the sub-feature lacks it. Verified
+on the bench: both placements resolve `origin_src=def_image_reg` and produce an
+identical report (sim 0.9894, cx 15.0250, rot -0.1271).
+
+**The top-level key is DELETED on save, not mirrored** — two places holding one
+value is how they come to disagree.
+
+### The one-time cost, stated
+
+Every def gets a new `featureSet_sha1` the first time it is re-saved. That
+touches the DB's def records and the save-conflict baseline. It is churn, once,
+and it is the price of the hash telling the truth from here on.
+
+### B3 fell out of the same edit
+
+The seed now runs BEFORE `defFileGeneration` rather than being written onto the
+finished report — re-hashing outside would have folded `__decorator` and
+`__shape_cache` into the digest, because the digest deliberately runs before
+those are added.
+
+And it **only seeds an absent field**. The branch used to fire on every save the
+file browser called new, overwriting a measured registration with whatever the
+last inspection said — including a run that used the sig360 fallback, which is
+how a recipe field ends up sourced from whichever locator happened to be
+running.
+
 ## Decisions waiting — the detail
 
 ### D1 — should SAVING rewrite `def_image_reg` from a live inspection?

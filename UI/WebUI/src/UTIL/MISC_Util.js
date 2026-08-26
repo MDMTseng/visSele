@@ -412,11 +412,31 @@ export function defFileGeneration(edit_info)
     report.featureSet[0].roi_refine_points =
       Array.isArray(edit_info.roi_refine_points) ? edit_info.roi_refine_points : [];
   }
-  // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
-  // existing def -- the save flow only writes it fresh on a NEW save (!existed), so
-  // without this a migrate+resave of an existing def would drop it. New-save still
-  // overwrites with the freshly-detected pose.
-  if (edit_info.def_image_reg) report.def_image_reg = edit_info.def_image_reg;
+  // def_image_reg LIVES IN featureSet[0] as of 2026-08-26. It used to sit at the
+  // def top level, and that cost two things.
+  //
+  // ONE: the sub-feature parser only sees featureSet[i], so a helper existed
+  // purely to copy it down (def_stamp_context), called from four places. Missing
+  // the call does not fail -- `has_reg` goes false and the object origin falls
+  // back to the Otsu interior-blob centroid, silently relocating the frame every
+  // measurement in the def is expressed in.
+  //
+  // TWO, and this is what decided it: featureSet_sha1 hashes `featureSet` only,
+  // so a registration change did not change the def hash. The save-conflict
+  // check could not see a reg-only edit, and subFeatureDefSha1 -- which rides
+  // every inspection report into the database -- was identical either side of a
+  // change of coordinate system. A def whose reg moved IS a different recipe and
+  // the hash said it was not. Written here, BEFORE the digest, it is one.
+  //
+  // The top-level key is deleted rather than mirrored: two places holding the
+  // same value is how they come to disagree. Old defs still load -- the reader
+  // prefers the sub-feature copy and falls back to the root -- and old cores
+  // still work, because def_stamp_context only stamps when the sub-feature
+  // lacks it.
+  if (edit_info.def_image_reg) {
+    report.featureSet[0].def_image_reg = edit_info.def_image_reg;
+    delete report.def_image_reg;
+  }
 
   // Strip transient per-frame inspection RESULTS from the shapes before they get
   // hashed/saved. cal_hits (per-caliper edge hits) and the derived fit fields are
