@@ -460,13 +460,19 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   // "生成特徵點": push the current (in-progress) def to the core's SF command and
   // overlay the returned line2Dup features + ROI points. Trains from the on-disk
   // <def>.png, so a brand-new unsaved def must be saved first.
-  const genFeatures = useCallback(() => {
+  const genFeatures = useCallback((regenerate) => {
     if (!sendBPG) return;
     let deffile;
     try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
     catch (e) { return; }
     setGenBusy(true);
-    new Promise((resolve, reject) => sendBPG('SF', 0, { definfo: deffile }, undefined, { resolve, reject }))
+    // regenerate: true means 生成特徵點 -- extract fresh and ignore whatever
+    // cache the def carries. The auto-call when the studio opens omits it, so
+    // opening the panel SHOWS the features the def actually uses rather than
+    // quietly replacing them with a new extraction.
+    new Promise((resolve, reject) => sendBPG('SF', 0,
+      { definfo: deffile, ...(regenerate ? { regenerate: true } : {}) },
+      undefined, { resolve, reject }))
       .then((pkts) => {
         const sf = (pkts || []).find((p) => p.type === 'SF');
         setFeatPts(sf && sf.data ? sf.data : { features: [], roi: [] });
@@ -490,7 +496,13 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
     catch (e) { return; }
     if (deffile.featureSet && deffile.featureSet[0]) delete deffile.featureSet[0].roi_refine_points;
     setGenBusy(true);
-    new Promise((resolve, reject) => sendBPG('SF', 0, { definfo: deffile }, undefined, { resolve, reject }))
+    // regenerate: true means 生成特徵點 -- extract fresh and ignore whatever
+    // cache the def carries. The auto-call when the studio opens omits it, so
+    // opening the panel SHOWS the features the def actually uses rather than
+    // quietly replacing them with a new extraction.
+    new Promise((resolve, reject) => sendBPG('SF', 0,
+      { definfo: deffile, ...(regenerate ? { regenerate: true } : {}) },
+      undefined, { resolve, reject }))
       .then((pkts) => {
         const sf = (pkts || []).find((p) => p.type === 'SF');
         const roi = (sf && sf.data && sf.data.roi) || [];
@@ -663,7 +675,7 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       </div>
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>可視化</Divider>
-      <Button size="small" block loading={genBusy} onClick={genFeatures}
+      <Button size="small" block loading={genBusy} onClick={() => genFeatures(true)}
         title="把目前設定送到 core,回傳並疊上實際生成的 line2Dup 特徵點(藍)。需先存過檔(<def>.png 在磁碟上)。">
         🔵 生成特徵點(藍)</Button>
       {featPts && <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>

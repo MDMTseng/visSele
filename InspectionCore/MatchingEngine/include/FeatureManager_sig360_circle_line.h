@@ -186,9 +186,13 @@ class ConstrainMap
 // def load and every II round trip re-derived the same features from the same
 // picture, and nothing on screen said when it had happened.
 bool shape_extract_allowed();
+bool shape_force_extract();
 struct ShapeExtractWindow {
-  bool prev;
-  ShapeExtractWindow();
+  bool prev, prevForce;
+  // force = "ignore the def's cache and extract fresh" -- what 生成特徵點 means.
+  // Without it a def carrying an unusable cache could not be repaired from the
+  // studio, because pressing the button would take that cache every time.
+  explicit ShapeExtractWindow(bool force = false);
   ~ShapeExtractWindow();
   ShapeExtractWindow(const ShapeExtractWindow &) = delete;
   ShapeExtractWindow &operator=(const ShapeExtractWindow &) = delete;

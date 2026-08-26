@@ -5001,7 +5001,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // set or reports that it has none. Scoped so a throw out of
           // AddMatchingFeature cannot leave the window open, which matters
           // because that throw is a documented case a few lines up.
-          ShapeExtractWindow _extract_ok;
+          // "regenerate" is 生成特徵點; its absence is the studio merely opening
+          // and wanting to SEE the features, which the cache can answer.
+          cJSON *rgn = cJSON_GetObjectItem(json, "regenerate");
+          ShapeExtractWindow _extract_ok(cJSON_IsTrue(rgn) ? true : false);
           {
             MallocHold injected_ctx(def_stamp_context(jsonStr, deffile));
             matchingEng.AddMatchingFeature(injected_ctx.get() ? injected_ctx.str() : jsonStr);

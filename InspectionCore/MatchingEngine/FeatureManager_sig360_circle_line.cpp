@@ -7014,14 +7014,35 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
 // exactly where an operator asked for it and nowhere else. See the note at the
 // extraction site for why implicit extraction is worse than slow.
 static bool g_shape_extract_allowed = false;
+// "Ignore whatever cache the def carries and extract fresh." Only 生成特徵點
+// sets it. Without a way to say this, a def whose cache is unusable can never
+// be repaired from the studio: the cache would be taken, fail or return
+// something stale, and pressing the button again would do exactly the same.
+static bool g_shape_force_extract = false;
+bool shape_force_extract() { return g_shape_force_extract; }
 
 bool shape_extract_allowed()
 {
-  // The escape hatch exists because the rule can strand a machine: a def
-  // written before caches were carried has none, and under this rule it stops
-  // locating until somebody opens it in the studio. On a line at 2am that is
-  // not a fix. It is an env var rather than a def key so it cannot be baked
-  // into a recipe and forgotten, and it says so in the log every time.
+  // NOT ARMED YET, and that is deliberate. See T1 in HANDOVER_2026-08-26c.
+  //
+  // The rule is implemented and the refusal is real, but turning it on can
+  // strand a machine: a def whose cache is stale or unusable stops locating,
+  // and on this bench data/test1.hydef is exactly that -- its cache differs in
+  // one field and fails to build a model even when the fingerprint is forced to
+  // match. Whether a cache produced by TODAY's build loads back cannot be
+  // answered from a shell, so it needs one press of 生成特徵點 on a machine
+  // somebody is sitting at.
+  //
+  // Until that has happened, the refusal is opt-in: SBM_STRICT_EXTRACT=1 arms
+  // it. Flipping the default afterwards is deleting the next four lines.
+  //
+  // SBM_ALLOW_IMPLICIT_EXTRACT stays as the escape hatch for when it IS armed:
+  // an env var rather than a def key, so it cannot be baked into a recipe and
+  // forgotten, and it says so in the log every time.
+  static int strict = -1;
+  if (strict < 0) strict = (getenv("SBM_STRICT_EXTRACT") != NULL) ? 1 : 0;
+  if (strict == 0) return true;
+
   static int env = -1;
   if (env < 0) env = (getenv("SBM_ALLOW_IMPLICIT_EXTRACT") != NULL) ? 1 : 0;
   if (env == 1)
@@ -7036,8 +7057,12 @@ bool shape_extract_allowed()
 
 // Scoped, so the window cannot be left open by an early return or a throw --
 // and AddMatchingFeature throws on a def this build cannot parse.
-ShapeExtractWindow::ShapeExtractWindow()  { prev = g_shape_extract_allowed; g_shape_extract_allowed = true; }
-ShapeExtractWindow::~ShapeExtractWindow() { g_shape_extract_allowed = prev; }
+ShapeExtractWindow::ShapeExtractWindow(bool force)
+{
+  prev = g_shape_extract_allowed; prevForce = g_shape_force_extract;
+  g_shape_extract_allowed = true; g_shape_force_extract = force;
+}
+ShapeExtractWindow::~ShapeExtractWindow() { g_shape_extract_allowed = prev; g_shape_force_extract = prevForce; }
 
 int FeatureManager_sig360_circle_line::trainShapeMatcher()
 {
@@ -7359,11 +7384,49 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     fprintf(stderr, "[SHAPE_DBG] crop: [%d,%d %dx%d] origin_in_crop=(%.1f,%.1f)\n",
             cropRect.x, cropRect.y, cropRect.width, cropRect.height, origin_use.x, origin_use.y);
 
+  // Lift a trained feature set into OBJECT-FRAME mm for the studio's
+  // 生成特徵點 overlay. Same frame as localization_include: feature pixel
+  // (cropped-template coords) -> full-image px (+crop.tl) -> inverse reg
+  // transform, using reg_sin (== -sin(reg), the mask convention) so the points
+  // land in the exact frame the include polygons were authored in.
+  //
+  // ONE definition, called from BOTH the cache path and the extraction path.
+  // It used to live only at the end of the extraction path, so a cache HIT
+  // returned early and left it empty -- and the studio's round trip answered
+  // "line2Dup features: 0" while the localizer was working perfectly. That was
+  // invisible until defs started carrying caches, at which point pressing the
+  // button made the existing overlay vanish and nothing replace it.
+  auto liftForUI = [&](const sbm::FeatureSet &fs, const cv::Rect &crop) {
+    shape_feat_mm.clear();
+    shape_roi_mm.clear();
+    if (!(def_mmpp > 0)) return;
+    auto px_to_obj = [&](float fx, float fy) {
+      acv_XY full = { fx + (float)crop.x, fy + (float)crop.y };
+      return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
+                                         acv_XY(originPx.x, originPx.y), def_mmpp);
+    };
+    if (!fs.levels.empty())
+    {
+      const auto &lv = fs.levels[0];
+      shape_feat_mm.reserve(lv.features.size());
+      for (const auto &f : lv.features)
+        shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
+    }
+    const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
+    std::vector<cv::Point2f> rpts = const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(16);
+    shape_roi_mm.reserve(rpts.size());
+    for (const auto &rp : rpts)
+      shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
+  };
+
   // Cache hit? Then the crop and the features are already known: take the crop
   // straight out of the sidecar and skip Otsu + connectedComponents +
   // extractFeatures entirely. The sidecar imread above still had to happen --
   // ROI refine matches against those pixels -- but a def is loaded once per
   // inspection session, so that read costs nothing per part.
+  if (shape_force_extract())
+    LOGI("[shape] regenerate requested: ignoring any cached feature set");
+  else
   {
     const std::string fp = shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
                                                    shape_weak_thres, shape_strong_thres,
@@ -7424,6 +7487,7 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         int nv = buildShapeMatcher(1.0f);
         if (nv <= 0) { LOGE("[shape] addModel from cache failed (%d)", nv); return -1; }
         shape_ready = true;
+        liftForUI(*shapeFeatureSet, ccrop);
         LOGI("[shape] from def cache: crop [%d,%d %dx%d] origin(%.1f,%.1f) variants=%d",
              ccrop.x, ccrop.y, ccrop.width, ccrop.height, corg.x, corg.y, nv);
         return 0;
@@ -7518,33 +7582,10 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
     shape_ready = true;
 
-    // Lift the trained feature geometry into OBJECT-FRAME mm for UI visualization
-    // (the "生成特徵點" round-trip). Same frame as localization_include: feature pixel
-    // (cropped-template coords) -> full-image px (+cropRect.tl) -> inverse reg
-    // transform. Uses reg_sin (== -sin(reg), the mask convention) so the points land
-    // in the exact frame the include polygons were authored in.
-    shape_feat_mm.clear();
-    shape_roi_mm.clear();
-    if (def_mmpp > 0)
-    {
-      auto px_to_obj = [&](float fx, float fy) {
-        acv_XY full = { fx + (float)cropRect.x, fy + (float)cropRect.y };
-        return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
-                                           acv_XY(originPx.x, originPx.y), def_mmpp);
-      };
-      if (!shapeFeatureSet->levels.empty())
-      {
-        auto &lv = shapeFeatureSet->levels[0];
-        shape_feat_mm.reserve(lv.features.size());
-        for (auto &f : lv.features)
-          shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
-      }
-      const float tcx = templ_use.cols / 2.0f, tcy = templ_use.rows / 2.0f;
-      std::vector<cv::Point2f> rpts = shapeFeatureSet->selectOptimizedPoints(16);
-      shape_roi_mm.reserve(rpts.size());
-      for (auto &rp : rpts)
-        shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
-    }
+    // Same lift as the cache path -- see liftForUI above for why it is one
+    // definition and not two.
+    liftForUI(*shapeFeatureSet, cropRect);
+
     // Diagnostic: dump the object-frame-mm feature geometry to JSON for validation
     // (the data the "生成特徵點" WS round-trip will return). SHAPE_DUMP_FEAT=<path>.
     if (const char *fp_path = getenv("SHAPE_DUMP_FEAT"))

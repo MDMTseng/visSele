@@ -8,9 +8,10 @@ and what it turned up.
 `178542d4`. `current.json` points at 1.1.105, `previous` is 1.1.104. **1.1.104
 is untouched and still shippable.**
 
-**`9b048c98` (the extraction gate) is COMMITTED BUT NOT DEPLOYED**, deliberately
-— see "Blocked on the machine". The exe in `build/win-mingw-msys/` has it; the
-deployed one does not.
+**The extraction gate is deployed but NOT ARMED.** The refusal only happens
+with `SBM_STRICT_EXTRACT=1`; without it the core behaves exactly as it did
+before (verified: same report, same reason string). Arming it is deleting four
+lines in `shape_extract_allowed()`, and it waits for T1 — see below.
 
 ---
 
@@ -18,8 +19,8 @@ deployed one does not.
 
 | | what to do | why it is blocking |
 |---|---|---|
-| **T1** | In the SBM studio press 生成特徵點, save, re-open, run 跑一次檢驗 | Decides whether `9b048c98` is safe to deploy |
-| **T2** | Deploy the gate once T1 passes | `bash scripts/build_export.sh export_v2 --app-only --no-zip` |
+| **T1** | In the SBM studio press 生成特徵點, save, re-open, run 跑一次檢驗 | Decides whether the gate is safe to ARM |
+| **T2** | Arm it once T1 passes: delete the `SBM_STRICT_EXTRACT` early-out in `shape_extract_allowed()` | it is deployed already, just not armed |
 | **T3** | 1.1.104 on the bench, watching the yield | 6 edges change: one `min_strength` 10→0, five `include_range` 2.0px→0 |
 | **T4** | Flash the firmware fixes to a production board | only the COM3 bench board has them |
 
