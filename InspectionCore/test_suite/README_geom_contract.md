@@ -69,6 +69,42 @@ side of the circle. Note only 4 of 13 fail: where `pt1 → pt3` counter-clockwis
 happens to be the right way round, the bug is invisible. That is exactly why it
 survived.
 
+## What it covers
+
+| contract | vectors | where the core's answer comes from |
+|---|---|---|
+| `arcSweep` | 13 | `convert3Pts2ArcData`, called directly |
+| `resolveCaliper` | 24 | `Caliper.h`'s constants and `caliper_effective_count` |
+
+The caliper rule used to live in **four** places — the circle parser, the line
+parser, and the top of each locate function — which is three more than can be
+kept in agreement, and is what the WebUI was mirroring by hand when it got 15 of
+24 inputs wrong. It is now stated once in `Caliper.h`, and the emitter calls
+that, so the vectors cannot drift from the machine without the machine changing.
+
+Both reintroduced deliberately to confirm the harness bites:
+
+```
+B3 (pt2-blind arcSweep)          4 of 37 fail, worst anchor 2.000e+1
+B2 (no execute-stage floor)      7 of 37 fail, e.g. arc count 2: core 3, webui 2
+```
+
+## Where the geometry comes from, by situation
+
+Worth being explicit, because only the first row genuinely needs a second
+implementation:
+
+| when | source | status |
+|---|---|---|
+| **dragging a point** | the UI predicts — the core has not run | unavoidable; this is what the contract bounds |
+| **on commit / CHECK** | the core, over `II` + `definfo` + `imgsrc:"__CACHE_IMG__"` | the round trip exists (`DefConfUI.js`) but is triggered by hand, and the answer is never compared against what the UI predicted |
+| **during inspection** | the core's report | partly still recomputed in JS — X1 and X7 |
+
+So the contract test is for row one. Rows two and three do not need prediction
+at all: row two already has an authoritative answer available and does not use
+it to check anything, and row three receives one (`cal_hits` carry coordinates,
+search points carry x/y) and recomputes anyway.
+
 ## When it fails
 
 Do **not** regenerate the vectors to make it green. The vectors are what the

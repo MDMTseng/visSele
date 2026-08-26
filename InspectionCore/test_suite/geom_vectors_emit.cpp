@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "vis_geom.h"   // acv_XY (= cv::Point2f) and acv_Circle
+#include "Caliper.h"    // the caliper contract: defaults, caps, per-primitive floor
 
 // convert3Pts2ArcData is a free function in FeatureManager_sig360_circle_line.cpp
 // and is in no header. Declared rather than copied -- see the note above about
@@ -163,6 +164,62 @@ int main()
     }
     printf("] }%s\n", (i + 1 == cases.size()) ? "" : ",");
   }
+  printf("  ],\n");
+
+  // --- caliper resolution ------------------------------------------------
+  //
+  // Emitted from the SAME constants and the SAME floor function the parser and
+  // the locate functions use (Caliper.h). Transcribing the rule here would have
+  // produced a file that agrees with the WebUI and with nothing else.
+  printf("  \"resolveCaliper\": [\n");
+  struct CalCase { const char *name; bool hasObj, hasCount, hasWidth; double count, width; };
+  CalCase cc[] = {
+    { "object absent",   false, false, false, 0, 0 },
+    { "object empty",    true,  false, false, 0, 0 },
+    { "count 0",         true,  true,  true,  0,    1 },
+    { "count 1",         true,  true,  true,  1,    1 },
+    { "count 2",         true,  true,  true,  2,    1 },
+    { "count 3",         true,  true,  true,  3,    1 },
+    { "count 10",        true,  true,  true,  10,   1 },
+    { "count over cap",  true,  true,  true,  9999, 1 },
+    { "count negative",  true,  true,  true,  -5,   1 },
+    { "width absent",    true,  true,  false, 10,   0 },
+    { "width 0",         true,  true,  true,  10,   0 },
+    { "width over cap",  true,  true,  true,  10,   999 },
+  };
+  const int nCC = (int)(sizeof(cc)/sizeof(cc[0]));
+  for (int i = 0; i < nCC; i++)
+    for (int lineNotArc = 1; lineNotArc >= 0; lineNotArc--)
+    {
+      const int minCount = lineNotArc ? CALIPER_MIN_COUNT_LINE : CALIPER_MIN_COUNT_ARC;
+      // parse stage, exactly as parse_arcData / parse_lineData do it
+      int   count = CALIPER_PARSE_DEFAULT_COUNT;
+      float width = CALIPER_PARSE_DEFAULT_WIDTH;
+      if (cc[i].hasObj)
+      {
+        count = cc[i].hasCount ? (int)cc[i].count : CALIPER_PARSE_DEFAULT_COUNT;
+        width = cc[i].hasWidth ? (float)cc[i].width : CALIPER_PARSE_DEFAULT_WIDTH;
+        if (count > CALIPER_MAX_COUNT) count = CALIPER_MAX_COUNT;
+        if (width > CALIPER_MAX_WIDTH) width = CALIPER_MAX_WIDTH;
+      }
+      // execute stage, via the function the locate functions themselves call
+      count = caliper_effective_count(count, minCount);
+      printf("    { \"name\": \"%s\", \"primitive\": \"%s\", \"minCount\": %d,\n",
+             cc[i].name, lineNotArc ? "line" : "arc", minCount);
+      printf("      \"in\": ");
+      if (!cc[i].hasObj) printf("null");
+      else {
+        printf("{");
+        if (cc[i].hasCount) printf("\"count\": %g", cc[i].count);
+        if (cc[i].hasCount && cc[i].hasWidth) printf(", ");
+        if (cc[i].hasWidth) printf("\"width\": %g", cc[i].width);
+        printf("}");
+      }
+      printf(",\n      \"count\": %d, \"width\": %.9g }%s\n",
+             count, width,
+             (i + 1 == nCC && lineNotArc == 0) ? "" : ",");
+    }
   printf("  ]\n}\n");
+  
   return 0;
 }

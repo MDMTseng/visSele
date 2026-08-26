@@ -44,6 +44,10 @@ if (!fs.existsSync(VECTORS)) {
 }
 
 const { arcSweep } = await import('file:///' + MATHTOOLS.replace(/\\/g, '/'));
+// _caliperFields imports nothing, so it loads directly. If that ever changes,
+// bundle it rather than copying the function out -- a copy in a test is a copy.
+const CALFIELDS = path.resolve(here, '..', 'src', 'shapes', '_caliperFields.js');
+const { resolveCaliper } = await import('file:///' + CALFIELDS.split(String.fromCharCode(92)).join('/'));
 const spec = JSON.parse(fs.readFileSync(VECTORS, 'utf8'));
 const TOL = spec.tolerance.abs;
 
@@ -115,8 +119,37 @@ for (const v of spec.arcSweep) {
   }
 }
 
+// --- resolveCaliper -------------------------------------------------------
+//
+// Not geometry, but the same disease: the UI had its own view of what a
+// degenerate `caliper` block means, and it disagreed with the machine on 15 of
+// these 24 inputs. The core's answer here comes from Caliper.h's constants and
+// caliper_effective_count -- the same ones the parser and the locate functions
+// use -- so this cannot drift from the machine without the machine changing.
+console.log(`
+resolveCaliper: ${spec.resolveCaliper.length} vectors from the core`);
+let calFails = 0;
+for (const v of spec.resolveCaliper) {
+  const minCount = v.minCount;
+  const got = resolveCaliper(v.in === null ? undefined : v.in, minCount);
+  const okCount = got.count === v.count;
+  const okWidth = Math.abs(got.width - v.width) <= TOL;
+  if (okCount && okWidth) {
+    console.log(`PASS  ${v.primitive.padEnd(4)} ${v.name.padEnd(16)} count ${got.count}  width ${got.width}`);
+  } else {
+    calFails++;
+    console.log(`FAIL  ${v.primitive.padEnd(4)} ${v.name.padEnd(16)} core ${v.count}/${v.width}  webui ${got.count}/${got.width}`);
+  }
+}
+if (calFails) fails += calFails;
+
+const total = spec.arcSweep.length + spec.resolveCaliper.length;
 console.log(fails
-  ? `\n${fails} of ${spec.arcSweep.length} vectors DISAGREE with the core.\n` +
+  ? `
+${fails} of ${total} vectors DISAGREE with the core.
+` +
     'Read the note at the top of this file before regenerating anything.'
-  : `\n--- all ${spec.arcSweep.length} agree with the core ---`);
+  : `
+--- all ${total} agree with the core` +
+    (limits ? `, ${limits} within a documented numerical limit ---` : ' ---'));
 process.exit(fails ? 1 : 0);

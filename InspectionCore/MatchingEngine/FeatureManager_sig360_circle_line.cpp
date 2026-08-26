@@ -257,7 +257,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   // DEF UNITS (mm); the per-primitive *_ReportGen function converts to px
   // (* ppmm) before constructing CaliperParams. Sentinels (-1) pass through
   // and trigger downstream fallbacks ("use initMatchingMargin" / "1px step").
-  cir.locating = 0; cir.cal_count = 10; cir.cal_width = 0.5f; cir.cal_length = -1; cir.cal_step = -1;
+  cir.locating = 0; cir.cal_count = CALIPER_PARSE_DEFAULT_COUNT; cir.cal_width = CALIPER_PARSE_DEFAULT_WIDTH; cir.cal_length = -1; cir.cal_step = -1;
   cir.cal_min_inliers = 0; cir.cal_max_error = 0;
   cir.fit_mode = 0;  // 0=ls, 1=outer, 2=inner (LS-center envelope variants)
   // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
@@ -267,8 +267,8 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
     char *loc = (char *)JFetch(circle_obj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) cir.locating = 1;
     cJSON *calo = JFetch_OBJECT(circle_obj, "caliper");
-    if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 10);
-                cir.cal_width = JFetch_NUMBER_ex(calo, "width", 0.5);
+    if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", CALIPER_PARSE_DEFAULT_COUNT);
+                cir.cal_width = JFetch_NUMBER_ex(calo, "width", CALIPER_PARSE_DEFAULT_WIDTH);
                 cir.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 cir.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
@@ -278,9 +278,9 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
                 // length). Real-world calipers are tens; even at these caps
                 // worst-case per primitive is ~10^8 ops -> completes in ~1s.
                 // cal_length = -1 is the "use full" sentinel and passes through.
-                if (cir.cal_count  >  512) cir.cal_count  =  512;
-                if (cir.cal_width  >   64) cir.cal_width  =   64;
-                if (cir.cal_length >  256) cir.cal_length =  256; }
+                if (cir.cal_count  >  CALIPER_MAX_COUNT)  cir.cal_count  = CALIPER_MAX_COUNT;
+                if (cir.cal_width  >  CALIPER_MAX_WIDTH)  cir.cal_width  = CALIPER_MAX_WIDTH;
+                if (cir.cal_length > CALIPER_MAX_LENGTH) cir.cal_length = CALIPER_MAX_LENGTH; }
     cJSON *edgeo = JFetch_OBJECT(circle_obj, "edge");
     if (edgeo) {
       cir.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -1704,7 +1704,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
   // cal_width/length/step in DEF UNITS (mm); LineMatching_ReportGen converts
   // to px (/= mmpp) before the caliper engine consumes them.
-  line.locating = 0; line.cal_count = 10; line.cal_width = 0.5f; line.cal_length = -1; line.cal_step = -1;
+  line.locating = 0; line.cal_count = CALIPER_PARSE_DEFAULT_COUNT; line.cal_width = CALIPER_PARSE_DEFAULT_WIDTH; line.cal_length = -1; line.cal_step = -1;
   line.cal_min_inliers = 0; line.cal_max_error = 0;
   // default caliper edge: dominant FALLING edge (white->dark), matching the backlit
   // dark-object-on-bright silhouette. Explicit def "edge.polarity" overrides.
@@ -1714,16 +1714,16 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
     char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) line.locating = 1;
     cJSON *calo = JFetch_OBJECT(line_obj, "caliper");
-    if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 10);
-                line.cal_width = JFetch_NUMBER_ex(calo, "width", 0.5);
+    if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", CALIPER_PARSE_DEFAULT_COUNT);
+                line.cal_width = JFetch_NUMBER_ex(calo, "width", CALIPER_PARSE_DEFAULT_WIDTH);
                 line.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 line.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
                 line.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
                 // Clamp pathological caliper sizes (see parse_arcData).
-                if (line.cal_count  >  512) line.cal_count  =  512;
-                if (line.cal_width  >   64) line.cal_width  =   64;
-                if (line.cal_length >  256) line.cal_length =  256; }
+                if (line.cal_count  >  CALIPER_MAX_COUNT)  line.cal_count  = CALIPER_MAX_COUNT;
+                if (line.cal_width  >  CALIPER_MAX_WIDTH)  line.cal_width  = CALIPER_MAX_WIDTH;
+                if (line.cal_length > CALIPER_MAX_LENGTH) line.cal_length = CALIPER_MAX_LENGTH; }
     cJSON *edgeo = JFetch_OBJECT(line_obj, "edge");
     if (edgeo) {
       line.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));

@@ -85,6 +85,37 @@ struct CaliperLineResult
 // carries a valid lensCalib, each edge hit is lens-undistorted in full-image px
 // BEFORE the fit (distortion bends a straight edge into a curve, so undistorting
 // only the fitted result would leave the fit biased). Default {0,0} = no crop.
+// THE CALIPER CONTRACT: what a def's `caliper` block actually resolves to.
+//
+// Two stages, and the order matters because it is where the WebUI used to get
+// this wrong -- 15 of 24 swept inputs disagreed before 2026-08-26.
+//
+//   PARSE    an absent `caliper` object, or an absent key inside one, takes the
+//            parser default (count 10, width 0.5 mm) and then a cap. A PRESENT
+//            0 is 0 here; it is not "unset".
+//   EXECUTE  a floor, which differs by primitive because a line fit needs two
+//            calipers and an arc needs three.
+//
+// Collected here so there is ONE statement of it. It lived in four places --
+// the circle and line parsers, and the top of each locate function -- which is
+// three more than can be kept in agreement, and is what the WebUI was mirroring
+// by hand. test_suite/geom_vectors_emit.cpp calls this, so the WebUI is held to
+// what the machine does rather than to a transcription of it.
+#define CALIPER_PARSE_DEFAULT_COUNT   10
+#define CALIPER_PARSE_DEFAULT_WIDTH   0.5f
+#define CALIPER_MAX_COUNT             512
+#define CALIPER_MAX_WIDTH             64
+#define CALIPER_MAX_LENGTH            256
+#define CALIPER_MIN_COUNT_LINE        2      // caliper_locate_line
+#define CALIPER_MIN_COUNT_ARC         3      // caliper_locate_circle
+
+// The execute-stage floor. Called by both locate functions AND by the vector
+// emitter, so they cannot answer differently.
+static inline int caliper_effective_count(int count, int minCount)
+{
+  return (count < minCount) ? minCount : count;
+}
+
 CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
                                       FeatureManager_BacPac *bacpac,
