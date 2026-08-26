@@ -356,21 +356,25 @@ export class InspectionEditorLogic {
               // the core auto-selects; an empty array here keeps "auto".
               if (Array.isArray(report.roi_refine_points))
                 edit_info.roi_refine_points = report.roi_refine_points;
-              // The trained line2Dup FeatureSet, carried back so a re-save keeps it.
+              // The trained line2Dup feature set, carried back so a re-save keeps it.
               //
-              // It was written on save (MISC_Util) and never read here, so it
-              // survived exactly ONE save -- the session in which somebody
-              // pressed 生成特徵點 -- and every later open-and-save silently
-              // dropped it. A def then re-extracts on every parse, which is
-              // every def load AND every II round trip: the studio's test
-              // button, and once per step of a robustness sweep.
+              // It lives in inherentfeatures as @__SBM_INFO__, beside the sig360
+              // signature. The legacy top-level __shape_cache is still read so
+              // defs written before the move keep working; the new placement
+              // wins when both are present, which is what makes the migration a
+              // move rather than two copies that can disagree.
               //
-              // Not silently trusted: the core fingerprints the cache against
-              // the reference image and the extraction parameters, and
-              // re-extracts loudly if anything moved. Carrying it here can make
-              // it stale, it cannot make it wrong.
-              if (report.__shape_cache)
-                edit_info.__shape_cache = report.__shape_cache;
+              // Not silently trusted either way: the core fingerprints it
+              // against the reference image and the extraction parameters and
+              // re-extracts loudly when anything moved. Carrying it can make it
+              // stale, it cannot make it wrong.
+              {
+                const _e = Array.isArray(report.inherentfeatures)
+                  ? report.inherentfeatures.find((x) => x && x.name === '@__SBM_INFO__')
+                  : undefined;
+                const _c = (_e && _e.shape_cache) || report.__shape_cache;
+                if (_c) edit_info.__shape_cache = _c;
+              }
 
 
               edit_info = Object.assign({}, edit_info);

@@ -272,6 +272,11 @@ export function shapeDefFingerprint(s) {
   return JSON.stringify(stable(shapeDefProjection(s)));
 }
 
+// The inherentfeatures entry carrying the trained line2Dup feature set. Named
+// and numbered like @__SIGNATURE__ (100000..100006), clear of it.
+export const SBM_INFO_NAME = '@__SBM_INFO__';
+export const SBM_INFO_ID = 100100;
+
 export function defFileGeneration(edit_info)
 {
 
@@ -457,38 +462,68 @@ export function defFileGeneration(edit_info)
   // differently while the feature is off -- correct, because it IS a different
   // def now, and that makes the change visible rather than silent.
   if (!BACK_SIDE_LIMITS_ENABLED) stripBackSideLimits(report.featureSet);
-  let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
-  report.featureSet[0]["__decorator"] = edit_info.__decorator;
-  // 訓練好的 shape 特徵: 由 SBMStudio「生成特徵點」從核心取回, 存進 def 之後載入
-  // 就不必再從參考影像重抽 -- 更重要的是每次載入拿到同一組特徵, 不隨抽取演算法或
-  // 參數變動。參考影像本身仍是 sidecar 沒有內嵌 (ROI refine 會去讀), def 只多幾 KB。
-  // 核心用指紋驗證, 影像或抽取參數變了會自動重抽並記 log, 不會靜默用舊的。
+  // THE TRAINED SBM FEATURES, beside the sig360 signature.
   //
-  // 必須放在 sha1 之後 -- 跟 __decorator 同樣理由。雙底線鍵不是被 JSum 過濾掉的,
-  // 而是「算完 hash 才加進去」; 放在上面 roi_refine_points 旁邊會讓帶 cache 的 def
-  // 算出不同的 featureSet_sha1, 也就是同一份 def 因為多了快取而被當成另一份。
-  if (edit_info.__shape_cache)
-    report.featureSet[0]["__shape_cache"] = edit_info.__shape_cache;
-  else {
-    // A def that ARRIVED with a cache and is leaving without one is losing it.
-    //
-    // That is exactly what happened between 2026-08 and this note: the write
-    // above existed and nothing read the key back on load, so the cache
-    // survived one save and every later open-and-save dropped it silently. The
-    // only symptom is that the core re-extracts features on every parse -- once
-    // per def load, and once per II, which is once per step of a robustness
-    // sweep -- and nothing anywhere says why it got slower.
-    const had = edit_info.loadedDefFile
-      && edit_info.loadedDefFile.featureSet
-      && edit_info.loadedDefFile.featureSet[0]
-      && edit_info.loadedDefFile.featureSet[0].__shape_cache;
-    if (had)
-      console.error('defFileGeneration: this def arrived with a __shape_cache and is '
-              + 'being saved without one -- the loader is not carrying it. The core '
-              + 'will re-extract line2Dup features on every parse.');
+  // Both are the trained representation of the part -- one entry per locator --
+  // so they live in the same array, in the same shape. It used to be a
+  // top-level `__shape_cache` key added AFTER the digest, deliberately, so a
+  // def with a cache and one without hashed alike.
+  //
+  // It is now INSIDE the hash, and that is a choice, not an accident:
+  //   * what the machine matches against is part of the recipe, and the
+  //     signature is hashed for exactly that reason;
+  //   * an entry in inherentfeatures that is NOT hashed while its siblings are
+  //     is a subtlety somebody trips over later;
+  //   * it is the same argument that moved def_image_reg into featureSet[0].
+  // The cost is that regenerating features counts as a def revision. To undo,
+  // move this block below the digest -- but then read the second bullet again.
+  //
+  // COPIED, never appended in place: inherentfeatures is the live
+  // inherentShapeList off the editor object, and pushing into it would grow the
+  // list by one entry on every save.
+  if (edit_info.__shape_cache) {
+    const _inh = Array.isArray(report.featureSet[0].inherentfeatures)
+      ? report.featureSet[0].inherentfeatures : [];
+    report.featureSet[0].inherentfeatures = _inh
+      .filter((e) => !(e && e.name === SBM_INFO_NAME))
+      .concat([{ id: SBM_INFO_ID, type: 'sbm_info', name: SBM_INFO_NAME,
+                 shape_cache: edit_info.__shape_cache }]);
   }
+  // The legacy placement is removed rather than mirrored: two copies of one
+  // value is how they come to disagree, and the core prefers the new one
+  // anyway.
+  delete report.featureSet[0]["__shape_cache"];
 
+  let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+  // AFTER the digest, and it has to stay there. __decorator is per-session UI
+  // state, not recipe, so folding it into the hash would make the same def read
+  // as a different one every time somebody changed a display preference.
+  //
+  // The trained SBM features used to sit down here for the same reason; they
+  // are now an inherentfeatures entry written ABOVE, and hashed -- see the note
+  // there for why that changed.
+  report.featureSet[0]["__decorator"] = edit_info.__decorator;
 
+  // A def that ARRIVED with trained features and is leaving without them is
+  // losing them.
+  //
+  // That is not hypothetical: between 2026-08 and this note the write existed
+  // and nothing read the key back on load, so the features survived one save
+  // and every later open-and-save dropped them silently. The only symptom is
+  // that the core falls back to sig360 -- which still locates, so nothing looks
+  // wrong until it does.
+  if (!edit_info.__shape_cache) {
+    const _prev = edit_info.loadedDefFile
+      && edit_info.loadedDefFile.featureSet
+      && edit_info.loadedDefFile.featureSet[0];
+    const _had = _prev && (_prev.__shape_cache
+      || (Array.isArray(_prev.inherentfeatures)
+          && _prev.inherentfeatures.some((e) => e && e.name === SBM_INFO_NAME)));
+    if (_had)
+      console.error('defFileGeneration: this def arrived with trained SBM features '
+        + 'and is being saved without them -- the loader is not carrying them. '
+        + 'The core will fall back to sig360.');
+  }
 
   report.featureSet_sha1 = sha1_info_in_json;
   //this.props.ACT_DefFileHash_Update(sha1_info_in_json);

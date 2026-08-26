@@ -638,26 +638,45 @@ so BOTH placements were refused and both fell back to sig360. The registration
 had to be restored to the value the fingerprint was taken against before the
 comparison meant anything.
 
-**Phase 2 (blocked):** move the writer — one line in `MISC_Util`. Only once
-every core in the fleet is on a build with phase 1, which promotes D3 from a
-nice-to-have to a prerequisite.
+**Phase 2 (done, 2026-08-27):** the writer moved. Decision taken: **the whole
+factory updates together**, so the WebUI-before-core window does not exist.
 
-### The hash question phase 2 has to answer
+```json
+"inherentfeatures": [
+  { "id": 100000, "type": "sign360",  "name": "@__SIGNATURE__", "signature": {...} },
+  { "id": 100100, "type": "sbm_info", "name": "@__SBM_INFO__",  "shape_cache": {...} }
+]
+```
 
-Today `__shape_cache` is deliberately OUTSIDE `featureSet_sha1`: it is added
-after the digest, so a def with a cache and the same def without hash alike.
-Inside `inherentfeatures` it would be hashed, as the signature is.
+The legacy top-level `__shape_cache` is **removed on save, not mirrored**. The
+reader still accepts it, so old defs load; the new placement wins when both are
+present, which makes this a move rather than two copies that can disagree.
 
-- **In the hash:** what the machine matches against is part of the recipe, the
-  signature is hashed for exactly that reason, and it is the same argument that
-  moved `def_image_reg`.
-- **Out of the hash:** the cache is a memo of a pure function carrying its own
-  fingerprint, and regenerating it changes no measurement — so calling it a new
-  def version churns every consumer keyed on the hash for nothing.
+Two things the write side has to get right, both now asserted:
 
-Excluding it stays possible (digest before appending the entry), but an entry in
-`inherentfeatures` that is not hashed while its siblings are is a subtlety
-somebody will trip over.
+- **Copy the array, never append in place.** `inherentfeatures` is the live
+  `inherentShapeList` off the editor object, so pushing into it would grow the
+  def by one entry per save.
+- **Saving twice must hash the same.** Checked, because "regenerating features
+  is a def revision" is only tolerable if *not* regenerating them is not.
+
+### The hash question — answered: IN
+
+Regenerating features now counts as a def revision.
+
+- what the machine matches against is part of the recipe, and the signature is
+  hashed for exactly that reason;
+- an entry in `inherentfeatures` that is not hashed while its siblings are is a
+  subtlety somebody trips over later;
+- it is the same argument that moved `def_image_reg` into `featureSet[0]`.
+
+The cost is real and accepted: press 生成特徵點, save, and the def is a new
+version to everything keyed on `featureSet_sha1`. To reverse it, move the write
+below the digest — and then read the second bullet again.
+
+The contract assertion that used to say the opposite ("a cache is not a recipe
+change") is **inverted, deliberately**, with the reasoning next to it so the
+flip does not read as a regression to whoever finds it.
 
 ## Caveat worth having in writing
 

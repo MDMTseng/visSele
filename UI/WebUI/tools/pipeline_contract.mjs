@@ -577,20 +577,24 @@ console.log('\n=== the trained SBM features survive a save ===');
     _obj: ed, DefFileName: 'x', DefFileTag: '',
     locating_engine: 'shape_based', __shape_cache: CACHE,
   });
-  ok(JSON.stringify(out.featureSet[0].__shape_cache) === JSON.stringify(CACHE),
+  const _e = (out.featureSet[0].inherentfeatures || [])
+    .find((e) => e && e.name === '@__SBM_INFO__');
+  ok(_e && JSON.stringify(_e.shape_cache) === JSON.stringify(CACHE),
      'a cache in the editor state is emitted into the def unchanged');
 
-  // And it must NOT change the def identity: a def with a cache and the same
-  // def without one are the same recipe, so they must hash the same or every
-  // consumer keyed on featureSet_sha1 sees a phantom edit.
+  // It DOES change the def identity, as of the move into inherentfeatures.
+  // The previous assertion here said the opposite -- that a def with trained
+  // features and one without must hash alike -- and it was inverted
+  // deliberately, not accidentally: see the note at the write site.
   const bare = M.defFileGeneration({
     _obj: ed, DefFileName: 'x', DefFileTag: '', locating_engine: 'shape_based',
   });
-  ok(out.featureSet_sha1 === bare.featureSet_sha1,
-     'and it does NOT change featureSet_sha1 -- a cache is not a recipe change',
+  ok(out.featureSet_sha1 !== bare.featureSet_sha1,
+     'and a def WITH trained features hashes differently from one without',
      `${String(out.featureSet_sha1).slice(0, 12)} vs ${String(bare.featureSet_sha1).slice(0, 12)}`);
-  ok(bare.featureSet[0].__shape_cache === undefined,
-     'no cache in, no cache out -- the key is never invented');
+  ok(!(bare.featureSet[0].inherentfeatures || [])
+       .some((e) => e && e.name === '@__SBM_INFO__'),
+     'no features in, no entry out -- it is never invented');
 }
 
 console.log('\n=== def_image_reg lives in featureSet[0], and the hash says so ===');
@@ -619,11 +623,27 @@ console.log('\n=== def_image_reg lives in featureSet[0], and the hash says so ==
   ok(gen({ def_image_reg: REG }).featureSet_sha1 === out.featureSet_sha1,
      'and the same registration still hashes the same');
 
-  // A cache must NOT move the hash -- it is not a recipe change. Checked here
-  // too because def_image_reg now sits next to it in the same object.
-  ok(gen({ def_image_reg: REG, __shape_cache: { fp: 'z', n: 1 } }).featureSet_sha1
-       === out.featureSet_sha1,
-     'while __shape_cache still does not, because it is not a recipe change');
+  // THE TRAINED FEATURES moved into inherentfeatures beside the signature, and
+  // are hashed with it. That is a deliberate reversal -- they used to be added
+  // after the digest so a def with a cache and one without hashed alike.
+  const withF = gen({ def_image_reg: REG, __shape_cache: { fp: 'z', n: 1 } });
+  const entry = withF.featureSet[0].inherentfeatures
+    .find((e) => e && e.name === '@__SBM_INFO__');
+  ok(entry && entry.type === 'sbm_info' && entry.shape_cache.fp === 'z',
+     'the trained features are an inherentfeatures entry, beside the signature');
+  ok(withF.featureSet[0].__shape_cache === undefined,
+     'and the legacy top-level key is gone, not mirrored');
+  ok(withF.featureSet_sha1 !== out.featureSet_sha1,
+     'they are INSIDE the hash now -- what the machine matches against is recipe',
+     'regenerating features therefore counts as a def revision');
+  // Saving twice must not accumulate entries: inherentfeatures is the live
+  // list off the editor object, so appending in place would grow it every save.
+  const twice = gen({ def_image_reg: REG, __shape_cache: { fp: 'z', n: 1 } });
+  ok(twice.featureSet[0].inherentfeatures
+       .filter((e) => e && e.name === '@__SBM_INFO__').length === 1,
+     'and a second save does not append a second copy');
+  ok(twice.featureSet_sha1 === withF.featureSet_sha1,
+     'so saving an unchanged def twice still hashes the same');
 }
 
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }
