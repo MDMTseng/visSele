@@ -4994,6 +4994,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         {
           std::lock_guard<std::mutex> _me_guard(matchingEnglock);
           matchingEng.ResetFeature();
+          // THE ONE PLACE line2Dup features may be extracted. SF is the core's
+          // side of the studio's 生成特徵點, i.e. somebody pressed a button and
+          // is waiting to see the result. Every other parse -- def load, CHECK,
+          // each step of a robustness sweep -- takes the def's cached feature
+          // set or reports that it has none. Scoped so a throw out of
+          // AddMatchingFeature cannot leave the window open, which matters
+          // because that throw is a documented case a few lines up.
+          ShapeExtractWindow _extract_ok;
           {
             MallocHold injected_ctx(def_stamp_context(jsonStr, deffile));
             matchingEng.AddMatchingFeature(injected_ctx.get() ? injected_ctx.str() : jsonStr);

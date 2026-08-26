@@ -501,7 +501,11 @@ typedef struct FeatureReport_sig360_circle_line{
     float best;        // best score any candidate reached; NaN = none computed
     float thres;       // the floor it was measured against
     int   candidates;  // raw candidates the matcher produced, before thresholding
-    char  reason[64];  // empty when the locate succeeded
+    // 160, not 64: the first version truncated
+    // "...open the SBM studio, press g" mid-word, and this string is the whole
+    // point of the field -- it is what the operator reads instead of a blank
+    // "not found". A reason that stops mid-instruction is worse than none.
+    char  reason[160]; // empty when the locate succeeded
   } locate;
 };
 

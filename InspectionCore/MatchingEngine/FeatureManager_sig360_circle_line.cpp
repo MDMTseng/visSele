@@ -2525,8 +2525,24 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   // log and leave shape_ready=false so FeatureMatching falls back to sig360.
   if (this->locating_engine == 1)
   {
-    if (trainShapeMatcher() != 0)
-      LOGW("[shape] training failed; falling back to sig360 for this def");
+    int rc = trainShapeMatcher();
+    // Remembered, not just logged. A def with no features locates nothing, and
+    // "no candidate" on screen would send somebody hunting a lighting or
+    // threshold problem that is not there. The reason travels with the report.
+    shape_untrained_reason[0] = 0;
+    if (rc == -2)
+    {
+      snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
+               "def has no trained SBM features -- open the SBM studio, press "
+               "generate, and save");
+      LOGW("[shape] %s", shape_untrained_reason);
+    }
+    else if (rc != 0)
+    {
+      snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
+               "SBM training failed; falling back to sig360");
+      LOGW("[shape] %s", shape_untrained_reason);
+    }
   }
 
   return 0;
@@ -6294,6 +6310,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   // Shape-based localizer path: bypass binarize/CCL/signature entirely and
   // locate via line2Dup + ROI refine on the original grayscale. Falls through
   // to the legacy sig360 path when shape training wasn't available.
+  if (locating_engine == 1 && !shape_ready && shape_untrained_reason[0])
+  {
+    auto &L = report.data.sig360_circle_line.locate;
+    L.best = NAN; L.thres = NAN; L.candidates = 0;
+    snprintf(L.reason, sizeof(L.reason), "%s", shape_untrained_reason);
+  }
   if (locating_engine == 1 && shape_ready)
   {
     return FeatureMatching_shape();
@@ -6927,7 +6949,14 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
   cJSON *fp = cJSON_GetObjectItem(cache, "fp");
   if (!fp || !cJSON_IsString(fp) || fingerprint != fp->valuestring)
   {
-    LOGW("[shape] cache stale (reference image or extraction params changed); re-extracting");
+    // Print BOTH, because "stale" alone does not say whether a parameter moved
+    // by design or the reference picture was replaced -- and the answer decides
+    // whether one def needs regenerating or every def in the fleet does. The
+    // fields are | separated and in a fixed order, so the differing one is
+    // visible by eye without tooling.
+    LOGW("[shape] cache stale; re-extracting || was: %s || now: %s",
+         (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
+         fingerprint.c_str());
     return false;
   }
   cJSON *c = cJSON_GetObjectItem(cache, "crop");
@@ -6977,6 +7006,38 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
   LOGI("[shape] loaded %d features from def cache (no re-extraction)", nf_total);
   return true;
 }
+
+// May this process extract line2Dup features right now?
+//
+// Default NO. The SF handler -- the core's side of the studio's 生成特徵點 --
+// opens the window around one parse and closes it again, so extraction happens
+// exactly where an operator asked for it and nowhere else. See the note at the
+// extraction site for why implicit extraction is worse than slow.
+static bool g_shape_extract_allowed = false;
+
+bool shape_extract_allowed()
+{
+  // The escape hatch exists because the rule can strand a machine: a def
+  // written before caches were carried has none, and under this rule it stops
+  // locating until somebody opens it in the studio. On a line at 2am that is
+  // not a fix. It is an env var rather than a def key so it cannot be baked
+  // into a recipe and forgotten, and it says so in the log every time.
+  static int env = -1;
+  if (env < 0) env = (getenv("SBM_ALLOW_IMPLICIT_EXTRACT") != NULL) ? 1 : 0;
+  if (env == 1)
+  {
+    LOGW_EVERY_N(20, "[shape] SBM_ALLOW_IMPLICIT_EXTRACT is set: extracting "
+                     "features outside the studio. Features generated this way "
+                     "are not in any def -- save from the studio to make them real.");
+    return true;
+  }
+  return g_shape_extract_allowed;
+}
+
+// Scoped, so the window cannot be left open by an early return or a throw --
+// and AddMatchingFeature throws on a def this build cannot parse.
+ShapeExtractWindow::ShapeExtractWindow()  { prev = g_shape_extract_allowed; g_shape_extract_allowed = true; }
+ShapeExtractWindow::~ShapeExtractWindow() { g_shape_extract_allowed = prev; }
 
 int FeatureManager_sig360_circle_line::trainShapeMatcher()
 {
@@ -7368,6 +7429,29 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         return 0;
       }
     }
+  }
+
+  // FROM HERE DOWN IS EXTRACTION, and extraction is an AUTHORING action.
+  //
+  // Everything above is a cache hit and costs nothing. Below, line2Dup builds
+  // the feature set from scratch -- and this function runs at the end of every
+  // def PARSE, which is every def load AND every II round trip. A robustness
+  // sweep would train once per step, a def switch would train, a CHECK would
+  // train, all producing exactly the same features from exactly the same
+  // reference image.
+  //
+  // Worse than the cost: WHEN it happens is invisible. Features generated
+  // implicitly are features nobody chose, from whatever the extractor does
+  // today, and a def whose behaviour changes because it was re-parsed is a def
+  // nobody can reason about. So the only place it may happen is where somebody
+  // pressed a button and is looking at the result.
+  if (!shape_extract_allowed())
+  {
+    LOGE("[shape] this def has no usable __shape_cache and implicit extraction "
+         "is off -- open the SBM studio and press 生成特徵點, then save. "
+         "(escape hatch for recovering a machine without an editing session: "
+         "SBM_ALLOW_IMPLICIT_EXTRACT=1)");
+    return -2;
   }
 
   try

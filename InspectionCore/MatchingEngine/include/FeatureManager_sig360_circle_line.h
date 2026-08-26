@@ -177,6 +177,23 @@ class ConstrainMap
 };
 
 
+// SBM feature extraction is an AUTHORING action, not something a parse does.
+//
+// trainShapeMatcher() will take a cached feature set at any time, but it
+// refuses to EXTRACT one unless this window is open. Only the SF handler --
+// the core's side of the studio's 生成特徵點 -- opens it, so features are
+// generated where somebody asked for them and nowhere else. Without this, every
+// def load and every II round trip re-derived the same features from the same
+// picture, and nothing on screen said when it had happened.
+bool shape_extract_allowed();
+struct ShapeExtractWindow {
+  bool prev;
+  ShapeExtractWindow();
+  ~ShapeExtractWindow();
+  ShapeExtractWindow(const ShapeExtractWindow &) = delete;
+  ShapeExtractWindow &operator=(const ShapeExtractWindow &) = delete;
+};
+
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
 
   typedef enum FEATURETYPE {
@@ -357,6 +374,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // the signature into loc_incl_mm, a fresh def authors it by hand. Each entry is one
   // polygon. Empty include => fall back to loc_roi_mm, then the sig360 signature, then
   // Otsu (see trainShapeMatcher mask-priority).
+  // Why the shape locator has nothing to work with, kept so the REPORT can say
+  // it. Empty when training succeeded or the def is not shape_based.
+  char shape_untrained_reason[128] = {0};
   vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
   vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
   // Explicit user ROI refine points (object-frame mm). When the def carries the
