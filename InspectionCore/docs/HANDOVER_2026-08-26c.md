@@ -121,6 +121,49 @@ rotation residual** (-0.03 deg at 8 deg, -0.25 deg at 15 deg) — if refine only
 partly corrects the grid snap, the residual would grow with angle exactly like
 that.
 
+### The rotation residual, chased down — and it is not a measurement problem
+
+Fine sweep, 0 to 4 deg in 0.2 deg steps, ROI refine on and off.
+
+**The line2Dup angle grid is exactly 1.0 deg.** With refine OFF every reported
+rotation is an integer: `0, -1, +2, +1, +3, +4, +5, +6`. Refine ON brings the
+angle residual from +-2 deg down to +-0.16 deg — about 15x — but does not
+remove it.
+
+The question that matters is whether that reaches the measurements. Putting each
+reported point back into the OBJECT frame using the run's own reported pose, and
+comparing with the def `pt1` it belongs to:
+
+| | refine ON | refine OFF |
+|---|---|---|
+| mean residual across 0-4 deg | **2.2 - 6.6 um** | 28 - 80 um |
+| worst single point | 23.8 um | 132 um |
+| drift with angle | **none visible** | wanders +-25 um |
+
+So the pose angle error does **not** propagate into the measured points, because
+each search point is independently refined by its own caliper. The angle is
+worth watching for anything that READS the pose, but the measurements over this
+range are stable to a few microns.
+
+**ROI refine is worth roughly 15x on measured position** — 3.7 um mean against
+50 um. That is a much bigger number than the 13.7 um the single-image comparison
+suggested, and it is the one to quote.
+
+Only tested to 4 deg. The coarse sweep's -0.25 deg residual at 15 deg is
+unexplained and outside this range.
+
+#### The first version of this measurement was WRONG, and how it was caught
+
+The obvious method — un-rotate each reported point by the perturbation I
+applied, then compare — produced an error growing perfectly linearly to 938 um
+at 4 deg. It was my inverse transform, not the machine. It gave itself away by
+being **identical for refine ON and OFF to within 1 um**, while those two runs
+reported angles differing by up to 2 deg: a quantity that ignores a 2 deg
+difference in its own input is not measuring what it claims to.
+
+Same lesson as the orientation stub earlier the same day. Do not hand-derive a
+transform when the report already carries one; use the run's own pose.
+
 ### These frames do not match this def
 
 | image | with the gate | with SBM forced to run |
