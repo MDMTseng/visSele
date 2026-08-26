@@ -2,7 +2,7 @@
 import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import { xstate_GetCurrentMainState, GetObjElement, isString } from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement, isString, shapeDefFingerprint } from 'UTIL/MISC_Util';
 import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
 import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 
@@ -214,18 +214,25 @@ function StateReducer(newState, action) {
                   // whole inspection, not one feature set -- but the canvas
                   // reads reports[0], so carry it across the same way
                   // subFeatureDefSha1/machine_hash are pulled out above.
-                  // Snapshot per-shape def-relevant fields so the def-conf
-                  // cal_hits overlay can detect when the user has edited the
-                  // def since this inspection ran (stale → don't show hits).
-                  // Only fields that affect the matching outcome are hashed.
-                  const _fp = (s) => JSON.stringify({
-                    pt1: s.pt1, pt2: s.pt2, pt3: s.pt3,
-                    margin: s.margin, locating: s.locating,
-                    caliper: s.caliper, edge: s.edge,
-                  });
+                  // Snapshot each shape so the def-conf cal_hits overlay can
+                  // tell whether the user has edited the def since this
+                  // inspection ran (stale → don't show hits).
+                  //
+                  // This was a WHITELIST of seven keys and had already drifted:
+                  // width, angleDeg, search_far, ref and the arc's
+                  // direction/fit_mode all change the search band and none were
+                  // listed, so rotating a search point 90 degrees after a run
+                  // left the old hits on screen pinned to the NEW box, reading
+                  // as fresh confirmation.
+                  //
+                  // shapeDefFingerprint inverts it: strip the per-frame RESULTS
+                  // and keep everything else, which is the same rule the def
+                  // itself is built with. A field added tomorrow is covered the
+                  // day it is added, instead of being silently unwatched until
+                  // somebody notices the hits are lying.
                   const _shapeList = newState.edit_info._obj.shapeList || [];
                   inspReport.shape_fingerprints = {};
-                  for (const s of _shapeList) inspReport.shape_fingerprints[s.id] = _fp(s);
+                  for (const s of _shapeList) inspReport.shape_fingerprints[s.id] = shapeDefFingerprint(s);
 
                   if (mmpcampix === undefined) {
                     break;

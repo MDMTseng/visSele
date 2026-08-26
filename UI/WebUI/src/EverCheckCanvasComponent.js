@@ -6,7 +6,7 @@ import { getShapeModule } from 'JSSRCROOT/shapes';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { xstate_GetCurrentMainState, GetObjElement } from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement, shapeDefFingerprint } from 'UTIL/MISC_Util';
 import {
   threePointToArc,
   intersectPoint,
@@ -2238,11 +2238,11 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     const single = rpt && rpt.reports && rpt.reports[0];
     if (single) {
       const fps = rpt.shape_fingerprints || {};
-      const fpOf = (s) => JSON.stringify({
-        pt1: s.pt1, pt2: s.pt2, pt3: s.pt3,
-        margin: s.margin, locating: s.locating,
-        caliper: s.caliper, edge: s.edge,
-      });
+      // shapeDefFingerprint, the SAME function the reducer stamped with. This
+      // was a second copy of the same seven-key literal, and two copies of a
+      // comparison are worse than two copies of a calculation: if they drift,
+      // nothing matches, and the overlay silently hides every hit instead of
+      // showing a wrong one.
       const shapeList = this.edit_DB_info._obj && this.edit_DB_info._obj.shapeList || [];
       const byId = new Map(shapeList.map((s) => [s.id, s]));
       const collect = (arr) => {
@@ -2255,7 +2255,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           const _hits = (r && ((r.extra && r.extra.cal_hits) || r.cal_hits));
           if (!(_hits && r.id !== undefined)) continue;
           const cur = byId.get(r.id);
-          if (cur && fps[r.id] !== undefined && fpOf(cur) !== fps[r.id]) continue; // stale
+          if (cur && fps[r.id] !== undefined && shapeDefFingerprint(cur) !== fps[r.id]) continue; // stale
           // Pass per-hit status through unchanged so each caliper renders
           // its own outcome: 0=missed → gray box + no X, 1=outlier → red X,
           // 2=inlier → green X. Whole-fit success/fail does NOT override

@@ -222,6 +222,56 @@ export function stampRefImagePath(deffile, edit_info) {
   return deffile;
 }
 
+// Everything on a shape that is inspection OUTPUT rather than def
+// configuration. One list, because it answers two questions that must never be
+// answered differently:
+//
+//   * what gets stripped before the def is hashed and saved -- persisting a
+//     per-frame result bloats the file and churns the def hash every inspection
+//   * what gets IGNORED when deciding whether the user has edited the def since
+//     the last run (the cal_hits staleness check in UICtrlReducer)
+//
+// The staleness check used to be a WHITELIST of seven keys, and had already
+// drifted: width, angleDeg, search_far, ref and the arc's direction/fit_mode
+// all change the search band and none of them were listed. Rotating a search
+// point 90 degrees after a run left the old hits on screen, pinned to the new
+// box, reading as fresh confirmation.
+//
+// A whitelist has to be updated every time a field is added and is silently
+// wrong until somebody notices. A blacklist of RESULTS is bounded and obvious:
+// a new def field is covered the day it is added, and a new result field fails
+// loudly by making everything look stale.
+export const SHAPE_RESULT_KEYS = [
+  'cal_hits', '_pt1', '_pt2', 'adj_pt1', 'inspection_status', 'inspection_value',
+  // added 2026-08-26 with the aux-point work -- the core's reported position
+  // and its NA reason are results, not configuration
+  'reported_pt', 'na_reason',
+];
+
+// A shape with the per-frame results removed: what the def carries, and what
+// "has the def changed" must be asked about.
+export function shapeDefProjection(s) {
+  const c = { ...s };
+  for (const k of SHAPE_RESULT_KEYS) delete c[k];
+  return c;
+}
+
+// Key-ORDER-independent, because JSON.stringify is not: two shapes with the
+// same content built in a different order would stringify differently and read
+// as an edit that never happened, throwing away hits for no reason.
+export function shapeDefFingerprint(s) {
+  const stable = (v) => {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v && typeof v === 'object') {
+      const out = {};
+      for (const k of Object.keys(v).sort()) out[k] = stable(v[k]);
+      return out;
+    }
+    return v;
+  };
+  return JSON.stringify(stable(shapeDefProjection(s)));
+}
+
 export function defFileGeneration(edit_info)
 {
 
@@ -375,14 +425,9 @@ export function defFileGeneration(edit_info)
   // these are all top-level shape keys) so the live editor shapes keep them for
   // on-canvas display.
   {
-    const STRIP = ['cal_hits', '_pt1', '_pt2', 'adj_pt1', 'inspection_status', 'inspection_value'];
     const feats = report.featureSet[0].features;
     if (Array.isArray(feats)) {
-      report.featureSet[0].features = feats.map((s) => {
-        const c = { ...s };
-        for (const k of STRIP) delete c[k];
-        return c;
-      });
+      report.featureSet[0].features = feats.map(shapeDefProjection);
     }
   }
 
