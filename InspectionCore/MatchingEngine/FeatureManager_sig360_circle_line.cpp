@@ -2183,6 +2183,16 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     // The serialised training result, if this def carries one. Borrowed from
     // `root` -- valid for as long as the def JSON is, which covers the
     // trainShapeMatcher() call at the end of parse.
+    // LEGACY placement. The successor is an inherentfeatures entry named
+    // @__SBM_INFO__, read in the loop further down, which overrides this.
+    //
+    // Reading both is the whole of phase one. inherentfeatures is a CLOSED
+    // vocabulary -- an unrecognised type makes the entire def fail to parse
+    // (see the else branch at the end of that loop, and the loc_include
+    // incident it caused once already) -- so a def carrying @__SBM_INFO__ is
+    // unreadable by any core that predates this. With fifteen machines sharing
+    // one def folder and no end-to-end update path yet, the writer cannot move
+    // until every core can read it. This side goes first, on its own.
     this->shape_cache_in = cJSON_GetObjectItem(root, "__shape_cache");
 
     this->roi_pts_mm.clear();
@@ -2459,6 +2469,29 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     else if (strcmp(feature_type, "aux_line") == 0)
     {
       //return -1;
+    }
+    else if (strcmp(feature_type, "sbm_info") == 0)
+    {
+      // The trained line2Dup feature set, stored beside the sig360 signature
+      // because they are the same KIND of thing: the trained representation of
+      // this part, one per locator. Carried as "shape_cache" so the existing
+      // loader and its fingerprint check are reused unchanged.
+      //
+      // Overrides the legacy top-level __shape_cache when both are present,
+      // which is what makes a migration a one-way move rather than a state
+      // where two copies can disagree.
+      cJSON *sc = cJSON_GetObjectItem(feature, "shape_cache");
+      if (sc != NULL && cJSON_IsObject(sc))
+      {
+        this->shape_cache_in = sc;
+        LOGI("[shape] cache read from inherentfeatures @__SBM_INFO__");
+      }
+      else
+      {
+        // Present but empty is not an error -- a def may carry the entry as a
+        // placeholder before anything has been trained into it.
+        LOGW("[shape] @__SBM_INFO__ carries no shape_cache object");
+      }
     }
     else
     {
