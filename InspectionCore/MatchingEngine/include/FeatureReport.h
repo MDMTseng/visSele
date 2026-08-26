@@ -201,12 +201,12 @@ typedef struct featureDef_searchPoint{
   float include_range;     // default 0
   float manual_offset;     // default 0
   // search_point_cv tuning knobs (JSON-overridable, all caliper-mode only):
-  //   blur:        gaussian kernel along the edge before X-sobel.
+  //   (blur was removed: search_point_cv never read it -- the fused 3x3 Sobel
+  //    subsumes it -- so it was a knob that did not exist. 2026-08-26)
   //   alpha_keep:  outlier-prune fraction in the WLS apex average (0 = none).
   //   mask_dilate: object-label mask dilation (px) — keep border edges.
   // NO LONGER "0 means use the tuned default" -- see edge_set below. 0 is a
   // value the def can mean, and it is honoured.
-  int   blur;
   float alpha_keep;
   int   mask_dilate;
   // WHICH of the edge knobs the def actually said something about.
@@ -227,15 +227,12 @@ typedef struct featureDef_searchPoint{
   //     the step is not applied. `maskDilate > 0` was already the guard inside
   //     search_point_cv, so 0-means-off is the convention this code had; only
   //     the def-side `? : 8` hid it.
-  //
-  // blur is in the list for completeness and is NOT READ by search_point_cv at
-  // all -- see the note at the call site.
+
   uint32_t edge_set;
   enum EdgeSetBit {
     EDGE_SET_MIN_STRENGTH = 1u << 0,
     EDGE_SET_INCLUDE_RANGE= 1u << 1,
     EDGE_SET_MANUAL_OFFSET= 1u << 2,
-    EDGE_SET_BLUR         = 1u << 3,
     EDGE_SET_ALPHA_KEEP   = 1u << 4,
     EDGE_SET_MASK_DILATE  = 1u << 5,
   };

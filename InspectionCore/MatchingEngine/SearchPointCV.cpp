@@ -30,7 +30,7 @@ static inline int labelAt(const cv::Mat &L, int x, int y)
 
 bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
-                     int blurSize, float edgeSuppress, float considerRange,
+                     float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      const cv::Mat &labelImg, int objLabel, int maskDilate,
                      acv_XY *outPt, float *outW, int spId,

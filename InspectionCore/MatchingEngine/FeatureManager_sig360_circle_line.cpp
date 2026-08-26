@@ -1184,11 +1184,24 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGI_EVERY_N(200, "search_point: edge polarity 'any' -> bidirectional scan "
                           "(was silently 'falling' before 2026-08-25)");
       }
-      // labeled image shares eT image's frame only when cropOffset==0 (current
-      // non-crop pipeline). Mask out background (dilated object label) so the scan
-      // can't lock onto background specks; dilate ~8px to keep the boundary edge.
-      // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
-      cv::Mat labelImg; // (off.x == 0 && off.y == 0) ? m_labeledImg_cv : empty();
+      // THE BACKGROUND MASK IS OFF, AND HAS BEEN SINCE 2026-05-29.
+      //
+      // Its job: mask out background using the dilated object label so the scan
+      // cannot lock onto background specks. It was switched off in a wip commit
+      // "temporarily ... for edge-finding debugging" -- 1024 commits ago -- and
+      // the member it read, m_labeledImg_cv, has since been deleted, so the
+      // expression below could not compile even if it were uncommented.
+      //
+      // That makes mask_dilate inert too: useMask is (!labelImg.empty() &&
+      // objLabel >= 0), and this is always empty. The knob is honoured all the
+      // way to search_point_cv and then has nothing to act on.
+      //
+      // Consequence, stated plainly because nothing else says it: for three
+      // months every caliper search point has been free to pick a background
+      // speck over the real edge. Restoring it means plumbing a labeled image
+      // to this stage again (MatchingCore still builds one), which is a real
+      // change to results, not a cleanup -- see BACKLOG_2026-08-26.
+      cv::Mat labelImg;
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.
       const uint32_t said = def.edge_set;
@@ -1225,17 +1238,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       int   maskDilate = (said & featureDef_searchPoint::EDGE_SET_MASK_DILATE)
                          ? def.mask_dilate : 0;
 
-      // blur is passed for signature compatibility and IS NOT READ. search_point_cv
-      // takes a blurSize parameter and never uses it -- the fused 3x3 Sobel
-      // "subsumes the old blur along the edge", as the note in there says. So
-      // this is not a knob that is off; it is a knob that does not exist.
-      // Deliberately NOT surfaced in DefConfUI: a control that does nothing is
-      // the exact defect class this audit is clearing out.
-      int   blur       = (said & featureDef_searchPoint::EDGE_SET_BLUR)
-                         ? def.blur : 0;
       float alphaKeep  = def.alpha_keep;            // 0 = none (algorithm default)
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
-                           margin, width, sp_et, blur, edgeSuppress,
+                           margin, width, sp_et, edgeSuppress,
                            includeRangePx, alphaKeep,
                            eT.getBacpac(), labelImg, m_objLabel, maskDilate,
                            &out, &str, def.id, &rep.cal_hits);
@@ -1485,7 +1490,6 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.edge_nth = 0; searchPoint.edge_min_strength = 0;
   searchPoint.include_range = 0;
   searchPoint.manual_offset = 0;
-  searchPoint.blur = 0;
   searchPoint.alpha_keep = 0;
   searchPoint.mask_dilate = 0;
   searchPoint.edge_set = 0;
@@ -1517,7 +1521,6 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("include_range", featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE, &searchPoint.include_range);
       take   ("manual_offset", featureDef_searchPoint::EDGE_SET_MANUAL_OFFSET, &searchPoint.manual_offset);
       take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
-      takeInt("blur",          featureDef_searchPoint::EDGE_SET_BLUR,          &searchPoint.blur);
       takeInt("mask_dilate",   featureDef_searchPoint::EDGE_SET_MASK_DILATE,   &searchPoint.mask_dilate);
     }
   }
