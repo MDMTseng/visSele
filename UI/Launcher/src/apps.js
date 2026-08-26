@@ -32,6 +32,9 @@ const STAGING = '.staging';
 // Where install() parks the directory it is replacing until the new one is
 // safely in place. Dot-prefixed so list() never mistakes it for a version.
 const REPLACED = '.replaced';
+// The version that has PROVED itself, and the only thing that makes a rollback
+// target reliable. See markGood/lastGood below.
+const LAST_GOOD = 'last_good.json';
 const INFO = 'info.json';
 const BOOT = path.join('scripts', 'boot.js');
 
@@ -120,8 +123,53 @@ class AppStore {
     if (!v.ok) throw new Error(`app ${version} is incomplete: missing ${v.missing.join(', ')}`);
     fs.mkdirSync(this.dir, { recursive: true });
     const tmp = this.currentFile + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ version, selectedAt: new Date().toISOString() }, null, 2));
+    // Remember what this displaced. It is the fallback rollback target for a
+    // machine that has never accumulated a last_good -- one restarted more
+    // often than the good-timer runs, which is exactly the machine most likely
+    // to need rolling back.
+    const previous = this.currentVersion();
+    fs.writeFileSync(tmp, JSON.stringify({
+      version,
+      previous: previous && previous !== version ? previous : null,
+      selectedAt: new Date().toISOString(),
+    }, null, 2));
     fs.renameSync(tmp, this.currentFile);
+    return version;
+  }
+
+  previousVersion() {
+    try {
+      const j = JSON.parse(fs.readFileSync(this.currentFile, 'utf8'));
+      return typeof j.previous === 'string' ? j.previous : null;
+    } catch { return null; }
+  }
+
+  // --- last known good -------------------------------------------------------
+  //
+  // "It started" is not evidence that a version works: a build that dies after
+  // ten minutes starts perfectly. So a version becomes good only after it has
+  // RUN, for a stretch long enough to be a real production period -- see
+  // goodAfterMs in config.js.
+  //
+  // Written when the timer fires, never at shutdown. A machine that crashes
+  // must still accumulate the record, and one that is killed must not be able
+  // to claim a stretch it did not finish.
+  get lastGoodFile() { return path.join(this.dir, LAST_GOOD); }
+
+  lastGood() {
+    try {
+      const j = JSON.parse(fs.readFileSync(this.lastGoodFile, 'utf8'));
+      return typeof j.version === 'string' ? j : null;
+    } catch { return null; }
+  }
+
+  markGood(version, ranForS) {
+    const tmp = this.lastGoodFile + '.tmp';
+    fs.mkdirSync(this.dir, { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify({
+      version, ranForS: Math.round(ranForS), at: new Date().toISOString(),
+    }, null, 2));
+    fs.renameSync(tmp, this.lastGoodFile);
     return version;
   }
 
@@ -178,12 +226,30 @@ class AppStore {
     // doing NOTHING rather than by destroying something. It is also why the
     // skipped names are returned: silence here is what made the old behaviour
     // invisible.
+    // Never delete a rollback target.
+    //
+    // prune runs after EVERY successful start, and it used to protect only the
+    // version that was running. That is fine when a person installs a version
+    // every few months; it is wrong the moment updates arrive on their own,
+    // because three updates in a row silently delete the version you would want
+    // to go back to. keepVersions is a disk-space policy and was being asked to
+    // double as a safety policy, which it cannot do -- the version worth
+    // keeping is not "recent", it is "proved".
+    //
+    // So: the last known good, and whatever the current pointer displaced, are
+    // kept regardless of how far down the list they have fallen.
+    const good = this.lastGood();
+    const protectedVersions = new Set([cur, good && good.version, this.previousVersion()].filter(Boolean));
+
     const keepN = Number.isFinite(Number(keep)) ? Math.max(1, Math.floor(Number(keep))) : 3;
     const all = this.list().filter((e) => e.version !== cur);
     const versions = all.filter((e) => e.valid);
     const foreign = all.filter((e) => !e.valid).map((e) => e.version);
 
-    const doomed = versions.slice(Math.max(0, keepN - 1));
+    const doomed = versions.slice(Math.max(0, keepN - 1))
+      .filter((e) => !protectedVersions.has(e.version));
+    const kept_protected = versions.slice(Math.max(0, keepN - 1))
+      .filter((e) => protectedVersions.has(e.version)).map((e) => e.version);
     const removed = [];
     for (const e of doomed) {
       try {
@@ -191,7 +257,7 @@ class AppStore {
         removed.push(e.version);
       } catch { /* a locked file is not worth failing a start over */ }
     }
-    return { removed, foreign, kept: versions.length - removed.length };
+    return { removed, foreign, protected: kept_protected, kept: versions.length - removed.length };
   }
 }
 
@@ -214,4 +280,4 @@ function cmpVersion(a, b) {
   return 0;
 }
 
-module.exports = { AppStore, cmpVersion, STAGING, REPLACED, REQUIRED_ENTRIES, INFO, BOOT };
+module.exports = { AppStore, cmpVersion, STAGING, REPLACED, LAST_GOOD, REQUIRED_ENTRIES, INFO, BOOT };

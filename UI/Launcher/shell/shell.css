@@ -131,3 +131,9 @@ pre#log .lnc { color: var(--accent); }
 .gate.hidden { display: none; }
 .gate .gate-main { font-size: 19px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 .gate .gate-hint { color: var(--ink-dim); font-size: 15px; }
+
+/* A version that has run long enough to be worth rolling back to, and the one
+   the current pointer displaced. Both survive prune; both are what an operator
+   picks when a new version does not work. */
+.tag.good { border-color: #24503a; background: #101a14; color: #64c795; }
+.tag.prev { border-color: #3a3f4a; background: #14171c; color: var(--ink-dim); }

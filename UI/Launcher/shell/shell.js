@@ -251,12 +251,16 @@ function renderVersions(st) {
 
       const tagTd = el('td');
       if (v.current) tagTd.appendChild(el('span', 'tag cur', '現行'));
+      if (st.lastGood && st.lastGood.version === v.version) tagTd.appendChild(el('span', 'tag good', '已驗證'));
+      if (st.previous === v.version) tagTd.appendChild(el('span', 'tag prev', '前一版'));
       if (!v.valid) tagTd.appendChild(el('span', 'tag bad', '不完整'));
       tr.appendChild(tagTd);
 
       const note = [];
       if (!v.valid && v.missing.length) note.push('缺少 ' + v.missing.join(', '));
       if (v.declaredVersion && v.declaredVersion !== v.version) note.push(`info.json: ${v.declaredVersion}`);
+      if (st.lastGood && st.lastGood.version === v.version)
+        note.push(`連續執行過 ${(st.lastGood.ranForS / 3600).toFixed(1)} 小時`);
       if (v.installedAt) note.push(new Date(v.installedAt).toLocaleString());
       tr.appendChild(el('td', 'note', note.join(' · ')));
 

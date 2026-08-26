@@ -242,6 +242,35 @@ function planForDisplay(plan) {
 // guarantees a floor for the day the core answers quickly.
 let setupGate = null;
 
+// --- the good timer ----------------------------------------------------------
+//
+// A version becomes the last known good only after it has RUN for
+// goodAfterMs -- see the note there. The record is written when this fires,
+// never at shutdown: a machine that crashes must still be able to accumulate
+// one, and a machine that is killed must not be able to claim a stretch it did
+// not finish.
+let goodTimer = null;
+
+function armGoodTimer(version) {
+  clearGoodTimer();
+  const after = Number(cfg.values.goodAfterMs) || 0;
+  if (!after || !version) return;
+  goodTimer = setTimeout(() => {
+    goodTimer = null;
+    try {
+      apps.markGood(version, after / 1000);
+      shellLog(`${version} 已連續執行 ${(after / 3600000).toFixed(1)} 小時 -- 記錄為 last known good`);
+    } catch (e) {
+      shellLog(`could not record ${version} as good: ${e.message}`);
+    }
+  }, after);
+  // Never keep the process alive just to write this.
+  if (goodTimer.unref) goodTimer.unref();
+}
+function clearGoodTimer() {
+  if (goodTimer) { clearTimeout(goodTimer); goodTimer = null; }
+}
+
 async function startCore() {
   const { target, plan, error } = await currentPlan();
   lastPlanError = error || null;
@@ -288,9 +317,15 @@ async function startCore() {
   // target.version, not current.json: resolve() may have fallen back to the
   // newest valid version, and that is the one now executing. Passing it stops
   // prune from deleting the running directory out from under the process.
+  armGoodTimer(target.version);
+
   const pruned = apps.prune(cfg.values.keepVersions, target.version);
   if (pruned.removed.length)
     shellLog(`removed old versions: ${pruned.removed.join(', ')} (kept ${pruned.kept})`);
+  // Said out loud too: a rollback target surviving past keepVersions is the
+  // whole point, and it should not look like prune failed to do its job.
+  if (pruned.protected.length)
+    shellLog(`kept as rollback targets despite keepVersions: ${pruned.protected.join(', ')}`);
   // Said out loud, every start. A folder in the application root that is not a
   // version means the root is probably pointing somewhere it should not -- at a
   // machine's working directory, most dangerously -- and prune deliberately
@@ -312,6 +347,7 @@ async function startCore() {
 function wireSupervisor() {
   supervisor.on('exit', async (info) => {
     lastExit = info;
+    clearGoodTimer();
     // `quitting` is set by before-quit, which stops the core deliberately. The
     // exit that follows is the one we asked for, and the window is already
     // going away -- there is nothing to report it to.
@@ -361,6 +397,11 @@ function registerIpc() {
       workingDir: cfg.workingDir,
       versions: apps.list(),
       current: apps.currentVersion(),
+      // Which version has proved itself, and what the current pointer
+      // displaced. Both are rollback targets, and an operator choosing one
+      // under pressure should not have to guess which is which.
+      lastGood: apps.lastGood(),
+      previous: apps.previousVersion(),
       resolved: target || null,
       // The plan is shown in the UI on purpose. "What exactly is this launcher
       // about to run, out of which folder, and which of its behaviours has this

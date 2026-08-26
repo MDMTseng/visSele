@@ -81,6 +81,18 @@ const DEFAULTS = {
   // successful start, so a failed update always has something to roll back to.
   keepVersions: 3,
 
+  // How long a version must RUN before it is recorded as the last known good,
+  // and therefore before it becomes something worth rolling back to.
+  //
+  // Three hours, not three minutes: "it started" is not evidence that a version
+  // works -- a build that dies after ten minutes starts perfectly. This is the
+  // length of a real production stretch on these machines.
+  //
+  // Consequence worth knowing: a machine restarted more often than this never
+  // records a good version at all. That is why prune also protects whatever the
+  // current pointer displaced, which always exists.
+  goodAfterMs: 3 * 60 * 60 * 1000,
+
   // --- supervision --------------------------------------------------------
   // These are launcher behaviour, not application layout. Anything the
   // APPLICATION knows better -- its control port, how long it needs to become
