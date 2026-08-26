@@ -271,10 +271,103 @@ deliberately NOT built yet** — it would be a second place that extracts
 features, which is the thing the gate exists to prevent. Worth deciding
 alongside D2 rather than on its own.
 
-## Decisions waiting
+## Decisions waiting — the detail
 
-| | question | options as they stand |
-|---|---|---|
+### D1 — should SAVING rewrite `def_image_reg` from a live inspection?
+
+Narrower than it first looked. There are exactly two writers:
+
+```js
+// DefConfUI, on save, ONLY when the target file did not exist:
+if (!existed) { report.def_image_reg = { cx, cy, angle: reg.rotate, ... } }   // from edit_info.inspReport
+// MISC_Util, otherwise:
+if (edit_info.def_image_reg) report.def_image_reg = edit_info.def_image_reg;  // pass through
+```
+
+So an ordinary overwrite passes the value through untouched. The `!existed`
+branch bakes **whatever the last inspection said** into the recipe — and the
+values now in `data/test1.hydef` (cx 15.02516, cy 9.30547, angle exactly 0)
+match that path, not a hand edit.
+
+The problem with it: if that inspection ran on the **sig360 fallback** — which
+is what happens when the shape cache is stale — then the angle written into the
+recipe is the fallback locator's answer, not the one the def is built around.
+A recipe field silently sourced from whichever locator happened to run.
+
+`angle_offset_deg` is in the shape-cache fingerprint, so any change also
+invalidates the trained features. **That consequence is already closed**:
+`EditInfo_Patch` drops `__shape_cache` when `def_image_reg` or
+`roi_refine_points` changes, so a save can no longer write a cache that cannot
+match its own registration.
+
+What is left to decide is whether the `!existed` rewrite should exist at all.
+
+- **Keep it** — a brand-new def has no registration and something must seed it.
+- **Narrow it** — seed only when `def_image_reg` is absent, never overwrite.
+- **Require the locator** — refuse to seed from a report that came from the
+  fallback, since that is the case that writes a wrong angle.
+
+Recommendation: **narrow it.** Seeding an absent field is the legitimate job;
+overwriting a measured one on a save the operator thinks is ordinary is not.
+
+### D2 — the def-file write policy on the Resilio share
+
+Unchanged and still the only fleet risk with **no mitigation at all**. The
+facts, as established earlier:
+
+- every def lives in the Resilio-synced folder, shared company-wide,
+- fifteen machines,
+- the launcher treats it read-only for updates, but **the WebUI writes defs
+  straight into it**,
+- so a save on one machine propagates to all fifteen, and a delete propagates
+  as a delete.
+
+There is no versioning, no review step, and no per-machine staging. The sync
+artefacts (`.!sync`, `.Conflict.`) are filtered for DISPLAY, which means a
+conflict is invisible rather than handled.
+
+Options, cheapest first:
+
+1. **Nothing** — accept it. Defensible only while one person edits defs.
+2. **Per-machine staging** — the WebUI writes to a machine-local folder; a
+   deliberate "publish" copies into the share. One extra button, and the blast
+   radius of a mistake becomes one machine.
+3. **Read-only share + publish from one place** — strongest, most disruptive.
+
+This is also where a headless `--sbm-train` belongs (see I4): if defs are
+published from one place, regenerating caches for the fleet is one command
+there, and it does not become a second extraction path on every machine.
+
+### D3 — `updateSource` per machine, and one real end-to-end update
+
+`updateSource` defaults to `null` in `UI/Launcher/src/config.js`; each machine
+needs it pointed at `data/sync/DEV/<機種>/update/`. Nothing has ever walked
+install → verify → rename → run → mark-good on real hardware. Low risk to
+decide, but it cannot be verified from here.
+
+### D4 — per-item failure statistics — SMALLER than it looked
+
+The reports **already go to a database**: `WS_SEND(Insp_DB_W_ID, ...)` pushes
+every newly added report to `<inspection_db_ws_url>/insert/insp`, and
+`machine_setting.json` on this bench points at `ws://db.xception.tech:8080/`.
+There is a separate `inspection_monitor_url` dashboard on top of it.
+
+So the raw data persists. What does not is the **live panel's rollup** —
+`edit_info.reportStatisticState` (counts, histograms, Cpk) lives in the
+renderer and dies with it. That is the same class as the session problem above:
+state nobody restores.
+
+So the decision is not "where do we store it":
+
+- **Rebuild from the DB on entry** — the data is already there; this is a query,
+  not a storage design.
+- **Leave it** — accept that a renderer restart zeroes the panel, since the DB
+  and the dashboard hold the history.
+
+Recommendation: **check what the dashboard already answers before building
+anything.** This may be finished work that nobody connected.
+
+---|---|---|
 | **D1** | The `def_image_reg` drift above | quantise `ao` in the fingerprint (0.13 deg cannot change a mask meaningfully), or stop DefConfUI rewriting the reg when it has not really changed. The second is the root fix; the first is one line. |
 | **D2** | Def-file write policy on the Resilio share | still the one fleet risk with **no mitigation at all** (U4) |
 | **D3** | `updateSource` per machine, and one real end-to-end update | U2/U3 |
