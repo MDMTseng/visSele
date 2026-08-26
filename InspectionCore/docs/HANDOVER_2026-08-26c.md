@@ -583,6 +583,82 @@ The remaining question is not engineering: does the existing dashboard
 company infrastructure, and reading the code answered the question that
 mattered.
 
+## Testing note: hand-editing a def
+
+Delete `featureSet_sha1` from a def you edited by hand and the save-conflict
+dialog stops appearing. Both sides treat an absent hash as "nothing to compare":
+
+```js
+if (onDiskSha1 === undefined || onDiskSha1 === edit_info.DefFileHash) commitSave();
+```
+```c
+strcpy(subFeatureDefSha1,"");
+const char *sSet_sha1 = JFetch_STRING(root,"featureSet_sha1");
+if (sSet_sha1 != NULL) { ... }
+```
+
+One side effect worth knowing before using it for a run whose data matters:
+those inspection reports reach the database with an EMPTY def identity, so they
+cannot later be grouped by the recipe that produced them.
+
+## @__SBM_INFO__ — phase one done, phase two BLOCKED on the fleet
+
+The trained SBM feature set should sit beside the sig360 signature, in
+`inherentfeatures`, as `@__SBM_INFO__` — they are the same kind of thing, the
+trained representation of the part, one entry per locator. Agreed and started.
+
+**It cannot be written yet, and the reason is not style.**
+
+`inherentfeatures` is a CLOSED vocabulary. An unrecognised `type` is not
+skipped, it fails the whole def:
+
+```c
+else { LOGE("feature[%d] has unknown type:[%s]", i, feature_type); return -1; }
+```
+
+Same rule that produced the `loc_include` incident — one unknown entry,
+`cJSON parse failed`, and the engine ran with no features at all. So a def
+carrying `@__SBM_INFO__` is **unreadable by any core that predates this
+change**. Fifteen machines share one def folder and the end-to-end update path
+has never been exercised (D3), so a WebUI that ships before the cores do is a
+fleet-wide outage.
+
+**Phase 1 (done):** the core reads it and prefers it over the legacy top-level
+`__shape_cache` when both are present. Nothing writes it; old defs are
+unaffected. Verified with a def carrying the cache ONLY under `@__SBM_INFO__`,
+against the legacy placement as a control:
+
+```
+__shape_cache (legacy)   cache accepted, sim 0.9894 cx 15.0256 rot -0.1395
+@__SBM_INFO__ (new)      cache accepted, sim 0.9894 cx 15.0256 rot -0.1395
+```
+
+The first attempt at that test was inconclusive: the bench def's cache is stale,
+so BOTH placements were refused and both fell back to sig360. The registration
+had to be restored to the value the fingerprint was taken against before the
+comparison meant anything.
+
+**Phase 2 (blocked):** move the writer — one line in `MISC_Util`. Only once
+every core in the fleet is on a build with phase 1, which promotes D3 from a
+nice-to-have to a prerequisite.
+
+### The hash question phase 2 has to answer
+
+Today `__shape_cache` is deliberately OUTSIDE `featureSet_sha1`: it is added
+after the digest, so a def with a cache and the same def without hash alike.
+Inside `inherentfeatures` it would be hashed, as the signature is.
+
+- **In the hash:** what the machine matches against is part of the recipe, the
+  signature is hashed for exactly that reason, and it is the same argument that
+  moved `def_image_reg`.
+- **Out of the hash:** the cache is a memo of a pure function carrying its own
+  fingerprint, and regenerating it changes no measurement — so calling it a new
+  def version churns every consumer keyed on the hash for nothing.
+
+Excluding it stays possible (digest before appending the entry), but an entry in
+`inherentfeatures` that is not hashed while its siblings are is a subtlety
+somebody will trip over.
+
 ## Caveat worth having in writing
 
 **Never build a deployable dist with `npx vite build`.** It uses
