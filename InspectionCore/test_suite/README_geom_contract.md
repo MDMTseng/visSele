@@ -1,0 +1,131 @@
+# The geometry contract
+
+`geom_vectors.json` is what the CORE does. `UI/WebUI/tools/geom_contract.mjs`
+asserts the WebUI still agrees.
+
+```bash
+# regenerate from the core (only when the core changed ON PURPOSE)
+export PATH=/c/msys64/mingw64/bin:$PATH
+cd InspectionCore
+g++ -std=c++17 -O2 -DFEATURE_OPENCV -fopenmp -o build/geom_emit.exe \
+  test_suite/geom_vectors_emit.cpp \
+  -IMatchingEngine/include -IMatchingEngine/include_priv \
+  -IMatchingEngine/MorphEngine/include -Icommon_lib/include \
+  -Icontrib/cJSON -Ilogctrl/include -ICameraLayer -ICameraLayer/include \
+  $(pkg-config --cflags opencv4) \
+  -Lbuild/win-mingw-msys -lMatchingEngine -lcJSON -lcommon_lib -lCircleFitting \
+  -llogctrl -lsmem_channel -lpolyfit -lshape_based_matching -lCameraLayer \
+  $(pkg-config --libs opencv4)
+./build/geom_emit.exe > test_suite/geom_vectors.json
+
+# check the WebUI against it
+cd ../UI/WebUI && node tools/geom_contract.mjs
+```
+
+## Why this is a test and not just "one file per side"
+
+Some geometry has to exist twice: at edit time the core has not run, so the
+editor must predict what the machine will do.
+
+Putting each side in one tidy file makes drift **reviewable**. It does not make
+it **impossible** — and that is not a theoretical distinction. When B3 was found
+on 2026-08-26, the CORRECT port of `convert3Pts2ArcData` was sitting a few dozen
+lines away from three wrong copies **in the same file**, and the wrong ones
+seeded arc caliper width from the complement of the arc, 11.00× too wide.
+
+Same file did not help. A failing test does.
+
+## Two things this exercise taught
+
+**Test where the calipers land, not the circle parameters.** The first version
+compared `cx`/`cy`/`r` and reported two failures that no amount of care in the
+JS could have fixed: the circumcentre of nearly-collinear points is
+ill-conditioned, and float and double genuinely disagree about it — measured 8.3
+units out of 50000. But two circles that far apart at the centre still pass
+through nearly the same points over the span actually used, and the points are
+where the boxes are drawn and the measurement is taken. Switching to sampled
+anchors took `large radius` from a 3.5e-3 failure to a 1.2e-5 pass.
+
+**A known numerical limit gets its own tolerance and a reason, not a wider
+global one.** `near collinear` still diverges, at 2.8e-3. It carries `tol` and a
+`note`, and the runner reports it as `LIMIT` rather than `PASS` or `FAIL`: a
+permanently red test is one people learn to ignore, and widening the global
+tolerance to cover it would hide the drift the file exists to catch. Verified
+that the relaxed bound does not mask a real bug — with B3 deliberately
+reintroduced, that same vector fails at 1e5 against its 5e-3 allowance.
+
+## Verified to fail
+
+A harness that cannot fail is not a harness. With the pt2-blind version of
+`arcSweep` put back:
+
+```
+4 of 13 vectors DISAGREE with the core
+  caliper anchor 2 is 2.000e+1 away from where the core puts it
+```
+
+20 units on a radius-10 arc is the full diameter — the box lands on the opposite
+side of the circle. Note only 4 of 13 fail: where `pt1 → pt3` counter-clockwise
+happens to be the right way round, the bug is invisible. That is exactly why it
+survived.
+
+## What it covers
+
+| contract | vectors | where the core's answer comes from |
+|---|---|---|
+| `arcSweep` | 13 | `convert3Pts2ArcData`, called directly |
+| `resolveCaliper` | 24 | `Caliper.h`'s constants and `caliper_effective_count` |
+
+The caliper rule used to live in **four** places — the circle parser, the line
+parser, and the top of each locate function — which is three more than can be
+kept in agreement, and is what the WebUI was mirroring by hand when it got 15 of
+24 inputs wrong. It is now stated once in `Caliper.h`, and the emitter calls
+that, so the vectors cannot drift from the machine without the machine changing.
+
+Both reintroduced deliberately to confirm the harness bites:
+
+```
+B3 (pt2-blind arcSweep)          4 of 37 fail, worst anchor 2.000e+1
+B2 (no execute-stage floor)      7 of 37 fail, e.g. arc count 2: core 3, webui 2
+```
+
+## Where the geometry comes from, by situation
+
+Worth being explicit, because only the first row genuinely needs a second
+implementation:
+
+| when | source | status |
+|---|---|---|
+| **dragging a point** | the UI predicts — the core has not run | unavoidable; this is what the contract bounds |
+| **on commit / CHECK** | the core, over `II` + `definfo` + `imgsrc:"__CACHE_IMG__"` | the round trip exists (`DefConfUI.js`) but is triggered by hand, and the answer is never compared against what the UI predicted |
+| **during inspection** | the core's report | partly still recomputed in JS — X1 and X7 |
+
+So the contract test is for row one. Rows two and three do not need prediction
+at all: row two already has an authoritative answer available and does not use
+it to check anything, and row three receives one (`cal_hits` carry coordinates,
+search points carry x/y) and recomputes anyway.
+
+### Do NOT make the commit round trip automatic
+
+The obvious-looking improvement is to fire that `II` round trip on mouse-up so
+the operator always sees the machine's answer. **Don't.**
+
+Operators deliberately leave a shape in an imperfect state — parked mid-edit, or
+positioned badly on purpose to see what the machine makes of it. Recomputing a
+fit on every release either destroys that state or answers a question nobody
+asked, and the one thing an editor must not do is quietly undo what somebody
+meant.
+
+CHECK stays manual. That is a decision, not an omission.
+
+What CAN hang off it: when the operator does press CHECK, the core's reply is
+right there next to what the UI drew. Comparing them at that moment costs
+nothing, needs no new trigger, and catches drift **in the field** rather than
+only in this test at build time. The trigger stays the operator's.
+
+## When it fails
+
+Do **not** regenerate the vectors to make it green. The vectors are what the
+machine does; regenerating writes the disagreement down as the new truth. A
+failure means the screen and the machine have parted company, and the question
+is which one is wrong.

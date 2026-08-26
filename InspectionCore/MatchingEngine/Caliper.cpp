@@ -254,7 +254,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
                                       const char *dbgName, acv_XY imgOffset)
 {
   CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
-  if (count < 2) count = 2;
+  count = caliper_effective_count(count, CALIPER_MIN_COUNT_LINE);
   acv_XY lineDir = acvVecNormalize(acvVecSub(p1, p0));
   // A zero-length line (p1 == p0) or a NaN endpoint from morph normalizes to
   // NaN, and caliper_measure's sibling check has no counterpart here -- the
@@ -542,7 +542,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
                                           const char *dbgName, acv_XY imgOffset)
 {
   CaliperCircleResult r = {}; r.ok = false; r.center = center0; r.radius = radius0;
-  if (count < 3) count = 3;
+  count = caliper_effective_count(count, CALIPER_MIN_COUNT_ARC);
   const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
   std::vector<std::vector<float>> dProfs; std::vector<float> dPos, dConf; std::vector<int> ptCaliper;
 
