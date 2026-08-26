@@ -12,6 +12,8 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { defFileGeneration, stampRefImagePath } from 'UTIL/MISC_Util';
 import { inspectSummary } from './sbmInspectResult';
+import { useDefImages } from 'UTIL/useDefImages';
+import { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
 
 // ── React wrapper: mount a DrawHook_CanvasComponent on a <canvas>, feed it the
 // image + the draw hook, resize via ReactResizeDetector. ──────────────────────
@@ -240,8 +242,23 @@ function ctrlScene(g, canvas, ctx_state) {
 function InspectPanel({ insp, onClear }) {
   const row = { display: 'flex', justifyContent: 'space-between', fontSize: 11 };
   if (!insp.located) {
-    return <div style={{ fontSize: 11, color: '#ff5252', marginTop: 4 }}>
-      定位失敗:{insp.why || '核心沒有找到零件'}
+    // A failure gets MORE room than a success, not less. It is the case the
+    // operator is stuck on, and "定位失敗" alone tells them nothing they did not
+    // already know from the blank canvas.
+    const L = insp.locate;
+    const gap = L && Number.isFinite(L.best) && Number.isFinite(L.thres)
+      ? L.thres - L.best : null;
+    return <div style={{ fontSize: 11, marginTop: 4, border: '1px solid #a61d24',
+                         borderRadius: 4, padding: 6, background: '#2a1215' }}>
+      <div style={{ color: '#ff7875', fontWeight: 600, marginBottom: 3 }}>定位失敗</div>
+      <div style={{ color: '#d89a9a', lineHeight: 1.5 }}>{insp.why}</div>
+      {gap !== null && <div style={{ color: '#d89a9a', marginTop: 4 }}>
+        差距很小的話,先看照明和 matching 參數;差很多通常是特徵範圍或 coarse scale。
+      </div>}
+      {L && L.candidates === 0 && !Number.isFinite(L.best) &&
+        <div style={{ color: '#d89a9a', marginTop: 4 }}>
+          先按「🔵 生成特徵點」看有沒有抽到特徵——沒有特徵就不會有候選。
+        </div>}
       <Button size="small" type="link" onClick={onClear}>清除</Button>
     </div>;
   }
@@ -280,6 +297,66 @@ function InspectPanel({ insp, onClear }) {
   </div>;
 }
 
+// The sweep, as a strip you can read down. One row per step, the baseline
+// marked, and the two numbers that matter per row: the match score and -- where
+// the axis has a ground truth -- how far the reported pose is from the pose we
+// imposed.
+function SweepPanel({ sweep }) {
+  if (!sweep) return null;
+  const A = SWEEP_AXES[sweep.axis] || {};
+  const u = A.unit || '';
+  const fmt = (v) => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2));
+  const sims = sweep.rows.filter((r) => Number.isFinite(r.sim)).map((r) => r.sim);
+  // Scale the bars to the range actually seen, not to 0..1. Every score in a
+  // healthy sweep sits between 0.9 and 1.0, and a 0..1 bar makes them all look
+  // identical -- which is precisely the difference being looked for.
+  const lo = sims.length ? Math.min(...sims) : 0;
+  const hi = sims.length ? Math.max(...sims) : 1;
+  const span = (hi - lo) > 1e-6 ? (hi - lo) : 1;
+  return <div style={{ marginTop: 4 }}>
+    <div style={{ fontSize: 11, color: '#999' }}>
+      {sweep.done}/{sweep.total}{sweep.aborted ? '(已中止)' : ''}
+    </div>
+    {sweep.verdict && <div style={{ fontSize: 11, color: '#69c0ff', margin: '3px 0',
+                                    lineHeight: 1.5 }}>{sweep.verdict}</div>}
+    <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 3 }}>
+      {sweep.rows.map((r, i) => {
+        const isBase = Math.abs(r.value - A.neutral) <= 1e-9;
+        return <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4,
+                     fontSize: 11, fontVariantNumeric: 'tabular-nums',
+                     borderTop: '1px solid #333', padding: '1px 0',
+                     background: isBase ? '#111c2a' : undefined }}>
+          <span style={{ width: 46, textAlign: 'right', color: isBase ? '#69c0ff' : '#ccc' }}>
+            {fmt(r.value)}{u}</span>
+          <span style={{ width: 34, flex: '0 0 auto', height: 8, background: '#222',
+                         borderRadius: 2, overflow: 'hidden' }}>
+            {r.located && <span style={{ display: 'block', height: '100%',
+              width: `${Math.max(4, ((r.sim - lo) / span) * 100)}%`,
+              background: '#00c853' }} />}
+          </span>
+          <span style={{ width: 42, color: r.located ? '#ccc' : '#ff5252' }}>
+            {r.located ? r.sim.toFixed(3) : '失敗'}</span>
+          {Number.isFinite(r.residual)
+            ? <span style={{ flex: '1 1 auto', textAlign: 'right',
+                             color: r.signSuspect ? '#ffab00'
+                                  : Math.abs(r.residual) > 0.5 ? '#ff9100' : '#888' }}
+                title={`施加 ${fmt(r.expected)}${u},量到 ${fmt(r.moved)}${u}`}>
+                {r.residual >= 0 ? '+' : ''}{r.residual.toFixed(3)}{u}
+                {r.signSuspect ? ' ⚠符號' : ''}
+              </span>
+            : <span style={{ flex: '1 1 auto', textAlign: 'right', color: '#666' }}>
+                {r.located ? `${r.ok}/${r.ok + r.na}` : ''}
+              </span>}
+        </div>;
+      })}
+    </div>
+    {sweep.rows.some((r) => r.signSuspect) &&
+      <div style={{ fontSize: 11, color: '#ffab00', marginTop: 3, lineHeight: 1.5 }}>
+        ⚠ 殘差約等於施加值的兩倍 — 這是角度符號反了,不是定位差了兩倍。
+      </div>}
+  </div>;
+}
+
 export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const dispatch = useDispatch();
   const edit_info = useSelector((s) => s.UIData.edit_info);
@@ -290,6 +367,10 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const [genBusy, setGenBusy] = useState(false);
   const [insp, setInsp] = useState(undefined);         // inspectSummary() of the last test run
   const [inspBusy, setInspBusy] = useState(false);
+  const [sweep, setSweep] = useState(undefined);       // {axis, from, to, steps, rows, verdict}
+  const [sweepAxis, setSweepAxis] = useState('rot');
+  const [sweepRange, setSweepRange] = useState({});    // axis -> {from,to,steps}
+  const abortRef = useRef(false);
   const inspRef = useRef(undefined);                   // mirror, same reason as featRef
   inspRef.current = insp;
   const work = useRef({ poly: [], cursor: null, line: null });
@@ -299,6 +380,19 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
   const shapeList = (obj && obj.shapeList) || [];
   const roiPts = edit_info.roi_refine_points || [];
+
+  // The studio used to be stuck on whichever image was loaded when it opened.
+  // The switcher DefConfUI puts on screen is behind this modal, and a def is
+  // tested against several samples, not one -- so the studio gets its own,
+  // driven by the same hook so both move the CORE's cached image and not just
+  // their own bitmap.
+  //
+  // Switching THROWS AWAY the last test result. It was measured on a different
+  // image, and leaving it on screen (or on the canvas) next to the new one is
+  // the worst outcome available here: a verdict that looks current and is not.
+  const { imageList, currentImagePath, switchImage } = useDefImages({
+    afterLoad: () => { setInsp(undefined); setFeatPts(undefined); },
+  });
 
   const onRoi = useCallback((pts) => {
     dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: pts }));
@@ -370,29 +464,91 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   //
   // It deliberately does NOT touch the def, redux inspection state, or the
   // shapes. A test you have to undo is a test nobody runs twice.
-  const runInspect = useCallback(() => {
-    if (!sendBPG) return;
+  // ONE inspection, optionally against a deliberately degraded image.
+  //
+  // Both the single test and the robustness sweep go through here, so there is
+  // one description of what a test run IS: the current unsaved def, the core's
+  // cached image, the def's own mmpp, and nothing written back anywhere.
+  const inspectOnce = useCallback((perturb) => {
+    if (!sendBPG) return Promise.reject(new Error('no link'));
     let deffile;
     try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
-    catch (e) { setInsp({ located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
-                          why: '無法產生 def:' + (e && e.message ? e.message : e) }); return; }
-    setInspBusy(true);
-    new Promise((resolve, reject) => sendBPG('II', 0, {
-      definfo: deffile,
-      imgsrc: '__CACHE_IMG__',
-      // calibInfo disabled: the def's own mmpp is the scale here, exactly as
+    catch (e) { return Promise.reject(e); }
+    const img_property = {
+      // calibInfo disabled: the def's own mmpp is the scale, exactly as
       // DefConfUI's orientation inspect does it. Letting a live calibration in
       // would test a different machine than the one the def describes.
-      img_property: { calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp } },
+      calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp },
+    };
+    if (perturb) img_property.perturb = perturb;
+    return new Promise((resolve, reject) => sendBPG('II', 0, {
+      definfo: deffile, imgsrc: '__CACHE_IMG__', img_property,
     }, undefined, { resolve, reject }))
       .then((pkts) => {
         const rp = (pkts || []).find((p) => p.type === 'RP');
-        setInsp(inspectSummary(rp && rp.data, edit_info.def_image_reg));
-      })
+        return inspectSummary(rp && rp.data, edit_info.def_image_reg);
+      });
+  }, [sendBPG, edit_info]);
+
+  // "測試檢驗": run a REAL inspection with the current, unsaved settings and show
+  // what the machine did with them.
+  //
+  // Until this existed the studio could only be set up, never tried: you drew
+  // regions, pressed save, left, and found out somewhere else. II is the same
+  // round trip DefConfUI's CHECK uses, so this is the machine's real answer and
+  // not a preview. It touches neither the def nor redux -- a test you have to
+  // undo is a test nobody runs twice.
+  const runInspect = useCallback(() => {
+    setInspBusy(true);
+    inspectOnce(null)
+      .then(setInsp)
       .catch((e) => setInsp({ located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
                               why: 'core 沒有回應:' + (e && e.message ? e.message : e) }))
       .finally(() => setInspBusy(false));
-  }, [sendBPG, edit_info]);
+  }, [inspectOnce]);
+
+  // ROBUSTNESS SWEEP: degrade the scene along one axis and watch where the
+  // locator gives up.
+  //
+  // Sequential, not parallel. The core holds ONE cached image and one matching
+  // engine behind a lock, so firing the whole sweep at once would serialise in
+  // the core anyway while making the progress meaningless and the abort
+  // impossible. One at a time also means the panel can show the curve building.
+  const runSweep = useCallback(async () => {
+    const A = SWEEP_AXES[sweepAxis];
+    const r = sweepRange[sweepAxis] || {};
+    const from = Number.isFinite(r.from) ? r.from : A.from;
+    const to = Number.isFinite(r.to) ? r.to : A.to;
+    const steps = Number.isFinite(r.steps) ? r.steps : A.steps;
+    const values = sweepValues(sweepAxis, from, to, steps);
+    // One seed for the WHOLE sweep. A per-step seed would re-roll the noise
+    // between steps of a gain sweep, so the curve would mix two variables and
+    // read as noise sensitivity that is not there.
+    const seed = 1 + Math.floor(Math.abs(from * 1000 + to * 37 + steps));
+    abortRef.current = false;
+    setSweep({ axis: sweepAxis, from, to, steps, rows: [], done: 0, total: values.length });
+    let base;
+    const rows = [];
+    for (let i = 0; i < values.length; i++) {
+      if (abortRef.current) break;
+      const v = values[i];
+      let sum;
+      try { sum = await inspectOnce(perturbFor(sweepAxis, v, seed)); }
+      catch (e) { sum = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                          why: 'core 沒有回應' }; }
+      if (i === 0) {
+        base = sum;
+        // The baseline result is also the single-test result -- it is the same
+        // run. Showing it means the overlay is populated while the sweep works.
+        setInsp(sum);
+      }
+      rows.push(sweepRow(sweepAxis, v, sum, base));
+      setSweep((sw) => (sw && sw.axis === sweepAxis
+        ? { ...sw, rows: [...rows], done: i + 1 } : sw));
+    }
+    setSweep((sw) => (sw ? { ...sw, verdict: sweepVerdict(sweepAxis, rows),
+                             aborted: abortRef.current } : sw));
+  }, [sweepAxis, sweepRange, inspectOnce]);
 
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = captureDrag;
@@ -424,6 +580,15 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
 
   return <div style={{ display: 'flex', height: '84vh', gap: 8 }}>
     <div style={{ width: 240, overflowY: 'auto', fontSize: 12, paddingRight: 6 }}>
+      {imageList.length > 1 &&
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+          <span style={{ flex: '0 0 auto', color: '#999' }}>影像</span>
+          <Select size="small" style={{ flex: '1 1 auto', minWidth: 0 }}
+            value={currentImagePath} onChange={switchImage}
+            title="換一張同資料夾的樣本。換圖會清掉上一次的檢驗結果——那是在別張圖上量的。"
+            options={imageList.map((im) => ({ value: im.path, label: im.name }))} />
+        </div>}
+
       <Divider orientation="left" style={{ margin: '4px 0' }}>定位 registration</Divider>
       <TBtn id="locline" title="拖一條線:按下=原點,放開方向=0°軸。設定 def_image_reg。">✛ 設定定位線（拖曳）</TBtn>
       <div style={{ fontSize: 11, color: '#999' }}>
@@ -465,6 +630,33 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
         title="用目前(尚未存檔)的設定跑一次真正的檢驗,把結果疊回畫面。不會改到 def。">
         ▶ 跑一次檢驗</Button>
       {insp && <InspectPanel insp={insp} onClear={() => setInsp(undefined)} />}
+
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>定位強健性掃描</Divider>
+      <Select size="small" style={{ width: '100%', marginBottom: 3 }}
+        value={sweepAxis} onChange={setSweepAxis}
+        options={Object.entries(SWEEP_AXES).map(([k, a]) => ({ value: k, label: a.label }))} />
+      <div style={{ display: 'flex', gap: 3, marginBottom: 3 }}>
+        {['from', 'to', 'steps'].map((f) => {
+          const A = SWEEP_AXES[sweepAxis];
+          const r = sweepRange[sweepAxis] || {};
+          return <InputNumber key={f} size="small" style={{ flex: 1, minWidth: 0 }}
+            value={r[f] !== undefined ? r[f] : A[f]}
+            step={f === 'steps' ? 1 : (A.unit === '×' ? 0.05 : 1)}
+            onChange={(v) => setSweepRange((s0) => ({ ...s0,
+              [sweepAxis]: { ...(s0[sweepAxis] || {}), [f]: v } }))} />;
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <Button size="small" style={{ flex: 1 }} onClick={runSweep}
+          disabled={!!(sweep && sweep.done < sweep.total && !sweep.aborted)}>
+          ▶▶ 掃描</Button>
+        <Button size="small" danger onClick={() => { abortRef.current = true; }}
+          disabled={!(sweep && sweep.done < sweep.total && !sweep.aborted)}>中止</Button>
+      </div>
+      <div style={{ fontSize: 11, color: '#999', marginTop: 3, lineHeight: 1.5 }}>
+        {SWEEP_AXES[sweepAxis].hint}
+      </div>
+      <SweepPanel sweep={sweep} />
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>matching 參數</Divider>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>

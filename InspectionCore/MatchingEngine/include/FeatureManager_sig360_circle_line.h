@@ -413,6 +413,9 @@ protected:
   featureDef_circle *plineDef,edgeTracking &eT,
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
 
+  // Record a locate MISS, keeping the closest one across candidates.
+  void noteLocateMiss(float best, float thres, const char *reason);
+
   FeatureReport_searchPointReport SPointMatching_ReportGen(
   featureDef_searchPoint *def,
   FeatureReport_sig360_circle_line_single &singleReport,

@@ -55,8 +55,32 @@ export function inspectSummary(rp, authoredReg) {
   const top = rp && rp.reports && rp.reports[0];
   const one = top && top.reports && top.reports[0];
   if (!one) {
+    // WHY it did not locate, when the core is willing to say. `locate` is only
+    // present when there is a comment to make, and its three fields answer
+    // three different problems:
+    //   best/thres  -- it saw the part and scored it too low: threshold or
+    //                  lighting. The gap is the number to tune against.
+    //   candidates 0 with no score -- nothing was even a candidate: training,
+    //                  framing or scale, which a threshold will never fix.
+    //   region_dropped -- the working region threw the object away before the
+    //                  locator ever ran, which looks identical to both above.
+    const L = (top && top.locate) || null;
+    const dropped = (top && top.region_dropped) || 0;
+    let why;
+    if (L && Number.isFinite(L.best) && Number.isFinite(L.thres)) {
+      why = `最佳比對 ${L.best.toFixed(4)}，門檻 ${L.thres.toFixed(2)}`
+          + `（差 ${(L.thres - L.best).toFixed(4)}，試了 ${L.candidates} 個候選）`;
+    } else if (L) {
+      why = L.reason === 'shape matcher returned no candidate'
+        ? '完全沒有候選 — 不是門檻的問題,要看訓練/取景/縮放'
+        : L.reason;
+    } else if (dropped > 0) {
+      why = `檢驗區把 ${dropped} 個物件擋掉了 — 定位器沒跑到`;
+    } else {
+      why = (top && top.error) || (rp && rp.error) || '核心沒有給原因';
+    }
     return { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
-             why: (top && top.error) || (rp && rp.error) || 'no object in the report' };
+             locate: L, regionDropped: dropped, why };
   }
 
   const pose = { cx: one.cx, cy: one.cy, rotate: one.rotate,

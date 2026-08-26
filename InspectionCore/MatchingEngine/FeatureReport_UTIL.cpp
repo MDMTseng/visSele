@@ -612,6 +612,25 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddNumberToObject(report_jobj, "region_dropped",
                               report->data.sig360_circle_line.region_dropped);
 
+      // The locate outcome, and ONLY when it has something to say -- a
+      // successful run adds nothing here, so existing defs hash and diff the
+      // same and the key's presence itself means "the locator has a comment".
+      {
+        const auto &L = report->data.sig360_circle_line.locate;
+        if (L.reason[0] != 0)
+        {
+          cJSON *loc = cJSON_CreateObject();
+          cJSON_AddItemToObject(report_jobj, "locate", loc);
+          cJSON_AddStringToObject(loc, "reason", L.reason);
+          cJSON_AddNumberToObject(loc, "candidates", L.candidates);
+          // best/thres only when a score was actually computed. Emitting NaN
+          // would serialise as `null` and read on screen as "scored zero",
+          // which is a different and much worse claim than "never scored".
+          if (L.best == L.best)  cJSON_AddNumberToObject(loc, "best",  L.best);
+          if (L.thres == L.thres) cJSON_AddNumberToObject(loc, "thres", L.thres);
+        }
+      }
+
       if(report->bacpac!=NULL)
       {
         cJSON* cam_param = cJSON_CreateObject();

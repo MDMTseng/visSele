@@ -52,6 +52,7 @@
 #include <ctime>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include "TestPerturb.h"   // II robustness sweep: deliberately degrade the image
 #include "CvBridge.h"
 #include "LensCalib.h"
 #include "FieldCalib.h"
@@ -4738,6 +4739,31 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           break;
         }
         // SaveIMGFile("data/test1.png",srcImg);
+
+        // ROBUSTNESS SWEEP: perturb the image before anything looks at it.
+        //
+        // Opt-in per request and absent by default, so a normal CHECK is
+        // untouched. It runs HERE -- after the image is resolved and before the
+        // def is read -- because that is the last point where "the image" is
+        // still one buffer: the calibration, the working region, the locator and
+        // every caliper downstream then see the degraded frame, which is the
+        // whole point. Perturbing later would test one stage and flatter the
+        // rest.
+        //
+        // seed comes from the request so a sweep step repeats exactly. See
+        // TestPerturb.h for why the order is geometry, then light, then noise.
+        {
+          cJSON *ip = JFetch_OBJECT(json, "img_property");
+          cJSON *pj = ip ? JFetch_OBJECT(ip, "perturb") : NULL;
+          TestPerturb tp = test_perturb_parse(pj);
+          if (tp.any())
+          {
+            double *sd = pj ? JFetch_NUMBER(pj, "seed") : NULL;
+            LOGI("II perturb: rot=%.2fdeg scale=%.3f skew=%.3f gain=%.2f bias=%.1f noise=%.1f",
+                 tp.rot_deg, tp.scale, tp.skew, tp.gain, tp.bias, tp.noise);
+            test_perturb_apply(*srcImg, tp, sd ? (int)*sd : 0);
+          }
+        }
 
         char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
 

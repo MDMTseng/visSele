@@ -2579,6 +2579,8 @@ void FeatureManager_sig360_circle_line::ClearReport()
 
   report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
   report.data.sig360_circle_line.region_dropped = 0;
+  auto &LOC = report.data.sig360_circle_line.locate;
+  LOC.best = NAN; LOC.thres = NAN; LOC.candidates = 0; LOC.reason[0] = 0;
   reports.resize(0);
   report.data.sig360_circle_line.reports = &reports;
   FeatureManager_binary_processing::ClearReport();
@@ -5520,6 +5522,26 @@ void SET_UNSET_REPORT_NA(FeatureReport_sig360_circle_line_single &srep)
     }
 }
 
+// Record a locate MISS on the container report, keeping the CLOSEST one.
+//
+// SingleMatching runs per candidate region, so most frames produce several
+// misses. The best of them is the useful one: it is the answer to "how far off
+// was it", and a run that reports the last candidate instead reports whichever
+// blob happened to be enumerated last.
+void FeatureManager_sig360_circle_line::noteLocateMiss(float best, float thres,
+                                                       const char *reason)
+{
+  auto &L = report.data.sig360_circle_line.locate;
+  L.candidates++;
+  // L.best starts as NaN, and NaN fails every comparison -- so test for it
+  // explicitly rather than relying on `best > NaN`, which is false and would
+  // discard the first miss instead of taking it.
+  const bool haveBest = (L.best == L.best);
+  if (haveBest && !(best > L.best)) return;
+  L.best = best; L.thres = thres;
+  snprintf(L.reason, sizeof(L.reason), "%s", reason);
+}
+
 int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledData *ldData,
                                                       int grid_size, ContourFetch &edge_grid, int scanline_skip, FeatureManager_BacPac *bacpac,
                                                       FeatureReport_sig360_circle_line_single &singleReport,
@@ -5702,6 +5724,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
   );
   if(minAvaSimilar<(sigMatchSimThres))//if the minimum err still not pass, then, early stop the following procesure
   {
+    noteLocateMiss(minAvaSimilar, sigMatchSimThres, "signature below match threshold");
     return -30;
   }
 
@@ -5857,6 +5880,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     if(similarFactor<(sigMatchSimThres))//if the minimum err still not pass, then, early stop the following procesure
     {
       LOGE("similarFactor:%f < %f", similarFactor,sigMatchSimThres);
+      noteLocateMiss(similarFactor, sigMatchSimThres, "signature below match threshold");
       return -3;
     }
     singleReport.similarity=similarFactor;
@@ -6259,6 +6283,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     report.data.sig360_circle_line.reports = &reports;
     report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
     report.data.sig360_circle_line.region_dropped = 0;
+    {
+      auto &L = report.data.sig360_circle_line.locate;
+      L.best = NAN; L.thres = NAN; L.candidates = 0;
+      snprintf(L.reason, sizeof(L.reason), "no candidate region in the frame");
+    }
     return 0;
   }
 
@@ -7817,7 +7846,19 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       fprintf(stderr, "[SHAPE_DBG]  m[%d] x=%.2f y=%.2f ang=%.3f scale=%.3f flip=%d score=%.1f\n",
               z, ms[z].x, ms[z].y, ms[z].angle, ms[z].scale, (int)ms[z].flipped, ms[z].score);
   }
-  if (ms.empty()) return 0;
+  if (ms.empty())
+  {
+    // The shape matcher applies its own score floor internally, so an empty
+    // result means "nothing scored high enough" -- and there is no per-candidate
+    // number to report, because no candidate survived to be one. Say WHICH of
+    // the two nothings this is, since the fixes differ: no candidate at all
+    // points at training, framing or scale, not at a threshold.
+    auto &L = report.data.sig360_circle_line.locate;
+    L.best = NAN; L.thres = NAN; L.candidates = 0;
+    snprintf(L.reason, sizeof(L.reason), "shape matcher returned no candidate");
+    return 0;
+  }
+  report.data.sig360_circle_line.locate.candidates = (int)ms.size();
 
   float mmpp = bacpac->sampler->mmpP_ideal();
 

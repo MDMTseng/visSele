@@ -485,6 +485,24 @@ typedef struct FeatureReport_sig360_circle_line{
   // found" are the same reply, and the difference was visible only in a log
   // line nobody reads until they already suspect it.
   int region_dropped;
+  // WHY THERE IS NO OBJECT, when there is no object.
+  //
+  // Same argument as region_dropped one field up, applied to the step before
+  // it. A locator that rejects everything and a scene with nothing in it give
+  // the identical reply -- an empty `reports` -- and the number that separates
+  // them (how close the best candidate came) was computed, compared, and then
+  // thrown away into a log line.
+  //
+  // That number is the one to tune against: "0.87 against a 0.90 floor" is a
+  // threshold or a lighting problem, "no candidate at all" is a training or a
+  // framing problem, and they are not fixed the same way. Without it the screen
+  // can only say the part was not found.
+  struct LocateOutcome {
+    float best;        // best score any candidate reached; NaN = none computed
+    float thres;       // the floor it was measured against
+    int   candidates;  // raw candidates the matcher produced, before thresholding
+    char  reason[64];  // empty when the locate succeeded
+  } locate;
 };
 
 

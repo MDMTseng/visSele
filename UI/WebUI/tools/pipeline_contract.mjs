@@ -60,6 +60,7 @@ export { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 export { shapeDefFingerprint, shapeDefProjection } from 'UTIL/MISC_Util';
 export { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 export { inspectSummary, objFromImage, angleDelta } from 'JSSRCROOT/sbmInspectResult';
+export { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from 'JSSRCROOT/sbmSweep';
 `);
 
 await build({
@@ -257,6 +258,96 @@ console.log('\n=== the summary answers what a test run is for ===');
   const none = M.inspectSummary({ reports: [] }, undefined);
   ok(!none.located && none.rows.length === 0,
      'no object found is a stated verdict, not a crash', none.why);
+}
+
+console.log('\n=== a locate FAILURE says which kind of failure it was ===');
+{
+  // Three nothings that look identical on screen and are fixed three different
+  // ways. Before the core reported `locate`, all three said the same sentence.
+  const fail = (top) => M.inspectSummary({ reports: [{ reports: [], ...top }] }, undefined);
+
+  const near = fail({ locate: { reason: 'signature below match threshold',
+                                candidates: 4, best: 0.87, thres: 0.9 } });
+  ok(/0\.8700/.test(near.why) && /0\.90/.test(near.why) && /4/.test(near.why),
+     'it saw the part and scored it too low -> the score, the floor and the gap',
+     near.why);
+
+  const nada = fail({ locate: { reason: 'shape matcher returned no candidate',
+                                candidates: 0 } });
+  ok(!/0\.00/.test(nada.why) && nada.why !== near.why,
+     'nothing scored at all -> NOT reported as a score of zero',
+     nada.why);
+
+  const dropped = fail({ region_dropped: 3 });
+  ok(/3/.test(dropped.why),
+     'the working region ate it before the locator ran -> say so',
+     dropped.why);
+
+  const silent = fail({});
+  ok(silent.why && !/undefined/.test(silent.why),
+     'and a core with no comment still produces a sentence, not "undefined"',
+     silent.why);
+}
+
+console.log('\n=== the robustness sweep measures against the RIGHT reference ===');
+{
+  const vals = M.sweepValues('rot', -4, 4, 5);
+  ok(vals[0] === 0, 'the baseline runs FIRST -- every other step is read against it',
+     JSON.stringify(vals));
+  ok(vals.filter((v) => v === 0).length === 1,
+     'and exactly once, not twice because the range happens to cross it',
+     JSON.stringify(vals));
+  ok(M.perturbFor('rot', 0, 9) === null,
+     'the baseline step sends NO perturb at all, not a zero one');
+  ok(M.perturbFor('rot', 3, 9).rot_deg === 3 && M.perturbFor('rot', 3, 9).seed === 9,
+     'and a real step carries the axis field TestPerturb parses, plus the seed');
+  ok(M.perturbFor('gain', 1.2, 9).gain === 1.2,
+     'each axis maps to its own core field', 'gain, not rot_deg');
+
+  // THE BUG THIS EXISTS TO CATCH. A part does not sit at exactly 0 degrees, so
+  // a residual computed against absolute zero reports its mounting angle as
+  // localization error on EVERY step of every sweep -- a confident, constant,
+  // completely fake finding.
+  const at = (deg) => ({ located: true, pose: { rotate: deg * Math.PI / 180, similarity: 0.98 },
+                         counts: { ok: 4, na: 0, ng: 0 }, rows: [], why: '' });
+  const base = at(31.4);                       // the part is mounted crooked
+  const step = M.sweepRow('rot', 5, at(36.4), base);   // and the scene rotated 5 more
+  ok(Math.abs(step.residual) < 1e-6,
+     'a crooked part gives ZERO residual -- the baseline is the reference, not 0',
+     `residual ${step.residual.toFixed(6)} deg (moved ${step.moved.toFixed(3)})`);
+
+  const bad = M.sweepRow('rot', 5, at(36.0), base);
+  ok(Math.abs(bad.residual + 0.4) < 1e-6,
+     'and a locator that lags by 0.4 deg reports exactly that',
+     `residual ${bad.residual.toFixed(3)}`);
+
+  // An inverted sign convention looks like "twice as bad", which is a finding
+  // people act on. It gets flagged instead.
+  const flipped = M.sweepRow('rot', 5, at(31.4 - 5), base);
+  ok(flipped.signSuspect,
+     'a residual of 2x the applied value is flagged as a SIGN error, not a result',
+     `residual ${flipped.residual.toFixed(3)} vs applied 5`);
+  ok(!bad.signSuspect, 'while an ordinary small residual is not');
+
+  // Wrapping: a part near +/-180 must not read as 360 out.
+  const nearPi = M.sweepRow('rot', 4, at(-176), at(180));
+  ok(Math.abs(nearPi.residual) < 1e-4,
+     'and a sweep across the +/-180 boundary does not report 356 degrees of error',
+     `residual ${nearPi.residual.toFixed(4)}`);
+
+  const rows = [M.sweepRow('rot', 0, at(0), at(0)),
+                M.sweepRow('rot', 3, at(3), at(0)),
+                M.sweepRow('rot', 6, { located: false, counts: { ok: 0, na: 0, ng: 0 },
+                                       rows: [], why: 'x' }, at(0))];
+  const v = M.sweepVerdict('rot', rows);
+  ok(/0/.test(v) && /3/.test(v) && !/6/.test(v.split('，')[0]),
+     'the verdict names the CONTIGUOUS range that located, stopping at the failure',
+     v);
+
+  const dead = M.sweepVerdict('rot', [M.sweepRow('rot', 0,
+    { located: false, counts: { ok: 0, na: 0, ng: 0 }, rows: [], why: 'x' }, null)]);
+  ok(/單次檢驗|原圖/.test(dead),
+     'and a baseline that never located says so instead of reporting a range', dead);
 }
 
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }

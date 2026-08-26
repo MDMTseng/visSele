@@ -21,6 +21,7 @@ import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { SBMSetupView } from './SBMStudio';
+import { useDefImages } from 'UTIL/useDefImages';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -2484,9 +2485,6 @@ function DefConfImageSwitcher() {
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const ACT_WS_SEND_BPG = (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
-  const [imageList, setImageList] = useState([]);            // [{name, path}]
-  const [currentImagePath, setCurrentImagePath] = useState(undefined);
-
   // Orientation-only inspection on the core's current cached image -> feed RP/IM
   // to redux so the canvas rectifies. Never modifies the deffile. IGNORE_DEFCONF_LOCK
   // so the display actions pass the post-load lock filter.
@@ -2523,66 +2521,11 @@ function DefConfImageSwitcher() {
     return () => clearTimeout(t);
   }, [CORE_ID, edit_info.defModelPath, edit_info.img, edit_info.sig360info]);
 
-  // Image-only swap (LD with imgsrc, no deffile -> no def reload / Edit_info_reset),
-  // then re-orient. Def, shapes, edit mode, selection: untouched.
-  const switchImage = (imgPath) => {
-    if (!CORE_ID || !imgPath) return;
-    setCurrentImagePath(imgPath);
-    ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
-      { imgsrc: imgPath, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
-      undefined,
-      { resolve: (darr) => {
-          let IM = darr.find(p => p.type == "IM");
-          if (IM !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(IM); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
-          sendOrientationInspect();   // initial insp to get orientation for the new image (no deffile mod)
-        }, reject: (e) => { } });
-  };
-
-  // 立即測試 "save alternate image" writes a new sibling png to disk via SV; it
-  // then fires this window event so we re-scan the folder and the new image
-  // shows up in the dropdown without re-entering the def.
-  const [reloadTick, setReloadTick] = useState(0);
-  useEffect(() => {
-    const h = () => setReloadTick(t => t + 1);
-    window.addEventListener('defconf-images-changed', h);
-    return () => window.removeEventListener('defconf-images-changed', h);
-  }, []);
-
-  // Discover sibling images via FB (folder list), once per loaded def (and once
-  // per reloadTick bump from a save). curPathRef tracks the live selection so a
-  // re-scan preserves what the user is viewing instead of snapping back to base.
-  const imgListRef = useRef(null);
-  const curPathRef = useRef(undefined);
-  curPathRef.current = currentImagePath;
-  useEffect(() => {
-    if (!CORE_ID || !edit_info || !edit_info.defModelPath) return;
-    const dmp = edit_info.defModelPath;
-    const scanKey = dmp + '#' + reloadTick;
-    if (imgListRef.current === scanKey) return;
-    imgListRef.current = scanKey;
-    const slash = Math.max(dmp.lastIndexOf('/'), dmp.lastIndexOf('\\'));
-    const dir = slash >= 0 ? dmp.substring(0, slash) : '.';
-    const base = slash >= 0 ? dmp.substring(slash + 1) : dmp;
-    ACT_WS_SEND_BPG(CORE_ID, "FB", 0, { path: dir, depth: 1 }, undefined,
-      { resolve: (darr) => {
-          if (!(darr && darr[1] && darr[1].data && darr[1].data.ACK)) return;
-          const fs = darr[0] && darr[0].data;
-          const files = (fs && fs.files) || [];
-          const fdir = (fs && fs.path) || dir;
-          const imgs = files
-            .filter(f => f && f.type !== 'DIR' && typeof f.name === 'string'
-                         && f.name.indexOf(base) === 0 && /\.(png|jpe?g|bmp)$/i.test(f.name))
-            .map(f => ({ name: f.name, path: fdir + '/' + f.name }));
-          setImageList(imgs);
-          // Keep the user's current selection if it still exists (re-scan after a
-          // save); otherwise default to the base image (first load).
-          const keep = imgs.find(im => im.path === curPathRef.current);
-          const cur = keep
-            || imgs.find(im => im.name.replace(/\.(png|jpe?g|bmp)$/i, '') === base)
-            || imgs[0];
-          if (cur) setCurrentImagePath(cur.path);
-        }, reject: (e) => { } });
-  }, [CORE_ID, edit_info.defModelPath, reloadTick]);
+  // The scan/LD/IM half lives in useDefImages -- the SBM studio needs the same
+  // switch and a second copy of it would be a screen that shows one image while
+  // the core measures another.
+  const { imageList, currentImagePath, switchImage } =
+    useDefImages({ afterLoad: () => sendOrientationInspect() });
 
   if (imageList.length <= 1) return null;
   return createPortal(
