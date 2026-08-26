@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('launcher', {
   chooseAndInstall: () => ipcRenderer.invoke('launcher:chooseAndInstall'),
   pickAppRoot: () => ipcRenderer.invoke('launcher:pickAppRoot'),
   pickWorkingDir: () => ipcRenderer.invoke('launcher:pickWorkingDir'),
+  pickUpdateSource: () => ipcRenderer.invoke('launcher:pickUpdateSource'),
+  installFromSource: (file) => ipcRenderer.invoke('launcher:installFromSource', file),
   openFolder: (which) => ipcRenderer.invoke('launcher:openFolder', which),
 
   // Events

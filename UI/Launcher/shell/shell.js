@@ -235,6 +235,71 @@ function renderPlan(st) {
     `以上全部來自該版本的 ${st.bootRel} —— 啟動器本身不含任何執行檔名稱、參數、埠號或目錄結構。`));
 }
 
+function renderUpdates(st) {
+  const g = $('updateSrc');
+  g.replaceChildren();
+  const u = st.update || { source: null, packages: [], release: null };
+
+  const pickBtn = el('button', 'ghost small', u.source ? '變更…' : '指定…');
+  pickBtn.disabled = st.core.running;
+  pickBtn.onclick = async () => {
+    try { const r = await L.pickUpdateSource(); if (r && r.ok) refresh(); }
+    catch (e) { appendLog('設定更新來源失敗:' + e.message, 'err'); }
+  };
+  g.appendChild(el('div', 'k', '資料夾'));
+  const cell = el('div', 'v', u.source || '(未指定)');
+  if (u.source) {
+    cell.appendChild(el('div', 'note',
+      '唯讀。啟動器只從這裡讀取,不會寫入或刪除 —— 這是同步資料夾,在這裡刪掉的東西會傳播到全公司。'));
+  }
+  if (u.error) cell.appendChild(el('div', 'note err', u.error === 'missing' ? '這個資料夾不存在' : u.error));
+  g.appendChild(cell);
+  g.appendChild(pickBtn);
+
+  if (u.release) {
+    g.appendChild(el('div', 'k', 'release.json'));
+    const rc = el('div', 'v', u.release.version);
+    rc.appendChild(el('div', 'note',
+      u.release.version === st.current ? '這台機器已經指向這一版。'
+        : `這台機器目前指向 ${st.current || '(未指定)'} —— 安裝後按「設為現行」才會切換。`));
+    g.appendChild(rc);
+    g.appendChild(el('div'));
+  }
+
+  const tb = $('updatePkgs').querySelector('tbody');
+  tb.replaceChildren();
+  if (!u.source) return;
+  if (!u.packages.length) {
+    const tr = el('tr'); const td = el('td', 'note', '這個資料夾裡沒有可用的更新包');
+    td.colSpan = 4; tr.appendChild(td); tb.appendChild(tr); return;
+  }
+  for (const p of u.packages) {
+    const tr = el('tr');
+    tr.appendChild(el('td', 'ver', p.version));
+    const tags = el('td');
+    if (p.wanted) tags.appendChild(el('span', 'tag good', 'release 指定'));
+    if (p.current) tags.appendChild(el('span', 'tag cur', '現行'));
+    else if (p.installed) tags.appendChild(el('span', 'tag prev', '已安裝'));
+    tr.appendChild(tags);
+    tr.appendChild(el('td', 'note', p.file));
+    const act = el('td', 'act');
+    const b = el('button', 'ghost small', p.installed ? '重新安裝' : '安裝');
+    b.disabled = st.core.running;
+    b.onclick = async () => {
+      b.disabled = true;
+      appendLog(`安裝 ${p.file} …`, 'lnc');
+      try {
+        const r = await L.installFromSource(p.file);
+        if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
+        refresh();
+      } catch (e) { appendLog('安裝失敗:' + e.message, 'err'); refresh(); }
+    };
+    act.appendChild(b);
+    tr.appendChild(act);
+    tb.appendChild(tr);
+  }
+}
+
 function renderVersions(st) {
   const tb = $('versions').querySelector('tbody');
   tb.replaceChildren();
@@ -301,6 +366,10 @@ function renderSettings(st) {
     return b;
   };
 
+  line('更新來源', st.update && st.update.source, pick('變更…', async () => {
+    try { const r = await L.pickUpdateSource(); if (r && r.ok) refresh(); }
+    catch (e) { appendLog('設定更新來源失敗:' + e.message, 'err'); }
+  }), '更新包來的地方,唯讀。通常在同步資料夾裡,例如 data/sync/DEV/<機種>/update。');
   line('應用資料夾', st.appRoot, pick('變更…', chooseAppRoot),
        '安裝的各個版本與 current.json 放在這裡。');
   line('工作目錄', st.workingDir, pick('變更…', chooseWorkingDir),
@@ -319,9 +388,13 @@ async function refresh() {
     `launcher ${st.launcherVersion} · electron ${st.electron}\n${st.current ? st.current : 'no version selected'}`;
   renderCore(st.core, st.plan);
   renderPlan(st);
+  renderUpdates(st);
   renderVersions(st);
   renderSettings(st);
   if (st.configError) appendLog(st.configError, 'err');
+  // A path arrangement that lets one job of the launcher destroy another's data
+  // is not a log line. It is the loudest thing on the screen until it is fixed.
+  for (const p of (st.pathIssues || [])) appendLog('路徑設定危險:' + p.detail, 'err');
 
   if (st.lastExit) showReason({ kind: 'core-exited', ...st.lastExit });
   else if (st.planError) showReason(st.planError);

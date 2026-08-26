@@ -137,3 +137,7 @@ pre#log .lnc { color: var(--accent); }
    picks when a new version does not work. */
 .tag.good { border-color: #24503a; background: #101a14; color: #64c795; }
 .tag.prev { border-color: #3a3f4a; background: #14171c; color: var(--ink-dim); }
+
+/* The update-source panel reuses the version table's shape. */
+#updatePkgs { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.note.err { color: var(--bad); }

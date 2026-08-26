@@ -93,6 +93,20 @@ const DEFAULTS = {
   // current pointer displaced, which always exists.
   goodAfterMs: 3 * 60 * 60 * 1000,
 
+  // Where update packages arrive. On these machines that is a folder inside the
+  // Resilio share the whole fleet syncs -- data/sync/DEV/<機種>/update -- which
+  // means two things.
+  //
+  // It is READ ONLY, always. The launcher opens zips here and never writes,
+  // renames or deletes: a deletion here does not stay here, it propagates to
+  // every machine on the share.
+  //
+  // And it legitimately lives INSIDE workingDir, which is not a mistake and
+  // must not be treated as one. The only containment that matters is appRoot's,
+  // because appRoot is the only path the launcher ever deletes from. See
+  // pathIssues().
+  updateSource: null,
+
   // --- supervision --------------------------------------------------------
   // These are launcher behaviour, not application layout. Anything the
   // APPLICATION knows better -- its control port, how long it needs to become
@@ -158,6 +172,40 @@ class Config {
   // calibration.
   get workingDir() {
     return this.values.workingDir || null;
+  }
+
+  get updateSource() {
+    return this.values.updateSource || null;
+  }
+
+  // The paths that would let one job of this launcher destroy another's data.
+  //
+  // Deliberately ONE-DIRECTIONAL, and that is the whole subtlety: appRoot is
+  // the only directory the launcher deletes from (prune, and install replacing
+  // a version), so the only dangerous arrangement is appRoot CONTAINING
+  // something else. updateSource sitting inside workingDir is the normal fleet
+  // layout -- the update folder is a subdirectory of the machine's own data --
+  // and a naive "these three must not overlap" check would reject the real
+  // installation. A wrong check that blocks a correct setup teaches operators
+  // to ignore the checks.
+  pathIssues() {
+    const issues = [];
+    const root = this.appRoot;
+    const inside = (parent, child) => {
+      if (!parent || !child) return false;
+      const p = path.resolve(parent);
+      const c = path.resolve(child);
+      return c === p || c.startsWith(p + path.sep);
+    };
+    if (inside(root, this.workingDir)) {
+      issues.push({ kind: 'appRoot-contains-working',
+        detail: `應用資料夾 ${root} 包含工作目錄 ${this.workingDir} —— 清理舊版本時會刪掉機台的校正與配方。` });
+    }
+    if (inside(root, this.updateSource)) {
+      issues.push({ kind: 'appRoot-contains-update',
+        detail: `應用資料夾 ${root} 包含更新來源 ${this.updateSource} —— 那是同步資料夾,在這裡刪掉的東西會傳播到全公司每一台機器。` });
+    }
+    return issues;
   }
 
   get logDir() {

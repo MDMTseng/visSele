@@ -402,6 +402,8 @@ function registerIpc() {
       // under pressure should not have to guess which is which.
       lastGood: apps.lastGood(),
       previous: apps.previousVersion(),
+      update: updater.scanSource(),
+      pathIssues: cfg.pathIssues(),
       resolved: target || null,
       // The plan is shown in the UI on purpose. "What exactly is this launcher
       // about to run, out of which folder, and which of its behaviours has this
@@ -506,10 +508,41 @@ function registerIpc() {
     return { ok: true, workingDir: cfg.workingDir, planError: error || null };
   });
 
+  ipcMain.handle('launcher:pickUpdateSource', async () => {
+    assertShell('changing the update source');
+    const chosen = await pickDirectory('Select the folder update packages arrive in');
+    if (!chosen) return { ok: false, canceled: true };
+    cfg.set('updateSource', chosen);
+    return { ok: true, updateSource: cfg.updateSource, pathIssues: cfg.pathIssues() };
+  });
+
+  // Install a package the operator picked out of the update folder. Same
+  // install() as a hand-picked zip -- same manifest verification, same
+  // staged-then-renamed swap. The only difference is that the launcher found
+  // the file instead of the operator browsing to it.
+  ipcMain.handle('launcher:installFromSource', async (_e, file) => {
+    assertShell('installing an update');
+    assertStopped('installing an update');
+    const scan = updater.scanSource();
+    const pkg = scan.packages.find((p) => p.file === file);
+    // Never take a path from the renderer. It picks from the list the main
+    // process produced, by name, and anything not on that list is refused.
+    if (!pkg) return { ok: false, error: 'that package is not in the update folder' };
+    try {
+      const r = await updater.install(pkg.path, shellLog);
+      shellLog(`installed ${r.version} from the update folder; select it to make it current`);
+      return { ok: true, ...r };
+    } catch (e) {
+      shellLog(`UPDATE FAILED: ${e.message}`);
+      return { ok: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('launcher:openFolder', (_e, which) => {
     const target = which === 'logs' ? cfg.logDir
                  : which === 'apps' ? cfg.appRoot
                  : which === 'working' ? cfg.workingDir
+                 : which === 'update' ? cfg.updateSource
                  : null;
     if (!target) return { ok: false, error: 'nothing to open' };
     fs.mkdirSync(cfg.logDir, { recursive: true });   // only ever the log dir

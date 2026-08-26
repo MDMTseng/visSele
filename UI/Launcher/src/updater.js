@@ -32,7 +32,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 
-const { AppStore, STAGING, REPLACED, REQUIRED_ENTRIES, INFO } = require('./apps');
+const { AppStore, cmpVersion, STAGING, REPLACED, REQUIRED_ENTRIES, INFO } = require('./apps');
 
 // Zip extraction with no npm dependency. The old launcher pulled in `unzipper`
 // and its tree for this one operation; the operating system already ships
@@ -268,6 +268,79 @@ class Updater {
       // whole rejected package.
       fs.rmSync(staging, { recursive: true, force: true });
     }
+  }
+
+  // --- what is on offer in the update folder ---------------------------------
+  //
+  // The launcher READS this folder and never writes to it. It is a Resilio
+  // share: a deletion here does not stay here, it reaches every machine on the
+  // fleet.
+  //
+  // release.json, if present, is the pointer that says which version this model
+  // should be on:
+  //
+  //     { "version": "1.1.104" }
+  //
+  // A pointer rather than "newest wins", because newest-wins cannot express a
+  // rollback: roll a machine back and the next scan offers the bad version
+  // again, forever. With a pointer, going back is editing one field, and the
+  // package is already on disk so nothing is downloaded.
+  scanSource() {
+    const dir = this.cfg.updateSource;
+    if (!dir) return { source: null, packages: [], release: null, error: null };
+
+    let names;
+    try {
+      names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name);
+    } catch (e) {
+      return { source: dir, packages: [], release: null, error: e.code === 'ENOENT' ? 'missing' : e.message };
+    }
+
+    // Resilio writes "x.zip.!sync" while a file is still arriving and renames it
+    // on completion, and makes ".Conflict." copies when two machines write the
+    // same name. Offering either would mean installing half a package, or
+    // another model's. A zip is only complete when no .!sync sibling remains.
+    const partial = new Set(names.filter((n) => /\.!sync$/i.test(n))
+                                 .map((n) => n.replace(/\.!sync$/i, '')));
+    const zips = names
+      .filter((n) => /\.zip$/i.test(n))
+      .filter((n) => !/\.conflict[._]/i.test(n))
+      .filter((n) => !partial.has(n));
+
+    let release = null;
+    let error = null;
+    if (names.includes('release.json')) {
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(dir, 'release.json'), 'utf8'));
+        if (typeof j.version === 'string' && j.version.length) release = { version: j.version, file: typeof j.file === 'string' ? j.file : null };
+        else error = 'release.json names no version';
+      } catch (e) { error = `release.json unreadable: ${e.message}`; }
+    }
+
+    // The version a package carries is inside it, and opening every zip on
+    // every scan would be wasteful -- so the file NAME carries it, and the
+    // manifest inside is still what decides at install time. A mismatch there
+    // is caught by install(), not hidden here.
+    const packages = zips.map((n) => {
+      const version = n.replace(/\.zip$/i, '');
+      return {
+        file: n,
+        path: path.join(dir, n),
+        version,
+        installed: this.apps.validate(version).ok,
+        current: this.apps.currentVersion() === version,
+        wanted: !!(release && release.version === version),
+      };
+    }).sort((a, b) => cmpVersion(b.version, a.version));
+
+    if (release && !packages.some((p) => p.version === release.version)) {
+      const localOnly = this.apps.validate(release.version).ok;
+      error = error || (localOnly
+        ? null                                   // already installed; the zip may have been tidied away
+        : `release.json wants ${release.version}, which is neither in this folder nor installed`);
+    }
+
+    return { source: dir, packages, release, error };
   }
 
   // Hook, deliberately left as a no-op.
