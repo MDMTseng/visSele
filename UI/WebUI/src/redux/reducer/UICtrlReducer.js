@@ -1100,6 +1100,30 @@ function StateReducer(newState, action) {
               // def_image_reg, roi_refine_points). New object ref so selectors re-run.
               if (action.data && typeof action.data === 'object') {
                 newState.edit_info = { ...newState.edit_info, ...action.data };
+                // CHANGING THE REGISTRATION OR THE ROI POINTS INVALIDATES THE
+                // TRAINED FEATURES, so drop the cache with them.
+                //
+                // The core fingerprints __shape_cache over the reference image,
+                // the extraction thresholds, the ROI points AND
+                // def_image_reg.angle. Keeping a cache past a change to any of
+                // those means the next save writes a def whose cache cannot
+                // match its own registration -- and the failure is quiet: the
+                // core falls back to sig360, which on a good image still
+                // locates, so the screen looks right while the localizer the
+                // def was built around is not running.
+                //
+                // Measured on this bench: the reg angle went to 0, the cache
+                // stayed at ao-0.1271, and the def inspected fine in the studio
+                // (fresh cache in memory) while the saved file did not use SBM
+                // at all.
+                const touched = ['def_image_reg', 'roi_refine_points']
+                  .filter((k) => k in action.data);
+                if (touched.length && newState.edit_info.__shape_cache) {
+                  delete newState.edit_info.__shape_cache;
+                  console.warn('__shape_cache dropped: ' + touched.join('+')
+                    + ' changed, so the trained features no longer match. '
+                    + 'Press 生成特徵點 before saving.');
+                }
               }
               break;
             }

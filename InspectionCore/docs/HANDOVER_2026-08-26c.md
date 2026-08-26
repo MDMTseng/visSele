@@ -95,6 +95,32 @@ release under 12 px is discarded, the same threshold the polygon tool uses.
 **It self-heals**: press 生成特徵點 and save, and the new cache is fingerprinted
 against `ao0.0000`, which matches.
 
+### What the ROI refine points are worth — measured
+
+Same def and image, three ways, each with a fresh extraction:
+
+| | sim | cx mm | cy mm | rot | worst point vs 11-pt |
+|---|---|---|---|---|---|
+| 11 explicit ROI points | 0.9894 | 15.02500 | 9.30438 | -0.1271 | — |
+| ROI list EMPTY (coarse only) | 0.9894 | 15.05293 | 9.30547 | +0.0000 | **13.7 um** (mean 1.8 um) |
+| no key at all (auto-select) | 0.9894 | 15.02524 | 9.30523 | +0.0067 | 0.3 um (mean 0.2 um) |
+
+Two things worth keeping:
+
+- **ROI refine is doing real work.** Turning it off moves the pose 28 um in x
+  and the measured points by up to 13.7 um. On this class of measurement that is
+  not a rounding difference.
+- **Explicit vs auto-selected is a wash here** — 0.3 um. The eleven hand-placed
+  points are not buying anything over the core's own selection on THIS def and
+  THIS image. They may on a harder one; the point is that it is now measurable
+  rather than assumed.
+
+Note the coarse-only row reports `rot` as exactly `+0.0000`: with no refine the
+pose comes straight off line2Dup's discrete angle grid. **That is a lead for the
+rotation residual** (-0.03 deg at 8 deg, -0.25 deg at 15 deg) — if refine only
+partly corrects the grid snap, the residual would grow with angle exactly like
+that.
+
 ### These frames do not match this def
 
 | image | with the gate | with SBM forced to run |
