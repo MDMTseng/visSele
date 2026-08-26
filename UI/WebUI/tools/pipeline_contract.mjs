@@ -427,6 +427,66 @@ console.log('\n=== a match score is read against the floor its OWN locator uses 
      'and an absent score or a degenerate floor draws nothing, not a full bar');
 }
 
+console.log('\n=== a namespace import only reads what the module NAMED ===');
+{
+  // The second runtime-only bug of the day from one family: it builds clean and
+  // throws when the screen opens.
+  //
+  // `import * as BPG from './BPG_Protocol'` then `BPG.map_BPG_Packet2Act(...)`
+  // is undefined when the function lives only on the DEFAULT export. Inside a
+  // protocol callback the TypeError reaches nothing an operator sees: the image
+  // switch loaded in the core, so the inspection moved to the new picture, and
+  // the canvas kept the old one. Two screens disagreeing, neither complaining.
+  const ALIASES = { UTIL: 'src/UTIL', JSSRCROOT: 'src', REDUX_STORE_SRC: 'src/redux' };
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== 'node_modules') walk(f, out); }
+      else if (/\.(js|jsx)$/.test(e.name)) out.push(f);
+    }
+    return out;
+  };
+  const resolve = (spec, from) => {
+    let base;
+    const alias = Object.keys(ALIASES).find((a) => spec === a || spec.startsWith(a + '/'));
+    if (alias) base = r(ALIASES[alias] + spec.slice(alias.length));
+    else if (spec.startsWith('.')) base = path.resolve(path.dirname(from), spec);
+    else return null;                       // a package: not ours to check
+    for (const cand of [base, base + '.js', base + '.jsx',
+                        path.join(base, 'index.js'), path.join(base, 'index.jsx')])
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) return cand;
+    return null;
+  };
+  const namedExports = (file) => {
+    const src = fs.readFileSync(file, 'utf8');
+    const names = new Set();
+    for (const m of src.matchAll(/export\s+(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z0-9_$]+)/g))
+      names.add(m[1]);
+    for (const m of src.matchAll(/export\s*{([^}]*)}/g))
+      for (const part of m[1].split(','))
+        names.add(part.trim().split(/\s+as\s+/).pop().trim());
+    return names;
+  };
+  const bad = [];
+  for (const f of walk(r('src'))) {
+    const src = fs.readFileSync(f, 'utf8');
+    for (const m of src.matchAll(/import\s*\*\s*as\s+([A-Za-z0-9_$]+)\s+from\s*['"]([^'"]+)['"]/g)) {
+      const [, ns, spec] = m;
+      const target = resolve(spec, f);
+      if (!target) continue;
+      const named = namedExports(target);
+      const used = new Set();
+      for (const u of src.matchAll(new RegExp('\\b' + ns + '\\.([A-Za-z0-9_$]+)', 'g')))
+        used.add(u[1]);
+      for (const name of used)
+        if (name !== 'default' && !named.has(name))
+          bad.push(`${path.relative(r('src'), f)}: ${ns}.${name} is not a named export of ${spec}`);
+    }
+  }
+  ok(bad.length === 0, 'every NS.member resolves to a real named export',
+     bad.length ? bad.slice(0, 6).join('; ') : 'checked ' + walk(r('src')).length + ' files');
+}
+
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }
 console.log(fails ? `\n${fails} FAILURES` : '\n--- the pipeline behaves as specified ---');
 process.exit(fails ? 1 : 0);

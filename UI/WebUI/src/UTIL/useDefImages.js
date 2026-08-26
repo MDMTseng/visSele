@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import * as BPG_Protocol from 'UTIL/BPG_Protocol';
+import { map_BPG_Packet2Act } from 'UTIL/BPG_Protocol';
 
 // Matches DefConfUI's IMG_LOAD_DOWNSAMP_LEVEL. Both sides must load at the same
 // level or the two screens disagree about how many px a mm is.
@@ -113,8 +113,16 @@ export function useDefImages({ afterLoad } = {}) {
          undefined, { resolve: (darr) => {
       const IM = (darr || []).find((p) => p.type === 'IM');
       if (IM) {
-        const a = BPG_Protocol.map_BPG_Packet2Act(IM);
+        // IGNORE_DEFCONF_LOCK: the post-load display lock drops image actions,
+        // and this one is a deliberate operator switch, not a stray frame.
+        const a = map_BPG_Packet2Act(IM);
         if (a) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+        // If the reply carried an image and nothing came back to dispatch, the
+        // canvas silently keeps the OLD picture while the core measures the NEW
+        // one -- the two screens then disagree and neither says so.
+        else console.error('useDefImages: an IM packet produced no action', IM);
+      } else {
+        console.error('useDefImages: LD returned no IM; the canvas will not follow');
       }
       // Whatever the caller has to redo now that the core is holding a
       // different image -- re-orient, or throw away a test result that was

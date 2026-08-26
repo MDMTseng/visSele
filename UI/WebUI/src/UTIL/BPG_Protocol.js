@@ -209,7 +209,13 @@ export { INSPECTION_STATUS };
 
 
 
-function map_BPG_Packet2Act(parsed_packet)
+// Exported BOTH ways on purpose. It has always been reachable only through the
+// default export, so `import * as BPG from '...'` compiles clean and hands back
+// undefined at runtime -- and the call sites are inside protocol callbacks,
+// where the TypeError does not reach anything the operator sees. That cost an
+// afternoon: an image switch that loaded in the core (so the inspection moved)
+// and never reached the canvas (so the picture did not).
+export function map_BPG_Packet2Act(parsed_packet)
 {
   let acts=[];
   if(parsed_packet===undefined)
