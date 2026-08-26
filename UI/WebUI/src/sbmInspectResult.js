@@ -4,20 +4,33 @@
 // an ANSWER, so it is the part a contract can hold to. The panel around it only
 // renders what these two functions decide.
 
-// Image-mm -> object-frame mm, through the pose the CORE FOUND.
+// Image-mm -> the STUDIO CANVAS's world, which is the frame the picture is
+// drawn in.
 //
-// Not through the authored def_image_reg, which is the trap: the studio's canvas
-// rectifies by the authored reg, so overlaying a report with that transform
-// would draw the measurement in the frame you MEANT rather than the one the
-// machine used -- and the two differing is precisely what a test run is for.
-//
-// This is the inverse of the studio canvas transform in drawImage():
+// This is the inverse of the canvas transform in drawImage():
 //   ctx.scale(1, flip ? -1 : 1); ctx.rotate(angle); ctx.translate(-cx, -cy)
-// which composes as world = FlipY( R(angle) * (p - c) ).
+// composing as world = FlipY( R(angle) * (p - c) ).
+//
+// FEED IT THE SAME TRANSFORM THE IMAGE GOT, which is the AUTHORED
+// def_image_reg. It first took the pose the core FOUND, on the reasoning that
+// a report should be read in the frame the machine used -- and that put every
+// measurement in a frame the picture is not in. The rings landed exactly on
+// the def's own shapes and floated over blank background, because that is
+// where the def's shapes are; the part was elsewhere. An overlay that is
+// correct relative to the recipe and wrong relative to the photograph is
+// wrong, and it fails hardest in the case it exists for: when the part is NOT
+// where the def expects.
+//
+// The found pose still has a job -- it is what the pose DELTA is measured
+// from -- but it is not how anything gets drawn.
+//
+// Accepts either key for the angle: a report says `rotate`, def_image_reg says
+// `angle`. Two names for one quantity is how the wrong one gets read as 0.
 export function objFromImage(pose) {
   const cx = pose && Number.isFinite(pose.cx) ? pose.cx : 0;
   const cy = pose && Number.isFinite(pose.cy) ? pose.cy : 0;
-  const a = pose && Number.isFinite(pose.rotate) ? pose.rotate : 0;
+  const a = pose && Number.isFinite(pose.rotate) ? pose.rotate
+          : (pose && Number.isFinite(pose.angle) ? pose.angle : 0);
   const sy = (pose && pose.isFlipped) ? -1 : 1;
   const ca = Math.cos(a), sa = Math.sin(a);
   return (p) => {
@@ -83,27 +96,40 @@ export function inspectSummary(rp, authoredReg) {
              locate: L, regionDropped: dropped, why };
   }
 
-  const pose = { cx: one.cx, cy: one.cy, rotate: one.rotate,
-                 isFlipped: !!one.isFlipped, similarity: one.similarity };
-  const toObj = objFromImage(pose);
+  // EVERY object the core found, not just the first.
+  //
+  // The bench frame that showed this up has three parts in it. Reporting only
+  // reports[0] means two of them are inspected, judged, and invisible here --
+  // and if the def locates the wrong one, the panel confidently describes a
+  // part the operator is not looking at.
+  const objs = top.reports;
+
+  // ONE transform for every object, and it is the canvas's own: the picture is
+  // drawn through the authored reg, so this is what puts a reported point on
+  // the pixel it came from. It is also the only choice that works with more
+  // than one object -- rectifying the image to a found pose can only ever
+  // straighten one of them, and would then misplace the rest.
+  const toCanvas = objFromImage(authoredReg || { cx: 0, cy: 0, angle: 0 });
 
   const rows = [];
-  for (const [key, type, pos] of GROUPS) {
-    for (const o of (one[key] || [])) {
-      const p = pos(o);
-      const has = Number.isFinite(p.x) && Number.isFinite(p.y);
-      rows.push({
-        id: o.id, name: o.name, type,
-        status: o.status,
-        ok: o.status === STATUS.SUCCESS,
-        // The core omits na_reason when it has none. Say so rather than
-        // rendering "undefined" at an operator.
-        reason: o.na_reason || (o.status === STATUS.SUCCESS ? '' : '(核心沒有給原因)'),
-        at: has ? toObj(p) : null,
-        hits: ((o.extra && o.extra.cal_hits) || []).length,
-      });
+  objs.forEach((obj, oi) => {
+    for (const [key, type, pos] of GROUPS) {
+      for (const o of (obj[key] || [])) {
+        const p = pos(o);
+        const has = Number.isFinite(p.x) && Number.isFinite(p.y);
+        rows.push({
+          obj: oi, id: o.id, name: o.name, type,
+          status: o.status,
+          ok: o.status === STATUS.SUCCESS,
+          // The core omits na_reason when it has none. Say so rather than
+          // rendering "undefined" at an operator.
+          reason: o.na_reason || (o.status === STATUS.SUCCESS ? '' : '(核心沒有給原因)'),
+          at: has ? toCanvas(p) : null,
+          hits: ((o.extra && o.extra.cal_hits) || []).length,
+        });
+      }
     }
-  }
+  });
 
   const counts = {
     ok: rows.filter((r) => r.ok).length,
@@ -111,19 +137,32 @@ export function inspectSummary(rp, authoredReg) {
     ng: rows.filter((r) => r.status === STATUS.FAILURE).length,
   };
 
-  // The pose the locator found vs the pose the operator drew. This is the
-  // number the panel exists for: a def can report every primitive OK and still
-  // be sitting on the part 0.3mm off, and nothing else on this screen says so.
-  let poseDelta = null;
-  if (authoredReg && Number.isFinite(authoredReg.cx) && Number.isFinite(pose.cx)) {
-    poseDelta = {
-      dx: pose.cx - authoredReg.cx,
-      dy: pose.cy - authoredReg.cy,
-      dDeg: angleDelta(pose.rotate, authoredReg.angle) * 180 / Math.PI,
-      flipDiffers: !!pose.isFlipped !== !!authoredReg.isFlipped,
-    };
-    poseDelta.dist = Math.hypot(poseDelta.dx, poseDelta.dy);
-  }
+  // Per object: where the locator put it, and how far that is from where the
+  // operator drew the registration. A def can report every primitive OK and
+  // still be sitting on the part 0.3mm off, and nothing else on this screen
+  // says so.
+  const poses = objs.map((obj) => {
+    const pose = { cx: obj.cx, cy: obj.cy, rotate: obj.rotate,
+                   isFlipped: !!obj.isFlipped, similarity: obj.similarity };
+    pose.at = toCanvas({ x: pose.cx, y: pose.cy });     // where to draw its marker
+    if (authoredReg && Number.isFinite(authoredReg.cx) && Number.isFinite(pose.cx)) {
+      const d = {
+        dx: pose.cx - authoredReg.cx,
+        dy: pose.cy - authoredReg.cy,
+        dDeg: angleDelta(pose.rotate, authoredReg.angle) * 180 / Math.PI,
+        flipDiffers: !!pose.isFlipped !== !!authoredReg.isFlipped,
+      };
+      d.dist = Math.hypot(d.dx, d.dy);
+      pose.delta = d;
+    }
+    return pose;
+  });
 
-  return { located: true, pose, poseDelta, rows, counts, toObj, why: '' };
+  // The first object stays the headline, because the single-value readouts and
+  // the sweep are written against one number. Which one it is is now stated
+  // rather than assumed.
+  const pose = poses[0];
+  const poseDelta = pose.delta || null;
+
+  return { located: true, pose, poses, poseDelta, rows, counts, toCanvas, why: '' };
 }

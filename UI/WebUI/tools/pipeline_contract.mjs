@@ -182,23 +182,26 @@ console.log('\n=== limits, and the disabled back side ===');
      'if this fails, BACK_SIDE_LIMITS_ENABLED was turned on -- see backSideLimits.js');
 }
 
-console.log('\n=== a test run is read in the frame the CORE used ===');
+console.log('\n=== a result is drawn in the frame the IMAGE is in ===');
 {
-  // The SBM studio rectifies its canvas by the AUTHORED def_image_reg, while a
-  // report comes back in image-mm placed by the pose the core FOUND. Reading
-  // one with the other draws the measurement where you meant the part to be
-  // instead of where it was -- and the gap between those is the entire point of
-  // running a test.
+  // objFromImage inverts the studio canvas transform. Whatever pose you hand
+  // it, a point comes back in the world that transform defines -- so handing it
+  // the AUTHORED reg (what drawImage uses) puts a reported point on the pixel
+  // it came from, and handing it the found pose does not.
   //
-  // The numbers below are the real ones, off the bench fixture
-  // (caliper_verify_tagged): search point id 3 has pt1 (4.176, 3.435) in
-  // object-frame mm, the core placed the object at (11.992, 7.580) and reported
-  // the measured point at (16.150, 11.087) in image-mm.
+  // The arithmetic below uses the found pose deliberately, because that is the
+  // case with a known answer: the numbers are the real ones off the bench
+  // fixture (caliper_verify_tagged), where search point id 3 has pt1
+  // (4.176, 3.435) in object-frame mm, the core placed the object at
+  // (11.992, 7.580) and reported the measured point at (16.150, 11.087) in
+  // image-mm. Through the FOUND pose that must land back on pt1 -- which is
+  // what proves the inverse is right. Which pose the STUDIO feeds it is a
+  // separate question, answered further down.
   const POSE = { cx: 11.992, cy: 7.580, rotate: 0, isFlipped: false, similarity: 0.9859 };
   const toObj = M.objFromImage(POSE);
   const got = toObj({ x: 16.150, y: 11.087 });
   ok(Math.hypot(got.x - 4.176, got.y - 3.435) < 0.1,
-     'the reported point lands on the def shape it measured',
+     'through the FOUND pose, a reported point inverts back onto its own def shape',
      `(${got.x.toFixed(3)}, ${got.y.toFixed(3)}) vs def pt1 (4.176, 3.435)`);
 
   // A rotated + flipped pose has to invert in the SAME order the canvas
@@ -246,15 +249,42 @@ console.log('\n=== the summary answers what a test run is for ===');
   ok(Math.abs(off.poseDelta.dist - 0.5) < 1e-9 && off.poseDelta.flipDiffers,
      'and a pose that does NOT match reports how far, including a flip',
      `${off.poseDelta.dist.toFixed(3)}mm, flipDiffers=${off.poseDelta.flipDiffers}`);
-  // The delta is the ONLY thing the authored reg is allowed to affect. The
-  // overlay positions must still come from the found pose -- if they follow the
-  // authored reg instead, every measurement is drawn where you MEANT the part
-  // to be and the offset this panel exists to show becomes invisible.
+  // AND IT IS WHAT THE OVERLAY FOLLOWS. This assertion used to say the exact
+  // opposite -- that positions come from the FOUND pose -- and that was the
+  // bug: the studio canvas draws the picture through the AUTHORED reg, so a
+  // point placed by the found pose lands in a frame the photograph is not in.
+  // On the bench it drew every ring neatly on the def's own ROI points, over
+  // blank background, while the parts sat elsewhere in the frame.
   const a3 = sum.rows.find((r) => r.id === 3).at;
   const b3 = off.rows.find((r) => r.id === 3).at;
-  ok(a3.x === b3.x && a3.y === b3.y,
-     'but it does NOT move the overlay -- positions come from the FOUND pose',
+  ok(a3.x !== b3.x || a3.y !== b3.y,
+     'and the overlay follows it, because that is the frame the IMAGE is in',
      `(${a3.x}, ${a3.y}) vs (${b3.x}, ${b3.y})`);
+  // A reg of nothing must be the identity, not a silent 0-rotation about (0,0)
+  // that happens to look plausible.
+  const raw = M.inspectSummary(rp, undefined).rows.find((r) => r.id === 3).at;
+  ok(raw.x === 11 && raw.y === 6,
+     'with no reg at all a point is left in image-mm, untransformed',
+     `(${raw.x}, ${raw.y})`);
+
+  // EVERY object, not just the first. The bench frame that exposed this has
+  // three parts in it; reporting reports[0] alone silently drops two, and if
+  // the def locks onto the wrong one the panel describes a part nobody is
+  // looking at.
+  const two = M.inspectSummary({ reports: [{ reports: [
+    { cx: 10, cy: 4, rotate: 0, isFlipped: false, similarity: 0.97,
+      searchPoints: [{ id: 1, status: 0, x: 11, y: 5 }] },
+    { cx: 40, cy: 4, rotate: 0, isFlipped: false, similarity: 0.91,
+      searchPoints: [{ id: 1, status: 0, x: 41, y: 5 }] },
+  ] }] }, { cx: 0, cy: 0, angle: 0 });
+  ok(two.poses.length === 2 && two.rows.length === 2,
+     'two located objects give two poses and both their measurements',
+     `${two.poses.length} poses, ${two.rows.length} rows`);
+  ok(two.rows[0].obj === 0 && two.rows[1].obj === 1,
+     'and every row says which object it belongs to');
+  ok(two.rows[0].at.x === 11 && two.rows[1].at.x === 41,
+     'placed by the SAME canvas transform -- one image, one frame, N objects',
+     'rectifying to a found pose could only ever straighten one of them');
 
   const none = M.inspectSummary({ reports: [] }, undefined);
   ok(!none.located && none.rows.length === 0,

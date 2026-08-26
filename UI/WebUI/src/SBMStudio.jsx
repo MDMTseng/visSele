@@ -135,19 +135,27 @@ function drawScene(g, canvas, ctx_state) {
   // back to where the def put it: the stem IS the measurement, and a long one
   // is visible without reading a number.
   if (insp && insp.located) {
-    const defAt = new Map();
-    for (const sh of shapeList) {
-      const q = sh.pt1 || (Array.isArray(sh.points) && sh.points[0]);
-      if (q && Number.isFinite(q.x)) defAt.set(sh.id, q);
+    // Every located object gets a marker at the pose the core put it, drawn in
+    // the CANVAS's frame -- same transform the picture got. These land on the
+    // parts. The def's own shapes stay where the def says they are, so when the
+    // two are far apart the picture is telling you the part is not where the
+    // recipe expects, which is the thing worth seeing.
+    for (const P of (insp.poses || [])) {
+      if (!P.at || !Number.isFinite(P.at.x)) continue;
+      ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = lw * 1.2;
+      ctx.beginPath(); ctx.arc(P.at.x, P.at.y, pr * 4, 0, 7); ctx.stroke();
+      // A stub along the found 0-degree axis, so a flipped or rotated match is
+      // visible as a direction and not only as a number in the panel.
+      const ang = (P.rotate || 0) - (reg.angle || 0);
+      const L = 3;                                   // mm
+      ctx.beginPath(); ctx.moveTo(P.at.x, P.at.y);
+      ctx.lineTo(P.at.x + L * Math.cos(ang), P.at.y + L * Math.sin(ang));
+      ctx.stroke();
     }
+
     for (const r of insp.rows) {
       if (!r.at) continue;
       const col = r.ok ? '#00e676' : '#ff1744';
-      const d = defAt.get(r.id);
-      if (d) {
-        ctx.strokeStyle = col; ctx.lineWidth = lw * 0.8;
-        ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(r.at.x, r.at.y); ctx.stroke();
-      }
       ctx.strokeStyle = col; ctx.lineWidth = lw * 1.6;
       ctx.beginPath(); ctx.arc(r.at.x, r.at.y, pr * 2.2, 0, 7); ctx.stroke();
       if (!r.ok) {                                   // an X, so a failure reads without colour
@@ -270,6 +278,11 @@ function InspectPanel({ insp, onClear }) {
   const poseOff = d && (d.dist > 0.05 || Math.abs(d.dDeg) > 0.2 || d.flipDiffers);
   const bad = insp.rows.filter((r) => !r.ok);
   return <div style={{ marginTop: 4 }}>
+    {insp.poses.length > 1 &&
+      <div style={{ ...row, color: '#ffd54f' }}>
+        <span>找到 {insp.poses.length} 個物件</span>
+        <span style={{ fontSize: 10 }}>下面的數字是第 1 個</span>
+      </div>}
     <div style={row}>
       <span>相似度 similarity</span>
       <b style={{ color: insp.pose.similarity >= 0.9 ? '#00c853' : '#ff9100' }}>
