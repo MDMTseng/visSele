@@ -721,6 +721,57 @@ have claimed 50% more tolerance than a sensor gives.
 
 ---
 
+## B4 — automatic re-arm: BUILT, THEN SHELVED
+
+`git stash`: *"B4 auto re-arm on core restart (shelved: too many startup paths)"*.
+
+### The hole it addresses, which is still open
+
+Entering inspection is not one message. It is the wire def with the 製程 margins
+folded into `shape_list`, plus `ST` settings, plus the snap policy, plus the
+trigger mode — and the core **resets all of it on entry by design**. Nothing
+re-sends any of it on reconnect, so a core that comes back holds no recipe.
+
+### What SHIPPED, and is running now
+
+The **detection**, not the recovery:
+
+- `HR` carries a session id generated once per core process. The build fields
+  could not substitute — the same binary restarted is byte-identical
+  provenance.
+- A changed id means a different run than the one this UI configured. It is
+  logged with both ids, and **the core link renders red instead of green.**
+
+So the machine no longer *looks* healthy while holding nothing. It does not
+recover on its own.
+
+### What was shelved
+
+Keying the inspection screen on the session id, so a new core process remounts
+it and `componentDidMount` — which already is the whole arming sequence — runs
+again:
+
+```jsx
+UI = <APP_INSP_MODE_rdx key={'core:' + (this.props.CORE_SESSION || 'x')} />;
+```
+
+plus carrying the id across `WS_DISCONNECTED` so an ordinary reconnect does not
+remount for nothing, and a banner distinguishing "restarted" from "restarted and
+re-armed".
+
+### Why it is shelved, which is the part worth keeping
+
+**It adds a second way for the inspection screen to reinitialise.** Today there
+is one: entering and leaving the mode. This would add "the core changed
+underneath you", firing at a moment nobody chose, on a machine that may be
+mid-run. Startup and reinit paths multiplying is a real complexity risk on a
+production machine, and the detection alone already removes the dangerous part —
+a green light over an empty core.
+
+**Do not un-shelve it as a convenience.** It is worth doing when somebody wants
+automatic restart, because then it is a prerequisite rather than an addition:
+auto-restart without session replay turns this failure from rare into routine.
+
 ## The def format itself
 
 Moved out of this handover into `DEF_FILE_FORMAT.md` — it is a reference, not a
