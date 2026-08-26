@@ -39,6 +39,31 @@ export function objFromImage(pose) {
   };
 }
 
+// The object's 0-degree axis as an IMAGE-frame angle, which is NOT `rotate`.
+//
+// MEASURED, not read off the source. `visSele --insp img def out '{"rot_deg":5}'`
+// reports rotate = +5.0000 deg, and test_perturb.cpp pins rot_deg +5 as moving
+// image content to -5 deg in raw image atan2 (its own check negates y before
+// the atan2, which is where the sign hides). So:
+//
+//     image-frame angle = -rotate
+//
+// The core says the same thing in code -- SingleMatching does `angle = -angle`
+// with the comment "the angle we get from matching is current object rotates
+// 'angle' to match target ... we want to rotate feature set to match current
+// object, so opposite direction" -- and then builds
+// TemplateDomain_TO_PixDomain from that negated angle. Reading it there was not
+// enough: every def on this bench has a registration angle of ~0, so the sign
+// was invisible until an orientation stub pointed the wrong way on a machine.
+//
+// def_image_reg.angle is in ROTATE space, not image space: DefConfUI stores it
+// as `angle: reg.rotate`, straight off an inspection report. That is why the
+// canvas rotating by +reg.angle rectifies correctly -- it is rotating by minus
+// the image angle -- and why a pose delta may compare rotate to reg.angle
+// directly. Mixing the two spaces is the one mistake this whole note exists to
+// prevent.
+export function imageAngleOf(rotate) { return -(rotate || 0); }
+
 // The shortest signed difference between two angles, in radians. A pose delta
 // of +179.9deg and -179.9deg is 0.2deg apart, not 359.8.
 export function angleDelta(a, b) {
@@ -154,8 +179,8 @@ export function inspectSummary(rp, authoredReg) {
     // looks plausible whichever way it comes out, so it is not self-checking.
     // Mapping a point one mm along the axis cannot get any of that wrong,
     // because it is the same call that puts the measurements on the part.
-    pose.axis = toCanvas({ x: pose.cx + Math.cos(pose.rotate || 0),
-                           y: pose.cy + Math.sin(pose.rotate || 0) });
+    const ia = imageAngleOf(pose.rotate);
+    pose.axis = toCanvas({ x: pose.cx + Math.cos(ia), y: pose.cy + Math.sin(ia) });
     if (authoredReg && Number.isFinite(authoredReg.cx) && Number.isFinite(pose.cx)) {
       const d = {
         dx: pose.cx - authoredReg.cx,

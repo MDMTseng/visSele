@@ -302,39 +302,33 @@ console.log('\n=== the summary answers what a test run is for ===');
 
   ok(near(axisOf(0, { cx: 0, cy: 0, angle: 0 }), 0),
      'an unrotated object on an unrotated reg points along +x');
-  ok(near(axisOf(Math.PI / 2, { cx: 0, cy: 0, angle: 0 }), 90),
-     'a 90deg object points 90deg -- the found rotation is not dropped');
-  // A change in the found rotation moves the stub by the SAME amount, whatever
-  // the reg is. This is the property that survives not knowing the reg's sign
-  // convention (see the note below), and it is what makes the stub readable as
-  // "how far off this part is" rather than as an absolute bearing.
+  ok(near(axisOf(Math.PI / 2, { cx: 0, cy: 0, angle: 0 }), -90),
+     'a rotate of +90 points at -90 in image terms -- rotate is not an image angle',
+     'measured: --insp {"rot_deg":5} -> rotate +5, and +5 rot_deg moves content to -5');
+  // THE ONE THAT WAS FAILING, and is now the point. An object sitting exactly
+  // AT the authored reg must point along the world +x axis, because rectifying
+  // is what a reg is for. It came out at 2x the reg angle while the stub used
+  // +rotate; it is 0 now that it uses the IMAGE angle, -rotate.
+  //
+  // Both facts behind that were measured rather than argued:
+  //   `--insp img def out '{"rot_deg":5}'` reports rotate = +5.0000, and
+  //   test_perturb pins +5 rot_deg as moving image content to -5 in image atan2.
+  // And def_image_reg.angle is in ROTATE space -- DefConfUI writes it as
+  // `angle: reg.rotate` off a report -- which is why the canvas rotating by
+  // +reg.angle rectifies at all.
   const A = 0.7, D = 0.2;
-  ok(near(M.angleDelta(axisOf(A + D, { cx: 0, cy: 0, angle: A }) * Math.PI / 180,
-                       axisOf(A, { cx: 0, cy: 0, angle: A }) * Math.PI / 180) * 180 / Math.PI,
-          D * 180 / Math.PI),
-     'a part 0.2 rad further round moves the stub by exactly 0.2 rad',
-     'true regardless of what the reg angle does');
+  // "AT the authored reg" means rotate === reg.angle, because BOTH are in
+  // rotate space -- that is the whole content of the note above, and writing
+  // this assertion with a negated rotate (as if reg.angle were an image angle)
+  // is how it failed at 2x while the code was right.
+  ok(near(axisOf(A, { cx: 0, cy: 0, angle: A }), 0),
+     'an object AT the authored reg points along the world +x axis',
+     `${axisOf(A, { cx: 0, cy: 0, angle: A }).toFixed(4)} deg`);
+  ok(near(axisOf(A + D, { cx: 0, cy: 0, angle: A }), -D * 180 / Math.PI),
+     'and one 0.2 rad further round in ROTATE reads as 0.2 rad the other way on screen',
+     `${axisOf(A + D, { cx: 0, cy: 0, angle: A }).toFixed(4)} deg -- rotate and image angle run opposite`);
 
-  // WHAT IS NOT ASSERTED HERE, and why.
-  //
-  // The obvious expectation -- an object sitting exactly AT the authored reg
-  // should point along the world +x axis, because rectifying is what a reg is
-  // for -- FAILS: it comes out at 2x the reg angle. That is either a real sign
-  // error in the canvas transform or a wrong assumption about what
-  // def_image_reg.angle means, and NOTHING ON THIS BENCH CAN TELL THEM APART:
-  // every def here has angle ~= 2.4e-05, i.e. zero, so the sign has never been
-  // exercised by anything.
-  //
-  // The stub is therefore built from the SAME transform as the measurement
-  // points rather than from an angle composed by hand. That does not resolve
-  // the question -- it guarantees the overlay cannot disagree with itself. If
-  // the rotation sign is wrong, the points and the stub are wrong TOGETHER and
-  // visibly, on the first def with a real reg angle, instead of quietly
-  // contradicting each other.
-  //
-  // Do not "fix" this by adding a minus sign until a def with a non-zero reg
-  // angle has been looked at on a machine.
-  ok(near(axisOf(0.3, { cx: 0, cy: 0, angle: 0, isFlipped: true }), -0.3 * 180 / Math.PI),
+  ok(near(axisOf(0.3, { cx: 0, cy: 0, angle: 0, isFlipped: true }), 0.3 * 180 / Math.PI),
      'and a flipped reg mirrors the direction rather than ignoring the flip');
 
   const none = M.inspectSummary({ reports: [] }, undefined);

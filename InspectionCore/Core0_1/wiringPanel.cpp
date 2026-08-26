@@ -12219,6 +12219,32 @@ int cp_main(int argc, char **argv)
     cv::Mat cvSrc;
     if (loadImageCv(imgPath, cvSrc) != 0)
     { LOGE("--insp: cannot load image %s", imgPath); return 3; }
+    // Optional 5th argument: the same perturbation II accepts, as JSON.
+    //
+    //   visSele --insp img.png def.hydef out.json '{"rot_deg":5,"noise":8}'
+    //
+    // It exists because the WS path could not be used to answer a question the
+    // report itself raises -- which way `rotate` turns when the scene turns.
+    // The core drops a second WS client while the app holds the first, so a
+    // probe cannot run beside a live session, and the answer was needed on this
+    // machine, against this def, not from reading the source. A robustness
+    // sweep that cannot be reproduced from a shell is one that can only be
+    // argued about.
+    if (ai + 4 < argc && argv[ai + 4][0] == '{')
+    {
+      cJSON *pj = cJSON_Parse(argv[ai + 4]);
+      if (pj == NULL) { LOGE("--insp: perturb JSON did not parse"); return 5; }
+      TestPerturb tp = test_perturb_parse(pj);
+      double *sd = JFetch_NUMBER(pj, "seed");
+      if (tp.any())
+      {
+        LOGI("--insp perturb: rot=%.2fdeg scale=%.3f skew=%.3f gain=%.2f bias=%.1f noise=%.1f",
+             tp.rot_deg, tp.scale, tp.skew, tp.gain, tp.bias, tp.noise);
+        test_perturb_apply(cvSrc, tp, sd ? (int)*sd : 0);
+      }
+      cJSON_Delete(pj);
+    }
+
     // Reject degenerate-size images that the sig360 / labeling pipeline assumes
     // are at least sample/down-sampling-friendly. A 1x1 image SIGSEGVs deep in
     // the matching pipeline; bounce it as a controlled load failure.

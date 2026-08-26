@@ -155,7 +155,11 @@ function drawScene(g, canvas, ctx_state) {
         const dx = P.axis.x - P.at.x, dy = P.axis.y - P.at.y;
         const n = Math.hypot(dx, dy);
         if (n > 1e-9) {
-          const L = pr * 9;
+          // 3 mm in WORLD units, back at the operator's request: a long line
+          // reads as a bearing across the frame, which is what it is for. It
+          // was briefly made screen-proportional because it ran off the edge --
+          // but that was the direction being wrong, not the length.
+          const L = 3;
           ctx.beginPath(); ctx.moveTo(P.at.x, P.at.y);
           ctx.lineTo(P.at.x + (dx / n) * L, P.at.y + (dy / n) * L);
           ctx.stroke();
@@ -248,7 +252,14 @@ function ctrlScene(g, canvas, ctx_state) {
                     t: { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y } };
     } else if (g.mouseEdge && st.status === 0 && work.line) {
       const { o, t } = work.line;
-      onReg({ cx: o.x, cy: o.y, angle: Math.atan2(t.y - o.y, t.x - o.x), isFlipped: false });
+      // NEGATED, because def_image_reg.angle is in ROTATE space and this drag
+      // measures an IMAGE angle. DefConfUI writes the field as `angle:
+      // reg.rotate` straight off an inspection report, and the canvas rectifies
+      // by rotating the image by +angle -- which only lands the part on the
+      // world x-axis if angle is MINUS the image angle. Storing the raw atan2
+      // here rectified by 2x the drawn angle, invisibly, because every def on
+      // this bench has a registration angle of ~0. See imageAngleOf().
+      onReg({ cx: o.x, cy: o.y, angle: -Math.atan2(t.y - o.y, t.x - o.x), isFlipped: false });
       work.line = null;
     }
   }
