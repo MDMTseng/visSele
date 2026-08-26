@@ -397,6 +397,12 @@ def_share_writable=true    in-share: written
                            outside:  written
 ```
 
+**Stages 1 and 2 are PARKED** — 2026-08-26, to be discussed rather than built.
+Stage 0 has removed the accidental fleet-wide write; what is left is the
+security and workflow question of who may publish and how, and that is a
+decision about how the company works, not a coding task. What follows is the
+design as it stood, kept so the discussion starts from something concrete.
+
 **Stage 1 — edit locally, publish deliberately. (~1-2 days)**
 
 4. `def_root_local` in `machine_setting.json` (default `data/defs/`).
