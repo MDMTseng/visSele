@@ -39,6 +39,7 @@ import message from 'antd/lib/message';
 import Checkbox from 'antd/lib/checkbox'
 import Popover from 'antd/lib/popover';
 import Table from 'antd/lib/table';
+import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
 import Switch from 'antd/lib/switch';
 import Tag from 'antd/lib/tag';
 import Input from 'antd/lib/input';
@@ -525,7 +526,12 @@ function ResultGroupTitle({ group, slot, collapsed, simThres, onToggle, onFullSc
           produce a score, rather than shown as a dash that reads like 0. */}
       {group && Number.isFinite(group.similarity) &&
         <span style={{ flex: "0 0 auto", fontSize: 11, fontVariantNumeric: "tabular-nums",
-                       color: group.similarity >= simThres + 0.02 ? "#8c8c8c"
+                       // Colour by HEADROOM, not by a fixed distance. "Within
+                       // 0.02 of the gate" means something different against a
+                       // 0.50 floor than against a 0.90 one; the fraction of
+                       // the remaining range means the same thing against both,
+                       // which is what lets one rule serve two locators.
+                       color: headroom(group.similarity, simThres) >= 0.15 ? "#8c8c8c"
                             : group.similarity >= simThres ? "#d46b08" : "#cf1322" }}
           title={`比對分數 ${group.similarity.toFixed(4)}／接受門檻 ${simThres.toFixed(2)}`}>
           {group.similarity.toFixed(3)}
@@ -1411,11 +1417,13 @@ class ObjInfoList extends React.Component {
     // minute retained, none of it reclaimable by a forced collection. Turning
     // the image stream off stopped it dead, which is what pointed here.
     const resultGroups = resultMenu;
-    // The def's acceptance threshold, so the score is read against the number
-    // that actually decides rather than against a constant guessed here. 0.9 is
-    // the CORE's default for an absent key (sig_match_sim_thres), not a display
-    // preference -- see MISC_Util's note on why it is only emitted when set.
-    const simThres = Number.isFinite(this.props.simThres) ? this.props.simThres : 0.9;
+    // The def's acceptance floor, from the ONE place that knows it. It is not a
+    // constant and it is not 0.9: a shape_based def is gated by line2Dup's
+    // shape_min_score (core default 0.50), a sig360 def by sig_match_sim_thres
+    // (core default 0.70 when the key is absent). A shape_based def scoring
+    // 0.986 has enormous headroom over 0.50 and none over an assumed 0.99 --
+    // and headroom is the entire reason the number is on screen.
+    const simThres = acceptanceFloor(this.props.edit_info).floor;
     // Plain divs, NOT antd SubMenu.
     //
     // The modal was moved off Menu/SubMenu first and the growth fell about 20%
@@ -3677,7 +3685,7 @@ class APP_INSP_MODE extends React.Component {
           IR={trackingWindowInfo}
           DICT={this.props.DICT}
           measureDisplayRank={this.state.measureDisplayRank}
-          simThres={this.props.edit_info && this.props.edit_info.sig_match_sim_thres}
+          edit_info={this.props.edit_info}
           IR_decotrator={this.props.info_decorator}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
@@ -3917,7 +3925,7 @@ class APP_INSP_MODE extends React.Component {
                 edit_info={this.props.edit_info}
                 onROISettingCallBack={this.state.onROISettingCallBack}
                 measureDisplayRank={this.state.measureDisplayRank}
-          simThres={this.props.edit_info && this.props.edit_info.sig_match_sim_thres}
+          edit_info={this.props.edit_info}
                 ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
                 downSampleFactor={1}
                 onCanvasInit={(canvas) => {

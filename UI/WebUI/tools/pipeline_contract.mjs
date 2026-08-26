@@ -61,6 +61,7 @@ export { shapeDefFingerprint, shapeDefProjection } from 'UTIL/MISC_Util';
 export { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 export { inspectSummary, objFromImage, angleDelta } from 'JSSRCROOT/sbmInspectResult';
 export { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from 'JSSRCROOT/sbmSweep';
+export { acceptanceFloor, headroom, CORE_SIG_MATCH_THRES_DEFAULT, CORE_SHAPE_MIN_SCORE_DEFAULT } from 'UTIL/matchThreshold';
 `);
 
 await build({
@@ -388,6 +389,42 @@ console.log('\n=== nothing imports a React the project does not have ===');
   ok(hits.length === 0,
      `React ${major}: no source uses a React 18+ API`,
      hits.length ? hits.join('; ') : 'checked ' + walk(r('src')).length + ' files');
+}
+
+console.log('\n=== a match score is read against the floor its OWN locator uses ===');
+{
+  // The two locators gate at wildly different places, and the screen shows one
+  // number. Reading a shape_based score against a sig360 floor -- or against a
+  // guessed 0.9 -- makes a def with enormous headroom look marginal, or a
+  // marginal one look fine.
+  const shape = M.acceptanceFloor({ locating_engine: 'shape_based' });
+  ok(shape.floor === M.CORE_SHAPE_MIN_SCORE_DEFAULT && shape.floor === 0.5,
+     'a shape_based def is gated by line2Dup at 0.50, not by sig_match_sim_thres',
+     `floor ${shape.floor}, key ${shape.key}`);
+  ok(M.acceptanceFloor({ locating_engine: 'shape_based', shape_min_score: 72 }).floor === 0.72,
+     'and shape_min_score is 0-100 in the def, converted here exactly once');
+
+  const sig = M.acceptanceFloor({});
+  ok(sig.floor === M.CORE_SIG_MATCH_THRES_DEFAULT && sig.floor === 0.7,
+     "a sig360 def with no key gets the CORE's 0.7 -- not the editor's 0.9 seed",
+     `floor ${sig.floor}`);
+  ok(M.acceptanceFloor({ sig_match_sim_thres: 0.93 }).floor === 0.93,
+     'and an explicit value wins over both');
+
+  // THE BAR. It draws headroom, and the bug it replaced is worth pinning: a
+  // real sweep spanning 0.986..0.998 over a 0.50 gate was auto-scaled to its
+  // own min/max and drew a bar swinging empty-to-full across twelve
+  // thousandths -- a dramatic curve over nothing, on a run with no problem.
+  const lo = M.headroom(0.986, 0.5), hi = M.headroom(0.998, 0.5);
+  ok(lo > 0.95 && hi > 0.95 && Math.abs(hi - lo) < 0.03,
+     'a comfortable sweep draws a column of nearly-full bars, all alike',
+     `0.986 -> ${(lo * 100).toFixed(1)}%, 0.998 -> ${(hi * 100).toFixed(1)}%`);
+  ok(M.headroom(0.55, 0.5) < 0.15,
+     'while a score actually near the gate is visibly short',
+     `${(M.headroom(0.55, 0.5) * 100).toFixed(1)}%`);
+  ok(M.headroom(0.4, 0.5) === 0, 'below the gate clamps to empty, never negative');
+  ok(!Number.isFinite(M.headroom(NaN, 0.5)) && !Number.isFinite(M.headroom(0.9, 1)),
+     'and an absent score or a degenerate floor draws nothing, not a full bar');
 }
 
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }

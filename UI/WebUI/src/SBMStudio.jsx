@@ -14,6 +14,7 @@ import { defFileGeneration, stampRefImagePath } from 'UTIL/MISC_Util';
 import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
 import { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
+import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
 
 // ── React wrapper: mount a DrawHook_CanvasComponent on a <canvas>, feed it the
 // image + the draw hook, resize via ReactResizeDetector. ──────────────────────
@@ -301,21 +302,30 @@ function InspectPanel({ insp, onClear }) {
 // marked, and the two numbers that matter per row: the match score and -- where
 // the axis has a ground truth -- how far the reported pose is from the pose we
 // imposed.
-function SweepPanel({ sweep }) {
+function SweepPanel({ sweep, floor }) {
   if (!sweep) return null;
   const A = SWEEP_AXES[sweep.axis] || {};
   const u = A.unit || '';
   const fmt = (v) => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2));
-  const sims = sweep.rows.filter((r) => Number.isFinite(r.sim)).map((r) => r.sim);
-  // Scale the bars to the range actually seen, not to 0..1. Every score in a
-  // healthy sweep sits between 0.9 and 1.0, and a 0..1 bar makes them all look
-  // identical -- which is precisely the difference being looked for.
-  const lo = sims.length ? Math.min(...sims) : 0;
-  const hi = sims.length ? Math.max(...sims) : 1;
-  const span = (hi - lo) > 1e-6 ? (hi - lo) : 1;
+  // THE BAR IS HEADROOM ABOVE THE ACCEPTANCE FLOOR, not the score.
+  //
+  // It first scaled to the min/max of the run, on the reasoning that scores all
+  // sit near 1.0 and a 0..1 bar makes them look identical. That reasoning was
+  // wrong in the direction that matters: on a real sweep spanning 0.986 to
+  // 0.998 -- twelve thousandths, comfortably above a 0.50 gate -- it drew a bar
+  // swinging from nearly empty to full. A reader would tune against that, and
+  // there is nothing there to tune. Auto-scaling turns any run into a dramatic
+  // curve, including one that is flat.
+  //
+  // Against the floor, a healthy sweep is a column of nearly-full bars, which
+  // is the true statement, and a step actually approaching the gate visibly
+  // shortens. The spread stays legible as the printed number next to it.
+  const bar = (sim) => headroom(sim, floor);
   return <div style={{ marginTop: 4 }}>
     <div style={{ fontSize: 11, color: '#999' }}>
       {sweep.done}/{sweep.total}{sweep.aborted ? '(已中止)' : ''}
+      <span style={{ marginLeft: 6 }} title="長條 = 分數距離接受門檻還有多少餘裕(滿格 = 1.0)">
+        門檻 {floor.toFixed(2)}</span>
     </div>
     {sweep.verdict && <div style={{ fontSize: 11, color: '#69c0ff', margin: '3px 0',
                                     lineHeight: 1.5 }}>{sweep.verdict}</div>}
@@ -331,7 +341,7 @@ function SweepPanel({ sweep }) {
           <span style={{ width: 34, flex: '0 0 auto', height: 8, background: '#222',
                          borderRadius: 2, overflow: 'hidden' }}>
             {r.located && <span style={{ display: 'block', height: '100%',
-              width: `${Math.max(4, ((r.sim - lo) / span) * 100)}%`,
+              width: `${Math.max(4, bar(r.sim) * 100)}%`,
               background: '#00c853' }} />}
           </span>
           <span style={{ width: 42, color: r.located ? '#ccc' : '#ff5252' }}>
@@ -371,6 +381,8 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const [sweepAxis, setSweepAxis] = useState('rot');
   const [sweepRange, setSweepRange] = useState({});    // axis -> {from,to,steps}
   const abortRef = useRef(false);
+  // Which floor a match has to clear, per the locator this def actually uses.
+  const floorInfo = acceptanceFloor(edit_info);
   const inspRef = useRef(undefined);                   // mirror, same reason as featRef
   inspRef.current = insp;
   const work = useRef({ poly: [], cursor: null, line: null });
@@ -656,7 +668,7 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       <div style={{ fontSize: 11, color: '#999', marginTop: 3, lineHeight: 1.5 }}>
         {SWEEP_AXES[sweepAxis].hint}
       </div>
-      <SweepPanel sweep={sweep} />
+      <SweepPanel sweep={sweep} floor={floorInfo.floor} />
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>matching 參數</Divider>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
