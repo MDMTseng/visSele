@@ -268,7 +268,25 @@ function StateReducer(newState, action) {
                       //if the time is longer than 4s then remove it from matchingWindow
                       if (srep_inWindow.repeatTime > statSetting.minReportRepeat
                         && srep_inWindow.headSkipTime == 0) {
-                        reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue, srep_inWindow);
+                        // The SAME per-製程 override the verdict is graded
+                        // against further down (cur_MarginInfo -> resultGrading).
+                        // The statistics used to read the ROOT shapes instead, so
+                        // CP/CPK described a tolerance the part was never judged
+                        // by -- and a 製程 that TIGHTENS the tolerance therefore
+                        // read as more capable than it is, which is the wrong
+                        // direction to be wrong in.
+                        //
+                        // Computed here rather than reusing cur_MarginInfo: that
+                        // is declared several hundred lines below and this runs
+                        // first, so referencing it would be a temporal dead zone
+                        // -- a crash, not a stale value. pickCtrlMargin is the
+                        // single source both paths already agree on.
+                        const _dec = newState.edit_info.__decorator;
+                        const _statMargin = (_dec && _dec.control_margin_info)
+                          ? pickCtrlMargin(newState.edit_info.inspOptionalTag,
+                                           _dec.control_margin_info).info
+                          : undefined;
+                        reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue, srep_inWindow, _statMargin);
 
                         delete srep_inWindow.headSkipTime;
                         delete srep_inWindow.minReportRepeat;

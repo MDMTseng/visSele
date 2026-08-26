@@ -47,6 +47,7 @@ export function effectiveLimits(def, isFlipped) {
   };
 }
 import { mkLog } from 'UTIL/logger';
+import { initMeasureStatistic } from 'REDUX_STORE_SRC/reducer/spcStats';
 
 import JSum from 'jsum';
 import dateFormat from 'dateformat';
@@ -182,29 +183,9 @@ export class InspectionEditorLogic {
     this.sig360info = sig360info;
   }
 
-  getInitStatisticSPState()
-  {
-    return {
-      NA_count: 0,
-      CNG_count: 0,
-      consecutive_CNG_count: 0,
-      max_consecutive_CNG_count: 0,
-      fuzzy_consecutive_CNG_count: 0,
-      fuzzy_consecutive_CNG_info:0,
-      max_fuzzy_consecutive_CNG_count: 0,
-
-
-
-      SNG_count: 0,
-      consecutive_SNG_count: 0,
-      fuzzy_consecutive_SNG_count: 0,
-      fuzzy_consecutive_SNG_info:0,
-      max_consecutive_SNG_count: 0,
-      max_fuzzy_consecutive_SNG_count: 0,
-
-      
-    };
-  }
+  // getInitStatisticSPState was removed: it became a second, uncalled
+  // definition of "an empty statistic" the moment resetStatisticState
+  // started using initMeasureStatistic. See spcStats.js, which owns it.
 
   resetStatisticState(edit_info)
   {
@@ -216,43 +197,11 @@ export class InspectionEditorLogic {
         feature.type == SHAPE_TYPE.measure))
         .map((feature) => {
           //console.log(feature);
-          feature.statistic = {
-            count_stat:
-            {
-              NA: 0,
-              UOK: 0,
-              LOK: 0,
-
-              UCNG: 0,
-              LCNG: 0,
-
-              USNG: 0,
-              LSNG: 0,
-            },
-            histogram: {
-              xmin: 1.2 * (feature.LSL - feature.value) + feature.value,
-              xmax: 1.2 * (feature.USL - feature.value) + feature.value,
-              histo: new Array(502).fill(0)//The first value and last value are the value excced xmin& xmax
-            },
-            count: 0,
-            //those value should be undefined, but since the count is 0 so the following calc should ignore those value
-            sum: 0,
-            sqSum: 0,//E[X^2]*count
-            mean: 0,//E[X]*count
-            variance: 0,//E[X^2]-E[X]^2
-            //deviation = Sigma = sqrt(variance)
-            sigma: 0,
-
-            sp:this.getInitStatisticSPState(),
-            //
-            CP: 0,
-            CK: 0,
-            CPU: 0,
-            CPL: 0,
-            CPK: 0,
-            MIN:NaN,
-            MAX:NaN
-          }
+          // initMeasureStatistic, not an inline literal. A bucket RESTART
+          // (spcStats, when the 製程 changes) needs exactly the same
+          // "empty", and two definitions of empty drift the day somebody
+          // adds a counter to one of them.
+          feature.statistic = initMeasureStatistic(feature);
           return feature;
         });
     

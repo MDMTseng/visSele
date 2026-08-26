@@ -1,6 +1,57 @@
 // Pure SPC statistics reducers extracted from UICtrlReducer (no redux/state coupling).
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import { mkLog } from "UTIL/logger";
+
+// The shape of a measure's statistic, in ONE place.
+//
+// resetStatisticState in InspectionEditorLogic built this inline, and a bucket
+// restart needs exactly the same thing -- so a second copy here would drift the
+// day someone adds a counter, and the two would disagree about what "empty"
+// means. spcStats owns the statistics, so it owns their initial value; it
+// imports nothing from the editor, so the editor can import this without a
+// cycle.
+export function initStatisticSPState() {
+  return {
+    NA_count: 0,
+    CNG_count: 0,
+    consecutive_CNG_count: 0,
+    max_consecutive_CNG_count: 0,
+    fuzzy_consecutive_CNG_count: 0,
+    fuzzy_consecutive_CNG_info: 0,
+    max_fuzzy_consecutive_CNG_count: 0,
+    SNG_count: 0,
+    consecutive_SNG_count: 0,
+    fuzzy_consecutive_SNG_count: 0,
+    fuzzy_consecutive_SNG_info: 0,
+    max_consecutive_SNG_count: 0,
+    max_fuzzy_consecutive_SNG_count: 0,
+  };
+}
+
+// `measure` supplies the histogram range, which is why a bucket restart has to
+// go through here: the range is derived from the LIMITS, so when the 製程
+// changes the old range describes a different tolerance.
+export function initMeasureStatistic(measure) {
+  return {
+    count_stat: { NA: 0, UOK: 0, LOK: 0, UCNG: 0, LCNG: 0, USNG: 0, LSNG: 0 },
+    histogram: {
+      xmin: 1.2 * (measure.LSL - measure.value) + measure.value,
+      xmax: 1.2 * (measure.USL - measure.value) + measure.value,
+      histo: new Array(502).fill(0),
+    },
+    count: 0, sum: 0, sqSum: 0, mean: 0, variance: 0, sigma: 0,
+    sp: initStatisticSPState(),
+    CP: 0, CK: 0, CPU: 0, CPL: 0, CPK: 0,
+    MIN: NaN, MAX: NaN,
+  };
+}
+
+// In place, because the bucket is referenced from measureList and callers hold
+// the object.
+function resetOneStat(stat, measure) {
+  const fresh = initMeasureStatistic(measure);
+  for (const k of Object.keys(fresh)) stat[k] = fresh[k];
+}
 const log = mkLog("editor.reducer");
 
   function histDataReducer(histoInfo, dataValue) {
@@ -117,14 +168,54 @@ const log = mkLog("editor.reducer");
     // stat.sp
   }
 
-  function statReducer(statistic, report) {
+  // `curMarginInfo` is the per-製程 shape list the VERDICT was graded against
+  // (cur_MarginInfo in UICtrlReducer). Optional: without it this behaves as
+  // before and grades statistics against the root.
+  //
+  // S1 and S2, which are one defect seen twice. measureList is snapshotted from
+  // the ROOT shapes at reset and never follows the 製程, so:
+  //
+  //   * CP/CPK were computed against the root USL/LSL while the part was
+  //     JUDGED against the override. A 製程 that tightens the tolerance
+  //     therefore produced an optimistic CPK -- the wrong direction to be
+  //     wrong in, because it says a process is more capable than it is.
+  //   * samples judged under two different limit sets accumulated in one
+  //     bucket, and the histogram kept the range built at reset time.
+  //
+  // Both are fixed by the same thing: take the limits from the same place the
+  // verdict did, and when they CHANGE, start that measure's bucket again.
+  // Statistics over two limit sets are not statistics about anything.
+  function effectiveMeasure(measure, curMarginInfo) {
+    if (!curMarginInfo) return measure;
+    const override = curMarginInfo.find((s) => s.id === measure.id);
+    return override || measure;
+  }
+  function limitKey(m) {
+    return `${m.USL}|${m.LSL}|${m.value}|${m.UCL}|${m.LCL}`;
+  }
+
+  function statReducer(statistic, report, curMarginInfo) {
 
     //if the time is longer than 4s then remove it from matchingWindow
     //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-    statistic.measureList.forEach((measure) => {
+    statistic.measureList.forEach((measure_root) => {
+      // The limits the verdict used. Everything below reads `measure`, so the
+      // NG classification, CP/CPK and the histogram range all move together.
+      const measure = effectiveMeasure(measure_root, curMarginInfo);
       let new_rep = report.judgeReports.find((rep) => rep.id == measure.id);
       //measure.statistic
-      let stat = measure.statistic;
+      let stat = measure_root.statistic;
+
+      // The 製程 changed under this bucket. Start it again rather than mix.
+      const lk = limitKey(measure);
+      if (stat._limitKey === undefined) {
+        stat._limitKey = lk;
+      } else if (stat._limitKey !== lk) {
+        log.info('[stats] limits changed for measure ' + measure.id +
+                 ' -- restarting its bucket', { was: stat._limitKey, now: lk });
+        resetOneStat(stat, measure);
+        stat._limitKey = lk;
+      }
       if (new_rep === undefined) {
         stat.count_stat.NA++;
         log.error("The incoming inspection report doesn't match the defFile");
