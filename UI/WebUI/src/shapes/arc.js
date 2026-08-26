@@ -1,7 +1,7 @@
 // Per-shape module: ARC.
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
-import { threePointToArc } from 'UTIL/MathTools';
+import { threePointToArc, arcSweep } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { caliperField, edgeField, drawArcCalipers, drawCaliperHits } from './_caliperFields';
@@ -28,17 +28,10 @@ export const fields = {
       if (obj.locating !== 'caliper') return;
       const count = 10;
       if (obj.caliper === undefined) {
-        let arcLen = 0;
-        if (obj.pt1 && obj.pt2 && obj.pt3) {
-          const a = threePointToArc(obj.pt1, obj.pt2, obj.pt3);
-          if (a.r > 0) {
-            const a0 = Math.atan2(obj.pt1.y - a.y, obj.pt1.x - a.x);
-            const a2 = Math.atan2(obj.pt3.y - a.y, obj.pt3.x - a.x);
-            let span = a2 - a0;
-            while (span < 0) span += 2 * Math.PI;
-            arcLen = a.r * span;
-          }
-        }
+        // arcSweep, not a local pt1->pt3 span: pt2 is what says WHICH of the
+        // two arcs this is, and ignoring it seeds the complement.
+        const arcLen = (obj.pt1 && obj.pt2 && obj.pt3)
+          ? arcSweep(obj.pt1, obj.pt2, obj.pt3).length : 0;
         obj.caliper = {
           count,
           width: (arcLen > 0 ? arcLen / count : 0.1),
@@ -58,16 +51,9 @@ export const fields = {
     default: 'ls',
     normalize: (v) => (v === 'outer' || v === 'inner') ? v : 'ls',
   },
-  caliper: caliperField(10, (s) => {
-    if (!(s.pt1 && s.pt2 && s.pt3)) return 0;
-    const a = threePointToArc(s.pt1, s.pt2, s.pt3);
-    if (!(a.r > 0)) return 0;
-    const a0 = Math.atan2(s.pt1.y - a.y, s.pt1.x - a.x);
-    const a2 = Math.atan2(s.pt3.y - a.y, s.pt3.x - a.x);
-    let span = a2 - a0;
-    while (span < 0) span += 2 * Math.PI;
-    return a.r * span; // arc length, def-unit (mm)
-  }),
+  caliper: caliperField(10, (s) => (
+    (s.pt1 && s.pt2 && s.pt3) ? arcSweep(s.pt1, s.pt2, s.pt3).length : 0
+  )),
   edge:    edgeField({ method: 'strongest', polarity: 'falling', min_strength: 60 }),
 };
 
@@ -135,22 +121,11 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   if (inFullDisplay && shape.locating === 'caliper') {
     // Recompute the un-inflated arc — the `arc.r` above was bumped by
     // marginOffset for the visualization band; we want the def geometry.
-    const arcBase = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
-    const aP1 = Math.atan2(shape.pt1.y - arcBase.y, shape.pt1.x - arcBase.x);
-    const aP2 = Math.atan2(shape.pt2.y - arcBase.y, shape.pt2.x - arcBase.x);
-    const aP3 = Math.atan2(shape.pt3.y - arcBase.y, shape.pt3.x - arcBase.x);
-    // Port of core's convert3Pts2ArcData (FeatureManager_sig360_circle_line.cpp:185):
-    // ALWAYS sweep CCW from sAngle to eAngle in an order that passes through
-    // pt2 — caliper-index 0 sits at sAngle, count-1 at eAngle. This must
-    // match the core's caliper_locate_circle indexing so the per-caliper
-    // status from cal_hits aligns with the boxes drawn here.
-    const TAU = 2 * Math.PI;
-    let angle21 = aP2 - aP1; if (angle21 < 0) angle21 += TAU;
-    let angle31 = aP3 - aP1; if (angle31 < 0) angle31 += TAU;
-    let a0, a1;
-    if (angle31 > angle21) { a0 = aP1; a1 = aP3; }
-    else                   { a0 = aP3; a1 = aP1; }
-    if (a1 < a0) a1 += TAU;  // ensure positive CCW span
+    // The same arcSweep the width was seeded from -- that is the point. These
+    // were two implementations of one idea, the drawing one correct and the
+    // seeding one not, so the boxes disagreed with the width that placed them.
+    const arcBase = arcSweep(shape.pt1, shape.pt2, shape.pt3);
+    const a0 = arcBase.a0, a1 = arcBase.a1;
     // Per-caliper hits color the boxes (missed → gray) and the X markers
     // (inlier=green, outlier=red). See line.js for source priority.
     const hits = shape.cal_hits

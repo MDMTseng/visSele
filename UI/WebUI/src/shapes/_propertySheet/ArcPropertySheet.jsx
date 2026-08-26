@@ -6,7 +6,7 @@
 //   - caliper width auto-default = arc length / count (not chord length).
 import { caliperConfigProblem } from '../_caliperFields';
 import React, { useEffect } from 'react';
-import { threePointToArc } from 'UTIL/MathTools';
+import { arcSweep } from 'UTIL/MathTools';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
   translate,
@@ -18,14 +18,11 @@ const EDGE_POLARITIES = ['any', 'rising', 'falling'];
 // Arc length pt1→pt3 in def-mm. Used to seed caliper width on first
 // flip to caliper mode so the boxes tile cleanly along the arc.
 function arcLengthOf(shape) {
+  // arcSweep, not a pt1->pt3 span. This was a third copy of a calculation that
+  // never looked at pt2, and so returned the COMPLEMENT of the arc whenever it
+  // was drawn the other way round.
   if (!(shape.pt1 && shape.pt2 && shape.pt3)) return 0;
-  const a = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
-  if (!(a.r > 0)) return 0;
-  const a0 = Math.atan2(shape.pt1.y - a.y, shape.pt1.x - a.x);
-  const a2 = Math.atan2(shape.pt3.y - a.y, shape.pt3.x - a.x);
-  let span = a2 - a0;
-  while (span < 0) span += 2 * Math.PI;
-  return a.r * span;
+  return arcSweep(shape.pt1, shape.pt2, shape.pt3).length;
 }
 
 function defaultCaliperWidth(shape, count) {

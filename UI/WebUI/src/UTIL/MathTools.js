@@ -189,6 +189,38 @@ export function distance_line_point(line, point)
 }
 
 
+// The arc's actual sweep, pt2 included.
+//
+// Three points do not define an arc without pt2: pt1 and pt3 alone leave two
+// arcs, the short one and its complement, and pt2 is the only thing that says
+// which. Every seeder in the UI used to compute `span = a3 - a1` mod 2pi and
+// never look at pt2, so an arc drawn "the other way round" got its COMPLEMENT
+// -- a 30 degree arc measured as 330. Caliper width is seeded as arcLen/count,
+// so those boxes came out 11x too wide, each one averaging across the whole
+// feature instead of a slice of it.
+//
+// This is a port of the core's convert3Pts2ArcData
+// (FeatureManager_sig360_circle_line.cpp:185): always sweep CCW from a0 to a1
+// in the order that passes THROUGH pt2. The drawing code already did this
+// correctly, which is exactly why the boxes disagreed with the width that
+// placed them.
+export function arcSweep(p1, p2, p3) {
+  const a = threePointToArc(p1, p2, p3);
+  if (!a || !(a.r > 0)) return { ...(a || { x: 0, y: 0, r: 0 }), a0: 0, a1: 0, span: 0, length: 0 };
+  const TAU = 2 * Math.PI;
+  const aP1 = Math.atan2(p1.y - a.y, p1.x - a.x);
+  const aP2 = Math.atan2(p2.y - a.y, p2.x - a.x);
+  const aP3 = Math.atan2(p3.y - a.y, p3.x - a.x);
+  let angle21 = aP2 - aP1; if (angle21 < 0) angle21 += TAU;
+  let angle31 = aP3 - aP1; if (angle31 < 0) angle31 += TAU;
+  let a0, a1;
+  if (angle31 > angle21) { a0 = aP1; a1 = aP3; }   // pt2 lies between: pt1 -> pt3
+  else                   { a0 = aP3; a1 = aP1; }   // pt2 outside: the other way
+  if (a1 < a0) a1 += TAU;
+  const span = a1 - a0;
+  return { x: a.x, y: a.y, r: a.r, a0, a1, span, length: a.r * span };
+}
+
 export function threePointToArc(p1, p2, p3)
 {
   let offset =p2.x*p2.x +p2.y*p2.y;
