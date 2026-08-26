@@ -849,9 +849,21 @@ export class InspectionEditorLogic {
     }
     this.UpdateInherentShapeList();
 
-    let lostRefObjs = this.findLostRefShapes();
-
-    this.shapeList = this.shapeList.filter((shape) => !lostRefObjs.includes(shape));
+    // To a FIXED POINT, not once. Removing a shape can orphan another that
+    // referenced it, and a single pass left that second one in the list with a
+    // dangling ref -- which then shipped in the def. Chains are short, so this
+    // settles in one or two extra rounds; the cap is only there so a cycle
+    // cannot spin forever.
+    for (let round = 0; round < 32; round++) {
+      const lostRefObjs = this.findLostRefShapes();
+      if (lostRefObjs.length === 0) break;
+      this.shapeList = this.shapeList.filter((shape) => !lostRefObjs.includes(shape));
+      this.UpdateInherentShapeList();
+      if (round === 31) {
+        log.error('[prune] still finding lost refs after 32 rounds -- giving up',
+                  { remaining: lostRefObjs.length });
+      }
+    }
     this.UpdateInherentShapeList();
   }
 
@@ -933,6 +945,26 @@ export class InspectionEditorLogic {
       }]
       //ref:"__OBJ_CENTRAL__"
     });
+    // Inherent shapes live in the SAME id space as user shapes -- FindShapeObject
+    // searches both lists -- and nothing separates them except the convention
+    // that user ids stay small. Ids also arrive from the def file, so the
+    // convention is not enforced anywhere.
+    //
+    // (The audit recorded this as "collides once a user shape id reaches
+    // ~10000". That number is wrong: the base inherent ids are 100000-100002
+    // and arc centres are 100100 + id*10, so a user id has to reach 100000. The
+    // fragility is real, the threshold was not.)
+    //
+    // Complain rather than shadow. A collision here makes one shape invisible
+    // to every lookup, which is not something anyone would guess from the
+    // symptom.
+    const INHERENT_ID_BASE = 100000;
+    for (const s of this.shapeList) {
+      if (s.id >= INHERENT_ID_BASE) {
+        log.error('[inherent] user shape id collides with the inherent id space',
+                  { id: s.id, name: s.name, base: INHERENT_ID_BASE });
+      }
+    }
     id = 100100;
     this.shapeList.forEach((shape) => {
       if (shape.type == SHAPE_TYPE.arc) {
@@ -1539,6 +1571,11 @@ export class InspectionEditorLogic {
       vecXY_addin(v1, p1);
 
       let retPt = intersectPoint(p0, v0, p1, v1);
+      // Parallel or degenerate: intersectPoint now says so with NaN, the same
+      // as the core. undefined is this function's own "no point", and every
+      // caller already handles it -- returning NaN here instead would put a
+      // number-shaped non-number into the canvas.
+      if (!Number.isFinite(retPt.x) || !Number.isFinite(retPt.y)) return undefined;
       return retPt;
 
     }
@@ -1550,7 +1587,11 @@ export class InspectionEditorLogic {
     if (search_point.type != SHAPE_TYPE.search_point) return undefined;
 
     if (search_point.ref.length == 1) {
-      let ref0_shape = this.FindShapeObject("id", search_point.ref[0].id);
+      // shapelist, not this.shapeList. The parameter was accepted and then
+      // ignored, so every caller asking about a DIFFERENT list -- an
+      // inspection-adjusted clone, most of all -- silently got an answer about
+      // the def instead.
+      let ref0_shape = this.FindShapeObject("id", search_point.ref[0].id, shapelist);
       if (ref0_shape === undefined) return undefined;
       switch (ref0_shape.type) {
         case SHAPE_TYPE.line:

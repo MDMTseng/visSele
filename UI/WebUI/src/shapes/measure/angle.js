@@ -42,6 +42,13 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                   
                   let srcPt =
                     intersectPoint(subObjs[0].pt1, obj0_pt2, subObjs[1].pt1, obj1_pt2);
+                  // Parallel lines have no vertex, so there is no angle to draw
+                  // at one. Before intersectPoint guarded its denominator this
+                  // arrived as Infinity and every atan2 below it drew garbage.
+                  // Returning measureValue (still undefined here) is this
+                  // function's documented "no value", and is what the caller
+                  // already handles -- it pushes only defined values.
+                  if (!Number.isFinite(srcPt.x) || !Number.isFinite(srcPt.y)) return measureValue;
 
                   ctx.lineWidth = renderer.getIndicationLineSize();
                   //ctx.strokeStyle=renderer.colorSet.measure_info; 

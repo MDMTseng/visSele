@@ -118,6 +118,18 @@ export function closestPointOnLine(line, point)
 
 
 
+// Mirrors the core's acvIntersectPoint, INCLUDING its degenerate answer.
+//
+// The core guards its denominator and returns (NaN, NaN) for parallel or
+// degenerate lines; this had no guard at all, so the same input produced
+// +/-Infinity or NaN from a division by zero and carried straight on into the
+// geometry. Same failure, arrived at by accident instead of on purpose, and
+// with no agreed value for callers to test for.
+//
+// Returning NaN rather than undefined is deliberate: it is what the core
+// returns, so "the lines do not meet" has ONE representation on both sides and
+// a caller can check it the same way in either language. Callers must check --
+// there is no value that means "no intersection" and is also a point.
 export function  intersectPoint( p1, p2, p3, p4)
 {
   let intersec={x:0,y:0};
@@ -129,6 +141,8 @@ export function  intersectPoint( p1, p2, p3, p4)
   let V4 = (p3.y-p4.y);
 
   denominator = V1* V4 - V3* V2;
+  // 1e-12, the same threshold as the core's fabsf(denominator) < 1e-12f.
+  if (!(Math.abs(denominator) >= 1e-12)) return { x: NaN, y: NaN };
 
   let V12 = (p1.x*p2.y-p1.y*p2.x);
   let V34 = (p3.x*p4.y-p3.y*p4.x);
