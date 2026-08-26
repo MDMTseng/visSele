@@ -150,16 +150,50 @@ function drawOrientedBox(ctx, cx, cy, tx, ty, nx, ny, halfAlong, halfAcross) {
 // Draw N caliper boxes along a line shape. Across-edge length = shape.margin
 // (matches core's behavior — caliper engine uses initMatchingMargin as the
 // search half-length). shape.caliper may be undefined right after the user
-// flips locating to 'caliper'; helper falls back to count=10 / width=0.1.
+// flips locating to 'caliper'; resolveCaliper answers that the way the core does
+// (count 10, width 0.5 mm), not with a number of its own.
 // `calHits` (optional, index-aligned with the caliper anchors): per-caliper
 // status array from the latest inspection report. Used to gray the boxes
 // of calipers that found nothing.
+// Resolve `caliper` the way the CORE does, so the boxes on screen are the boxes
+// that actually run. They were not: the UI took its own view of a degenerate
+// value, and the screen then argued against the machine on exactly the defs
+// where somebody was already confused.
+//
+// Two stages, in the core's order:
+//
+//   parse   (FeatureManager_sig360_circle_line.cpp:260/270 and 1707/1717)
+//           an absent `caliper` object, or an absent key inside one, takes the
+//           parser's default -- count 10, width 0.5 mm -- then a cap of 512/64.
+//           A PRESENT 0 is 0 at this stage; it is not "unset".
+//   execute (Caliper.cpp:256 and 545)
+//           a floor, and it differs by primitive: a line needs 2 calipers, an
+//           arc needs 3. That is where count 0 and count 1 stop being what the
+//           def said.
+//
+// The old UI read `(count > 0) ? min(count,512) : 10`, which turned 0 into TEN
+// boxes where the core runs two, drew count 1 as a single box at the MIDPOINT
+// where the core runs two at the ENDS, and fell back to 0.1 mm width where the
+// core uses 0.5.
+export const CALIPER_MIN_COUNT_LINE = 2;   // Caliper.cpp caliper_locate_line
+export const CALIPER_MIN_COUNT_ARC  = 3;   // Caliper.cpp caliper_locate_circle
+
+export function resolveCaliper(caliper, minCount) {
+  const c = caliper || {};
+  const rawCount = Number(c.count);
+  let count = Number.isFinite(rawCount) ? Math.trunc(rawCount) : 10;   // absent -> parser default
+  if (count > 512) count = 512;                                        // parse-stage cap
+  if (count < minCount) count = minCount;                              // execute-stage floor
+  const rawWidth = Number(c.width);
+  let width = Number.isFinite(rawWidth) ? rawWidth : 0.5;              // absent -> parser default
+  if (width > 64) width = 64;
+  return { count, width };
+}
+
 export function drawLineCalipers(ctx, p0, p1, caliper, renderer, margin = 0, calHits) {
-  caliper = caliper || {};
-  const count  = (caliper.count > 0) ? Math.min(caliper.count, 512) : 10;
-  const width  = (caliper.width > 0) ? Math.min(caliper.width, 64)  : 0.1;
+  const { count, width } = resolveCaliper(caliper, CALIPER_MIN_COUNT_LINE);
   const length = margin > 0 ? margin : 0;
-  if (length <= 0 || width <= 0 || count <= 0) return;
+  if (length <= 0 || width <= 0) return;
 
   const { anchors, normal, tangent } = lineCaliperAnchors(p0, p1, count);
   const halfAlong  = width  / 2;
@@ -181,11 +215,9 @@ export function drawLineCalipers(ctx, p0, p1, caliper, renderer, margin = 0, cal
 // length = shape.margin (matches core: caliper uses initMatchingMargin).
 // `calHits` (optional): index-aligned per-caliper status; missed → gray box.
 export function drawArcCalipers(ctx, cx, cy, r, a0, a1, caliper, renderer, margin = 0, calHits) {
-  caliper = caliper || {};
-  const count = (caliper.count > 0) ? Math.min(caliper.count, 512) : 10;
-  const width = (caliper.width > 0) ? Math.min(caliper.width, 64)  : 0.1;
+  const { count, width } = resolveCaliper(caliper, CALIPER_MIN_COUNT_ARC);
   const length = margin > 0 ? margin : 0;
-  if (length <= 0 || width <= 0 || count <= 0) return;
+  if (length <= 0 || width <= 0) return;
 
   const anchors = arcCaliperAnchors(cx, cy, r, a0, a1, count);
   const halfAlong  = width  / 2;
@@ -383,17 +415,24 @@ export function drawEdgePolarityArrow(ctx, x, y, dir, polarity, len, renderer) {
 //
 // Returns a human sentence or null. The caller decides how loudly to say it;
 // this decides what is true.
-export function caliperConfigProblem(caliper) {
+export function caliperConfigProblem(caliper, minCount = CALIPER_MIN_COUNT_LINE) {
   if (!caliper) return null;
-  const n = Number(caliper.count);
   const mi = Number(caliper.min_inliers);
-  if (!isFinite(n) || !isFinite(mi)) return null;
-  if (mi > n)
-    return `min_inliers (${mi}) 大於 count (${n}) — 永遠無法滿足,這個特徵會一直是 NA`;
-  // The core floors count at 2 for a line fit and 3 for an arc; below that it
-  // silently runs more calipers than the def asked for, so the overlay and the
-  // fit disagree about how many there are.
-  if (n > 0 && n < 2)
-    return `count (${n}) 太小 — 核心至少會跑 2 支(弧為 3),畫面與實際不符`;
+  if (!isFinite(mi)) return null;
+  // Against the count the CORE WILL RUN, not the one the def wrote.
+  //
+  // This used to compare against the raw count, which made it wrong in the
+  // direction that matters: count 1 with min_inliers 2 on a line was reported
+  // as "can never be satisfied", when the core floors that to 2 calipers and it
+  // is satisfiable. A false alarm on a working config teaches operators to
+  // ignore the warning that is real.
+  const { count } = resolveCaliper(caliper, minCount);
+  const asked = Number(caliper.count);
+  if (mi > count)
+    return `min_inliers (${mi}) 大於實際會跑的 count (${count}) — 永遠無法滿足,這個特徵會一直是 NA`;
+  // Not a divergence any more -- the overlay now draws the floored count too --
+  // but still worth saying, because the def does not mean what it says.
+  if (isFinite(asked) && asked > 0 && asked < minCount)
+    return `count 寫 ${asked},核心最少會跑 ${minCount} 支 — 畫面已經照實際的數量畫`;
   return null;
 }
