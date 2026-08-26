@@ -11,7 +11,7 @@
 // that would rot in a copy -- every test round trip runs against
 // `__CACHE_IMG__`, so a screen that changed only its own bitmap would show one
 // image and measure another, and nothing on screen would say so.
-import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as BPG_Protocol from 'UTIL/BPG_Protocol';
@@ -48,7 +48,17 @@ export function useDefImages({ afterLoad } = {}) {
                           [dispatch, CORE_ID]);
 
   const [imageList, setImageList] = useState([]);          // [{name, path}]
-  const currentImagePath = useSyncExternalStore(sel.subscribe, sel.get, sel.get);
+  // React 16 has no useSyncExternalStore -- and it fails at RUNTIME with "is
+  // not a function", not at build time, so the bundle builds clean and the
+  // screen throws when it opens. Same manual subscribe/setState equivalent
+  // usePerifLink uses (perif/PerifAPI.js), including the immediate read that
+  // covers the gap between render and effect.
+  const [currentImagePath, setLocal] = useState(() => sel.get());
+  useEffect(() => {
+    const unsub = sel.subscribe(() => setLocal(sel.get()));
+    setLocal(sel.get());              // catch a set that landed before this effect ran
+    return unsub;
+  }, []);
   const setCurrentImagePath = sel.set;
 
   // "立即測試 → 存成另一張" writes a new sibling via SV and fires this event, so a

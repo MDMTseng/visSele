@@ -350,6 +350,46 @@ console.log('\n=== the robustness sweep measures against the RIGHT reference ===
      'and a baseline that never located says so instead of reporting a range', dead);
 }
 
+console.log('\n=== nothing imports a React the project does not have ===');
+{
+  // This one is not about the pipeline; it is here because it is the only
+  // check that runs. esbuild resolves `useSyncExternalStore` off the React
+  // namespace object happily and the bundle builds CLEAN -- it then throws
+  // "reactExports.useSyncExternalStore is not a function" the moment the
+  // screen opens. A green build is not evidence, so the evidence goes here.
+  //
+  // The project is on React 16. usePerifLink in perif/PerifAPI.js is the
+  // pattern to copy: subscribe + setState, with an immediate read to cover
+  // the gap between render and effect.
+  const REACT18 = ['useSyncExternalStore', 'useInsertionEffect', 'useId',
+                   'useTransition', 'useDeferredValue', 'createRoot', 'hydrateRoot'];
+  const major = parseInt(JSON.parse(
+    fs.readFileSync(r('node_modules/react/package.json'), 'utf8')).version, 10);
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== 'node_modules') walk(f, out); }
+      else if (/\.(js|jsx)$/.test(e.name)) out.push(f);
+    }
+    return out;
+  };
+  const hits = [];
+  if (major < 18) {
+    for (const f of walk(r('src'))) {
+      const src = fs.readFileSync(f, 'utf8');
+      for (const api of REACT18) {
+        // Only a CALL or a named import counts -- the comments explaining why
+        // these are unavailable must not trip their own check.
+        const re = new RegExp('(^|[^A-Za-z0-9_.])' + api + '\s*[(,]|\b' + api + '\s*}', 'm');
+        if (re.test(src)) hits.push(path.relative(r('src'), f) + ': ' + api);
+      }
+    }
+  }
+  ok(hits.length === 0,
+     `React ${major}: no source uses a React 18+ API`,
+     hits.length ? hits.join('; ') : 'checked ' + walk(r('src')).length + ' files');
+}
+
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }
 console.log(fails ? `\n${fails} FAILURES` : '\n--- the pipeline behaves as specified ---');
 process.exit(fails ? 1 : 0);
