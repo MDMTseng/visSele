@@ -59,6 +59,7 @@ export { statReducer, initMeasureStatistic } from 'REDUX_STORE_SRC/reducer/spcSt
 export { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 export { shapeDefFingerprint, shapeDefProjection } from 'UTIL/MISC_Util';
 export { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
+export { inspectSummary, objFromImage, angleDelta } from 'JSSRCROOT/sbmInspectResult';
 `);
 
 await build({
@@ -177,6 +178,85 @@ console.log('\n=== limits, and the disabled back side ===');
   ok(M.effectiveLimits(def, true).USL === 11,
      'and for a FLIPPED part too, because back-side limits are disabled',
      'if this fails, BACK_SIDE_LIMITS_ENABLED was turned on -- see backSideLimits.js');
+}
+
+console.log('\n=== a test run is read in the frame the CORE used ===');
+{
+  // The SBM studio rectifies its canvas by the AUTHORED def_image_reg, while a
+  // report comes back in image-mm placed by the pose the core FOUND. Reading
+  // one with the other draws the measurement where you meant the part to be
+  // instead of where it was -- and the gap between those is the entire point of
+  // running a test.
+  //
+  // The numbers below are the real ones, off the bench fixture
+  // (caliper_verify_tagged): search point id 3 has pt1 (4.176, 3.435) in
+  // object-frame mm, the core placed the object at (11.992, 7.580) and reported
+  // the measured point at (16.150, 11.087) in image-mm.
+  const POSE = { cx: 11.992, cy: 7.580, rotate: 0, isFlipped: false, similarity: 0.9859 };
+  const toObj = M.objFromImage(POSE);
+  const got = toObj({ x: 16.150, y: 11.087 });
+  ok(Math.hypot(got.x - 4.176, got.y - 3.435) < 0.1,
+     'the reported point lands on the def shape it measured',
+     `(${got.x.toFixed(3)}, ${got.y.toFixed(3)}) vs def pt1 (4.176, 3.435)`);
+
+  // A rotated + flipped pose has to invert in the SAME order the canvas
+  // composes it: scale(1,-1) then rotate then translate, i.e. flip LAST.
+  const P2 = { cx: 5, cy: 5, rotate: Math.PI / 2, isFlipped: true };
+  const back = M.objFromImage(P2)({ x: 5 + 2, y: 5 + 0 });   // +x in image
+  ok(Math.abs(back.x - 0) < 1e-9 && Math.abs(back.y + 2) < 1e-9,
+     'a 90deg flipped pose inverts in the canvas order (flip last)',
+     `(${back.x.toFixed(6)}, ${back.y.toFixed(6)}) expected (0, -2)`);
+
+  ok(Math.abs(M.angleDelta(-3.13, 3.13) - 0.0231853) < 1e-4,
+     'a pose delta across +/-pi is the SHORT way round',
+     'else a part sitting at 180deg reads as 359deg out');
+}
+
+console.log('\n=== the summary answers what a test run is for ===');
+{
+  const rp = { reports: [{ reports: [{
+    cx: 10, cy: 4, rotate: 0, isFlipped: false, similarity: 0.97,
+    detectedLines: [{ id: 1, name: 'L', status: 0, cx: 12, cy: 5 }],
+    searchPoints: [
+      { id: 3, name: 'a', status: 0, x: 11, y: 6 },
+      { id: 4, name: 'b', status: -128, na_reason: 'edge.min_strength unset' },
+      { id: 5, name: 'c', status: -128 },
+    ],
+  }] }] };
+  const sum = M.inspectSummary(rp, { cx: 10, cy: 4, angle: 0, isFlipped: false });
+  ok(sum.located && sum.counts.ok === 2 && sum.counts.na === 2,
+     'every primitive is counted, passing and failing alike',
+     `ok=${sum.counts.ok} na=${sum.counts.na} rows=${sum.rows.length}`);
+  ok(sum.rows.length === 4,
+     'a failed row still APPEARS -- dropping it makes a broken def look short');
+  ok(sum.rows.find((r) => r.id === 4).reason === 'edge.min_strength unset',
+     "and carries the core's own reason, not a guess");
+  ok(/[^]/.test(sum.rows.find((r) => r.id === 5).reason)
+     && sum.rows.find((r) => r.id === 5).reason !== 'undefined',
+     'a reason-less NA says so rather than rendering "undefined" at an operator',
+     sum.rows.find((r) => r.id === 5).reason);
+  ok(sum.rows.find((r) => r.id === 5).at === null,
+     'and a row with no position is not drawn at the origin');
+  ok(sum.poseDelta && sum.poseDelta.dist === 0,
+     'a pose matching the authored reg reports zero offset');
+
+  const off = M.inspectSummary(rp, { cx: 10.5, cy: 4, angle: 0, isFlipped: true });
+  ok(Math.abs(off.poseDelta.dist - 0.5) < 1e-9 && off.poseDelta.flipDiffers,
+     'and a pose that does NOT match reports how far, including a flip',
+     `${off.poseDelta.dist.toFixed(3)}mm, flipDiffers=${off.poseDelta.flipDiffers}`);
+  // The delta is the ONLY thing the authored reg is allowed to affect. The
+  // overlay positions must still come from the found pose -- if they follow the
+  // authored reg instead, every measurement is drawn where you MEANT the part
+  // to be and the offset this panel exists to show becomes invisible.
+  const a3 = sum.rows.find((r) => r.id === 3).at;
+  const b3 = off.rows.find((r) => r.id === 3).at;
+  ok(a3.x === b3.x && a3.y === b3.y,
+     'but it does NOT move the overlay -- positions come from the FOUND pose',
+     `(${a3.x}, ${a3.y}) vs (${b3.x}, ${b3.y})`);
+
+  const none = M.inspectSummary({ reports: [] }, undefined);
+  ok(!none.located && none.rows.length === 0,
+     'no object found is a stated verdict, not a crash', none.why);
 }
 
 try { fs.unlinkSync(ENTRY); fs.unlinkSync(OUT); } catch { /* best effort */ }

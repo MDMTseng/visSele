@@ -491,7 +491,7 @@ class ResultGroupItems extends React.PureComponent {
 // it and read as a gap between the cards rather than as the thing that owns
 // them -- and with the cards now on white, a transparent header has nothing to
 // separate them at all.
-function ResultGroupTitle({ group, slot, collapsed, onToggle, onFullScreen }) {
+function ResultGroupTitle({ group, slot, collapsed, simThres, onToggle, onFullScreen }) {
   // Collapsed, the header IS the readout: which measurements failed. A verdict
   // alone says a part is bad without saying what about it is bad, and that is
   // the one thing worth showing when the numbers are hidden.
@@ -516,6 +516,20 @@ function ResultGroupTitle({ group, slot, collapsed, onToggle, onFullScreen }) {
       <span style={{ flex: "0 0 auto", fontSize: 13 }}>
         {group ? `${group.idx}  ${group.isFlipped ? "反" : "正"}` : ''}
       </span>
+      {/* MATCH SCORE. Headroom above the acceptance threshold, which is the
+          number to tune against: the core only reports a part it already
+          accepted, so this is never "did it match" -- it is "by how much".
+          Amber inside 0.02 of the threshold means the next shift's dust or
+          lighting drift is what decides, and that is worth seeing BEFORE the
+          part stops being found. Hidden entirely when the locator does not
+          produce a score, rather than shown as a dash that reads like 0. */}
+      {group && Number.isFinite(group.similarity) &&
+        <span style={{ flex: "0 0 auto", fontSize: 11, fontVariantNumeric: "tabular-nums",
+                       color: group.similarity >= simThres + 0.02 ? "#8c8c8c"
+                            : group.similarity >= simThres ? "#d46b08" : "#cf1322" }}
+          title={`比對分數 ${group.similarity.toFixed(4)}／接受門檻 ${simThres.toFixed(2)}`}>
+          {group.similarity.toFixed(3)}
+        </span>}
       {/* Only when collapsed, and it takes the slack so the badge stays put. */}
       <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 12, color: "#f50",
                      overflow: "hidden", textOverflow: "ellipsis",
@@ -1376,7 +1390,13 @@ class ObjInfoList extends React.Component {
       }, undefined);
 
       // DATA, not elements. See the note below.
-      return { idx, isFlipped: singleReport.isFlipped, finalResult, reports: judgeInRank };
+      // similarity rides along so the header can show HOW WELL the part was
+      // matched, not just that it was. Without it a def sitting a hair above
+      // its acceptance threshold looks identical to one matching perfectly,
+      // right up to the shift where it stops matching at all -- and there is
+      // nothing on this screen to tune against.
+      return { idx, isFlipped: singleReport.isFlipped, finalResult,
+               similarity: singleReport.similarity, reports: judgeInRank };
     }
     ).filter((g) => g !== null);
 
@@ -1391,6 +1411,11 @@ class ObjInfoList extends React.Component {
     // minute retained, none of it reclaimable by a forced collection. Turning
     // the image stream off stopped it dead, which is what pointed here.
     const resultGroups = resultMenu;
+    // The def's acceptance threshold, so the score is read against the number
+    // that actually decides rather than against a constant guessed here. 0.9 is
+    // the CORE's default for an absent key (sig_match_sim_thres), not a display
+    // preference -- see MISC_Util's note on why it is only emitted when set.
+    const simThres = Number.isFinite(this.props.simThres) ? this.props.simThres : 0.9;
     // Plain divs, NOT antd SubMenu.
     //
     // The modal was moved off Menu/SubMenu first and the growth fell about 20%
@@ -1440,7 +1465,7 @@ class ObjInfoList extends React.Component {
                       border: "1px solid #e8e8e8", borderRadius: 4,
                       overflow: "hidden", marginBottom: 6, background: "#fff" }}
           key={"gslot" + i} className="Antd_Menu_Title_AutoHeight">
-          <ResultGroupTitle group={g} slot={i} collapsed={shut}
+          <ResultGroupTitle group={g} slot={i} collapsed={shut} simThres={simThres}
             onToggle={this.toggleSlotBound} onFullScreen={this.toggleFullscreenBound} />
           {/* HIDDEN, not unmounted. Collapsing by dropping the children would
               destroy the very rows the slot pool keeps alive, so a shift
@@ -3652,6 +3677,7 @@ class APP_INSP_MODE extends React.Component {
           IR={trackingWindowInfo}
           DICT={this.props.DICT}
           measureDisplayRank={this.state.measureDisplayRank}
+          simThres={this.props.edit_info && this.props.edit_info.sig_match_sim_thres}
           IR_decotrator={this.props.info_decorator}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
@@ -3891,6 +3917,7 @@ class APP_INSP_MODE extends React.Component {
                 edit_info={this.props.edit_info}
                 onROISettingCallBack={this.state.onROISettingCallBack}
                 measureDisplayRank={this.state.measureDisplayRank}
+          simThres={this.props.edit_info && this.props.edit_info.sig_match_sim_thres}
                 ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
                 downSampleFactor={1}
                 onCanvasInit={(canvas) => {

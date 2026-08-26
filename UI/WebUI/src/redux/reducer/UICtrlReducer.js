@@ -564,6 +564,22 @@ function StateReducer(newState, action) {
                         closeRep.area = valueAveIn(closeRep.area, singleReport.area, closeRep.repeatTime);
                         closeRep.cx = valueAveIn(closeRep.cx, singleReport.cx, closeRep.repeatTime);
                         closeRep.cy = valueAveIn(closeRep.cy, singleReport.cy, closeRep.repeatTime);
+                        // The match score gets blended on the SAME rule as the
+                        // three above, and it has to. A tracked object keeps
+                        // its entry for many frames; leaving similarity alone
+                        // would pin it to the first sighting -- which is the
+                        // one frame taken while the part was still entering,
+                        // and typically its worst. Somebody tuning the
+                        // threshold against that number would be tuning
+                        // against a value the machine stopped seeing.
+                        // Guarded, unlike cx/cy: those always exist, and a
+                        // report from a locator that has no match score would
+                        // otherwise turn this into NaN and put "NaN" on the
+                        // panel instead of nothing.
+                        if (Number.isFinite(closeRep.similarity) && Number.isFinite(singleReport.similarity))
+                          closeRep.similarity = valueAveIn(closeRep.similarity, singleReport.similarity, closeRep.repeatTime);
+                        else if (Number.isFinite(singleReport.similarity))
+                          closeRep.similarity = singleReport.similarity;
                         //closeRep.area+=(1/(closeRep.repeatTime+1))*(sjrep.area-cjrep.area);
 
                         closeRep.detectedLines.forEach((clrep) => {

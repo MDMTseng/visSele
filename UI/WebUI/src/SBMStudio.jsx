@@ -11,6 +11,7 @@ import { Button, Divider, Checkbox, InputNumber, Select } from 'antd';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { defFileGeneration, stampRefImagePath } from 'UTIL/MISC_Util';
+import { inspectSummary } from './sbmInspectResult';
 
 // ── React wrapper: mount a DrawHook_CanvasComponent on a <canvas>, feed it the
 // image + the draw hook, resize via ReactResizeDetector. ──────────────────────
@@ -78,7 +79,7 @@ function poly(ctx, pts, close) {
 // ── The SBM scene draw. Everything is in object-frame mm (== world), except in
 // locline mode where we show the raw image to author def_image_reg. ────────────
 function drawScene(g, canvas, ctx_state) {
-  const { reg, mmpp, shapeList, work, featPts, roiPts, tool } = ctx_state;
+  const { reg, mmpp, shapeList, work, featPts, roiPts, tool, insp } = ctx_state;
   const ctx = g.ctx;
   const scale = canvas.camera.GetCameraScale() || 100;
   const lw = 1.6 / scale, pr = 2.4 / scale;
@@ -121,6 +122,39 @@ function drawScene(g, canvas, ctx_state) {
   if (roiPts && roiPts.length) {
     ctx.strokeStyle = '#ff9100'; ctx.lineWidth = lw * 1.4;
     for (const p of roiPts) ctx.strokeRect(p.x - pr * 1.8, p.y - pr * 1.8, pr * 3.6, pr * 3.6);
+  }
+
+  // TEST RESULT: where the core actually measured, in the frame the core used.
+  //
+  // Drawn LAST so it sits over the regions and the feature points -- when this
+  // is on screen it is the thing being looked at. Each row gets a ring at the
+  // measured position and, for a row whose def shape is on the canvas, a stem
+  // back to where the def put it: the stem IS the measurement, and a long one
+  // is visible without reading a number.
+  if (insp && insp.located) {
+    const defAt = new Map();
+    for (const sh of shapeList) {
+      const q = sh.pt1 || (Array.isArray(sh.points) && sh.points[0]);
+      if (q && Number.isFinite(q.x)) defAt.set(sh.id, q);
+    }
+    for (const r of insp.rows) {
+      if (!r.at) continue;
+      const col = r.ok ? '#00e676' : '#ff1744';
+      const d = defAt.get(r.id);
+      if (d) {
+        ctx.strokeStyle = col; ctx.lineWidth = lw * 0.8;
+        ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(r.at.x, r.at.y); ctx.stroke();
+      }
+      ctx.strokeStyle = col; ctx.lineWidth = lw * 1.6;
+      ctx.beginPath(); ctx.arc(r.at.x, r.at.y, pr * 2.2, 0, 7); ctx.stroke();
+      if (!r.ok) {                                   // an X, so a failure reads without colour
+        const e = pr * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(r.at.x - e, r.at.y - e); ctx.lineTo(r.at.x + e, r.at.y + e);
+        ctx.moveTo(r.at.x + e, r.at.y - e); ctx.lineTo(r.at.x - e, r.at.y + e);
+        ctx.stroke();
+      }
+    }
   }
 
   // localization origin (object (0,0)) + 0° axis.
@@ -200,6 +234,52 @@ function ctrlScene(g, canvas, ctx_state) {
 }
 
 // ── The studio view. ───────────────────────────────────────────────────────────
+// The verdict of a test run. Three things, in the order they are worth reading:
+// did it find the part, is it where you said it was, and which primitives
+// failed and why.
+function InspectPanel({ insp, onClear }) {
+  const row = { display: 'flex', justifyContent: 'space-between', fontSize: 11 };
+  if (!insp.located) {
+    return <div style={{ fontSize: 11, color: '#ff5252', marginTop: 4 }}>
+      定位失敗:{insp.why || '核心沒有找到零件'}
+      <Button size="small" type="link" onClick={onClear}>清除</Button>
+    </div>;
+  }
+  const d = insp.poseDelta;
+  // 0.05mm / 0.2deg: not a spec, a legibility threshold -- below it the number
+  // is the locator's own noise and colouring it red would train people to
+  // ignore the colour. Anything the operator actually cares about is coarser.
+  const poseOff = d && (d.dist > 0.05 || Math.abs(d.dDeg) > 0.2 || d.flipDiffers);
+  const bad = insp.rows.filter((r) => !r.ok);
+  return <div style={{ marginTop: 4 }}>
+    <div style={row}>
+      <span>相似度 similarity</span>
+      <b style={{ color: insp.pose.similarity >= 0.9 ? '#00c853' : '#ff9100' }}>
+        {(insp.pose.similarity ?? 0).toFixed(4)}</b>
+    </div>
+    {d && <div style={row}>
+      <span title="核心找到的位姿 vs 你畫的定位線。這個差就是定位誤差。">定位偏差</span>
+      <b style={{ color: poseOff ? '#ff9100' : '#00c853' }}>
+        {d.dist.toFixed(3)}mm / {d.dDeg.toFixed(2)}°{d.flipDiffers ? ' ⚠翻面不同' : ''}</b>
+    </div>}
+    <div style={row}>
+      <span>量測</span>
+      <b><span style={{ color: '#00c853' }}>{insp.counts.ok} OK</span>
+        {insp.counts.na > 0 && <span style={{ color: '#ff1744' }}>　{insp.counts.na} NA</span>}
+        {insp.counts.ng > 0 && <span style={{ color: '#ff1744' }}>　{insp.counts.ng} NG</span>}
+      </b>
+    </div>
+    {bad.length > 0 && <div style={{ marginTop: 3, maxHeight: 150, overflowY: 'auto' }}>
+      {bad.map((r) => <div key={r.type + r.id} style={{ fontSize: 11, color: '#ff5252',
+                            borderTop: '1px solid #333', padding: '2px 0' }}>
+        <b>#{r.id}</b> {r.name || r.type}
+        <div style={{ color: '#c77' }}>{r.reason}</div>
+      </div>)}
+    </div>}
+    <Button size="small" type="link" onClick={onClear}>清除疊圖</Button>
+  </div>;
+}
+
 export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const dispatch = useDispatch();
   const edit_info = useSelector((s) => s.UIData.edit_info);
@@ -208,6 +288,10 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const featRef = useRef(undefined);                   // mirror — drawScene reads this so the
   featRef.current = featPts;                            // overlay never goes stale across redraws
   const [genBusy, setGenBusy] = useState(false);
+  const [insp, setInsp] = useState(undefined);         // inspectSummary() of the last test run
+  const [inspBusy, setInspBusy] = useState(false);
+  const inspRef = useRef(undefined);                   // mirror, same reason as featRef
+  inspRef.current = insp;
   const work = useRef({ poly: [], cursor: null, line: null });
 
   const reg = edit_info.def_image_reg || {};
@@ -276,13 +360,48 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       .finally(() => setGenBusy(false));
   }, [sendBPG, edit_info, dispatch]);
 
+  // "測試檢驗": run a REAL inspection with the current, unsaved settings and show
+  // what the machine did with them.
+  //
+  // Until this existed the studio could only be set up, never tried: you drew
+  // regions, pressed save, left, and found out somewhere else. II is the same
+  // round trip DefConfUI's CHECK uses -- the in-progress def against the core's
+  // cached image -- so this is the machine's real answer and not a preview.
+  //
+  // It deliberately does NOT touch the def, redux inspection state, or the
+  // shapes. A test you have to undo is a test nobody runs twice.
+  const runInspect = useCallback(() => {
+    if (!sendBPG) return;
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { setInsp({ located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                          why: '無法產生 def:' + (e && e.message ? e.message : e) }); return; }
+    setInspBusy(true);
+    new Promise((resolve, reject) => sendBPG('II', 0, {
+      definfo: deffile,
+      imgsrc: '__CACHE_IMG__',
+      // calibInfo disabled: the def's own mmpp is the scale here, exactly as
+      // DefConfUI's orientation inspect does it. Letting a live calibration in
+      // would test a different machine than the one the def describes.
+      img_property: { calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp } },
+    }, undefined, { resolve, reject }))
+      .then((pkts) => {
+        const rp = (pkts || []).find((p) => p.type === 'RP');
+        setInsp(inspectSummary(rp && rp.data, edit_info.def_image_reg));
+      })
+      .catch((e) => setInsp({ located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                              why: 'core 沒有回應:' + (e && e.message ? e.message : e) }))
+      .finally(() => setInspBusy(false));
+  }, [sendBPG, edit_info]);
+
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = captureDrag;
     const ctx_state = { reg, mmpp, shapeList, work: work.current,
-      featPts: featRef.current, roiPts, tool, onPoly, onReg, onRoi };
+      featPts: featRef.current, insp: inspRef.current,
+      roiPts, tool, onPoly, onReg, onRoi };
     if (isCtrl) ctrlScene(g, canvas, ctx_state);
     else drawScene(g, canvas, ctx_state);
-  }, [tool, reg, mmpp, shapeList, featPts, roiPts, onPoly, onReg, onRoi]);
+  }, [tool, reg, mmpp, shapeList, featPts, insp, roiPts, onPoly, onReg, onRoi]);
 
   // Auto-generate the feature-point overlay once when the studio opens (if the def is
   // saved on disk). The user can refresh with the button after editing regions.
@@ -340,6 +459,12 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
         line2Dup features: {(featPts.features || []).length}
         <Button size="small" type="link" onClick={() => setFeatPts(undefined)}>清除</Button>
       </div>}
+
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>測試檢驗</Divider>
+      <Button size="small" block type="primary" ghost loading={inspBusy} onClick={runInspect}
+        title="用目前(尚未存檔)的設定跑一次真正的檢驗,把結果疊回畫面。不會改到 def。">
+        ▶ 跑一次檢驗</Button>
+      {insp && <InspectPanel insp={insp} onClear={() => setInsp(undefined)} />}
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>matching 參數</Divider>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
