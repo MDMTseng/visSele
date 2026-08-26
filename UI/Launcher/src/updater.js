@@ -32,7 +32,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 
-const { AppStore, STAGING, REQUIRED_ENTRIES, INFO } = require('./apps');
+const { AppStore, STAGING, REPLACED, REQUIRED_ENTRIES, INFO } = require('./apps');
 
 // Zip extraction with no npm dependency. The old launcher pulled in `unzipper`
 // and its tree for this one operation; the operating system already ships
@@ -154,7 +154,10 @@ class Updater {
       }
       // Used as a directory name, so it must not be able to escape the app
       // directory or collide with the staging name.
-      if (!/^[A-Za-z0-9._-]+$/.test(info.version) || info.version === STAGING
+      // A leading dot is refused as well: list() treats dot-directories as the
+      // launcher's own machinery, so a version called ".1" would install and
+      // then be invisible.
+      if (!/^[A-Za-z0-9._-]+$/.test(info.version) || info.version.startsWith('.') || info.version === STAGING
           || info.version === '.' || info.version === '..') {
         throw new Error(`${INFO} version "${info.version}" is not usable as a folder name`);
       }
@@ -215,6 +218,19 @@ class Updater {
 
       // --- install ---
       const dest = this.apps.versionDir(info.version);
+
+      // Replacing an existing version used to be rmSync(dest) then
+      // rename(root, dest). Those are two steps with a gap between them, and
+      // in that gap the old version no longer exists. If the rename then fails
+      // -- an antivirus holding a handle, a permission change, a full disk --
+      // the finally below wipes staging and the machine is left with NEITHER
+      // version. An update that can delete a working install is worse than an
+      // update that fails.
+      //
+      // So: move the old one aside, put the new one in, and only then delete
+      // what was moved. Every step is a rename until the last, and the last is
+      // a delete of something nothing points at.
+      let displaced = null;
       if (fs.existsSync(dest)) {
         log(`replacing existing ${info.version}`);
         if (this.apps.currentVersion() === info.version) {
@@ -222,11 +238,28 @@ class Updater {
           // running core.
           throw new Error(`${info.version} is the version currently selected -- select another version first, or bump the version`);
         }
-        fs.rmSync(dest, { recursive: true, force: true });
+        displaced = path.join(this.apps.dir, REPLACED, `${info.version}-${Date.now()}`);
+        fs.mkdirSync(path.dirname(displaced), { recursive: true });
+        fs.renameSync(dest, displaced);
       }
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.renameSync(root, dest);
+      try {
+        fs.renameSync(root, dest);
+      } catch (e) {
+        if (displaced) {
+          // Put it back. If even this fails the old version is still intact at
+          // `displaced`, so say where it is rather than hide it.
+          try {
+            fs.renameSync(displaced, dest);
+            log(`install failed; restored the previous ${info.version}`);
+          } catch {
+            log(`install failed AND could not restore -- the previous ${info.version} is at ${displaced}`);
+          }
+        }
+        throw e;
+      }
       log(`installed to ${dest}`);
+      if (displaced) fs.rmSync(displaced, { recursive: true, force: true });
 
       return { version: info.version, dir: dest };
     } finally {

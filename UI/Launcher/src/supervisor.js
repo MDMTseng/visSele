@@ -196,7 +196,16 @@ class Supervisor extends EventEmitter {
 
       this._attachStream(child.stdout, tag);
       this._attachStream(child.stderr, tag + '[err] ');
-      child.on('error', (e) => this._record(`[launcher] ${spec.id}: spawn failed: ${e.message}`));
+      child.on('error', (e) => {
+        this._record(`[launcher] ${spec.id}: spawn failed: ${e.message}`);
+        // Node emits 'error' and NO 'exit' when the process could not be
+        // spawned at all -- a missing or unreadable exe is the everyday case.
+        // Without this the entry stays exited:false forever, so `running`
+        // answers true, the health monitor pings a process that does not
+        // exist, and the launcher hands the window to an application that was
+        // never started. Route it through the same path a real exit takes.
+        if (!entry.exited) this._onChildExit(entry, null, null, logFile);
+      });
       child.on('exit', (code, signal) => this._onChildExit(entry, code, signal, logFile));
     }
 

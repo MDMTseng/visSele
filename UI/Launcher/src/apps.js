@@ -29,6 +29,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const STAGING = '.staging';
+// Where install() parks the directory it is replacing until the new one is
+// safely in place. Dot-prefixed so list() never mistakes it for a version.
+const REPLACED = '.replaced';
 const INFO = 'info.json';
 const BOOT = path.join('scripts', 'boot.js');
 
@@ -48,7 +51,11 @@ class AppStore {
     let names;
     try {
       names = fs.readdirSync(this.dir, { withFileTypes: true })
-        .filter((d) => d.isDirectory() && d.name !== STAGING)
+        // Anything dot-prefixed is the launcher's own machinery -- .staging
+        // while a package is being verified, .replaced while an install swaps
+        // a directory. A version name may not start with a dot (enforced in
+        // updater.install), so this can never hide a real version.
+        .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
         .map((d) => d.name);
     } catch {
       return [];
@@ -207,4 +214,4 @@ function cmpVersion(a, b) {
   return 0;
 }
 
-module.exports = { AppStore, cmpVersion, STAGING, REQUIRED_ENTRIES, INFO, BOOT };
+module.exports = { AppStore, cmpVersion, STAGING, REPLACED, REQUIRED_ENTRIES, INFO, BOOT };
