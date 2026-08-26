@@ -1198,9 +1198,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       //
       // Consequence, stated plainly because nothing else says it: for three
       // months every caliper search point has been free to pick a background
-      // speck over the real edge. Restoring it means plumbing a labeled image
-      // to this stage again (MatchingCore still builds one), which is a real
-      // change to results, not a cleanup -- see BACKLOG_2026-08-26.
+      // speck over the real edge.
+      //
+      // Do NOT fix this by restoring m_labeledImg_cv. The labeling pipeline is
+      // what SBM replaces; the mask's successor is the object POLYGON mask that
+      // pure_sbm_def_design.md already specifies (localization_include /
+      // localization_exclude, object-frame mm). When that lands, the consumer
+      // inside search_point_cv is reusable as-is -- it only needs a binary mask
+      // -- but the labelImg/objLabel parameter pair should become one, since
+      // isObjectPx is a label-specific test. See BACKLOG_2026-08-26.
       cv::Mat labelImg;
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.
