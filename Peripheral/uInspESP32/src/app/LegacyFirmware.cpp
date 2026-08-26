@@ -2833,7 +2833,7 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
           // Say WHICH object failed and how far past its deadline it was --
           // "err=2 tid=7 ... late=123" reads directly as "tid 7 was never
           // answered and the SWITCH point passed 123 pulses ago".
-          sprintf(numberStr,
+          snprintf(numberStr,sizeof(numberStr),
                   "State changed from  %d to %d err=%d tid=%u status=%ld"
                   " gate_pulse=%lu cur_pulse=%lu late_pulses=%ld",
                   sysinfo.state,state,extraCode,
@@ -2845,12 +2845,12 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
         }
         else if(state==SYS_STATE::INSPECTION_MODE_ERROR)
         {
-          sprintf(numberStr, "State changed from  %d to %d err=%d",
+          snprintf(numberStr,sizeof(numberStr),"State changed from  %d to %d err=%d",
                   sysinfo.state,state,extraCode);
         }
         else
         {
-          sprintf(numberStr, "State changed from  %d to %d",sysinfo.state,state);
+          snprintf(numberStr,sizeof(numberStr),"State changed from  %d to %d",sysinfo.state,state);
         }
         commInfo->log=numberStr;
         TaskQ2CommInfoQ.pushHead();
@@ -3507,8 +3507,62 @@ class MData_JR:public Data_JsonRaw_Layer
 };
 MData_JR djrl;
 
-
+// Declared here rather than below: send_json_or_error uses it to label an
+// error reply the host can still correlate.
 int HACK_cur_cmd_id=-1;
+
+
+// Send a JSON reply, or say why it could not be sent.
+//
+// serializeJson(doc, buf, size) TRUNCATES when the result does not fit and
+// reports only how many bytes it wrote -- so passing that length puts HALF AN
+// OBJECT on the wire. Half an object is worse than nothing: the host's parser
+// rejects it, a reply correlated by id never matches the request it was
+// answering, and the caller blocks until its timeout with nothing in any log
+// that points back here. It reads as a dead link.
+//
+// That exact failure was diagnosed once already, at get_running_stat, when a
+// 2048 byte buffer stopped being big enough and the symptom was "no reply at
+// all". Seven other sites never got that guard. This is it, in one place.
+//
+// The ArduinoJson 7 upgrade quietly made this MORE likely, not less. In v7
+// StaticJsonDocument<N> is a deprecated alias for JsonDocument whose capacity()
+// merely returns N -- the document heap-allocates and grows past it. So the
+// document no longer bounds anything, overflowed() reports only an allocation
+// failure, and the ONLY remaining cap is the output buffer. A guard written
+// against v6 semantics stopped meaning what its comment said.
+//
+// The buffer sizes are what they are: 256, 700, 2048, 3584. The 700 byte one
+// carries {"log": <an unbounded std::string>} plus the error history, which is
+// the message somebody reads when something has already gone wrong.
+static bool send_json_or_error(MData_JR &jr, JsonDocument &doc,
+                               uint8_t *buf, size_t bufsize, const char *what)
+{
+  // With the id when we have one: a host that correlates replies by id
+  // (uinsp_test, regress_watch) cannot match an error that omits it, so the
+  // guard would turn a silent truncation into a silent timeout instead.
+  int id = -1;
+  if (doc["id"].is<int>()) id = doc["id"].as<int>();
+  else if (HACK_cur_cmd_id >= 0)  id = HACK_cur_cmd_id;
+
+  const char *why = NULL;
+  if (doc.overflowed()) why = "doc_overflow";          // allocation failed
+  else
+  {
+    int slen = serializeJson(doc, (char *)buf, bufsize);
+    if (slen <= 0 || slen >= (int)bufsize) why = "buf_overflow";
+    else return jr.send_json_string(0, buf, slen, 0) >= 0;
+  }
+
+  char e[128];
+  snprintf(e, sizeof(e),
+           "{\"err\":\"%s\",\"at\":\"%s\",\"cap\":%u,\"id\":%d,\"ack\":false}",
+           why, what ? what : "?", (unsigned)bufsize, id);
+  jr.send_json_string(0, (uint8_t *)e, strlen(e), 0);
+  return false;
+}
+
+
 
 
 void G_LOG(char* str)
@@ -5195,8 +5249,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["ack"]=false;
     retdoc["err"]="serial_error_locked";
     uint8_t buff[256];
-    int slen=serializeJson(retdoc,(char*)buff,sizeof(buff));
-    send_json_string(0,buff,slen,0);
+    send_json_or_error(*this,retdoc,buff,sizeof(buff),"serial_error_locked");
     return 0;
   }
   if(strcmp(type,"RESET")==0)
@@ -7397,8 +7450,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["type"]="reboot_bootloader";
     retdoc["ack"]=true;
     {
-      int slen=serializeJson(retdoc,(char*)dataBuff,sizeof(dataBuff));
-      djrl.send_json_string(0,dataBuff,slen,0);
+      send_json_or_error(djrl,retdoc,dataBuff,sizeof(dataBuff),"reboot_bootloader");
     }
     Serial.flush();
     delay(80);
@@ -8086,26 +8138,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // clock diagnostics went in, and the symptom was simply no reply at all --
     // which reads as a dead link and cost an hour of looking in the wrong place.
     // A short error is infinitely more useful than nothing.
-    if(retdoc.overflowed())
-    {
-      // With the id, or a host that correlates replies by id (uinsp_test,
-      // regress_watch) never matches this and blocks until its timeout -- so
-      // the guard turned silent truncation into a silent timeout plus an
-      // unattributable error line.
-      char e[96];
-      snprintf(e,sizeof(e),"{\"err\":\"stat_doc_overflow\",\"id\":%d,\"ack\":false}",
-               (int)HACK_cur_cmd_id);
-      send_json_string(0,(uint8_t*)e,strlen(e),0);
-      return 0;
-    }
-    int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-    if(slen<=0 || slen>=(int)sizeof(buff))
-    {
-      const char *e="{\"err\":\"stat_buf_overflow\"}";
-      send_json_string(0,(uint8_t*)e,strlen(e),0);
-      return 0;
-    }
-    send_json_string(0,buff,slen,0);
+    send_json_or_error(*this,retdoc,buff,sizeof(buff),"running_stat");
   }
   return 0;
 }
@@ -8114,67 +8147,70 @@ int MData_JR::send_data(int head_room,uint8_t *data,int len,int leg_room){
   return 0;
 }
 
+// snprintf and vsnprintf return the length they WOULD have written, not the
+// length they wrote. Both of these functions advanced the write pointer by that
+// return value, so a debug line longer than the buffer moved `str` PAST THE END
+// of dbgBuff -- and then the closing sprintf wrote three bytes there, and
+// send_json_string was handed a length bigger than the buffer and read past it
+// as well.
+//
+// dbgBuff is 500 bytes and dbg_printf is the __UPRT_I_ macro used throughout
+// this file, so the input that corrupts memory is "somebody logged a long
+// line". msg_printf was worse: its head formatted a caller-supplied `type`
+// with a bare sprintf, overflowing before the payload was even considered.
+//
+// jbuf_take is the whole fix -- advance by what was actually written, which is
+// at most the room that existed, and never move backwards.
+static inline char *jbuf_take(char *str, char *cap, int would_be)
+{
+  if (would_be <= 0 || str >= cap) return str;
+  ptrdiff_t max = cap - str - 1;          // snprintf wrote at most this many
+  if (max <= 0) return str;
+  return str + (would_be > max ? max : would_be);
+}
+
 int MData_JR::dbg_printf(const char *fmt, ...)
 {
-  char *str=dbgBuff;
-  int restL=sizeof(dbgBuff);
-  {//start head
-    int len=sprintf(str,"{\"dbg\":\"");
-    str+=len;
-    restL-=len;
+  char *str = dbgBuff;
+  char *cap = dbgBuff + sizeof(dbgBuff); // one past the end
+  char *pcap = cap - 2;                  // keep room for the closing "}
 
-  }
+  str = jbuf_take(str, cap, snprintf(str, cap - str, "{\"dbg\":\""));
 
   {
     va_list aptr;
-    int ret;
     va_start(aptr, fmt);
-    ret = vsnprintf (str, restL-10, fmt, aptr);
-    va_end(aptr); 
-    str+=ret;
-    restL-=ret;
-
-
-  }
-  {//end
-    int len=sprintf(str,"\"}");
-    str+=len;
-    restL-=len;
+    int ret = vsnprintf(str, pcap > str ? (size_t)(pcap - str) : 0, fmt, aptr);
+    va_end(aptr);
+    str = jbuf_take(str, pcap, ret);
   }
 
-  return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
+  str = jbuf_take(str, cap, snprintf(str, cap - str, "\"}"));
+
+  return send_json_string(0, (uint8_t *)dbgBuff, str - dbgBuff, 0);
 }
 
-int MData_JR::msg_printf(const char *type,const char *fmt, ...)
+int MData_JR::msg_printf(const char *type, const char *fmt, ...)
 {
-  char *str=dbgBuff;
-  int restL=sizeof(dbgBuff);
-  {//start head
-    int len=sprintf(str,"{\"type\":\"%s\",\"data\":\"",type);
-    str+=len;
-    restL-=len;
+  char *str = dbgBuff;
+  char *cap = dbgBuff + sizeof(dbgBuff);
+  char *pcap = cap - 2;
 
-  }
+  str = jbuf_take(str, cap, snprintf(str, cap - str, "{\"type\":\"%s\",\"data\":\"", type));
 
   {
     va_list aptr;
-    int ret;
     va_start(aptr, fmt);
-    ret = vsnprintf (str, restL-10, fmt, aptr);
-    va_end(aptr); 
-    str+=ret;
-    restL-=ret;
-
-
-  }
-  {//end
-    int len=sprintf(str,"\"}");
-    str+=len;
-    restL-=len;
+    int ret = vsnprintf(str, pcap > str ? (size_t)(pcap - str) : 0, fmt, aptr);
+    va_end(aptr);
+    str = jbuf_take(str, pcap, ret);
   }
 
-  return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
+  str = jbuf_take(str, cap, snprintf(str, cap - str, "\"}"));
+
+  return send_json_string(0, (uint8_t *)dbgBuff, str - dbgBuff, 0);
 }
+
 
 void MData_JR::loop()
 {
@@ -8743,8 +8779,7 @@ void firmwareLoop()
         retdoc["w"]=gateWidthOf(trig.trig_id);
         retdoc["Qs"]=RBuf.size();
         if(trig.sync) retdoc["sync"]=1;   // omitted for parts: it is the common case
-        int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-        djrl.send_json_string(0,buff,slen,0);
+        send_json_or_error(djrl,retdoc,buff,sizeof(buff),"trig_gate");
         continue;
       }
 
@@ -8790,8 +8825,7 @@ void firmwareLoop()
 
 
 
-          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-          djrl.send_json_string(0,buff,slen,0);
+          send_json_or_error(djrl,retdoc,buff,sizeof(buff),"trig_info");
           break;
         }
         
@@ -8805,8 +8839,7 @@ void firmwareLoop()
           retdoc["gate_pulse"]=info.gate_pulse;
           retdoc["w"]=gateWidthOf(info.trig_id);
           retdoc["Qs"]=RBuf.size();
-          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-          djrl.send_json_string(0,buff,slen,0);
+          send_json_or_error(djrl,retdoc,buff,sizeof(buff),"trig_report");
           break;
         }
 
@@ -8831,8 +8864,7 @@ void firmwareLoop()
           retdoc["log"]=info.log;
 
 
-          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-          djrl.send_json_string(0,buff,slen,0);
+          send_json_or_error(djrl,retdoc,buff,sizeof(buff),"log_report");
           break;
         }
 
@@ -8851,8 +8883,7 @@ void firmwareLoop()
           retdoc["id"]=info.resp_id;
           retdoc["ack"]=info.isAck;
           
-          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-          djrl.send_json_string(0,buff,slen,0);
+          send_json_or_error(djrl,retdoc,buff,sizeof(buff),"cmd_resp");
           break;
         }
       }
@@ -9119,16 +9150,10 @@ void firmwareLoop()
 
 
 
-int intArrayContent_ToJson(char *jbuff, uint32_t jbuffL, int16_t *intarray, int intarrayL)
-{
-  uint32_t MessageL = 0;
-
-  for (int i = 0; i < intarrayL; i++)
-    MessageL += sprintf((char *)jbuff + MessageL, "%d,", intarray[i]);
-  MessageL--; //remove the last comma',';
-
-  return MessageL;
-}
+// intArrayContent_ToJson was removed. It took a jbuffL bound and never used it
+// -- an unbounded sprintf in a loop -- and MessageL-- underflowed a uint32 to
+// ~4 billion when handed an empty array. It had no callers, so it was two
+// latent defects sitting in a firmware image for nothing.
 
 
 void genMachineSetup(JsonDocument &jdoc)
