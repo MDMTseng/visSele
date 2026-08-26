@@ -318,18 +318,31 @@ class Updater {
     }
 
     // The version a package carries is inside it, and opening every zip on
-    // every scan would be wasteful -- so the file NAME carries it, and the
-    // manifest inside is still what decides at install time. A mismatch there
-    // is caught by install(), not hidden here.
+    // every scan would be wasteful -- so the NAME is read for a label, and the
+    // manifest inside is still what decides at install time. A wrong guess here
+    // mislabels a row; it cannot install the wrong thing, because install()
+    // checks manifest.json against info.json and refuses a mismatch.
+    //
+    // Two naming schemes are in the field: "1.1.104.zip" written by hand, and
+    // "update_1.1.104_win.zip" written by scripts/build_export.sh. Rather than
+    // pick one and quietly ignore packages named the other way, take the first
+    // version-looking token out of the name.
+    const versionOf = (name) => {
+      const stem = name.replace(/\.zip$/i, '');
+      const m = stem.match(/\d+(?:\.\d+)+[A-Za-z0-9.-]*/);
+      return m ? m[0] : stem;
+    };
     const packages = zips.map((n) => {
-      const version = n.replace(/\.zip$/i, '');
+      const version = versionOf(n);
       return {
         file: n,
         path: path.join(dir, n),
         version,
         installed: this.apps.validate(version).ok,
         current: this.apps.currentVersion() === version,
-        wanted: !!(release && release.version === version),
+        // release.json may name the file outright, which beats any guess made
+        // from the name.
+        wanted: !!(release && (release.file ? release.file === n : release.version === version)),
       };
     }).sort((a, b) => cmpVersion(b.version, a.version));
 
