@@ -895,6 +895,17 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
           value={edit_info.matching_angle_margin_deg ?? 180}
           onChange={(v) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(v))} />
       </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+        <span style={{ width: 92 }}>NMS 角度°</span>
+        <InputNumber size="small" min={1} max={360} step={5} style={{ width: 70 }}
+          value={edit_info.shape_nms_angle ?? 360}
+          onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_nms_angle: v }))} />
+      </div>
+      <div style={{ fontSize: 11, color: '#999', margin: '0 0 5px 0' }}>
+        同一位置、角度差大於這個值的候選都會保留,再由 orientation_essential 判定刷掉錯的那個。
+        360(預設)= 每個位置只留一個姿態。接近旋轉對稱的零件才需要調低(例如 30);
+        每多一個候選就多跑一次完整量測。
+      </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <span style={{ width: 92 }}>face</span>
         <Select size="small" style={{ width: 110 }} value={edit_info.matching_face ?? 1}

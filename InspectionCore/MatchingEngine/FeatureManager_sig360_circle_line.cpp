@@ -2293,6 +2293,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (smin != NULL && *smin > 0) this->shape_min_score = (float)*smin;
     double *sastep = JFetch_NUMBER(root, "shape_angle_step_deg");
     if (sastep != NULL && *sastep > 0) this->shape_angle_step_deg = (float)*sastep;
+    // shape_nms_angle: see the header. Absent keeps 360 (one pose per location),
+    // so every def written before this reads and measures identically.
+    double *snms = JFetch_NUMBER(root, "shape_nms_angle");
+    if (snms != NULL && *snms > 0) this->shape_nms_angle = (float)*snms;
     // shape_match_scale: coarse-stage scene downscale. 1.0 = off.
     //
     // The ACTIVE band is (0.1, 1.0) -- sbm::ShapeMatcher tests
@@ -7858,6 +7862,7 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
 
   sbm::MatchConfig mc;
   mc.min_score        = shape_min_score;
+  mc.nms_angle        = shape_nms_angle;
   mc.refine           = sbm::RefineMode::ROI;
   if (const char *rm = getenv("SHAPE_REFINE")) {   // diagnostic override
     if (strcmp(rm, "none") == 0) mc.refine = sbm::RefineMode::None;
@@ -8279,6 +8284,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
     if (ret == 0) reports.push_back(singleReport);
   }
+
+  // A REJECTED CANDIDATE IS NOT A FAILED LOCATE.
+  //
+  // locate.reason is documented as "empty when the locate succeeded", and with
+  // one candidate per location that held: the only way to set it was to end
+  // with nothing. Now that shape_nms_angle can keep several poses at one place,
+  // the normal GOOD outcome is that the wrong ones are rejected and one
+  // survives -- and each rejection wrote a reason. Leaving it there would hand
+  // a perfectly located part a sentence explaining why it was not found.
+  //
+  // The reason is worth keeping only when it answers "where is the object",
+  // which is only a question when there is none.
+  if (!reports.empty())
+  {
+    auto &L = report.data.sig360_circle_line.locate;
+    L.reason[0] = 0; L.code[0] = 0;
+  }
   return 0;
 }
 
@@ -8423,10 +8445,31 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
       // code is char[16]. "orientation_judge" truncated to "orientation_jud",
       // and a code that only exists in truncated form is one nobody can grep.
       snprintf(L.code, sizeof(L.code), "orient_judge");
-      snprintf(L.reason, sizeof(L.reason),
-               "orientation-essential judge '%s' did not measure (status %d), so this "
-               "detection was rejected -- the part's orientation cannot be trusted",
-               def.name, status);
+      // NA AND FAILURE ARE NOT THE SAME SENTENCE.
+      //
+      // Both reject the detection, and saying "did not measure" for both is
+      // wrong half the time and misleading exactly when it costs most: a judge
+      // that measured cleanly and came out of tolerance reads as a measurement
+      // that never happened, so the operator goes looking at the caliper -- which
+      // is sitting perfectly on the edge -- instead of at the limits.
+      //
+      // The number and the window are what make it actionable. Without them
+      // "rejected" is a verdict with no evidence.
+      //
+      // Kept inside reason[160]: the long version read better and arrived
+      // truncated, losing the explanation it existed for. Name, value and
+      // window first, because those are the three a person acts on.
+      const float v = judgeReports[j].measured_val;
+      if (status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+        snprintf(L.reason, sizeof(L.reason),
+                 "orientation-essential judge '%s' could not be measured -- detection "
+                 "rejected (it is what tells the part's orientation apart)",
+                 def.name);
+      else
+        snprintf(L.reason, sizeof(L.reason),
+                 "orientation-essential judge '%s' measured %.4f, outside %.4f~%.4f -- "
+                 "detection rejected: that window decides which way round the part is",
+                 def.name, v, def.LSL, def.USL);
       return -2;   // orientation-essential judge failed -> reject this detection
     }
   }

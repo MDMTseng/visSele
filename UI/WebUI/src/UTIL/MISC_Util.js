@@ -329,6 +329,10 @@ export function defFileGeneration(edit_info)
   if (typeof edit_info.shape_match_scale === 'number')
     report.featureSet[0].shape_match_scale = edit_info.shape_match_scale;
   // line2Dup edge-strength thresholds for feature generation (core defaults 50/80).
+  // NMS angle tolerance. Only when it is not the core's 360, so every def that
+  // does not care keeps hashing and diffing exactly as before.
+  if (typeof edit_info.shape_nms_angle === 'number' && edit_info.shape_nms_angle !== 360)
+    report.featureSet[0].shape_nms_angle = edit_info.shape_nms_angle;
   if (typeof edit_info.shape_weak_thres === 'number')
     report.featureSet[0].shape_weak_thres = edit_info.shape_weak_thres;
   if (typeof edit_info.shape_strong_thres === 'number')

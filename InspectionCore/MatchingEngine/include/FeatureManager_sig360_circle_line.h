@@ -338,6 +338,23 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
                                       // supplied at runtime (e.g. WebUI def-info "_ref_image_path");
                                       // highest priority so the def file stays path-free.
   float shape_min_score = 50.0f;      // line2Dup similarity gate (0-100)
+  // How far apart in DEGREES two matches at the same place must be to both
+  // survive NMS. 360 keeps the previous behaviour exactly -- no angle
+  // difference can exceed it, so every nearby match is suppressed and the
+  // matcher returns one pose per location.
+  //
+  // That default silently disabled the angle-aware branch of the NMS, which was
+  // written for precisely the case it then could not serve: a part close to
+  // rotationally symmetric, where two orientations score almost the same and
+  // the WRONG one can win by noise. Keeping both and letting an
+  // orientation-essential judge reject the wrong one is what the downstream
+  // loop already does -- it tries every candidate and keeps those that pass.
+  // It just never had more than one candidate to try.
+  //
+  // Set it to a value below the real ambiguity (e.g. 30 for a part whose two
+  // plausible poses differ by 180) to opt in. Costs a full measurement pass per
+  // extra candidate, which is why it is opt-in rather than a new default.
+  float shape_nms_angle = 360.0f;
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
   float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
                                       // match (ROI refine restores full-res accuracy)
