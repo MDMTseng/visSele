@@ -7615,9 +7615,35 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
           LOGE("inspQueue full -> dropped oldest frame (cumulative: %d). "
                "Inspection is behind; acquisition is NOT waiting for it.", n);
       }
-      inspQueue.push(headImgPipe);
+      // The RETRY's return was discarded and `_enqueued` set regardless. If it
+      // failed -- the pop found nothing, or another producer refilled the slot
+      // first -- the frame was neither queued nor returned to the pool, and
+      // `_enqueued = true` then told the cleanup at the end of this function
+      // that the queue owns it. A permanent leak of one pool slot per
+      // occurrence; about resourcePoolSize of them and acquisition is dead with
+      // the camera still reporting healthy, which is the exact failure the
+      // "never block acquisition" comment above exists to avoid.
+      //
+      // Counted with the other drops rather than logged on its own: it means
+      // the same thing to an operator -- a part went unjudged -- and a separate
+      // number for a rarer path is one more thing nobody watches.
+      if (inspQueue.push(headImgPipe) == false)
+      {
+        image_pipe_info_gc(*headImgPipe, bpg_pi.resPool);
+        int n = ++inspQueueDropCount;
+        if ((n % 50) == 1)
+          LOGE("inspQueue still full after evicting -- dropped the NEW frame "
+               "(cumulative: %d).", n);
+      }
+      else
+      {
+        _enqueued = true;
+      }
     }
-    _enqueued = true;
+    else
+    {
+      _enqueued = true;
+    }
     if (false)
     {
       LOGE("NO resource can be used.....");
@@ -11110,19 +11136,51 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     {
       // Full: the peripheral can't keep up. Drop the OLDEST so we keep the
       // freshest result flowing, and count the loss -- never block here.
+      //
+      // COUNT WHAT WAS ACTUALLY LOST, in both directions. This used to pop and
+      // push with both returns discarded and then increment unconditionally,
+      // which is wrong twice over:
+      //
+      //   * if the send thread drained the queue between the failed push and
+      //     this pop, NOTHING was dropped -- and the counter still moved. On a
+      //     POSITIONAL-pairing machine that prints "the verdict train is now
+      //     OFF BY ONE", i.e. a false alarm that parts are being mis-sorted.
+      //   * if the retry push failed, TWO verdicts were lost and one counted.
+      //
+      // This number is exported as perif_pairing.link.queue_dropped, which is
+      // what an operator reads to decide whether to re-run a batch. It has to
+      // be the truth in both directions or it is worse than absent.
+      //
+      // The inspQueue site already gates its counter on the pop succeeding;
+      // this is the same rule.
       PerifResultMsg discard;
-      perifSendQueue.pop(discard);
-      perifSendQueue.push(msg);
-      int n = ++perifSendDropCount;
+      int lost = 0;
+      if (perifSendQueue.pop(discard)) lost++;
+      if (perifSendQueue.push(msg) == false) lost++;
+      if (lost == 0)
+      {
+        // The queue drained under us and the retry got in. Nothing lost, so
+        // nothing counted -- and nothing logged, or the log becomes the alarm
+        // the counter was supposed to be.
+      }
+      else
+      {
+      const int prev = perifSendDropCount.fetch_add(lost);
+      const int n = prev + lost;
       // Reported in perif_pairing.link.queue_dropped. On a POSITIONAL-pairing
       // machine (uInspMEGA) any dropped verdict shifts the whole train by one
       // -- every later part gets its neighbour's verdict. That cannot be fixed
       // here (a placeholder would need a queue slot, which is what ran out);
       // it can only be made impossible to miss.
-      if ((n % 50) == 1)
+      // Fire on the first loss and whenever the count crosses a multiple of 50.
+      // A plain `n % 50 == 1` breaks the moment `lost` can be 2: the counter
+      // then steps 2,4,6... and never lands on 1, so the log goes silent for
+      // exactly the failure it exists to report.
+      if (prev == 0 || (n / 50) != (prev / 50))
         LOGE("perifSendQueue full -> dropping oldest (cumulative drops: %d)%s", n,
              (bpg_pi.perifCH && bpg_pi.perifCH->machine_type == PERIF_UINSP_MEGA)
                ? " -- POSITIONAL pairing: the verdict train is now OFF BY ONE" : "");
+      }
     }
     }
   }
@@ -11343,7 +11401,20 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
                  "(cumulative: %d). The preview is behind; inspection is not "
                  "waiting for it.", n);
         }
-        datViewQueue.push(imgPipe);
+        // Same discarded return as the inspQueue site: if the retry fails --
+        // the pop found nothing, or another producer refilled the slot first --
+        // this pipe is neither queued nor returned. Nothing downstream recovers
+        // it, because reaching here means the frame was passed down and the
+        // caller has let go of it. One leaked pool slot per occurrence, and the
+        // comment above already says the leak is worse than the stall.
+        if (!datViewQueue.push(imgPipe))
+        {
+          image_pipe_info_gc(*imgPipe, bpg_pi.resPool);
+          int n = ++datViewDropCount;
+          if ((n % 50) == 1)
+            LOGE("datViewQueue still full after evicting -- dropped the NEW "
+                 "preview frame (cumulative: %d).", n);
+        }
       }
     }
   }
