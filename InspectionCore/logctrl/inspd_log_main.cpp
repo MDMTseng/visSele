@@ -99,7 +99,10 @@ struct Config {
      * including WARN/ERROR/FATAL -- stays in the RAM ring + ephemeral buffer and
      * is still captured in full by the crash/close dumps (crash_<utc>.dump /
      * latest_dump.dump) and the on-demand 匯出 Log 快照. Re-enable persistence with
-     * INSP_LOG_PERSIST=warn|info|... (an empty INSP_LOG_FILE also disables it). */
+     * INSP_LOG_PERSIST_LEVEL=warn|info|... (an empty INSP_LOG_FILE also
+     * disables it). The name here said INSP_LOG_PERSIST, which is not the
+     * variable the parser reads -- setting it looked like it worked and
+     * changed nothing. */
     int         persist_min_lv = LOG_LV_OFF;
     /* WS log-stream server for the WebUI "Core Logs" panel
      * (CoreLogClient -> ws://127.0.0.1:4091/log). On by default now that the

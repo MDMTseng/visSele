@@ -5439,7 +5439,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
-            camera->TriggerMode(2);
+            // Mode 2 is EXTERNAL trigger, which is right for a real camera on a
+            // real machine: the device fires the camera over CAM1 and frames
+            // arrive on their own. A canned-frame carousel has no such wire --
+            // CameraLayer_BMP_carousel only starts its producer thread for mode
+            // 0, so under mode 2 it sits there and the pipeline sees ZERO
+            // frames. Measured exactly that way: carousel connected, camera set
+            // up, frameInterval logged 0 times, and CAL never converged because
+            // no report could carry a cam_ts.
+            //
+            // Under the trigger drive the announcements do the gating instead
+            // (camTrigDrive), so free-run is the correct mode: frames are
+            // produced, and all but the announced ones are dropped at the
+            // callback. Chosen HERE, on the main path at session start, rather
+            // than by having the RX thread poke the camera -- see camTrigDrive
+            // for why that direction is not taken.
+            camera->TriggerMode(camTrigDrive::on() ? 0 : 2);
             doImgProcessThread = true;
 
             datViewQueueSkipSize=2;
@@ -12212,6 +12227,17 @@ int mainLoop(bool realCamera = false)
   bpg_pi.setLink(ifwebsocket);
   // mjpegS = new MJPEG_Streamer2(7603);
   LOGI("SetEventCallBack is set...");
+  // Say at boot which bench fixtures are armed, rather than at the first call
+  // site that happens to ask. Both of these are lazy statics, so an unarmed run
+  // and a run whose env never reached the core produced the SAME silence -- and
+  // telling those two apart by their absence cost a whole debugging session.
+  {
+    const char *_synth = getenv("INSP_CAM_TS_SYNTH");
+    const char *_bmp   = getenv("FORCE_BMP_CAROUSEL");
+    LOGI("bench fixtures: cam_trig drive=%d, cam_ts synth env=%s, canned frames=%s",
+         (int)camTrigDrive::on(), _synth ? _synth : "(unset)",
+         _bmp ? _bmp : "(unset)");
+  }
 
   int count=0;
   while (!g_shutdownRequested)

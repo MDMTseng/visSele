@@ -133,7 +133,12 @@ const PHANTOM = process.env.SOAK_PHANTOM === '1';
 // produce a clear error -- it produces a stopped plate and phantoms refused by
 // the distance gate, which points at the injector instead of at the clock. The
 // caller can still override it; an explicit 0 is honoured.
-if (PHANTOM && process.env.INSP_CAM_TS_SYNTH === undefined)
+// Not when the trigger DRIVE is on: that fixture answers the same announcements
+// through the real report path, and two answers to one announcement is
+// INSP_RESULT_MATCHES_NO_OBJECT and a halted device. The core refuses the
+// combination loudly; not creating it here is better than relying on that.
+if (PHANTOM && process.env.INSP_CAM_TS_SYNTH === undefined
+    && !(process.env.INSP_CAM_TRIG_DRIVE && process.env.INSP_CAM_TRIG_DRIVE !== '0'))
   process.env.INSP_CAM_TS_SYNTH = '1';
 // ~8 parts/s by default, which is the order the real plate feeds at.
 const PHANTOM_MS = Number(process.env.SOAK_PHANTOM_MS || 125);
@@ -699,8 +704,15 @@ if (PHANTOM) {
             + `(${fr2 && fr2.ack ? 'ack' : 'NO ACK'}), board reports plate_freq ${pf}`);
   if (!pf) {
     await page.screenshot({ path: OUT + '/esoak_FAILED.png' });
-    await die(app, 'plate_freq is still 0 after the start -- the step clock is not'
-      + ' advancing, so every phantom will be refused by the distance gate');
+    // SOAK_DBG keeps the run alive through this. A stopped plate means the run
+    // measures nothing, so failing is right by default -- but it also tears the
+    // core down, and the core is where the evidence for WHY it is stopped lives
+    // (its counters, and a log ring that survives the process and therefore
+    // cannot be read after the fact without mixing in the previous run).
+    const msg = 'plate_freq is still 0 after the start -- the step clock is not'
+      + ' advancing, so every phantom will be refused by the distance gate';
+    if (process.env.SOAK_DBG === '1') console.log('[9] WOULD FAIL: ' + msg);
+    else await die(app, msg);
   }
 }
 // Only once the machine is up: phantoms fired while the plate frequency is

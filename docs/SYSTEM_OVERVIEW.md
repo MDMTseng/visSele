@@ -93,19 +93,47 @@ drop-oldest,不對相機回壓。看畫面的人可以掉格,判定不行。
 版本包自己帶開機配方:`scripts/boot.js`。**launcher 不知道任何 visSele 專屬的事** ——
 這正是「舊 launcher 能跑新版本」的原因。
 
+一個 app root 的形狀是:`current.json` 加上一堆版本目錄,**版本目錄直接放在 root 底下**
+(`apps.js`:`versionDir(v) = join(this.dir, v)`,`currentFile = join(this.dir, 'current.json')`)。
+
 ```
-export_v2/
-  app/
-    current.json      {version, previous, selectedAt}   ← 現在要跑哪版
-    last_good.json    {version, ranForS, at}            ← 跑滿門檻才升格
-    1.1.103/ 1.1.104/ 1.1.105/
-      info.json
-      scripts/boot.js     ← 這版怎麼開,由這版自己說
-      Core/               ← visSele.exe + 相機 SDK 的 DLL 與 .cti
-      WebUI/              ← 打包好的前端(assets/index-*.js)
-  launcher/
-    Xception INSP-win32-x64/    ← 打包好的 Electron 殼
+<appRoot>/
+  current.json      {version, previous, selectedAt}   ← 現在要跑哪版
+  last_good.json    {version, ranForS, at}            ← 跑滿門檻才升格
+  1.1.104/
+    info.json
+    scripts/boot.js     ← 這版怎麼開,由這版自己說
+    Core/               ← visSele.exe + 相機 SDK 的 DLL 與 .cti
+    WebUI/              ← 打包好的前端(assets/index-*.js)
 ```
+
+> ### ⚠️ 這棵樹在這台 bench 上有兩份,部署錯了不會有人告訴你
+>
+> `export_v2/` 底下**同時**有:
+>
+> ```
+> export_v2/
+>   1.1.104/            ← soak 與 launcher 實際跑的就是這個
+>   app/
+>     current.json      1.1.105
+>     1.1.103/ 1.1.104/ 1.1.105/
+>   launcher/
+> ```
+>
+> `export_v2/` 和 `export_v2/app/` **各自都是一個合法的 app root**。soak 的預設
+> `SOAK_APP_ROOT` 是 `export_v2`,所以跑的是 `export_v2/1.1.104/Core/visSele.exe`。
+> 外層那個**連 `current.json` 都沒有**,靠 `resolve()` 的 fallback 挑到唯一存在的版本
+> —— 也就是說 `export_v2/app/current.json` 寫著 1.1.105 完全不影響它。
+>
+> 部署到 `export_v2/app/1.1.105/` 會**安靜地什麼都不改變**:檔案換了、app 照跑舊的,
+> 沒有任何錯誤。2026-08-27 就這樣連續三次「部署後行為沒變」,查了半天才發現。
+>
+> **確認跑的是哪一個,只有一個可靠方法**:
+>
+> ```powershell
+> Get-CimInstance Win32_Process -Filter "Name='visSele.exe'" |
+>   Select-Object ProcessId,ExecutablePath,CommandLine
+> ```
 
 **cwd 與 chdir 是兩件事,兩個都關鍵**(`boot.js` 的註解說得最清楚):
 
