@@ -121,6 +121,20 @@ const IDLE = process.env.SOAK_IDLE === '1';
 // of the previous one, measured in STEP COUNT, and the firmware's step counter
 // advances on the commanded rate whether or not anything is bolted to it.
 const PHANTOM = process.env.SOAK_PHANTOM === '1';
+// A phantom run cannot even START without this, so it is not optional here.
+//
+// The board leaves INSPECTION_MODE_CAL only when CAM_SYNC converges, and it is
+// taught by cam_ts in the report the CORE sends back -- normally lifted off a
+// real frame. No camera, no frame, no convergence: state 102 forever, or 112
+// with CAM_CLOCK_CAL_FAILED. INSP_CAM_TS_SYNTH=1 closes that loop by answering
+// the device's own cam_trig announcements with cam_ts = t_us*MULT + OFFSET_US.
+//
+// Set here rather than left to the caller because forgetting it does not
+// produce a clear error -- it produces a stopped plate and phantoms refused by
+// the distance gate, which points at the injector instead of at the clock. The
+// caller can still override it; an explicit 0 is honoured.
+if (PHANTOM && process.env.INSP_CAM_TS_SYNTH === undefined)
+  process.env.INSP_CAM_TS_SYNTH = '1';
 // ~8 parts/s by default, which is the order the real plate feeds at.
 const PHANTOM_MS = Number(process.env.SOAK_PHANTOM_MS || 125);
 // Start the machine, then LEAVE the Inspection UI. The core keeps inspecting at
@@ -659,18 +673,23 @@ if (PHANTOM) {
             + `firing a pulse every ${PHANTOM_MS}ms`);
 }
 await clickIcon('anticon-caret-right'); await sleep(9000);
-// Re-assert the plate frequency AFTER the start, because the start overwrites it.
+// Assert the plate is actually turning before trusting a single phantom.
 //
-// Step [5] sets it and the board acks, but entering inspection pushes the UI's
-// own plate settings down, and on a bench with no machine that value is 0. The
-// board then holds a stopped plate while cheerfully reporting freq_stable.
+// This began as "the start overwrites the frequency", which was the wrong
+// diagnosis. Nothing overwrites it: step [5] sets PLATE_FREQ_SETPOINT and the
+// board keeps it. What moves the plate is PLATE_FREQ_TARGET, and that belongs
+// to the state machine -- INSPECTION_MODE_CAL holds it at 0 on purpose
+// ("measuring a clock is no reason to move a machine"), and CAL does not end
+// until the camera clock converges. With no camera it never did, so the machine
+// sat in state 102 forever with the plate stopped.
 //
-// That is not cosmetic for a phantom run: the gate's distance filter is measured
-// in STEPS (min_dist_ticks, 159 here). With SYS_STEP_COUNT frozen, every phantom
-// lands at the same position, every gap reads as 0, and all of them are refused
-// as too close to the one before -- rej_dist climbing 1:1 with the pulses sent.
-// The stimulus is fine and the filter is right; there is simply no plate motion
-// for the objects to be spaced along.
+// It matters for phantoms because the gate's distance filter is measured in
+// STEPS (min_dist_ticks, 159 here). With SYS_STEP_COUNT frozen every phantom
+// lands at the same position, every gap reads as zero, and all of them are
+// refused as too close to the one before -- rej_dist climbing 1:1 with the
+// pulses sent, which reads as "the injector is broken" and is not.
+//
+// So this is a CHECK, not a fix. The fix is INSP_CAM_TS_SYNTH below.
 if (PHANTOM) {
   const fr2 = await ask({ type: 'set_setup', plate: { freq: FREQ } }, 1800);
   await sleep(3000);
