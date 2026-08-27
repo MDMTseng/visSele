@@ -84,6 +84,35 @@ export function seedCaliper(shape, countDefault = CALIPER_COUNT_DEFAULT) {
   };
 }
 
+// The edge rule, extracted for the reason the caliper seed was: two callers, and
+// they must not drift. Before this was shared, the SAVE path in MISC_Util carried
+// its own copy -- `min_strength: 60`, and `falling` for every shape including arcs
+// -- so an arc converted by SAVING measured a different edge than the same arc
+// converted by the offline tool, and only the offline one had ever been measured.
+// That is the wrong way round: saving under shape_based converts every primitive
+// without the user touching one, so it is the path a migration actually takes.
+//
+// min_strength 0 is not an oversight. Contour has no gradient floor at all:
+// contourGridGrayLevelRefine computes a Sobel at every contour point and then sets
+// edgeRsp = 1 unconditionally, so it takes every point on the 128 crossing. "No
+// floor" is 0, which is also the core's own parse default. Measured: 0 and 40 give
+// bit-identical radii against a 200-to-black silhouette, because both wire edges
+// are far above either threshold. The floor was never what decided anything.
+export const EDGE_SEED = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
+
+// falling is right for a silhouette's OUTER boundary; an arc usually measures an
+// INNER radius, where falling takes the wrong side of the wire. Measured across
+// the reference corpus: falling put every R1.0 out by -0.11mm -- about half a wire
+// thickness -- and rising brought it to -0.01mm.
+export const ARC_POLARITY = 'rising';
+
+export function seedEdge(shape) {
+  return {
+    ...EDGE_SEED,
+    ...(shape && shape.type === 'arc' ? { polarity: ARC_POLARITY } : {}),
+  };
+}
+
 // Whether an arc can be converted at all.
 //
 // Contour and caliper use the taught geometry for different things. Contour
@@ -106,6 +135,10 @@ export function seedCaliper(shape, countDefault = CALIPER_COUNT_DEFAULT) {
 // boxes, and it needs nothing but the def. 12 of the 14 arcs in the reference
 // corpus measure 8.6-51px and convert to within ~0.01mm; the two that do not
 // need RE-TEACHING by whoever set the recipe, not converting.
+// 3px is where the reference corpus splits cleanly: 12 of 14 arcs measure
+// 8.6-51px and convert to within ~0.01mm; the two that do not measure 1.2 and 1.7.
+export const ARC_MIN_SAGITTA_PX = 3;
+
 export function arcSagittaPx(shape, mmpp) {
   if (!shape || !shape.pt1 || !shape.pt2 || !shape.pt3 || !mmpp) return null;
   const a = arcSweep(shape.pt1, shape.pt2, shape.pt3);

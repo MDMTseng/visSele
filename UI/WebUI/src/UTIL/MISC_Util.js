@@ -1,4 +1,5 @@
 import JSum from 'jsum';
+import { seedCaliper, seedEdge, arcSagittaPx, ARC_MIN_SAGITTA_PX } from '../shapes/_caliperSeed';
 
 
 
@@ -368,12 +369,35 @@ export function defFileGeneration(edit_info)
     if (Array.isArray(report.featureSet[0].features)) {
       report.featureSet[0].features = report.featureSet[0].features.map((s) => {
         if (!s || (s.type !== 'line' && s.type !== 'arc') || s.locating === 'caliper') return s;
-        const c = { ...s, locating: 'caliper' };
-        if (!c.caliper) {
-          const len = (s.pt1 && s.pt2) ? Math.hypot(s.pt2.x - s.pt1.x, s.pt2.y - s.pt1.y) : 0;
-          c.caliper = { count: 10, width: len > 0 ? len / 10 : 0.1, min_inliers: 5, max_error: 0.1 };
+        // An arc taught nearly collinear does not get converted, it gets LEFT in
+        // contour mode -- which the core then refuses under shape_based, by name.
+        // That refusal is the point. Converting it produces a number rather than
+        // an error: measured on BCG-20X40X53 [13][1], caliper returns r=0.49mm
+        // against contour's 0.20mm, and its neighbour returns SUCCESS with a
+        // radius half again too big. A wrong radius that passes is worse than a
+        // def that will not train, because only one of the two gets noticed.
+        // Small sagitta <=> distant circumcentre <=> the search rays run nearly
+        // parallel instead of fanning around the bend; see _caliperSeed.
+        if (s.type === 'arc') {
+          const sag = arcSagittaPx(s, report.featureSet[0].mmpp);
+          if (sag !== null && sag < ARC_MIN_SAGITTA_PX) {
+            console.warn('[def] arc id=' + s.id + ' (' + (s.name || '') + ') taught sagitta ' +
+              sag.toFixed(1) + 'px -- left in contour mode; it needs re-teaching, not converting');
+            return s;
+          }
         }
-        if (!c.edge) c.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60 };
+        const c = { ...s, locating: 'caliper' };
+        // seedCaliper/seedEdge, never a local copy: this path and the offline
+        // converter must produce the same def, and this is the path a migration
+        // actually takes -- saving under shape_based converts every primitive
+        // without the user opening one. The copy that used to sit here measured
+        // an ARC's caliper width from the CHORD (arcSweep understates by more
+        // the tighter the bend) and searched every shape `falling` (an arc
+        // usually measures an inner radius, where falling takes the wrong side
+        // of the wire: -0.11mm on every R1.0 in the corpus). Both were fixed in
+        // _caliperSeed and measured there; this call site never followed.
+        if (!c.caliper) c.caliper = seedCaliper(s);
+        if (!c.edge) c.edge = seedEdge(s);
         return c;
       });
     }

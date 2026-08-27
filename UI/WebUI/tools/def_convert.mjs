@@ -17,25 +17,15 @@
 // Originals are never modified.
 import fs from 'node:fs';
 import path from 'node:path';
-import { seedCaliper, arcSagittaPx, geomLengthOf } from '../src/shapes/_caliperSeed.js';
+import { seedCaliper, seedEdge, arcSagittaPx, geomLengthOf, ARC_MIN_SAGITTA_PX }
+  from '../src/shapes/_caliperSeed.js';
 
-// Contour has no gradient floor at all: contourGridGrayLevelRefine computes a
-// Sobel at every contour point and then sets edgeRsp = 1 unconditionally, so it
-// takes every point on the 128 threshold crossing. "No floor" is 0, and 0 is
-// also the core's own parse default for a caliper line. Measured: 0 and 40 give
-// bit-identical radii against a 200-to-black silhouette, because both wire
-// edges are far above either threshold. The floor was never what decided
-// anything -- polarity is.
-const EDGE_SEED = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
-
-// falling is the core's default and right for a silhouette's outer boundary;
-// an arc usually measures an inner radius, where it takes the wrong side of the
-// wire. Measured across the reference corpus: falling put every R1.0 out by
-// -0.11mm -- about half a wire thickness -- and rising brought it to -0.01mm.
-const ARC_POLARITY = 'rising';
+// EDGE_SEED / ARC_POLARITY now live in _caliperSeed beside the caliper seed,
+// because the WebUI save path needs the same two values. See seedEdge there for
+// what each was measured against.
 
 function parseArgs(argv) {
-  const a = { minSagittaPx: 3 };
+  const a = { minSagittaPx: ARC_MIN_SAGITTA_PX };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--in') a.src = argv[++i];
@@ -71,7 +61,7 @@ function convertFeature(f, mmpp, minSagittaPx) {
 
   f.locating = 'caliper';
   f.caliper = { ...(f.caliper || {}), ...seedCaliper(f) };
-  f.edge = { ...EDGE_SEED, ...(f.type === 'arc' ? { polarity: ARC_POLARITY } : {}), ...(f.edge || {}) };
+  f.edge = { ...seedEdge(f), ...(f.edge || {}) };
   return { changed: true, note:
     `${f.type} len=${L.toFixed(3)}mm -> count=${f.caliper.count} ` +
     `width=${f.caliper.width.toFixed(4)}mm` };
