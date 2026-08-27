@@ -72,25 +72,74 @@ def dist(a, b):
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
 
 
+def arc_from_3pts(p1, p2, p3):
+    """Circumcentre, radius and swept angle of the arc p1->p2->p3.
+
+    The chord approximation this replaces (|p1p2| + |p2p3|) understates a real
+    sweep, and the understatement grows with curvature -- so the tightest arcs,
+    which already have the fewest calipers, got the fewest of all. On this
+    corpus the two 0.3mm arcs were the worst converted features by an order of
+    magnitude.
+    """
+    ax, ay = p1["x"], p1["y"]
+    bx, by = p2["x"], p2["y"]
+    cx_, cy_ = p3["x"], p3["y"]
+    d = 2.0 * (ax * (by - cy_) + bx * (cy_ - ay) + cx_ * (ay - by))
+    if abs(d) < 1e-12:
+        return None            # collinear: no circle, caller falls back
+    ux = ((ax * ax + ay * ay) * (by - cy_) + (bx * bx + by * by) * (cy_ - ay)
+          + (cx_ * cx_ + cy_ * cy_) * (ay - by)) / d
+    uy = ((ax * ax + ay * ay) * (cx_ - bx) + (bx * bx + by * by) * (ax - cx_)
+          + (cx_ * cx_ + cy_ * cy_) * (bx - ax)) / d
+    r = math.hypot(ax - ux, ay - uy)
+    a1 = math.atan2(ay - uy, ax - ux)
+    a2 = math.atan2(by - uy, bx - ux)
+    a3 = math.atan2(cy_ - uy, cx_ - ux)
+    # The sweep is the one that PASSES THROUGH p2, which is the only thing that
+    # distinguishes the arc from its complement -- the same mistake the WebUI's
+    # arc auto-width made (MathTools arcSweep, fixed 2026-08-26): three copies
+    # of a p1->p3 span that never consulted p2, seeding 11x the intended width.
+    def norm(a):
+        while a <= -math.pi:
+            a += 2 * math.pi
+        while a > math.pi:
+            a -= 2 * math.pi
+        return a
+    d13 = norm(a3 - a1)
+    d12 = norm(a2 - a1)
+    # p2 must lie between p1 and p3 along the swept direction; if it does not,
+    # the arc is the long way round.
+    if d13 >= 0:
+        sweep = d13 if (0 <= d12 <= d13) else d13 - 2 * math.pi
+    else:
+        sweep = d13 if (d13 <= d12 <= 0) else d13 + 2 * math.pi
+    return ux, uy, r, abs(sweep)
+
+
 def feature_length_mm(f):
     """Length along the feature, in def units (mm).
 
-    A line is its two endpoints. An arc is given as three points, so the
-    two-chord path pt1->pt2->pt3 is used: it understates a wide sweep, which
-    errs toward MORE calipers rather than fewer, and the count is what it feeds.
+    A line is its two endpoints. An arc is r * sweep -- the true arc length,
+    through the middle point. See arc_from_3pts for why the chord sum it
+    replaces was not good enough.
     """
     t = f.get("type")
     try:
         if t == "line":
             return dist(f["pt1"], f["pt2"])
         if t == "arc":
-            return dist(f["pt1"], f["pt2"]) + dist(f["pt2"], f["pt3"])
+            a = arc_from_3pts(f["pt1"], f["pt2"], f["pt3"])
+            if a is None:
+                return dist(f["pt1"], f["pt2"]) + dist(f["pt2"], f["pt3"])
+            _, _, r, sweep = a
+            return r * sweep
     except (KeyError, TypeError):
         return None
     return None
 
 
-def convert_feature(f, spacing, min_strength=0, polarity=None, nth=None):
+def convert_feature(f, spacing, min_strength=0, polarity=None, nth=None, arc_polarity=None,
+                    mmpp=None, min_sagitta_px=3.0):
     """Returns (changed, note). Mutates f."""
     t = f.get("type")
     if t not in ("line", "arc"):
@@ -104,6 +153,49 @@ def convert_feature(f, spacing, min_strength=0, polarity=None, nth=None):
     L = feature_length_mm(f)
     if not L or L <= 0:
         return False, "no usable geometry -- left in contour mode"
+
+    # A FLAT-TAUGHT ARC POINTS THE CALIPER SEARCH THE WRONG WAY.
+    #
+    # The two modes use the taught geometry for different things. Contour treats
+    # the def arc as a SEARCH REGION -- it finds the real contour near it and
+    # fits that, so a sloppily taught arc still recovers the true bend. Caliper
+    # takes it LITERALLY: it lays calipers along the taught arc and searches
+    # RADIALLY from the taught centre.
+    #
+    # So what matters is where that centre lands. Measured on 93020
+    # BCG-20X40X53 feature [13]: the three taught points are nearly collinear,
+    # putting their circumcentre 129px away with r=129px, while the real bend
+    # has r=20px. The ten search rays fan over 15.9 degrees -- nearly parallel
+    # -- across a corner that turns almost 90. Each ray therefore crosses the
+    # wire at a different oblique angle, and one running nearly ALONG the wire
+    # finds its "first edge" anywhere at all. Probing the returned hits shows
+    # exactly that: grey levels along the sequence run 222, 69, 35, 50, 201, 235
+    # instead of sitting on a transition, and the last one is buried inside the
+    # wire with a local contrast of 29.
+    #
+    # That is why neither polarity nor nth moves the result toward contour: the
+    # search DIRECTION is wrong, so which edge it selects is beside the point.
+    # (Two rounds were spent on polarity and caliper count before measuring
+    # this. The sagitta test below would have said so immediately.)
+    #
+    # Sagitta is the cheap proxy: small sagitta <=> distant centre <=> parallel
+    # rays. It is a property of the def alone -- no engine, no image. These need
+    # RE-TEACHING by whoever set the recipe, not converting. 12 of the 14 arcs
+    # in the corpus have sagittas of 8.6-51px and convert to within ~0.01mm.
+    if t == "arc":
+        a = arc_from_3pts(f["pt1"], f["pt2"], f["pt3"])
+        if a is not None:
+            _, _, r_mm, _ = a
+            chord = dist(f["pt1"], f["pt3"])
+            if 2 * r_mm > chord:
+                sag_mm = r_mm - math.sqrt(max(r_mm * r_mm - (chord / 2.0) ** 2, 0.0))
+                sag_px = sag_mm / mmpp if mmpp else 0
+                if sag_px < min_sagitta_px:
+                    return False, ("SKIPPED -- taught sagitta %.1fpx (< %.1f): the taught "
+                                   "points are nearly collinear, so the caliper's radial "
+                                   "search would not run perpendicular to the edge. Have the "
+                                   "recipe's arc re-taught; do not convert."
+                                   % (sag_px, min_sagitta_px))
 
     floor = MIN_COUNT_ARC if t == "arc" else MIN_COUNT_LINE
     count = max(floor, int(round(L / spacing)))
@@ -119,7 +211,13 @@ def convert_feature(f, spacing, min_strength=0, polarity=None, nth=None):
     if not isinstance(edge, dict):
         edge = {}
     edge.setdefault("method", "strongest")
-    edge.setdefault("polarity", polarity or "falling")
+    # Per-type default, and it is not cosmetic. A backlit wire has TWO edges;
+    # `falling` takes the outer one, which is right for a silhouette boundary
+    # and wrong for the inner radius an arc usually measures. Measured on this
+    # corpus: falling put every R1.0 out by -0.11mm (about half a wire), rising
+    # brought it to -0.01mm.
+    _pol = (arc_polarity if (t == "arc" and arc_polarity) else polarity)
+    edge.setdefault("polarity", _pol or ("rising" if t == "arc" else "falling"))
     edge.setdefault("nth", 0 if nth is None else nth)
     edge.setdefault("min_strength", min_strength)
     f["edge"] = edge
@@ -139,6 +237,11 @@ def main():
     ap.add_argument("--min-strength", type=float, default=0)
     ap.add_argument("--polarity", default=None, choices=["falling", "rising", "any"])
     ap.add_argument("--nth", type=int, default=None)
+    ap.add_argument("--min-sagitta-px", type=float, default=3.0,
+                    help="arcs whose taught sagitta is below this are left in contour "
+                         "mode and reported (default 3.0)")
+    ap.add_argument("--arc-polarity", default=None, choices=["falling", "rising", "any"],
+                    help="override the arc default (rising); lines are unaffected")
     ap.add_argument("--engine", default=None, choices=["shape_based", "sig360"],
                     help="also set locating_engine (default: leave alone)")
     a = ap.parse_args()
@@ -155,19 +258,22 @@ def main():
         with open(os.path.join(a.src, name), encoding="utf-8") as f:
             d = json.load(f)
         fs = (d.get("featureSet") or [{}])[0]
-        changed = 0
+        changed = 0; skipped = 0
         print("== " + base)
         for feat in fs.get("features") or []:
-            ok, note = convert_feature(feat, a.spacing, a.min_strength, a.polarity, a.nth)
+            ok, note = convert_feature(feat, a.spacing, a.min_strength, a.polarity, a.nth,
+                                        a.arc_polarity, fs.get('mmpp'), a.min_sagitta_px)
             if note:
                 print("   %-18s %s" % (str(feat.get("name"))[:18], note))
             if ok:
                 changed += 1
+            elif note and note.startswith("SKIPPED"):
+                skipped += 1
         if a.engine:
             fs["locating_engine"] = a.engine
             print("   locating_engine -> " + a.engine)
         total += changed
-        print("   %d feature(s) converted" % changed)
+        print("   %d converted%s" % (changed, (", %d SKIPPED (needs re-teaching)" % skipped) if skipped else ""))
 
         with open(os.path.join(a.dst, name), "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False)

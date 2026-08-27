@@ -26,10 +26,25 @@ WHY --insp AND NOT THE LIVE PIPELINE: --insp is one frame through the whole
 engine with no camera, no board and no UI, so a difference it reports is a
 difference in the measurement path and nothing else. That is the entire point.
 
-INSP_AREA_BYPASS=1 is set for every run. The station region lives in
-machine_setting.json -- it belongs to the MACHINE, not to the def -- and
-without the bypass a corpus recorded on one bench would fail on another because
-the part centre falls outside a box that has nothing to do with the recipe.
+WHAT MAKES A BASELINE PORTABLE, and what it therefore cannot see:
+
+  the SCALE comes from the DEF, not the bench. --insp calls
+  apply_def_cam_param, so each def is measured with its own embedded cam_param.
+  Verified rather than assumed: the six corpus defs report mmpp 0.0100631 and
+  0.0088416 -- each matching its OWN def -- while this bench's own recipe uses
+  0.0138859, which appears in no report. A baseline recorded on one machine
+  therefore reproduces on another to the digit.
+
+  the STATION REGION does not, so INSP_AREA_BYPASS=1 is set for every run. It
+  lives in machine_setting.json and belongs to the MACHINE; without the bypass a
+  corpus recorded on one bench fails on another because the part centre falls
+  outside a box that has nothing to do with the recipe.
+
+  the COST of both is that this harness cannot see a calibration problem. It
+  compares def + image + engine, and the bench's own calibration is isolated
+  out. That is the point -- a difference it reports is a difference in the
+  measurement path -- but it means a green run says nothing about whether THIS
+  machine is calibrated.
 
 EXPECTED FAILURES ARE PART OF THE BASELINE. One def in the original corpus
 (93013 5G2545060B) locates nothing, because three defs in that family share one
