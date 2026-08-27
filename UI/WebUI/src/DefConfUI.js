@@ -3107,15 +3107,62 @@ class APP_DEFCONF_MODE extends React.Component {
                       if (rpAct !== undefined) this.props.DISPATCH(rpAct);
 
                       let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
+                      // A CHECK THAT DOES NOTHING MUST SAY SO.
+                      //
+                      // Four ways this used to end in silence, and from the
+                      // outside all four look like a dead button: no object in
+                      // the report, this shape absent from the object, the
+                      // shape measured NA, or the request itself rejected. The
+                      // first is the common one and the least guessable -- the
+                      // core DROPS a whole detection when an orientation-
+                      // essential judge fails, so dragging one line past its
+                      // caliper margin (often 0.2mm) deletes every result in
+                      // the frame, not just that line's.
+                      if(insp_reports.length === 0)
+                      {
+                        const why = GetObjElement(RP,["data","reports",0,"locate","reason"]);
+                        Modal.warning({
+                          title: 'CHECK:這一幀沒有偵測到物件',
+                          content: why
+                            ? why
+                            : '核心回報 0 個物件,且沒有附上原因。定位失敗或某個判定否決了這次偵測。',
+                        });
+                      }
                       if(insp_reports.length>0)
                       {
                         let insp_rep = insp_reports[0];
                         console.log(insp_rep);
                         let mod_shape=dclone(this.props.edit_tar_info);
-                        
+
+                        // Is THIS shape in the report at all? ShapeAdjusts...
+                        // returns without a word when it is not, which is how a
+                        // feature that the core never even reached looks
+                        // identical to one that measured perfectly.
+                        const _mine = (insp_rep && this.props.edit_info._obj
+                                       .FindInspShapeObject)
+                          ? this.props.edit_info._obj.FindInspShapeObject(mod_shape && mod_shape.id, insp_rep)
+                          : undefined;
+                        if (mod_shape && _mine === undefined) {
+                          Modal.warning({
+                            title: 'CHECK:報告裡沒有這個特徵',
+                            content: '物件有被定位到,但 ' + (mod_shape.name || ('id ' + mod_shape.id))
+                              + ' 不在回報中,所以畫面沒有更新。',
+                          });
+                        }
+
                         this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,this.props.shape_list, insp_rep,true);
 
-                        
+                        // NA is a real answer, and the reason is in the report.
+                        // Without this the shape greys out and the operator is
+                        // left to work out which knob did it.
+                        if (mod_shape && mod_shape.inspection_status === BPG_Protocol.INSPECTION_STATUS.NA) {
+                          Modal.warning({
+                            title: 'CHECK:' + (mod_shape.name || ('id ' + mod_shape.id)) + ' 量不到',
+                            content: mod_shape.na_reason
+                              || '核心沒有給原因。線被拖離邊緣超過 margin 時,caliper 掃不到邊就是這個結果。',
+                          });
+                        }
+
                         mod_shape=modShapeCleanUp(mod_shape);
                         if(mod_shape!==undefined)
                         {
@@ -3137,6 +3184,13 @@ class APP_DEFCONF_MODE extends React.Component {
                     }
                   },
                   reject:(e)=>{
+                    // Was empty. A rejected round trip is the one case where
+                    // the operator has no way at all to tell that anything
+                    // happened.
+                    Modal.error({
+                      title: 'CHECK 沒有送出去',
+                      content: '核心沒有回覆這次檢驗:' + ((e && e.message) || e || '連線中斷'),
+                    });
                   }
                 });
               }} />);

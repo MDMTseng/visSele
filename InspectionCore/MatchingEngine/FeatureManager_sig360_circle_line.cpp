@@ -8404,7 +8404,31 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
     int status = TreeExecution(def.id, singleReport, eT,
                                calibCen, mmpp, cached_cos, cached_sin, flip_f);
     if (status != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+    {
+      // SAY WHY THE OBJECT DISAPPEARED.
+      //
+      // The caller drops a detection that returns non-zero, so this `return -2`
+      // deletes the whole object from the report: zero detections, error 0,
+      // nothing else. From the editor that is a CHECK that does nothing at all
+      // -- no hits move, no line snaps, no message -- and the actual cause can
+      // be one dragged line whose caliper no longer reaches its edge (margin is
+      // often 0.2mm; drag further than that and the fit is NA, and if the
+      // feature feeds an orientation-essential judge the whole detection goes
+      // with it).
+      //
+      // locate is the field for exactly this: its own comment is "WHY THERE IS
+      // NO OBJECT, when there is no object". Rejecting is right; rejecting in
+      // silence is what made a one-line edit look like a broken button.
+      auto &L = report.data.sig360_circle_line.locate;
+      // code is char[16]. "orientation_judge" truncated to "orientation_jud",
+      // and a code that only exists in truncated form is one nobody can grep.
+      snprintf(L.code, sizeof(L.code), "orient_judge");
+      snprintf(L.reason, sizeof(L.reason),
+               "orientation-essential judge '%s' did not measure (status %d), so this "
+               "detection was rejected -- the part's orientation cannot be trusted",
+               def.name, status);
       return -2;   // orientation-essential judge failed -> reject this detection
+    }
   }
 
   TreeExecution(singleReport, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
