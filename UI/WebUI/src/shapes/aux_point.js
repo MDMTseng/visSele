@@ -135,14 +135,11 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
     ctx.strokeStyle = isReported ? 'gray' : 'rgba(255, 190, 60, 0.9)';
     renderer.drawcross(ctx, point, renderer.getPointSize() * (isReported ? 2 : 1.4));
   }
-  if (shape.na_reason) {
-    const save = ctx.fillStyle;
-    ctx.fillStyle = 'rgba(255, 210, 60, 0.95)';
-    const off = renderer.getPointSize() * 3;
-    renderer.drawText(ctx, shape.na_reason, shape.pt1 ? shape.pt1.x + off : off,
-                      shape.pt1 ? shape.pt1.y - off : off);
-    ctx.fillStyle = save;
-  }
+  // na_reason is printed centrally by renderUTIL.drawNAReason, which is
+  // called for every NA shape. The copy that used to live here called
+  // drawText(), whose hard-coded lineWidth=1 is a one-MILLIMETRE stroke on
+  // this canvas -- the label rendered as a black mass across the frame.
+
 }
 
 // Inherent-shape-list draw — a black rect at the resolved aux_point.

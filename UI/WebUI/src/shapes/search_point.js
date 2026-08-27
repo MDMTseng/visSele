@@ -158,11 +158,9 @@ export function drawInspection(ctx, shape, renderer) {
   // when the recipe left out a knob the result depends on -- so this is the
   // difference between "NA" and "NA because edge.min_strength is not set",
   // which is the difference between an hour of guessing and a fix.
-  if (shape.na_reason) {
-    const save = ctx.fillStyle;
-    ctx.fillStyle = 'rgba(255, 210, 60, 0.95)';
-    const off = renderer.getPointSize() * 3.5;
-    renderer.drawText(ctx, shape.na_reason, shape.pt1.x + off, shape.pt1.y - off);
-    ctx.fillStyle = save;
-  }
+  // na_reason is printed centrally by renderUTIL.drawNAReason, which is
+  // called for every NA shape. The copy that used to live here called
+  // drawText(), whose hard-coded lineWidth=1 is a one-MILLIMETRE stroke on
+  // this canvas -- the label rendered as a black mass across the frame.
+
 }

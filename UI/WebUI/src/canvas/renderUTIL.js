@@ -21,6 +21,10 @@ import { mkLog } from "UTIL/logger";
 // template that could not be measured must never differ only in saturation.
 const NA_CANVAS_FILTER = 'grayscale(1) opacity(0.7)';
 const NA_REASON_COLOR  = 'rgba(255, 210, 60, 0.95)';
+// How near the pointer has to be, in SCREEN pixels, for a marker to show its
+// reason. Generous: the marker is small and the operator is aiming with a mouse
+// on a machine, not a stylus.
+const NA_HOVER_RADIUS_PX = 18;
 const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
@@ -635,11 +639,73 @@ class renderUTIL {
     if (!eObject || !eObject.na_reason) return;
     const anchor = eObject.pt1 || eObject.pt || eObject.center;
     if (!anchor || !isFinite(anchor.x) || !isFinite(anchor.y)) return;
-    const save = ctx.fillStyle;
+    // The label convention, not drawText().
+    //
+    // drawText() sets no font and hard-codes ctx.lineWidth = 1 before
+    // strokeText. The canvas here is transformed into MILLIMETRES, so that 1 is
+    // a one-millimetre stroke -- about 72 px on this bench -- and the glyphs
+    // come out as a single black mass with spikes that covers the part. Every
+    // working label in this file instead sets the font to one unit and lets
+    // draw_Text apply the size as a scale.
+    //
+    // search_point.js and aux_point.js each print na_reason with the same
+    // drawText call and therefore the same defect. It went unnoticed because
+    // na_reason was only ever set for a def missing edge.min_strength; a
+    // clipped scan window sets it on ordinary parts, and the bug became the
+    // whole screen. Both are removed in favour of this one.
+    // A MARKER ALWAYS, THE SENTENCE ONLY ON DEMAND.
+    //
+    // Drawing the reason on every NA feature does not work at any size. Pinned
+    // to the screen it is a wall of text when zoomed out; pinned to the
+    // workpiece it is either unreadable or -- as measured on this bench with
+    // two NA features a millimetre apart -- two sentences overlapping into
+    // "nscangwindowrisIoff-frame". The information is worth having and is worth
+    // having RARELY: what an operator needs at a glance is "this one is NA",
+    // and the reason only when they go looking.
+    //
+    // So: a small marker at the anchor, always, screen-constant like every
+    // other marker. The sentence when the pointer is on it.
+    //
+    // The hit test is in SCREEN space, via the live canvas transform. Doing it
+    // in world coordinates would need this code to know which frame the shape
+    // is in, and that assumption has been wrong twice today.
+    const saveFill = ctx.fillStyle, saveStroke = ctx.strokeStyle;
+    const saveLW = ctx.lineWidth, saveFont = ctx.font;
+    const off = this.getPointSize() * 1.2;
     ctx.fillStyle = NA_REASON_COLOR;
-    const off = this.getPointSize() * 3.5;
-    this.drawText(ctx, eObject.na_reason, anchor.x + off, anchor.y - off);
-    ctx.fillStyle = save;
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = this.getPrimitiveSize() * 0.35;
+    ctx.beginPath();
+    ctx.arc(anchor.x, anchor.y, this.getPointSize() * 0.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    let hovered = false;
+    try {
+      const h = this.hoverScreen;
+      if (h) {
+        const m = ctx.getTransform();
+        const sx = m.a * anchor.x + m.c * anchor.y + m.e;
+        const sy = m.b * anchor.x + m.d * anchor.y + m.f;
+        const dx = sx - h.x, dy = sy - h.y;
+        hovered = (dx * dx + dy * dy) <= NA_HOVER_RADIUS_PX * NA_HOVER_RADIUS_PX;
+      }
+    } catch (e) { hovered = false; }
+
+    if (hovered) {
+      // Screen-constant, because it is now transient and deliberate: the
+      // operator asked for it by pointing at it, so it should be as readable as
+      // any other label.
+      const fontPx = this.getFontHeightPx();
+      ctx.font = this.getFontStyle(1);
+      ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier * 0.02;
+      ctx.save();
+      ctx.translate(anchor.x + off, anchor.y - off);
+      this.draw_Text(ctx, eObject.na_reason, fontPx, 0, 0);
+      ctx.restore();
+    }
+    ctx.font = saveFont; ctx.lineWidth = saveLW;
+    ctx.strokeStyle = saveStroke; ctx.fillStyle = saveFill;
   }
 
   drawImageBoundaryGrid(ctx,imgInfo={

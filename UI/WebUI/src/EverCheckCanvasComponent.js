@@ -1289,6 +1289,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     let pos = this.getMousePos(this.canvas, evt);
     this.mouseStatus.x = pos.x;
     this.mouseStatus.y = pos.y;
+    // For the NA markers: the reason text is shown only for the marker under
+    // the pointer (see renderUTIL.drawNAReason). SCREEN coordinates,
+    // deliberately -- the hit test then needs no opinion about which
+    // coordinate frame the shapes are in, which is the thing that has been
+    // wrong twice today.
+    //
+    // No redraw is forced here: this canvas already redraws per frame from the
+    // live stream, so the hover appears on the next one.
+    if (this.rUtil) this.rUtil.hoverScreen = { x: pos.x, y: pos.y };
     let doDragging = true;
 
     if (doDragging) {
