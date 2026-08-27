@@ -492,6 +492,21 @@ typedef struct FeatureReport_sig360_circle_line{
   // found" are the same reply, and the difference was visible only in a log
   // line nobody reads until they already suspect it.
   int region_dropped;
+
+  // WHICH LOCALIZER ACTUALLY RAN, which is not what the def asked for.
+  //
+  // `locating_engine: "shape_based"` is a request. The core honours it only
+  // when shape training succeeded; otherwise it falls THROUGH to the sig360
+  // path and measures anyway (FeatureManager_sig360_circle_line.cpp: the
+  // `locating_engine == 1 && shape_ready` gate). Both outcomes produce a normal
+  // report, and nothing on screen distinguished them -- so a def could be
+  // localized by the engine its author had migrated away from, correctly, for
+  // as long as nobody looked.
+  //
+  // Recorded per inspection rather than read from the def, because the def
+  // cannot know. 0 = sig360 signature, 1 = shape_based (line2Dup + ROI refine).
+  int locator_used;
+
   // WHY THERE IS NO OBJECT, when there is no object.
   //
   // Same argument as region_dropped one field up, applied to the step before

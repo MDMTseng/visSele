@@ -6476,6 +6476,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     snprintf(L.code, sizeof(L.code), "%s", shape_untrained_code);
     snprintf(L.reason, sizeof(L.reason), "%s", shape_untrained_reason);
   }
+  // Recorded HERE, at the one gate that decides it, so the report cannot claim
+  // an engine the run did not use. A def asking for shape_based whose training
+  // failed reaches the sig360 path below and is reported as sig360, which is
+  // what happened.
+  report.data.sig360_circle_line.locator_used = (locating_engine == 1 && shape_ready) ? 1 : 0;
   if (locating_engine == 1 && shape_ready)
   {
     return FeatureMatching_shape();

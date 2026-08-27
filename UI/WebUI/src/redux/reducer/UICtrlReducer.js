@@ -902,6 +902,16 @@ function StateReducer(newState, action) {
               // build to report.
               newState.edit_info = { ...newState.edit_info,
                 station: GetObjElement(action,["data","station"]),
+                // WHICH LOCALIZER RAN -- from the core, not from the def.
+                //
+                // A def asking for shape_based gets it only if shape training
+                // succeeded; otherwise the core falls through to sig360 and
+                // measures anyway. Both look identical from here, so this is
+                // the core's own answer about the frame that was just run.
+                // Sibling of station rather than a member of insp_timing: same
+                // object literal, so it is paired to the same frame, without
+                // putting a non-timing fact inside something called timing.
+                insp_locator: GetObjElement(action,["data","reports",0,"locator"]),
                 insp_timing: {
                   wall_ms:  GetObjElement(action,["data","insp_wall_ms"]),
                   cpu_ms:   GetObjElement(action,["data","insp_cpu_ms"]),

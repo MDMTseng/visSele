@@ -612,6 +612,12 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddNumberToObject(report_jobj, "region_dropped",
                               report->data.sig360_circle_line.region_dropped);
 
+      // ALWAYS emitted, unlike `locate` below. `locate` is a complaint and is
+      // absent on a good run; this is a fact about every run, and the whole
+      // point of it is to be readable when nothing went wrong.
+      cJSON_AddStringToObject(report_jobj, "locator",
+          report->data.sig360_circle_line.locator_used == 1 ? "shape_based" : "sig360");
+
       // The locate outcome, and ONLY when it has something to say -- a
       // successful run adds nothing here, so existing defs hash and diff the
       // same and the key's presence itself means "the locator has a comment".
@@ -621,7 +627,8 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
         {
           cJSON *loc = cJSON_CreateObject();
           cJSON_AddItemToObject(report_jobj, "locate", loc);
-          cJSON_AddStringToObject(loc, "reason", L.reason);
+          cJSON_AddStringToObject(loc, "reason", L.reason);
+
           if (L.code[0]) cJSON_AddStringToObject(loc, "code", L.code);
           cJSON_AddNumberToObject(loc, "candidates", L.candidates);
           // best/thres only when a score was actually computed. Emitting NaN

@@ -71,6 +71,21 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   if (typeof build === 'number' && isFinite(build) && build >= 5)
     txt += '   ＋建構 ' + build.toFixed(0) + ' ms/次';
 
+  // WHICH LOCALIZER RAN. Shared by the def editor and InspectionUI, so both
+  // views answer it the same way.
+  //
+  // The core's answer, not the def's setting: `locating_engine: shape_based` is
+  // a request the core honours only when shape training succeeded, and it falls
+  // through to sig360 otherwise without saying so. Reading edit_info here would
+  // print the request and call it the outcome -- the same mistake as a studio
+  // preview that shows points the matcher does not use.
+  //
+  // Absent against a core that predates the field, and then this says nothing
+  // rather than guessing sig360.
+  const loc = self.edit_DB_info && self.edit_DB_info.insp_locator;
+  if (loc === 'shape_based') txt += '   定位 SBM';
+  else if (loc === 'sig360') txt += '   定位 sig360';
+
   ctx.save();
   // setTransform directly, NOT self.setMatrix(): that helper is defined on some
   // canvas subclasses and not others (the inspection view has no such method),
