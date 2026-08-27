@@ -417,6 +417,14 @@ std::atomic<int> datViewDropCount{0};
 // silently stalls, and the two need opposite fixes.
 std::atomic<int> inspQueueDropCount{0};
 std::atomic<int> poolEmptyDropCount{0};
+// Frames refused at the ACQUISITION gate, before the queue is ever touched --
+// the pre-emptive "inspection is already behind, do not even take this one"
+// skip. Counted separately from inspQueueDropCount on purpose: that one is a
+// full queue evicting its oldest, this one is a frame never accepted, and they
+// need different answers. Conflating them would also leave inspQueueDropCount
+// reading zero during exactly the load where this fires, because the queue
+// never gets the chance to overflow.
+std::atomic<int> acqSkipDropCount{0};
 
 // --- Peripheral protocol dialect -------------------------------------------
 // uInspMEGA and uInspESP32 correlate a result to a part in incompatible ways:
@@ -7403,7 +7411,19 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   if(inspQueue.size()>imageQueueSkipSize)//for responsiveness
   {//skip image if the queue is more than imageQueueSkipSize
   
-    LOGE("skip image, inspQueue.size():%d>imageQueueSkipSize:%d\n", inspQueue.size(),imageQueueSkipSize);
+    // Counted and throttled, like every other drop site in this file. It was
+    // neither: an unbounded LOGE at camera rate, and a frame count of zero
+    // everywhere an operator could look. Parts pass unjudged and the only
+    // evidence is a flooded stderr nobody is reading.
+    //
+    // CI only in practice: FI sets imageQueueSkipSize to inspQueue.capacity()
+    // so it never trips, and the -1 default is inert because `size_t > int`
+    // promotes -1 to SIZE_MAX.
+    int _n = ++acqSkipDropCount;
+    if ((_n % 50) == 1)
+      LOGE("acquisition gate -> refused a frame, inspQueue %d > %d (cumulative:"
+           " %d). Inspection is behind; these parts are NOT judged.",
+           (int)inspQueue.size(), imageQueueSkipSize, _n);
     return CameraLayer::NAK;
   }
 
@@ -7934,9 +7954,26 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     *skipImageTransfer=true;
   }
 
+  // SKIP means skip: `*skipImageTransfer == false` is what SENDS (see the guard
+  // further down). This read `= false`, so asking the core to stop transferring
+  // images turned them ON -- and because it sits AFTER the FPS gate above, it
+  // also cleared the rate limit. An operator shedding load with
+  // {"DoImageTransfer": false} would have got an image for every frame with the
+  // cap disabled: the exact opposite of the request, and the exact condition
+  // that fills datViewQueue and starts dropping preview frames.
+  //
+  // Not reachable from the WebUI today -- nothing there sends `enable:false` or
+  // `DoImageTransfer:false` -- which is why it has survived. The moment somebody
+  // adds a "stop streaming" button they get the inversion and a disabled rate
+  // limit together.
+  //
+  // DATA_VIEW_INSP_DATA_MUST_WITH_IMG (default false) derives the report skip
+  // from this, so with the sense corrected AND that flag on, disabling image
+  // transfer also stops the reports -- which is what "data must go with an
+  // image" means, but worth knowing before turning it on.
   if(DoImageTransfer==false)
   {
-    *skipImageTransfer=false;
+    *skipImageTransfer=true;
   }
 
   if(DATA_VIEW_INSP_DATA_MUST_WITH_IMG)
