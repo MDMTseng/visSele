@@ -1341,6 +1341,43 @@ function SettingUI({})
   const ACT_Migrate_To_Shape=() => {
     dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
     dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
+
+    // SEED def_image_reg FROM THE SIGNATURE ANCHOR.
+    //
+    // def_image_reg is the object frame's origin and angle, and an absent one
+    // is not a neutral default: SBMStudio's drawImage translates by -(cx, cy),
+    // so 0,0 puts the frame origin at the IMAGE CORNER. Every caliper is then
+    // placed relative to a corner, and the part rotates about a corner -- which
+    // measures fine on the reference image, where the rotation is zero, and
+    // goes wrong on a part that arrives turned. Nothing reports it.
+    //
+    // A sig360 def already carries the right answer. Its object frame is
+    // anchored at the signature centre, and the two quantities are the SAME one
+    // in the same units: EverCheckCanvasComponent's image-align path notes that
+    // on test1.hydef def_image_reg.cx/cy reads 15.025, 9.305, identical to the
+    // @__SIGNATURE__ anchor, and uses one as the other's fallback. So migration
+    // can carry the frame across rather than dropping it and asking the operator
+    // to redraw a frame the def already had.
+    //
+    // Only when the def has no registration of its own -- a def that has been
+    // through the studio has one that was authored deliberately, and this must
+    // not overwrite it.
+    const ei = edit_info;
+    if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
+      const rep = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
+                  && ei._obj.sig360info.reports[0];
+      if (rep && Number.isFinite(rep.cx) && Number.isFinite(rep.cy)) {
+        dispatch(DefConfAct.EditInfo_Patch({
+          def_image_reg: {
+            cx: rep.cx, cy: rep.cy,
+            angle: Number.isFinite(rep.orientation) ? rep.orientation : 0,
+            // The reference image is the frame's own definition, so it is not
+            // flipped with respect to itself.
+            isFlipped: false,
+          },
+        }));
+      }
+    }
   };
 
   const DICT = useSelector(state => state.UIData.DICT);
@@ -1408,7 +1445,7 @@ function SettingUI({})
     (edit_info.locating_engine !== 'shape_based') && <Button key="mig2shape" size="small"
       style={{ marginLeft: 8 }}
       onClick={ACT_Migrate_To_Shape}
-      title="Switch to the shape-based localizer + set shape_match_scale=0.3. Re-save to persist. anchor_corner and other settings are kept.">
+      title="Switch to the shape-based localizer + set shape_match_scale=0.3, and carry the object frame across: def_image_reg is seeded from the sig360 signature anchor, so the part keeps rotating about the same origin. Re-save to persist. anchor_corner and other settings are kept.">
       → migrate to shape_based (v2)</Button>,
 
     // Localization regions / registration / ROI are authored in the dedicated
