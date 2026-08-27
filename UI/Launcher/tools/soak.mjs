@@ -100,6 +100,29 @@ const SHOT_EVERY_TICK = process.env.SOAK_SHOT_EVERY === '1';
 // every "is this the app or is this the instrument" question -- a number that
 // still moves with nothing to measure is measuring the instrument.
 const IDLE = process.env.SOAK_IDLE === '1';
+// BOARD-ONLY RUN: no plate, no parts, no camera -- drive the pipeline with
+// phantom pulses instead.
+//
+// trig_phantom_pulse calls newPulseEvent() directly and never touches
+// GateSensing, so a bare board on USB produces REAL objects with real tids and
+// runs them all the way to the selector outputs. That makes a soak of the
+// software chain possible on a bench that has none of the machine.
+//
+// Two consequences the rest of this file has to respect:
+//
+//   * the gate sensor must be BLINDED (set_gate_disable), or an unconnected
+//     INPUT_PULLUP pin and the phantoms would both feed the same counters
+//   * `edges` (gate.in) STAYS FLAT in a phantom run -- it counts sensor edges,
+//     and there are none. The liveness check must read `admitted` (gate.out)
+//     or it fails a healthy run within ten seconds, reporting "the plate is
+//     not turning" on a bench that has no plate to turn.
+//
+// The plate frequency is still set: newPulseEvent drops a pulse within 3.5 mm
+// of the previous one, measured in STEP COUNT, and the firmware's step counter
+// advances on the commanded rate whether or not anything is bolted to it.
+const PHANTOM = process.env.SOAK_PHANTOM === '1';
+// ~8 parts/s by default, which is the order the real plate feeds at.
+const PHANTOM_MS = Number(process.env.SOAK_PHANTOM_MS || 125);
 // Start the machine, then LEAVE the Inspection UI. The core keeps inspecting at
 // full rate; the page that draws the results is unmounted. Pairs with SOAK_IDLE
 // to separate the two halves of "is it the work or is it the screen".
@@ -150,6 +173,12 @@ const LIVEDOM = process.env.SOAK_LIVEDOM === '1';
 const TRACE_GC = process.env.SOAK_TRACE_GC === '1';
 
 const edges = (s) => (s && s.yield && s.yield.gate ? s.yield.gate.in : -1);
+// What a PHANTOM run advances. `edges` counts gate-sensor edges; phantoms
+// bypass the sensor entirely, so only this one moves. See SOAK_PHANTOM.
+const admitted = (s) => (s && s.yield && s.yield.gate ? s.yield.gate.out : -1);
+// The liveness counter for whichever drive this run is using, so the check
+// below reads one number and does not care which mode produced it.
+const liveCount = (s) => (PHANTOM ? admitted(s) : edges(s));
 
 const PERIF_CONSOLE = 4099;
 const OUT = 'C:/Users/w2110/Downloads/pw';
@@ -415,6 +444,21 @@ async function ask(o, ms = 1800) {
   if (!h) return null;
   try { return JSON.parse(h.slice(h.indexOf('{'))); } catch { return null; }
 }
+// Fire-and-forget on the same console socket. The phantom driver sends one of
+// these every PHANTOM_MS and never wants the reply; going through ask() would
+// sleep for the timeout on every pulse and clear the shared line buffer under
+// any ask() in flight.
+const chr10 = String.fromCharCode(10);   // a bare newline, without an escape
+function tell(o) {
+  if (!sock) return false;
+  try { sock.write(JSON.stringify(o) + chr10); return true; } catch { sock = null; return false; }
+}
+let phantomTimer = null, phantomFired = 0;
+function startPhantom() {
+  if (phantomTimer) return;
+  phantomTimer = setInterval(() => { if (tell({ type: 'trig_phantom_pulse' })) phantomFired++; }, PHANTOM_MS);
+}
+function stopPhantom() { if (phantomTimer) { clearInterval(phantomTimer); phantomTimer = null; } }
 
 console.log('[2] waiting for the board console');
 let st = null;
@@ -584,7 +628,20 @@ if (IDLE) {
 } else {
 console.log('[9] start the machine');
 await closeDrawers();
+// Blind the real sensor BEFORE the machine starts. The gate pin is
+// INPUT_PULLUP with sense inverted, so an unconnected input reads "no object"
+// and contributes nothing -- but a bench with a stray wire on it would feed
+// the same counters the phantoms do, and the run would be measuring both.
+// GATE_DISABLED is volatile and defaults false, so a reboot re-arms it.
+if (PHANTOM) {
+  const gd = await ask({ type: 'set_gate_disable', on: true }, 1500);
+  console.log(`[9] SOAK_PHANTOM -- gate sensor blinded (${gd ? 'ack' : 'NO ACK'}), `
+            + `firing a pulse every ${PHANTOM_MS}ms`);
+}
 await clickIcon('anticon-caret-right'); await sleep(9000);
+// Only once the machine is up: phantoms fired while the plate frequency is
+// still ramping from zero are inside the 3.5 mm reject window and are dropped.
+if (PHANTOM) startPhantom();
 // Say WHICH half is wrong. "edges climbing but state 100" means the plate is
 // turning and the board is not inspecting, which is a different problem from
 // "nothing is moving" -- and the old message named neither.
@@ -595,14 +652,21 @@ await sleep(2000);
 const a0 = await ask({ type: 'get_running_stat' }, 1800);
 await sleep(10000);
 const b0 = await ask({ type: 'get_running_stat' }, 1800);
-console.log(`[10] state ${b0 && b0.state}  edges ${edges(a0)} -> ${edges(b0)}`);
-if (!b0 || b0.state !== 101 || edges(b0) <= edges(a0)) {
+// Whichever counter THIS run's drive advances. Reading gate.in in a phantom
+// run reports "the plate is not turning" on a healthy bench that has no plate.
+const DRIVE = PHANTOM ? 'phantom pulses' : 'gate edges';
+console.log(`[10] state ${b0 && b0.state}  ${DRIVE} ${liveCount(a0)} -> ${liveCount(b0)}`
+          + (PHANTOM ? `  (fired ${phantomFired})` : ''));
+if (!b0 || b0.state !== 101 || liveCount(b0) <= liveCount(a0)) {
   await page.screenshot({ path: OUT + '/esoak_FAILED.png' });
-  const moving = b0 && edges(b0) > edges(a0);
+  const moving = b0 && liveCount(b0) > liveCount(a0);
   await die(app, !b0 ? 'the board stopped answering during start-up'
-    : moving ? `the plate IS turning (${edges(a0)} -> ${edges(b0)}) but the board is in state `
+    : moving ? `parts ARE flowing (${liveCount(a0)} -> ${liveCount(b0)}) but the board is in state `
              + `${b0.state}, not 101 -- it never entered inspection mode`
-             : `no gate edges in 10 s (${edges(a0)} -> ${edges(b0)}), state ${b0.state} `
+    : PHANTOM ? `no parts admitted in 10 s (${liveCount(a0)} -> ${liveCount(b0)}), state ${b0.state}`
+             + ` -- ${phantomFired} phantom pulses were sent, so the board is taking them and`
+             + ' dropping them: check the plate frequency reached speed (3.5 mm reject window)'
+             : `no gate edges in 10 s (${liveCount(a0)} -> ${liveCount(b0)}), state ${b0.state} `
              + '-- the plate is not turning');
 }
 await page.screenshot({ path: OUT + '/esoak_start.png' });
@@ -1369,6 +1433,13 @@ for (let i = 0; i <= TICKS; i++) {
     if (!chart) pokeMiss++;
   }
   await sleep(TICK_S * 1000);
+}
+stopPhantom();
+if (PHANTOM) {
+  console.log(`phantom drive: ${phantomFired} pulses sent over the run`);
+  // Re-arm the sensor even though GATE_DISABLED is volatile: the next thing to
+  // use this board may not reboot it first.
+  await ask({ type: 'set_gate_disable', on: false }, 1500);
 }
 await page.screenshot({ path: OUT + '/esoak_end.png' });
 console.log(`\nsoak done: ${MIN} min, ${faults} sampled ticks with a fault or non-101 state`);
