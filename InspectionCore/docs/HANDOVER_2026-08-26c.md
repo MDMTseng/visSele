@@ -545,12 +545,14 @@ anything.** This may be finished work that nobody connected.
   Worth reading the spawn handling in `UI/Launcher/main.js` once.
 - **A sweep result is not saved anywhere.** Run it, switch image, it is gone.
   No way to say "I tried five samples and three had a pose error over 0.1 mm".
-- ~~**~75 agent findings still unverified.**~~ **CLOSED 2026-08-27: the list
-  does not exist.** Four documents refer to it; none contains it, and nothing
-  in git history ever did. Eight findings were spot-checked across two sessions
-  and not one was correct as written — several named a real problem in the
-  wrong file, at the wrong threshold, or by the wrong mechanism. See
-  `BACKLOG_2026-08-26.md` §6 for the tally and what it says about the method.
+- **The agent findings are RECOVERED and in the repo**:
+  `AGENT_AUDIT_2026-08-26_RECOVERED.md`, ten agents, 61 numbered findings, 185
+  `file:line` refs. Still unverified — eight spot-checked across two sessions
+  and **not one was correct as written**, several naming something real in the
+  wrong file. Treat an entry as a search term, not a defect.
+  *(I first concluded the list did not exist, having searched the repo and git
+  history but not the session transcript — which is the only place anything an
+  agent produced and nobody wrote down could be.)*
 
 ---
 
