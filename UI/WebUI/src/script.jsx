@@ -426,6 +426,59 @@ function BMPCarouselAugPanel({ aug, send }) {
   );
 }
 
+// The file list, split out and memoised.
+//
+// It was inline, so every camera_info refresh rebuilt one <div> per file with a
+// fresh onClick closure each -- for a folder of any size that is a full list
+// re-render several times a second, on the same main thread the preview is
+// decoding into. Picking an image felt slow for that reason and not because the
+// core was slow to answer it.
+//
+// Two separate things are memoised, and both matter:
+//   * each ROW, so a change of index re-renders two rows (the old and the new)
+//     instead of all of them;
+//   * the row's click handler, so React.memo's prop comparison can actually
+//     succeed -- a new closure per render would defeat it entirely.
+const BMPCarouselRow = React.memo(function BMPCarouselRow({ label, selected, onPick }) {
+  return (
+    <div onClick={onPick}
+      style={{
+        cursor:'pointer',
+        padding:'2px 6px',
+        background: selected ? '#2a5' : 'transparent',
+        color: selected ? 'white' : 'inherit',
+      }}>
+      {label}
+    </div>
+  );
+});
+
+function BMPCarouselFileList({ files, index, send }) {
+  // The click sends by INDEX, so the handler only depends on the index -- not
+  // on files, and not on the current selection.
+  const sendRef = React.useRef(send);
+  sendRef.current = send;
+  const pickers = React.useMemo(
+    () => files.map((_, i) => () => sendRef.current("jump", { index: i })),
+    [files.length]);
+  // Optimistic selection: the highlight follows the click immediately instead
+  // of waiting for the next camera_info round trip. `index` still wins whenever
+  // it changes, so a jump the core refused does not leave a lie on screen.
+  const [pending, setPending] = React.useState(null);
+  React.useEffect(() => { setPending(null); }, [index]);
+  const shown = pending !== null ? pending : index;
+  return (
+    <div style={{maxHeight:'40vh', overflowY:'auto', border:'1px solid #333', padding:6}}>
+      {files.map((f, i) => (
+        <BMPCarouselRow key={f}
+          label={`${i + 1}. ${(f||"").split("/").pop()}`}
+          selected={i === shown}
+          onPick={() => { setPending(i); pickers[i](); }} />
+      ))}
+    </div>
+  );
+}
+
 function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
   const car = camInfo?.data?.[0]?.carousel;
   const send = (action, extra={}) => ws_send_bpg(coreId, "RC", 0,
@@ -502,20 +555,7 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
         onCancel={()=>setAugOpen(false)} footer={null} destroyOnClose={false}>
         <BMPCarouselAugPanel aug={car.aug} send={send} />
       </Modal>
-      <div style={{maxHeight:'40vh', overflowY:'auto', border:'1px solid #333', padding:6}}>
-        {files.map((f, i) => (
-          <div key={f}
-            onClick={()=>send("jump", { index: i })}
-            style={{
-              cursor:'pointer',
-              padding:'2px 6px',
-              background: i===car.index ? '#2a5' : 'transparent',
-              color: i===car.index ? 'white' : 'inherit',
-            }}>
-            {i + 1}. {shortName(f)}
-          </div>
-        ))}
-      </div>
+      <BMPCarouselFileList files={files} index={car.index} send={send} />
     </div>
   );
 }

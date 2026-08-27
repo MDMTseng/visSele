@@ -478,10 +478,27 @@ namespace camTrigDrive
   static std::atomic<uint64_t> pendTail{0};
   static uint64_t pend[PEND_N];
 
+  // When the last announcement arrived, so an IDLE bench can be told from a
+  // running one without a session flag to keep in sync.
+  static std::atomic<uint64_t> lastAnnounceUs{0};
+
+  // GATE_DROP rather than DROP: the windows headers this file already pulls in
+  // define plain DROP, and an enumerator that collides with a macro fails to
+  // compile with an error that names the number, not the name.
+  enum FrameGate { GATE_STAMP, GATE_DROP, GATE_PASS };
+
   // Frames the carousel produced with no announcement behind them.
   std::atomic<int> unannouncedDropCount{0};
   // Announcements that never got a frame before the ring wrapped over them.
   std::atomic<int> starvedCount{0};
+
+  // The same steady clock perif_now_us() uses, spelled out here because that
+  // helper is defined further down the file than this block.
+  static inline uint64_t nowUs()
+  {
+    return (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
+             std::chrono::steady_clock::now().time_since_epoch()).count();
+  }
 
   bool on()
   {
@@ -497,6 +514,22 @@ namespace camTrigDrive
     }();
     return v;
   }
+
+  // Frames an operator asked for by hand, from the fake-camera panel.
+  //
+  // The idle rule below is not enough on its own and the bench proved it: the
+  // board keeps announcing in states that have nothing to do with an inspection
+  // session, so lastAnnounceUs stays fresh, the gate stays shut, and the frame
+  // the operator just picked is dropped with the rest -- 401 of them in one
+  // sitting, with the panel showing a new filename and the picture never
+  // changing.
+  //
+  // Timing cannot tell intent. This is intent: a jump/next/prev/replay arrived
+  // from the UI, so the next frame is released whatever the device is doing.
+  // Counted rather than stamped -- there is no device timestamp behind a manual
+  // pick, and inventing one would put a fabricated cam_ts on the wire.
+  static std::atomic<int> manualRelease{0};
+  void releaseOne() { manualRelease.fetch_add(1, std::memory_order_release); }
 
   // From the peripheral RX path. Lock-free and never blocks.
   void announce(uint64_t stamp_us)
@@ -516,23 +549,50 @@ namespace camTrigDrive
     }
     pend[h % PEND_N] = stamp_us;
     pendHead.store(h + 1, std::memory_order_release);
+    lastAnnounceUs.store(nowUs(), std::memory_order_release);
   }
 
-  // From the camera callback. False = no announcement, drop this frame.
-  bool takeStamp(uint64_t *out)
+  // From the camera callback.
+  //
+  // GATE_PASS is the case that was missing, and its absence broke the fake
+  // camera's own UI. The gate assumed the device is always driving, so with the
+  // machine stopped EVERY frame was dropped -- including the one the operator
+  // just asked for by picking an image in the carousel panel. The picture never
+  // changed and nothing said why.
+  //
+  // The gate exists to keep frame and announcement paired one-to-one, and that
+  // only matters while the device is announcing. When nothing has been
+  // announced for a while there is no pairing to protect and no report going
+  // anywhere, so frames flow as they would with the drive off. No session flag:
+  // this reads the thing it actually depends on.
+  FrameGate takeStamp(uint64_t *out)
   {
+    // An operator's pick outranks the gate, and is spent whether or not the
+    // device is announcing.
+    for (int m = manualRelease.load(std::memory_order_acquire); m > 0; )
+    {
+      if (manualRelease.compare_exchange_weak(m, m - 1,
+                                              std::memory_order_acq_rel))
+        return GATE_PASS;
+    }
     const uint64_t t = pendTail.load(std::memory_order_relaxed);
     if (t >= pendHead.load(std::memory_order_acquire))
     {
+      const uint64_t last = lastAnnounceUs.load(std::memory_order_acquire);
+      const uint64_t now  = nowUs();
+      // 1s: two orders of magnitude above the ~125ms the plate announces at,
+      // and short enough that picking an image by hand feels immediate.
+      if (last == 0 || (now > last && now - last > 1000000ULL))
+        return GATE_PASS;
       int n = ++unannouncedDropCount;
       if ((n % 200) == 1)
         LOGI("cam_trig drive: dropped %d frame(s) with no announcement behind "
              "them -- expected, the carousel free-runs faster than the plate.", n);
-      return false;
+      return GATE_DROP;
     }
     *out = pend[t % PEND_N];
     pendTail.store(t + 1, std::memory_order_release);
-    return true;
+    return GATE_STAMP;
   }
 }
 
@@ -5455,7 +5515,21 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // callback. Chosen HERE, on the main path at session start, rather
             // than by having the RX thread poke the camera -- see camTrigDrive
             // for why that direction is not taken.
-            camera->TriggerMode(camTrigDrive::on() ? 0 : 2);
+            if (camTrigDrive::on())
+            {
+              // Free-run, because mode 2 produces nothing from a carousel --
+              // but SLOWLY. Every frame is a full decode of a multi-megabyte
+              // PNG on the camera thread, and all but the announced ones are
+              // thrown away; at the carousel's default 30fps that is a
+              // continuous decode load carrying almost no information, and it
+              // is felt as UI lag rather than seen as a counter. The plate
+              // announces at ~8/s, so 12 leaves headroom without paying for
+              // twenty wasted decodes a second. If `starved` starts climbing,
+              // this is the number to raise.
+              camera->SetFrameRate(12);
+              camera->TriggerMode(0);
+            }
+            else camera->TriggerMode(2);
             doImgProcessThread = true;
 
             datViewQueueSkipSize=2;
@@ -5973,12 +6047,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         } else {
           char *act = JFetch_STRING(json, "action");
           if (!act) act = (char*)"";
-          if      (strcmp(act, "next")   == 0) car->LoadNext();
-          else if (strcmp(act, "prev")   == 0) car->LoadPrev();
-          else if (strcmp(act, "replay") == 0) car->ReloadCurrent();
+          // Every one of these is a deliberate single-frame request, so it
+          // gets past the cam_trig gate. Without this the panel updates, the
+          // core loads the file, and the frame is thrown away -- see
+          // camTrigDrive::releaseOne. No-op when the drive is off.
+          if      (strcmp(act, "next")   == 0) { camTrigDrive::releaseOne(); car->LoadNext(); }
+          else if (strcmp(act, "prev")   == 0) { camTrigDrive::releaseOne(); car->LoadPrev(); }
+          else if (strcmp(act, "replay") == 0) { camTrigDrive::releaseOne(); car->ReloadCurrent(); }
           else if (strcmp(act, "jump")   == 0) {
             double *idx = JFetch_NUMBER(json, "index");
-            if (idx) car->LoadAt((int)*idx);
+            if (idx) { camTrigDrive::releaseOne(); car->LoadAt((int)*idx); }
           }
           else if (strcmp(act, "pause")  == 0) car->TriggerMode(1); // stop loop
           else if (strcmp(act, "resume") == 0) car->TriggerMode(0); // continuous
@@ -7630,8 +7708,12 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   if (camTrigDrive::on())
   {
     uint64_t _trigStamp = 0;
-    if (!camTrigDrive::takeStamp(&_trigStamp)) return CameraLayer::ACK;
-    finfo.timeStamp_us = _trigStamp;
+    const camTrigDrive::FrameGate _v = camTrigDrive::takeStamp(&_trigStamp);
+    if (_v == camTrigDrive::GATE_DROP) return CameraLayer::ACK;
+    // GATE_PASS keeps the frame's own timestamp: nobody is pairing against
+    // it, and rewriting it would be inventing a device clock that is not
+    // running.
+    if (_v == camTrigDrive::GATE_STAMP) finfo.timeStamp_us = _trigStamp;
   }
   
   // LOGE("finfo.wh:%d,%d", finfo.width,finfo.height);

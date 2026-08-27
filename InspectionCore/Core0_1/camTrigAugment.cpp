@@ -2,6 +2,7 @@
 
 #include <logctrl.h>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <cstdlib>
 #include <cmath>
 
@@ -47,8 +48,24 @@ namespace camTrigAugment
   // the placement alone rather than translating the frame by a guess.
   static bool findObject(const cv::Mat &grey, cv::Point2f &c)
   {
+    // Find the part on a SMALL copy.
+    //
+    // Otsu, findContours and moments on a full-frame 2448x2048 cost hundreds of
+    // milliseconds, and this runs on the camera callback thread -- so on a
+    // bench driven by hand it is felt directly as "I clicked and nothing
+    // happened for seconds". None of that resolution buys anything: the output
+    // is one centroid, and a centroid measured at 1/4 scale is accurate to
+    // about a pixel once scaled back, against a placement whose whole point is
+    // to be deliberately jittered by six.
+    cv::Mat small_;
+    int shrink = 1;
+    while ((grey.cols / (shrink * 2)) >= 500 && shrink < 8) shrink *= 2;
+    if (shrink > 1) cv::resize(grey, small_, cv::Size(), 1.0 / shrink, 1.0 / shrink,
+                               cv::INTER_AREA);
+    const cv::Mat &src = (shrink > 1) ? small_ : grey;
+
     cv::Mat bin;
-    cv::threshold(grey, bin, 0, 255, cv::THRESH_BINARY_INV | cv::THRESH_OTSU);
+    cv::threshold(src, bin, 0, 255, cv::THRESH_BINARY_INV | cv::THRESH_OTSU);
     std::vector<std::vector<cv::Point>> cont;
     cv::findContours(bin, cont, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     double best = 0; int bi = -1;
@@ -59,10 +76,13 @@ namespace camTrigAugment
     }
     // A blob smaller than this is a speck, and anchoring a whole frame to a
     // speck moves the real part OUT of the region rather than into it.
-    if (bi < 0 || best < 200.0) return false;
+    // The area floor is in FULL-frame pixels, so it has to be scaled with the
+    // image or a 1/4-scale run would reject parts a 1/1 run accepts.
+    if (bi < 0 || best < 200.0 / (double)(shrink * shrink)) return false;
     const cv::Moments m = cv::moments(cont[bi]);
     if (m.m00 <= 0) return false;
-    c = cv::Point2f((float)(m.m10 / m.m00), (float)(m.m01 / m.m00));
+    c = cv::Point2f((float)(m.m10 / m.m00) * shrink,
+                    (float)(m.m01 / m.m00) * shrink);
     return true;
   }
 
@@ -87,6 +107,10 @@ namespace camTrigAugment
   void apply(cv::Mat &img, uint64_t seq, float regionCx, float regionCy)
   {
     if (!on() || img.empty()) return;
+    // Timed, because this runs on the camera callback thread and any cost here
+    // is felt as UI lag with nothing pointing at it. Only the slow ones are
+    // reported: a line per frame would itself be a cost.
+    const int64_t _t0 = cv::getTickCount();
 
     const uint32_t seed = (uint32_t)envF("INSP_CAM_AUG_SEED", 1);
     const float rot     = sym(seq, seed, 1, envF("INSP_CAM_AUG_ROT", 0));
@@ -132,7 +156,18 @@ namespace camTrigAugment
         dst = cv::Point2f(img.cols * 0.5f, img.rows * 0.5f);
       }
     }
-    dst.x += jx; dst.y += jy;
+    // A fixed push off the target, on top of the random jitter.
+    //
+    // Placement centres the part in the inspection region, which is the right
+    // default and the wrong thing for the case this was added for: a part near
+    // the FRAME edge, where a real border step (ROI crop, backlight edge,
+    // vignette) competes with the edge the caliper is meant to measure. Random
+    // jitter cannot get there -- it is symmetric and small by design -- so the
+    // push is separate, constant, and signed.
+    //
+    //   INSP_CAM_AUG_OFFSET_X=<px>  INSP_CAM_AUG_OFFSET_Y=<px>
+    dst.x += jx + envF("INSP_CAM_AUG_OFFSET_X", 0);
+    dst.y += jy + envF("INSP_CAM_AUG_OFFSET_Y", 0);
 
     // One affine, composed: rotate+scale about the object, shear, then move the
     // object's centre to the target. Composed rather than applied in stages --
@@ -172,6 +207,41 @@ namespace camTrigAugment
     }
 
     img = out;
+
+    // INSP_CAM_AUG_DUMP=<dir> writes the first few warped frames to disk.
+    //
+    // Without this the only evidence of what the engine saw is a verdict count,
+    // and "NA went from 99 to 2548" cannot tell a fixture that is exercising
+    // the locator from one that is warping the part off the edge of the frame.
+    // Bounded on purpose (INSP_CAM_AUG_DUMP_N, default 12): this runs on the
+    // camera callback thread, and a soak that writes a PNG per frame for twelve
+    // hours measures the disk.
+    {
+      static const char *dumpDir = getenv("INSP_CAM_AUG_DUMP");
+      if (dumpDir && *dumpDir)
+      {
+        const uint64_t lim = (uint64_t)envF("INSP_CAM_AUG_DUMP_N", 12);
+        if (seq < lim)
+        {
+          char path[512];
+          snprintf(path, sizeof(path), "%s/aug_%03llu.png",
+                   dumpDir, (unsigned long long)seq);
+          if (cv::imwrite(path, out))
+            LOGI("aug: wrote %s (rot=%.2f skew=%.3f scale=%.3f -> %.0f,%.0f)",
+                 path, rot, skew, sc, dst.x, dst.y);
+          else
+            LOGE("aug: could not write %s -- does the directory exist?", path);
+        }
+      }
+    }
+
+    {
+      const double ms = (cv::getTickCount() - _t0) * 1000.0 / cv::getTickFrequency();
+      if (ms > 50.0)
+        LOGE_EVERY_N(20, "aug: %.0fms on a %dx%d frame -- this is on the camera "
+                         "callback thread and is felt as UI lag.",
+                     ms, img.cols, img.rows);
+    }
     LOGI_EVERY_N(200, "aug: rot=%.2f skew=%.3f scale=%.3f -> (%.0f,%.0f)%s",
               rot, skew, sc, dst.x, dst.y, found ? "" : " [no object found]");
   }
