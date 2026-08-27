@@ -126,6 +126,13 @@ def main():
                     help="the core's working dir (parent of data/)")
     ap.add_argument("--bless", action="store_true", help="record a new baseline")
     ap.add_argument("--tol", type=float, default=DEFAULT_TOL)
+    # The sha1 guard exists for a corpus that drifted by ACCIDENT. Comparing
+    # across a deliberate def edit -- a contour->caliper conversion, say -- is
+    # exactly what you want to measure, so it gets an explicit opt-out rather
+    # than a weaker guard.
+    ap.add_argument("--ignore-def-sha1", action="store_true",
+                    help="compare even though the def files changed (for measuring "
+                         "an intentional edit against a pre-edit baseline)")
     a = ap.parse_args()
 
     exe = find_exe(a.exe)
@@ -188,7 +195,7 @@ def main():
             print("  GONE %-34s in baseline, not in corpus" % base[:34]); bad += 1; continue
         # A def that changed on disk cannot be compared: say so instead of
         # reporting every one of its numbers as drift.
-        if o.get("def_sha1") and c.get("def_sha1") and o["def_sha1"] != c["def_sha1"]:
+        if (not a.ignore_def_sha1) and o.get("def_sha1") and c.get("def_sha1")                 and o["def_sha1"] != c["def_sha1"]:
             print("  ---- %-34s DEF FILE CHANGED since baseline; not compared" % base[:34])
             continue
         if o.get("located") != c.get("located"):
