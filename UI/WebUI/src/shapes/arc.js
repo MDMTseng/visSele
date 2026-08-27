@@ -1,6 +1,7 @@
 // Per-shape module: ARC.
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
+import { ARC_POLARITY } from './_caliperSeed';
 import { threePointToArc, arcSweep } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
@@ -40,7 +41,14 @@ export const fields = {
         };
       }
       if (obj.edge === undefined) {
-        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60 };
+        // ARC_POLARITY, not 'falling'. An arc usually measures an INNER radius,
+        // where falling takes the wrong side of the wire: measured across the
+        // reference corpus, falling put every R1.0 out by -0.11mm -- about half
+        // a wire thickness -- and rising brought it to -0.01mm. The offline
+        // converter has had this since 2026-08-27; this seed never followed, so
+        // an arc converted by OPENING it measured a different edge than the same
+        // arc converted by the tool.
+        obj.edge = { method: 'strongest', polarity: ARC_POLARITY, nth: 0, min_strength: 60 };
       }
     },
   },
@@ -54,7 +62,7 @@ export const fields = {
   caliper: caliperField(10, (s) => (
     (s.pt1 && s.pt2 && s.pt3) ? arcSweep(s.pt1, s.pt2, s.pt3).length : 0
   )),
-  edge:    edgeField({ method: 'strongest', polarity: 'falling', min_strength: 60 }),
+  edge:    edgeField({ method: 'strongest', polarity: ARC_POLARITY, min_strength: 60 }),
 };
 
 export function buildWhiteListKey(ctx) {
