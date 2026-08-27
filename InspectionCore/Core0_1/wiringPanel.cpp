@@ -313,7 +313,12 @@ static void frame_ring_push(const cv::Mat &image, cJSON *report_json, int finspS
   h->head.store(idx + 1, std::memory_order_release);
 }
 
-int saveInspQFullSkipCount=0;
+// atomic, like every other drop counter here. It was a plain int written from
+// the action thread and read/reset from the WS thread -- so increments could be
+// lost and a snapshot drop under-reported, which is the one thing a drop
+// counter must not do. datViewDropCount, inspQueueDropCount and
+// poolEmptyDropCount were all already atomic; this one was missed.
+std::atomic<int> saveInspQFullSkipCount{0};
 int save_snap_folder_full_delete_count=0;
 // Number of snapshot saves that were SKIPPED because free disk space dropped
 // below the hard floor (see saveInspectionSample call site).  Exposed via the
@@ -4405,7 +4410,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else if (strcmp(itemType, "snap_queue_skip_count") == 0)
           {
-            cJSON_AddNumberToObject(retArr,itemType,saveInspQFullSkipCount);
+            cJSON_AddNumberToObject(retArr,itemType,saveInspQFullSkipCount.load());
           }
           else if (strcmp(itemType, "save_snap_folder_full_delete_count") == 0)
           {
@@ -5120,7 +5125,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         g_snap_policy[SNAPV_NG] = { false, false };
         g_snap_policy[SNAPV_NA] = { false, false };
         SKIP_NA_DATA_VIEW=false;
-        saveInspQFullSkipCount=0;
+        saveInspQFullSkipCount.store(0);
 
         
         // Session default for the preview ceiling. Deliberate -- each
@@ -8237,13 +8242,13 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     {
       image_pipe_info_occupyFlag_clr(*imgPipe,image_pipe_info_OccupyFIdx::snapSave);
       *inspSnap=false;
-      saveInspQFullSkipCount++;
+      const int _sq = saveInspQFullSkipCount.fetch_add(1) + 1;
       // Sustained-drop visibility: silently dropping frames is fine for
       // realtime, but if the queue is saturated for hundreds of frames the
       // operator needs to know.  Loud-log once per 100 cumulative skips so
       // log volume stays bounded.
-      if (saveInspQFullSkipCount % 100 == 1)
-        LOGE("inspSnapQueue full -> dropping save (cumulative drops: %d)", saveInspQFullSkipCount);
+      if (_sq % 100 == 1)
+        LOGE("inspSnapQueue full -> dropping save (cumulative drops: %d)", _sq);
       if (ret_pipe_pass_down)//since the image doesn't pass down ( for now recycle it at this pipeline)
         *ret_pipe_pass_down = false;
     }
@@ -10079,6 +10084,21 @@ void InspSnapSaveThread(bool *terminationflag)
   std::string SEP = std::string(1, systemPathSEP());
   while (terminationflag && *terminationflag == false)
   {
+    // PER-ITERATION, and it CONTINUES rather than exiting.
+    //
+    // This thread had no handler at all, so anything thrown inside it --
+    // cv::Exception out of imwrite (the reason safe_imwrite_cache exists),
+    // bad_alloc, TS_Termination_Exception out of a blocking pop -- escaped the
+    // thread function and became std::terminate: the whole core, on one bad
+    // frame. SlowFrameSaveThread and PerifSendThread both catch; these three
+    // were missed.
+    //
+    // Exiting the loop instead would be WORSE than terminating on the
+    // inspection path: a dead core raises the launcher shell and somebody
+    // knows, whereas a quietly-exited pipeline thread leaves parts flowing
+    // past unjudged with the link still green. One bad iteration is logged and
+    // skipped; the thread stays alive.
+    try {
 
     //   if(delayStartCounter>0)
     //   {
@@ -10272,6 +10292,12 @@ void InspSnapSaveThread(bool *terminationflag)
       //possible occupation flag => resendCache, let image_pipe_info_resendCache_swap_and_gc handle it
       image_pipe_info_release(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave,bpg_pi.resPool);
     }
+    }
+    catch (TS_Termination_Exception &) { break; }   // normal shutdown
+    catch (const std::exception &e)
+    { LOGE("InspSnapSaveThread: iteration threw (%s) -- skipped, thread continues", e.what()); }
+    catch (...)
+    { LOGE("InspSnapSaveThread: iteration threw a non-std exception -- skipped, thread continues"); }
   }
 }
 
@@ -10281,6 +10307,21 @@ void ImgPipeDatViewThread(bool *terminationflag)
   using Ms = std::chrono::milliseconds;
   while (terminationflag && *terminationflag == false)
   {
+    // PER-ITERATION, and it CONTINUES rather than exiting.
+    //
+    // This thread had no handler at all, so anything thrown inside it --
+    // cv::Exception out of imwrite (the reason safe_imwrite_cache exists),
+    // bad_alloc, TS_Termination_Exception out of a blocking pop -- escaped the
+    // thread function and became std::terminate: the whole core, on one bad
+    // frame. SlowFrameSaveThread and PerifSendThread both catch; these three
+    // were missed.
+    //
+    // Exiting the loop instead would be WORSE than terminating on the
+    // inspection path: a dead core raises the launcher shell and somebody
+    // knows, whereas a quietly-exited pipeline thread leaves parts flowing
+    // past unjudged with the link still green. One bad iteration is logged and
+    // skipped; the thread stays alive.
+    try {
 
     //   if(delayStartCounter>0)
     //   {
@@ -10382,6 +10423,12 @@ void ImgPipeDatViewThread(bool *terminationflag)
       image_pipe_info_gc(*headImgPipe,bpg_pi.resPool);//if all occupation flag cleared, it will gc the pointer    
       
     }
+    }
+    catch (TS_Termination_Exception &) { break; }   // normal shutdown
+    catch (const std::exception &e)
+    { LOGE("ImgPipeDatViewThread: iteration threw (%s) -- skipped, thread continues", e.what()); }
+    catch (...)
+    { LOGE("ImgPipeDatViewThread: iteration threw a non-std exception -- skipped, thread continues"); }
   }
 }
 
@@ -11455,6 +11502,21 @@ void ImgPipeProcessThread(bool *terminationflag)
   int delayStartCounter = 10000;
   while (terminationflag && *terminationflag == false)
   {
+    // PER-ITERATION, and it CONTINUES rather than exiting.
+    //
+    // This thread had no handler at all, so anything thrown inside it --
+    // cv::Exception out of imwrite (the reason safe_imwrite_cache exists),
+    // bad_alloc, TS_Termination_Exception out of a blocking pop -- escaped the
+    // thread function and became std::terminate: the whole core, on one bad
+    // frame. SlowFrameSaveThread and PerifSendThread both catch; these three
+    // were missed.
+    //
+    // Exiting the loop instead would be WORSE than terminating on the
+    // inspection path: a dead core raises the launcher shell and somebody
+    // knows, whereas a quietly-exited pipeline thread leaves parts flowing
+    // past unjudged with the link still green. One bad iteration is logged and
+    // skipped; the thread stays alive.
+    try {
 
     //   if(delayStartCounter>0)
     //   {
@@ -11480,6 +11542,12 @@ void ImgPipeProcessThread(bool *terminationflag)
         bpg_pi.resPool.retResrc(headImgPipe);
 
     }
+    }
+    catch (TS_Termination_Exception &) { break; }   // normal shutdown
+    catch (const std::exception &e)
+    { LOGE("ImgPipeProcessThread: iteration threw (%s) -- skipped, thread continues", e.what()); }
+    catch (...)
+    { LOGE("ImgPipeProcessThread: iteration threw a non-std exception -- skipped, thread continues"); }
   }
 }
 

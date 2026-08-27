@@ -15,6 +15,10 @@ Each row says what was actually found, not what was claimed.
 | C2 | uncounted, unbounded frame drop at the acquisition gate | **CONFIRMED** | fixed |
 | C3 | retry `push()` unchecked -> pool-slot leak with `_enqueued=true` | **CONFIRMED, both sites** | fixed |
 | C4 | `perifSendQueue` drop accounting wrong in both directions | **CONFIRMED** | fixed |
+| C5 | three pipeline threads have no exception handler | **CONFIRMED** | fixed |
+| C9 | unsynchronised read of `lastDatViewCache` | **CONFIRMED, left alone** | see below |
+| C10 | `calib_bacpac` shared by two threads | **CONFIRMED, left alone** | see below |
+| C12 | `saveInspQFullSkipCount` is a plain `int` across threads | **CONFIRMED** | fixed |
 
 ## C1 — `DoImageTransfer=false` turns image streaming ON
 
@@ -120,3 +124,53 @@ counter on the pop succeeding; this is the same rule.
 able to be 2, the counter steps 2, 4, 6... and the `n % 50 == 1` throttle never
 lands — the log would have gone silent for exactly the failure it reports. It
 now fires on the first loss and on each crossing of a multiple of 50.
+
+## C5 — three threads whose first exception kills the core
+
+`SlowFrameSaveThread` and `PerifSendThread` both catch. `InspSnapSaveThread`,
+`ImgPipeDatViewThread` and `ImgPipeProcessThread` had **no handler at all**, so
+anything thrown inside them — `cv::Exception` out of `imwrite` (the reason
+`safe_imwrite_cache` exists), `bad_alloc`, `TS_Termination_Exception` out of a
+blocking pop — escaped the thread function and became `std::terminate`. The
+whole core, on one bad frame.
+
+**Caught per iteration, and it CONTINUES.** Exiting the loop instead would be
+worse than terminating on the inspection path: a dead core raises the launcher
+shell and somebody knows, whereas a quietly-exited pipeline thread leaves parts
+flowing past unjudged with the link still green. One bad iteration is logged and
+skipped; the thread stays alive. `TS_Termination_Exception` still breaks, which
+is the normal shutdown.
+
+*(First attempt replaced each loop's closing brace instead of inserting before
+it, and the file stopped compiling. Reverted and redone — everything up to that
+point was already committed, which is the only reason that was cheap.)*
+
+## C12 — a drop counter that can under-report
+
+`saveInspQFullSkipCount` was a plain `int`, written from the action thread and
+read and reset from the WS thread, while **every** sibling —
+`datViewDropCount`, `inspQueueDropCount`, `poolEmptyDropCount` — was already
+`std::atomic<int>`. Lost increments under-report dropped snapshots, which is the
+one thing a drop counter must not do. Now atomic, with the log reading the value
+it actually incremented rather than re-reading the shared one.
+
+## C9 and C10 — confirmed, and deliberately NOT touched
+
+Both are real and both are races I am not going to fix from a reading.
+
+**C9** — `lastDatViewCache` is read before its lock is taken, at three sites,
+and on the early-return path the `resendCache` bit is never set. The finding
+calls it "benign on x86 in practice" and that is right, but it is also the one
+field the whole cache-swap discipline rests on.
+
+**C10** — `calib_bacpac` is a single global; the inspection thread writes
+`bacpac->cam` per frame while the datView thread reads `bacpac->sampler`. The
+per-frame camera check was added to stop a frame outliving its camera, and it
+fixes the *pipe's* copy before publishing into shared state — so the guarantee
+holds only while there is one reader.
+
+Neither has a symptom anybody has reported, both need the ownership model
+thought through rather than a lock dropped in, and a wrong fix here turns a
+theoretical race into a deadlock on a running machine. **Recorded, not
+patched.** They want a session with the threading model in front of you, not a
+slot in a triage pass.
