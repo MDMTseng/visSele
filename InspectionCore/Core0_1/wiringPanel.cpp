@@ -431,6 +431,110 @@ std::atomic<int> poolEmptyDropCount{0};
 // never gets the chance to overflow.
 std::atomic<int> acqSkipDropCount{0};
 
+// --- trigger-driven fake camera: run the REAL inspection with no camera -----
+//
+// INSP_CAM_TS_SYNTH (below) got a camera-less bench past calibration, but its
+// own log says what it does not do: "NO camera and NO inspection". Every part
+// is answered with a fixed category by formula, so the gate, the pairing, the
+// clock and the sorter are exercised and the matching engine is not. That
+// leaves the three fixes whose failure modes only appear under pipeline
+// pressure -- the acquisition-gate drop, the pool-slot leak, the pipeline
+// threads' exception handlers -- unverifiable on this bench, which is exactly
+// where they were found.
+//
+// INSP_CAM_TRIG_DRIVE=1 closes that gap instead of stepping round it. Canned
+// frames already reach the real ingress (FORCE_BMP_CAROUSEL -> the same
+// CameraLayer_Callback_GIGEMV a real camera calls), and the real report path
+// already takes cam_ts straight off the frame (imgPipe->fi.timeStamp_us). So
+// the whole fixture is: let a frame through only when the device has announced
+// a trigger, and stamp it with the timestamp the device announced.
+//
+// Everything downstream is then the production path, unmodified -- inspection,
+// verdict, pairing, CAMSYNC. The device places the report by a cam_ts that
+// tracks its own clock, so calibration converges for the same reason it does
+// with a real camera.
+//
+// WHY THE CAMERA IS NEVER TOUCHED FROM HERE. The obvious build is to call
+// Trigger() on the carousel when the announcement arrives. That would run on
+// the peripheral RX thread and reach for the camera pointer, which the
+// reconnect handler deletes and rebuilds under a lock -- stalling that thread
+// is what perifConsoleEcho goes out of its way to avoid, and racing a delete is
+// worse than stalling. The carousel free-runs instead, and frames it produces
+// with no announcement behind them are DROPPED here. One announcement lets
+// exactly one frame through, which is the property that matters; the cost is
+// discarded frames, and they are counted rather than silent.
+//
+// The stamp, not the arrival, carries the time -- so the carousel's frame rate
+// affects only how long a trigger waits for its frame, never the timestamp the
+// device is taught from.
+namespace camTrigDrive
+{
+  // Announcements waiting for a frame. A ring, for the same reason the synth's
+  // is one: this is written from the RX path, and growing without bound there
+  // is worse than dropping the oldest under a flood.
+  static const uint32_t PEND_N = 64;
+  static std::atomic<uint64_t> pendHead{0};
+  static std::atomic<uint64_t> pendTail{0};
+  static uint64_t pend[PEND_N];
+
+  // Frames the carousel produced with no announcement behind them.
+  std::atomic<int> unannouncedDropCount{0};
+  // Announcements that never got a frame before the ring wrapped over them.
+  std::atomic<int> starvedCount{0};
+
+  bool on()
+  {
+    static const bool v = []{
+      const char *e = getenv("INSP_CAM_TRIG_DRIVE");
+      const bool on = e && atoi(e) != 0;
+      if (on)
+        LOGW("INSP_CAM_TRIG_DRIVE=1 -- frames are released by the DEVICE's "
+             "cam_trig announcements and stamped with its trigger clock. Real "
+             "inspection runs on canned frames; set FORCE_BMP_CAROUSEL to say "
+             "which. Bench only.");
+      return on;
+    }();
+    return v;
+  }
+
+  // From the peripheral RX path. Lock-free and never blocks.
+  void announce(uint64_t stamp_us)
+  {
+    const uint64_t h = pendHead.load(std::memory_order_relaxed);
+    // Overwriting an entry the consumer has not taken means a trigger will
+    // never get its frame. Say so: on this fixture that is the difference
+    // between "the carousel is too slow" and "inspection is falling behind",
+    // and the two want opposite responses.
+    if (h - pendTail.load(std::memory_order_acquire) >= PEND_N)
+    {
+      int n = ++starvedCount;
+      if ((n % 50) == 1)
+        LOGE("cam_trig drive: %d announcement(s) dropped without a frame -- the "
+             "camera is not keeping up with the trigger rate.", n);
+      pendTail.fetch_add(1, std::memory_order_release);
+    }
+    pend[h % PEND_N] = stamp_us;
+    pendHead.store(h + 1, std::memory_order_release);
+  }
+
+  // From the camera callback. False = no announcement, drop this frame.
+  bool takeStamp(uint64_t *out)
+  {
+    const uint64_t t = pendTail.load(std::memory_order_relaxed);
+    if (t >= pendHead.load(std::memory_order_acquire))
+    {
+      int n = ++unannouncedDropCount;
+      if ((n % 200) == 1)
+        LOGI("cam_trig drive: dropped %d frame(s) with no announcement behind "
+             "them -- expected, the carousel free-runs faster than the plate.", n);
+      return false;
+    }
+    *out = pend[t % PEND_N];
+    pendTail.store(t + 1, std::memory_order_release);
+    return true;
+  }
+}
+
 // --- Peripheral protocol dialect -------------------------------------------
 // uInspMEGA and uInspESP32 correlate a result to a part in incompatible ways:
 //
@@ -1451,7 +1555,19 @@ class PerifChannel:public Data_JsonRaw_Layer
   {
     static const bool on = []{
       const char *e = getenv("INSP_CAM_TS_SYNTH");
-      const bool v = e && atoi(e) != 0;
+      bool v = e && atoi(e) != 0;
+      // The two fixtures answer the same announcements and must never both be
+      // armed: the synth replies from the RX path and the drive lets the real
+      // report reply, so together they put two verdicts on one object --
+      // INSP_RESULT_MATCHES_NO_OBJECT, error 1, machine halted. The drive is
+      // the one that runs a real inspection, so it wins.
+      if (v && camTrigDrive::on())
+      {
+        LOGE("INSP_CAM_TS_SYNTH and INSP_CAM_TRIG_DRIVE are both set. Only the "
+             "DRIVE is used: two answers to one announcement halts the device. "
+             "Unset INSP_CAM_TS_SYNTH.");
+        v = false;
+      }
       if (v)
         LOGW("INSP_CAM_TS_SYNTH=1 -- answering the device's triggers directly: "
              "cam_ts = t_us*%.9f + %lldus, cat=%d, NO camera and NO inspection. "
@@ -1621,7 +1737,7 @@ class PerifChannel:public Data_JsonRaw_Layer
   // every message the device sends and needs two integers out of the line.
   void tap_trigger_info(uint8_t *raw, int rawL)
   {
-    if (!camTsSynthOn()) { (void)raw; (void)rawL; return; }
+    if (!camTsSynthOn() && !camTrigDrive::on()) { (void)raw; (void)rawL; return; }
     if (rawL <= 0 || rawL > 4096) return;
     const char *p = (const char *)raw;
     if (strstr(p, "\"cam_trig\"") == NULL) return;
@@ -1668,6 +1784,12 @@ class PerifChannel:public Data_JsonRaw_Layer
     if (pgp && atoll(pgp + 13) == 0) return;
     uint64_t cam_ts = (uint64_t)((double)t_us * camTsSynthMult())
                     + (uint64_t)camTsSynthOffsetUs();
+    // Trigger-driven fake camera: hand the stamp to the camera path and let the
+    // REAL report carry it. Nothing is answered from here -- answering as well
+    // would put two verdicts on one object, which is INSP_RESULT_MATCHES_NO_OBJECT
+    // and a halted machine.
+    if (camTrigDrive::on()) { camTrigDrive::announce(cam_ts); return; }
+
     // host_us = 0: nothing was held in the core, and claiming otherwise would
     // corrupt the acquisition-leg figure the device derives from it.
     // Queue it; the sender below releases it after camTsSynthDelayMs(). This
@@ -4406,6 +4528,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddNumberToObject(info,"dropped",(double)inspQueueDropCount.load());
               cJSON_AddNumberToObject(info,"acq_refused",(double)acqSkipDropCount.load());
               cJSON_AddNumberToObject(info,"pool_empty",(double)poolEmptyDropCount.load());
+            }
+            // Only meaningful under INSP_CAM_TRIG_DRIVE, and exported
+            // unconditionally so a bench run does not need a second channel to
+            // read its own fixture. `unannounced` is expected and large (the
+            // carousel free-runs faster than the plate); `starved` is not --
+            // it means announcements went unanswered, which on the device side
+            // looks like a camera that stopped.
+            {
+              cJSON *info = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj,"camTrigDrive",info);
+              cJSON_AddNumberToObject(info,"unannounced",
+                                      (double)camTrigDrive::unannouncedDropCount.load());
+              cJSON_AddNumberToObject(info,"starved",
+                                      (double)camTrigDrive::starvedCount.load());
             }
             {
               cJSON *info = cJSON_CreateObject();
@@ -7467,6 +7603,20 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
   CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
+
+  // Trigger-driven fake camera. One announcement releases exactly one frame,
+  // and the frame carries the DEVICE's trigger timestamp rather than the
+  // carousel's own host clock -- which is what makes the report placeable and
+  // CAMSYNC convergeable without a camera. See camTrigDrive.
+  //
+  // Placed here, before a pool slot is taken: an unannounced frame must cost
+  // nothing beyond the SDK callback it arrived on.
+  if (camTrigDrive::on())
+  {
+    uint64_t _trigStamp = 0;
+    if (!camTrigDrive::takeStamp(&_trigStamp)) return CameraLayer::ACK;
+    finfo.timeStamp_us = _trigStamp;
+  }
   
   // LOGE("finfo.wh:%d,%d", finfo.width,finfo.height);
   
