@@ -287,6 +287,30 @@ export class InspectionEditorLogic {
       }
   
   
+      // RESET EVERYTHING THAT BELONGS TO A DEF, BEFORE READING THE NEW ONE.
+      //
+      // edit_info SURVIVES A DEF SWITCH -- the reset a few lines up is commented
+      // out ("No need to wipe out the data"), which is right for view state and
+      // wrong for the recipe. Everything below is read with `if (present) set`,
+      // so a key the new def does not carry keeps the PREVIOUS def's value.
+      //
+      // Seen: load test1 (shape_based, 11 roi_refine_points), then load test2
+      // (no roi_refine_points). test2 shows 11 ROI points -- test1's, in test2's
+      // frame, sitting off the part. It reads as a broken auto-selection, and it
+      // is not: refine_points are collected only where Canny fires AND the object
+      // mask is set, so a genuinely selected point cannot be off an edge.
+      //
+      // def_image_reg and locating_engine already escaped this because they are
+      // assigned unconditionally. The rest are silent: thresholds, morph
+      // settings and match scale from the def you looked at BEFORE go on
+      // measuring the def you are looking at now, and the def on disk says
+      // otherwise. Re-saving then writes them in, which is how one def's
+      // settings get into another def's file.
+      {
+        const _blank = Edit_info_Empty();
+        for (const k of DEF_SCOPED_EDIT_INFO_KEYS) edit_info[k] = _blank[k];
+      }
+
       edit_info.loadedDefFile = dclone(root_defFile);
 
       // Registration (sig360 center + angle) of the image stored as <def>.png, if
@@ -1664,6 +1688,20 @@ export function UpdateListIDOrder(cur_listIDOrder, list) {
 
 
 const default_MinRepeatInspReport = 2;
+
+// The edit_info fields that belong to the DEF rather than to the session, and
+// so must not survive a def switch. Read together with the reset in the def
+// loader; a new def-scoped setting added to Edit_info_Empty belongs here too.
+export const DEF_SCOPED_EDIT_INFO_KEYS = [
+  'matching_angle_margin_deg', 'matching_angle_offset_deg', 'matching_face',
+  'matching_version', 'inspection_downsample', 'sig_match_sim_thres',
+  'morph_mode', 'morph_tps_lambda', 'morph_max_iter', 'morph_alpha',
+  'shape_match_scale', 'shape_weak_thres', 'shape_strong_thres',
+  'locating_engine', 'def_image_reg', 'roi_refine_points',
+  // The trained line2Dup set and its staleness flags: another def's features
+  // are worse than none, because they train a matcher that then looks right.
+  '__shape_cache', '__shape_stale', '__shape_lastGood',
+];
 
 export function Edit_info_Empty() {
   return {

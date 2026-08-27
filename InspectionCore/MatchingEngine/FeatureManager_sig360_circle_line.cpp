@@ -7588,7 +7588,14 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
     }
     const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
-    std::vector<cv::Point2f> rpts = const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(16);
+    // THE SAME COUNT THE MATCHER ASKS FOR, not 16.
+    //
+    // selectOptimizedPoints caches by max_points and the first call wins: a
+    // cached 16 satisfies a later request for 8, so this preview used to decide
+    // what the localizer ran with. Opening the studio changed the machine's
+    // behaviour, and the points on screen were never the points in use.
+    std::vector<cv::Point2f> rpts =
+        const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(sbm::kDefaultOptPointsPublic);
     shape_roi_mm.reserve(rpts.size());
     for (const auto &rp : rpts)
       shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
