@@ -20,7 +20,7 @@
 | **WebUI** | 設定與監看,1gen,**已在工廠部署** | React+antd,`UI/WebUI/` |
 
 Core0_1 ↔ WebUI 走 **BPG over WebSocket (4090)**;
-Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4099**。
+Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4099**。(**選配,預設不開**;常開的控制埠是 4098)
 
 > **世代提醒**:`CoreHub` 是 2gen、`uInspESP32_v2` 是另一代重寫、`UI/WebUI2` 是新 UI。
 > **它們都不是目前產線在跑的東西。** 除非明確要做 2gen,否則不要讀那些目錄的文件。
@@ -40,6 +40,8 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
   曾經因為版本號跳動把 `io_on_level` 洗掉(這台機器是 active-low)。
 - **機器在跑時不要開板子的序列埠**。開埠會 reset ESP32,你要查的證據當場消失。
   改問核心的 console:`printf '{"type":"get_running_stat"}\n' | nc 127.0.0.1 4099`。
+  **但 4099 預設不開** — 它只在 `INSP_PERIF_CONSOLE` 已經在 launcher 環境裡時才傳給 core。
+  常開的是 **4098 控制埠**(只有 ping/shutdown)。見 `docs/SYSTEM_OVERVIEW.md` §2。
 - **不要在跑量測的同一台機器上做粗重分析**。會汙染結果——這件事在
   `POSTMORTEM_2026-08-10_stall.md` 有實例。
 
@@ -49,7 +51,8 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 
 | 你要做的事 | 讀這個 | 狀態 |
 |---|---|---|
-| **新 agent 接手整個系統:三方大地圖(板×core×WebUI)、邊界合約、跑產不干擾矩陣** | `docs/SYSTEM_MAP.md` | **2026-08-18 全面校準,從這裡開始** |
+| **新 agent 接手整個系統:架構、五層、埠位、陷阱、過時登記簿** | `docs/SYSTEM_OVERVIEW.md` | **2026-08-27 校準,從這裡開始** |
+| 三方邊界合約(BPG 封包表、uInsp 狀態碼、跑產不干擾矩陣) | `docs/SYSTEM_MAP.md` | 2026-08-18;合約仍最完整,**但行號與埠位已失效** — 先讀 SYSTEM_OVERVIEW §8 |
 | **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-26c.md` → `_26b` → `_26` | **最新,2026-08-27**;三份接續,c 最新。`HANDOVER_2026-08-18.md` 是上一輪的地圖 |
 | **def 檔長什麼樣、哪些欄位在 hash 裡、改哪個會讓訓練特徵失效** | `InspectionCore/docs/DEF_FILE_FORMAT.md` | **2026-08-27 新增**;結構、指紋、閉集字彙的地雷 |
 | SBM 定位:studio 怎麼用、強健性怎麼量、特徵快取怎麼運作 | `InspectionCore/docs/HANDOVER_2026-08-26c.md` | 2026-08-27;含實測數字(ROI refine 值 15 倍、±30° 不退化) |
