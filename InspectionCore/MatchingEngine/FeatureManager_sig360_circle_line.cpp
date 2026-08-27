@@ -2630,6 +2630,52 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
   }
 
+  // CONTOUR-MODE FEATURES CANNOT BE MEASURED UNDER THE SHAPE LOCATOR.
+  //
+  // A line or circle with locating == 0 (which is the DEFAULT, so every def
+  // written before caliper mode existed) is measured by walking `edge_grid` --
+  // the contour grid built in FeatureMatching by
+  // extractLabeledContourDataToContourGrid, from acv_LabeledData. The shape
+  // path returns at FeatureMatching's `if (locating_engine == 1 && shape_ready)
+  // return FeatureMatching_shape();` long before that, so the grid is never
+  // filled. It is a class member, so the call still compiles and still runs --
+  // against an EMPTY grid.
+  //
+  // Nothing said so. The def loaded, the part located, and those features
+  // simply produced nothing, which on screen is indistinguishable from a part
+  // the features could not find. This does not fix that; it makes it visible,
+  // by name, once at load, which is the prerequisite for deciding what to do
+  // about it (converting them to caliper mode is the direction under
+  // discussion -- see cal_length's sentinel, which already falls back to
+  // initMatchingMargin, the contour search depth).
+  //
+  // Deliberately NOT a hard failure: a def in this state has been running and
+  // refusing it outright would stop a machine over a diagnosis. Loud, named,
+  // and every time the def loads.
+  if (this->locating_engine == 1)
+  {
+    int nBad = 0;
+    char names[240]; names[0] = 0;
+    auto note = [&](const char *nm, int id) {
+      nBad++;
+      if (strlen(names) > sizeof(names) - 40) return;
+      char one[48];
+      snprintf(one, sizeof(one), "%s%s(id %d)", names[0] ? ", " : "",
+               (nm && nm[0]) ? nm : "unnamed", id);
+      strncat(names, one, sizeof(names) - strlen(names) - 1);
+    };
+    for (size_t i = 0; i < featureLineList.size(); i++)
+      if (featureLineList[i].locating != 1) note(featureLineList[i].name, featureLineList[i].id);
+    for (size_t i = 0; i < featureCircleList.size(); i++)
+      if (featureCircleList[i].locating != 1) note(featureCircleList[i].name, featureCircleList[i].id);
+    if (nBad > 0)
+      LOGE("[shape] %d feature(s) use CONTOUR locating and cannot be measured by "
+           "the shape locator -- they will report nothing, silently: %s%s. "
+           "Contour needs the labeled-contour grid, which only the sig360 path "
+           "builds. Set locating=1 (caliper) on them, or run this def on "
+           "sig360.", nBad, names, (nBad > 8) ? ", ..." : "");
+  }
+
   // Train the shape-based localizer from the <base>.png sidecar. On failure we
   // log and leave shape_ready=false so FeatureMatching falls back to sig360.
   if (this->locating_engine == 1)
