@@ -4393,18 +4393,37 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               cJSON_AddItemToObject(robj,"inspQueue",info);
               cJSON_AddNumberToObject(info,"capacity",inspQueue.capacity());
               cJSON_AddNumberToObject(info,"size",inspQueue.size());
+              // THE DROPS, not just the depth. Every one of these counters
+              // existed only inside a throttled LOGE, so the one number an
+              // operator could actually see -- the queue depth -- reads NORMAL
+              // during exactly the load that is discarding parts: the queue
+              // stays shallow precisely because frames are being thrown away.
+              //
+              // Three different discards, kept apart because they need
+              // different answers: `dropped` is the queue evicting its oldest,
+              // `acq_refused` is a frame never accepted at the gate, and
+              // `pool_empty` is no buffer to put it in.
+              cJSON_AddNumberToObject(info,"dropped",(double)inspQueueDropCount.load());
+              cJSON_AddNumberToObject(info,"acq_refused",(double)acqSkipDropCount.load());
+              cJSON_AddNumberToObject(info,"pool_empty",(double)poolEmptyDropCount.load());
             }
             {
               cJSON *info = cJSON_CreateObject();
               cJSON_AddItemToObject(robj,"datViewQueue",info);
               cJSON_AddNumberToObject(info,"capacity",datViewQueue.capacity());
               cJSON_AddNumberToObject(info,"size",datViewQueue.size());
+              // Preview drops are EXPECTED under load and are not a fault --
+              // but a preview silently running ten frames behind is, and only
+              // this number tells them apart.
+              cJSON_AddNumberToObject(info,"dropped",(double)datViewDropCount.load());
             }
             {
               cJSON *info = cJSON_CreateObject();
               cJSON_AddItemToObject(robj,"inspSnapQueue",info);
               cJSON_AddNumberToObject(info,"capacity",inspSnapQueue.capacity());
               cJSON_AddNumberToObject(info,"size",inspSnapQueue.size());
+              // Dropped snapshots are dropped NG evidence.
+              cJSON_AddNumberToObject(info,"dropped",(double)saveInspQFullSkipCount.load());
             }
 
           }
