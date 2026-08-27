@@ -157,6 +157,11 @@ const CAL_HITS = process.env.SOAK_CAL_HITS;
 // as a dispatched wheel event on the canvas because page.mouse.wheel never
 // reaches it (see the note at ZOOM_TEST).
 const ZOOM_IN = Number(process.env.SOAK_ZOOM_IN || 0);
+// SOAK_NA_FILTER=0 turns the NA greying off for the run. It exists to A/B a
+// leak suspect: the greying is done with ctx.filter, and every draw under a
+// canvas filter goes through a temporary offscreen surface that is GPU memory
+// on an accelerated canvas. Same binary, both halves.
+const NA_FILTER = process.env.SOAK_NA_FILTER;
 // Save the DECODED FRAME itself every tick, straight off the offscreen canvas
 // the component decodes into. Untouched by zoom, pan or the panel drawn over
 // it -- a screenshot of the window answers "what does the operator see", and
@@ -802,6 +807,11 @@ if (LEAVE_UI) {
 if (NO_ICONS) {
   await page.evaluate(() => { window.__DIAG_NO_ICONS__ = 1; });
   console.log('[10c] canvas SVG icons: OFF');
+}
+
+if (NA_FILTER === '0') {
+  await page.evaluate(() => { window.__NA_FILTER_OFF__ = 1; }).catch(() => {});
+  console.log('[10n] NA greying (ctx.filter): OFF for this run');
 }
 
 if (ZOOM_IN > 0) {

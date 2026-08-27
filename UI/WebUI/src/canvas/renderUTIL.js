@@ -20,6 +20,21 @@ import { mkLog } from "UTIL/logger";
 // Grey, not a faded version of the shape's own colour: a measured feature and a
 // template that could not be measured must never differ only in saturation.
 const NA_CANVAS_FILTER = 'grayscale(1) opacity(0.7)';
+
+// A RUNTIME SWITCH, because this is a leak suspect and suspicion is not a
+// finding. Chromium renders every draw made under a non-'none' ctx.filter
+// through a temporary offscreen surface; on an accelerated canvas that surface
+// is GPU memory, and a soak measured the GPU process climbing about 15-16 KB
+// per inspection report -- with the JS heap flat and a forced collection
+// handing it all back at once, which is what "allocated per draw, swept late"
+// looks like. The greying arrived the same day as the measurement, so it is the
+// first thing to rule in or out.
+//
+// window.__NA_FILTER_OFF__ = 1 turns it off without a rebuild, so one binary can
+// run both halves of the A/B. Absent means on, which is the shipped behaviour.
+function naFilterOn() {
+  return !(typeof window !== 'undefined' && window.__NA_FILTER_OFF__);
+}
 const NA_REASON_COLOR  = 'rgba(255, 210, 60, 0.95)';
 // How near the pointer has to be, in SCREEN pixels, for a marker to show its
 // reason. Generous: the marker is small and the operator is aiming with a mouse
@@ -653,9 +668,10 @@ class renderUTIL {
         if (mod && mod.drawInspection) {
           if (isNA) {
             const savedFilter = ctx.filter;
-            ctx.filter = NA_CANVAS_FILTER;
+            const useF = naFilterOn();
+            if (useF) ctx.filter = NA_CANVAS_FILTER;
             mod.drawInspection(ctx, eObject, this, { shapeList });
-            ctx.filter = savedFilter;
+            if (useF) ctx.filter = savedFilter;
             // The reason is NOT greyed -- it is the one thing on an NA that
             // should catch the eye.
             this.drawNAReason(ctx, eObject);
@@ -669,9 +685,10 @@ class renderUTIL {
     this.drawShapeList(ctx, normalRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
     if (naRenderGroup.length) {
       const savedFilter = ctx.filter;
-      ctx.filter = NA_CANVAS_FILTER;
+      const useF = naFilterOn();
+      if (useF) ctx.filter = NA_CANVAS_FILTER;
       this.drawShapeList(ctx, naRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
-      ctx.filter = savedFilter;
+      if (useF) ctx.filter = savedFilter;
       naRenderGroup.forEach((o) => this.drawNAReason(ctx, o));
     }
 
