@@ -294,8 +294,21 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
   // Budget = camera to deadline. Both are stage-timer ticks at 2x plate_freq.
   const budgetMs = (hz > 0 && has(off.SWITCH) && has(off.CAM1_on))
     ? ticksToMs(off.SWITCH - off.CAM1_on, hz) : NaN;
+  // TWO MARGINS, because one of them is a latch.
+  //
+  // This showed budget minus the SLOWEST report ever seen, and called it 餘裕.
+  // One slow reply -- and the first frame after a def build or a shape train is
+  // always slow -- pins it negative for the rest of the session, whatever the
+  // machine is doing now. Seen tonight: 643ms budget, 491.0 average, 6682.8
+  // worst, margin -6040 and red, while the average had +152ms to spare.
+  //
+  // The worst case is still the one that produces a defect, so it stays. It
+  // just cannot be the only number, or "how is it running" has no answer on
+  // this panel. Average first, worst second.
   const spentMs  = has(lat.max_us) ? lat.max_us / 1000 : NaN;
+  const spentAvgMs = has(lat.avg_us) ? lat.avg_us / 1000 : NaN;
   const marginMs = (isFinite(budgetMs) && isFinite(spentMs)) ? budgetMs - spentMs : NaN;
+  const marginAvgMs = (isFinite(budgetMs) && isFinite(spentAvgMs)) ? budgetMs - spentAvgMs : NaN;
 
   const Row = ({ label, sub, value, color, warn }) => (
     <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
@@ -339,17 +352,31 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
            value={has(lat.avg_us) ? `${(lat.avg_us/1000).toFixed(1)} / ${(lat.max_us/1000).toFixed(1)} ms` : '—'} />
       {/* Red once the slowest report has eaten the budget: past zero, a part
           reaches SWITCH with nothing decided about it. */}
-      <Row label="餘裕" value={isFinite(marginMs) ? `${marginMs.toFixed(0)} ms` : '—'}
-           warn={isFinite(marginMs) && marginMs <= 0} />
+      <Row label="餘裕 平均 / 最慢"
+           value={isFinite(marginAvgMs) || isFinite(marginMs)
+             ? `${isFinite(marginAvgMs) ? marginAvgMs.toFixed(0) : '—'} / `
+               + `${isFinite(marginMs) ? marginMs.toFixed(0) : '—'} ms`
+             : '—'}
+           warn={isFinite(marginAvgMs) && marginAvgMs <= 0} />
       {has(pipe.waiting) || has(pipe.registered)
         ? <Row label="在製 等待 / 登記"
                value={`${n0v(pipe.waiting)} / ${n0v(pipe.registered)}`} /> : null}
 
       <Head>時間配對（核心）</Head>
       {pairing ? (<>
+        {/* ZERO RESIDUAL AND NO RESIDUAL ARE NOT THE SAME READING, and this
+            printed them the same way. n0v turns an absent value into 0, and 0 is
+            this metric's IDEAL -- so a pairing that never ran displayed as
+            perfect timing. Seen tonight: 殘差 0/0 µs sitting directly above
+            已配對 0, which is the line that says the 0 above means nothing.
+            A metric whose failure mode looks like its best case cannot be
+            watched, so with nothing matched it now says so instead. */}
         <Row label="殘差 現在 / 最大"
-             value={`${Math.round(n0v(pairing.resid_last_us))} / ${Math.round(n0v(pairing.resid_max_us))} µs`} />
-        <Row label="已配對" value={exactN(n0v(pairing.matched))} />
+             value={n0v(pairing.matched) > 0
+               ? `${Math.round(n0v(pairing.resid_last_us))} / ${Math.round(n0v(pairing.resid_max_us))} µs`
+               : '尚未配對'} />
+        <Row label="已配對" value={exactN(n0v(pairing.matched))}
+             warn={n0v(pairing.matched) === 0} />
         <Row label="待配 / 丟棄"
              value={`${n0v(pairing.pending)} / ${n0v(pairing.drops)}`}
              warn={n0v(pairing.drops) > 0} />

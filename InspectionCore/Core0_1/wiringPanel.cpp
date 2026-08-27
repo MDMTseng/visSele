@@ -7869,15 +7869,46 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
       const uint32_t fnow = headImgPipe->fi.frameNum;
       if (_haveFrameNum)
       {
-        const uint32_t d = fnow - _prevFrameNum;   // unsigned: wrap is fine
-        if (d > 1)
+        // A BACKWARDS JUMP IS A RESET, NOT A WRAP.
+        //
+        // "unsigned: wrap is fine" was the old comment on this subtraction, and
+        // it is true of a genuine 2^32 wrap -- which at 30 fps is four and a
+        // half years away and has never happened. What DOES happen is the
+        // camera restarting its own frame counter at 0 on a reconnect. Then
+        // fnow is small, _prevFrameNum is large, and the unsigned difference is
+        // a number near 2^32 that got added to the total as "frames lost".
+        //
+        // The result was the counter reading 4294967288 -- which is -8 wearing
+        // an unsigned hat, and it is what a soak run reported tonight. It was
+        // written down as a known issue three times since 2026-08-25 and each
+        // time judged "cosmetic but misleading". It misled: the number is on
+        // the panel next to real ones, and reading it is how you find out it is
+        // not real.
+        //
+        // Counting nothing across a reset is the honest answer. Frames the
+        // camera produced before it restarted and did not deliver are not
+        // knowable from here, and guessing 4 billion of them is worse than
+        // admitting the sequence broke.
+        if (fnow > _prevFrameNum)
         {
-          const uint32_t lost = d - 1;
-          g_camFrameGapN.fetch_add(1, std::memory_order_relaxed);
-          g_camFrameLost.fetch_add(lost, std::memory_order_relaxed);
-          LOG_EVERY(20, "camera frameNum gap: %u -> %u (%u frame(s) produced but "
-                    "not delivered; total gaps %u / frames lost %u)",
-                    _prevFrameNum, fnow, lost,
+          const uint32_t d = fnow - _prevFrameNum;
+          if (d > 1)
+          {
+            const uint32_t lost = d - 1;
+            g_camFrameGapN.fetch_add(1, std::memory_order_relaxed);
+            g_camFrameLost.fetch_add(lost, std::memory_order_relaxed);
+            LOG_EVERY(20, "camera frameNum gap: %u -> %u (%u frame(s) produced but "
+                      "not delivered; total gaps %u / frames lost %u)",
+                      _prevFrameNum, fnow, lost,
+                      g_camFrameGapN.load(), g_camFrameLost.load());
+          }
+        }
+        else if (fnow < _prevFrameNum)
+        {
+          LOG_EVERY(5, "camera frameNum went backwards: %u -> %u -- treating it as a "
+                    "counter reset and counting no loss across it (totals kept: "
+                    "gaps %u / frames lost %u)",
+                    _prevFrameNum, fnow,
                     g_camFrameGapN.load(), g_camFrameLost.load());
         }
       }
