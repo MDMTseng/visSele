@@ -1781,6 +1781,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       matrix.d, matrix.e, matrix.f);
 
     // console.log(">>>>>>>",this.doRotateView,inspectionReportList.length,this.img_info);
+    // Cleared every frame, then set inside the block below when the view IS
+    // rotated. A stale value here would counter-rotate labels on a frame that
+    // was never rotated -- the same bug the other way round.
+    this.rUtil.viewRotation = 0;
+    this.rUtil.viewFlip = false;
     if(this.doRotateView==true && inspectionReportList.length>=1 && this.img_info!==undefined)
     {
       // let line_N=inspectionReportList[0].detectedLines[1];
@@ -1813,6 +1818,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       // ctx.translate(inspectionReportList[0].cx/mmpp,inspectionReportList[0].cy/mmpp);//Move to the center of the secCanvas
       // console.log(inspectionReportList[0]);
       
+      // Tell the text layer what was applied, so labels can undo exactly it
+      // and stay upright. See renderUTIL.draw_Text.
+      this.rUtil.viewRotation = rot;
+      this.rUtil.viewFlip = !!inspectionReportList[0].isFlipped;
       ctx.translate(-centerPt.x,-centerPt.y);//Move to the center of the secCanvas
       
     }

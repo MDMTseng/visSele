@@ -323,10 +323,58 @@ class renderUTIL {
     ctx.strokeText(text, x, y);
   }
 
-  draw_Text(ctx, text, scale, x, y) {
+  // Every label in the app goes through here, which is why the upright-text fix
+  // lives here and nowhere else.
+  //
+  // The rotate-target view turns the whole world so the part appears in its
+  // taught orientation. That is right for the geometry and wrong for the
+  // writing: the labels turned with it, and at any real angle a measurement
+  // reads sideways or upside down.
+  //
+  // viewRotation / viewFlip are the transform the canvas applied, set by
+  // whoever applied it. Undo exactly that, and only that:
+  //
+  //   not flipped   world has R(rot)          -> rotate(-rot)
+  //   flipped       world has R(-rot) . S     -> scale(1,-1) then rotate(rot)
+  //
+  // (Canvas post-multiplies, so R(-rot).S.S.R(rot) = I.)
+  //
+  // screenOffset: (x, y) is an offset that should appear as given ON SCREEN,
+  // not in world space.
+  //
+  // Callers use (x, y) two different ways -- some pass an absolute world
+  // position (a point's own coordinates), some pass an offset from an anchor
+  // they already translated to, and stack lines by varying y. Counter-rotating
+  // the glyphs alone left the second kind leaning: each line upright, the STACK
+  // tilted with the view. So the offset is mapped back through the view
+  // transform first, and only the callers that mean a screen offset ask for it.
+  //
+  //   not flipped   screen = R(r)·v        -> v = R(-r)·(x,y)
+  //   flipped       screen = R(-r)·S·v     -> v = S·R(r)·(x,y)   (S = diag(1,-1))
+  draw_Text(ctx, text, scale, x, y, screenOffset = false) {
     ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.013;
     ctx.save();
-    ctx.translate(x, y);
+    if (screenOffset && (this.viewRotation || this.viewFlip)) {
+      const r = this.viewRotation || 0;
+      let vx, vy;
+      if (this.viewFlip) {
+        const c = Math.cos(r), sn = Math.sin(r);
+        vx = x * c - y * sn;
+        vy = -(x * sn + y * c);
+      } else {
+        const c = Math.cos(-r), sn = Math.sin(-r);
+        vx = x * c - y * sn;
+        vy = x * sn + y * c;
+      }
+      ctx.translate(vx, vy);
+    } else {
+      ctx.translate(x, y);
+    }
+    const _r = this.viewRotation || 0;
+    if (_r || this.viewFlip) {
+      if (this.viewFlip) { ctx.scale(1, -1); ctx.rotate(_r); }
+      else ctx.rotate(-_r);
+    }
     ctx.scale(scale, scale);
     ctx.fillText(text, 0, 0);
     ctx.strokeText(text, 0, 0);
@@ -339,7 +387,7 @@ class renderUTIL {
     ctx.lineWidth = this.getIndicationLineSize() / 3;
     let Y_offset = 0;
     if(this.renderParam.measureInfoText.name==true)
-      this.draw_Text(ctx, name, fontPx, 0,0);
+      this.draw_Text(ctx, name, fontPx, 0, 0, true);
     
     Y_offset+=fontPx;
     let text="";
@@ -351,7 +399,7 @@ class renderUTIL {
     if(marginPC==marginPC && isFinite(marginPC) && this.renderParam.measureInfoText.showMarginPC==true)
       text += ":" + (marginPC * 100).toFixed(1) + "%";
 
-    this.draw_Text(ctx, text, fontPx, 0, Y_offset);
+    this.draw_Text(ctx, text, fontPx, 0, Y_offset, true);
   }
 
   drawDefMeasureInfoText(ctx,name,value,InfoLU,InfoCurVal,fontPx)
@@ -362,13 +410,13 @@ class renderUTIL {
 
         
     if(this.renderParam.measureInfoText.name==true)
-      this.draw_Text(ctx, name, fontPx, 0,0);
+      this.draw_Text(ctx, name, fontPx, 0, 0, true);
     
 
     if(this.renderParam.measureInfoText.value==true)
     {
       Y_offset += fontPx;
-      this.draw_Text(ctx, value, fontPx, 0, Y_offset);
+      this.draw_Text(ctx, value, fontPx, 0, Y_offset, true);
     }
 
     fontPx *=0.7;
@@ -376,14 +424,14 @@ class renderUTIL {
     if(this.renderParam.measureInfoText.showLU==true)
     {
       Y_offset += fontPx;
-      this.draw_Text(ctx, InfoLU, fontPx, 0, Y_offset);
+      this.draw_Text(ctx, InfoLU, fontPx, 0, Y_offset, true);
     }
 
 
     if(this.renderParam.measureInfoText.showCur==true)
     {
       Y_offset += fontPx;
-      this.draw_Text(ctx, InfoCurVal, fontPx,0,Y_offset);
+      this.draw_Text(ctx, InfoCurVal, fontPx, 0, Y_offset, true);
     }
   }
   drawMeasureDistance(ctx, eObject, refObjs, shapeList, unitConvert,measValueAdjStr="") {
