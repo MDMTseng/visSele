@@ -378,7 +378,7 @@ target_link_libraries(CameraLayer PUBLIC camera_sdk)
 # ===========================================================================
 # visSele application (Core0_1)
 # ===========================================================================
-add_executable(visSele Core0_1/main.cpp Core0_1/tmpCodes.cpp Core0_1/wiringPanel.cpp)
+add_executable(visSele Core0_1/main.cpp Core0_1/tmpCodes.cpp Core0_1/wiringPanel.cpp Core0_1/camTrigAugment.cpp)
 
 # Core-side frame<->object pairing. The header defaults it to 1 and states the
 # precondition for ever defaulting to 0: real-part validation, which phantom and

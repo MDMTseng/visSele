@@ -47,6 +47,7 @@
 #include <playground.h>
 #include <stdexcept>
 #include <CameraLayerManager.hpp>
+#include "camTrigAugment.hpp"
 #include <compat_dirent.h>
 #include <smem_channel.hpp>
 #include <ctime>
@@ -7699,6 +7700,34 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
            (int)ret, finfo.width, finfo.height, badFrameN);
     bpg_pi.resPool.retResrc(headImgPipe);
     return CameraLayer::ACK;
+  }
+
+  // Synthetic variation, AFTER the frame is real and BEFORE anything reads it.
+  //
+  // Here rather than inside the camera layer on purpose: the carousel's job is
+  // to replay what is on disk, and a layer that quietly returns something else
+  // makes "which image was inspected?" unanswerable from the folder. This is a
+  // fixture bolted onto the drive path, and it is off unless asked for.
+  if (camTrigAugment::on())
+  {
+    // The region is configured in FULL-SENSOR px; the frame is an ROI crop.
+    // Subtracting the sampler origin is the same correction the matching engine
+    // makes (FeatureManager_sig360_circle_line.cpp: `insp_region_x - sOff.x`),
+    // so the fixture aims at the same box the recipe judges against.
+    float _rcx = -1, _rcy = -1;
+    {
+      std::lock_guard<std::mutex> _cfg_guard(g_station_cfg_lock);
+      if (g_insp_region.w > 0 && g_insp_region.h > 0)
+      {
+        acv_XY _so = calib_bacpac.sampler
+                     ? calib_bacpac.sampler->getOriginOffset()
+                     : acv_XY{0.f, 0.f};
+        _rcx = g_insp_region.x - _so.x + g_insp_region.w * 0.5f;
+        _rcy = g_insp_region.y - _so.y + g_insp_region.h * 0.5f;
+      }
+    }
+    static std::atomic<uint64_t> _augSeq{0};
+    camTrigAugment::apply(*tmp_img, _augSeq.fetch_add(1), _rcx, _rcy);
   }
 
   // acvImage *tmp_img=img_transpose?new acvImage():&(headImgPipe->img);
