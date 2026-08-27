@@ -1163,8 +1163,21 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // `width` parallel scan columns one-sided from pt over `margin` along
       // barVec (already flipped for search_far; SearchPointCV's "searchDir"
       // parameter is in fact the bar-direction axis along which the columns
-      // are laid out); find first-hit edge per column; robustly combine
-      // (median + inlier mean). default method = FIRST.
+      // are laid out); find first-hit edge per column.
+      //
+      // Then ONE answer for the whole window, and it is a TOP selection, not an
+      // average of per-column answers: take the edge nearest the search origin
+      // across every column (min perpCoord -- the apex of the cap), and
+      // peak-weight-average only the edges within `considerRange` of it. See
+      // the TOP selection block in SearchPointCV.cpp.
+      //
+      // This comment used to say "robustly combine (median + inlier mean)",
+      // which is not what the code does and matters: a median tolerates losing
+      // columns, an apex search does not. If the window is truncated the real
+      // apex may be in the part that was cut, and the surviving columns then
+      // agree on a DIFFERENT edge -- with full strength, a consistent consider
+      // band and a stable weighted average. That is why a clipped window is NA
+      // below rather than a slightly worse number.
       acv_XY off = eT.getImgOffset();
       acv_XY out; float str;
       bool ok;
@@ -1224,11 +1237,12 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                              ? def.include_range : 0.0f;
 
       float alphaKeep  = def.alpha_keep;            // 0 = none (algorithm default)
+      bool spClipped = false;
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
                            margin, width, sp_et, edgeSuppress,
                            includeRangePx, alphaKeep,
                            eT.getBacpac(),
-                           &out, &str, def.id, &rep.cal_hits);
+                           &out, &str, def.id, &rep.cal_hits, &spClipped);
       // Lens correction (full-image px). A search point is a single robust
       // centroid (no line/circle fit), so undistorting the final point is the
       // exact lens correction for it. The per-column display hits are
@@ -1265,6 +1279,68 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         if (def.manual_offset != 0)
           rep.pt = acvVecAdd(rep.pt, acvVecMult(searchVec, def.manual_offset));
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+
+        // How much of the search window actually had image under it.
+        //
+        // `width` is a count of parallel scan columns, and each column that
+        // finds an edge contributes one hit. A column whose samples fall
+        // outside the frame contributes nothing -- correctly, there is no image
+        // there -- so a window that hangs off the edge quietly measures from
+        // whatever fraction is left, and reports SUCCESS exactly as a full one
+        // does.
+        //
+        // Measured on the bench, 2026-08-27, from a recorded 321x287 ROI crop:
+        // search point [4][1][1] (id=7) configured 21 columns and returned 3,
+        // all three sitting at x = 1.1..1.8 px against the left border. Status
+        // 0. The judge it feeds read 0.9303mm where the same part on an
+        // uncropped frame reads 1.1322mm -- 0.2mm, with nothing anywhere saying
+        // the measurement rested on 3 samples out of 21.
+        //
+        // Reported ALWAYS, so the number is visible before it becomes a
+        // failure; below the floor it is an NA, because a window that is mostly
+        // outside the image is missing data, and the rule this codebase settled
+        // on for missing data is to say NA rather than to guess. Same rule as
+        // edge.min_strength above.
+        {
+          rep.cal_used  = (int)rep.cal_hits.size();
+          rep.cal_total = (width > 1.f) ? (int)width : 1;
+
+          // THE RULE: an answer that did not come from the full scan is NA.
+          //
+          // Not a coverage RATIO -- that was the first attempt and it is the
+          // wrong test. A healthy feature routinely returns fewer hits than it
+          // has columns, because a column with no edge over min_strength
+          // contributes nothing: [4] on this bench configures 48 columns,
+          // returns 29, and is nowhere near a border. Counting hits would call
+          // that clipped too.
+          //
+          // What matters is whether the WINDOW was the window the def asked
+          // for. If any sample of the band fell outside the image, the scan was
+          // truncated and whatever came back is a best-effort over the
+          // remainder -- possibly a good number, but not the measurement that
+          // was specified, and nothing downstream can tell the difference.
+          //
+          // INSP_CALIPER_ALLOW_CLIPPED=1 restores the old behaviour for a
+          // machine that would rather keep its current verdicts while the
+          // counts are being looked at. The counts are reported either way.
+          static const bool allowClipped = []{
+            const char *e = getenv("INSP_CALIPER_ALLOW_CLIPPED");
+            return e && atoi(e) != 0;
+          }();
+          if (spClipped && !allowClipped)
+          {
+            rep.pt.x = NAN; rep.pt.y = NAN;
+            rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+            snprintf(rep.na_reason, sizeof(rep.na_reason),
+                     "scan window is off-frame (%d of %d columns had image)",
+                     rep.cal_used, rep.cal_total);
+            LOGE_EVERY_N(20, "search_point id=%d: the scan window runs off the "
+                             "image (%d/%d columns) -- NA, not a partial "
+                             "measurement. Widen the camera ROI or move the "
+                             "feature inward.",
+                         def.id, rep.cal_used, rep.cal_total);
+          }
+        }
       }
       else
       {

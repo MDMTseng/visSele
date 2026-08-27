@@ -36,6 +36,11 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outW, int spId = -1,
-                     std::vector<CaliperHit> *outHits = nullptr);
+                     std::vector<CaliperHit> *outHits = nullptr,
+                     // Set when ANY sample of the scan band fell outside the
+                     // image. The band is then not the band the def asked for,
+                     // and the answer is a best-effort over whatever was left --
+                     // which is exactly what a measurement must not silently be.
+                     bool *outClipped = nullptr);
 
 #endif // SEARCH_POINT_CV_H

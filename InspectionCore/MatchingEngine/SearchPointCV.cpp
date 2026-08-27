@@ -33,8 +33,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outW, int spId,
-                     std::vector<CaliperHit> *outHits)
+                     std::vector<CaliperHit> *outHits, bool *outClipped)
 {
+  if (outClipped) *outClipped = false;
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.x != s.x || s.y != s.y) return false;
@@ -91,7 +92,15 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     for (int j = 0; j < nP; j++)
     {
       acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
-      if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1) { d[j] = 0; vv[j] = 0; continue; }
+      if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1)
+      {
+        // Not just an unusable sample -- evidence that the WINDOW is not the
+        // one the def specified. Reported up so the caller can refuse the
+        // measurement rather than average what is left.
+        d[j] = 0; vv[j] = 0;
+        if (outClipped) *outClipped = true;
+        continue;
+      }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       // !(v > 0) catches NaN as well as negatives: the backlight factor is

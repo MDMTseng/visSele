@@ -123,6 +123,90 @@ int main()
   probe("uniform, off left",  flat, { 10, 100}, { 0.30f, 0.95f}, 40, 20, -1.f, 0.f);
   probe("uniform, off right", flat, {390, 100}, { 0.30f, 0.95f}, 40, 20, -1.f, 0.f);
 
+  // Case group 4: a REAL step at the frame boundary, competing with a real
+  // object edge. A DIFFERENT bug from groups 1-3, and their fix does not touch
+  // it -- those cases still pass alongside this one.
+  //
+  // Groups 1-3 are about a FABRICATED edge: samples outside the image filled
+  // with 0, reaching the Sobel through a guard that only checked the middle
+  // row. Fixed, and it stays fixed.
+  //
+  // What gets reported from the machine is not fabricated. A real frame has a
+  // real step near its border -- the ROI crop, the edge of the backlight, a
+  // vignette -- and it is often the STRONGEST gradient in the band. The scan
+  // takes the FIRST hit along its direction, so once the part drifts close
+  // enough to the border, the border is what the band meets first and the
+  // measurement moves onto it. Nothing is invented; the wrong REAL edge wins.
+  //
+  // The sweep is the point of this group. "Sometimes it steals the edge" is not
+  // actionable; "it steals it once the object edge is within N px of the
+  // border" is. The number is printed so a change to the scan can be compared
+  // against it. The ASSERTION is only on the far cases: pinning the near ones
+  // would freeze today's behaviour as correct, and whether it is correct is the
+  // open question this test exists to make measurable.
+  {
+    printf("border step vs object edge -- which one the scan lands on:%c", 10);
+    const int BW = 400, BH = 200;
+    int flip = -1;
+    // TWO start positions per gap, because which edge is "first" depends on
+    // where the band is centred, and that is exactly what moves when a part
+    // drifts towards the frame edge:
+    //   outside  the search point sits beyond the part, scanning inward -- the
+    //            normal case, and the part is met first
+    //   inside   the search point sits BETWEEN the part and the border, which
+    //            is what a pose placed on a part near the edge produces. Now
+    //            the border is the first thing the band meets.
+    for (int gap = 40; gap >= 4; gap -= 4)
+    {
+      cv::Mat im(BH, BW, CV_8U, cv::Scalar(210));
+      const int borderY = BH - 6;
+      cv::rectangle(im, cv::Rect(0, borderY, BW, BH - borderY),
+                    cv::Scalar(15), cv::FILLED);
+      const int objY = borderY - gap;
+      cv::rectangle(im, cv::Rect(0, objY, BW, 3), cv::Scalar(60), cv::FILLED);
+
+      for (int side = 0; side < 2; side++)
+      {
+        const float startY = (side == 0) ? (float)(objY - 25)
+                                         : (float)(objY + gap / 2);
+        acv_XY out{}; float w = 0;
+        std::vector<CaliperHit> hits;
+        const bool ok = search_point_cv(im, {200.f, startY}, {1, 0},
+                                        45.f, 20.f, SP_BOTH, 0.f, 2.f, 0.5f,
+                                        nullptr, &out, &w, -1, &hits);
+        const bool onObject = ok && std::fabs(out.y - objY) <= 4.f;
+        const bool onBorder = ok && std::fabs(out.y - borderY) <= 4.f;
+        // hits.size() is the count that matters, not just where the answer
+        // landed: a caliper that measures the right edge from 3 of its 19 scan
+        // lines has lost its statistical basis and still reports SUCCESS. The
+        // live bench showed exactly that -- id=7 fell from 19 hits on the full
+        // frame to 3 on the ROI-cropped one, status 0 both times, and the
+        // measurement moved 0.2mm.
+        printf("    gap %2dpx %-7s start y=%3.0f: %s y=%.1f hits=%2zu (object %d, border %d)%s%c",
+               gap, side == 0 ? "outside" : "inside", startY,
+               ok ? "hit " : "MISS", ok ? out.y : -1.f, hits.size(), objY, borderY,
+               onBorder ? "   <-- BORDER WON" : (onObject ? "" : "   <-- neither"),
+               10);
+        if (onBorder && flip < 0) flip = gap;
+        // Asserted only for the outside start with the part well clear. The
+        // inside start is the case under investigation; pinning it would freeze
+        // today's answer as the correct one, and that is the open question.
+        if (side == 0 && gap >= 24)
+        {
+          char nm[80]; snprintf(nm, sizeof nm, "gap %dpx outside: measures the object", gap);
+          printf("  [%s] %-44s y=%.1f want %d%c", onObject ? "PASS" : "FAIL",
+                 nm, ok ? out.y : -1.f, objY, 10);
+          if (!onObject) failures++;
+        }
+      }
+    }
+    if (flip >= 0)
+      printf("  NOTE: the border wins from gap %dpx and closer.%c", flip, 10);
+    else
+      printf("  NOTE: the border never won in this sweep.%c", 10);
+  }
+
+
   printf("\n%s (%d failure%s)\n", failures ? "FAIL" : "ALL PASS",
          failures, failures == 1 ? "" : "s");
   return failures ? 1 : 0;

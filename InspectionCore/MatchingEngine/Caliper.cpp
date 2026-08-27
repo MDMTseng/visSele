@@ -108,14 +108,51 @@ static void caliper_dump_line_strip(const char *prefix, const char *name, const 
 // edge_select (method/polarity/strength), map the chosen index back to an image
 // point (center + s * t_edge). Used by both the per-caliper and rectify-once paths
 // so they pick edges identically.
+// `valid` (optional, nAcross entries): 0 where the profile sample stands for NO
+// IMAGE rather than for a dark one.
+//
+// Without it this function cannot tell the two apart, and the callers hand it a
+// 0 for a column that fell entirely outside the frame. A backlit part sits on a
+// ~210 background, so that 0 is a full-scale bright->dark step exactly at the
+// frame boundary -- the strongest gradient in the profile, every time, and
+// always the same height because the background is uniform.
+//
+// Measured on the bench, 2026-08-27, from a recorded frame (321x287 ROI crop)
+// plus its .xreps: arc feature id=9 returned 10 caliper hits, of which FOUR sat
+// in a straight vertical line at x = 4.3 .. 9.2 px with strength 76.5 --
+// identical to one decimal across all four, which is the signature of a
+// synthetic step rather than image content. The genuine arc hits in the same
+// fit measured 81.8 / 93.0 / 130.3 / 136.0 / 136.9. All four fabricated hits
+// were marked st=2 (used) and went into the circle fit; the feature reported
+// status 0, and the neighbouring judge read 0.9303mm against 1.1322mm from the
+// same part on an uncropped frame -- a 0.2mm error, silently.
+//
+// The mask already existed at both call sites (Bvalid/Scnt in caliper_locate, a
+// per-sample count in caliper_measure) and was discarded one line before the
+// edge search. This is the same rule SearchPointCV applies around its Sobel
+// taps; the line/arc caliper never got it.
 static bool profile_to_edge(const float *profile, int nAcross, float step, float L,
                             const EdgeSelectParams &edge, acv_XY center, acv_XY s,
                             acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
-                            float *outPos)
+                            float *outPos, const uint8_t *valid = nullptr)
 {
   std::vector<float> grad(nAcross, 0);
   for (int i = 1; i < nAcross - 1; i++) grad[i] = profile[i + 1] - profile[i - 1];
   grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
+  // Kill the gradient wherever the central difference reads a sample that is
+  // not image. The taps for i are i-1 and i+1, so those are what is checked --
+  // matching the guard to the arithmetic, exactly as SearchPointCV does.
+  if (valid)
+  {
+    for (int i = 1; i < nAcross - 1; i++)
+      if (!valid[i - 1] || !valid[i] || !valid[i + 1]) grad[i] = 0;
+    // The two extrapolated ends copy their neighbour, so they inherit its
+    // verdict rather than being left as the one place an invented edge can
+    // still surface.
+    grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
+    if (!valid[0]) grad[0] = 0;
+    if (!valid[nAcross - 1]) grad[nAcross - 1] = 0;
+  }
   float pos, str;
   if (!edge_select(grad.data(), nAcross, edge, &pos, &str, outInfo)) return false;
   if (outPos) *outPos = pos;
@@ -154,6 +191,8 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   int halfW = (int)(W / 2);
 
   std::vector<float> profile(nAcross, 0);
+  // 1 = this profile entry is backed by at least one real sample.
+  std::vector<uint8_t> vprof(nAcross, 0);
   for (int i = 0; i < nAcross; i++)
   {
     float t = -L + i * step;
@@ -170,10 +209,11 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
       sum += v; cnt++;
     }
     profile[i] = (cnt > 0) ? (float)(sum / cnt) : 0;
+    vprof[i] = (cnt > 0) ? 1 : 0;
   }
   if (outProfile) *outProfile = profile;
   return profile_to_edge(profile.data(), nAcross, step, L, p.edge, center, s,
-                         outPt, outStrength, outInfo, outPos);
+                         outPt, outStrength, outInfo, outPos, vprof.data());
 }
 
 bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
@@ -383,6 +423,8 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   }
 
   std::vector<float> profile(nAcross);
+  // Per-entry: 1 = backed by real image, 0 = placeholder for off-image.
+  std::vector<uint8_t> vprof(nAcross, 1);
   // Per-caliper hits, always tracked (one entry per caliper i in [0,count)).
   // status starts at 0=missed; flipped to 2=inlier after the fit (then some may
   // be demoted to 1=outlier when MAD rejection runs).
@@ -403,6 +445,8 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     if (!hasNaN)
     {
       for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
+      // No sample anywhere in this band left the image, so every entry is real.
+      std::fill(vprof.begin(), vprof.end(), (uint8_t)1);
     }
     else
     {
@@ -414,11 +458,16 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
       {
         int vc = Chi[x] - Clo[x];
         profile[x] = (vc > 0) ? (float)((Shi[x] - Slo[x]) / vc) : 0.0f;
+        // The 0 above is a placeholder, NOT a measurement. Recording that here
+        // is the whole fix: the edge search used to receive it as an ordinary
+        // dark sample and duly found the strongest edge in the profile sitting
+        // on the frame boundary. See profile_to_edge.
+        vprof[x] = (vc > 0) ? 1 : 0;
       }
     }
 
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
-    bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos);
+    bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos, vprof.data());
     // Lens-undistort BEFORE the fit so a distortion-curved edge fits the true
     // straight line, not a biased one. We also undistort the nominal anchor
     // `c` so the missed-caliper visualization (stored as a CaliperHit with

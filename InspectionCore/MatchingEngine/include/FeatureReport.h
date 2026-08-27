@@ -429,6 +429,13 @@ typedef struct FeatureReport_searchPointReport{
   // average), 1 = strength-gated edge outside the consider band. Empty in
   // contour mode. Coords converted to OBJECT-FRAME mm by SPointMatching_ReportGen.
   std::vector<CaliperHit> cal_hits;
+  // How many of the configured scan columns had image under them, and how many
+  // were configured. A window that hangs off the frame measures from the
+  // fraction that is left and used to report SUCCESS exactly like a full one --
+  // see the coverage check in the caliper branch of SPointMatching.
+  // 0/0 = not a caliper-mode scan.
+  int cal_used = 0;
+  int cal_total = 0;
 }FeatureReport_searchPointReport;
 
 
