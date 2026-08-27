@@ -18,6 +18,9 @@ Each row says what was actually found, not what was claimed.
 | C5 | three pipeline threads have no exception handler | **CONFIRMED** | fixed |
 | C9 | unsynchronised read of `lastDatViewCache` | **CONFIRMED, left alone** | see below |
 | C10 | `calib_bacpac` shared by two threads | **CONFIRMED, left alone** | see below |
+| C7 | multi-packet batch sent as four independent fan-outs | **CONFIRMED, left alone** | see below |
+| C8 | `RingBuff.cpp` dead, broken, duplicates the header | **CONFIRMED, and worse** | deleted |
+| C11 | snapshot filenames collide silently | **CONFIRMED** | fixed |
 | C12 | `saveInspQFullSkipCount` is a plain `int` across threads | **CONFIRMED** | fixed |
 
 ## C1 — `DoImageTransfer=false` turns image streaming ON
@@ -174,3 +177,69 @@ thought through rather than a lock dropped in, and a wrong fix here turns a
 theoretical race into a deadlock on a running machine. **Recorded, not
 patched.** They want a session with the threading model in front of you, not a
 slot in a triage pass.
+
+## C11 — NG evidence overwritten, and the log says "saved"
+
+```c
+std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
+```
+
+Millisecond resolution and nothing else. Two saves in the same millisecond
+produce the same path, the second overwrites the first, `saveInspectionSample`
+returns 0 and the rate-limited "snapshot saved" line reports success. **NG
+evidence lost, silently, on the one path whose entire purpose is not losing NG
+evidence.**
+
+Now `<ms>_<seq>` with a per-process atomic counter. A sequence number rather
+than a stat-and-retry: the check has a race of its own between two saver
+threads, and this cannot collide by construction. The timestamp stays first so a
+directory listing is still in time order, and rotation is unaffected — it picks
+the oldest by `st_mtime`, not by parsing the name.
+
+## C8 — a dead file, and the live header is worse
+
+The finding was right and understated it.
+
+`common_lib/RingBuff.cpp` is in no build target, does not compile (it defines a
+free `size()` instead of `RingBuf::size()`, uses `RB_Idx_Type` outside class
+scope, repeats default template arguments), and duplicates definitions that are
+inline in `RingBuf.hpp`. Anyone "fixing" a ring-buffer bug there changes
+nothing. **Deleted.**
+
+What the finding missed: **the live header has the same UB**, and `CoreHub/` —
+its only includer — is not in `CMakeLists.txt` either, so nothing the shipped
+binary compiles includes it.
+
+```c
+getTail_block()  tailLock.lock();  ... tailLock.try_lock_for(...)   // already held
+pushHead()       tailLock.unlock();                                 // never locked here
+```
+
+`std::timed_mutex` is not recursive, and unlocking one you do not own is UB.
+It is a hand-rolled condition variable built on something that cannot express
+one.
+
+**Not repaired — marked.** The header now says, at the top, that it is in no
+build target and why its locking is wrong, so nobody debugs a live problem in
+it. It was also made self-contained (`<cstdint>`, `<mutex>`, `<chrono>` — it
+used all three and included none, compiling only because every includer pulled
+them in first), which makes the "not in any build" claim checkable rather than
+asserted.
+
+## C7 — a torn packet batch, CONFIRMED and deliberately not touched
+
+`InspResultAction_s` sends SS-start / RP / IM / SS-end as four separate
+`pushToSubscribers` calls, each retaking `subscribersLock`.
+`pushBatchToSubscribers` exists for exactly this reason and the doorbell paths
+use it; this one does not. Two threads run the function — ActionThread per
+frame, and the WS thread on `LAST_FRAME_RESEND` — so a resend can interleave
+with a live frame and leave a peer's demux holding an unterminated SS-start.
+
+`MT_LOCK` does not serialise them: it is a documented no-op, and **the codebase
+already explains that making it real deadlocks immediately, naming
+`LAST_FRAME_RESEND`** — the very thread in this finding.
+
+Batching properly means holding all four packets alive at once, including the
+encoded image, on a hot path where the encode is deliberately done *before* the
+lock is taken. That is a design change to the streaming path, not a triage fix.
+Same call as C9 and C10: **recorded, not patched.**

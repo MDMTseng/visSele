@@ -10225,7 +10225,19 @@ void InspSnapSaveThread(bool *terminationflag)
           count--;
           save_snap_folder_full_delete_count++;
         }
-        std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
+        // A MILLISECOND IS NOT A UNIQUE NAME. Two saves in the same
+        // millisecond produced the same path, the second overwrote the first,
+        // saveInspectionSample returned 0 and the "snapshot saved" line
+        // reported success -- NG evidence lost, silently, on the one path whose
+        // entire purpose is not losing NG evidence.
+        //
+        // A per-process sequence number rather than a collision check: a
+        // stat-and-retry has a race of its own between two saver threads, and
+        // this cannot collide by construction. The timestamp stays first so a
+        // directory listing is still in time order.
+        static std::atomic<uint32_t> _snapSeq{0};
+        std::string filePath = rootPath + extPath + std::to_string(current_time_ms())
+                             + "_" + std::to_string(_snapSeq.fetch_add(1));
 
         // Hard disk-space floor: avoid the silent-truncation cascade where
         // the snapshot fopen succeeds, the kernel hits ENOSPC mid-write, and

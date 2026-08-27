@@ -1,6 +1,34 @@
 #ifndef __RingBufX_H__
 #define __RingBufX_H__
 
+// NOT IN ANY BUILD TARGET, and its locking is undefined behaviour. Read this
+// before debugging a ring-buffer problem here -- you will be changing code that
+// does not run.
+//
+// Nothing the shipped binary compiles includes this header: the only includers
+// are under CoreHub/, and CoreHub is not in CMakeLists.txt. The live ring
+// buffers are TSQueue and resourcePool.
+//
+// The locking, for whoever revives it. It is a hand-rolled condition variable
+// built on a plain std::timed_mutex, which cannot express one:
+//
+//   getTail_block()  locks tailLock, then calls tailLock.try_lock_for() on the
+//                    mutex it is ALREADY holding. std::timed_mutex is not
+//                    recursive; that is UB, not a wait.
+//   pushHead()       unlocks tailLock from the PRODUCER, which never locked it.
+//                    Unlocking a mutex you do not own is UB.
+//
+// The intent -- producer wakes a blocked consumer -- needs a condition_variable
+// or a counting semaphore. A companion RingBuff.cpp carried the same bugs plus
+// a few that stopped it compiling at all; it was deleted 2026-08-27 rather than
+// repaired, because a broken duplicate of a dead header is worse than neither.
+//
+// Self-contained as of 2026-08-27 so that claim is checkable: it used uint32_t,
+// std::timed_mutex and std::chrono while including none of them, and compiled
+// only because every includer happened to pull them in first.
+#include <cstdint>
+#include <mutex>
+#include <chrono>
 
 template <typename RB_Idx_Type=uint32_t>
 class RingBufIdxCounter
