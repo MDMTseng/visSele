@@ -478,10 +478,6 @@ namespace camTrigDrive
   static std::atomic<uint64_t> pendTail{0};
   static uint64_t pend[PEND_N];
 
-  // When the last announcement arrived, so an IDLE bench can be told from a
-  // running one without a session flag to keep in sync.
-  static std::atomic<uint64_t> lastAnnounceUs{0};
-
   // GATE_DROP rather than DROP: the windows headers this file already pulls in
   // define plain DROP, and an enumerator that collides with a macro fails to
   // compile with an error that names the number, not the name.
@@ -549,7 +545,6 @@ namespace camTrigDrive
     }
     pend[h % PEND_N] = stamp_us;
     pendHead.store(h + 1, std::memory_order_release);
-    lastAnnounceUs.store(nowUs(), std::memory_order_release);
   }
 
   // From the camera callback.
@@ -578,12 +573,19 @@ namespace camTrigDrive
     const uint64_t t = pendTail.load(std::memory_order_relaxed);
     if (t >= pendHead.load(std::memory_order_acquire))
     {
-      const uint64_t last = lastAnnounceUs.load(std::memory_order_acquire);
-      const uint64_t now  = nowUs();
-      // 1s: two orders of magnitude above the ~125ms the plate announces at,
-      // and short enough that picking an image by hand feels immediate.
-      if (last == 0 || (now > last && now - last > 1000000ULL))
-        return GATE_PASS;
+      // NO IDLE PASSTHROUGH.
+      //
+      // There used to be one here: "nothing announced for a second, so nobody
+      // is driving -- let frames through". It was a guess at intent from
+      // timing, and it was wrong in both directions. The board announces in
+      // states that have nothing to do with an inspection session, so it failed
+      // to open when it should; and with the carousel free-running under FI it
+      // opened when it should not -- every frame passed, and an FI session with
+      // the machine stopped inspected continuously off canned images.
+      //
+      // Intent is now stated, not inferred: releaseOne() above, called from the
+      // fake-camera panel's next/prev/replay/jump. A frame with neither an
+      // announcement nor an operator behind it is not wanted.
       int n = ++unannouncedDropCount;
       if ((n % 200) == 1)
         LOGI("cam_trig drive: dropped %d frame(s) with no announcement behind "
