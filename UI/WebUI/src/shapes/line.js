@@ -2,6 +2,7 @@
 // Each shape type owns one file declaring its defaults, editor schema (later),
 // and draw logic. Adding a new primitive becomes a single-file change.
 import Color from 'color';
+import { EDGE_MIN_STRENGTH } from './_caliperSeed';
 import { LineCentralNormal } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
@@ -40,14 +41,14 @@ export const fields = {
         };
       }
       if (obj.edge === undefined) {
-        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60 };
+        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: EDGE_MIN_STRENGTH };
       }
     },
   },
   caliper: caliperField(10, (s) =>
     (s.pt1 && s.pt2) ? Math.hypot(s.pt2.x - s.pt1.x, s.pt2.y - s.pt1.y) : 0
   ),
-  edge:    edgeField({ method: 'strongest', polarity: 'falling', min_strength: 60 }),
+  edge:    edgeField({ method: 'strongest', polarity: 'falling', min_strength: EDGE_MIN_STRENGTH }),
 };
 
 export function buildWhiteListKey(ctx) {

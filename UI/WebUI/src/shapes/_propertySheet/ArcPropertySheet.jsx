@@ -5,7 +5,7 @@
 //   - `direction` switch (stored as ±1, not bool — coerce in the handler).
 //   - caliper width auto-default = arc length / count (not chord length).
 import { caliperConfigProblem, CALIPER_MIN_COUNT_ARC } from '../_caliperFields';
-import { ARC_POLARITY } from '../_caliperSeed';
+import { ARC_POLARITY, EDGE_MIN_STRENGTH } from '../_caliperSeed';
 import React, { useEffect } from 'react';
 import { arcSweep } from 'UTIL/MathTools';
 import {
@@ -48,7 +48,7 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
       };
       if (!shape.edge) patch.edge = {
         // ARC_POLARITY: see arc.js -- falling costs -0.11mm on an inner radius.
-        method: 'strongest', polarity: ARC_POLARITY, nth: 0, min_strength: 60,
+        method: 'strongest', polarity: ARC_POLARITY, nth: 0, min_strength: EDGE_MIN_STRENGTH,
       };
     }
     update(patch);

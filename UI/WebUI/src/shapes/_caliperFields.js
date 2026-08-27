@@ -60,18 +60,20 @@ export function caliperField(countDefault, geomLengthFn) {
   };
 }
 
-// `edge` field decl, parameterized by per-shape defaults. line/arc default to
-// {strongest, falling}; search_point defaults to {first, any} (matches core).
-// The min_strength default here is a LEGACY-MIGRATION value, not a "good
-// starting point": `derive` fills a field that an existing def left undefined,
-// so whatever it writes becomes what that shape runs from then on.
+// `edge` field decl, parameterized by per-shape defaults. line/arc pass
+// EDGE_MIN_STRENGTH and their own polarity (falling for a line's outer
+// boundary, ARC_POLARITY for an arc's inner radius); search_point passes
+// {first, falling} and no strength, so it -- and only it -- still lands on the
+// 10 below. Anything about the line/arc value belongs in _caliperSeed now.
 //
-// 10 is what the core silently substituted for an absent or 0 min_strength
-// before 2026-08-26, so writing 10 keeps such a shape doing what it has always
-// done. 0 would NOT be neutral any more -- the core now honours it, and 0 means
-// no gradient floor at all, which locks onto noise as readily as onto the part.
-// A NEW point is seeded 60 where it is created (EverCheckCanvasComponent), and
-// that is the right place for a judgement about a good starting value.
+// That 10 is a LEGACY-MIGRATION value, not a "good starting point": `derive`
+// fills a field an existing def left undefined, so whatever it writes becomes
+// what that shape runs from then on. 10 is what the core silently substituted
+// for an absent or 0 min_strength before 2026-08-26, so writing 10 keeps such a
+// shape doing what it has always done. It is deliberately NOT moved to 30 with
+// the others: 30 is a choice about where a good floor sits, and this is a
+// promise not to change a def that was already running. A NEW search point is
+// seeded 60 where it is created (EverCheckCanvasComponent).
 export function edgeField({ method = 'strongest', polarity = 'falling', min_strength = 10 } = {}) {
   return {
     editor: (ctx) => (ctx.edit_tar.locating === 'caliper') ? {

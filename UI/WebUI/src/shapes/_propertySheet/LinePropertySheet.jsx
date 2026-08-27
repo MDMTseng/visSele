@@ -12,6 +12,7 @@
 //                   doesn't reference other shapes itself, so unused here)
 //   dict / theme  — i18n
 import { caliperConfigProblem, CALIPER_MIN_COUNT_LINE } from '../_caliperFields';
+import { EDGE_MIN_STRENGTH } from '../_caliperSeed';
 import React, { useEffect } from 'react';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
@@ -50,7 +51,7 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
         min_inliers: 5, max_error: 0.1,
       };
       if (!shape.edge) patch.edge = {
-        method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60,
+        method: 'strongest', polarity: 'falling', nth: 0, min_strength: EDGE_MIN_STRENGTH,
       };
     }
     update(patch);

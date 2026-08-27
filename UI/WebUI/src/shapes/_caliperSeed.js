@@ -98,7 +98,29 @@ export function seedCaliper(shape, countDefault = CALIPER_COUNT_DEFAULT) {
 // floor" is 0, which is also the core's own parse default. Measured: 0 and 40 give
 // bit-identical radii against a 200-to-black silhouette, because both wire edges
 // are far above either threshold. The floor was never what decided anything.
-export const EDGE_SEED = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
+// One value, one place to argue with it. It was three: 0 here, 10 in
+// edgeField's derive, 60 wherever a shape was created -- so what a line
+// measured depended on which code path had last touched it.
+//
+// 30 is a decision the measurement supports rather than forces. Measured 0 vs
+// 30 across the reference corpus: 7 of 41 judge values move, every one of them
+// by <=0.0027mm, and the three largest -- SME-0020-1A-H's [R] and its parallel
+// pair -- move slightly TOWARD the pre-conversion value. So a floor is doing a
+// little good here and no harm. (An earlier note claimed 0 and 40 were
+// bit-identical; that held for one arc-radius test, not for the corpus.)
+//
+// The reason not to sit at 0 is not in this corpus at all. _caliperFields'
+// objection is: now that the core honours a 0, 0 means no gradient floor
+// whatsoever, and locks onto noise as readily as onto the part. Everything
+// measured here was shot backlit at 200 against black wire, where both edges
+// tower over any threshold in this range -- so this corpus cannot speak for
+// other lighting, and 30 is the floor chosen for the lighting it cannot see.
+// 60 was only ever a starting guess.
+export const EDGE_MIN_STRENGTH = 30;
+
+export const EDGE_SEED = {
+  method: 'strongest', polarity: 'falling', nth: 0, min_strength: EDGE_MIN_STRENGTH,
+};
 
 // falling is right for a silhouette's OUTER boundary; an arc usually measures an
 // INNER radius, where falling takes the wrong side of the wire. Measured across
