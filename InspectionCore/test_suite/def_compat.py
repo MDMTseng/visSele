@@ -15,6 +15,16 @@ question: did this build change what an old recipe measures?
     python3 def_compat.py --corpus <dir>              # check against baseline
     python3 def_compat.py --corpus <dir> --bless      # record a new baseline
 
+To measure a MIGRATION rather than a build, convert a corpus first and compare
+it against the pre-conversion baseline:
+
+    node UI/WebUI/tools/def_convert.mjs --in <corpus> --out <converted>
+    python3 def_compat.py --corpus <converted> --ignore-def-sha1
+
+The converter lives in the WebUI because rewriting a recipe is the editor's job,
+and it imports the editor's own seeding rule -- so what it produces is what a
+person switching `locating` to 'caliper' by hand would get.
+
 The corpus is a directory of <name>.hydef next to <name>.png. It is NOT in the
 repo: these are production recipes with customer part numbers, and the images
 are a megabyte each. The BASELINE is in the repo (small, and it is the thing

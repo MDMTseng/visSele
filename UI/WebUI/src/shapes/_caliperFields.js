@@ -1,3 +1,5 @@
+import { seedCaliper, CALIPER_SEED_MIN_INLIERS, CALIPER_SEED_MAX_ERROR } from './_caliperSeed';
+
 // Shared `caliper` + `edge` field declarations for primitives that support
 // caliper/section locating mode (line, arc, search_point). Wire-format
 // matches the core parser in MatchingEngine/FeatureManager_sig360_circle_line.cpp
@@ -35,14 +37,25 @@ export function caliperField(countDefault, geomLengthFn) {
       min_inliers: 'input-number',
       max_error: 'input-number',
     } : undefined,
+    // The seed itself lives in _caliperSeed so the offline converter
+    // (tools/def_convert.mjs) runs THIS rule rather than a copy of it. A second
+    // implementation is how a def converted by the tool stops matching one
+    // converted by hand, and nothing would report the drift.
+    //
+    // geomLengthFn is still accepted per shape type, but the seed's own
+    // geomLengthOf covers line and arc; pass one only for a type it does not
+    // know.
     derive: (shape) => {
       if (shape.locating !== 'caliper') return undefined;
-      let width = 0.1;
       if (typeof geomLengthFn === 'function') {
         const L = geomLengthFn(shape);
-        if (L > 0 && Number.isFinite(L)) width = L / countDefault;
+        const count = countDefault;
+        const width = (L > 0 && Number.isFinite(L)) ? (L / count) : 0.1;
+        return { count, width,
+                 min_inliers: CALIPER_SEED_MIN_INLIERS,
+                 max_error: CALIPER_SEED_MAX_ERROR };
       }
-      return { count: countDefault, width, min_inliers: 5, max_error: 0.1 };
+      return seedCaliper(shape, countDefault);
     },
   };
 }
