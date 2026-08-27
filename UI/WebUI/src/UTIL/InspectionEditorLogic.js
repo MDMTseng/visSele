@@ -1180,12 +1180,36 @@ export class InspectionEditorLogic {
       // missed → gray box no X, outlier → red X, inlier → green X.
       delete eObject._pt1; delete eObject._pt2;
       delete eObject.adj_pt1;
+      // Both of the following used to be skipped by this early return, and both
+      // were wrong for the same reason: NA left the shape in OBJECT frame while
+      // the canvas renders in IMAGE frame.
+      //
+      // The hits were already being passed through here, untransformed -- so an
+      // NA feature's calipers were drawn at object-frame coordinates on an
+      // image-frame canvas, i.e. somewhere else on the screen entirely.
+      //
+      // And the shape itself has to be moved too, or an NA cannot be drawn at
+      // all: the def geometry is the only geometry an NA has, and it only means
+      // anything once it is placed on the part that was actually found. Forward
+      // -transformed, it is exactly "where this would have been measured",
+      // which is the one useful thing to show for a feature that produced no
+      // measurement. (Both helpers are function declarations, so they are
+      // hoisted and callable from here.)
       const _naHits = InspectionEditorLogic_CalHitsOf(inspAdjObj);
       if (_naHits) {
-        eObject.cal_hits = _naHits;
+        eObject.cal_hits = cal_hits_forward(_naHits);
       } else {
         delete eObject.cal_hits;
       }
+      ["pt1", "pt2", "pt3"].forEach((key) => {
+        if (eObject[key] === undefined) return;
+        eObject[key] = pointForwardTrans(eObject[key]);
+      });
+      // Carried so the overlay can say WHY next to the shape. Without it an NA
+      // is a grey outline with no explanation, which is only marginally better
+      // than the nothing it used to be.
+      if (inspAdjObj.na_reason) eObject.na_reason = inspAdjObj.na_reason;
+      else delete eObject.na_reason;
       return;
     }
     function pointForwardTrans(_pt)

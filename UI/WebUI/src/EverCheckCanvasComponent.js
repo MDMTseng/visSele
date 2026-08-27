@@ -1025,26 +1025,77 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
           const imgAngle = reg.angle || 0;
           const flip = reg.isFlipped || false;
           const differs = reg.cx !== ref.cx || reg.cy !== ref.cy || imgAngle !== refAngle;
-          if (differs) {
-            flip ? ctx.scale(1, -1) : ctx.scale(1, 1);
-            //ctx.translate(ref.cx, ref.cy);          // -> reference sig360 position
-            ctx.rotate(imgAngle);        // -> reference orientation
-            ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp); 
-                  // image sig360 -> origin
-            //ctx.translate(-reg.cx, -reg.cy);
-          }
+          // The CENTRING happens either way. Only the ROTATION is conditional.
+          //
+          // `if (differs)` used to wrap both, and for an init-image save --
+          // where the registration is by construction identical to the
+          // reference -- that meant NO TRANSFORM AT ALL: the image drawn at the
+          // origin, correct scale, zero offset, with the def features sitting
+          // wherever the object frame put them. The legacy path below centres
+          // every other def by exactly this amount, so skipping it here was
+          // never "identity", it was a missing translate.
+          //
+          // It surfaces the day a def gains a def_image_reg and not before:
+          // without one, `reg` is falsy and the legacy path centres correctly.
+          // Re-saving a def writes it -- which is why this arrived with a def
+          // edit and not with any change to the rendering code.
+          flip ? ctx.scale(1, -1) : ctx.scale(1, 1);
+          if (differs) ctx.rotate(imgAngle);   // -> reference orientation
+          ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp);   // image sig360 -> origin
         }
         else
         {
-
-          let center = this.db_obj.getsig360infoCenter();
-          ctx.translate(-center.x/mmpp, -center.y/mmpp);
+          // The centering-only path, and the one that silently did nothing.
+          //
+          // getsig360infoCenter() throws when sig360info is not loaded yet --
+          // which is exactly the state the canvas is in on the FIRST draw after
+          // a def is opened. The empty catch below swallowed it, the translate
+          // never ran, and the image was drawn at the origin with the correct
+          // SCALE and no offset: the def features in one corner and the part in
+          // another, with nothing logged anywhere.
+          let center = (this.db_obj && this.db_obj.getsig360infoCenter)
+                       ? this.db_obj.getsig360infoCenter() : { x: 0, y: 0 };
+          // SHAPE-BASED DEFS HAVE NO SIG360 REPORT, and both paths above ask
+          // for one.
+          //
+          // `ref` is the RUNTIME sig360 report, not the def's stored data, so a
+          // def whose locating_engine is shape_based never has it -- the branch
+          // above is skipped however good its def_image_reg is, and this branch
+          // then calls getsig360infoCenter(), which does not throw: it catches
+          // internally and returns {0,0}. translate(0,0) is a no-op, so the
+          // image is drawn at the origin with the correct SCALE and no offset,
+          // silently. That is the whole bug, and it appeared the day a def was
+          // switched from sig360 to SBM -- nothing in the rendering path
+          // changed.
+          //
+          // The stored registration is the same quantity the sig360 centre
+          // would have been (on test1.hydef def_image_reg.cx/cy is 15.025,
+          // 9.305 -- identical to the @__SIGNATURE__ anchor), so it is the
+          // correct fallback rather than an approximation. Used only when the
+          // sig360 centre is absent, so nothing that works today changes.
+          if (!center.x && !center.y && reg
+              && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
+            center = { x: reg.cx, y: reg.cy };
+            log.info("[imgAlign] no sig360 report (shape-based def) -- placing "
+                     + "the def image from def_image_reg", center);
+          }
+          if (center && isFinite(center.x) && isFinite(center.y))
+            ctx.translate(-center.x/mmpp, -center.y/mmpp);
+          else
+            log.error("[imgAlign] no sig360 centre and no def_image_reg -- the "
+                      + "def image is drawn UNPLACED (scale right, offset zero). "
+                      + "db_obj:", !!this.db_obj, "center:", center);
         }
-      } catch (e) { 
-
-
-
-       }
+      } catch (e) {
+        // Never silent again. This catch used to be empty, so every failure of
+        // the alignment above -- a missing sig360info, a null db_obj, a bad
+        // number -- produced an image at the origin and no evidence at all.
+        // The picture looked plausible, which is what made it expensive: the
+        // scale is unaffected, so only the offset is wrong, and an operator
+        // reads that as "the def does not match the part".
+        log.error("[imgAlign] alignment threw -- the def image is drawn "
+                  + "UNPLACED (scale right, offset zero):", e && e.message, e);
+      }
 
       ctx.drawImage(this.secCanvas, 0, 0);
       

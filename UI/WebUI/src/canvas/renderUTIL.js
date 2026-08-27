@@ -6,6 +6,21 @@ import { GetObjElement } from 'UTIL/MISC_Util';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import { INSPECTION_STATUS, BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import { mkLog } from "UTIL/logger";
+
+// How an NA feature is drawn.
+//
+// grayscale(1) rather than a grey strokeStyle, because a strokeStyle set out
+// here does not survive: every shape module's drawInspection sets its own
+// colour as its first act (search_point uses rgba(179,0,0,0.5)). Setting grey
+// and calling them produced a RED template for a feature that measured nothing
+// -- worse than not drawing it, because red is the colour of a real result.
+// The canvas filter applies to whatever the module paints, so the module needs
+// no cooperation and cannot override it.
+//
+// Grey, not a faded version of the shape's own colour: a measured feature and a
+// template that could not be measured must never differ only in saturation.
+const NA_CANVAS_FILTER = 'grayscale(1) opacity(0.7)';
+const NA_REASON_COLOR  = 'rgba(255, 210, 60, 0.95)';
 const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
@@ -549,13 +564,21 @@ class renderUTIL {
 
   drawInspectionShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false,inFullDisplay=true) {
     let normalRenderGroup = [];
+    // NA shapes, drawn last so a grey template can never overdraw a real result.
+    let naRenderGroup = [];
     eObjects.forEach((eObject) => {
       if (eObject == null) return;
-      
-      if(eObject.inspection_status==INSPECTION_STATUS.NA )
-      {
-        return;
-      }
+
+      // NA used to `return` here: the feature vanished from the overlay
+      // completely, and with it every clue about what was supposed to be
+      // measured. An operator could not tell an NA from a def that never had
+      // that feature -- which is the difference between "look at the ROI" and
+      // "nothing is wrong".
+      //
+      // It is drawable because ShapeAdjustsWithInspectionResult now forward-
+      // transforms the NA shape too: the def geometry placed on the part that
+      // was actually found, i.e. where this WOULD have been measured.
+      const isNA = (eObject.inspection_status == INSPECTION_STATUS.NA);
       var found = skip_id_list.find(function (skip_id) {
         return eObject.id == skip_id;
       });
@@ -572,17 +595,51 @@ class renderUTIL {
       // measure has no drawInspection (it's deferred to the editor-style draw
       // via normalRenderGroup below). Unregistered types pass through.
       if (eObject.type === SHAPE_TYPE.measure) {
-        normalRenderGroup.push(eObject);
+        (isNA ? naRenderGroup : normalRenderGroup).push(eObject);
       } else {
         const mod = getShapeModule(eObject.type);
         if (mod && mod.drawInspection) {
-          mod.drawInspection(ctx, eObject, this, { shapeList });
+          if (isNA) {
+            const savedFilter = ctx.filter;
+            ctx.filter = NA_CANVAS_FILTER;
+            mod.drawInspection(ctx, eObject, this, { shapeList });
+            ctx.filter = savedFilter;
+            // The reason is NOT greyed -- it is the one thing on an NA that
+            // should catch the eye.
+            this.drawNAReason(ctx, eObject);
+          } else {
+            mod.drawInspection(ctx, eObject, this, { shapeList });
+          }
         }
       }
     });
 
     this.drawShapeList(ctx, normalRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+    if (naRenderGroup.length) {
+      const savedFilter = ctx.filter;
+      ctx.filter = NA_CANVAS_FILTER;
+      this.drawShapeList(ctx, naRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+      ctx.filter = savedFilter;
+      naRenderGroup.forEach((o) => this.drawNAReason(ctx, o));
+    }
 
+  }
+
+  // The core's reason for an NA, written beside the shape.
+  //
+  // Here rather than in each shape module: only search_point and aux_point ever
+  // printed it, so every other type produced a bare NA -- and the difference
+  // between "NA" and "NA because the scan window is off-frame" is the
+  // difference between an hour of guessing and a fix.
+  drawNAReason(ctx, eObject) {
+    if (!eObject || !eObject.na_reason) return;
+    const anchor = eObject.pt1 || eObject.pt || eObject.center;
+    if (!anchor || !isFinite(anchor.x) || !isFinite(anchor.y)) return;
+    const save = ctx.fillStyle;
+    ctx.fillStyle = NA_REASON_COLOR;
+    const off = this.getPointSize() * 3.5;
+    this.drawText(ctx, eObject.na_reason, anchor.x + off, anchor.y - off);
+    ctx.fillStyle = save;
   }
 
   drawImageBoundaryGrid(ctx,imgInfo={
