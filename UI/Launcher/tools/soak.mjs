@@ -398,6 +398,23 @@ const closeDrawers = () => page.evaluate(() => {
   return n;
 }).catch(() => 0);
 
+// A bench with no camera puts a modal over everything.
+//
+// The core retries the camera forever, so "相機重連中..." stays up and its overlay
+// eats every click aimed behind it -- including the play control, which then
+// reports itself as disabled for a reason that has nothing to do with the
+// recipe. The dialog ships its own way out, 跳過相機連線, so take it.
+//
+// Not folded into closeDrawers(): that helper is deliberately drawers-only
+// (see above), and this IS a modal. Called explicitly where a click matters.
+const skipCamera = () => page.evaluate(() => {
+  let n = 0;
+  for (const b of document.querySelectorAll('button, .ant-btn, a')) {
+    if (b.offsetParent && (b.innerText || '').includes('跳過相機連線')) { b.click(); n++; }
+  }
+  return n;
+}).catch(() => 0);
+
 // A visible-text probe, for asserting that a step actually took effect rather
 // than that a button was pressable.
 const seeText = (needle) => page.evaluate((n) => document.body.innerText.includes(n), needle)
@@ -589,6 +606,7 @@ await clickText('全檢'); await sleep(1500);
 {
   let found = [];
   for (let i = 0; i < 20; i++) {
+    await skipCamera();
     found = await iconTargets('anticon-caret-right');
     if (found.some((f) => !f.disabled)) break;
     await sleep(1000);
@@ -604,6 +622,7 @@ await clickText('全檢'); await sleep(1500);
 
 console.log('[7] into the Inspection UI');
 await closeDrawers();
+await skipCamera();
 await clickIcon('anticon-caret-right');
 await waitText('工位', 'the Inspection UI never opened');
 await sleep(4000);
@@ -628,6 +647,7 @@ if (IDLE) {
 } else {
 console.log('[9] start the machine');
 await closeDrawers();
+await skipCamera();
 // Blind the real sensor BEFORE the machine starts. The gate pin is
 // INPUT_PULLUP with sense inverted, so an unconnected input reads "no object"
 // and contributes nothing -- but a bench with a stray wire on it would feed
@@ -639,6 +659,31 @@ if (PHANTOM) {
             + `firing a pulse every ${PHANTOM_MS}ms`);
 }
 await clickIcon('anticon-caret-right'); await sleep(9000);
+// Re-assert the plate frequency AFTER the start, because the start overwrites it.
+//
+// Step [5] sets it and the board acks, but entering inspection pushes the UI's
+// own plate settings down, and on a bench with no machine that value is 0. The
+// board then holds a stopped plate while cheerfully reporting freq_stable.
+//
+// That is not cosmetic for a phantom run: the gate's distance filter is measured
+// in STEPS (min_dist_ticks, 159 here). With SYS_STEP_COUNT frozen, every phantom
+// lands at the same position, every gap reads as 0, and all of them are refused
+// as too close to the one before -- rej_dist climbing 1:1 with the pulses sent.
+// The stimulus is fine and the filter is right; there is simply no plate motion
+// for the objects to be spaced along.
+if (PHANTOM) {
+  const fr2 = await ask({ type: 'set_setup', plate: { freq: FREQ } }, 1800);
+  await sleep(3000);
+  const chk = await ask({ type: 'get_running_stat' }, 1800);
+  const pf = chk && chk.plate_freq;
+  console.log(`[9] SOAK_PHANTOM -- plate freq re-asserted = ${FREQ} `
+            + `(${fr2 && fr2.ack ? 'ack' : 'NO ACK'}), board reports plate_freq ${pf}`);
+  if (!pf) {
+    await page.screenshot({ path: OUT + '/esoak_FAILED.png' });
+    await die(app, 'plate_freq is still 0 after the start -- the step clock is not'
+      + ' advancing, so every phantom will be refused by the distance gate');
+  }
+}
 // Only once the machine is up: phantoms fired while the plate frequency is
 // still ramping from zero are inside the 3.5 mm reject window and are dropped.
 if (PHANTOM) startPhantom();
@@ -655,6 +700,7 @@ const b0 = await ask({ type: 'get_running_stat' }, 1800);
 // Whichever counter THIS run's drive advances. Reading gate.in in a phantom
 // run reports "the plate is not turning" on a healthy bench that has no plate.
 const DRIVE = PHANTOM ? 'phantom pulses' : 'gate edges';
+if (process.env.SOAK_DBG === '1') console.log('[dbg] b0 = ' + JSON.stringify(b0));
 console.log(`[10] state ${b0 && b0.state}  ${DRIVE} ${liveCount(a0)} -> ${liveCount(b0)}`
           + (PHANTOM ? `  (fired ${phantomFired})` : ''));
 if (!b0 || b0.state !== 101 || liveCount(b0) <= liveCount(a0)) {
