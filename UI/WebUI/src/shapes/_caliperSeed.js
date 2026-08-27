@@ -135,6 +135,30 @@ export function seedEdge(shape) {
   };
 }
 
+// A SEARCH POINT'S edge seed, which is NOT the line/arc one.
+//
+// Different scanner, different defaults: `first` rather than `strongest` (a
+// search point wants the first edge along its ray, not the best one anywhere on
+// it), and include_range / manual_offset, which lines and arcs do not have.
+// These are the values EverCheckCanvasComponent already seeds a NEWLY DRAWN
+// search point with; a converted one gets the same, so a def does not depend on
+// how its points came to exist.
+//
+// min_strength stays 60 here and is not folded into EDGE_MIN_STRENGTH. The 30
+// was chosen against caliper line/arc measurements on backlit silhouettes; a
+// search point scans a ray for a first crossing, which is a different question,
+// and nothing has been measured to say 30 answers it. One number covering both
+// would be tidier and less true.
+//
+// It is REQUIRED, not cosmetic: the core NAs a caliper-mode search point whose
+// edge.min_strength is unset, and says which knob (FeatureManager_sig360
+// _circle_line.cpp:1226). A conversion that set `locating` and not this would
+// trade a silent failure for a loud one -- better, but still a failure.
+export const SEARCH_POINT_EDGE_SEED = {
+  method: 'first', polarity: 'falling', nth: 0,
+  min_strength: 60, include_range: 0.01, manual_offset: 0,
+};
+
 // Whether an arc can be converted at all.
 //
 // Contour and caliper use the taught geometry for different things. Contour

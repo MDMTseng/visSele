@@ -1,5 +1,6 @@
 import JSum from 'jsum';
-import { seedCaliper, seedEdge, arcSagittaPx, ARC_MIN_SAGITTA_PX } from '../shapes/_caliperSeed';
+import { seedCaliper, seedEdge, arcSagittaPx, ARC_MIN_SAGITTA_PX,
+         SEARCH_POINT_EDGE_SEED } from '../shapes/_caliperSeed';
 
 
 
@@ -368,6 +369,24 @@ export function defFileGeneration(edit_info)
     // opened it). Covers primitives the property sheet's force-on-open didn't touch.
     if (Array.isArray(report.featureSet[0].features)) {
       report.featureSet[0].features = report.featureSet[0].features.map((s) => {
+        // SEARCH POINTS CONVERT TOO, and forgetting them is not a small gap.
+        //
+        // A contour-mode search point scans an edge_grid, and the shape_based
+        // path never builds one -- so it returns NA, with no reason attached,
+        // for every part forever. Measured on a real migration (test2 -> SBM):
+        // localization perfect (similarity 1.000, origin to 4 decimals), all 4
+        // lines SUCCESS with 10 hits each and confidence 86.5, and all 8 search
+        // points NA, taking 4 of the 7 judgements down with them. The def trains,
+        // loads, locates, and measures nothing that depends on a point.
+        if (s && s.type === 'search_point' && s.locating !== 'caliper') {
+          const c = { ...s, locating: 'caliper' };
+          if (!c.edge) c.edge = { ...SEARCH_POINT_EDGE_SEED };
+          // min_strength is required in caliper mode; a def carrying an edge
+          // block without it is NA'd by name. Fill only that.
+          else if (typeof c.edge.min_strength !== 'number')
+            c.edge = { ...c.edge, min_strength: SEARCH_POINT_EDGE_SEED.min_strength };
+          return c;
+        }
         if (!s || (s.type !== 'line' && s.type !== 'arc') || s.locating === 'caliper') return s;
         // An arc taught nearly collinear does not get converted, it gets LEFT in
         // contour mode -- which the core then refuses under shape_based, by name.
