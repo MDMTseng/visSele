@@ -574,12 +574,19 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
     catch (e) { return; }
     if (deffile.featureSet && deffile.featureSet[0]) delete deffile.featureSet[0].roi_refine_points;
     setGenBusy(true);
-    // regenerate: true means 生成特徵點 -- extract fresh and ignore whatever
-    // cache the def carries. The auto-call when the studio opens omits it, so
-    // opening the panel SHOWS the features the def actually uses rather than
-    // quietly replacing them with a new extraction.
+    // NO `regenerate` HERE, and not just because the identifier does not exist in
+    // this closure -- it was copied from genFeatures along with its comment, and
+    // reading an undeclared name in an ES module throws ReferenceError while the
+    // ARGUMENT is being built, before sendBPG is ever called. The Promise
+    // constructor turned that into a rejection, `.catch(() => {})` swallowed it,
+    // and `.finally` cleared the spinner: the button did nothing, silently, and
+    // looked like a core that had returned no points.
+    //
+    // Omitting it is also the right behaviour. This asks the core which points
+    // IT would choose for the features the def already has; re-extracting first
+    // would answer for a different feature set than the one being set up.
     new Promise((resolve, reject) => sendBPG('SF', 0,
-      { definfo: deffile, ...(regenerate ? { regenerate: true } : {}) },
+      { definfo: deffile },
       undefined, { resolve, reject }))
       .then((pkts) => {
         const sf = (pkts || []).find((p) => p.type === 'SF');
@@ -929,7 +936,8 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
           onClick={() => onClose && onClose()}>完成(套用到編輯暫存)</Button>
         {edit_info.__shape_stale
           ? <div style={{ fontSize: 11, color: '#ff7875', marginTop: 4 }}>
-              要先處理上面的「特徵已失效」才能完成。（設定是即時套用的,關閉視窗不會還原——
+              要先處理上面的「特徵已失效」才能完成。（設定是即時套用的,關閉視窗不會還原——
+
               要退回請按上面的「還原上一版」。）
             </div>
           : <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>設定即時套用到編輯暫存;回主編輯器按「存檔」才寫入磁碟。</div>}
