@@ -7049,6 +7049,12 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
   }
   if (nf_total < 16) { LOGW("[shape] cache has only %d features; re-extracting", nf_total); return false; }
   LOGI("[shape] loaded %d features from def cache (no re-extraction)", nf_total);
+  // The cache-HIT counterpart of the "cache stale" line above. Without it
+  // stderr shows identical template setup whether the cache was used or
+  // silently re-extracted -- which is exactly the pair you need to tell
+  // apart when a def is reported as falling back to sig360.
+  if (getenv("SHAPE_DBG"))
+    fprintf(stderr, "[SHAPE_DBG] cache HIT: %d features from def, no extraction%c", nf_total, 10);
   return true;
 }
 
@@ -7439,7 +7445,6 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   // land in the exact frame the include polygons were authored in.
   //
   // ONE definition, called from BOTH the cache path and the extraction path.
-  // It used to live only at the end of the extraction path, so a cache HIT
   // returned early and left it empty -- and the studio's round trip answered
   // "line2Dup features: 0" while the localizer was working perfectly. That was
   // invisible until defs started carrying caches, at which point pressing the
@@ -7538,6 +7543,7 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         liftForUI(*shapeFeatureSet, ccrop);
         LOGI("[shape] from def cache: crop [%d,%d %dx%d] origin(%.1f,%.1f) variants=%d",
              ccrop.x, ccrop.y, ccrop.width, ccrop.height, corg.x, corg.y, nv);
+        if (getenv("SHAPE_DBG"))
         return 0;
       }
     }
