@@ -805,30 +805,54 @@ if (NO_ICONS) {
 }
 
 if (ZOOM_IN > 0) {
-  const ok = await page.evaluate((n) => {
-    let best = null;
-    for (const c of document.querySelectorAll('canvas')) {
-      const r = c.getBoundingClientRect();
-      if (r.width < 50 || r.height < 50) continue;
-      if (!best || r.width * r.height > best.a) best = { el: c, r, a: r.width * r.height };
-    }
-    if (!best) return false;
-    const cx = best.r.x + best.r.width / 2, cy = best.r.y + best.r.height / 2;
-    best.el.dispatchEvent(new MouseEvent('mousemove', { clientX: cx, clientY: cy, bubbles: true }));
-    for (let i = 0; i < n; i++) {
-      best.el.dispatchEvent(new WheelEvent('wheel',
-        { deltaY: -100, clientX: cx, clientY: cy, bubbles: true, cancelable: true }));
-    }
-    return true;
-  }, ZOOM_IN).catch(() => false);
-  // The emit is throttled at 500 ms and the core then has to encode and send at
-  // least one frame at the new level; shooting sooner photographs the old one.
+  // ZOOM UNTIL FULL RESOLUTION, THEN STOP -- ZOOM_IN is a cap, not a target.
+  //
+  // Sending the whole count in one go overshoots, and overshooting does not
+  // just waste zoom: the wheel handler magnifies about the POINTER, this
+  // dispatches at the canvas centre, and the part is not at the canvas centre.
+  // Every extra factor pushes it further out, so 200 notches (about 8.9x, when
+  // 4x is what takes scale 4 -> 1) left a running machine drawing a blank
+  // canvas -- full resolution, none of it on screen.
+  //
+  // What the run actually wants is the LEAST zoom that gets a production-like
+  // load, which is the point where the stream negotiates scale 1. So step, ask,
+  // and stop when it arrives. The number of notches that took is printed, so
+  // the run says what it did rather than depending on a constant tuned once
+  // against one recipe's framing.
+  const STEP = 10;
+  let sent = 0, ok = false, scale = null;
+  for (; sent < ZOOM_IN; sent += STEP) {
+    ok = await page.evaluate((n) => {
+      let best = null;
+      for (const c of document.querySelectorAll('canvas')) {
+        const r = c.getBoundingClientRect();
+        if (r.width < 50 || r.height < 50) continue;
+        if (!best || r.width * r.height > best.a) best = { el: c, r, a: r.width * r.height };
+      }
+      if (!best) return false;
+      const cx = best.r.x + best.r.width / 2, cy = best.r.y + best.r.height / 2;
+      best.el.dispatchEvent(new MouseEvent('mousemove', { clientX: cx, clientY: cy, bubbles: true }));
+      for (let i = 0; i < n; i++) {
+        best.el.dispatchEvent(new WheelEvent('wheel',
+          { deltaY: -100, clientX: cx, clientY: cy, bubbles: true, cancelable: true }));
+      }
+      return true;
+    }, STEP).catch(() => false);
+    if (!ok) break;
+    // The emit is throttled at 500 ms and the core then has to encode and send
+    // at least one frame at the new level; asking sooner reads the old one.
+    await sleep(900);
+    const d = await page.evaluate(() => (window.__DIAG__ ? window.__DIAG__() : null)).catch(() => null);
+    scale = d ? d.imgScale : null;
+    if (scale != null && scale <= 1) { sent += STEP; break; }
+  }
+  console.log(`[10y] zoomed ${sent} notch(es) of ${ZOOM_IN} max -> scale=${scale}`);
   await sleep(5000);
   const z = await page.evaluate(() => ({
     ov: window.__STREAM_OVERSAMPLE__,
     dg: window.__DIAG__ ? window.__DIAG__() : null })).catch(() => null);
   await page.screenshot({ path: OUT + '/esoak_zoomed.png' }).catch(() => {});
-  console.log(`[10z] zoom in ${ZOOM_IN} notches: ${ok ? 'sent' : 'NO CANVAS'}`
+  console.log(`[10z] zoom in ${sent} notches: ${ok ? 'sent' : 'NO CANVAS'}`
     + (z && z.dg ? `  imgW=${z.dg.imgW} scale=${z.dg.imgScale}`
        + ` oversample=${z.ov == null ? '?' : (+z.ov).toFixed(2)}` : ''));
 }
@@ -1425,16 +1449,35 @@ for (let i = 0; i <= TICKS; i++) {
                '"' + (dg ? String(dg.taskWorst || '').replace(/"/g, "'") : '') + '"'].join(','));
   prev = cur;
 
+  // A CLOSED WINDOW IS THE FAULT, not an error to throw on.
+  //
+  // Every probe below returns 'err' once the page is gone, so the CSV fills
+  // with a row of them and the real event -- the window went away at minute N
+  // -- is left for a reader to infer. Name it, take the last measurements the
+  // launcher can still give (the core often outlives the window), and end the
+  // run deliberately with its summary intact.
+  if (page.isClosed && page.isClosed()) {
+    console.log(`  [page] THE WINDOW IS GONE at t=${((Date.now() - t0) / 60000).toFixed(1)} min`
+      + ' -- ending the run here; the rows above are the last valid ones');
+    break;
+  }
+
   // Report a fault, do NOT abort: how the machine behaves after one is part of
   // what a soak is for.
   if (s && (s.state !== 101 || ((s.error_hist || []).length))) {
-    if (faults++ === 0) await page.screenshot({ path: OUT + '/esoak_fault.png' });
+    // .catch, because the line above promises not to abort and this used to.
+    // A fault and a closed window arrive together often enough -- the window
+    // going is itself a fault -- and an unguarded screenshot then threw an
+    // unhandled rejection that killed the whole run at the exact moment it had
+    // something to report. 17 minutes of a full-resolution run were lost that
+    // way tonight, including whatever the next tick would have said about it.
+    if (faults++ === 0) await page.screenshot({ path: OUT + '/esoak_fault.png' }).catch(() => {});
   }
   // The launcher losing the core is a DIFFERENT fault from the board erroring,
   // and it is the one the old soak could not see at all.
   if (sv && !sv.running) {
     console.log(`  [launcher] THE CORE IS GONE at t=${((Date.now() - t0) / 60000).toFixed(1)} min`);
-    await page.screenshot({ path: OUT + '/esoak_core_gone.png' });
+    await page.screenshot({ path: OUT + '/esoak_core_gone.png' }).catch(() => {});
     break;
   }
   // Capture the FIRST tick where a measurement card is actually on screen.
@@ -1455,7 +1498,7 @@ for (let i = 0; i <= TICKS; i++) {
       }
       return false;
     }).catch(() => false);
-    if (has) { shotCards = true; await page.screenshot({ path: OUT + '/esoak_cards.png' }); }
+    if (has) { shotCards = true; await page.screenshot({ path: OUT + '/esoak_cards.png' }).catch(() => {}); }
   }
   // A fresh screenshot every tick, for iterating on the UI against a live
   // machine. The card shot fires once and then never again, which is right for
@@ -1493,9 +1536,9 @@ for (let i = 0; i <= TICKS; i++) {
     } catch (e) { console.log('  [heap] failed: ' + e.message); }
     break;
   }
-  if (i === 2) await page.screenshot({ path: OUT + '/esoak_t2.png' });
+  if (i === 2) await page.screenshot({ path: OUT + '/esoak_t2.png' }).catch(() => {});
   if (i % Math.max(1, Math.round(3600 / TICK_S)) === 0 && i) {
-    await page.screenshot({ path: OUT + `/esoak_t${Math.round(i * TICK_S / 60)}min.png` });
+    await page.screenshot({ path: OUT + `/esoak_t${Math.round(i * TICK_S / 60)}min.png` }).catch(() => {});
   }
   if (POKE) {
     // Named for what it opens, not for a selector: if the button is renamed the
@@ -1518,7 +1561,7 @@ if (PHANTOM) {
   // use this board may not reboot it first.
   await ask({ type: 'set_gate_disable', on: false }, 1500);
 }
-await page.screenshot({ path: OUT + '/esoak_end.png' });
+await page.screenshot({ path: OUT + '/esoak_end.png' }).catch(() => {});
 console.log(`\nsoak done: ${MIN} min, ${faults} sampled ticks with a fault or non-101 state`);
 // Closing the window is what stops the machine, and it goes through the
 // launcher's graceful path -- so the run also exercises the shutdown it will do
