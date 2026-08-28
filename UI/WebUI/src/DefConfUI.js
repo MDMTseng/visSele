@@ -21,6 +21,11 @@ import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { SBMSetupView } from './SBMStudio';
+// v2 runs BESIDE v1, not instead of it. Both buttons stay until the new one
+// has been used on a machine for a while; a studio is where a def gets its
+// locator, and losing the ability to fall back would mean a bad build blocks
+// recipe authoring outright. See the header of SBMStudio2.jsx.
+import { SBMSetupView2 } from './SBMStudio2';
 import { useDefImages } from 'UTIL/useDefImages';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -2534,6 +2539,80 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             });
           },
           view: <SBMSetupView
+            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
+            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
+                             window.dispatchEvent(new Event('defconf-orient-now')); }}
+            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
+                            window.dispatchEvent(new Event('defconf-orient-now')); }}
+          />,
+        });
+      }} />,
+
+    <BASE_COM.IconButton
+      iconType={<AimOutlined />}
+      dict={DICT}
+      addClass="layout palatte-geekblue-8 vbox width12"
+      key="SBMSETUP2"
+      text="SBM定位設定 2" onClick={() => {
+        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
+        setModal_view({
+          title: "Shape-based 定位設定（v2）",
+          footer: null,
+          width: "96vw",
+          style: { top: 12 },
+          bodyStyle: { padding: 8, height: "86vh" },
+          // The X is guarded too, because the studio applies LIVE: closing it does
+          // not discard anything, so leaving by the corner commits exactly the
+          // same broken state as 完成 would. Greying one and leaving the other
+          // open would just be theatre.
+          //
+          // It asks rather than refuses. A def whose reference image cannot be
+          // read can never regenerate, and a modal with no way out is worse than
+          // the state it is protecting against -- so "仍要離開" stays, and the
+          // save path asks once more before anything reaches disk.
+          // Marked, because both buttons are in the toolbar and a screenshot from
+          // the line has to say which one it came from.
+          onCancel: () => {
+            // Leaving the studio re-locates the object.
+            //
+            // The studio is where the registration line, the extraction region
+            // and the trained features are set -- all three change where the
+            // core thinks the part IS. The def canvas rectifies the image
+            // against the last inspection report, so without a fresh one it
+            // goes on drawing the picture aligned to the pose from BEFORE the
+            // edits: overlays that sit next to the part instead of on it.
+            //
+            // Same call the image switcher already makes for the same reason
+            // (useDefImages afterLoad). It lives in another component, so this
+            // goes through the window event that component listens for --
+            // the pattern defconf-images-changed already uses.
+            const closeIt = () => {
+              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
+              setModal_view(undefined);
+              window.dispatchEvent(new Event('defconf-orient-now'));
+            };
+            const lg = edit_info.__shape_lastGood;
+            if (!edit_info.__shape_stale) { closeIt(); return; }
+            Modal.confirm({
+              title: '特徵已失效', width: 500,
+              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
+                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
+              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
+              cancelText: '仍要離開',
+              onOk: () => {
+                if (lg) {
+                  dispatch(DefConfAct.EditInfo_Patch({
+                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
+                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
+                  }));
+                  closeIt();
+                }
+                // No last-good version: stay in the studio, where 生成特徵點 is.
+              },
+              onCancel: closeIt,
+            });
+          },
+          view: <SBMSetupView2
             sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
             onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
                              window.dispatchEvent(new Event('defconf-orient-now')); }}
