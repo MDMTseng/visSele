@@ -369,6 +369,10 @@ export function defFileGeneration(edit_info)
   // does not care keeps hashing and diffing exactly as before.
   if (typeof edit_info.shape_nms_angle === 'number' && edit_info.shape_nms_angle !== 360)
     report.featureSet[0].shape_nms_angle = edit_info.shape_nms_angle;
+  // Acceptance gate for the shape locator, 0-100. The core takes it only when
+  // > 0 (JFetch guard), so 0 means "keep the default", not "accept anything".
+  if (typeof edit_info.shape_min_score === 'number' && edit_info.shape_min_score > 0)
+    report.featureSet[0].shape_min_score = edit_info.shape_min_score;
   if (typeof edit_info.shape_weak_thres === 'number')
     report.featureSet[0].shape_weak_thres = edit_info.shape_weak_thres;
   if (typeof edit_info.shape_strong_thres === 'number')

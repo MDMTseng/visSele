@@ -365,6 +365,8 @@ export class InspectionEditorLogic {
                 edit_info.shape_match_scale = report.shape_match_scale;
               if (typeof report.shape_nms_angle === 'number')
                 edit_info.shape_nms_angle = report.shape_nms_angle;
+              if (typeof report.shape_min_score === 'number')
+                edit_info.shape_min_score = report.shape_min_score;
               if (typeof report.shape_weak_thres === 'number')
                 edit_info.shape_weak_thres = report.shape_weak_thres;
               if (typeof report.shape_strong_thres === 'number')
@@ -1753,6 +1755,7 @@ export const DEF_SCOPED_EDIT_INFO_KEYS = [
   'matching_version', 'inspection_downsample', 'sig_match_sim_thres',
   'morph_mode', 'morph_tps_lambda', 'morph_max_iter', 'morph_alpha',
   'shape_match_scale', 'shape_weak_thres', 'shape_strong_thres', 'shape_nms_angle',
+  'shape_min_score',
   'locating_engine', 'def_image_reg', 'roi_refine_points',
   // The trained line2Dup set and its staleness flags: another def's features
   // are worse than none, because they train a matcher that then looks right.
@@ -1808,6 +1811,10 @@ export function Edit_info_Empty() {
     morph_max_iter: undefined,
     morph_alpha: undefined,         // re-location relaxation, (0,1]; core default 1
     shape_match_scale: undefined,   // shape-locator coarse downscale, (0,1]; core default 1
+    // The score a shape match has to beat, 0-100. undefined => the core's 50.
+    // matchThreshold.js already reads this to draw headroom; until it was
+    // plumbed through it could only ever report the default.
+    shape_min_score: undefined,
     // NMS angle tolerance in degrees; undefined => the core's 360, i.e. one pose
     // per location. Listed in DEF_SCOPED_EDIT_INFO_KEYS so it resets on a def
     // switch like every other recipe setting.

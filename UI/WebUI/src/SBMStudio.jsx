@@ -966,6 +966,19 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
           options={[{ value: 1, label: '正面 front' }, { value: -1, label: '反面 back' }, { value: 0, label: '兩面 both' }]} />
       </div>
 
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 6 }}>
+        <span style={{ width: 92 }}>min score 門檻</span>
+        <InputNumber size="small" min={1} max={99} step={1} style={{ width: 70 }}
+          value={edit_info.shape_min_score ?? 50}
+          onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_min_score: v }))} />
+        <span style={{ fontSize: 11, color: '#999' }}>0–100，預設 50</span>
+      </div>
+      <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+        分數低於這個值就當作沒找到（NA），不會拿去量測。
+        <b>不用重新生成特徵</b>——這是比對當下的門檻，不是抽特徵的參數。
+        調高＝寧可漏抓也不要抓錯；調低＝寧可抓到也不要漏。
+      </div>
+
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>特徵生成（邊緣強度）</Divider>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
         <span style={{ width: 92 }}>weak 弱邊</span>
