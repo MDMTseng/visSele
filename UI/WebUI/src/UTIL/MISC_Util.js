@@ -212,6 +212,26 @@ export { CircularCounter, ConsumeQueue } from './structures';
 
 
 
+// <defModelPath> -> the sidecar .png path, stripping an extension ONLY when the
+// LAST path segment has one.
+//
+// defModelPath is normally the stem with NO extension (it is what LD sends as
+// `imgsrc`), so a bare /\.[^.]+$/ has nothing to strip and eats backwards to
+// whatever dot it can find -- and `[^.]` excludes dots, not separators, so it
+// will happily swallow directory names. Installed under a folder called `X2.0`
+// that turned <root>/X2.0/data/testNew2 into <root>/X2.png: the core could not
+// the template, SBM training failed, and the def silently ran on sig360 while
+// the studio reported "no features extracted". A dot in a FOLDER name did it.
+export function refPngPathOf(defModelPath) {
+  const p = String(defModelPath);
+  const cut = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  const dir = p.slice(0, cut + 1);          // '' when there is no separator
+  const base = p.slice(cut + 1);
+  const dot = base.lastIndexOf('.');
+  // dot > 0 so a dotfile keeps its name; the segment must have an ext to lose one.
+  return dir + (dot > 0 ? base.slice(0, dot) : base) + '.png';
+}
+
 // Stamp the reference-image FULL path onto a def-INFO object before sending it to the
 // core for inspection (live/WS path). The saved .hydef stays path-free; the core reads
 // "_ref_image_path" (highest priority) to train the shape locator without guessing the
@@ -235,7 +255,7 @@ export function stampRefImagePath(deffile, edit_info) {
   }
   if (edit_info && edit_info.__img_fresh_capture) return deffile;
   if (deffile && deffile.featureSet && deffile.featureSet[0] && edit_info && edit_info.defModelPath) {
-    deffile.featureSet[0]._ref_image_path = String(edit_info.defModelPath).replace(/\.[^.]+$/, '') + '.png';
+    deffile.featureSet[0]._ref_image_path = refPngPathOf(edit_info.defModelPath);
   }
   return deffile;
 }
