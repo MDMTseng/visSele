@@ -983,6 +983,17 @@ export class uInspESP32_API extends Perif_API_Base {
   // The enum lives in the firmware, so its text should come from there too.
   getStateNames() { return this.sendP({ type: 'get_state_names' }); }
 
+  // Which build is on the chip -- git hash and build time, stamped at compile
+  // time by Peripheral/uInspESP32/tools/fw_version.py.
+  //
+  // Not the older get_version: that one answers on the protocol layer with a
+  // hand-maintained "0.0.1" and its own frame type, so it identifies the wire
+  // format, not the image. A board flashed before get_fw_version existed does
+  // not know the command and answers ack:false or nothing -- callers must
+  // treat "no answer" as "firmware too old to say", never as an error worth
+  // showing as a fault.
+  getFwVersion() { return this.sendP({ type: 'get_fw_version' }); }
+
   // Promise flavour of get_setup, for callers that need to CONFIRM a write
   // landed rather than fire and hope. Flattened, like machineSetupReSync's
   // copy -- callers read flat names off this.

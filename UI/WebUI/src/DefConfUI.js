@@ -1738,6 +1738,43 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         report.name = fileName;
         ACT_DefFileName_Update(fileName);
       }
+      // The def goes to the database as well as to disk, and a failure here used
+      // to be a console.log nobody was reading.
+      //
+      // That silence is expensive in a specific way: an inspection REPORT does
+      // not carry the settings it was judged against. The def in the database is
+      // what makes an archived report interpretable later -- without it there is
+      // a verdict on record and no way to say what it meant. The local .def file
+      // is already written by the time this runs, so the save genuinely did
+      // succeed on this machine; only the shared half is missing. Say exactly
+      // that, and offer the retry, because a dropped socket is usually over by
+      // the time someone reads the dialog.
+      const pushDefToDB = (rep, pathForMsg, attempt = 1) => {
+        DefFile_DB_SEND(rep)
+          .then((ret) => log.info("[def-db] uploaded", { path: pathForMsg, attempt }))
+          .catch((err) => {
+            const why = (err && err.message) ? err.message
+              : (typeof err === 'string' && err.length) ? err : '沒有回應';
+            log.warn("[def-db] upload failed", { path: pathForMsg, attempt, err: String(err) });
+            Modal.confirm({
+              title: '設定檔沒有上傳到資料庫',
+              content: (<div style={{ lineHeight: 1.9 }}>
+                <div><b>本機檔案已經存好了</b>（{pathForMsg}.{DEF_EXTENSION}），只有資料庫那一份沒有送出。</div>
+                <div style={{ marginTop: 8 }}>原因：{why}</div>
+                <div style={{ marginTop: 8, color: '#a8071a' }}>
+                  檢驗報告不包含當時的檢驗設定,要靠資料庫裡的設定檔才能還原一筆報告是依據什麼判定的。
+                  少了這一份,之後查這段時間的報告會查不出判定依據。
+                </div>
+                <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                  可以先確認右上角「設定DB」的連線狀態,再重試。
+                </div>
+              </div>),
+              okText: '重試上傳', cancelText: '先不上傳',
+              onOk: () => pushDefToDB(rep, pathForMsg, attempt + 1),
+            });
+          });
+      };
+
       const commitSave = () => {
         ACT_DefFileHash_Update(report.featureSet_sha1);
         log.info("[action] report-save");
@@ -1745,7 +1782,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
         else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
         ACT_Def_Model_Path_Update(fileNamePath);
-        DefFile_DB_SEND(report).then((ret) => console.log('then', ret)).catch((ret) => console.log("catch", ret));
+        pushDefToDB(report, fileNamePath);
       };
       setFileSavingCallBack(undefined);
 

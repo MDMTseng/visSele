@@ -1,3 +1,4 @@
+#include "fw_version.h"
 #include "app/LegacyFirmware.hpp"
 #include "main.hpp"
 #include "LOG.h"
@@ -5723,6 +5724,24 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       GEN_ERROR_CODE_DECLARE(ERR_NAME_X)
       #undef ERR_NAME_X
     }
+    doRsp=rspAck=true;
+  }
+  // Which build is actually on this chip.
+  //
+  // get_version already existed, but it answers on the PROTOCOL layer with a
+  // fixed "0.0.1" and its own frame type, so it neither identifies the build
+  // nor rides the normal command/reply path a UI can await. This does both.
+  //
+  // The need was concrete: the plate auto-slowdown was commented out in the
+  // source on 2026-08-01, and there was no way to ask the board in front of us
+  // whether its firmware predated that. Source truth and flashed truth are
+  // different facts. FW_GIT_HASH carries a "-dirty" suffix when the tree had
+  // uncommitted changes, because then the image is NOT the commit it names.
+  else if(strcmp(type,"get_fw_version")==0)
+  {
+    retdoc["type"]="fw_version";
+    retdoc["git"]=FW_GIT_HASH;
+    retdoc["build"]=FW_BUILD_TIME;
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"reset_latency_stat")==0)

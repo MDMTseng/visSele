@@ -320,9 +320,24 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   // half was switched off -- so the caller can say so instead of asking the
   // core to fail.
   const IMG_EXT = ["jpg", "jpeg", "png", "bmp"];
-  function siblingImagePath(filePath, stem)
+  //
+  // `files` is passed in rather than read from state at the one call site that
+  // has just fetched it. The folder listing arrives and the record is opened in
+  // the SAME handler:
+  //
+  //     setCachedFileList(folderStruct.files);
+  //     ...
+  //     if (cb) cb(filePath, fileInfo);        // -> LoadNewFile
+  //
+  // setState does not mutate the current render's binding, so LoadNewFile's
+  // closure still saw the previous value -- undefined on the first open of the
+  // session. siblingImagePath returned undefined, no imgsrc went out, the reply
+  // carried no IM packet, and playback drew the overlay over a blank canvas.
+  // Opening a second record appeared to fix it, because by then the state had
+  // caught up.
+  function siblingImagePath(filePath, stem, filesOverride)
   {
-    const files = cachedFileList;
+    const files = (filesOverride !== undefined) ? filesOverride : cachedFileList;
     if (!Array.isArray(files)) return undefined;
     const base = String(stem || "").replace("." + xreps, "");
     const hit = files.find((f) => f && f.type === "REG" && typeof f.name === "string"
@@ -333,13 +348,13 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     return hit.path || (filePath + "." + hit.name.split(".").pop());
   }
 
-  function LoadNewFile(filePath,fileInfo)
+  function LoadNewFile(filePath,fileInfo,filesOverride)
   {
     filePath = filePath.replace("." + xreps, "");
     // console.log(filePath);
     // console.log(fileInfo);
     _this.latest_filename=fileInfo.name.replace("." + xreps, "");
-    const imgPath = siblingImagePath(filePath, fileInfo && fileInfo.name);
+    const imgPath = siblingImagePath(filePath, fileInfo && fileInfo.name, filesOverride);
     if (!imgPath) log.warn("[playback] no image beside " + filePath + " -- showing the report only");
     BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,
                            ...(imgPath ? { imgsrc: imgPath } : {}),
@@ -398,10 +413,10 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     setFileSelectorInfo({
       filter:fileSelectFilter,
       groups:fileGroups,
-      callBack:(filePath, fileInfo) => {
+      callBack:(filePath, fileInfo, files) => {
 
         // _this.Latest_file_path=
-        LoadNewFile(filePath,fileInfo);
+        LoadNewFile(filePath,fileInfo,files);
 
       }
     });
@@ -653,7 +668,9 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
         let idx = xrepLists.findIndex((xrp)=>xrp.name==fileInfo.name);
         setCurIdx(idx);
-        if (cb) cb(filePath, fileInfo);
+        // Hand the listing straight over: the setCachedFileList above has not
+        // reached this closure yet, and the image lookup needs it now.
+        if (cb) cb(filePath, fileInfo, folderStruct.files);
       }}
 
       onCancel={() => {

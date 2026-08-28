@@ -161,7 +161,10 @@ function LocateNoteBanner() {
   </div>;
 }
 
-function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=0})
+// insert_skip: upload 1 report out of every N. Defaults to 1 (upload all), NOT
+// 0 -- `total % 0` is NaN, NaN != 0, so a zero here skips every single report
+// and the machine uploads nothing while looking like it is working.
+function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=1})
 {
 
   const _s = useRef({sendCounter:0,sendedCounter:0,totalCounter:0,pre_newAddedReport:undefined});
@@ -212,7 +215,8 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     _this.pre_newAddedReport=newAddedReport;
     // console.log(newAddedReport,insert_skip);
     
-    let res=_this.totalCounter%insert_skip;
+    const _skip = (Number.isFinite(insert_skip) && insert_skip >= 1) ? insert_skip : 1;
+    let res=_this.totalCounter%_skip;
     _this.totalCounter++;
     if(res!=0)
     {
@@ -2659,6 +2663,48 @@ export const SNAP_POLICY_DEFAULT = {
   NA: { img: false, rep: false },
 };
 
+// How many reports go to the DB: 1 uploaded out of every N produced.
+//
+// The value used to live only in System_Setting, which script.jsx rebuilds from
+// GetDefaultSystemSetting() on every launch -- so it was not a setting at all,
+// only a compiled-in constant with a debug override. machine_custom_setting is
+// the persisted store, so that is where an operator-set value belongs; the
+// System_Setting numbers stay as the fallback for machines that never set one.
+//
+// Returns at least 1. A 0 would reach `total % skip` as a division by zero,
+// come back NaN, and NaN != 0 is true -- so every report would be skipped and
+// the machine would silently upload nothing. That was unreachable while the
+// value was compiled in; it stops being unreachable the moment a person can
+// type into it.
+export function uploadSkipOf(machine_custom_setting, System_Setting) {
+  const mcs = machine_custom_setting || {};
+  const sys = System_Setting || {};
+  const isCI = mcs.InspectionMode == "CI";
+  const key = isCI ? "CI_MODE_UPLOAD_SKIP" : "FI_MODE_UPLOAD_SKIP";
+  const v = (mcs[key] !== undefined && mcs[key] !== null) ? mcs[key] : sys[key];
+  const n = parseInt(v);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+// The tracking-window parameters, resolved the same way as uploadSkipOf:
+// machine_custom_setting (persisted) first, System_Setting (rebuilt from
+// GetDefaultSystemSetting on every launch) as the compiled fallback.
+//
+// What these control is how many times ONE part is measured and how those
+// measurements are combined -- reports of the same object are blended in the
+// tracking window, so "repeat" is an averaging depth, not a display option.
+//
+// Merged per-key rather than replaced wholesale: FI's default carries no
+// maxReportRepeat at all, and an absent cap means "never stop blending". A
+// whole-object replace would have to invent a number for it, which silently
+// turns an unbounded average into a bounded one.
+export function statSettingOf(machine_custom_setting, System_Setting, mode) {
+  const mcs = machine_custom_setting || {};
+  const sys = System_Setting || {};
+  const key = (mode === "CI") ? "CI_MODE_StatSettingParam" : "FI_MODE_StatSettingParam";
+  return { ...(sys[key] || {}), ...(mcs[key] || {}) };
+}
+
 export function snapPolicyOf(machine_custom_setting) {
   const mcs = machine_custom_setting || {};
   const stored = mcs.FI_INSP_SNAP_POLICY;
@@ -2741,7 +2787,10 @@ const SnapPolicyPanel = (props) => {
   );
 };
 
-const SnapPolicyPanel_rdx = connect(
+// Exported, and rendered ONLY by the setup tab. Everything that decides what
+// gets written to disk lives in one place; this file keeps snapPolicyOf()
+// because FI start is what actually pushes the policy to the core.
+export const SnapPolicyPanel_rdx = connect(
   (state) => ({
     machine_custom_setting: state.UIData.machine_custom_setting,
     CORE_ID: state.ConnInfo.CORE_ID,
@@ -2938,7 +2987,8 @@ class APP_INSP_MODE extends React.Component {
           reject:(e)=>{
           } 
         });
-        this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
+        this.props.ACT_StatSettingParam_Update(statSettingOf(
+          this.props.machine_custom_setting, this.props.System_Setting, "FI"))
         // The core zeroes its snapshot policy at the start of every CI/FI
         // session, so this push is what the machine actually records -- not a
         // convenience. INSP_SNAP_POLICY carries all three verdicts and both
@@ -2959,7 +3009,6 @@ class APP_INSP_MODE extends React.Component {
         // crawling the framerate.
         this.CameraCtrl.setCameraFrameRate(10);
 
-        console.log("this.props.System_Setting.CI_MODE_StatSettingParam",this.props.System_Setting.CI_MODE_StatSettingParam);
 
 
         // deffile.featureSet[0].single_result_area_ratio=0.9;
@@ -2979,7 +3028,8 @@ class APP_INSP_MODE extends React.Component {
         // }
         // }, undefined);
 
-        this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
+        this.props.ACT_StatSettingParam_Update(statSettingOf(
+          this.props.machine_custom_setting, this.props.System_Setting, "CI"))
       }
 
       // Re-apply the machine's own camera settings on the way in.
@@ -3326,10 +3376,6 @@ class APP_INSP_MODE extends React.Component {
             whose def has locating != 'caliper' (cal_hits is absent then).
             Gates the CORE's emission -- see the note on CaliperHitsSwitch_rdx. */}
         <CaliperHitsSwitch_rdx key="caliper-hits-toggle" />
-
-        <Divider orientation="left" key="div-snap">快照</Divider>
-        <SnapPolicyPanel_rdx key="snap-policy" />
-
 
         <Divider orientation="left" key="img_tran_weight">圖像檢視側重</Divider>
         <Button key="okf"
@@ -3705,8 +3751,8 @@ class APP_INSP_MODE extends React.Component {
 
     {//if the FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP is undefined it will use the default number
     }
-    let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 
-    this.props.System_Setting.CI_MODE_UPLOAD_SKIP:this.props.System_Setting.FI_MODE_UPLOAD_SKIP;
+    let InspectionReportPullSkip=uploadSkipOf(
+      this.props.machine_custom_setting, this.props.System_Setting);
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {

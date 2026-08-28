@@ -521,6 +521,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const openedRef = useRef(Date.now());
 
   const [names, setNames] = useState(null);   // state/err text, asked of the board
+  const [fw, setFw] = useState(undefined);   // board build identity; null = asked, too old to answer
   const [runRefused, setRunRefused] = useState('');   // why RUN declined, shown inline
   // Working copy of stage_pulse_offset while it is being typed into. Adopted
   // from the device once, then owned by the editor -- rebinding on every poll
@@ -662,6 +663,17 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       api.getStateNames()
         .then((r) => { if (r && r.state && mounted.current) setNames(r); })
         .catch((e) => log.warn('[uinsp2] get_state_names unavailable', e));
+
+      // Same once-per-open reasoning: the build cannot change without a
+      // reflash, and a reflash reopens the link. Firmware older than
+      // get_fw_version does not know the command, so a refusal here is not a
+      // fault -- it is itself the answer "too old to say", and setFw(null)
+      // records that so the tag can distinguish it from "not asked yet".
+      if (typeof api.getFwVersion === 'function') {
+        api.getFwVersion()
+          .then((r) => { if (mounted.current) setFw(r && r.git ? r : null); })
+          .catch(() => { if (mounted.current) setFw(null); });
+      }
     });
   }, [API_ID]);
 
@@ -910,6 +922,23 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           </Tooltip>
         )}
         {dev.machine_id ? <Tag>{dev.machine_id}</Tag> : null}
+        {/* Which build is on the chip. The short hash is what fits; the whole
+            identity goes in the tooltip, because the value of this tag is
+            being able to paste it next to a `git log` line. A "-dirty" suffix
+            is deliberately not hidden: it means the image is NOT the commit it
+            names, which is exactly when trusting the hash misleads. */}
+        {fw === undefined ? null : fw === null ? (
+          <Tooltip title="這塊板子的韌體早於 get_fw_version,問不出建置身分。重新燒錄後才會顯示。">
+            <Tag color="default">韌體版本未知</Tag>
+          </Tooltip>
+        ) : (
+          <Tooltip title={`git ${fw.git}
+build ${fw.build}`}>
+            <Tag color={String(fw.git).endsWith('-dirty') ? 'orange' : 'blue'}>
+              韌體 {String(fw.git).slice(0, 12)}
+            </Tag>
+          </Tooltip>
+        )}
       </div>
 
       {/* ---- main row: what someone standing at the machine needs ---------- */}

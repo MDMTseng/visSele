@@ -14,6 +14,7 @@ import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
 import {CameraParamPanel} from './component/CameraParamPanel.jsx';
 import {CoreStatusPanel} from './component/CoreStatusPanel.jsx';
+import {DBStatusPanel} from './component/DBStatusPanel.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -591,6 +592,8 @@ class APPMasterX extends React.Component {
       DefFile_DB_W_ID:state.ConnInfo.DefFile_DB_W_ID,
       CAM1_ID:state.ConnInfo.CAM1_ID,
       CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
+      DefFile_DB_W_ID_CONN_INFO:state.ConnInfo.DefFile_DB_W_ID_CONN_INFO,
+      Insp_DB_W_ID_CONN_INFO:state.ConnInfo.Insp_DB_W_ID_CONN_INFO,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
 
@@ -1602,6 +1605,38 @@ class APPMasterX extends React.Component {
                 }
 
 
+
+                // Both DB links, one panel. They differ only in what they
+                // carry and how bad a gap is; the queue mechanics are the same
+                // class (DB_WS) and the numbers were equally invisible.
+                case this.props.DefFile_DB_W_ID:
+                case this.props.Insp_DB_W_ID:
+                {
+                  const _dbId = connInfo.id;
+                  const _title = (_dbId === this.props.DefFile_DB_W_ID) ? "設定DB" : "檢測DB";
+                  const _ci = (_dbId === this.props.DefFile_DB_W_ID)
+                    ? this.props.DefFile_DB_W_ID_CONN_INFO : this.props.Insp_DB_W_ID_CONN_INFO;
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><>
+                        <DBStatusPanel id={_dbId} title={_title} connInfo={_ci}
+                          getObj={(cb)=>this.props.ACT_WS_GET_OBJ(_dbId, cb)} />
+                        <details style={{marginTop:10}}>
+                          <summary style={{cursor:"pointer", color:"#888"}}>連線資訊(原始)</summary>
+                          <pre style={{maxHeight:240, overflow:"auto", fontSize:11}}>
+                            {JSON.stringify(_ci,null,2)}
+                          </pre>
+                        </details>
+                      </>,
+                      title:_title,
+                      width:640,
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
 
                 case this.props.uInsp_API_ID:
                 {

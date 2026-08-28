@@ -1,4 +1,5 @@
 #include "comm/Data_Layer_Protocol.hpp"
+#include "fw_version.h"
 #include "string.h"
 #include "stdio.h"
 #include <ctype.h>
@@ -172,14 +173,27 @@ void Data_JsonRaw_Layer::handleResetRecovery()
   recvType=RTYPE::RESYNC;
 }
 
+// The identity fields ride on the version reply rather than a new command so
+// an old host still parses it: "version" keeps its meaning and position, and
+// "git"/"build" are additive. A host that does not know them ignores them.
+//
+// snprintf, not sprintf: the buffer now holds two compile-time strings, and a
+// dirty-tree hash is longer than a clean one. Truncation is a wrong answer;
+// a smashed stack is a wrong machine.
 int Data_JsonRaw_Layer::ask_JsonRaw_version(){
-  char sendMsg[200];
-  sprintf(sendMsg,"{\"type\":\"ask_JsonRaw_version\",\"id\":100445,\"version\":\"%s\"}",VERSION);
+  char sendMsg[256];
+  snprintf(sendMsg,sizeof(sendMsg),
+    "{\"type\":\"ask_JsonRaw_version\",\"id\":100445,\"version\":\"%s\""
+    ",\"git\":\"%s\",\"build\":\"%s\"}",
+    VERSION,FW_GIT_HASH,FW_BUILD_TIME);
   return send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
 }
 int Data_JsonRaw_Layer::rsp_JsonRaw_version(){
-  char sendMsg[200];
-  sprintf(sendMsg,"{\"type\":\"rsp_JsonRaw_version\",\"id\":100446,\"version\":\"%s\"}",VERSION);
+  char sendMsg[256];
+  snprintf(sendMsg,sizeof(sendMsg),
+    "{\"type\":\"rsp_JsonRaw_version\",\"id\":100446,\"version\":\"%s\""
+    ",\"git\":\"%s\",\"build\":\"%s\"}",
+    VERSION,FW_GIT_HASH,FW_BUILD_TIME);
   return send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
 }
 

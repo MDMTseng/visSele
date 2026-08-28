@@ -40,7 +40,6 @@ const DEFAULTS = {
   IMG_STREAMING_MAX_FPS: 20,
   IMG_STREAMING_JPEG_QUALITY: 85,
   IMG_STREAMING_SKIP_NA: false,
-  INSP_NA_SNAP: true,
 };
 
 function QueueBar({ name, q, hint }) {
@@ -159,16 +158,13 @@ export function CoreStatusPanel({ info, send }) {
               onChange={(c) => push('IMG_STREAMING_SKIP_NA', c)} />
             <span style={{ marginLeft: 8 }}>不傳 NA 影像</span>
           </label>
-          <label>
-            <Switch size="small" checked={cfg.INSP_NA_SNAP}
-              onChange={(c) => push('INSP_NA_SNAP', c)} />
-            <span style={{ marginLeft: 8 }}>儲存 NA 快照</span>
-          </label>
         </div>
         <div style={{ fontSize: 12, color: '#888', marginTop: 8, lineHeight: 1.7 }}>
-          這兩項在核心裡於每次 CI/FI 開始時被歸零,所以只在<b>當前這段檢驗</b>內有效。
-          NG 快照的開關與上限不放這裡——它由「設定」頁擁有,而且每次開始全檢都會重推一次;
-          兩個地方都能寫會讓值變得無法解釋。
+          這項在核心裡於每次 CI/FI 開始時被歸零,所以只在<b>當前這段檢驗</b>內有效。
+          它管的是<b>要不要把 NA 影像傳上來看</b>,不是要不要存檔。
+          存檔(OK / NG / NA 的影像與報告、資料夾上限)全部由「設定」頁擁有,
+          而且每次開始全檢都會重推一次——這裡曾經也有一個「儲存 NA 快照」開關,
+          於是同一個核心變數有兩個寫入點,值變得無法解釋。已經移走。
         </div>
       </Card>
 

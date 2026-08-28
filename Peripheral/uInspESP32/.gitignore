@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Stamped by tools/fw_version.py on every build; the timestamp changes each
+# time, so tracking it would make every build dirty -- and a dirty tree is
+# exactly what FW_GIT_HASH's "-dirty" suffix is meant to report.
+src/fw_version_gen.c

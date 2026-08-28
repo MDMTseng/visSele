@@ -35,6 +35,9 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   
   char peerVERSION[20];
   const char *VERSION="0.0.1";
+  // VERSION above is the PROTOCOL version and is hand-maintained; it says
+  // nothing about which build is on the chip. FW_GIT_HASH / FW_BUILD_TIME
+  // (fw_version.h) answer that separately.
   const char RESET_PACKET[17]="{\"type\":\"RESET\"}";
   public:
   Data_JsonRaw_Layer();

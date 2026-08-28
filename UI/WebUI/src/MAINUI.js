@@ -3,7 +3,8 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset } from './component/rdxComponent.jsx';
+import { CustomDisplayPicker } from './component/CustomDisplayPicker.jsx';
 import { DEF_EXTENSION, defFileFilter } from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
 import JSum from 'jsum'
@@ -13,7 +14,7 @@ import ComponentBoundary from './component/ComponentBoundary';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
-import APP_INSP_MODE_rdx from './InspectionUI';
+import APP_INSP_MODE_rdx, { SnapPolicyPanel_rdx, uploadSkipOf, statSettingOf } from './InspectionUI';
 import { usePerifConn } from './perif/PerifAPI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import CalibrationUI_rdx from './CalibrationUI';
@@ -259,6 +260,35 @@ function getLocalStorage_RecentFiles()
   return LocalS_RecentDefFiles;
 }
 
+// Which def opens when the app starts.
+//
+// Its own key, not the RecentDefFiles list. That list is validated on read --
+// name/path/type plus ctime_ms/mtime_ms/size_bytes must all be present and of
+// the right type -- and a catalogue record carries none of the file metadata.
+// An entry pushed in from there would be dropped by the filter on the next
+// read, so the boot default would silently not change. The alternative,
+// inventing a size and an mtime to get past the check, puts made-up numbers in
+// front of whoever opens 近期檔案.
+//
+// machine_setting.json was the other candidate and is the wrong one: writing it
+// goes through the settings panel's baseline diff on purpose, and a second
+// writer that does not know that baseline is exactly the bug that guard exists
+// to prevent.
+const BOOT_DEF_LS_KEY = "BootDefFile";
+
+function setBootDefFile(pathNoExt)
+{
+  if(typeof pathNoExt !== 'string' || pathNoExt.length === 0) return false;
+  try { LocalStorageTools.setobj(BOOT_DEF_LS_KEY, { path: pathNoExt }); return true; }
+  catch (e) { log.warn("[boot-def] could not store", String(e)); return false; }
+}
+
+function getBootDefFile()
+{
+  const o = LocalStorageTools.getobj(BOOT_DEF_LS_KEY);
+  return (o && typeof o.path === 'string' && o.path.length) ? o.path : undefined;
+}
+
 function appendLocalStorage_RecentFiles(fileInfo)
 {
   
@@ -476,6 +506,23 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   // make window.open() execute. Allow only http(s)/ws(s); anything else → ignore.
   const _safeMonitorScheme = (u) => typeof u === 'string' && /^(https?|wss?):/i.test(u);
   let InspectionMonitor_URL_overvall = _safeMonitorScheme(_mus.inspection_monitor_url) ? _mus.inspection_monitor_url : undefined;
+
+  // The configured URL carries a `sha=` for whichever recipe was open when
+  // someone pasted it (…&sha=f6d5900d28&). Left alone it sends the operator to
+  // a monitor page for a DIFFERENT recipe than the one on screen -- a page that
+  // loads, renders, and is simply about something else, which is the kind of
+  // wrong that gets believed. Point it at the def actually loaded.
+  //
+  // Truncated to the length of whatever was configured rather than sent whole:
+  // DefFileHash is a full featureSet sha1 and the placeholders in use are short
+  // prefixes, so a 40-char value would stop matching on a server that was set
+  // up to compare 10. An empty `sha=` takes the full hash, having expressed no
+  // preference.
+  if (InspectionMonitor_URL_overvall !== undefined && isString(DefFileHash)) {
+    InspectionMonitor_URL_overvall = InspectionMonitor_URL_overvall.replace(
+      /([?&]sha=)([^&#]*)/i,
+      (_m, lead, had) => lead + (had.length ? DefFileHash.slice(0, had.length) : DefFileHash));
+  }
   let InspectionMonitor_URL_w_info   = InspectionMonitor_URL_overvall;
   if (InspectionMonitor_URL_overvall!==undefined && isString(DefFileHash) && DefFileHash.length > 5) {
 
@@ -509,9 +556,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     
     let popUpUIInfo = {
       title: "機台設定",
+      width: 860,
       onOK: undefined,
       onCancel: undefined,//make sure it reloads everytime
-      content: <CustomDisplaySelectUI key={"CustomDisplaySelectUI_"+(new Date().getMilliseconds())} onSelect={(cusDispInfo) => {
+      content: <CustomDisplayPicker key={"CustomDisplayPicker_"+(new Date().getMilliseconds())} onSelect={(cusDispInfo) => {
 
         let tarDef = cusDispInfo.targetDeffiles[0];
         let filePath = tarDef.path;
@@ -526,6 +574,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           .then(({ pkts, actionChannel }) => {
             let setTags = [];
             try { setTags = tarDef.tags.split(","); } catch (e) { setTags = []; }
+            // Only after the load actually resolved: a def that failed to open
+            // must not become the one the machine tries again at every boot.
+            setBootDefFile(filePath);
             ACT_Def_Model_Path_Update(filePath);
             actionChannel(pkts);
             ACT_InspOptionalTag_Update(setTags);
@@ -980,6 +1031,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       <Modal
         title={InfoPopUp === undefined ? "" : InfoPopUp.title}
         visible={InfoPopUp !== undefined}
+        // Opt-in width. Most callers want antd's 520; the machine-setting
+        // catalogue is a grid of every recipe on the line and needs the room.
+        width={InfoPopUp === undefined ? undefined : InfoPopUp.width}
         
         footer={(InfoPopUp===undefined || (InfoPopUp.onOK===undefined &&  InfoPopUp.onCancel===undefined))?null:undefined}
         onOk={() => {
@@ -1027,6 +1081,10 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
   const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_Report_Save = (filename, content,promiseCBs) => {ACT_WS_SEND_BPG("SV", 0,{ filename},content,promiseCBs)};
 
+  // Read-only here: the upload-skip fields show the compiled fallback when this
+  // machine has never set one, and uploadSkipOf() needs it to report which
+  // value is actually in force.
+  const System_Setting = useSelector(state => state.UIData.System_Setting);
   const Platform_API_ID = useSelector(state => state.ConnInfo.Platform_API_ID);
   const Platform_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.Platform_API_ID_CONN_INFO);
   const ACT_PLAT_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(Platform_API_ID,callback));
@@ -1165,7 +1223,9 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     });
   };
 
-  return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
+  return <div style={{ padding: 24, background: '#fff',
+                       height: '100vh', boxSizing: 'border-box',
+                       overflowY: 'auto', overflowX: 'hidden' }}>
     
     測量模式：
     <Dropdown overlay={InspectionModeOptionMenu} trigger={['click']}>
@@ -1182,27 +1242,136 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     <br/>
 
 
-    全檢儲存NG： <Switch checked={st_machine_custom_setting.FI_INSP_NG_SNAP==true} onChange={(check)=>{
-      
-      set_st_machine_custom_setting({...st_machine_custom_setting,FI_INSP_NG_SNAP:check});
-    }} />
+    {/* Everything that decides what reaches the disk is here, next to the
+        folder it is written into -- one door, not three.
 
-    <br/>
-    全檢儲存NG最大數量： 
-    {/* The InputNumber that used to sit inside the numpad popup, promoted to
-        BE the control: keyboard types directly, inputMode brings the numeric
-        on-screen keys on touch. */}
-    <InputNumber min={0} precision={0} inputMode="numeric"
-      value={st_machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM}
-      onChange={(v)=>{ const n=parseInt(v);
-        if(Number.isFinite(n))
-          set_st_machine_custom_setting({...st_machine_custom_setting,FI_INSP_NG_SNAP_MAX_NUM:n});
-      }} />
+        It used to be three, and they did not agree. This page had a single
+        "全檢儲存NG" switch that wrote only the legacy FI_INSP_NG_SNAP; the
+        inspection page had the per-verdict matrix that wrote
+        FI_INSP_SNAP_POLICY; and the 運算核心 modal had its own NA switch
+        writing the core's live policy directly. What FI start actually pushes
+        is snapPolicyOf(), which reads ONLY FI_INSP_SNAP_POLICY -- so this
+        page's switch changed nothing, while still showing a state. Worst case
+        it read "on" (the legacy key defaults true on existing machines) while
+        the policy defaulted to all-off and nothing was being saved at all. */}
+    <SnapPolicyPanel_rdx />
 
-    <Divider>RAW</Divider>
-    <pre>
+    <Divider>報告上傳</Divider>
+
+    {/* Sampling rate for the inspection DB: 1 report uploaded out of every N.
+        Lived in System_Setting, which is rebuilt from GetDefaultSystemSetting()
+        on every launch -- so it was a compiled-in constant with a debug
+        override, not a setting. Written here into machine_custom_setting,
+        which persists; the System_Setting values remain the fallback for a
+        machine that has never set one.
+
+        1 means every report. The field will not accept 0: `total % 0` is NaN
+        and NaN != 0, so a zero skips EVERY report -- the machine would upload
+        nothing while the counter beside it kept climbing. */}
+    {[['FI_MODE_UPLOAD_SKIP','全檢 (FI)'],['CI_MODE_UPLOAD_SKIP','抽檢 (CI)']].map(([k,label])=>(
+      <div key={k} style={{marginBottom:6}}>
+        {label} 每 N 筆上傳 1 筆：
+        <InputNumber min={1} precision={0} inputMode="numeric" style={{marginLeft:6,width:100}}
+          value={st_machine_custom_setting[k] !== undefined
+                   ? st_machine_custom_setting[k]
+                   : (System_Setting||{})[k]}
+          onChange={(v)=>{ const n=parseInt(v);
+            if(Number.isFinite(n) && n>=1)
+              set_st_machine_custom_setting({...st_machine_custom_setting,[k]:n});
+          }} />
+      </div>
+    ))}
+    <div style={{fontSize:12,color:'#888',lineHeight:1.7}}>
+      1 = 每筆都上傳。目前這台生效值：
+      <b>{uploadSkipOf(st_machine_custom_setting, System_Setting)}</b>
+      （依現在的檢測模式 {st_machine_custom_setting.InspectionMode || '—'} 決定用哪一個)
+    </div>
+
+    <Divider>同顆平均 / 追蹤視窗</Divider>
+
+    {/* One part is inspected several times as it travels, and the reports of
+        the same object are BLENDED in the tracking window -- so these are the
+        depth and the duration of that average, not display options.
+
+        Persisted here for the same reason as the upload skip: they lived in
+        System_Setting, which script.jsx rebuilds from GetDefaultSystemSetting()
+        on every launch. Merged per-key over the compiled defaults, never
+        replaced wholesale: FI ships with NO maxReportRepeat, and an absent cap
+        means "keep blending", which is a real setting and not a missing one.
+        Clearing the field restores that. */}
+    {[['FI','全檢 (FI)'],['CI','抽檢 (CI)']].map(([mode,label])=>{
+      const k = mode+'_MODE_StatSettingParam';
+      const eff = statSettingOf(st_machine_custom_setting, System_Setting, mode);
+      const setF = (field, v) => {
+        const cur = {...(st_machine_custom_setting[k] || {})};
+        if (v === null || v === undefined || v === '') delete cur[field];
+        else { const n = parseInt(v); if (!Number.isFinite(n) || n < 0) return; cur[field] = n; }
+        set_st_machine_custom_setting({...st_machine_custom_setting, [k]: cur});
+      };
+      const F = ({field, name, hint}) => (
+        <div style={{marginBottom:4}}>
+          <span style={{display:'inline-block',minWidth:210}}>{name}</span>
+          <InputNumber min={0} precision={0} inputMode="numeric" style={{width:110}}
+            value={eff[field]} onChange={(v)=>setF(field,v)} />
+          <span style={{marginLeft:10,fontSize:12,color:'#888'}}>{hint}</span>
+        </div>
+      );
+      return (
+        <div key={mode} style={{marginBottom:12}}>
+          <div style={{fontWeight:600,marginBottom:4}}>{label}</div>
+          <F field="keepInTrackingTime_ms" name="留在追蹤視窗的時間 (ms)"
+             hint="0 = 看完一次就離開,不做平均" />
+          <F field="minReportRepeat"       name="至少重複幾次才採計"
+             hint="低於此次數的觀測不進統計" />
+          <F field="maxReportRepeat"       name="最多平均幾次"
+             hint="清空 = 不設上限,持續平均" />
+          <F field="headReportSkip"        name="開頭丟棄幾次"
+             hint="剛進視野的前幾次不採計" />
+          <F field="historyReportlimit"    name="歷史報告保留筆數"
+             hint="0 會被當成 100" />
+        </div>
+      );
+    })}
+
+    <Divider>後端位址</Divider>
+
+    {/* These three arrive in machine_setting.json and, until now, could only be
+        changed by editing that file by hand -- which is why the RAW dump below
+        was the only place they were visible at all.
+
+        inspection_monitor_url's `sha=` is rewritten at use time to the def that
+        is actually loaded, so whatever recipe's hash happens to be pasted here
+        is a placeholder, not a target. Its LENGTH is kept, because the servers
+        in use match on a short prefix. */}
+    {[['inspection_db_ws_url',  '檢測資料庫 (ws)',   'ws://huangyie.com.tw:8085/'],
+      ['cusdisp_db_fetch_url',  '自訂顯示 (http)',   'http://huangyie.com.tw:8085/'],
+      ['inspection_monitor_url','檢測監控頁 (http)', 'https://hydb.hy.xception.tech:8087/?days=1&at=top&sha=f6d5900d28&'],
+     ].map(([k,label,eg])=>(
+      <div key={k} style={{marginBottom:8}}>
+        <div style={{fontSize:12,color:'#888'}}>{label}</div>
+        <Input value={st_machine_custom_setting[k] || ''} placeholder={eg}
+          onChange={(e)=>{ const v = e.target.value;
+            const next = {...st_machine_custom_setting};
+            // An empty box means "not configured", which is a real state the
+            // readers already handle (they test for undefined). Storing "" would
+            // pass those checks and then fail as a URL.
+            if (v === '') delete next[k]; else next[k] = v;
+            set_st_machine_custom_setting(next);
+          }} />
+      </div>
+    ))}
+    <div style={{fontSize:12,color:'#888',lineHeight:1.7,marginBottom:8}}>
+      監控頁的 <code>sha=</code> 會在開啟時換成目前載入的配方雜湊,長度沿用這裡填的位數。
+      只接受 http/https/ws/wss —— 其他 scheme 會被忽略,不會開啟。
+    </div>
+
+    <Collapse ghost style={{ marginTop: 8 }}>
+      <Collapse.Panel header="RAW（machine_setting.json 原始內容）" key="raw">
+        <pre style={{ maxHeight: '50vh', overflow: 'auto', margin: 0 }}>
     {JSON.stringify(st_machine_custom_setting, null, 4)}
-    </pre>
+        </pre>
+      </Collapse.Panel>
+    </Collapse>
 
             
   </div>
@@ -1914,6 +2083,16 @@ class APPMain extends React.Component {
     let defModelPath = this.props.defModelPath;
     if(defModelPath===undefined)
     {
+      // An explicitly chosen boot default beats "whatever was opened last".
+      // Picking a recipe from 機台設定 is a deliberate act about what this
+      // machine runs; opening a file to look at it is not.
+      let boot = getBootDefFile();
+      if(boot!==undefined)
+      {
+        this.props.ACT_Def_Model_Path_Update(boot);
+        return;
+      }
+
       let recent = getLocalStorage_RecentFiles();
       
       if(recent.length==0)

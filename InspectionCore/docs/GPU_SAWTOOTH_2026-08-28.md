@@ -61,3 +61,50 @@ that is worth remembering if it happens again.
 Sample longer than one cycle before believing a slope. Fifteen minutes of a
 sawtooth looks exactly like a leak, and per-unit normalisation makes it look
 like a well-understood one.
+
+## The strongest form of the argument: change the rate, not the clock
+
+Everything above is one plate speed. If the ceiling were a leak that merely
+looked bounded over an hour, running the machine HARDER would expose it. So the
+same soak was run at a second speed. `SOAK_FREQ` maps linearly onto plate
+speed -- 8000 -> 13.6 rpm, 10000 -> 17.0 rpm, both on one line through the
+origin at 588 Hz per rpm -- which makes the two runs directly comparable.
+
+    13.6 rpm   peaks 415 417 420 415 408      period ~62 min   over 5h13
+    17.0 rpm   peaks 475 477 431 401 393      period ~16 min   over ~1h40
+
+Raising the rate 25% cut the period by ~4x and lifted the ceiling by ~60 MB.
+Both stayed bounded. That is the signature of a cache evicted against a budget
+as WORK is done, not of a loss accumulating against wall time: a leak's period
+does not shorten when you feed it faster, and its ceiling does not exist.
+
+Six sawtooth cycles across two speeds, no ceiling drift in either.
+
+## What the numbers are NOT evidence of
+
+One 10000 run showed renderer RSS climbing 165 -> 227 MB with average latency
+20 -> 38 ms over 45 minutes, which reads as a leak until the throughput column
+is put beside it:
+
+    t       seen/s   rendMB   lat_avg   imgKBps
+    16.6    18.1     171      21.3      210
+    33.3    22.7     235      31.5      266
+    45.8    22.2     227      37.6      268
+
+`seen` stepped up ~40% on its own at t~33 and the memory followed it up and
+then FLAT (235 -> 228 -> 227 -> 227) once the load stopped rising. Latency was
+still creeping but decelerating (3.6 -> 0.4 ms per sample). Load-tracking, not
+loss. Why the feed rate stepped up mid-run with no setting changed is a
+separate open question, and it means cross-run comparisons of absolute memory
+need the throughput column quoted alongside them.
+
+## Reproducing
+
+    cd UI/Launcher
+    SOAK_APP_ROOT=<repo>/export_v2/app SOAK_FREQ=10000 SOAK_ZOOM_IN=200 \
+      node tools/soak.mjs 360
+
+SOAK_APP_ROOT must point at `export_v2/app`, not `export_v2` -- the latter
+holds only 1.1.104 and the soak then silently measures the old build. Zoom is
+capped internally at whatever reaches imgScale 1 (10 notches), so 200 is "all
+the way in" rather than an overshoot.
