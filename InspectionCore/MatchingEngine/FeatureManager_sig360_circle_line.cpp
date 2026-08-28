@@ -23,6 +23,7 @@ LOG_MODULE("match.sig360");
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include "polyfit.h"
+#include <opencv2/core/utils/filesystem.hpp>
 #include "shape_matcher.h"   // sbm::ShapeMatcher / extractFeatures (line2Dup + ROI refine)
 
 
@@ -2148,6 +2149,31 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   return 0;
 }
 
+// Object-frame mm polygon arrays, as carried by localization_include /
+// localization_exclude. A file-scope function rather than the lambda it started
+// as: the same arrays are now read from two placements -- the featureSet root
+// and the @__SBM_INFO__ inherentfeature -- and those two reads sit in different
+// scopes of parse_jobj().
+static void parse_poly_array(cJSON *arr, std::vector<std::vector<acv_XY>> &out)
+{
+  out.clear();
+  if (arr == NULL || !cJSON_IsArray(arr)) return;
+  cJSON *poly = NULL;
+  cJSON_ArrayForEach(poly, arr)
+  {
+    if (!cJSON_IsArray(poly)) continue;
+    std::vector<acv_XY> pts;
+    cJSON *pt = NULL;
+    cJSON_ArrayForEach(pt, poly)
+    {
+      cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
+      if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
+        pts.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
+    }
+    if (pts.size() >= 3) out.push_back(std::move(pts));
+  }
+}
+
 int FeatureManager_sig360_circle_line::parse_jobj()
 {
   const char *type_str = JFetch_STRING(root, "type");
@@ -2232,24 +2258,6 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     // "localization_include" = where to extract gradient features; "localization_exclude"
     // = avoid areas subtracted from it. mask = union(include) AND-NOT union(exclude).
     // A migrated def bakes the sig360 silhouette into include; a fresh def authors it.
-    auto parse_poly_array = [](cJSON *arr, vector<vector<acv_XY>> &out) {
-      out.clear();
-      if (arr == NULL || !cJSON_IsArray(arr)) return;
-      cJSON *poly = NULL;
-      cJSON_ArrayForEach(poly, arr)
-      {
-        if (!cJSON_IsArray(poly)) continue;
-        vector<acv_XY> pts;
-        cJSON *pt = NULL;
-        cJSON_ArrayForEach(pt, poly)
-        {
-          cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
-          if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
-            pts.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
-        }
-        if (pts.size() >= 3) out.push_back(std::move(pts));
-      }
-    };
     parse_poly_array(cJSON_GetObjectItem(root, "localization_include"), this->loc_incl_mm);
     parse_poly_array(cJSON_GetObjectItem(root, "localization_exclude"), this->loc_excl_mm);
 
@@ -2571,6 +2579,31 @@ int FeatureManager_sig360_circle_line::parse_jobj()
         // Present but empty is not an error -- a def may carry the entry as a
         // placeholder before anything has been trained into it.
         LOGW("[shape] @__SBM_INFO__ carries no shape_cache object");
+      }
+
+      // The authored feature-extraction regions belong here too: nothing but
+      // the shape locator reads them, and they are the same KIND of thing as
+      // the cache above -- this locator's description of this part.
+      //
+      // READER FIRST. The WebUI still writes them at the featureSet root, and
+      // must keep doing so until every machine sharing the def folder runs a
+      // core that can read this placement. inherentfeatures is a closed
+      // vocabulary and a def an older core cannot parse does not lose a field,
+      // it fails entirely -- which is the loc_include incident recorded at the
+      // legacy __shape_cache read above. Accepting both costs one branch.
+      cJSON *li = cJSON_GetObjectItem(feature, "localization_include");
+      cJSON *le = cJSON_GetObjectItem(feature, "localization_exclude");
+      if (li != NULL && cJSON_IsArray(li))
+      {
+        parse_poly_array(li, this->loc_incl_mm);
+        LOGI("[shape] localization_include read from @__SBM_INFO__ (%d polys)",
+             (int)this->loc_incl_mm.size());
+      }
+      if (le != NULL && cJSON_IsArray(le))
+      {
+        parse_poly_array(le, this->loc_excl_mm);
+        LOGI("[shape] localization_exclude read from @__SBM_INFO__ (%d polys)",
+             (int)this->loc_excl_mm.size());
       }
     }
     else
@@ -3524,6 +3557,69 @@ acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt, float sin, float cosin, float
   acv_XY pt = acvRotation(sin, cosin, flip_f, temp_pt);
 
   return acvVecAdd(acvVecMult(pt, 1 / mmpp), objCenter_pix); //convert to pixel unit
+}
+
+// VISSELE_SBM_ROI_DUMP=<dir>: write the tiles the matcher will actually compare.
+//
+// Called from BOTH places that turn the def's object-mm ROI points into
+// template pixels -- the fresh extraction and the cached load -- into separate
+// subdirectories, because the two carry their crop geometry differently
+// (originPx vs ccrop.tl()+corg) and "the generate button looked right" says
+// nothing about what a LOADED def runs with. Comparing the two directories is
+// the point.
+//
+// The question this answers cannot be answered from the numbers: object mm,
+// full-image px and crop-relative px all look plausible when they are wrong,
+// and a point that lands one arm over on a repeating part still produces a
+// confident match at a pose that is 90 degrees out. The tile is the only
+// artefact that shows WHICH piece of the part a point sits on.
+//
+// Off unless the variable is set -- (2*half+1)^2 per point per load.
+static void dump_roi_tiles(const char *tag, const cv::Mat &templ_img,
+                           const cv::Rect &crop, const acv_XY &originFull,
+                           const std::vector<acv_XY> &pts_mm,
+                           const std::vector<cv::Point2f> &opt_pts,
+                           float rs, float rc, float rf, double mmpp)
+{
+  const char *dumpdir = getenv("VISSELE_SBM_ROI_DUMP");
+  if (dumpdir == NULL || templ_img.empty()) return;
+  const int h = sbm::kDefaultROIHalfPublic;
+  std::string dir = std::string(dumpdir) + "/" + tag;
+  cv::utils::fs::createDirectories(dir);   // both tags under one dump dir
+  FILE *csv = fopen((dir + "/roi_points.csv").c_str(), "w");
+  if (csv)
+    fprintf(csv, "i,obj_mm_x,obj_mm_y,full_px_x,full_px_y,crop_px_x,crop_px_y,"
+                 "centre_rel_x,centre_rel_y,in_bounds\n");
+  cv::imwrite(dir + "/templ.png", templ_img);
+  const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
+  for (size_t i = 0; i < opt_pts.size() && i < pts_mm.size(); i++)
+  {
+    acv_XY full = TemplateDomain_TO_PixDomain(pts_mm[i], rs, rc, rf, originFull, (float)mmpp);
+    const cv::Point2f &cp = opt_pts[i];
+    int tx = (int)(cp.x + tcx + 0.5f), ty = (int)(cp.y + tcy + 0.5f);
+    bool ok = (tx - h >= 0 && ty - h >= 0 && tx + h < templ_img.cols && ty + h < templ_img.rows);
+    if (csv)
+      fprintf(csv, "%d,%.5f,%.5f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d\n",
+              (int)i, pts_mm[i].x, pts_mm[i].y, full.x, full.y,
+              full.x - crop.x, full.y - crop.y, cp.x, cp.y, ok ? 1 : 0);
+    // Out of bounds is the interesting case, not a reason to stay quiet:
+    // precomputeFeatureCaches simply `continue`s past such a point, so a def can
+    // lose half its ROI points and still run and still look fine.
+    if (!ok)
+    {
+      LOGW("[shape][roi-dump/%s] point %d at crop px (%d,%d) is outside the "
+           "template %dx%d -- the matcher will SKIP it",
+           tag, (int)i, tx, ty, templ_img.cols, templ_img.rows);
+      continue;
+    }
+    cv::Mat tile = templ_img(cv::Rect(tx - h, ty - h, 2 * h + 1, 2 * h + 1)).clone();
+    char nm[512];
+    snprintf(nm, sizeof(nm), "%s/roi_%02d_tx%d_ty%d.png", dir.c_str(), (int)i, tx, ty);
+    cv::imwrite(nm, tile);
+  }
+  if (csv) fclose(csv);
+  LOGI("[shape][roi-dump/%s] wrote %d tiles + templ.png + roi_points.csv to %s",
+       tag, (int)opt_pts.size(), dir.c_str());
 }
 
 // Inverse of TemplateDomain_TO_PixDomain: image-px → object-frame mm.
@@ -7666,6 +7762,9 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
           cached.user_opt_points_set = true;
           LOGI("[shape] cache + %d explicit ROI refine points (user)",
                (int)cached.user_opt_points.size());
+          dump_roi_tiles("cache", cached.templ_image, ccrop,
+                         acv_XY(orgFull.x, orgFull.y), roi_pts_mm, cached.user_opt_points,
+                         reg_sin, reg_cos, reg_flip_f, def_mmpp);
 #else
           LOGW("[shape] this build lacks sbm user_opt_points; cached def's explicit "
                "ROI points IGNORED (auto-selection used)");
@@ -7751,6 +7850,10 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       }
       fset.user_opt_points_set = true;
       LOGI("[shape] using %d explicit ROI refine points (user)", (int)fset.user_opt_points.size());
+      dump_roi_tiles("extract", templ_use, cropRect,
+                     acv_XY(originPx.x, originPx.y), roi_pts_mm, fset.user_opt_points,
+                     reg_sin, reg_cos, reg_flip_f, def_mmpp);
+
 #else
       // The submodule predates user_opt_points (reimplemented in a7e8864);
       // with such a checkout, explicit ROI points fall back to auto-selection.

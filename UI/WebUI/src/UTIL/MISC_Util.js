@@ -218,6 +218,22 @@ export { CircularCounter, ConsumeQueue } from './structures';
 // sidecar name. Path = <defModelPath>.png (the sidecar written next to the def on save).
 // No-op for unsaved defs (no defModelPath) and harmless for sig360 defs (ignored).
 export function stampRefImagePath(deffile, edit_info) {
+  const _fs0 = deffile && deffile.featureSet && deffile.featureSet[0];
+  if (!_fs0) return deffile;
+  // After 重新設定/TAKE the image on screen is a fresh capture and defModelPath
+  // still names the PREVIOUS def, whose .png is a picture of a different part.
+  // Stamping it made the core train the shape locator on that other part --
+  // silently, and with a result that looks like a working match.
+  //
+  // A retake writes the captured frame to a scratch sidecar (see the TAKE
+  // handler in DefConfUI) precisely so the shape locator has a template before
+  // the def has a name. That file IS the picture on screen, so it outranks
+  // everything: it is the only path here that cannot describe a different part.
+  if (edit_info && edit_info.__tmp_ref_image_path) {
+    deffile.featureSet[0]._ref_image_path = edit_info.__tmp_ref_image_path;
+    return deffile;
+  }
+  if (edit_info && edit_info.__img_fresh_capture) return deffile;
   if (deffile && deffile.featureSet && deffile.featureSet[0] && edit_info && edit_info.defModelPath) {
     deffile.featureSet[0]._ref_image_path = String(edit_info.defModelPath).replace(/\.[^.]+$/, '') + '.png';
   }
@@ -433,29 +449,33 @@ export function defFileGeneration(edit_info)
     // already mm, so a bin (R mm, theta rad) -> {x:R*cos, y:R*sin}: the pixel->unit
     // step that makes the locator magnification-portable and sig360-independent.
     // Already pulled out of features[] above, whatever the locator.
-    const inclShapes = _locIncl;
-    const exclShapes = _locExcl;
-    const toPolys = (shapes) => shapes
-      .map((s) => (Array.isArray(s.points) ? s.points.map((p) => ({ x: p.x, y: p.y })) : []))
-      .filter((p) => p.length >= 3);
-    const inclPolys = toPolys(inclShapes);
-    const exclPolys = toPolys(exclShapes);
+    // Straight from edit_info: the regions are not shapes any more, precisely
+    // so they cannot reach features[] and fail the whole def in the core.
+    const toPolys = (arr) => (Array.isArray(arr) ? arr : [])
+      .filter((poly) => Array.isArray(poly) && poly.length >= 3)
+      .map((poly) => poly.map((p) => ({ x: p.x, y: p.y })));
+    const inclPolys = toPolys(edit_info.__loc_include);
+    const exclPolys = toPolys(edit_info.__loc_exclude);
 
+    // The region is whatever the operator drew, and nothing else.
+    //
+    // This used to bake the sig360 silhouette into the def when no region had
+    // been authored. Two reasons it is gone:
+    //
+    // It duplicated a decision the CORE already makes, and makes better. The
+    // core's mask chain is union(localization_include), then the sig360
+    // silhouette rendered THROUGH the registered pose -- so the baked copy was
+    // the same outline minus the pose correction.
+    //
+    // And the copy is what did the damage: region shapes were not restored on
+    // load, so every reopen found no shapes and re-baked, quietly replacing an
+    // authored region with the silhouette on the next save.
+    //
+    // Emitted only when there is something to emit. An absent key lets the core
+    // fall through to its own silhouette, which is exactly what a def that never
+    // drew a region got before.
     if (inclPolys.length) {
       report.featureSet[0].localization_include = inclPolys;
-    } else {
-      const inh = report.featureSet[0].inherentfeatures;
-      const sig = inh && inh[0] && inh[0].signature;
-      if (sig && Array.isArray(sig.magnitude) && Array.isArray(sig.angle)) {
-        const r5 = (v) => Math.round(v * 100000) / 100000;   // match signature precision
-        const poly = [];
-        const n = Math.min(sig.magnitude.length, sig.angle.length);
-        for (let i = 0; i < n; i++) {
-          const R = sig.magnitude[i], t = sig.angle[i];
-          if (R > 1e-4) poly.push({ x: r5(R * Math.cos(t)), y: r5(R * Math.sin(t)) });
-        }
-        if (poly.length >= 3) report.featureSet[0].localization_include = [poly];
-      }
     }
     if (exclPolys.length) report.featureSet[0].localization_exclude = exclPolys;
     // ROI-refine sample points (object-frame mm). ALWAYS emitted for shape_based (even
@@ -528,13 +548,33 @@ export function defFileGeneration(edit_info)
   // COPIED, never appended in place: inherentfeatures is the live
   // inherentShapeList off the editor object, and pushing into it would grow the
   // list by one entry on every save.
-  if (edit_info.__shape_cache) {
-    const _inh = Array.isArray(report.featureSet[0].inherentfeatures)
-      ? report.featureSet[0].inherentfeatures : [];
-    report.featureSet[0].inherentfeatures = _inh
-      .filter((e) => !(e && e.name === SBM_INFO_NAME))
-      .concat([{ id: SBM_INFO_ID, type: 'sbm_info', name: SBM_INFO_NAME,
-                 shape_cache: edit_info.__shape_cache }]);
+  //
+  // The authored feature-extraction regions move in here with it. Nothing but
+  // the shape locator reads them, and they are the same KIND of thing as the
+  // cache: this locator's description of this part. Written INSTEAD of the
+  // featureSet-root copy, not beside it -- two placements holding one value is
+  // how they come to disagree, which is the lesson from __shape_cache and from
+  // def_image_reg before it.
+  //
+  // The entry is written when there is a cache OR a region, because either one
+  // alone is worth carrying: a def can have its extraction area drawn before
+  // anything has been trained from it.
+  {
+    const _fs = report.featureSet[0];
+    const _incl = _fs.localization_include;
+    const _excl = _fs.localization_exclude;
+    if (edit_info.__shape_cache || _incl || _excl) {
+      const _inh = Array.isArray(_fs.inherentfeatures) ? _fs.inherentfeatures : [];
+      const _entry = { id: SBM_INFO_ID, type: 'sbm_info', name: SBM_INFO_NAME };
+      if (edit_info.__shape_cache) _entry.shape_cache = edit_info.__shape_cache;
+      if (_incl) _entry.localization_include = _incl;
+      if (_excl) _entry.localization_exclude = _excl;
+      _fs.inherentfeatures = _inh
+        .filter((e) => !(e && e.name === SBM_INFO_NAME))
+        .concat([_entry]);
+    }
+    delete _fs.localization_include;
+    delete _fs.localization_exclude;
   }
   // The legacy placement is removed rather than mirrored: two copies of one
   // value is how they come to disagree, and the core prefers the new one

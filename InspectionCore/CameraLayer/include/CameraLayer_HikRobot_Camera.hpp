@@ -112,6 +112,7 @@ protected:
   void EventCallBack(MV_EVENT_OUT_INFO *pEventInfo);
   void registerLineEvents();
   void logTriggerConfig(const char *when);
+  int GetTriggerConfig(int *selector, int *mode, int *source, int *activation) override;
 
   bool acquisition_started=false;
   int mirrorFlag[2]={0,0};

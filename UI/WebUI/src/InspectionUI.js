@@ -2962,6 +2962,29 @@ class APP_INSP_MODE extends React.Component {
       // integrity guard. It belongs on the wire and nowhere else.
       const wireDef = { ...deffile,
         featureSet: deffile.featureSet.map((f, i) => (i === 0 ? { ...f } : f)) };
+      // The localizer's regions must never reach features[].
+      //
+      // inherentfeatures and features are CLOSED vocabularies in the core: an
+      // unrecognised type does not get skipped, it fails the whole def --
+      // "feature[19] has unknown type:[loc_include]" then "cJSON parse failed".
+      // AddMatchingFeature then throws, the session-start code below never
+      // runs, and the camera keeps whatever trigger mode the last thing left it
+      // in. Measured here: every FI after a 快速驗證 preview died exactly this
+      // way, and what reached a human was "the machine will not finish timing
+      // calibration".
+      //
+      // defFileGeneration strips them too, and should. This is the boundary
+      // where the contract is actually violated, so it is checked here as well:
+      // a def that leaves for the core is the last place the mistake is still
+      // cheap.
+      if (Array.isArray(wireDef.featureSet[0].features)) {
+        const _n = wireDef.featureSet[0].features.length;
+        wireDef.featureSet[0].features = wireDef.featureSet[0].features.filter(
+          (sh) => !sh || (sh.type !== 'loc_include' && sh.type !== 'loc_exclude'));
+        if (wireDef.featureSet[0].features.length !== _n)
+          log.warn('[wire-def] stripped ' + (_n - wireDef.featureSet[0].features.length)
+                 + ' loc_include/loc_exclude shape(s) that would have failed the whole def');
+      }
       stampRefImagePath(wireDef, this.props.edit_info);
 
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {

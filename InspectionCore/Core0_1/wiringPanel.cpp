@@ -5398,7 +5398,25 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           LOGE("inspection request rejected: neither 'deffile' nor 'definfo' "
                "present in the request JSON -- nothing to inspect against");
 
-          if (camera) camera->TriggerMode(1);
+          // A REJECTED REQUEST DOES NOT TOUCH THE CAMERA.
+          //
+          // This used to set TriggerMode(1) on the way out, and mode 1 is the
+          // one mode that DISCARDS frames: it sets takeCount=0, and
+          // ImageCallBack returns immediately while that holds. A message this
+          // handler refused to act on therefore stopped the camera delivering
+          // anything, silently.
+          //
+          // Not a rare path. Leaving the quick-verify preview sends a bare CI
+          // with no deffile and no definfo -- measured three times in one
+          // two-minute run -- so every visit to it left the camera dropping
+          // frames. Clock calibration needs one frame per sync pulse, so the
+          // next full inspection sat in state 102 with the plate stopped, and
+          // what reached a human was "the machine will not finish timing
+          // calibration" with nothing pointing back at the preview.
+          //
+          // The trigger source belongs to the SESSION -- CI free-runs, FI arms
+          // the device's line -- and is set where a session starts, further
+          // down. An error path is not a place to decide it.
           break;
         }
 
@@ -5492,9 +5510,25 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // here just as easily. Refuse the session instead of dereferencing.
           if (camera == NULL)
             throw std::runtime_error("no camera (failed reconnect leaves none) -- insp session refused");
+          // SAY WHICH TRIGGER SOURCE THIS SESSION SELECTED, AND WHETHER IT TOOK.
+          //
+          // Which mode a session runs in was only derivable by reading this
+          // function -- and the modes behave completely differently: 0 is
+          // free-run with no trigger source, 2 arms LINE0 for the device's
+          // pulse. When calibration will not converge, "did the camera actually
+          // get armed for the wire the board drives" is the first question, and
+          // nothing in the log answered it.
+          //
+          // The return value matters as much as the choice: TriggerMode() ends
+          // in SetEnumValue against the camera, and a NAK there leaves the
+          // camera in whatever mode it was already in while this code carries on
+          // as though it had changed. That failure is silent and looks exactly
+          // like a dead trigger wire.
+          #define _TRIGLOG(mode, why) do {             CameraLayer::status _st = camera->TriggerMode(mode);             if (_st == CameraLayer::ACK)               LOGI("[insp-start] tl=%c%c -> TriggerMode(%d) %s",                    dat->tl[0], dat->tl[1], (int)(mode), why);             else               LOGE("[insp-start] tl=%c%c -> TriggerMode(%d) %s REFUSED BY CAMERA "                    "-- it stays in its previous mode and the trigger will not work",                    dat->tl[0], dat->tl[1], (int)(mode), why);           } while (0)
+
           if (dat->tl[0] == 'C')
           {
-            camera->TriggerMode(0);
+            _TRIGLOG(0, "continuous free-run (CI)");
 
             doImgProcessThread = true;
             imageQueueSkipSize=1;
@@ -5529,9 +5563,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               // twenty wasted decodes a second. If `starved` starts climbing,
               // this is the number to raise.
               camera->SetFrameRate(12);
-              camera->TriggerMode(0);
+              _TRIGLOG(0, "free-run @12fps -- INSP_CAM_TRIG_DRIVE bench mode, "
+                          "frames gated by the device's announcements, LINE0 NOT used");
             }
-            else camera->TriggerMode(2);
+            else _TRIGLOG(2, "HARDWARE trigger on LINE0 (the device's pulse)");
+            #undef _TRIGLOG
             doImgProcessThread = true;
 
             datViewQueueSkipSize=2;
@@ -6129,7 +6165,39 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       // must produce an unhandled command, never a crash.
       char *cmd_type = JFetch_STRING(json, "type");
       if (cmd_type == NULL) cmd_type = (char *)"";
-      if (strcmp(cmd_type, "log_dump") == 0)
+      if (strcmp(cmd_type, "cam_trigger_probe") == 0)
+      {
+        // What the CAMERA says its trigger configuration is, read back from the
+        // device -- not what this core last asked for.
+        //
+        // The distinction is the whole point. TriggerMode() ends in
+        // SetEnumValue; a refusal leaves the camera where it was while the core
+        // carries on as though it changed. Measured on this bench: starting a
+        // full-inspection session from free-run left the camera off LINE0 and
+        // calibration never converged (state 112), while every line of code
+        // said the mode was 2.
+        cJSON_AddStringToObject(retObj, "type", "cam_trigger_probe");
+        if (camera == NULL)
+        {
+          cJSON_AddStringToObject(retObj, "err", "no camera");
+        }
+        else
+        {
+          int sel = -1, mode = -1, src = -1, act = -1;
+          int r = camera->GetTriggerConfig(&sel, &mode, &src, &act);
+          cJSON_AddNumberToObject(retObj, "ok", r == 0 ? 1 : 0);
+          cJSON_AddNumberToObject(retObj, "TriggerSelector", sel);
+          cJSON_AddNumberToObject(retObj, "TriggerMode", mode);
+          cJSON_AddNumberToObject(retObj, "TriggerSource", src);
+          cJSON_AddNumberToObject(retObj, "TriggerActivation", act);
+          // -1 means "this node could not be read", never a plausible 0.
+          if (r != 0)
+            cJSON_AddStringToObject(retObj, "err",
+                                    "one or more trigger nodes could not be read");
+        }
+        session_ACK = true;
+      }
+      else if (strcmp(cmd_type, "log_dump") == 0)
       {
         // WebUI "flight recorder" snapshot: ask the drainer to dump the entire
         // current ring (incl. verbose lines that never hit disk under the
@@ -9362,6 +9430,23 @@ void ControlSocketThread(bool *terminationflag)
                       "\"shutting_down\":%s}\n",
                       (long)CONTROL_SELF_PID(), up, BUILD_GIT_HASH,
                       g_shutdownRequested ? "true" : "false");
+        consock_write(cli, rsp, rn);
+      }
+      else if (cmd.find("\"log_dump\"") != std::string::npos)
+      {
+        // The ring lives in memory and its only exit was SC {type:"log_dump"},
+        // which is wired to a button in the WebUI. So the log was unobtainable
+        // from a terminal -- and a terminal is exactly where someone stands
+        // when the UI is the thing behaving oddly, or when the machine will not
+        // leave calibration and nobody wants to click through a modal to find
+        // out why.
+        //
+        // Same call the SC handler makes: ask the drainer to write the whole
+        // ring (including the verbose lines the WARN persist default keeps off
+        // disk) to crash_<utc>.dump. No crash, no exit, no disturbance to a
+        // running inspection.
+        log_request_dump();
+        rn = snprintf(rsp, sizeof(rsp), "{\"type\":\"log_dump\",\"ack\":true}\n");
         consock_write(cli, rsp, rn);
       }
       else if (cmd.find("\"shutdown\"") != std::string::npos)

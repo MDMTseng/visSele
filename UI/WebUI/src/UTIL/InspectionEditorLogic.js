@@ -382,6 +382,40 @@ export class InspectionEditorLogic {
               // the core auto-selects; an empty array here keeps "auto".
               if (Array.isArray(report.roi_refine_points))
                 edit_info.roi_refine_points = report.roi_refine_points;
+              // The localizer's extraction regions. NOT measurement features, so
+              // they never go into shapeList.
+              //
+              // They were put there once so the studio could edit them like any
+              // other shape, and it cost a whole class of failure: shapeList is
+              // what gets serialised into featureSet[0].features, and `features`
+              // is a CLOSED vocabulary in the core -- an unrecognised type fails
+              // the ENTIRE def ("feature[19] has unknown type:[loc_include]",
+              // then "cJSON parse failed"). Measured here: every full inspection
+              // started after a quick-verify preview died there, so the
+              // session-start code never ran and the camera kept the previous
+              // trigger mode -- which surfaced as "the machine will not finish
+              // timing calibration".
+              //
+              // Double-underscore keys: excluded from the def hash like every
+              // other __ key, and invisible to the feature list and the
+              // measurement canvas by construction rather than by filtering.
+              {
+                const _sbm = Array.isArray(report.inherentfeatures)
+                  ? report.inherentfeatures.find((x) => x && x.name === '@__SBM_INFO__')
+                  : undefined;
+                const _pick = (a) => (Array.isArray(a)
+                  ? a.filter((poly) => Array.isArray(poly) && poly.length >= 3)
+                      .map((poly) => poly.map((p) => ({ x: p.x, y: p.y })))
+                  : undefined);
+                // root_defFile is the pre-move placement; read it so defs
+                // written before the move still load.
+                edit_info.__loc_include = _pick((_sbm && _sbm.localization_include)
+                                           || root_defFile.localization_include
+                                           || report.localization_include);
+                edit_info.__loc_exclude = _pick((_sbm && _sbm.localization_exclude)
+                                           || root_defFile.localization_exclude
+                                           || report.localization_exclude);
+              }
               // The trained line2Dup feature set, carried back so a re-save keeps it.
               //
               // It lives in inherentfeatures as @__SBM_INFO__, beside the sig360
@@ -801,22 +835,6 @@ export class InspectionEditorLogic {
     // as editable loc_include / loc_exclude shapes. They round-trip back into those
     // arrays at save (defFileGeneration strips them from features). Ids are assigned
     // above the current max so they never collide with measurement features.
-    const addRegionShapes = (arr, type, baseName) => {
-      if (!Array.isArray(arr)) return;
-      arr.forEach((poly, idx) => {
-        if (!Array.isArray(poly) || poly.length < 3) return;
-        this.shapeCount = (this.shapeCount || 0) + 1;
-        this.shapeList.push({
-          id: this.shapeCount,
-          type,
-          name: baseName + (idx > 0 ? ('_' + idx) : ''),
-          points: poly.map((p) => ({ x: p.x, y: p.y })),
-        });
-      });
-    };
-    // addRegionShapes(defInfo.localization_include, 'loc_include', '@__LOC_INCLUDE__');
-    // addRegionShapes(defInfo.localization_exclude, 'loc_exclude', '@__LOC_EXCLUDE__');
-
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
     // Defs carry an embedded cam_param (mmpb2b/ppb2b, optional mask_radius).
@@ -856,14 +874,36 @@ export class InspectionEditorLogic {
     // dangling ref -- which then shipped in the def. Chains are short, so this
     // settles in one or two extra rounds; the cap is only there so a cycle
     // cannot spin forever.
+    // STOP WHEN A ROUND CHANGES NOTHING, not when the counter runs out.
+    //
+    // findLostRefShapes searches shapeList CONCAT inherentShapeList, while this
+    // only ever removed from shapeList -- and UpdateInherentShapeList rebuilds
+    // the inherent half from the signature every round. So a dangling ref on an
+    // inherent shape could never be removed: it was found again every pass, the
+    // loop burned all 32 rounds, and the only output was
+    // "still finding lost refs after 32 rounds -- giving up" with a count and
+    // no way to tell WHICH shape or WHICH id was missing.
+    //
+    // Nothing about that was recoverable by looping harder. Detect the fixed
+    // point instead, and when it is not the empty set, say exactly what is
+    // dangling so the def can be repaired.
     for (let round = 0; round < 32; round++) {
       const lostRefObjs = this.findLostRefShapes();
       if (lostRefObjs.length === 0) break;
+      const before = this.shapeList.length;
       this.shapeList = this.shapeList.filter((shape) => !lostRefObjs.includes(shape));
       this.UpdateInherentShapeList();
-      if (round === 31) {
-        log.error('[prune] still finding lost refs after 32 rounds -- giving up',
-                  { remaining: lostRefObjs.length });
+      if (this.shapeList.length === before) {
+        const known = new Set(this.shapeList.concat(this.inherentShapeList).map((x) => x && x.id));
+        log.error('[prune] dangling references this pass cannot remove '
+                  + '(they are not in shapeList)', lostRefObjs.map((s) => ({
+                    id: s && s.id, name: s && s.name, type: s && s.type,
+                    missing: [...(s.ref || []),
+                              ...(GetObjElement(s, ['ref_baseLine', 'id']) !== undefined
+                                  ? [s.ref_baseLine] : [])]
+                             .filter((r) => r && !known.has(r.id)).map((r) => r.id),
+                  })));
+        break;
       }
     }
     this.UpdateInherentShapeList();
@@ -941,7 +981,16 @@ export class InspectionEditorLogic {
       id: id++,
       type: SHAPE_TYPE.aux_line,
       name: "@__SIGNATURE__.orientation",
+      // Carries the id as well as the name. Its sibling above refs by id, this
+      // one refs by name, and findLostRefShapes only ever resolved ids -- so
+      // ref.id was undefined, nothing matched, and this line counted as a
+      // dangling reference on EVERY load of a sig360 def. It lives in
+      // inherentShapeList, which the prune pass cannot remove from, so the loop
+      // ran its full 32 rounds and reported "giving up" with a count and no
+      // name. The line itself was never broken: whatever draws it resolves the
+      // name fine.
       ref: [{
+        id: signature_id,
         name: "@__SIGNATURE__",
         keyTrace: ["orientation"]
       }]
@@ -1019,7 +1068,12 @@ export class InspectionEditorLogic {
       }
       let lostRef = totalRef.reduce((lostRef, ref) => {
         if (lostRef) return lostRef;
-        return totalList.find((shape) => ref.id == shape.id) == undefined;
+        // By name as well as by id. A ref that names its target is resolvable;
+        // treating it as lost because it did not also carry an id is the
+        // checker being narrower than the thing it checks.
+        return totalList.find((shape) =>
+          (ref.id !== undefined && ref.id == shape.id)
+          || (ref.name !== undefined && ref.name === shape.name)) == undefined;
       }, false);
       if (lostRef) return true;
 
@@ -1703,6 +1757,10 @@ export const DEF_SCOPED_EDIT_INFO_KEYS = [
   // The trained line2Dup set and its staleness flags: another def's features
   // are worse than none, because they train a matcher that then looks right.
   '__shape_cache', '__shape_stale', '__shape_lastGood',
+  // Set by 重新設定/TAKE; a def LOAD makes the on-screen image the def's own
+  // again, so this belongs to the def like everything else here.
+  '__img_fresh_capture', '__tmp_ref_image_path',
+  '__loc_include', '__loc_exclude',
 ];
 
 export function Edit_info_Empty() {
@@ -1756,6 +1814,17 @@ export function Edit_info_Empty() {
     shape_nms_angle: undefined,
     locating_engine: "sig360",      // "sig360" | "shape_based" (shape = line2Dup+ROI refine)
     img: null,
+    // True once TAKE has replaced the picture with a fresh capture: the saved
+    // <def>.png is then no longer what is on screen, and must not be stamped
+    // as the shape template.
+    __img_fresh_capture: false,
+    // Scratch sidecar written by a retake so SBM has a template before the def
+    // has a name. Cleared on save, when the real <def>.png exists.
+    __tmp_ref_image_path: undefined,
+    // Localizer extraction regions (object-frame mm polygon arrays). Owned by
+    // the SBM studio; never measurement features, never in shapeList.
+    __loc_include: undefined,
+    __loc_exclude: undefined,
     DefFileName: "",
     DefFileTag: [],
     inspOptionalTag:[],

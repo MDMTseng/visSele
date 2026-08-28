@@ -46,9 +46,20 @@ const MIN = Number(process.argv[2] || 360);
 const APP_ROOT = process.env.SOAK_APP_ROOT || path.join(REPO, 'export_v2');
 const WORKING_DIR = process.env.SOAK_WORKING_DIR || path.join(REPO, 'InspectionCore', 'Core0_1');
 const FREQ_WANT = Number(process.env.SOAK_FREQ || 8000);
-// CAPPED, AND THE CAP IS PHYSICAL: above 10000 the plate throws parts off. The
-// firmware clamp is 60000, which is no help -- this is the mechanical limit.
-const FREQ = Math.min(FREQ_WANT, 10000);
+// Capped at the same place the WebUI's own speed slider stops.
+//
+// This used to say 10000 and call it "the mechanical limit -- above this the
+// plate throws parts off". That did not survive contact with the machine: the
+// slider in uInspESP32_UI runs to 20000 (its marks read 20/30/40 rpm from the
+// same PULSES_PER_REV=70400 conversion this file's speeds obey), and the
+// operator confirms the plate has been run at 30 rpm -- freq 17600 -- with
+// parts on it. Two comments claimed the same number for different physics and
+// at least one was wrong; the one that could not be reconciled with the
+// machine's own control is the one that went.
+//
+// 20000 stands because it is what the UI already permits, not because anything
+// here measured it. The firmware clamp is 60000 and is no help at all.
+const FREQ = Math.min(FREQ_WANT, 20000);
 const NOCLEAN = process.env.SOAK_NOCLEAN === '1';
 const SEP = Number(process.env.SOAK_SEP_US || 14286);
 // --- accelerated reproduction ------------------------------------------------
@@ -681,6 +692,27 @@ if (PHANTOM) {
   const gd = await ask({ type: 'set_gate_disable', on: true }, 1500);
   console.log(`[9] SOAK_PHANTOM -- gate sensor blinded (${gd ? 'ack' : 'NO ACK'}), `
             + `firing a pulse every ${PHANTOM_MS}ms`);
+}
+// SOAK_PRESTART_TRIGMODE=0|1|2 -- push the camera into a trigger mode BEFORE the
+// session starts, so "whatever the camera was doing, does FI end up on LINE0?"
+// is a repeatable experiment rather than an argument.
+//
+// The modes are not variations of one another: 0 is free-run with no trigger
+// source, 1 is the software source, 2 arms LINE0 -- the wire the device pulses.
+// A session that comes up in the wrong one gets no frame per sync pulse, so
+// calibration never converges and the machine sits in state 102 with the plate
+// stopped. Reaching state 101 IS the pass condition; nothing else needs asking.
+if (process.env.SOAK_PRESTART_TRIGMODE !== undefined) {
+  const _m = Number(process.env.SOAK_PRESTART_TRIGMODE);
+  const _r = await page.evaluate((m) => window.__SEND_ST_RAW__({ CameraSetting: { trigger_mode: m } }), _m)
+    .catch((e) => String(e));
+  console.log(`[9pre] pushed CameraSetting.trigger_mode=${_m} -> ${_r}`);
+  // SOAK_PRESTART_TRIGMODE_GAP_MS: how long to let the push settle before the
+  // session starts. It exists because the gap is a variable in its own right --
+  // a CameraSetting still in flight when the session begins can be applied
+  // AFTER the session's own TriggerMode(), and would then decide the mode while
+  // looking like the session had failed to set it.
+  await sleep(Number(process.env.SOAK_PRESTART_TRIGMODE_GAP_MS || 1500));
 }
 await clickIcon('anticon-caret-right'); await sleep(9000);
 // Assert the plate is actually turning before trusting a single phantom.

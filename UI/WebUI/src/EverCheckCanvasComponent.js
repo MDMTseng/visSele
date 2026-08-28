@@ -125,6 +125,23 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
 
 class EverCheckCanvasComponent_proto {
 
+  // The localizer's include/exclude regions belong to the SBM studio, which
+  // draws them itself from this same shapeList. They are not measurement
+  // features, and on the def canvas a full-part outline sits on top of
+  // everything the operator came here to see -- which is why restoring them at
+  // load had been backed out entirely instead of scoped to one canvas.
+  //
+  // Returns the SAME ARRAY when there is nothing to remove. The draw path keys
+  // off `displayShape != shapeList` to mean "a filter is active, draw the
+  // filtered list"; handing it a fresh copy every frame would take that branch
+  // always and redraw the whole list on top of a shape being dragged.
+  StripLocRegions(shapeList) {
+    if (!Array.isArray(shapeList)) return shapeList;
+    const out = shapeList.filter((s) => !s || (s.type !== 'loc_include' && s.type !== 'loc_exclude'));
+    return (out.length === shapeList.length) ? shapeList : out;
+  }
+
+
   getMousePos(canvas, evt) {
     var rect = canvas.getBoundingClientRect();
     let mouse = {
@@ -1168,7 +1185,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
 
-    this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
+    this.rUtil.drawShapeList(ctx, this.StripLocRegions(this.edit_DB_info._obj.shapeList), null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList,
                                      this.edit_DB_info._obj.shapeList);
 
@@ -2454,7 +2471,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.closePath();
     ctx.save();
 
-    let displayShape = this.AvailableShapeFilter(this.edit_DB_info._obj.shapeList);
+    let displayShape = this.AvailableShapeFilter(
+      this.StripLocRegions(this.edit_DB_info._obj.shapeList));
 
     let drawFocusItem = false;
     let skipDrawIdxs = [];
@@ -2487,7 +2505,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       this.rUtil.drawShapeList(ctx, displayShape, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     }
     else if (!drawFocusItem) {
-      this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
+      this.rUtil.drawShapeList(ctx, this.StripLocRegions(this.edit_DB_info._obj.shapeList), null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     }
 
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList,
@@ -2685,7 +2703,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           let mmpp_round=this.round_number_to_significant(mmpp);
           {
             
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info._obj.shapeList);
+            let displayShape = this.AvailableShapeFilter(
+      this.StripLocRegions(this.edit_DB_info._obj.shapeList));
             let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
             let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
             let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
@@ -2773,7 +2792,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                 this.SetShape(this.EditShape, this.EditShape.id);
             }
 
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info._obj.shapeList);
+            let displayShape = this.AvailableShapeFilter(
+      this.StripLocRegions(this.edit_DB_info._obj.shapeList));
 
             let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
 

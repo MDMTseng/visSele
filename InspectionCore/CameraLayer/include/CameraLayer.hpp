@@ -237,6 +237,19 @@ class CameraLayer{
 
     virtual CameraLayer::status TriggerMode(int type){ triggerMode=type;return NAK;}
 
+  // The camera's ACTUAL trigger configuration, read back from the device.
+  //
+  // Separate from TriggerMode() because that one is a request: it ends in
+  // SetEnumValue, and a refusal leaves the camera in its previous mode while
+  // the caller carries on as though it had changed. Measured on this bench --
+  // entering FI from free-run or software-trigger left the camera off LINE0 and
+  // calibration never converged, while the core's own idea of the mode was 2.
+  // Anything that reports a mode must read it from the camera, not remember it.
+  //
+  // Returns 0 on success. Default: not supported by this layer.
+  virtual int GetTriggerConfig(int *selector, int *mode, int *source, int *activation)
+  { (void)selector; (void)mode; (void)source; (void)activation; return -1; }
+
     virtual CameraLayer::status TriggerCount(int TYPE)
     {
         return CameraLayer::NAK;

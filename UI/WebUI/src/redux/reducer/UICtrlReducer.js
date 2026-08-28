@@ -3,7 +3,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString, shapeDefFingerprint } from 'UTIL/MISC_Util';
-import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
+import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
 import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
@@ -951,6 +951,21 @@ function StateReducer(newState, action) {
               }
             }
             break;
+
+          case DefConfAct.EVENT.Def_Retake: {
+            // Same key set the def loader resets, for the same reason: another
+            // def's recipe settings are worse than none, because they configure
+            // a locator that then looks right.
+            const _blank = Edit_info_Empty();
+            for (const k of DEF_SCOPED_EDIT_INFO_KEYS) newState.edit_info[k] = _blank[k];
+            newState.edit_info._obj.SetShapeList([]);
+            newState.edit_info.edit_tar_info = null;
+            newState.edit_info.inherentShapeList = newState.edit_info._obj.UpdateInherentShapeList();
+            // What is on screen is no longer the saved def's reference image, so
+            // nothing may stamp that file as the shape template any more.
+            newState.edit_info.__img_fresh_capture = true;
+            break;
+          }
 
           case DefConfAct.EVENT.Shape_List_Update:
             newState.edit_info._obj.SetShapeList(action.data);

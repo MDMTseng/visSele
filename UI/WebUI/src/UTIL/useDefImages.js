@@ -78,6 +78,17 @@ export function useDefImages({ afterLoad } = {}) {
   curPathRef.current = currentImagePath;
   useEffect(() => {
     if (!CORE_ID || !edit_info || !edit_info.defModelPath) return;
+    // A retake is a NEW object that has never been saved, so it has no folder
+    // of samples -- and defModelPath still names the def that was open before
+    // it. Scanning that folder listed the PREVIOUS part's images in both
+    // switchers, and picking one would have loaded a picture of another product
+    // over the capture the operator is setting up.
+    if (edit_info.__img_fresh_capture) {
+      scanRef.current = null;      // rescan once the def is saved under a name
+      setImageList([]);
+      setCurrentImagePath(undefined);
+      return;
+    }
     const dmp = edit_info.defModelPath;
     const scanKey = dmp + '#' + reloadTick;
     if (scanRef.current === scanKey) return;
@@ -101,7 +112,7 @@ export function useDefImages({ afterLoad } = {}) {
         || imgs[0];
       if (cur) setCurrentImagePath(cur.path);
     }, reject: () => {} });
-  }, [CORE_ID, edit_info.defModelPath, reloadTick, send]);
+  }, [CORE_ID, edit_info.defModelPath, edit_info.__img_fresh_capture, reloadTick, send]);
 
   // Image-only swap: LD with imgsrc and NO deffile, so the def, the shapes, the
   // selection and the edit mode are all untouched. IGNORE_DEFCONF_LOCK is what

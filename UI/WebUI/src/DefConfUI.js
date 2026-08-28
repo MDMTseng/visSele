@@ -1779,8 +1779,21 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         ACT_DefFileHash_Update(report.featureSet_sha1);
         log.info("[action] report-save");
         ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-        if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
+        // The sidecar is also rewritten when the picture has been RE-TAKEN onto
+        // an existing name. Skipping it there kept a <def>.png of the previous
+        // part while the def described the new one -- and that file is what the
+        // shape locator trains from, so the recipe would have gone on matching
+        // the old part under the new name.
+        const _retaken = !!edit_info.__img_fresh_capture;
+        if (!existed || _retaken) {
+          log.info("[action] cache-img-save", { existed, retaken: _retaken });
+          ACT_Cache_Img_Save(CORE_ID, fileNamePath);
+        }
         else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
+        // The real sidecar now exists under the def's own name, so the scratch
+        // one is no longer the thing to point at.
+        dispatch(DefConfAct.EditInfo_Patch({
+          __tmp_ref_image_path: undefined, __img_fresh_capture: false }));
         ACT_Def_Model_Path_Update(fileNamePath);
         pushDefToDB(report, fileNamePath);
       };
@@ -1936,6 +1949,31 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         }
         else
         {
+          // SAY WHICH FIELDS MOVED.
+          //
+          // "變更尚未儲存" with nothing behind it is unfalsifiable: someone who
+          // opened the def and touched nothing cannot tell a real edit from the
+          // round-trip failing to reproduce the saved featureSet -- and both
+          // happen. The hash is over featureSet, so the diff is too.
+          const _loaded = GetObjElement(edit_info, ["loadedDefFile", "featureSet", 0]) || {};
+          const _now = GetObjElement(defFile_New, ["featureSet", 0]) || {};
+          const _skip = { __decorator: 1 };   // per-session UI state, not hashed
+          const _same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+          const _keys = [...new Set([...Object.keys(_loaded), ...Object.keys(_now)])]
+            .filter((k) => !_skip[k] && !_same(_loaded[k], _now[k]));
+          // String() around the stringify, because JSON.stringify(undefined)
+          // returns undefined -- not "undefined" -- and .slice() on that throws.
+          // A key that exists on one side and not the other is the COMMONEST
+          // case here (that is what a field being added or moved looks like), so
+          // this threw on nearly every dirty exit. The throw came out of the
+          // button's onClick, so the back button simply did nothing: no dialog,
+          // no error on screen, no way to leave the page.
+          const _cut = (v) => String(JSON.stringify(v)).slice(0, 120);
+          if (_keys.length) log.warn("[exit-dirty] featureSet fields differ", _keys.map((k) => ({
+            key: k, was: _cut(_loaded[k]), now: _cut(_now[k]),
+          })));
+          else log.warn("[exit-dirty] hash differs but no featureSet field does", {
+            loadedHash: edit_info.DefFileHash, nowHash: defFile_New.featureSet_sha1 });
           setModal_view({
             onOk: () => {
               ACT_EXIT();
@@ -1944,7 +1982,14 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             },
             onCancel: () => { console.log("onCancel");setModal_view(undefined); },
             title: dictLookUp("WARNING", DICT),
-            view: DICT.defConf.exit_warning_change_is_made
+            view: <>
+              {DICT.defConf.exit_warning_change_is_made}
+              <div style={{ marginTop: 10, fontSize: 12, color: '#888', lineHeight: 1.8 }}>
+                {_keys.length
+                  ? <>變更的欄位:{_keys.map((k) => <code key={k} style={{ marginRight: 6 }}>{k}</code>)}</>
+                  : '雜湊不同,但沒有任何欄位不同 —— 這是存檔與重新載入之間的不一致,不是你改了什麼。'}
+              </div>
+            </>
           })
         }
       }} />,
@@ -2219,6 +2264,13 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             })
         }
 
+        // One fixed name, deliberately. A per-capture name would leave a file
+        // behind for every retake in data/, and nothing would ever delete them;
+        // reusing one means the previous scratch frame is overwritten by the
+        // next capture, which is exactly the lifetime this needs. The leading
+        // underscores keep it out of the way of the recipe names beside it.
+        const TMP_REF_BASE = "data/__retake_ref";
+
         function triggerSnapExam(trigger_type=0,timeout=-1,doReset=true)
         {
           
@@ -2247,6 +2299,41 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                   data: acts
                 })
                 setModal_view(undefined);
+
+                // Give the new capture a template file immediately.
+                //
+                // The shape locator trains from a file on disk and has no path
+                // that uses the image in memory, so before this a freshly
+                // re-taken def could not generate features at all -- and the
+                // version before THAT stamped the previous def's .png, which
+                // trained the locator on a different part and then matched
+                // successfully. Writing the core's cached frame to a scratch
+                // sidecar makes the template exist the moment the picture does.
+                //
+                // Scratch, not a real save: no .def is written, defModelPath is
+                // untouched (so the save dialog does not default to this name),
+                // and nothing is uploaded -- DefFile_DB_SEND lives in
+                // commitSave and is not on this path. The def reaches the
+                // database when the operator actually saves it.
+                if(doReset)
+                {
+                  // AFTER the capture's own actions, not before them.
+                  //
+                  // This used to be dispatched outside the promise, so it ran
+                  // before the reply arrived -- and the reply carries a
+                  // sig360_extractor report, whose reducer case runs
+                  // Edit_info_reset(). That spreads Edit_info_Empty over
+                  // edit_info, which sets __img_fresh_capture back to false. The
+                  // retake wiped its own flag, so everything keyed off it (the
+                  // sample-image switchers, the studio's stale-overlay clear)
+                  // behaved as though nothing had been re-taken.
+                  dispatch(DefConfAct.Def_Retake());
+                  ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE);
+                  // Def_Retake clears the def-scoped keys, and this is one of
+                  // them -- so it is set after, never before.
+                  dispatch(DefConfAct.EditInfo_Patch({
+                    __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
+                }
               }
               else
               {
@@ -2265,8 +2352,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                 view:"圖像獲取異常"
                 })
             })
-          if(doReset)
-            ACT_Shape_List_Reset();
         }
 
         let triggerTimeout=10000;
@@ -2409,7 +2494,24 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           // the state it is protecting against -- so "仍要離開" stays, and the
           // save path asks once more before anything reaches disk.
           onCancel: () => {
-            const closeIt = () => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); };
+            // Leaving the studio re-locates the object.
+            //
+            // The studio is where the registration line, the extraction region
+            // and the trained features are set -- all three change where the
+            // core thinks the part IS. The def canvas rectifies the image
+            // against the last inspection report, so without a fresh one it
+            // goes on drawing the picture aligned to the pose from BEFORE the
+            // edits: overlays that sit next to the part instead of on it.
+            //
+            // Same call the image switcher already makes for the same reason
+            // (useDefImages afterLoad). It lives in another component, so this
+            // goes through the window event that component listens for --
+            // the pattern defconf-images-changed already uses.
+            const closeIt = () => {
+              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
+              setModal_view(undefined);
+              window.dispatchEvent(new Event('defconf-orient-now'));
+            };
             const lg = edit_info.__shape_lastGood;
             if (!edit_info.__shape_stale) { closeIt(); return; }
             Modal.confirm({
@@ -2433,8 +2535,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           },
           view: <SBMSetupView
             sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
-            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); }}
-            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave(); }}
+            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
+                             window.dispatchEvent(new Event('defconf-orient-now')); }}
+            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
+                            window.dispatchEvent(new Event('defconf-orient-now')); }}
           />,
         });
       }} />,
@@ -2748,6 +2852,16 @@ function DefConfImageSwitcher() {
     }, 400);
     return () => clearTimeout(t);
   }, [CORE_ID, edit_info.defModelPath, edit_info.img, edit_info.sig360info]);
+
+  // Fired when the SBM studio closes. Debounced by a tick so the studio's own
+  // last EditInfo_Patch (a region, a registration, a fresh cache) is in the
+  // store before the def is generated from it -- otherwise this would locate
+  // against the state the operator just changed.
+  useEffect(() => {
+    const h = () => setTimeout(() => sendOrientationInspect(), 60);
+    window.addEventListener('defconf-orient-now', h);
+    return () => window.removeEventListener('defconf-orient-now', h);
+  });
 
   // The scan/LD/IM half lives in useDefImages -- the SBM studio needs the same
   // switch and a second copy of it would be a screen that shows one image while
@@ -3242,6 +3356,17 @@ class APP_DEFCONF_MODE extends React.Component {
           if (this.props.Info_decorator.list_id_order.length == shapeListInOrder.length) {
             shapeListInOrder = this.props.Info_decorator.list_id_order.map(id => this.props.shape_list.find(shape => shape.id == id));
           }
+          // The localizer's extraction regions are not measurement features and
+          // this list is how measurement features are selected -- clicking one
+          // opens it in the property sheet with 複製 / 刪除 / CHECK, none of
+          // which mean anything for a region. They are authored in the SBM
+          // studio and drawn only there.
+          //
+          // AFTER the ordering, not before: list_id_order is compared for
+          // LENGTH against the full list, and filtering first makes that
+          // comparison fail, silently dropping the operator's ordering.
+          shapeListInOrder = shapeListInOrder.filter(
+            (sh) => sh && sh.type !== 'loc_include' && sh.type !== 'loc_exclude');
           MenuSet.push(<BASE_COM.Button
             key="setAdditional"
             addClass="layout black vbox HX0_5"

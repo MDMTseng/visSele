@@ -39,6 +39,18 @@ export function HookCanvasComponent({ dhook, image, captureDrag, style }) {
   }, [dhook, captureDrag]);
 
   // image changes → load + redraw.
+  //
+  // The `!image` bail is why a brand-new object opened the SBM studio on the
+  // PREVIOUS def's picture. edit_info.img is null until something is captured,
+  // this effect returned, and the canvas kept the pixels it was last given --
+  // and SetImg cannot undo that either, because it guards `img_info == null`
+  // too. Nothing in the chain can clear an image once one has been drawn.
+  //
+  // Remounting is the clear: a null image bumps the key below, React drops the
+  // canvas element and DrawHook_CanvasComponent with it, and what comes back
+  // has never had an image. Only the has-image/no-image transition changes the
+  // key, so swapping one picture for another still reuses the canvas and keeps
+  // the view where it was.
   useEffect(() => {
     const c = _.current.canvComp; if (!c || !image) return;
     c.SetImg(image); c.draw();
@@ -480,6 +492,12 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const obj = edit_info._obj;
   const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
   const shapeList = (obj && obj.shapeList) || [];
+  // Fed to the draw hook in the shape the hook already understands, so the
+  // renderer did not have to change when the storage did.
+  const locShapes = [
+    ...((edit_info.__loc_include || []).map((poly) => ({ type: 'loc_include', points: poly }))),
+    ...((edit_info.__loc_exclude || []).map((poly) => ({ type: 'loc_exclude', points: poly }))),
+  ];
   const roiPts = edit_info.roi_refine_points || [];
 
   // The studio used to be stuck on whichever image was loaded when it opened.
@@ -495,16 +513,34 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
     afterLoad: () => { setInsp(undefined); setFeatPts(undefined); },
   });
 
+  // A retake replaces the part. The feature overlay and the last test result
+  // were both measured on the PREVIOUS one, and this component is not remounted
+  // by the capture -- so they stayed on screen, drawn over the new image, as a
+  // handful of blue points belonging to a part that is no longer there.
+  const retakeRef = useRef(edit_info.__img_fresh_capture);
+  useEffect(() => {
+    if (edit_info.__img_fresh_capture && !retakeRef.current) {
+      setFeatPts(undefined); setInsp(undefined);
+    }
+    retakeRef.current = edit_info.__img_fresh_capture;
+  }, [edit_info.__img_fresh_capture]);
+
   const onRoi = useCallback((pts) => {
     dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: pts }));
   }, [dispatch]);
 
+  // Regions are the localizer's, not the measurement list's.
+  //
+  // They used to be written as shapes into shapeList so this canvas could draw
+  // them like anything else. shapeList is what becomes featureSet[0].features,
+  // and an unrecognised type there fails the WHOLE def in the core -- so every
+  // def carrying a region broke full inspection. They live in edit_info now.
   const onPoly = useCallback((type, pts) => {
-    dispatch(DefConfAct.Shape_Set({
-      shape: { type, points: pts.map((p) => ({ x: p.x, y: p.y })),
-               name: type === 'loc_include' ? '@__LOC_INCLUDE__' : '@__LOC_EXCLUDE__' },
-      id: undefined,
-    }));
+    const key = (type === 'loc_include') ? '__loc_include' : '__loc_exclude';
+    const poly = pts.map((p) => ({ x: p.x, y: p.y }));
+    // One polygon per kind, replacing whatever was there -- the same thing the
+    // old single-shape write did.
+    dispatch(DefConfAct.EditInfo_Patch({ [key]: [poly] }));
   }, [dispatch]);
 
   const onReg = useCallback((r) => {
@@ -514,7 +550,8 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
 
   // "生成特徵點": push the current (in-progress) def to the core's SF command and
   // overlay the returned line2Dup features + ROI points. Trains from the on-disk
-  // <def>.png, so a brand-new unsaved def must be saved first.
+  // <def>.png, so a brand-new or freshly re-taken def must be saved first --
+  // see the failure branch below for why that is a rule and not a bug.
   const genFeatures = useCallback((regenerate) => {
     if (!sendBPG) return;
     let deffile;
@@ -541,12 +578,28 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
         const nFeat = ((sf && sf.data && sf.data.features) || []).length;
         const gotCache = !!(sf && sf.data && sf.data.shape_cache);
         if (!gotCache || nFeat === 0) {
+          // The commonest cause is not a bad setting, it is that there is no
+          // template file yet.
+          //
+          // The core trains from a file on disk -- _ref_image_path, then the
+          // def's reference_image, then <def-base>.png -- and has no path that
+          // uses the image currently on screen. A def that has just been
+          // re-taken has no sidecar written yet, and stampRefImagePath
+          // deliberately refuses to point at the PREVIOUS def's picture. So
+          // "generate" cannot succeed until the def has been saved once, and
+          // saying "no features were extracted" sends someone to tune
+          // thresholds against a problem that is not about thresholds.
+          const noTemplate = !!(edit_info && edit_info.__img_fresh_capture);
           Modal.error({
-            title: '生成特徵失敗',
-            content: nFeat === 0
-              ? '核心沒有抽到任何特徵。通常是參考影像讀不到,或特徵範圍把零件整個排除了。'
-                + '先前的特徵沒有被覆蓋。'
-              : '核心抽到了特徵但沒有回傳可儲存的結果。先前的特徵沒有被覆蓋。',
+            title: noTemplate ? '還沒有樣板影像,無法生成特徵' : '生成特徵失敗',
+            content: noTemplate
+              ? '這張影像是剛重新擷取的,還沒有寫進磁碟。SBM 的樣板必須是檔案 —— '
+                + '存檔時才會把它寫成 <配方名>.png。先存一次檔,再回來生成特徵。'
+                + '(不會沿用前一個配方的圖:那會訓練出另一個零件的特徵,而且會匹配成功。)'
+              : nFeat === 0
+                ? '核心沒有抽到任何特徵。通常是參考影像讀不到,或特徵範圍把零件整個排除了。'
+                  + '先前的特徵沒有被覆蓋。'
+                : '核心抽到了特徵但沒有回傳可儲存的結果。先前的特徵沒有被覆蓋。',
           });
         }
         // 把核心訓練出來的特徵存進 def, 之後載入不必重抽 (見 MISC_Util 的
@@ -733,12 +786,12 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
 
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = captureDrag;
-    const ctx_state = { reg, mmpp, shapeList, work: work.current,
+    const ctx_state = { reg, mmpp, shapeList: locShapes, work: work.current,
       featPts: featRef.current, insp: inspRef.current,
       roiPts, tool, onPoly, onReg, onRoi };
     if (isCtrl) ctrlScene(g, canvas, ctx_state);
     else drawScene(g, canvas, ctx_state);
-  }, [tool, reg, mmpp, shapeList, featPts, insp, roiPts, onPoly, onReg, onRoi]);
+  }, [tool, reg, mmpp, locShapes, featPts, insp, roiPts, onPoly, onReg, onRoi]);
 
   // Auto-generate the feature-point overlay once when the studio opens (if the def is
   // saved on disk). The user can refresh with the button after editing regions.
@@ -955,8 +1008,22 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       </div>
     </div>
 
-    <div style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #333' }}>
-      <HookCanvasComponent dhook={dhook} image={edit_info.img} captureDrag={captureDrag} />
+    <div style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #333',
+                  position: 'relative' }}>
+      <HookCanvasComponent key={edit_info.img ? 'img' : 'noimg'}
+        dhook={dhook} image={edit_info.img} captureDrag={captureDrag} />
+      {edit_info.img ? null : (
+        // A blank canvas and a stale one look the same to someone who just
+        // opened this; say which it is.
+        <div style={{ position: 'absolute', inset: 0, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      pointerEvents: 'none', color: '#888', textAlign: 'center',
+                      lineHeight: 1.9 }}>
+          <div>尚未擷取影像<br />
+            <span style={{ fontSize: 12 }}>先在檢驗準備裡拍一張,再回來設定 SBM 定位。</span>
+          </div>
+        </div>
+      )}
     </div>
   </div>;
 }

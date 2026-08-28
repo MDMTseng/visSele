@@ -672,8 +672,23 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
   registerLineEvents();
   logTriggerConfig("after-open");
 
-  TriggerMode(1);
-  logTriggerConfig("after-TriggerMode(1)");
+  // A freshly opened camera is armed for the DEVICE's trigger line, here, and
+  // not from a settings file.
+  //
+  // This machine is triggered: the board pulses LINE0 and the camera answers.
+  // Free-run is the exception -- calibration and the preview ask for it
+  // explicitly -- so the connect state should be the rule, not something a JSON
+  // file has to remember to say. default_camera_setting.json carries no
+  // trigger_mode at all, and adding one would put a hard invariant behind a
+  // file that can be edited, copied between machines, or simply lack the key.
+  //
+  // It was mode 1 (SOFTWARE source) before. Nothing pulses a software trigger
+  // outside an explicit request, so a camera sitting there produces no frames,
+  // and a full-inspection session that started from it had none to pair with
+  // the board's sync pulses -- calibration cannot converge without one frame per
+  // pulse, which is state 102 forever and then 112.
+  TriggerMode(2);
+  logTriggerConfig("after-open-TriggerMode(2)");
   threadRunningState = true;
 
   SetROI(0, 0, 999999, 999999, 0, 0);
@@ -833,6 +848,32 @@ void CameraLayer_HikRobot_Camera::logTriggerConfig(const char *when)
     // enum-as-string readback is not available on every node.
     LOGI("[trigger cfg %s] %-18s ret=%d cur=%u", when, keys[i], r, ev.nCurValue);
   }
+}
+
+// The same four nodes logTriggerConfig prints, handed back instead of logged.
+//
+// Read from the DEVICE, never from what this core last asked for. TriggerMode()
+// ends in SetEnumValue and a refusal is silent, so the remembered value and the
+// camera can disagree -- and when the machine will not leave calibration, which
+// of the two is right is the whole question.
+int CameraLayer_HikRobot_Camera::GetTriggerConfig(int *selector, int *mode,
+                                                  int *source, int *activation)
+{
+  if (handle == NULL) return -1;
+  const char *keys[] = { "TriggerSelector", "TriggerMode", "TriggerSource", "TriggerActivation" };
+  int *out[] = { selector, mode, source, activation };
+  int bad = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    MVCC_ENUMVALUE ev = {0};
+    int r = MV_CC_GetEnumValue(handle, keys[i], &ev);
+    // A node that cannot be read reports -1, not a plausible 0: a wrong number
+    // here would be believed, and the point of this call is that the remembered
+    // one could not be.
+    if (out[i]) *out[i] = (r == MV_OK) ? (int)ev.nCurValue : -1;
+    if (r != MV_OK) bad++;
+  }
+  return bad ? -1 : 0;
 }
 
 void CameraLayer_HikRobot_Camera::imgQThreadFunc()

@@ -102,10 +102,45 @@ const fmtMs = (ms) => (isFinite(ms) ? `${ms.toFixed(ms < 10 ? 2 : 0)} ms` : '—
 // blank exactly when someone is sitting there reading the timing. Fall back to
 // the production speed and label it, rather than showing nothing.
 const REF_FREQ = 15000;
+// What the run control starts at when nothing else has supplied a speed. The
+// stop path zeroes the plate setpoint (see runSequence), so this is the normal
+// case after any stop -- not an edge case.
+const DEFAULT_START_FREQ = 8000;
 
 // Matches LIGHT_HOLD_MAX_MS in the firmware, which clamps anything larger.
 // Two minutes is not enough to set exposure/gain/focus without the light
 // dying mid-adjustment; five is the most the board will hold.
+// Take one lit frame using the BOARD's trigger, with the camera armed for it.
+//
+// The board puts its pulse on the camera's LINE0. The camera only listens to
+// that line in TriggerMode(2), and the core switches to 2 solely when an
+// inspection session starts -- outside one it sits on TriggerMode(1), software
+// source. So the pulse went out, nothing listened, and there was no frame and no
+// error anywhere: the core log did not even show an attempt.
+//
+// The other route -- asking the core to grab via EX, the way 檢測快照 does --
+// does not work from here and cannot: EX needs a registered CI session with
+// frames already flowing (wiringPanel: "Caller must have CI registered and
+// trigger_mode:0"), and this panel has none. Measured on the bench: board
+// trigger produced an image, core trigger produced nothing.
+//
+// The restore runs on BOTH paths, and treats a refusal as done. A camera left
+// armed for a hardware line nobody drives is worse than a failed snapshot --
+// everything that expects free-run then silently has no frames.
+function snapWithBoardTrigger(api, dispatch, CORE_ID) {
+  if (!api || typeof api.camSnapWithLight !== 'function')
+    return Promise.reject(new Error('韌體或介面不支援 camSnapWithLight'));
+  const setTrig = (mode) => new Promise((resolve) => {
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, 'ST', 0,
+      { CameraSetting: { trigger_mode: mode } }, undefined,
+      { resolve, reject: resolve }));
+  });
+  return setTrig(2)
+    .then(() => api.camSnapWithLight())
+    .then((r) => setTrig(1).then(() => r),
+      (e) => setTrig(1).then(() => { throw e; }));
+}
+
 const LIGHT_HOLD_MS = 300000;
 const refFreq = (plate_freq) => (plate_freq > 0 ? plate_freq : REF_FREQ);
 const isRef = (plate_freq) => !(plate_freq > 0);
@@ -417,9 +452,41 @@ export function runSequence(api, on, speed) {
     api.machineSetupUpdate({ plate_freq: 0 }, false, true);
     return Promise.resolve(null);
   }
-  if (!(speed > 0)) return Promise.resolve('沒有可用的轉速,請先在設定面板設定');
+  // No usable speed is no longer a refusal.
+  //
+  // Stopping zeroes the plate SETPOINT just above -- deliberately, because the
+  // firmware re-asserts TARGET from the setpoint on every IDLE pass, so a
+  // non-zero setpoint would keep the plate turning after a stop. But every
+  // caller then came back to a machine with no speed, and the run control
+  // refused with 「沒有可用的轉速」. Measured on the bench: run 快速驗證, leave
+  // it, and full inspection could not be started at all -- which presents as
+  // "the machine will not finish clock calibration", because calibration never
+  // gets to begin.
+  //
+  // So the start path supplies one. DEFAULT_START_FREQ, not the last remembered
+  // value: a machine that was being set up slowly must not leap to that speed
+  // because somebody pressed start (the note above SPEED_KEY is about exactly
+  // that), and a fixed, stated number is the one an operator can predict.
+  // Ask the BOARD before inventing a speed.
+  //
+  // The first version of this defaulted straight to DEFAULT_START_FREQ, and
+  // that turned a fallback into an override: anything that had set the plate
+  // speed by another route -- the soak harness sets it over the board console
+  // before pressing start -- was silently replaced at start. Measured: a run
+  // asked for 14667 (25 rpm), the board acked it, and the machine ran the whole
+  // ten minutes at 13.6 rpm because this line wrote 8000 over it.
+  //
+  // So the order is: what the caller asked for, then what the board already
+  // holds, then the default. The default still exists -- a stop zeroes the
+  // setpoint, so a machine with no speed at all is the normal case, and
+  // refusing there is what blocked calibration.
+  return Promise.resolve(
+    (speed > 0) ? speed : api.getSetupP().then(
+      (st) => ((st && st.plate_freq > 0) ? st.plate_freq : DEFAULT_START_FREQ),
+      () => DEFAULT_START_FREQ)
+  ).then((useSpeed) => {
   api.stepperEnable();
-  api.machineSetupUpdate({ plate_freq: speed }, false, true);
+  api.machineSetupUpdate({ plate_freq: useSpeed }, false, true);
   // Barrier, not politeness. machineSetupUpdate is fire-and-forget, so firing
   // enter_insp_mode straight after it races. The device answers in the order it
   // was asked, so a reply to a request queued AFTER set_setup proves set_setup
@@ -443,6 +510,7 @@ export function runSequence(api, on, speed) {
     if (!(s && s.plate_freq > 0)) return '轉速沒有寫進裝置,未進入檢測模式';
     return Promise.resolve(api.enterInspMode()).then(() => null);
   });
+  });   // end of the resolved-speed continuation opened above
 }
 
 // A "?" that carries the explanation instead of a paragraph that carries it
@@ -569,6 +637,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const cfgFileRef = useRef(null);
 
   const [lightUntil, setLightUntil] = useState(0);   // epoch ms the board will auto-drop the hold
+  const [snapWhy, setSnapWhy] = useState('');       // why the last plate snapshot did not happen
   const [now, setNow] = useState(Date.now());
   const mounted = useRef(true);
 
@@ -1269,6 +1338,28 @@ build ${fw.build}`}>
               return Promise.all([api.light('L1A', false), api.light('L2A', false)]);
             })}
           >全部關</Button>
+
+          {/* The plate, photographed. The compact status strip has had this
+              button; this panel -- the one someone opens to SET the camera up --
+              did not, so lighting the plate and taking the picture of it were in
+              two different places.
+
+              camSnapWithLight owns the whole sequence: hold the light, settle,
+              fire the camera pulse, settle, drop the light. It drops the light
+              on the failure path too, which is why this does not reuse the
+              buttons above -- a hold left on by a failed snapshot is a backlight
+              built for 600us pulses sitting lit until its own timeout. */}
+          <Button size="small" type="primary" icon={<CameraOutlined />}
+            loading={busy === 'snap'} disabled={running}
+            title="點燈、由板子送觸發、熄燈。相機會先被切到硬體觸發再切回去。"
+            onClick={() => run('snap', (api) => {
+              setSnapWhy('');
+              return snapWithBoardTrigger(api, dispatch, CORE_ID)
+                .then((r) => { setLightUntil(0); return r; },
+                  (e) => { setLightUntil(0);
+                    setSnapWhy('拍照失敗:' + String(e && e.message ? e.message : e)); throw e; });
+            })}
+          >拍一張盤面</Button>
           <span style={dim}>
             {running
               ? '檢測模式中無法手動點燈'
@@ -1277,6 +1368,7 @@ build ${fw.build}`}>
                 : '熄滅'}
           </span>
         </div>
+        {snapWhy ? <div style={{ color: '#cf1322', marginTop: 6 }}>{snapWhy}</div> : null}
       </FoldCard>
 
       <FoldCard style={{ marginBottom: 8 }} title={<span>進料節流(閘門)
@@ -2214,8 +2306,8 @@ export function UINSP_ESP32_MINI() {
                 if (!api || typeof api.camSnapWithLight !== 'function') {
                   setSnapping(false); setWhy('韌體或介面不支援 camSnapWithLight'); return;
                 }
-                api.camSnapWithLight()
-                  .catch((e) => { if (mounted.current) setWhy('拍照失敗: ' + String(e)); })
+                snapWithBoardTrigger(api, dispatch, CORE_ID)
+                  .catch((e) => { if (mounted.current) setWhy('拍照失敗: ' + String(e && e.message ? e.message : e)); })
                   .then(() => { if (mounted.current) setSnapping(false); });
               }));
             }} />

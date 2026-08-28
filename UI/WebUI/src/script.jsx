@@ -16,6 +16,58 @@ import {CameraParamPanel} from './component/CameraParamPanel.jsx';
 import {CoreStatusPanel} from './component/CoreStatusPanel.jsx';
 import {DBStatusPanel} from './component/DBStatusPanel.jsx';
 
+// Ask the CAMERA what its trigger configuration is, right now.
+//
+// Everything else on this screen reports what the core last ASKED the camera
+// for. That is a different fact, and this bench proved they can disagree:
+// starting a full inspection from free-run or software-trigger left the camera
+// off LINE0 -- calibration never converged, state 112 -- while the code path
+// that runs at session start had called TriggerMode(2). TriggerMode() ends in
+// SetEnumValue, and a refusal there is silent.
+//
+// So this reads the four nodes off the device. A node that cannot be read shows
+// as -1, never as a plausible 0.
+function CameraTriggerProbe({ send }) {
+  const [v, setV] = React.useState(undefined);
+  const [busy, setBusy] = React.useState(false);
+  const MODE = { 0: '0 關閉(自由跑)', 1: '1 開啟(需要觸發)' };
+  const SRC  = { 0: '0 LINE0(板子的線)', 1: '1 LINE1', 7: '7 SOFTWARE(軟體)' };
+  const nm = (m, x) => (m[x] !== undefined ? m[x] : String(x));
+  const ask = () => {
+    setBusy(true);
+    send('SC', 0, { type: 'cam_trigger_probe' }, undefined, {
+      resolve: (pkts) => {
+        setBusy(false);
+        const p = (pkts || []).find((q) => q && q.data && q.data.type === 'cam_trigger_probe');
+        setV(p ? p.data : { err: '核心沒有回傳 cam_trigger_probe' });
+      },
+      reject: (e) => { setBusy(false); setV({ err: String(e && e.message ? e.message : e) }); },
+    });
+  };
+  return <div style={{ marginTop: 12, padding: 10, border: '1px solid #eee', borderRadius: 4 }}>
+    <Button size="small" loading={busy} onClick={ask}>查詢相機觸發狀態(向相機回讀)</Button>
+    <span style={{ marginLeft: 10, fontSize: 12, color: '#888' }}>
+      讀的是相機本身,不是核心記得的值
+    </span>
+    {v === undefined ? null : v.err ? (
+      <div style={{ color: '#cf1322', marginTop: 8 }}>{v.err}</div>
+    ) : (
+      <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 12, lineHeight: 1.9 }}>
+        <div>TriggerMode       {nm(MODE, v.TriggerMode)}</div>
+        <div>TriggerSource     {nm(SRC, v.TriggerSource)}</div>
+        <div style={{ color: '#888' }}>TriggerSelector   {v.TriggerSelector}</div>
+        <div style={{ color: '#888' }}>TriggerActivation {v.TriggerActivation}</div>
+        <div style={{ marginTop: 6, fontFamily: 'inherit',
+                      color: (v.TriggerMode === 1 && v.TriggerSource === 0) ? '#389e0d' : '#cf1322' }}>
+          {(v.TriggerMode === 1 && v.TriggerSource === 0)
+            ? '硬體觸發已就緒 — 相機在聽 LINE0'
+            : '相機沒有在聽 LINE0 — 全檢的時序校正會拿不到影格'}
+        </div>
+      </div>
+    )}
+  </div>;
+}
+
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import { initActionRecorder } from 'UTIL/actionRecorder.js';
@@ -1582,6 +1634,10 @@ class APPMasterX extends React.Component {
 
                         <CameraParamPanel
                           camInfo={cam0}
+                          send={(tl,prop,obj,bin,cbs)=>
+                            this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, obj, bin, cbs)}/>
+
+                        <CameraTriggerProbe
                           send={(tl,prop,obj,bin,cbs)=>
                             this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, obj, bin, cbs)}/>
 

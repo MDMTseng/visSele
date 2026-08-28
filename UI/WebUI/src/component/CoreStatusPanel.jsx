@@ -78,6 +78,9 @@ function Counter({ label, value, hint, warnAbove = 0 }) {
 export function CoreStatusPanel({ info, send }) {
   const [cfg, setCfg] = useState(DEFAULTS);
   const [dumpState, setDumpState] = useState('');   // '' | 'busy' | 'ok' | 'fail'
+  const [trigBusy, setTrigBusy] = useState(null);     // mode currently being pushed
+  const [trigPushed, setTrigPushed] = useState(null); // what THIS panel last pushed, not the camera's state
+  const [trigWhy, setTrigWhy] = useState('');
 
   const push = (key, val) => {
     setCfg((p) => ({ ...p, [key]: val }));
@@ -165,6 +168,58 @@ export function CoreStatusPanel({ info, send }) {
           存檔(OK / NG / NA 的影像與報告、資料夾上限)全部由「設定」頁擁有,
           而且每次開始全檢都會重推一次——這裡曾經也有一個「儲存 NA 快照」開關,
           於是同一個核心變數有兩個寫入點,值變得無法解釋。已經移走。
+        </div>
+      </Card>
+
+      {/* A bench for one question: does entering FI ALWAYS end up on the
+          hardware trigger, whatever the camera was doing beforehand?
+
+          It matters because the two modes are not variations of each other. 0 is
+          free-run with no trigger source at all; 2 arms LINE0, the wire the
+          device pulses. Timing calibration needs a frame per sync pulse, so a
+          session that came up in the wrong mode never converges -- and nothing
+          on screen says which mode it is in.
+
+          These buttons only set it. The ANSWER is the line the core now logs at
+          session start:
+
+            [insp-start] tl=FI -> TriggerMode(2) HARDWARE trigger on LINE0 ...
+
+          and it is LOGE instead of LOGI when the camera refused the change --
+          which was previously invisible: TriggerMode() ends in SetEnumValue, and
+          a NAK left the camera in its old mode while the core carried on as
+          though it had changed. */}
+      <Card size="small" title="相機觸發來源(測試台)" style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {[[0, '連續 free-run', '無觸發來源,相機自己跑'],
+            [1, '軟體觸發', 'TriggerSource = SOFTWARE,不聽 LINE0'],
+            [2, '硬體觸發 LINE0', 'TriggerSource = LINE0,聽板子的脈衝']].map(([m, label, tip]) => (
+            <Tooltip key={m} title={tip}>
+              <Button size="small" type={trigPushed === m ? 'primary' : 'default'}
+                loading={trigBusy === m}
+                onClick={() => {
+                  setTrigBusy(m); setTrigWhy('');
+                  send('ST', 0, { CameraSetting: { trigger_mode: m } }, undefined, {
+                    resolve: () => { setTrigBusy(null); setTrigPushed(m); },
+                    reject: (e) => { setTrigBusy(null);
+                      setTrigWhy('推送失敗:' + String(e && e.message ? e.message : e)); },
+                  });
+                }}>{label}</Button>
+            </Tooltip>
+          ))}
+        </div>
+        {trigWhy ? <div style={{ color: '#cf1322', marginTop: 6 }}>{trigWhy}</div> : null}
+        <div style={{ fontSize: 12, color: '#888', marginTop: 8, lineHeight: 1.7 }}>
+          <b>實驗:</b>先按上面任一個把相機推離 LINE0(連續或軟體觸發),然後進全檢(FI)。
+          核心在工作階段開始時會記下它選了哪個模式:
+          <div style={{ fontFamily: 'monospace', fontSize: 11, marginTop: 4 }}>
+            [insp-start] tl=FI -&gt; TriggerMode(2) HARDWARE trigger on LINE0
+          </div>
+          若那一行是 <b>紅色的 REFUSED BY CAMERA</b>,表示相機拒絕了切換、仍停在前一個模式——
+          那正是「板子在送脈衝但沒有影格」的樣子,而校正因此不會收斂。
+          <br />
+          <b>核心只在工作階段開始時設定一次</b>,所以這裡推的值會被 FI 覆蓋——這正是要驗的東西。
+          按鈕的高亮只代表「這個面板上次推了什麼」,不是相機現在的狀態:核心沒有回報目前模式。
         </div>
       </Card>
 
