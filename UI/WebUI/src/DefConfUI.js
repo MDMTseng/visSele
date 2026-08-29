@@ -1703,7 +1703,7 @@ class TakePreviewCanvas extends React.Component {
 // leaves the def as it was. The one thing that DOES escape is the live stream,
 // because frames land in edit_info.img -- see the restore on cancel.
 function TakeSetupDialog({ triggerTimeout, onGo, onCancel, onStreamStart,
-                          onStreamStop, onWaitTrigger }) {
+                          onStreamStop, onWaitTrigger, loadInstMmpp }) {
   // THIS COMPONENT READS REDUX ITSELF. It must not be handed the live frame.
   //
   // The modal is opened by storing a React ELEMENT in state:
@@ -1720,7 +1720,6 @@ function TakeSetupDialog({ triggerTimeout, onGo, onCancel, onStreamStart,
   const edit_info = useSelector((st) => st.UIData.edit_info);
   const c_state = useSelector((st) => st.UIData.c_state);
   const img = edit_info.img;
-  const mmpp = edit_info.mmpp;
   const hasImage = !!img;
   // Initial values only: the component mounts once per opening, so reading
   // these here is the same snapshot the props used to carry.
@@ -1741,6 +1740,29 @@ function TakeSetupDialog({ triggerTimeout, onGo, onCancel, onStreamStart,
   // Two different questions from `streamed`, which only picks a cache -- a
   // single-shot trigger is a camera frame but lands in __CACHE_IMG__.
   const [fromCamera, setFromCamera] = React.useState(false);
+  // The machine's own mm/px, read once when the dialog opens.
+  const [instMmpp, setInstMmpp] = React.useState(undefined);
+  React.useEffect(() => {
+    if (loadInstMmpp) loadInstMmpp().then(setInstMmpp, () => {});
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // THE PREVIEW'S SCALE FOLLOWS THE PICTURE, like everything else here.
+  //
+  // The first version read `edit_info.mmpp`, which does not exist -- nothing in
+  // the app has ever written that field, and this was its only reader. So the
+  // canvas got undefined and drew with no scale at all. The def was fine, which
+  // is why it looked right everywhere except in here.
+  //
+  // A camera frame is measured in the MACHINE's scale (lens_calib.json); the
+  // def's own image in the def's, which the editor object can compute. Each
+  // falls back to the other so a missing calibration still gives a usable
+  // preview rather than none.
+  const defMmpp = (edit_info._obj && typeof edit_info._obj.getEditorMmpp === 'function')
+    ? edit_info._obj.getEditorMmpp() : undefined;
+  const ok = (v) => Number.isFinite(v) && v > 0;
+  const mmpp = fromCamera
+    ? (ok(instMmpp) ? instMmpp : defMmpp)
+    : (ok(defMmpp) ? defMmpp : instMmpp);
 
   const nameOk = !!name.trim();
   const busy = streaming || waiting;
@@ -2876,6 +2898,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           onCancel: () => closeTake(),
           view: <TakeSetupDialog
             triggerTimeout={triggerTimeout}
+            loadInstMmpp={loadInstrumentMmpp}
             onStreamStart={startStream}
             onStreamStop={stopStream}
             onWaitTrigger={waitForTrigger}
