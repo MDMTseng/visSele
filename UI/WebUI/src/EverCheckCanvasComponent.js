@@ -968,7 +968,20 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     let imageChanged=edit_DB_info.img!=this.img_info;
     this.SetImg(edit_DB_info.img);
     
-    let mmpp = this.db_obj.getsig360info_mmpp();
+    // getEditorMmpp, NOT the raw getsig360info_mmpp.
+    //
+    // The raw one reads sig360info.reports[0].mmpp and returns 1 out of its
+    // catch when there is no signature. A def built through TAKE -> SBM never
+    // runs a sig360 extraction, so it has no @__SIGNATURE__ at all -- and this
+    // preview then rendered it at one millimetre per pixel while an older def
+    // that had been migrated from sig360 rendered correctly beside it. Same
+    // code, same machine, same mmpp in the file; the only difference was
+    // whether a signature happened to be present.
+    //
+    // getEditorMmpp exists for exactly this: signature first, then the
+    // instrument, then cam_param, then 1. See mmppRule.mjs.
+    let mmpp = this.db_obj.getEditorMmpp
+      ? this.db_obj.getEditorMmpp() : this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp = mmpp;
     if(imageChanged)
       this.scaleImageToFitScreen();

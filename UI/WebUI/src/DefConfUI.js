@@ -3718,7 +3718,11 @@ class APP_DEFCONF_MODE extends React.Component {
             ["pt1", "pt2", "pt3"].forEach((pt_key) => {
               if (copy_shape[pt_key] === undefined) return;
 
-              let mmpp = this.props.edit_info._obj.getsig360info_mmpp();
+              // Same reason as the preview canvas: a pure-SBM def has no
+              // signature, and the raw call returns 1 -- so a copied shape
+              // would be offset by 100 MILLIMETRES instead of 100 pixels and
+              // land somewhere off the part.
+              let mmpp = this.props.edit_info._obj.getEditorMmpp();
               copy_shape[pt_key].x += mmpp*100;
               copy_shape[pt_key].y += mmpp*100;
             });
