@@ -34,7 +34,7 @@ import {
   round as roundX, websocket_autoReconnect,
   websocket_reqTrack, dictLookUp,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,
-  defFileGeneration, stampRefImagePath
+  defFileGeneration, stampRefImagePath, refPngPathOf
 } from 'UTIL/MISC_Util';
 
 import { mkLog } from 'UTIL/logger';
@@ -50,6 +50,7 @@ import Table  from 'antd/lib/table';
 import Checkbox from "antd/lib/checkbox";
 import InputNumber from 'antd/lib/input-number';
 import Input from 'antd/lib/input';
+import Switch from 'antd/lib/switch';
 const { CheckableTag } = Tag;
 const { TextArea } = Input;
 import Divider from 'antd/lib/divider';
@@ -1322,6 +1323,10 @@ function SettingUI({})
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   
   const edit_info = useSelector(state => state.UIData.edit_info);
+  // Needed by the TAKE dialog's preview canvas: Preview_CanvasComponent gates
+  // pan-drag on the state machine's substate, so without it the operator can
+  // see the live frame but not move it.
+  const c_state = useSelector(state => state.UIData.c_state);
   const dispatch = useDispatch();
   const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
@@ -1649,87 +1654,160 @@ function modShapeCleanUp(mod_shape)
 
 
 
-// The TAKE dialog: name and tags first, then one of five ways to start.
+// The live preview inside the TAKE dialog.
 //
-// The old one was five bare buttons in a footer with the string "<<<不重置"
-// floating between two of them, and no way to tell 立即 from 立即 except by
-// which row it was on. It also committed the moment anything was pressed, so a
-// mis-click reset the def.
+// Same shape as CalibrationUI's PreviewCanvas, and for the same reason: streamed
+// frames arrive through the normal BPG pipeline into edit_info.img, and
+// Preview_CanvasComponent is the one canvas that renders that without needing a
+// def loaded. disableImageAlign because a raw live frame must not be rotated by
+// def_image_reg -- the whole point here is to see what the camera sees.
+class TakePreviewCanvas extends React.Component {
+  componentDidMount() {
+    this.ec = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.cv);
+    this.ec.disableImageAlign = true;
+    this.ec.SetStandalonePreview(this.props.mmpp);
+    this._fitted = false;
+    this.update();
+  }
+  componentWillUnmount() { if (this.ec) this.ec.resourceClean(); }
+  componentDidUpdate() { this.update(); }
+  update() {
+    if (!this.ec) return;
+    if (this.props.c_state) this.ec.SetState(this.props.c_state);
+    const img = this.props.img;
+    if (img) {
+      this.ec.SetImg(img);
+      // Fit once. Re-fitting on every frame would fight the operator's pan/zoom
+      // thirty times a second.
+      if (!this._fitted) { this.ec.scaleImageToFitScreen(); this._fitted = true; }
+    }
+    this.ec.draw();
+  }
+  onResize(w, h) { if (this.ec) { this.ec.resize(w, h); this.ec.draw(); } }
+  render() {
+    return <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <canvas ref="cv" style={{ width: '100%', height: '100%', display: 'block' }} />
+      <ReactResizeDetector handleWidth handleHeight
+        onResize={(w, h) => this.onResize(w, h)} />
+    </div>;
+  }
+}
+
+// The TAKE dialog: name the object, then choose the frame it will be built from.
 //
-// Nothing here dispatches. The name, the tags and the choice are local state;
-// the caller gets them in one go when an option is confirmed, and 取消 leaves
-// the def exactly as it was. That is the whole reason it is a component with
-// state rather than a footer full of onClicks.
-function TakeSetupDialog({ initName, initTag, triggerTimeout, onGo, onCancel }) {
+// The old one was five bare buttons in a modal footer with the string "<<<不重置"
+// floating between two of them, so 立即 and 立即 were told apart only by which
+// row they sat on -- and every one committed on the first click, so a mis-press
+// reset the def.
+//
+// Nothing here dispatches def state. Name, tags and the keep switch are local;
+// the caller gets them in one go when 使用這一幀 is pressed, and cancelling
+// leaves the def as it was. The one thing that DOES escape is the live stream,
+// because frames land in edit_info.img -- see the restore on cancel.
+function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img,
+                          onGo, onCancel, onStreamStart, onStreamStop,
+                          onWaitTrigger, hasImage }) {
+  const [phase, setPhase] = React.useState('name');
   const [name, setName] = React.useState(initName || '');
   const [tag, setTag] = React.useState((initTag || []).join(','));
+  // Default OFF. This is 建立新物件 -- starting from blank is the expectation,
+  // and keeping the wrong measurements costs more than re-drawing them.
+  const [keep, setKeep] = React.useState(false);
+  const [streaming, setStreaming] = React.useState(false);
+  const [waiting, setWaiting] = React.useState(false);
+  // Which of the core's two caches holds the frame the operator is looking at.
+  const [streamed, setStreamed] = React.useState(false);
 
-  // A name is required, because after this the def is a NEW object saved under
-  // its own file. Letting it through empty means the save dialog later offers
-  // whatever the previous def was called, which is the one name it must not
-  // have.
   const nameOk = !!name.trim();
+  const busy = streaming || waiting;
 
-  const go = (opt) => onGo({
-    ...opt,
-    name: name.trim(),
-    tags: tag.split(',').map((t) => t.trim()).filter((t) => t.length),
-  });
-
-  const Opt = ({ title, sub, danger, onClick }) => (
-    <Button block disabled={!nameOk} onClick={onClick} danger={danger}
-      style={{ height: 'auto', minHeight: 52, padding: '8px 14px', marginBottom: 8,
-               textAlign: 'left', whiteSpace: 'normal' }}>
-      <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.4 }}>{title}</div>
-      <div style={{ fontSize: 12, opacity: 0.7, lineHeight: 1.5 }}>{sub}</div>
-    </Button>
-  );
-
-  return <div style={{ maxWidth: 560 }}>
-    <div style={{ marginBottom: 14 }}>
+  if (phase === 'name') {
+    return <div style={{ maxWidth: 520 }}>
       <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>物件名稱（必填）</div>
       <Input value={name} onChange={(e) => setName(e.target.value)} size="large"
-        placeholder="例如 HY-1234-A" />
-      <div style={{ fontSize: 12, color: '#999', margin: '10px 0 4px' }}>標籤（逗號分隔,可空白）</div>
+        placeholder="例如 HY-1234-A" onPressEnter={() => nameOk && setPhase('capture')} />
+      <div style={{ fontSize: 12, color: '#999', margin: '12px 0 4px' }}>標籤（逗號分隔,可空白）</div>
       <Input value={tag} onChange={(e) => setTag(e.target.value)} size="large"
         placeholder="例如 客戶A,銅件,量產" />
-      <div style={{ fontSize: 11.5, color: '#888', marginTop: 8, lineHeight: 1.7 }}>
-        選了下面任一個之後,這就是一個<b>新的物件</b>,跟目前開著的配方不再有關係:
-        存檔會存成新檔案,不會蓋掉原本那個。按取消則什麼都不會改變。
+      <div style={{ fontSize: 11.5, color: '#888', margin: '12px 0', lineHeight: 1.7 }}>
+        下一步選一張影像。確認之後這就是一個<b>新的物件</b>,跟目前開著的配方不再有關係:
+        存檔會存成新檔案,不會蓋掉原本那個。中途取消則什麼都不會改變。
       </div>
+      <div style={{ textAlign: 'right', borderTop: '1px solid #333', paddingTop: 12 }}>
+        <Button onClick={onCancel} style={{ marginRight: 8 }}>取消</Button>
+        <Button type="primary" disabled={!nameOk} onClick={() => setPhase('capture')}>
+          下一步:選影像</Button>
+      </div>
+    </div>;
+  }
+
+  return <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 10 }}>
+    <div style={{ flex: '1 1 auto', minHeight: 0, background: '#141618',
+                  border: '1px solid #333', borderRadius: 6, position: 'relative' }}>
+      {hasImage
+        ? <TakePreviewCanvas mmpp={mmpp} c_state={c_state} img={img} />
+        : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', color: '#888', lineHeight: 1.9,
+                        textAlign: 'center' }}>
+            <div>目前沒有影像<br />
+              <span style={{ fontSize: 12 }}>按「開始串流」或「等待觸發」取得一張。</span></div>
+          </div>}
+      {streaming && <div style={{ position: 'absolute', top: 10, left: 10,
+        background: '#a8071a', color: '#fff', padding: '4px 12px', borderRadius: 20,
+        fontSize: 13, fontWeight: 600 }}>● 串流中</div>}
+      {waiting && <div style={{ position: 'absolute', top: 10, left: 10,
+        background: '#d48806', color: '#fff', padding: '4px 12px', borderRadius: 20,
+        fontSize: 13, fontWeight: 600 }}>等待觸發訊號…</div>}
     </div>
 
-    <div style={{ borderTop: '1px solid #333', paddingTop: 12 }}>
-      <div style={{ fontSize: 11, letterSpacing: '.1em', color: '#888', fontWeight: 600,
-                    marginBottom: 8 }}>不重拍</div>
-      <Opt title="使用現有圖像"
-        sub="沿用畫面上這張圖,其餘全部清空。適合已經有想要的圖、只是要從頭做一個新物件。"
-        onClick={() => go({ mode: 'existing' })} />
+    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 12,
+                  flexWrap: 'wrap' }}>
+      <div style={{ fontSize: 14, fontWeight: 600, marginRight: 4 }}>{name}</div>
 
-      <div style={{ fontSize: 11, letterSpacing: '.1em', color: '#888', fontWeight: 600,
-                    margin: '14px 0 8px' }}>重新拍照 · 保留現有量測設定</div>
-      <Opt title="立即（保留現有量測設定）"
-        sub="馬上拍一張。量測特徵和比對參數留著,只有定位、SBM 特徵、特徵範圍要重做。"
-        onClick={() => go({ mode: 'snap', trigger_type: 0, timeout: -1, keep: true })} />
-      <Opt title={'觸發（保留現有量測設定）'}
-        sub={`等盤面訊號,最多 ${triggerTimeout / 1000} 秒。內容同上。`}
-        onClick={() => go({ mode: 'snap', trigger_type: 2, timeout: triggerTimeout, keep: true })} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Switch checked={keep} disabled={busy} onChange={setKeep} />
+        <span style={{ fontSize: 13, color: keep ? '#e8eaed' : '#8b929c' }}>
+          {keep ? '保留量測設定' : '清除量測設定'}
+        </span>
+      </div>
 
-      <div style={{ fontSize: 11, letterSpacing: '.1em', color: '#888', fontWeight: 600,
-                    margin: '14px 0 8px' }}>重新拍照 · 全新</div>
-      <Opt title="立即（全新）" danger
-        sub="馬上拍一張,並清空所有量測特徵與參數。等於從空白開始。"
-        onClick={() => go({ mode: 'snap', trigger_type: 0, timeout: -1, keep: false })} />
-      <Opt title={'觸發（全新）'} danger
-        sub={`等盤面訊號,最多 ${triggerTimeout / 1000} 秒,並清空所有量測特徵與參數。`}
-        onClick={() => go({ mode: 'snap', trigger_type: 2, timeout: triggerTimeout, keep: false })} />
+      <div style={{ flex: '1 1 auto' }} />
+
+      {streaming
+        ? <Button danger type="primary" size="large" style={{ height: 48, minWidth: 140 }}
+            onClick={() => { onStreamStop(); setStreaming(false); }}>■ 停止串流</Button>
+        : <>
+            <Button size="large" style={{ height: 48 }} disabled={busy}
+              onClick={() => { setStreamed(true); setStreaming(true); onStreamStart(); }}>
+              ▶ 開始串流</Button>
+            <Button size="large" style={{ height: 48 }} disabled={busy}
+              onClick={() => {
+                setWaiting(true);
+                onWaitTrigger().then(
+                  () => { setWaiting(false); setStreamed(false); },
+                  () => { setWaiting(false); });
+              }}>⏱ 等待觸發</Button>
+          </>}
+
+      <Button type="primary" size="large" style={{ height: 48, minWidth: 150 }}
+        disabled={busy || !hasImage}
+        onClick={() => onGo({
+          name: name.trim(),
+          tags: tag.split(',').map((t) => t.trim()).filter((t) => t.length),
+          keep,
+          srcType: streamed ? '__LAST_DATA_VIEW_CACHE_IMG__' : '__CACHE_IMG__',
+        })}>✓ 使用這一幀</Button>
+
+      <Button size="large" style={{ height: 48 }} onClick={onCancel}>取消</Button>
     </div>
 
-    {!nameOk && <div style={{ fontSize: 12, color: '#d89614', marginTop: 4 }}>
-      先填物件名稱才能選。</div>}
-
-    <div style={{ textAlign: 'right', marginTop: 12, borderTop: '1px solid #333', paddingTop: 12 }}>
-      <Button onClick={onCancel}>取消</Button>
+    <div style={{ flex: '0 0 auto', fontSize: 11.5, color: '#888', lineHeight: 1.7 }}>
+      {streaming
+        ? '停止之後,畫面上停住的那一幀就是要用的那一張。'
+        : hasImage
+          ? '「使用這一幀」會拿畫面上這一張當新物件的樣板影像。'
+          : '還沒有影像可以用。'}
+      {keep && '　保留量測設定:量測特徵和比對參數會留著,定位、SBM 特徵、特徵範圍仍然要重做。'}
     </div>
   </div>;
 }
@@ -1753,9 +1831,17 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
-  const ACT_Cache_Img_Save= (id, fileName) =>
+  // WHICH cached frame, because the core has two and they are not the same one.
+  //
+  // __CACHE_IMG__ is the image loaded on DefConf entry -- the def's own .png --
+  // and a CI/FI stream does NOT update it. __LAST_DATA_VIEW_CACHE_IMG__ is the
+  // last frame that went through the data view, i.e. what the live preview is
+  // showing. Defaulting to the former and forgetting to say so is how a
+  // "capture" ends up saving the PREVIOUS recipe's picture, with nothing on
+  // screen looking any different (see saveAlternateImage, which hit this).
+  const ACT_Cache_Img_Save= (id, fileName, srcType) =>
     dispatch(UIAct.EV_WS_SEND_BPG(id, "SV", 0,
-      { filename: fileName, type: "__CACHE_IMG__" }
+      { filename: fileName, type: srcType || "__CACHE_IMG__" }
     ))
 
 
@@ -2483,22 +2569,21 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         // underscores keep it out of the way of the recipe names beside it.
         const TMP_REF_BASE = "data/__retake_ref";
         const triggerTimeout = 10000;
-
-        function setModal_viewAsWait(msg) {
-          setModal_view({ onCancel: () => {}, footer: [], view: msg || "請稍後...." });
-        }
+        // Its own group id, so stopping this stream cannot cancel somebody
+        // else's subscription (快速驗證 uses 11004, calibration 10105).
+        const TAKE_STREAM_PGID = 11007;
 
         // A NEW OBJECT MUST NOT BE ABLE TO OVERWRITE THE DEF IT CAME FROM.
         //
-        // After any of the five options this is a different part, so the save
-        // dialog must not open pre-filled with the previous recipe's file name.
-        // Same folder (that is where its siblings live), new name, and a [N]
-        // suffix if something with that name is already there -- picked by
-        // actually listing the folder rather than by hoping.
+        // After this the def is a different part, so the save dialog must not
+        // open pre-filled with the previous recipe's file name. Same folder --
+        // that is where its siblings live -- new name, and a [N] suffix if
+        // something with that name is already there, picked by actually listing
+        // the folder rather than by hoping.
         //
-        // Best effort on purpose: if the listing fails, the plain name is used
-        // and the save browser's own "file exists" prompt is the backstop. A
-        // failed listing must not block a capture.
+        // Best effort on purpose: a failed listing falls back to the plain name
+        // and the save browser's own exists-prompt. A listing must not be able
+        // to block a capture.
         const claimNewDefPath = (name) => new Promise((resolve) => {
           const dir = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1) || 'data/';
           const safe = String(name).replace(/[\\/:*?"<>|]/g, '_').trim() || 'Sample';
@@ -2517,8 +2602,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                     for (const f of (files || [])) {
                       const nm = (typeof f === 'string') ? f : (f && (f.name || f.path));
                       if (!nm) continue;
-                      const base = String(nm).split('/').pop().replace(/\.[^.]+$/, '');
-                      taken.add(base.toLowerCase());
+                      taken.add(String(nm).split('/').pop().replace(/\.[^.]+$/, '').toLowerCase());
                     }
                   }
                 } catch (e) { log.warn('[take] folder listing unreadable', e); }
@@ -2529,21 +2613,88 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           } catch (e) { done(new Set()); }
         });
 
-        // Everything the five options share, run once the picture is settled.
+        // LIVE PREVIEW, WITHOUT RUNNING AN INSPECTION.
         //
-        // Order matters and is not obvious: Def_Retake clears def-scoped keys,
-        // so the name, the tags, the engine and the scratch template path are
-        // all written AFTER it. An earlier version of this file set the template
-        // path first and spent a while looking like the retake had not happened.
+        // The core streams frames only while a CI subscription is open, and CI
+        // rejects a request carrying neither deffile nor definfo. Sending the
+        // real def would work but would run the measurement engine on a part
+        // that has no features yet -- a screenful of NA over the picture the
+        // operator is trying to judge. stage_light_report is the lightweight def
+        // type CalibrationUI already streams with: raw frames, no measurement.
+        //
+        // Frames arrive through the normal pipeline into edit_info.img, which is
+        // ALSO where the def's own image lives. That is why cancelling has to put
+        // the def image back -- see restoreDefImage.
+        const startStream = () => {
+          ACT_WS_SEND_BPG(CORE_ID, "ST", 0,
+            { CameraSetting: { trigger_mode: 0, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL } });
+          ACT_WS_SEND_BPG(CORE_ID, "CI", 0, {
+            _PGID_: TAKE_STREAM_PGID,
+            _PGINFO_: { keep: true },
+            definfo: { type: "stage_light_report", grid_size: [10, 10],
+                       nonBG_thres: 100, nonBG_spread_thres: 180 },
+            IMG_ignore_calib: true,
+          });
+        };
+        const stopStream = () => {
+          ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
+            { _PGID_: TAKE_STREAM_PGID, _PGINFO_: { keep: false } });
+        };
+
+        // Cancelling must leave NOTHING changed, and a stream that has run has
+        // already replaced the picture on screen. Reload the def's own image.
+        const restoreDefImage = () => {
+          try {
+            if (defModelPath)
+              ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
+                { imgsrc: refPngPathOf(defModelPath),
+                  down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL });
+          } catch (e) { log.warn('[take] could not restore the def image', e); }
+        };
+
+        const closeTake = (streamedAlready) => {
+          stopStream();
+          if (streamedAlready) restoreDefImage();
+          setModal_view(undefined);
+        };
+
+        // Wait for a plate trigger and keep the single frame it returns. The
+        // screen is frozen while it waits, which is what was asked for: this is
+        // the existing EX path, one frame, no stream.
+        const waitForTrigger = () => new Promise((resolve, reject) => {
+          ACT_DefConf_Lock_Level_Update(0);
+          ACT_WS_SEND_BPG(CORE_ID, "EX", 0, {
+            trigger_type: 2, timeout: triggerTimeout,
+            img_property: { down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL }
+          }, undefined, {
+            resolve: (pkts) => {
+              const SS = pkts.find(pkt => pkt.type == "SS");
+              if (SS && SS.data.ACK == true) {
+                const acts = pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt))
+                                 .filter(a => a !== undefined);
+                dispatch({ type: "ATBundle", ActionThrottle_type: "express", data: acts });
+                resolve();
+              } else { message.error("沒有等到觸發訊號"); reject(); }
+            },
+            reject: (e) => { log.info(e); message.error("取像異常"); reject(); },
+          });
+        });
+
+        // Everything the confirm path shares.
+        //
+        // Order matters and is not obvious: Def_Retake clears def-scoped keys, so
+        // the name, the tags, the engine and the scratch template path are all
+        // written AFTER it.
         const finishTake = (opt) => {
+          stopStream();
           dispatch(DefConfAct.Def_Retake(!!opt.keep));
-          ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE);
+          ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE, opt.srcType);
           dispatch(DefConfAct.EditInfo_Patch({ __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
           dispatch(DefConfAct.DefFileName_Update(opt.name));
           dispatch(DefConfAct.DefFileTag_Update(opt.tags));
           // TAKE means "this is an SBM object". It is the one surface where that
           // is not a guess: the operator just said they are starting a new part
-          // and picked how to photograph it.
+          // and picked the frame to build it from.
           dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
           claimNewDefPath(opt.name).then((newPath) => {
             ACT_Def_Model_Path_Update(newPath);
@@ -2554,54 +2705,27 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           });
         };
 
-        function triggerSnapExam(opt) {
-          setModal_viewAsWait("拍照中,請稍後....");
-          ACT_DefConf_Lock_Level_Update(0);
-          new Promise((resolve, reject) => {
-            ACT_WS_SEND_BPG(CORE_ID, "EX", 0, {
-              trigger_type: opt.trigger_type,
-              timeout: opt.timeout,
-              img_property: { down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL }
-            }, undefined, { resolve, reject });
-          })
-            .then((pkts) => {
-              let SS = pkts.find(pkt => pkt.type == "SS");
-              if (SS.data.ACK == true) {
-                let acts = pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt))
-                               .filter(act => act !== undefined);
-                dispatch({ type: "ATBundle", ActionThrottle_type: "express", data: acts });
-                finishTake(opt);
-              }
-              else { setModal_view({ footer: [], view: "圖像獲取失敗" }); }
-            })
-            .catch((err) => {
-              log.info(err);
-              setModal_view({ footer: [], view: "圖像獲取異常" });
-            });
-        }
-
+        let _streamed = false;
         setModal_view({
           title: "建立新物件",
           footer: null,
-          width: 620,
-          onCancel: () => setModal_view(undefined),
+          width: "96vw",
+          style: { top: 12 },
+          bodyStyle: { padding: 10, height: "86vh" },
+          onCancel: () => closeTake(_streamed),
           view: <TakeSetupDialog
             initName={edit_info.DefFileName}
             initTag={edit_info.DefFileTag}
             triggerTimeout={triggerTimeout}
-            onCancel={() => setModal_view(undefined)}
-            onGo={(opt) => {
-              if (opt.mode === 'existing') {
-                // No EX at all: the core still holds the frame that is on screen
-                // (it was cached by the LD that drew it), so writing that to the
-                // scratch sidecar gives the locator a template without taking a
-                // new picture.
-                setModal_viewAsWait("處理中....");
-                finishTake({ ...opt, keep: false });
-              } else {
-                triggerSnapExam(opt);
-              }
-            }}
+            mmpp={edit_info.mmpp}
+            c_state={c_state}
+            img={edit_info.img}
+            hasImage={!!edit_info.img}
+            onStreamStart={() => { _streamed = true; startStream(); }}
+            onStreamStop={stopStream}
+            onWaitTrigger={waitForTrigger}
+            onCancel={() => closeTake(_streamed)}
+            onGo={finishTake}
           />,
         });
       }} />,
