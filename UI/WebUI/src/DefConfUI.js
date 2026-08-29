@@ -60,6 +60,8 @@ import Popover from 'antd/lib/popover';
 
 
 import { useSelector,useDispatch } from 'react-redux';
+import { nextFreeName, takenNamesFrom } from 'UTIL/defNaming.mjs';
+import { mmppFromLensCalib } from 'UTIL/mmppRule.mjs';
 import { 
   VerticalAlignTopOutlined,
   ThunderboltOutlined,
@@ -1729,24 +1731,37 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
   if (phase === 'name') {
     return <div style={{ maxWidth: 520 }}>
       <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>物件名稱（必填）</div>
-      <Input value={name} onChange={(e) => setName(e.target.value)} size="large"
-        placeholder="例如 HY-1234-A" onPressEnter={() => nameOk && setPhase('capture')} />
+      <Input data-testid="take-name" value={name} onChange={(e) => setName(e.target.value)}
+        size="large" placeholder="例如 HY-1234-A"
+        onPressEnter={() => nameOk && setPhase('capture')} />
       <div style={{ fontSize: 12, color: '#999', margin: '12px 0 4px' }}>標籤（逗號分隔,可空白）</div>
-      <Input value={tag} onChange={(e) => setTag(e.target.value)} size="large"
-        placeholder="例如 客戶A,銅件,量產" />
+      <Input data-testid="take-tags" value={tag} onChange={(e) => setTag(e.target.value)}
+        size="large" placeholder="例如 客戶A,銅件,量產" />
       <div style={{ fontSize: 11.5, color: '#888', margin: '12px 0', lineHeight: 1.7 }}>
         下一步選一張影像。確認之後這就是一個<b>新的物件</b>,跟目前開著的配方不再有關係:
         存檔會存成新檔案,不會蓋掉原本那個。中途取消則什麼都不會改變。
       </div>
       <div style={{ textAlign: 'right', borderTop: '1px solid #333', paddingTop: 12 }}>
-        <Button onClick={onCancel} style={{ marginRight: 8 }}>取消</Button>
-        <Button type="primary" disabled={!nameOk} onClick={() => setPhase('capture')}>
-          下一步:選影像</Button>
+        <Button data-testid="take-cancel" onClick={onCancel} style={{ marginRight: 8 }}>取消</Button>
+        <Button data-testid="take-next" type="primary" disabled={!nameOk}
+          data-enabled={nameOk ? '1' : '0'}
+          onClick={() => setPhase('capture')}>下一步:選影像</Button>
       </div>
     </div>;
   }
 
-  return <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 10 }}>
+  // The semantics a test needs, not just handles. Asserting "a button got
+  // clicked" proves nothing here; the questions worth asking are which cache the
+  // frame will come from, whose scale it will be measured in, and whether the
+  // panel is streaming -- and every one of those has already been wrong while
+  // the screen looked fine. See TEAM_HANDOFF §13.
+  return <div data-testid="take-capture"
+    data-phase={streaming ? 'streaming' : waiting ? 'waiting' : 'idle'}
+    data-has-image={hasImage ? '1' : '0'}
+    data-from-camera={fromCamera ? '1' : '0'}
+    data-src={streamed ? 'lastview' : 'cache'}
+    data-keep={keep ? '1' : '0'}
+    style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 10 }}>
     <div style={{ flex: '1 1 auto', minHeight: 0, background: '#141618',
                   border: '1px solid #333', borderRadius: 6, position: 'relative' }}>
       {hasImage
@@ -1770,7 +1785,7 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
       <div style={{ fontSize: 14, fontWeight: 600, marginRight: 4 }}>{name}</div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Switch checked={keep} disabled={busy} onChange={setKeep} />
+        <Switch data-testid="take-keep" checked={keep} disabled={busy} onChange={setKeep} />
         <span style={{ fontSize: 13, color: keep ? '#e8eaed' : '#8b929c' }}>
           {keep ? '保留量測設定' : '清除量測設定'}
         </span>
@@ -1779,14 +1794,17 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
       <div style={{ flex: '1 1 auto' }} />
 
       {streaming
-        ? <Button danger type="primary" size="large" style={{ height: 48, minWidth: 140 }}
+        ? <Button data-testid="take-stream-stop" danger type="primary" size="large"
+            style={{ height: 48, minWidth: 140 }}
             onClick={() => { onStreamStop(); setStreaming(false); }}>■ 停止串流</Button>
         : <>
-            <Button size="large" style={{ height: 48 }} disabled={busy}
+            <Button data-testid="take-stream-start" size="large" style={{ height: 48 }}
+              disabled={busy}
               onClick={() => { setStreamed(true); setFromCamera(true);
                                setStreaming(true); onStreamStart(); }}>
               ▶ 開始串流</Button>
-            <Button size="large" style={{ height: 48 }} disabled={busy}
+            <Button data-testid="take-wait-trigger" size="large" style={{ height: 48 }}
+              disabled={busy}
               onClick={() => {
                 setWaiting(true);
                 onWaitTrigger().then(
@@ -1795,7 +1813,9 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
               }}>⏱ 等待觸發</Button>
           </>}
 
-      <Button type="primary" size="large" style={{ height: 48, minWidth: 150 }}
+      <Button data-testid="take-use-frame" type="primary" size="large"
+        style={{ height: 48, minWidth: 150 }}
+        data-enabled={(busy || !hasImage) ? '0' : '1'}
         disabled={busy || !hasImage}
         onClick={() => onGo({
           name: name.trim(),
@@ -1805,7 +1825,8 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
           fromCamera,
         })}>✓ 使用這一幀</Button>
 
-      <Button size="large" style={{ height: 48 }} onClick={onCancel}>取消</Button>
+      <Button data-testid="take-cancel" size="large" style={{ height: 48 }}
+        onClick={onCancel}>取消</Button>
     </div>
 
     <div style={{ flex: '0 0 auto', fontSize: 11.5, color: '#888', lineHeight: 1.7 }}>
@@ -2572,6 +2593,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       iconType={<CameraOutlined/>}
       dict={DICT}
       addClass="layout palatte-purple-8 vbox"
+      data-testid="take"
       key="TAKE"
       text="take" onClick={() => {
 
@@ -2614,25 +2636,19 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         // to block a capture.
         const claimNewDefPath = (name) => new Promise((resolve) => {
           const dir = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1) || 'data/';
-          const safe = String(name).replace(/[\\/:*?"<>|]/g, '_').trim() || 'Sample';
-          const done = (taken) => {
-            let cand = safe;
-            for (let i = 1; taken.has(cand.toLowerCase()) && i < 999; i++) cand = safe + '[' + i + ']';
-            resolve(dir + cand);
-          };
+          const done = (taken) => resolve(dir + nextFreeName(name, taken));
           try {
             ACT_WS_SEND_BPG(CORE_ID, 'FB', 0, { path: dir, depth: 1 }, undefined, {
               resolve: (darr) => {
-                const taken = new Set();
+                let taken = new Set();
                 try {
+                  const files = [];
                   for (const pkt of (darr || [])) {
-                    const files = pkt && pkt.data && (pkt.data.files || pkt.data.list || pkt.data.content);
-                    for (const f of (files || [])) {
-                      const nm = (typeof f === 'string') ? f : (f && (f.name || f.path));
-                      if (!nm) continue;
-                      taken.add(String(nm).split('/').pop().replace(/\.[^.]+$/, '').toLowerCase());
-                    }
+                    const d = pkt && pkt.data;
+                    const list = d && (d.files || d.list || d.content);
+                    if (list) files.push(...list);
                   }
+                  taken = takenNamesFrom(files);
                 } catch (e) { log.warn('[take] folder listing unreadable', e); }
                 done(taken);
               },
@@ -2651,12 +2667,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               undefined, {
                 resolve: (pkts) => {
                   const fl = (pkts || []).find(p => p.type === "FL");
-                  const d = fl && fl.data;
-                  if (!d) { resolve(undefined); return; }
-                  const mmpp = (Number.isFinite(+d.um_per_px) && +d.um_per_px > 0)
-                    ? +d.um_per_px / 1000
-                    : ((Number.isFinite(+d.m) && +d.m > 0) ? 1 / +d.m : undefined);
-                  resolve(mmpp);
+                  resolve(mmppFromLensCalib(fl && fl.data));
                 },
                 reject: () => resolve(undefined),
               });
@@ -2932,6 +2943,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       iconType={<AimOutlined />}
       dict={DICT}
       addClass="layout palatte-cyan-8 vbox width12"
+      data-testid="sbm-studio-v1"
       key="SBMSETUP"
       text="SBM定位設定" onClick={() => {
         dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
@@ -3005,6 +3017,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       iconType={<AimOutlined />}
       dict={DICT}
       addClass="layout palatte-geekblue-8 vbox width12"
+      data-testid="sbm-studio-v2"
       key="SBMSETUP2"
       text="SBM定位設定 2" onClick={() => {
         openSBM2(false);

@@ -77,6 +77,9 @@ function ensureCarousel() {
 const RUNNABLE = [
   ['unit_fmt.mjs',              [],                    60,  'compactN width bound, swept 0..1e6'],
   ['unit_no_hardcoded_sel.mjs', [],                    60,  'no NG/OK claim names a selector'],
+  ['unit_defnaming.mjs',        [],                    60,  'def sidecar path keeps its directory; new names cannot collide'],
+  ['unit_mmpp.mjs',             [],                    60,  'mm/px follows the picture, never silently substituted'],
+  ['unit_def_scoped_keys.mjs',  [],                    60,  'the two def-scoped key lists agree; keep-mode keeps measurements'],
   ['bpg_sweep.mjs',             ['--include-crashers'],300, '35 protocol cases: valid, malformed, framing abuse, crashers'],
   ['doorbell.mjs',              [],                    120, 'state doorbells: suppression, RC triplet, perif transitions'],
   ['fd_leak.mjs',               [],                    120, 'failed TCP CONNECTs leak no fds'],

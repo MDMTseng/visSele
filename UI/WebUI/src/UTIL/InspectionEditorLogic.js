@@ -46,6 +46,7 @@ export function effectiveLimits(def, isFlipped) {
     LCL:   pick('LCL',   'LCL_b'),
   };
 }
+import { pickMmpp } from './mmppRule.mjs';
 import { mkLog } from 'UTIL/logger';
 import { initMeasureStatistic } from 'REDUX_STORE_SRC/reducer/spcStats';
 
@@ -790,27 +791,17 @@ export class InspectionEditorLogic {
   // has no signature, so fall back to the camera calibration (cam_param.mmpb2b/ppb2b,
   // populated from the def or a camera_calibration WS report). 1 only as a last resort.
   getEditorMmpp() {
-    const m = this.getsig360info_mmpp();
-    if (Number.isFinite(m) && m > 0 && m !== 1) return m;   // a real sig360 mmpp
-    // THE INSTRUMENT'S OWN SCALE, when the picture came from the camera.
-    //
-    // A def's mmpp describes whatever image was side-loaded with that def --
-    // another machine, another lens, another standoff. Keeping it across a
-    // re-capture is not a small error: every dimension in the recipe is
-    // px * mmpp, so the whole def measures to a consistent, plausible, wrong
-    // scale and nothing on screen looks different.
-    //
-    // Set from data/lens_calib.json when TAKE captures a camera frame, and
-    // deliberately NOT set when the operator reuses the def's own image -- that
-    // picture really does belong to the def's scale. Ranks below a real sig360
-    // report, which is a measurement of THIS image and therefore better still.
-    if (Number.isFinite(this.instrumentMmpp) && this.instrumentMmpp > 0)
-      return this.instrumentMmpp;
-    const cp = this.cameraParam;
-    if (cp && Number.isFinite(cp.mmpb2b) && Number.isFinite(cp.ppb2b) && cp.ppb2b > 0)
-      return cp.mmpb2b / cp.ppb2b;
-    return (Number.isFinite(m) && m > 0) ? m : 1;
+    // The ordering and its reasons live in mmppRule.mjs, which has no imports
+    // and a unit test. A wrong answer here measures the whole def to a
+    // consistent wrong scale and looks completely normal, so it is not a place
+    // for a chain of || written inline.
+    return pickMmpp({
+      sigMmpp: this.getsig360info_mmpp(),
+      instrumentMmpp: this.instrumentMmpp,
+      camParam: this.cameraParam,
+    });
   }
+
 
   setsig360infoCenter(center){
 

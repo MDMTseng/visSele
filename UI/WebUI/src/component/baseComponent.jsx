@@ -1025,10 +1025,22 @@ export let IconButton = React_createClass({
     {
       translation = this.props.text;
     }
+    // Forward data-* through. This component renders a bare <div> with three
+    // props, so anything a caller adds is DROPPED SILENTLY -- a data-testid on
+    // an IconButton looked applied, produced no attribute, and left a test
+    // selecting by label text instead. Label text is the one thing
+    // TEAM_HANDOFF §13 forbids, because every button on this bar is icon-only
+    // and the wrong pick clicks rather than fails.
+    //
+    // data-* only, deliberately: a blanket {...this.props} would put onClick,
+    // dict and iconType onto a DOM node and React would warn on every render.
+    const dataProps = {};
+    for (const k in this.props) if (k.indexOf('data-') === 0) dataProps[k] = this.props[k];
     //console.log(this.props.iconType)
     return <div
         onClick={this.handleClick}
         style={this.props.style}
+        {...dataProps}
         className={className+" icon_btn"}>
 
         {

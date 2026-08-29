@@ -212,25 +212,12 @@ export { CircularCounter, ConsumeQueue } from './structures';
 
 
 
-// <defModelPath> -> the sidecar .png path, stripping an extension ONLY when the
-// LAST path segment has one.
-//
-// defModelPath is normally the stem with NO extension (it is what LD sends as
-// `imgsrc`), so a bare /\.[^.]+$/ has nothing to strip and eats backwards to
-// whatever dot it can find -- and `[^.]` excludes dots, not separators, so it
-// will happily swallow directory names. Installed under a folder called `X2.0`
-// that turned <root>/X2.0/data/testNew2 into <root>/X2.png: the core could not
-// the template, SBM training failed, and the def silently ran on sig360 while
-// the studio reported "no features extracted". A dot in a FOLDER name did it.
-export function refPngPathOf(defModelPath) {
-  const p = String(defModelPath);
-  const cut = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
-  const dir = p.slice(0, cut + 1);          // '' when there is no separator
-  const base = p.slice(cut + 1);
-  const dot = base.lastIndexOf('.');
-  // dot > 0 so a dotfile keeps its name; the segment must have an ext to lose one.
-  return dir + (dot > 0 ? base.slice(0, dot) : base) + '.png';
-}
+// refPngPathOf moved to defNaming.mjs so it can be unit-tested in plain Node
+// (this file pulls in the logger and half the editor). Re-exported here
+// because every existing import site names MISC_Util.
+import { refPngPathOf } from './defNaming.mjs';
+export { refPngPathOf };
+
 
 // Stamp the reference-image FULL path onto a def-INFO object before sending it to the
 // core for inspection (live/WS path). The saved .hydef stays path-free; the core reads

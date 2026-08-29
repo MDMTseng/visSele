@@ -848,6 +848,9 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     const now = !opt && idx === curStep;
     return <div style={{ borderTop: opt ? '1px dashed ' + P.line : '1px solid #262626' }}>
       <div role="button" tabIndex={0}
+        data-testid={'sbm2-block-' + (opt ? 'opt' : 'step') + '-' + idx}
+        data-done={done ? '1' : '0'} data-now={now ? '1' : '0'}
+        data-open={open ? '1' : '0'}
         onClick={() => setOpenStep(open ? -99 : idx)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpenStep(open ? -99 : idx); }}
         style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 46,
@@ -870,8 +873,18 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   const toolHint = TOOL_HINT[tool] || TOOL_HINT.pan;
   const nFeat = ((featPts && featPts.features) || []).length;
 
-  return <div className="sbm2-root" style={{ display: 'flex', height: '100%',
-                                             minHeight: 0, gap: 8, color: P.ink }}>
+  // The derived state, published. "step 3 of 3" and "the features match the
+  // settings" are the assertions worth making here; that a button was clicked
+  // is not. See TEAM_HANDOFF §13.
+  return <div className="sbm2-root" data-testid="sbm2"
+    data-step={curStep < 0 ? 'done' : String(curStep + 1)}
+    data-done={stepDone.map((d) => (d ? '1' : '0')).join('')}
+    data-stale={edit_info.__shape_stale ? '1' : '0'}
+    data-features={String(nFeat)}
+    data-roi={String(roiPts.length)}
+    data-regions={nIncl + '/' + nExcl}
+    data-tool={tool}
+    style={{ display: 'flex', height: '100%', minHeight: 0, gap: 8, color: P.ink }}>
     {/* Landscape: canvas | rail. Portrait: canvas above, rail below.
         The v1 studio is height:84vh with a fixed 240px column, which overflows a
         portrait 10-inch screen; this is flex in both directions and the canvas
@@ -899,6 +912,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         {[['pan', '✥'], ['locline', '✛'], ['include', '＋'], ['exclude', '－'], ['roi', '◻']]
           .map(([id, ic]) => (
           <div key={id} role="button" tabIndex={0} aria-pressed={tool === id}
+            data-testid={'sbm2-tool-' + id}
             onClick={() => pick(id)}
             style={{ width: 44, height: 44, borderRadius: 9, display: 'flex',
               alignItems: 'center', justifyContent: 'center', fontSize: 19, cursor: 'pointer',
@@ -970,7 +984,9 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {STEP_T.map((t, i) => (
-            <div key={t} role="button" tabIndex={0} onClick={() => setOpenStep(i)}
+            <div key={t} role="button" tabIndex={0} data-testid={'sbm2-seg-' + i}
+              data-state={stepDone[i] ? 'done' : (i === curStep ? 'now' : 'todo')}
+              onClick={() => setOpenStep(i)}
               onKeyDown={(e) => { if (e.key === 'Enter') setOpenStep(i); }}
               style={{ flex: 1, height: 38, borderRadius: 6, display: 'flex',
                 alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600,
@@ -1022,7 +1038,8 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
 
         <Block n="3" idx={2} title="生成特徵"
           summary={edit_info.__shape_cache ? nFeat + ' 點' : '未生成'}>
-          <Button block type="primary" style={{ height: H, marginBottom: 6 }}
+          <Button data-testid="sbm2-generate" block type="primary"
+            style={{ height: H, marginBottom: 6 }}
             loading={genBusy} onClick={() => genFeatures(true)}>🔵 生成特徵點</Button>
           <Hint>把目前的定位、範圍、邊緣門檻送給 core,抽出這個配方要用的特徵點(藍)。
             需要 &lt;配方名&gt;.png 已經在磁碟上。</Hint>
@@ -1142,10 +1159,14 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,
                       marginBottom: 6 }}>{curStep < 0 ? '完成' : '下一步'}</div>
         {curStep < 0
-          ? <Button type="primary" block style={{ height: 48, fontSize: 15, fontWeight: 600 }}
+          ? <Button data-testid="sbm2-next" data-action="close" type="primary" block
+              style={{ height: 48, fontSize: 15, fontWeight: 600 }}
+              data-enabled={edit_info.__shape_stale ? '0' : '1'}
               disabled={!!edit_info.__shape_stale}
               onClick={() => onClose && onClose()}>✓ 套用並離開</Button>
-          : <Button type="primary" block style={{ height: 48, fontSize: 15, fontWeight: 600 }}
+          : <Button data-testid="sbm2-next"
+              data-action={curStep === 0 ? 'locline' : curStep === 1 ? 'include' : 'generate'}
+              type="primary" block style={{ height: 48, fontSize: 15, fontWeight: 600 }}
               loading={curStep === 2 && genBusy}
               onClick={() => {
                 setOpenStep(curStep);

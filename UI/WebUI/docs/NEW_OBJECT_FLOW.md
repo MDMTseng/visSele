@@ -339,6 +339,55 @@ sig360 報告排第一是因為它是對**這張圖**的量測,比機台的標�
 
 ---
 
+## 8.5 怎麼測
+
+| 層 | 需要什麼 | 涵蓋 | 狀態 |
+|---|---|---|---|
+| ① 純邏輯 | 什麼都不用,<1s | `refPngPathOf`、`nextFreeName`/`takenNamesFrom`、`pickMmpp`/`mmppFromLensCalib`、兩份 def-scoped 鍵表的一致性 | **已有**:`unit_defnaming.mjs`、`unit_mmpp.mjs`、`unit_def_scoped_keys.mjs`,都在 `suite_nohw.mjs` 裡 |
+| ② 瀏覽器＋core | 無相機 | take → 確認 → 取名 → 使用現有圖 → `finishTake` → studio 開啟 → 三格進度 → 三個 guard → 生成特徵點 | 未寫。**擋在 `fixtures/test1.hydef` 沒有配對影像**(TEAM_HANDOFF 自己標的) |
+| ③ ②＋`FORCE_BMP_CAROUSEL` | 無相機 | 串流起停、兩個 cache 的差異、取消重載 | 未寫。核心的 BMP carousel(`wiringPanel.cpp` 的 `FORCE_BMP_CAROUSEL=<folder>`)就是為無頭測試做的,畫格是確定性的 |
+| ④ ＋裸板 | 無相機 | 等待觸發(EX trigger_type 2)—— 裸板的 `trig_cam_pulse` 就能產生訊號 | 未寫 |
+
+### 控件怎麼定位
+
+**用 `data-testid`,絕不用位置、幾何或標籤文字**(`TEAM_HANDOFF.md` §13,那裡記著文字選擇器
+解析到檔案瀏覽器、而且因為全是 icon-only 按鈕所以**點錯是靜默的**)。
+
+這個流程特別會咬人的地方:
+
+- `開始串流` / `停止串流` **會互換**,`等待觸發` 在串流時整個消失 —— 文字選擇器會找不到。
+- **disabled 按鈕**(沒影像的 `使用這一幀`、串流中的全部):Playwright 的 click 會**等到 timeout**,
+  不是乾脆失敗。所以每顆會停用的按鈕都額外帶 `data-enabled`。
+- **`SBM定位設定` 是 `SBM定位設定 2` 的前綴**,文字選擇器抓第一顆會同時命中兩顆。
+  兩顆分別是 `sbm-studio-v1` / `sbm-studio-v2`。
+- **`IconButton` 原本不轉發未知 props**,所以掛在它上面的 `data-testid` 會被靜靜丟掉。
+  已改成轉發所有 `data-*`(只有 `data-*`;整包 spread 會把 `onClick`/`dict` 灌到 DOM 上)。
+- **studio 的核心操作是 canvas 拖曳/點擊**(定位線、多邊形頂點、ROI 點)—— 這是幾何,
+  **testid 救不了**。要嘛用確定性的 fixture 影像算座標,要嘛開一個 dev hook 直接 dispatch。
+
+### 掛上去的 hook
+
+發布的是**語意**,不只是 handle —— 值得斷言的是「它用的是對的 cache」,不是「有一顆按鈕被點到」。
+
+| testid | 帶的屬性 |
+|---|---|
+| `take` / `sbm-studio-v1` / `sbm-studio-v2` | — |
+| `take-name` / `take-tags` / `take-next` / `take-cancel` | `take-next` 帶 `data-enabled` |
+| `take-capture` | `data-phase`(idle/streaming/waiting)、`data-has-image`、`data-from-camera`、`data-src`(cache/lastview)、`data-keep` |
+| `take-keep` / `take-stream-start` / `take-stream-stop` / `take-wait-trigger` | — |
+| `take-use-frame` | `data-enabled` |
+| `sbm2` | `data-step`、`data-done`(三格 0/1)、`data-stale`、`data-features`、`data-roi`、`data-regions`、`data-tool` |
+| `sbm2-seg-<i>` | `data-state`(done/now/todo) |
+| `sbm2-block-step-<i>` / `sbm2-block-opt-<i>` | `data-done`、`data-now`、`data-open` |
+| `sbm2-tool-<id>` | `aria-pressed` |
+| `sbm2-next` | `data-action`(locline/include/generate/close)、`data-enabled` |
+| `sbm2-generate` | — |
+
+`data-src` 和 `data-from-camera` 是這裡最值錢的兩個:**兩個 cache 拿錯、比例尺拿錯,畫面上都完全正常**,
+所以斷言必須打在這兩個屬性上,不能只看有沒有跑完。
+
+---
+
 ## 9. 相關程式位置
 
 | 東西 | 位置 |
