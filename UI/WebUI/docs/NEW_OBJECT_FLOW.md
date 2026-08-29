@@ -335,7 +335,7 @@ sig360 報告排第一是因為它是對**這張圖**的量測,比機台的標�
 | 三種測試(A 掃描 / B 全幅 / C 多原圖增強) | **只有 A 存在**(單軸)。B、C 和人工標註都還沒做。 |
 | 兩階段參數調校 | 未實作。 |
 | v1 的「還沒有樣板影像」誤報 | v2 已修(有 retake sidecar 時不再誤報);v1 維持原樣,它還是後備。 |
-| **未實機驗證** | 串流停止後「使用這一幀」的樣板圖是不是真的那一幀;串流後取消畫布有沒有回到 def 圖;保留模式下量測是否真的留著、SBM 是否真的清掉。三者都需要相機和 core。 |
+| **未實機驗證** | 串流後取消畫布有沒有回到 def 圖;保留模式下量測是否真的留著、SBM 是否真的清掉。兩者都要**瀏覽器**,`take_cache_probe.mjs` 那條路碰不到。串流那一幀已經驗過了(見 §8.5)。 |
 
 ---
 
@@ -345,7 +345,8 @@ sig360 報告排第一是因為它是對**這張圖**的量測,比機台的標�
 |---|---|---|---|
 | ① 純邏輯 | 什麼都不用,<1s | `refPngPathOf`、`nextFreeName`/`takenNamesFrom`、`pickMmpp`/`mmppFromLensCalib`、兩份 def-scoped 鍵表的一致性 | **已有**:`unit_defnaming.mjs`、`unit_mmpp.mjs`、`unit_def_scoped_keys.mjs`,都在 `suite_nohw.mjs` 裡 |
 | ② 瀏覽器＋core | 無相機 | take → 確認 → 取名 → 使用現有圖 → `finishTake` → studio 開啟 → 三格進度 → 三個 guard → 生成特徵點 | 探針未寫,但 fixture 已備妥:`fixtures/sbm_synth.png` + `.hydef`(見下) |
-| ③ ②＋`FORCE_BMP_CAROUSEL` | 無相機 | 串流起停、兩個 cache 的差異、取消重載 | 未寫。核心的 BMP carousel(`wiringPanel.cpp` 的 `FORCE_BMP_CAROUSEL=<folder>`)就是為無頭測試做的,畫格是確定性的 |
+| ③ ②＋`FORCE_BMP_CAROUSEL` | 無相機 | 串流起停、取消重載 | 未寫。核心的 BMP carousel(`wiringPanel.cpp` 的 `FORCE_BMP_CAROUSEL=<folder>`)就是為無頭測試做的,畫格是確定性的 |
+| ③′ core＋相機,不用瀏覽器 | **要相機** | 兩個 cache 的差異 | **已有**:`take_cache_probe.mjs`,已實機通過 |
 | ④ ＋裸板 | 無相機 | 等待觸發(EX trigger_type 2)—— 裸板的 `trig_cam_pulse` 就能產生訊號 | 未寫 |
 
 ### shape_based 的 fixture
@@ -398,6 +399,26 @@ fixture:每個像素都是這裡決定的,兩台機器拿到位元完全相同�
 另外 II 會把 def **解析兩次**,第二次沒看到快取並印
 `SBM features not trained (sig360 fallback in use)`。第一次是命中的,所以定位器是好的,
 但這兩行同時出現在日誌裡會誤導追問題的人 —— 還沒查清楚哪一次才是實際用來比對的。
+
+### 兩個 cache:已用真相機驗過
+
+`take_cache_probe.mjs`,不需要瀏覽器。它做的是 take 對話框做的那串動作 ——
+載入一張已知影像 → 自由跑 → 串流 `stage_light_report` 八秒 → 停 → 從**兩個** cache 各存一張。
+實測(2026-08-29,MV-CA050-11UM):
+
+```
+__CACHE_IMG__          2448x2048   ← 仍是載入的那張
+__LAST_DATA_VIEW__     1856x660    ← 相機畫格,帶著相機的 ROI
+載入的影像              2448x2048
+```
+
+**所以「使用這一幀」在串流後選 `__LAST_DATA_VIEW_CACHE_IMG__` 是對的**,而串流確實不會
+動到 `__CACHE_IMG__`。搞錯的話會把前一個配方的圖寫成新物件的樣板,而畫布上兩種情況
+看起來完全一樣 —— 沒有任何一刻看得出不對。
+
+寫這支探針時我踩了它要防的同一類錯:第一版用**檔案大小**判斷「還是同一張圖嗎」,
+把一個正確的結果判成失敗。核心存檔會重新編碼,平坦的合成圖用 zlib level 9 壓過再被重編
+幾乎脹一倍(25970 → 45355 bytes)。**尺寸有鑑別力,大小沒有。**
 
 ### 控件怎麼定位
 
