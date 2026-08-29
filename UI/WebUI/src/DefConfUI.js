@@ -34,7 +34,7 @@ import {
   round as roundX, websocket_autoReconnect,
   websocket_reqTrack, dictLookUp,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,
-  defFileGeneration, stampRefImagePath, refPngPathOf
+  defFileGeneration, stampRefImagePath
 } from 'UTIL/MISC_Util';
 
 import { mkLog } from 'UTIL/logger';
@@ -2575,17 +2575,14 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       key="TAKE"
       text="take" onClick={() => {
 
-        // UNSAVED WORK DIES HERE, INCLUDING IF YOU CANCEL.
+        // OPENING THIS DIALOG DISCARDS UNSAVED EDITS. That is the contract, not
+        // an accident, and cancelling does not exempt you: cancel reloads the
+        // def from disk.
         //
-        // Confirming a take runs Def_Retake, which is obvious. What is not: the
-        // CANCEL path reloads the def's image, the core answers an image load
-        // with a sig360_extractor report, and that report's reducer case calls
-        // Edit_info_reset -- which spreads Edit_info_Empty over edit_info and
-        // calls _obj.reset(). The shape list and every unsaved edit go with it.
-        //
-        // So there is no version of this dialog that is safe to open with
-        // unsaved changes pending, and pretending otherwise would make 取消 a
-        // trap. Ask once at the door instead, and say that cancel is included.
+        // Building a take on top of unsaved work would mean deciding, for every
+        // path through here, which half of the editor survives -- and that is a
+        // set of states nobody would enumerate correctly. One rule instead:
+        // starting a new object starts from the last saved state.
         //
         // Same dirtiness test as the back button (featureSet_sha1 vs the hash
         // the def was loaded with), deliberately: two different answers to "is
@@ -2694,20 +2691,33 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             { _PGID_: TAKE_STREAM_PGID, _PGINFO_: { keep: false } });
         };
 
-        // Cancelling must leave NOTHING changed, and a stream that has run has
-        // already replaced the picture on screen. Reload the def's own image.
-        const restoreDefImage = () => {
+        // CANCEL RELOADS THE DEF. It does not try to put the editor back the way
+        // it was.
+        //
+        // The contract for this whole dialog is deliberately blunt: opening it
+        // means unsaved edits are gone, and cancelling returns to the last SAVED
+        // state. The alternative -- restore the picture, keep the edits -- needs
+        // the streamed frame swapped out without disturbing edit_info, and a
+        // reply dispatched through only its IM packet the way switchImage does
+        // it. That is a third state ("cancelled, but still dirty") that nothing
+        // else in this screen has, and states nobody enumerated are where the
+        // bugs live. One rule, two outcomes, no half-restored editor.
+        //
+        // Skipped when there is nothing to go back to: after a take that has
+        // never been saved, defModelPath names a file that does not exist yet,
+        // and a failed load would leave a wiped def under a streamed frame --
+        // strictly worse than leaving the frame alone.
+        const reloadSavedDef = () => {
+          if (!defModelPath || edit_info.__img_fresh_capture) return;
           try {
-            if (defModelPath)
-              ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
-                { imgsrc: refPngPathOf(defModelPath),
-                  down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL });
-          } catch (e) { log.warn('[take] could not restore the def image', e); }
+            loadDefFile(defModelPath, ACT_DefConf_Lock_Level_Update,
+                        ACT_WS_SEND_BPG, CORE_ID, dispatch);
+          } catch (e) { log.warn('[take] could not reload the def', e); }
         };
 
-        const closeTake = (streamedAlready) => {
+        const closeTake = () => {
           stopStream();
-          if (streamedAlready) restoreDefImage();
+          reloadSavedDef();
           setModal_view(undefined);
         };
 
@@ -2788,14 +2798,13 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           });
         };
 
-        let _streamed = false;
         setModal_view({
           title: "建立新物件",
           footer: null,
           width: "96vw",
           style: { top: 12 },
           bodyStyle: { padding: 10, height: "86vh" },
-          onCancel: () => closeTake(_streamed),
+          onCancel: () => closeTake(),
           view: <TakeSetupDialog
             initName={edit_info.DefFileName}
             initTag={edit_info.DefFileTag}
@@ -2804,10 +2813,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             c_state={c_state}
             img={edit_info.img}
             hasImage={!!edit_info.img}
-            onStreamStart={() => { _streamed = true; startStream(); }}
+            onStreamStart={startStream}
             onStreamStop={stopStream}
             onWaitTrigger={waitForTrigger}
-            onCancel={() => closeTake(_streamed)}
+            onCancel={() => closeTake()}
             onGo={finishTake}
           />,
         });
@@ -2817,9 +2826,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         Modal.confirm({
           title: '目前的變更還沒存檔',
           width: 520,
-          content: '建立新物件會清掉目前編輯中的內容。'
-                 + '而且中途按「取消」也一樣救不回來 —— 取消會重新載入影像,'
-                 + '那會連帶重置編輯暫存。要保留的話,先回去存檔。',
+          content: '建立新物件會從「上次存檔的狀態」開始,目前編輯中還沒存的內容會消失。'
+                 + '中途按「取消」也一樣 —— 取消是把 def 重新載入回上次存檔的樣子,'
+                 + '不是回到你現在的編輯狀態。要保留的話,先回去存檔。',
           okText: '先回去存檔',
           cancelText: '丟掉變更,繼續建立新物件',
           onCancel: () => { log.warn('[take] discarding unsaved def edits'); _openTake(); },
