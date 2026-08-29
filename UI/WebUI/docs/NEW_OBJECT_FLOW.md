@@ -35,12 +35,36 @@ take → ① 取名(必填) → ② 滿版取景器 → ③ SBM studio(自動開
 
 | 進入點 | 條件 | 程式位置 |
 |---|---|---|
-| 工具列 **take** | 永遠可見 | `DefConfUI.js` `key="TAKE"` |
+| 工具列 **take** | 永遠可見(dirty 時先跳確認,見 §1.5) | `DefConfUI.js` `key="TAKE"` |
 | 工具列 **SBM定位設定** / **SBM定位設定 2** | 只在 `edit_info.locating_engine === 'shape_based'` | `key="SBMSETUP"` / `key="SBMSETUP2"` |
 | 設定頁 **→ migrate to shape_based** | 只在 `locating_engine !== 'shape_based'` | `ACT_Migrate_To_Shape` |
 
 > **SBM 按鈕以前是無條件顯示的,而且一按就 `dispatch(Locating_Engine_Update('shape_based'))`。**
 > 也就是只想點進去看看的人,就把一個 sig360 配方轉換掉了。現在轉換只屬於 migrate 那一顆。
+
+---
+
+## 1.5 進 take 之前:未儲存變更的確認
+
+只在 **dirty** 時出現。判斷方式和返回鍵完全一樣:
+`defFileGeneration(edit_info).featureSet_sha1 !== edit_info.DefFileHash`
+—— 刻意共用同一個定義,「這個 def 髒了嗎」有兩個不同答案比任何一個答案都糟。
+
+| | |
+|---|---|
+| 標題 | 目前的變更還沒存檔 |
+| 預設鍵 | **先回去存檔** |
+| 另一個 | 丟掉變更,繼續建立新物件 |
+
+> **重點是「連按取消也救不回來」,而這件事完全不直覺。**
+> 確認 take 會跑 `Def_Retake`,那是明顯的。不明顯的是**取消**那條:
+> 取消會重新載入 def 的影像 → 核心回一個 `sig360_extractor` 報告 →
+> 那個報告的 reducer case 呼叫 `Edit_info_reset()` →
+> 它把 `Edit_info_Empty()` 蓋到 `edit_info` 上並 `_obj.reset()`。
+> **shapeList 和所有未存的編輯一起消失。**
+>
+> 所以沒有任何一種版本的這個對話框是「帶著未存變更打開也安全」的。
+> 與其假裝安全、讓「取消」變成陷阱,不如在門口問一次,並且明講取消也包含在內。
 
 ---
 
@@ -268,6 +292,7 @@ sig360 報告排第一是因為它是對**這張圖**的量測,比機台的標�
 
 | 觸發時機 | 條件 | 選項 |
 |---|---|---|
+| 按下 take | def 有未儲存變更 | 先回去存檔 / **丟掉變更繼續**(見 §1.5) |
 | 離開自動開啟的 studio | `auto && !def_image_reg` | 留下來設定 / **仍要離開** |
 | 存檔 | `isShapeEngine && __img_fresh_capture && !def_image_reg` | 去設定定位 / **仍要存檔** |
 | 離開 studio、存檔 | `isShapeEngine && __shape_stale` | 還原上一版 / **仍要離開(存檔)** |

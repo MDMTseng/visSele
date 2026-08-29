@@ -2574,6 +2574,25 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout palatte-purple-8 vbox"
       key="TAKE"
       text="take" onClick={() => {
+
+        // UNSAVED WORK DIES HERE, INCLUDING IF YOU CANCEL.
+        //
+        // Confirming a take runs Def_Retake, which is obvious. What is not: the
+        // CANCEL path reloads the def's image, the core answers an image load
+        // with a sig360_extractor report, and that report's reducer case calls
+        // Edit_info_reset -- which spreads Edit_info_Empty over edit_info and
+        // calls _obj.reset(). The shape list and every unsaved edit go with it.
+        //
+        // So there is no version of this dialog that is safe to open with
+        // unsaved changes pending, and pretending otherwise would make 取消 a
+        // trap. Ask once at the door instead, and say that cancel is included.
+        //
+        // Same dirtiness test as the back button (featureSet_sha1 vs the hash
+        // the def was loaded with), deliberately: two different answers to "is
+        // this dirty" is worse than either answer.
+        const _now = defFileGeneration(edit_info);
+        const _dirty = _now.featureSet_sha1 !== edit_info.DefFileHash;
+        const _openTake = () => {
         // One fixed name, deliberately. A per-capture name would leave a file
         // behind for every retake in data/, and nothing would ever delete them;
         // reusing one means the previous scratch frame is overwritten by the
@@ -2791,6 +2810,19 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             onCancel={() => closeTake(_streamed)}
             onGo={finishTake}
           />,
+        });
+        };
+
+        if (!_dirty) { _openTake(); return; }
+        Modal.confirm({
+          title: '目前的變更還沒存檔',
+          width: 520,
+          content: '建立新物件會清掉目前編輯中的內容。'
+                 + '而且中途按「取消」也一樣救不回來 —— 取消會重新載入影像,'
+                 + '那會連帶重置編輯暫存。要保留的話,先回去存檔。',
+          okText: '先回去存檔',
+          cancelText: '丟掉變更,繼續建立新物件',
+          onCancel: () => { log.warn('[take] discarding unsaved def edits'); _openTake(); },
         });
       }} />,
     (defConf_lock_level !=0) ? null :
