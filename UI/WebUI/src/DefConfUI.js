@@ -2693,6 +2693,20 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         const _now = defFileGeneration(edit_info);
         const _dirty = _now.featureSet_sha1 !== edit_info.DefFileHash;
         const _openTake = () => {
+          // CLEAR THE POST-LOAD DISPLAY LOCK, ONCE, BEFORE THE DIALOG EXISTS.
+          //
+          // While it is non-zero the reducer drops DefConf actions that are not
+          // on a three-entry whitelist -- including IMAGE actions, which is why
+          // useDefImages tags its own with IGNORE_DEFCONF_LOCK. A viewfinder
+          // streaming into that reducer throws every frame away and keeps
+          // showing the picture it opened with, and Def_Retake at the end is
+          // discarded the same way.
+          //
+          // It happens HERE and not in startStream because changing the lock
+          // re-renders this menu, which remounts the component whose state
+          // holds the modal -- so clearing it mid-stream closes the dialog. The
+          // door is the one moment where a remount costs nothing.
+          ACT_DefConf_Lock_Level_Update(0);
         // One fixed name, deliberately. A per-capture name would leave a file
         // behind for every retake in data/, and nothing would ever delete them;
         // reusing one means the previous scratch frame is overwritten by the
@@ -2852,6 +2866,21 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         // written AFTER it.
         const finishTake = (opt) => {
           stopStream();
+          // CLEAR THE EDITOR LOCK FIRST, or none of this happens.
+          //
+          // While defConf_lock_level is non-zero the reducer drops every
+          // DefConf action that is not on a three-entry whitelist -- silently,
+          // by `break`ing out of the do-block before the switch. Def_Retake is
+          // not on that list, so it was discarded and the "new object" kept the
+          // previous def's registration, feature cache and name while its path
+          // and engine changed around them. Nothing reported an error; the
+          // studio simply opened with every step already green.
+          //
+          // Entering DefConf leaves the lock at 1 (the post-load display lock).
+          // The original TAKE cleared it inside triggerSnapExam, so the
+          // single-shot path worked and the stream and reuse-image paths, added
+          // later, did not. Doing it here covers all three by construction.
+          ACT_DefConf_Lock_Level_Update(0);
           dispatch(DefConfAct.Def_Retake(!!opt.keep));
           ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE, opt.srcType);
           dispatch(DefConfAct.EditInfo_Patch({ __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
