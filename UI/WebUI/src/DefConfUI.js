@@ -2304,6 +2304,17 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const defModelPath = edit_info.defModelPath;
   const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
+  // The station, in full-sensor pixels, for drawing. Same two keys the core
+  // reads out of machine_setting.json -- not the def's, and not converted:
+  // the station is mechanics and lives in sensor pixels at every step.
+  const stationOverlay = React.useMemo(() => {
+    const ms = machine_custom_setting || {};
+    const r = ms.inspection_region;
+    const cl = Array.isArray(ms.clean_regions) ? ms.clean_regions : [];
+    if (!(r && r.w > 0 && r.h > 0) && !cl.length) return undefined;
+    return { region: (r && r.w > 0 && r.h > 0) ? r : undefined, clean: cl };
+  }, [machine_custom_setting]);
+
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
   
   
@@ -2311,6 +2322,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   const [cacheDef,setCacheDef]=useState(undefined);
   const [nowInspdata,setNowInspdata]=useState(undefined);
+  // 快速驗證 only: is the machine's station filter (inspection_region +
+  // clean_regions) being enforced for this session? Default ENFORCED, so the
+  // quick check shows what production shows unless somebody says otherwise.
+  const [stationEnforced,setStationEnforced]=useState(true);
   // NOTE: orientation auto-inspect + multi-image switching moved to the
   // persistent <DefConfImageSwitcher/> (rendered by APP_DEFCONF_MODE) so the
   // floating switcher + orientation survive across edit submodes (this neutral
@@ -2474,6 +2489,16 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
     setCacheDef(deffile);
 
+    // The station filter, stated per session rather than inherited.
+    //
+    // InspAreaBypass turns off BOTH machine-level area gates -- the station
+    // inspection_region and the clean_regions -- for the life of the process,
+    // and the core logs an ERROR on any session that starts with it latched:
+    // "this is the way it ends up on in production". So it is sent explicitly
+    // every time, both ways, and cleared unconditionally when the session ends
+    // rather than only when it was turned on here.
+    ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: !stationEnforced });
+
     let _PGID_=11004;
     ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
     { _PGID_: _PGID_, 
@@ -2516,6 +2541,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     function CancelNowInsp()
     {
+      // Unconditional: a bypass that outlives the screen that set it is a
+      // machine that has silently stopped enforcing its station.
+      ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: false });
       ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
       {
         _PGID_: _PGID_,
@@ -2576,6 +2604,17 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
       className:"modal-sizing size95",
       footer:<>
+          <span style={{ float:'left', display:'flex', alignItems:'center', gap:8 }}>
+            <Switch size="small" checked={stationEnforced}
+              onChange={(v)=>{ setStationEnforced(v);
+                ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: !v }); }} />
+            <span style={{ fontSize:12, color: stationEnforced ? '#8b929c' : '#d4380d',
+                           fontWeight: stationEnforced ? 400 : 700 }}>
+              {stationEnforced
+                ? '站點範圍過濾:啟用(和生產一致)'
+                : '⚠ 站點範圍過濾已關閉 —— 站點外的物件也會被判定,clean_regions 也沒在檢查'}
+            </span>
+          </span>
           <Button key="save-alt" type="primary" onClick={saveAlternateImage}>儲存為替代影像</Button>
           <Button key="close" danger onClick={()=>{ CancelNowInsp(); setModal_view(undefined); }}>關閉</Button>
         </>,
@@ -3199,6 +3238,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             camera_param={fallback_nowInspdata.cam_param}  
             reports={fallback_nowInspdata.reports} 
             image={fallback_nowInspdata.image}
+            stationOverlay={stationOverlay}
             IGNORE_IMAGE_FIT_TO_SCREEN={true}
             ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={true}
             BPG_Channel={(...args)=>ACT_WS_SEND_BPG(CORE_ID, ...args) }

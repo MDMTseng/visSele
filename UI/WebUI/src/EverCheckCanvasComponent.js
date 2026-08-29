@@ -125,6 +125,167 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
 
 class EverCheckCanvasComponent_proto {
 
+  // MOVED UP FROM INSP_CanvasComponent so every canvas can show the station.
+  //
+  // The station is a property of the MACHINE, not of whichever screen happens
+  // to be open, and the screens that most need to show it are the ones that
+  // were not showing it: 快速驗證 runs the production filter and drew no hint
+  // of where it was, so an object dropped for being off-station looked
+  // identical to a def that could not locate.
+
+  // The station: inspection region + clean-space regions, in FULL-SENSOR pixels.
+  //
+  // Drawn from draw(), not from inside draw_INSP(), because draw_INSP bails
+  // early when there is no report or no edit_DB_info -- and setting the region
+  // up is exactly when you have neither. It must be visible on an empty plate.
+  //
+  // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
+  // in full-sensor px; undefined draws nothing.
+  // GEOMETRY ONLY. The boxes belong to the person dragging them, so they land
+  // immediately. The STATE is not passed in at all -- see draw_station_overlay.
+  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
+
+  draw_station_overlay() {
+    const ov = this.stationOverlay;
+    if (!ov || this.img_info === undefined) return;
+    const mmpp = this.rUtil.get_mmpp();
+    if (!(mmpp > 0)) return;
+    const ctx = this.canvas.getContext('2d');
+    const m = this.worldTransform();
+    ctx.save();
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+
+    // Two rectangles, two jobs. The OUTER one is identity and never changes
+    // colour -- blue is the inspection region, orange is a clean region, and you
+    // can always tell which box you are looking at. The INNER one is state.
+    //
+    // Colouring the outer box by state was the first attempt and it was worse:
+    // when everything went green you could no longer tell the station from the
+    // clean regions at a glance, which is the one thing the overlay has to make
+    // obvious while parts are moving.
+    const box = (r, stroke, fill, label, sub, state) => {
+      if (!r || !(r.w > 0) || !(r.h > 0)) return;
+      const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
+      const lw = this.rUtil.getIndicationLineSize();
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = stroke;
+      ctx.strokeRect(x, y, w, h);
+      if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
+
+      if (state) {
+        // Half a stroke width. Both strokes are centred on their own path, so
+        // at this inset they sit edge to edge and read as one double line --
+        // enough to carry a second colour without turning the box into a
+        // frame-within-a-frame that eats the region it is describing.
+        const g = lw * 0.5;
+        if (w > g * 3 && h > g * 3) {
+          ctx.strokeStyle = state.color;
+          ctx.strokeRect(x + g, y + g, w - g * 2, h - g * 2);
+          if (state.fill) { ctx.fillStyle = state.fill;
+                            ctx.fillRect(x + g, y + g, w - g * 2, h - g * 2); }
+        }
+      }
+
+      // Text goes BELOW the box. Inside, it sits on top of the parts -- which
+      // is the one thing in the frame the operator is actually trying to look
+      // at. Above collides with the neighbouring box's text as soon as the
+      // stations sit a part-pitch apart, and below the plate is empty.
+      //
+      // Small, because getFontStyle takes a size in WORLD mm: the 1 the
+      // measurement overlay passes renders enormous for a station label, and
+      // there are two lines per box.
+      const fs = 0.42, pad = 0.12;
+      ctx.font = this.rUtil.getFontStyle(fs);
+      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + h + fs + pad); }
+      if (sub)   { ctx.fillStyle = state ? state.color : stroke;
+                   ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
+    };
+
+    // State comes from edit_DB_info, NOT from the panel.
+    //
+    // It has to travel with the image or it draws on the wrong picture, and
+    // edit_DB_info is already the snapshot InspectionUI swaps only when a new
+    // image arrives -- so reading it here makes the pairing automatic.
+    //
+    // Routing it through the panel instead was the previous attempt and it
+    // could not work: the panel writes state from a useEffect while the canvas
+    // is driven from a class componentWillUpdate. When React batches a report
+    // and an image into one render, the canvas runs first and promotes the
+    // PREVIOUS state onto the new image. More batching at higher rates, which
+    // is exactly where the symptom lived. One snapshot, one gate, no race.
+    const ST = (this.edit_DB_info && this.edit_DB_info.station) || null;
+    const R = (() => {
+      if (!ST || ST.result === undefined) return {};
+      const cat = ST.cat;
+      const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
+      if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
+      if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
+      // The cause, when the core named one. INSP_REGION_TOO_SMALL (5) is the
+      // one an operator can fix on the spot and the one they cannot see: the
+      // box is smaller than the part, so the locator has nowhere to put the
+      // template and NA is the only possible answer, on every frame. Without
+      // this line the picture looks perfectly good and the box looks
+      // deliberate. Codes come from FeatureReport_ERROR in FeatureReport.h.
+      const ERR = { 5: '(檢驗區域小於物件,請放大框選範圍)',
+                    4: '(背景不乾淨)',
+                    2: '(區域內不只一個物件)' };
+      // Two different NAs, and the operator needs to be able to tell them
+      // apart. clean_err means the clean area was dirty, so the part was
+      // never measured at all -- the engine is handed no candidate objects
+      // (FeatureManager::no_candidate_frame) and nothing is judged. Saying
+      // "零件本身 OK" there would be a claim about a measurement
+      // that did not happen; result_obj is STATUS_UNSET (-100), not 0, which
+      // is why that suffix stops appearing on its own.
+      return { tone: 'na', text: 'NA → 不動作'
+               + (ERR[ST.insp_err] || '')
+               + (ST.clean_err !== undefined ? '(淨空區不乾淨,未量測)' : '')
+               + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
+    })();
+    const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
+    // NO fill on the inspection region, in either layer. What is inside it is
+    // the part being measured -- the one thing in the frame worth looking at --
+    // and a tint over it costs contrast on exactly the edges the measurement is
+    // about. The two rings and the caption carry the state without touching the
+    // pixels. Clean regions keep their tint: they are supposed to be empty, so
+    // there is nothing there to obscure.
+    const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
+                 : R.tone === 'ng' ? { color: '#ff5252', fill: null }
+                 : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
+                 : null;
+    // Dashed when the core is not filtering by it. The region only applies in
+    // FI; CI is the setup view and deliberately shows every object, including
+    // the ones a run would drop. A solid box that is not selecting anything
+    // looks exactly like one that is -- until a part goes the wrong way -- so
+    // the line itself says which state it is in.
+    const regionOff = !!(ST && ST.region && ST.region.active === false);
+    if (regionOff) ctx.setLineDash([4 * mmpp, 3 * mmpp]);
+    box(ov.region, '#00b0ff', null,
+        ov.region ? (regionOff ? '檢驗區域(設定中·未過濾)' : '檢驗區域') : null,
+        R.text || null, rState);
+    if (regionOff) ctx.setLineDash([]);
+
+    (ov.clean || []).forEach((c, i) => {
+      const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));
+      c = { ...c, dirty: m ? m.dirty : undefined,
+            detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
+      const known = c.dirty !== undefined;
+      const st = !known ? null
+               : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
+                         : { color: '#00e676', fill: null };
+      box(c, '#ffab00', 'rgba(255,171,0,0.06)',
+          c.name || ('淨空' + (i + 1)),
+          known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null, st);
+    });
+
+    if (ov.pending) {
+      ctx.setLineDash([6 * mmpp, 4 * mmpp]);
+      box(ov.pending, '#ffffff', null, null);
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
   // The localizer's include/exclude regions belong to the SBM studio, which
   // draws them itself from this same shapeList. They are not measurement
   // features, and on the def canvas a full-part outline sits on top of
@@ -1548,159 +1709,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   draw() {
     this.draw_INSP();
     this.draw_station_overlay();
-  }
-
-  // The station: inspection region + clean-space regions, in FULL-SENSOR pixels.
-  //
-  // Drawn from draw(), not from inside draw_INSP(), because draw_INSP bails
-  // early when there is no report or no edit_DB_info -- and setting the region
-  // up is exactly when you have neither. It must be visible on an empty plate.
-  //
-  // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
-  // in full-sensor px; undefined draws nothing.
-  // GEOMETRY ONLY. The boxes belong to the person dragging them, so they land
-  // immediately. The STATE is not passed in at all -- see draw_station_overlay.
-  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
-
-  draw_station_overlay() {
-    const ov = this.stationOverlay;
-    if (!ov || this.img_info === undefined) return;
-    const mmpp = this.rUtil.get_mmpp();
-    if (!(mmpp > 0)) return;
-    const ctx = this.canvas.getContext('2d');
-    const m = this.worldTransform();
-    ctx.save();
-    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
-    ctx.lineWidth = this.rUtil.getIndicationLineSize();
-
-    // Two rectangles, two jobs. The OUTER one is identity and never changes
-    // colour -- blue is the inspection region, orange is a clean region, and you
-    // can always tell which box you are looking at. The INNER one is state.
-    //
-    // Colouring the outer box by state was the first attempt and it was worse:
-    // when everything went green you could no longer tell the station from the
-    // clean regions at a glance, which is the one thing the overlay has to make
-    // obvious while parts are moving.
-    const box = (r, stroke, fill, label, sub, state) => {
-      if (!r || !(r.w > 0) || !(r.h > 0)) return;
-      const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
-      const lw = this.rUtil.getIndicationLineSize();
-      ctx.lineWidth = lw;
-      ctx.strokeStyle = stroke;
-      ctx.strokeRect(x, y, w, h);
-      if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
-
-      if (state) {
-        // Half a stroke width. Both strokes are centred on their own path, so
-        // at this inset they sit edge to edge and read as one double line --
-        // enough to carry a second colour without turning the box into a
-        // frame-within-a-frame that eats the region it is describing.
-        const g = lw * 0.5;
-        if (w > g * 3 && h > g * 3) {
-          ctx.strokeStyle = state.color;
-          ctx.strokeRect(x + g, y + g, w - g * 2, h - g * 2);
-          if (state.fill) { ctx.fillStyle = state.fill;
-                            ctx.fillRect(x + g, y + g, w - g * 2, h - g * 2); }
-        }
-      }
-
-      // Text goes BELOW the box. Inside, it sits on top of the parts -- which
-      // is the one thing in the frame the operator is actually trying to look
-      // at. Above collides with the neighbouring box's text as soon as the
-      // stations sit a part-pitch apart, and below the plate is empty.
-      //
-      // Small, because getFontStyle takes a size in WORLD mm: the 1 the
-      // measurement overlay passes renders enormous for a station label, and
-      // there are two lines per box.
-      const fs = 0.42, pad = 0.12;
-      ctx.font = this.rUtil.getFontStyle(fs);
-      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + h + fs + pad); }
-      if (sub)   { ctx.fillStyle = state ? state.color : stroke;
-                   ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
-    };
-
-    // State comes from edit_DB_info, NOT from the panel.
-    //
-    // It has to travel with the image or it draws on the wrong picture, and
-    // edit_DB_info is already the snapshot InspectionUI swaps only when a new
-    // image arrives -- so reading it here makes the pairing automatic.
-    //
-    // Routing it through the panel instead was the previous attempt and it
-    // could not work: the panel writes state from a useEffect while the canvas
-    // is driven from a class componentWillUpdate. When React batches a report
-    // and an image into one render, the canvas runs first and promotes the
-    // PREVIOUS state onto the new image. More batching at higher rates, which
-    // is exactly where the symptom lived. One snapshot, one gate, no race.
-    const ST = (this.edit_DB_info && this.edit_DB_info.station) || null;
-    const R = (() => {
-      if (!ST || ST.result === undefined) return {};
-      const cat = ST.cat;
-      const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
-      if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
-      if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
-      // The cause, when the core named one. INSP_REGION_TOO_SMALL (5) is the
-      // one an operator can fix on the spot and the one they cannot see: the
-      // box is smaller than the part, so the locator has nowhere to put the
-      // template and NA is the only possible answer, on every frame. Without
-      // this line the picture looks perfectly good and the box looks
-      // deliberate. Codes come from FeatureReport_ERROR in FeatureReport.h.
-      const ERR = { 5: '(檢驗區域小於物件,請放大框選範圍)',
-                    4: '(背景不乾淨)',
-                    2: '(區域內不只一個物件)' };
-      // Two different NAs, and the operator needs to be able to tell them
-      // apart. clean_err means the clean area was dirty, so the part was
-      // never measured at all -- the engine is handed no candidate objects
-      // (FeatureManager::no_candidate_frame) and nothing is judged. Saying
-      // "零件本身 OK" there would be a claim about a measurement
-      // that did not happen; result_obj is STATUS_UNSET (-100), not 0, which
-      // is why that suffix stops appearing on its own.
-      return { tone: 'na', text: 'NA → 不動作'
-               + (ERR[ST.insp_err] || '')
-               + (ST.clean_err !== undefined ? '(淨空區不乾淨,未量測)' : '')
-               + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
-    })();
-    const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
-    // NO fill on the inspection region, in either layer. What is inside it is
-    // the part being measured -- the one thing in the frame worth looking at --
-    // and a tint over it costs contrast on exactly the edges the measurement is
-    // about. The two rings and the caption carry the state without touching the
-    // pixels. Clean regions keep their tint: they are supposed to be empty, so
-    // there is nothing there to obscure.
-    const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
-                 : R.tone === 'ng' ? { color: '#ff5252', fill: null }
-                 : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
-                 : null;
-    // Dashed when the core is not filtering by it. The region only applies in
-    // FI; CI is the setup view and deliberately shows every object, including
-    // the ones a run would drop. A solid box that is not selecting anything
-    // looks exactly like one that is -- until a part goes the wrong way -- so
-    // the line itself says which state it is in.
-    const regionOff = !!(ST && ST.region && ST.region.active === false);
-    if (regionOff) ctx.setLineDash([4 * mmpp, 3 * mmpp]);
-    box(ov.region, '#00b0ff', null,
-        ov.region ? (regionOff ? '檢驗區域(設定中·未過濾)' : '檢驗區域') : null,
-        R.text || null, rState);
-    if (regionOff) ctx.setLineDash([]);
-
-    (ov.clean || []).forEach((c, i) => {
-      const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));
-      c = { ...c, dirty: m ? m.dirty : undefined,
-            detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
-      const known = c.dirty !== undefined;
-      const st = !known ? null
-               : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
-                         : { color: '#00e676', fill: null };
-      box(c, '#ffab00', 'rgba(255,171,0,0.06)',
-          c.name || ('淨空' + (i + 1)),
-          known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null, st);
-    });
-
-    if (ov.pending) {
-      ctx.setLineDash([6 * mmpp, 4 * mmpp]);
-      box(ov.pending, '#ffffff', null, null);
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
   }
 
 
@@ -3580,6 +3588,13 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
       //this.stage_light_report
     }
 
+
+    // The station, on top of everything else. Same call the inspection canvas
+    // makes; it lives on the shared proto now. Without it, 快速驗證 enforces the
+    // station filter with nothing on screen saying where the station IS, and an
+    // object dropped for standing outside it is indistinguishable from a def
+    // that could not locate.
+    this.draw_station_overlay();
   }
 
   ctrlLogic() {
