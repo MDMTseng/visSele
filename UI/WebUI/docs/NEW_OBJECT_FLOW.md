@@ -344,9 +344,60 @@ sig360 報告排第一是因為它是對**這張圖**的量測,比機台的標�
 | 層 | 需要什麼 | 涵蓋 | 狀態 |
 |---|---|---|---|
 | ① 純邏輯 | 什麼都不用,<1s | `refPngPathOf`、`nextFreeName`/`takenNamesFrom`、`pickMmpp`/`mmppFromLensCalib`、兩份 def-scoped 鍵表的一致性 | **已有**:`unit_defnaming.mjs`、`unit_mmpp.mjs`、`unit_def_scoped_keys.mjs`,都在 `suite_nohw.mjs` 裡 |
-| ② 瀏覽器＋core | 無相機 | take → 確認 → 取名 → 使用現有圖 → `finishTake` → studio 開啟 → 三格進度 → 三個 guard → 生成特徵點 | 未寫。**擋在 `fixtures/test1.hydef` 沒有配對影像**(TEAM_HANDOFF 自己標的) |
+| ② 瀏覽器＋core | 無相機 | take → 確認 → 取名 → 使用現有圖 → `finishTake` → studio 開啟 → 三格進度 → 三個 guard → 生成特徵點 | 探針未寫,但 fixture 已備妥:`fixtures/sbm_synth.png` + `.hydef`(見下) |
 | ③ ②＋`FORCE_BMP_CAROUSEL` | 無相機 | 串流起停、兩個 cache 的差異、取消重載 | 未寫。核心的 BMP carousel(`wiringPanel.cpp` 的 `FORCE_BMP_CAROUSEL=<folder>`)就是為無頭測試做的,畫格是確定性的 |
 | ④ ＋裸板 | 無相機 | 等待觸發(EX trigger_type 2)—— 裸板的 `trig_cam_pulse` 就能產生訊號 | 未寫 |
+
+### shape_based 的 fixture
+
+現有的 `caliper_verify_tagged` 是 **sig360** 的 def —— 改版之後 sig360 的 def 在工具列上
+根本看不到 SBM 按鈕,所以拿它測不到 studio。因此另外做了一組:
+
+```
+fixtures/make_sbm_fixture_image.py   畫出零件(純 stdlib,無 PIL/numpy)
+fixtures/sbm_synth.png               2448×2048,26 KB
+fixtures/make_sbm_fixture_def.mjs    要一個跑著的 core 抽特徵,寫出 def
+fixtures/sbm_synth.hydef             shape_based,28 KB
+```
+
+**合成而不是真實照片,因為這個 repo 是公開的。** 一張真實畫格會把客戶零件的外形、
+表面處理、孔位發布給任何 clone 的人。畫出來的零件不會外洩任何東西,而且是更好的
+fixture:每個像素都是這裡決定的,兩台機器拿到位元完全相同的輸入,測試失敗就代表程式
+變了、而不是相機變了。體積也差 100 倍(26 KB vs 2.9 MB)。
+
+形狀的四個條件都不是隨便挑的:**不碰邊界**(`trainShapeMatcher` 取「不碰邊的最大連通
+區域」,碰邊會輸給背光場)、**旋轉不對稱**(n 重對稱會讓旋轉掃描回報 360/n 度的殘差,
+看起來像災難性誤差但不是)、**有內部細節**(只有外輪廓的話位置準、角度差)、**邊緣要
+軟**(一像素的階躍是真實鏡頭產不出來的梯度)。
+
+**def 必須由核心生成,不能手寫。** `shape_cache` 帶著一個涵蓋樣板和每個抽取參數的指紋,
+核心載入時會重算 —— 對不上就當 stale 拒絕,而隱式重抽是關掉的,所以手寫的 fixture 會
+載入成功、拒絕自己的特徵、退回 sig360,正好是這個 fixture 要用來測的失敗。
+
+已驗證(核心日誌):
+
+```
+[shape] loaded 193 features from def cache (no re-extraction)
+[shape] from def cache: crop [0,0 2448x2048] origin(1224.0,1024.0) variants=360
+```
+
+**踩過一次值得記下來:`localization_include` 是物件座標系的 mm,不是像素**
+(`FeatureManager_sig360_circle_line.cpp` 的「Object-frame mm polygon arrays」)。
+第一版寫成像素,大了 80 倍,遮罩什麼都沒框到,核心印
+`masked features=0 too few; retrying without mask` 然後拿整張圖去抽 ——
+**fixture 照樣做出來了,這才是問題**:它會帶著一個什麼都沒做的區域出貨,
+第一個相信它的人會得到「區域功能沒用」的結論。
+
+### 尚未解決
+
+在**這台開發機**上對 fixture 跑 II 得到 `matches=0`,原因是核心用機台的校正把模型重新
+縮放了:`def_mmpp=0.0125` vs `cur_mmpp=0.013886` → 模型縮到 0.9002。fixture 不該依賴
+某一台機器的鏡頭校正,所以第②層探針要嘛連 `data/lens_calib.json` 也 fixture 化,要嘛
+找出讓 II 真正忽略校正的方式(這次傳的 `calibInfo:{type:'disable'}` 沒有阻止縮放)。
+
+另外 II 會把 def **解析兩次**,第二次沒看到快取並印
+`SBM features not trained (sig360 fallback in use)`。第一次是命中的,所以定位器是好的,
+但這兩行同時出現在日誌裡會誤導追問題的人 —— 還沒查清楚哪一次才是實際用來比對的。
 
 ### 控件怎麼定位
 
