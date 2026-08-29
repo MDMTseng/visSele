@@ -3145,6 +3145,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       dict={DICT}
       addClass="layout palatte-purple-8 vbox width12"
       key="NOW"
+      data-testid="quick-verify"
       text="快速驗證" onClick={() => {
 
         let InspectionModeOption={
@@ -3165,10 +3166,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           view:<>
 
             選擇模式
-            <Button key="CI_MODE" onClick={_ => startQuickInsp("CI")}>
+            <Button key="CI_MODE" data-testid="quick-verify-ci" onClick={_ => startQuickInsp("CI")}>
               檢驗{machine_custom_setting.InspectionMode=="CI"?<StarOutlined />:null}
             </Button>
-            <Button key="FI_MODE" onClick={_ => startQuickInsp("FI")}>
+            <Button key="FI_MODE" data-testid="quick-verify-fi" onClick={_ => startQuickInsp("FI")}>
               全檢{machine_custom_setting.InspectionMode=="FI"?<StarOutlined />:null}
             </Button>
           </>
