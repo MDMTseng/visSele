@@ -2544,18 +2544,25 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       // Unconditional: a bypass that outlives the screen that set it is a
       // machine that has silently stopped enforcing its station.
       ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: false });
+      // keep:false, and no definfo.
+      //
+      // This was keep:true with definfo:undefined, which does not stop
+      // anything: keep:true is the flag that PRESERVES the subscription,
+      // and a CI carrying neither deffile nor definfo is rejected outright
+      // ("nothing to inspect against"), so the packet never reached the
+      // group logic at all. Measured on the bench: 6.0 fps before the
+      // cancel, 6.0 fps after it, 0.0 fps after a real keep:false.
+      //
+      // The stream therefore outlived the screen and ran until the core
+      // process exited, and anything opened afterwards added its own on
+      // top -- which is what a rising image rate that nobody configured
+      // looks like.
       ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
-      {
-        _PGID_: _PGID_,
-        _PGINFO_: { keep: true },
-        definfo: undefined
-      }, undefined,
-      {
-        resolve:(darr,mainFlow)=>{
-        },
-        reject:(e)=>{
-        }
-      });
+        { _PGID_: _PGID_, _PGINFO_: { keep: false } });
+      // And stop the camera, the way InspectionUI does on its way out. Leaving
+      // it in free run keeps frames flowing into the pipeline for whatever
+      // subscribes next.
+      ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { CameraSetting: { trigger_mode: 1 } });
 
     }
 
