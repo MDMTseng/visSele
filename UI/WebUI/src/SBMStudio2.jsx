@@ -770,9 +770,27 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     else drawScene(g, canvas, ctx_state);
   }, [tool, reg, mmpp, locShapes, featPts, insp, roiPts, onPoly, onReg, onRoi]);
 
-  // Auto-generate the feature-point overlay once when the studio opens (if the def is
-  // saved on disk). The user can refresh with the button after editing regions.
-  useEffect(() => { genFeatures(); /* eslint-disable-next-line */ }, []);
+  // Show the features the def ALREADY uses, when it has any.
+  //
+  // NOT for a def with no registration yet -- which is every def that just came
+  // out of TAKE, because Def_Retake clears def_image_reg. Two things go wrong
+  // there and they compound:
+  //
+  //   * SF is an authoring action, so with no cache it EXTRACTS. Those features
+  //     are computed against an object frame that has not been chosen yet, and
+  //     drawing the registration line is exactly what marks them stale -- so
+  //     they are guaranteed garbage within the next thirty seconds.
+  //   * with def_image_reg absent, drawImage translates by -(0,0), which puts
+  //     the object-frame origin at the IMAGE CORNER. Every one of those points
+  //     lands in the top-left corner of a picture they have nothing to do with,
+  //     and it reads as debris left over from the previous recipe.
+  //
+  // So a new object opens with a clean canvas and step 1 to do, which is what
+  // the progress bar says anyway.
+  useEffect(() => {
+    if (reg && Number.isFinite(reg.cx)) genFeatures();
+    /* eslint-disable-next-line */
+  }, []);
 
   // Tool toggle: clicking the active tool returns to 'pan' (drag = pan, wheel = zoom),
   // so no separate pan button is needed.
@@ -1059,11 +1077,24 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
 
         <Block n="3" idx={2} title="生成特徵"
           summary={edit_info.__shape_cache ? nFeat + ' 點' : '未生成'}>
+          {/* Refused, not hidden, and it says which step is missing.
+              Features are extracted relative to the object frame, so extracting
+              before there is one produces points that are stale the moment the
+              registration line is drawn -- and until then they render at the
+              image corner, where they look like leftovers from another recipe.
+              This is reachable by opening step 3 directly; the pinned next
+              button already sends an unregistered def to step 1. */}
           <Button data-testid="sbm2-generate" block type="primary"
             style={{ height: H, marginBottom: 6 }}
+            data-enabled={stepDone[0] ? '1' : '0'}
+            disabled={!stepDone[0]}
             loading={genBusy} onClick={() => genFeatures(true)}>🔵 生成特徵點</Button>
-          <Hint>把目前的定位、範圍、邊緣門檻送給 core,抽出這個配方要用的特徵點(藍)。
-            需要 &lt;配方名&gt;.png 已經在磁碟上。</Hint>
+          {stepDone[0]
+            ? <Hint>把目前的定位、範圍、邊緣門檻送給 core,抽出這個配方要用的特徵點(藍)。
+                需要 &lt;配方名&gt;.png 已經在磁碟上。</Hint>
+            : <Hint><b style={{ color: '#e0902f' }}>要先做第 1 步「定位」。</b>
+                特徵是相對於定位原點抽出來的 —— 沒有原點就抽,畫出來會落在影像角落,
+                而且你一畫定位線它們就失效了。</Hint>}
         </Block>
 
         <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,
