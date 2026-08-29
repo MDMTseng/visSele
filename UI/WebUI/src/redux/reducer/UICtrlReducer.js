@@ -952,6 +952,22 @@ function StateReducer(newState, action) {
             }
             break;
 
+          case DefConfAct.EVENT.Instrument_Mmpp_Set: {
+            // Dropping the old signature is half the fix and the less obvious
+            // half. getEditorMmpp reads sig360info FIRST, and a retake does not
+            // clear it -- so without this the previous def's mmpp keeps winning
+            // and the number set here would never be read. The signature also
+            // describes a part that is no longer in the picture.
+            // Assigned, not Setsig360info(null): that setter dereferences
+            // sig360info.reports[0] on its first line. The def loader's own
+            // no-signature branch does exactly this.
+            newState.edit_info._obj.sig360info = null;
+            newState.edit_info._obj.instrumentMmpp = action.data;
+            newState.edit_info.inherentShapeList =
+              newState.edit_info._obj.UpdateInherentShapeList();
+            break;
+          }
+
           case DefConfAct.EVENT.Def_Retake: {
             // Same key set the def loader resets, for the same reason: another
             // def's recipe settings are worse than none, because they configure

@@ -1717,6 +1717,11 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
   const [waiting, setWaiting] = React.useState(false);
   // Which of the core's two caches holds the frame the operator is looking at.
   const [streamed, setStreamed] = React.useState(false);
+  // WHOSE mm/px this frame is measured in. A camera frame belongs to the
+  // MACHINE's scale (lens calibration); the def's own image belongs to the def's.
+  // Two different questions from `streamed`, which only picks a cache -- a
+  // single-shot trigger is a camera frame but lands in __CACHE_IMG__.
+  const [fromCamera, setFromCamera] = React.useState(false);
 
   const nameOk = !!name.trim();
   const busy = streaming || waiting;
@@ -1778,13 +1783,14 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
             onClick={() => { onStreamStop(); setStreaming(false); }}>■ 停止串流</Button>
         : <>
             <Button size="large" style={{ height: 48 }} disabled={busy}
-              onClick={() => { setStreamed(true); setStreaming(true); onStreamStart(); }}>
+              onClick={() => { setStreamed(true); setFromCamera(true);
+                               setStreaming(true); onStreamStart(); }}>
               ▶ 開始串流</Button>
             <Button size="large" style={{ height: 48 }} disabled={busy}
               onClick={() => {
                 setWaiting(true);
                 onWaitTrigger().then(
-                  () => { setWaiting(false); setStreamed(false); },
+                  () => { setWaiting(false); setStreamed(false); setFromCamera(true); },
                   () => { setWaiting(false); });
               }}>⏱ 等待觸發</Button>
           </>}
@@ -1796,6 +1802,7 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
           tags: tag.split(',').map((t) => t.trim()).filter((t) => t.length),
           keep,
           srcType: streamed ? '__LAST_DATA_VIEW_CACHE_IMG__' : '__CACHE_IMG__',
+          fromCamera,
         })}>✓ 使用這一幀</Button>
 
       <Button size="large" style={{ height: 48 }} onClick={onCancel}>取消</Button>
@@ -1808,6 +1815,11 @@ function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img
           ? '「使用這一幀」會拿畫面上這一張當新物件的樣板影像。'
           : '還沒有影像可以用。'}
       {keep && '　保留量測設定:量測特徵和比對參數會留著,定位、SBM 特徵、特徵範圍仍然要重做。'}
+      <div style={{ marginTop: 3 }}>
+        比例尺:{fromCamera
+          ? <b style={{ color: '#5b9dff' }}>用機台的鏡頭校正（相機實拍）</b>
+          : <span>沿用這個 def 原本的 mm/px（使用現有圖像）</span>}
+      </div>
     </div>
   </div>;
 }
@@ -2613,6 +2625,28 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           } catch (e) { done(new Set()); }
         });
 
+        // The machine's own mm/px, from the file lens calibration writes.
+        // um_per_px is what it produces; m (px/mm) is the same number inverted
+        // and is kept as a fallback for older files -- both straight out of
+        // CalibrationUI's loadInstMmpp, which is the authority for this number.
+        const loadInstrumentMmpp = () => new Promise((resolve) => {
+          try {
+            ACT_WS_SEND_BPG(CORE_ID, "LD", 0, { filename: "data/lens_calib.json" },
+              undefined, {
+                resolve: (pkts) => {
+                  const fl = (pkts || []).find(p => p.type === "FL");
+                  const d = fl && fl.data;
+                  if (!d) { resolve(undefined); return; }
+                  const mmpp = (Number.isFinite(+d.um_per_px) && +d.um_per_px > 0)
+                    ? +d.um_per_px / 1000
+                    : ((Number.isFinite(+d.m) && +d.m > 0) ? 1 / +d.m : undefined);
+                  resolve(mmpp);
+                },
+                reject: () => resolve(undefined),
+              });
+          } catch (e) { resolve(undefined); }
+        });
+
         // LIVE PREVIEW, WITHOUT RUNNING AN INSPECTION.
         //
         // The core streams frames only while a CI subscription is open, and CI
@@ -2696,6 +2730,36 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           // is not a guess: the operator just said they are starting a new part
           // and picked the frame to build it from.
           dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
+
+          // SCALE FOLLOWS THE PICTURE'S OWNER.
+          //
+          // A camera frame is measured in the MACHINE's mm/px; the def's own
+          // image is measured in the def's. Def_Retake does not clear
+          // _obj.sig360info, and getEditorMmpp reads that first -- so without
+          // this a new part captured here keeps the PREVIOUS def's scale, every
+          // dimension comes out at a consistent wrong ratio, and nothing on
+          // screen looks any different. The single-shot path happened to be
+          // rescued by its own sig360 report; the stream, which runs
+          // stage_light_report with IMG_ignore_calib, produces no report at all
+          // and was silently wrong.
+          //
+          // Reusing the existing image deliberately does NOT do this: that
+          // picture really does belong to the def's scale.
+          if (opt.fromCamera) {
+            loadInstrumentMmpp().then((mmpp) => {
+              if (Number.isFinite(mmpp) && mmpp > 0) {
+                dispatch(DefConfAct.Instrument_Mmpp_Set(mmpp));
+                log.info('[take] instrument scale', { mmpp });
+              } else {
+                // Not silent. Without a lens calibration the def has no honest
+                // scale, and a def that measures in the wrong unit is worse than
+                // one that refuses to measure.
+                log.warn('[take] no lens_calib.json -- scale falls back to the camera param');
+                message.warning('讀不到鏡頭校正（data/lens_calib.json）,比例尺可能不正確');
+              }
+            });
+          }
+
           claimNewDefPath(opt.name).then((newPath) => {
             ACT_Def_Model_Path_Update(newPath);
             setModal_view(undefined);

@@ -792,6 +792,20 @@ export class InspectionEditorLogic {
   getEditorMmpp() {
     const m = this.getsig360info_mmpp();
     if (Number.isFinite(m) && m > 0 && m !== 1) return m;   // a real sig360 mmpp
+    // THE INSTRUMENT'S OWN SCALE, when the picture came from the camera.
+    //
+    // A def's mmpp describes whatever image was side-loaded with that def --
+    // another machine, another lens, another standoff. Keeping it across a
+    // re-capture is not a small error: every dimension in the recipe is
+    // px * mmpp, so the whole def measures to a consistent, plausible, wrong
+    // scale and nothing on screen looks different.
+    //
+    // Set from data/lens_calib.json when TAKE captures a camera frame, and
+    // deliberately NOT set when the operator reuses the def's own image -- that
+    // picture really does belong to the def's scale. Ranks below a real sig360
+    // report, which is a measurement of THIS image and therefore better still.
+    if (Number.isFinite(this.instrumentMmpp) && this.instrumentMmpp > 0)
+      return this.instrumentMmpp;
     const cp = this.cameraParam;
     if (cp && Number.isFinite(cp.mmpb2b) && Number.isFinite(cp.ppb2b) && cp.ppb2b > 0)
       return cp.mmpb2b / cp.ppb2b;
