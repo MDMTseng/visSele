@@ -1325,10 +1325,6 @@ function SettingUI({})
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   
   const edit_info = useSelector(state => state.UIData.edit_info);
-  // Needed by the TAKE dialog's preview canvas: Preview_CanvasComponent gates
-  // pan-drag on the state machine's substate, so without it the operator can
-  // see the live frame but not move it.
-  const c_state = useSelector(state => state.UIData.c_state);
   const dispatch = useDispatch();
   const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
@@ -2256,6 +2252,16 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   };
 
   const edit_info = useSelector(state => state.UIData.edit_info);
+  // The TAKE dialog's preview canvas needs this: Preview_CanvasComponent gates
+  // pan-drag on the state machine's substate, so without it the operator sees
+  // the live frame but cannot move it.
+  //
+  // Declared HERE, in the component that uses it. The first version anchored the
+  // insert on `const edit_info = useSelector(...)` and landed in SettingUI,
+  // which has the same line -- so `c_state` was a free variable at the TAKE
+  // button and the bundler said nothing, because an unknown identifier is just
+  // a global to it. It threw the moment TAKE was pressed.
+  const c_state = useSelector(state => state.UIData.c_state);
   const FILE_default_camera_setting = useSelector(state => state.UIData.FILE_default_camera_setting);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
