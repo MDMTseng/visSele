@@ -13,7 +13,8 @@
 // Self-contained SBM localization "studio": a hook-driven canvas (no global redux
 // state machine) + an SBM-only toolbar, hosted in a full-screen modal. All drawing and
 // interaction live in `sbmDrawHook`; the committed data still lives in the def
-// (loc_include/loc_exclude shapes in shapeList + def_image_reg), so the existing save
+// (localization polygons in @__SBM_INFO__ via edit_info.__loc_include /
+// __loc_exclude, plus def_image_reg -- NOT in shapeList), so the existing save
 // (defFileGeneration) round-trips unchanged. See InspectionCore/docs/sbm_setup_studio_plan.md.
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -459,7 +460,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   const reg = edit_info.def_image_reg || {};
   const obj = edit_info._obj;
   const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
-  const shapeList = (obj && obj.shapeList) || [];
+  // NO component-level shapeList. Nothing in this studio reads it any more:
+  // the canvas is fed `locShapes`, built from edit_info.__loc_* below, and the
+  // counters read those arrays directly. Keeping a binding named shapeList
+  // around is how the counters came to be written against it in the first place.
   // Fed to the draw hook in the shape the hook already understands, so the
   // renderer did not have to change when the storage did.
   const locShapes = [
@@ -778,12 +782,29 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       {children}</Button>
   );
 
+  // COUNT AND DELETE WHERE THE REGIONS ACTUALLY LIVE.
+  //
+  // They used to be shapes in shapeList. Since the localization polygons moved
+  // into @__SBM_INFO__ / edit_info.__loc_include (they are not measurement
+  // features and the closed feature vocabulary rejected them), shapeList never
+  // contains a loc_include again -- so counting it returns 0 forever.
+  //
+  // In v1 that only showed as a "0 / 0" nobody reads. Here the progress bar is
+  // derived from it, so drawing a region left step 2 permanently unfinished:
+  // the region was on the canvas, drawn from these very arrays by locShapes
+  // twenty lines above, and the count beside it said none.
+  //
+  // The delete buttons had the same root: Shape_Set against an id that is not
+  // in the list is a no-op, so they did nothing at all, silently.
+  const inclPolys = edit_info.__loc_include || [];
+  const exclPolys = edit_info.__loc_exclude || [];
+  const nIncl = inclPolys.length;
+  const nExcl = exclPolys.length;
   const delLast = (type) => {
-    const last = [...shapeList].reverse().find((s) => s.type === type);
-    if (last) dispatch(DefConfAct.Shape_Set({ shape: null, id: last.id }));
+    const key = (type === 'loc_include') ? '__loc_include' : '__loc_exclude';
+    const cur = edit_info[key] || [];
+    if (cur.length) dispatch(DefConfAct.EditInfo_Patch({ [key]: cur.slice(0, -1) }));
   };
-  const nIncl = shapeList.filter((s) => s.type === 'loc_include').length;
-  const nExcl = shapeList.filter((s) => s.type === 'loc_exclude').length;
 
   // ── PROGRESS ───────────────────────────────────────────────────────────────
   // Three steps, and only three. Every one is REQUIRED for the def to locate
