@@ -557,7 +557,12 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           // "generate" cannot succeed until the def has been saved once, and
           // saying "no features were extracted" sends someone to tune
           // thresholds against a problem that is not about thresholds.
-          const noTemplate = !!(edit_info && edit_info.__img_fresh_capture);
+          // A retake writes a scratch sidecar and sets __tmp_ref_image_path, so a
+          // fresh capture DOES have a template -- claiming otherwise sends someone
+          // off to save a file that is not the problem. Only the case with no
+          // sidecar is genuinely template-less.
+          const noTemplate = !!(edit_info && edit_info.__img_fresh_capture
+                                && !edit_info.__tmp_ref_image_path);
           Modal.error({
             title: noTemplate ? '還沒有樣板影像,無法生成特徵' : '生成特徵失敗',
             content: noTemplate

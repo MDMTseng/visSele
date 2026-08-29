@@ -1705,6 +1705,98 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
+
+  // Opening v2, from the toolbar button AND from the end of a TAKE.
+  //
+  // A fresh capture has no registration -- the def-scoped keys were just
+  // cleared -- and every later action (generate, inspect, save) is measured
+  // against a registration that is not there yet. Rather than let that be
+  // discovered later, the studio is opened at the moment the picture arrives.
+  const openSBM2 = (auto) => {
+        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
+        setModal_view({
+          title: auto ? "新物件 — 先設定定位" : "Shape-based 定位設定（v2）",
+          footer: null,
+          width: "96vw",
+          style: { top: 12 },
+          bodyStyle: { padding: 8, height: "86vh" },
+          // The X is guarded too, because the studio applies LIVE: closing it does
+          // not discard anything, so leaving by the corner commits exactly the
+          // same broken state as 完成 would. Greying one and leaving the other
+          // open would just be theatre.
+          //
+          // It asks rather than refuses. A def whose reference image cannot be
+          // read can never regenerate, and a modal with no way out is worse than
+          // the state it is protecting against -- so "仍要離開" stays, and the
+          // save path asks once more before anything reaches disk.
+          // Marked, because both buttons are in the toolbar and a screenshot from
+          // the line has to say which one it came from.
+          onCancel: () => {
+            // Leaving the studio re-locates the object.
+            //
+            // The studio is where the registration line, the extraction region
+            // and the trained features are set -- all three change where the
+            // core thinks the part IS. The def canvas rectifies the image
+            // against the last inspection report, so without a fresh one it
+            // goes on drawing the picture aligned to the pose from BEFORE the
+            // edits: overlays that sit next to the part instead of on it.
+            //
+            // Same call the image switcher already makes for the same reason
+            // (useDefImages afterLoad). It lives in another component, so this
+            // goes through the window event that component listens for --
+            // the pattern defconf-images-changed already uses.
+            const closeIt = () => {
+              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
+              setModal_view(undefined);
+              window.dispatchEvent(new Event('defconf-orient-now'));
+            };
+            // Auto-opened after a TAKE and still no registration: say so before
+            // letting it close. Not a refusal -- there is a way out, because a
+            // modal that cannot be left is worse than the state it guards -- but
+            // leaving here silently is how someone spends ten minutes drawing
+            // regions and measurements against an origin that is not there.
+            if (auto && !edit_info.def_image_reg) {
+              Modal.confirm({
+                title: '還沒設定定位', width: 500,
+                content: '這是新擷取的物件,還沒有定位原點和 0° 軸。'
+                       + '接下來畫的範圍、抽的特徵、量的尺寸全部都是相對於它 —— '
+                       + '現在離開的話,這些之後都要重做。',
+                okText: '留下來設定', cancelText: '仍要離開',
+                onCancel: closeIt,
+              });
+              return;
+            }
+            const lg = edit_info.__shape_lastGood;
+            if (!edit_info.__shape_stale) { closeIt(); return; }
+            Modal.confirm({
+              title: '特徵已失效', width: 500,
+              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
+                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
+              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
+              cancelText: '仍要離開',
+              onOk: () => {
+                if (lg) {
+                  dispatch(DefConfAct.EditInfo_Patch({
+                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
+                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
+                  }));
+                  closeIt();
+                }
+                // No last-good version: stay in the studio, where 生成特徵點 is.
+              },
+              onCancel: closeIt,
+            });
+          },
+          view: <SBMSetupView2
+            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
+            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
+                             window.dispatchEvent(new Event('defconf-orient-now')); }}
+            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
+                            window.dispatchEvent(new Event('defconf-orient-now')); }}
+          />,
+        });
+  };
+
   // Save the current def (opens the file picker, then writes the .hydef + <def>.png on
   // a NEW save). Extracted from the SAVE button so the SBM studio can save in-modal too.
   const triggerSave = () => {
@@ -1845,6 +1937,37 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       //
       // Three ways out, and the third is deliberately available: an operator
       // who knows the def is being handed off mid-edit should not be trapped.
+      // A NEW OBJECT WITHOUT A REGISTRATION IS NOT A HALF-FINISHED DEF, IT IS A
+      // WRONG ONE.
+      //
+      // Every measurement in the def is authored in object-frame mm, i.e.
+      // relative to def_image_reg. Save it unset and the whole feature set is
+      // pinned to a default origin that has nothing to do with the part -- and
+      // it still inspects, because sig360 locates on the silhouette, so the
+      // numbers come out plausible and wrong.
+      //
+      // Only for a capture that has never been saved (__img_fresh_capture): an
+      // OLD def legitimately may not carry one, and refusing to save those would
+      // block editing a recipe that has been running for months.
+      //
+      // Asked, not refused: the third button exists because a modal with no way
+      // out is worse than the state it protects against, and someone handing a
+      // def over mid-edit has a real reason to write it as-is.
+      if (edit_info.__img_fresh_capture && !edit_info.def_image_reg) {
+        Modal.confirm({
+          title: '這個新物件還沒設定定位',
+          width: 520,
+          content: '量測全部是相對於定位原點和 0° 軸寫下來的,現在還沒有。'
+                 + '這樣存下去,特徵和量測會釘在一個跟零件無關的原點上——'
+                 + '而且它照樣檢驗得出數字,看起來不會有錯。',
+          okText: '去設定定位',
+          cancelText: '仍要存檔',
+          onOk: () => { openSBM2(true); },
+          onCancel: () => { log.warn('[save] new capture saved with NO def_image_reg'); proceed(); },
+        });
+        return;
+      }
+
       const staleWhy = edit_info.__shape_stale;
       const lastGood = edit_info.__shape_lastGood;
       const isShape = edit_info.locating_engine === 'shape_based';
@@ -2338,6 +2461,27 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                   // them -- so it is set after, never before.
                   dispatch(DefConfAct.EditInfo_Patch({
                     __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
+
+                  // AND GO STRAIGHT TO THE STUDIO.
+                  //
+                  // A new object has no registration -- Def_Retake just cleared
+                  // the def-scoped keys -- and registration is what every later
+                  // step is measured against: features are extracted relative to
+                  // it, the canvas rectifies by it, measurements are placed by
+                  // it. Carrying on without it produces work that has to be
+                  // redone, and the redo is not obvious, because a def with no
+                  // registration still inspects (sig360 finds the part) and
+                  // still looks fine.
+                  //
+                  // Deferred a tick: the dispatches above have to land first, or
+                  // the studio mounts against the PREVIOUS def's edit_info and
+                  // reads a registration that was just cleared.
+                  //
+                  // Note this also switches the def to shape_based, because that
+                  // is what this surface means -- same as the toolbar button. A
+                  // def that should stay on sig360 can be switched back in the
+                  // 定位方式 selector afterwards.
+                  setTimeout(() => openSBM2(true), 0);
                 }
               }
               else
@@ -2554,73 +2698,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout palatte-geekblue-8 vbox width12"
       key="SBMSETUP2"
       text="SBM定位設定 2" onClick={() => {
-        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
-        setModal_view({
-          title: "Shape-based 定位設定（v2）",
-          footer: null,
-          width: "96vw",
-          style: { top: 12 },
-          bodyStyle: { padding: 8, height: "86vh" },
-          // The X is guarded too, because the studio applies LIVE: closing it does
-          // not discard anything, so leaving by the corner commits exactly the
-          // same broken state as 完成 would. Greying one and leaving the other
-          // open would just be theatre.
-          //
-          // It asks rather than refuses. A def whose reference image cannot be
-          // read can never regenerate, and a modal with no way out is worse than
-          // the state it is protecting against -- so "仍要離開" stays, and the
-          // save path asks once more before anything reaches disk.
-          // Marked, because both buttons are in the toolbar and a screenshot from
-          // the line has to say which one it came from.
-          onCancel: () => {
-            // Leaving the studio re-locates the object.
-            //
-            // The studio is where the registration line, the extraction region
-            // and the trained features are set -- all three change where the
-            // core thinks the part IS. The def canvas rectifies the image
-            // against the last inspection report, so without a fresh one it
-            // goes on drawing the picture aligned to the pose from BEFORE the
-            // edits: overlays that sit next to the part instead of on it.
-            //
-            // Same call the image switcher already makes for the same reason
-            // (useDefImages afterLoad). It lives in another component, so this
-            // goes through the window event that component listens for --
-            // the pattern defconf-images-changed already uses.
-            const closeIt = () => {
-              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
-              setModal_view(undefined);
-              window.dispatchEvent(new Event('defconf-orient-now'));
-            };
-            const lg = edit_info.__shape_lastGood;
-            if (!edit_info.__shape_stale) { closeIt(); return; }
-            Modal.confirm({
-              title: '特徵已失效', width: 500,
-              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
-                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
-              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
-              cancelText: '仍要離開',
-              onOk: () => {
-                if (lg) {
-                  dispatch(DefConfAct.EditInfo_Patch({
-                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
-                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
-                  }));
-                  closeIt();
-                }
-                // No last-good version: stay in the studio, where 生成特徵點 is.
-              },
-              onCancel: closeIt,
-            });
-          },
-          view: <SBMSetupView2
-            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
-            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
-                             window.dispatchEvent(new Event('defconf-orient-now')); }}
-            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
-                            window.dispatchEvent(new Event('defconf-orient-now')); }}
-          />,
-        });
-      }} />,
+        openSBM2(false);
+            }} />,
 
     <BASE_COM.IconButton
       iconType={<ThunderboltOutlined />}
