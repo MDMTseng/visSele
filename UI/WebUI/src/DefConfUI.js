@@ -60,6 +60,7 @@ import Popover from 'antd/lib/popover';
 
 
 import { useSelector,useDispatch } from 'react-redux';
+import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
 import { nextFreeName, takenNamesFrom } from 'UTIL/defNaming.mjs';
 import { mmppFromLensCalib } from 'UTIL/mmppRule.mjs';
 import { 
@@ -2472,14 +2473,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       ev_frameRateChange: (fps) => {
       }
     });
-    if(inspMode=="CI")
-    {
-      _CameraCtrl.setCameraFrameRate(8);
-    }
-    else if(inspMode=="FI")
-    {
-      _CameraCtrl.setCameraSpeed_HIGHEST();
-    }
+    // One definition, shared with InspectionUI. These were 8 here and 10 there,
+    // and nobody had chosen either number.
+    applyInspFrameRate(_CameraCtrl, inspMode);
 
 
 

@@ -76,6 +76,7 @@ import Divider from 'antd/lib/divider';
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
+import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -3022,15 +3023,13 @@ class APP_INSP_MODE extends React.Component {
           INSP_SNAP_POLICY: snapPolicyOf(this.props.machine_custom_setting),
           INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||1000
         });
-        this.CameraCtrl.setCameraSpeed_HIGHEST();
+        applyInspFrameRate(this.CameraCtrl, 'FI');
       }
       else if (this.props.machine_custom_setting.InspectionMode == "CI") {
 
 
-        // CI runs at 10fps (was setCameraSpeed_LOW = 2fps, too sluggish). The
-        // walk-away/idle case is now handled by the auto-exit guard, not by
-        // crawling the framerate.
-        this.CameraCtrl.setCameraFrameRate(10);
+        // The rate and the reasoning both live in inspRatePolicy.mjs now.
+        applyInspFrameRate(this.CameraCtrl, 'CI');
 
 
 
