@@ -77,6 +77,7 @@ import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
 import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
+import { autoExitDecision, autoExitApplies } from 'UTIL/autoExitRule.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -3267,43 +3268,26 @@ class APP_INSP_MODE extends React.Component {
   //    left a part sitting there.
   checkAutoExitForCI(report) {
     if (this._autoExiting) return;
-    const now = Date.now();
-
-    // --- no object ---
-    const hasObj = report && report.reports && report.reports.length > 0;
-    if (!hasObj) {
-      if (this._noObjSince == null) this._noObjSince = now;
-      else if (now - this._noObjSince > this.NO_OBJ_MS) {
-        this.autoExit("no_obj");
-        return;
-      }
-    } else {
-      this._noObjSince = null;
-    }
-
-    // --- same object stuck too long ---
-    // Entries remain in trackingWindow only while still being seen (the reducer
-    // ages them out keepInTrackingTime_ms after the last sighting), so a present
-    // entry with a far-past add_time_ms means the same object has persisted that
-    // long. repeatTime can't be used here -- it caps at maxReportRepeat.
+    // The decision lives in autoExitRule.mjs, which has no imports and a unit
+    // test; this keeps only the state and the effects. It is the one thing in
+    // the app that stops the camera by itself, and it had no test at all.
+    const hasObj = !!(report && report.reports && report.reports.length > 0);
     const tw = this.props.reportStatisticState && this.props.reportStatisticState.trackingWindow;
-    if (Array.isArray(tw)) {
-      for (let i = 0; i < tw.length; i++) {
-        const e = tw[i];
-        if (e && typeof e.add_time_ms === 'number' && (now - e.add_time_ms > this.SAME_OBJ_MS)) {
-          this.autoExit("same_obj");
-          return;
-        }
-      }
-    }
+    const d = autoExitDecision({
+      now: Date.now(), hasObject: hasObj, noObjSince: this._noObjSince,
+      trackingWindow: tw, noObjMs: this.NO_OBJ_MS, sameObjMs: this.SAME_OBJ_MS,
+    });
+    this._noObjSince = d.noObjSince;
+    if (d.reason) this.autoExit(d.reason);
   }
+
 
   // Flash the reason for a moment, then leave inspection mode. Halt the camera
   // immediately (trigger_mode:1) so the wasteful compute stops during the flash;
   // EXIT() does the full clean teardown after.
   autoExit(reason) {
     if (this._autoExiting) return;
-    if (this.props.machine_custom_setting.InspectionMode !== "CI") return;
+    if (!autoExitApplies(this.props.machine_custom_setting.InspectionMode)) return;
     this._autoExiting = true;
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSetting: { trigger_mode: 1 } });
     const msg = (reason === "no_obj")

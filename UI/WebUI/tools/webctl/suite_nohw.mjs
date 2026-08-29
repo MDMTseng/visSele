@@ -82,6 +82,7 @@ const RUNNABLE = [
   ['unit_def_scoped_keys.mjs',  [],                    60,  'the two def-scoped key lists agree; keep-mode keeps measurements'],
   ['unit_expectpose.mjs',       [],                    60,  'the part is identified by position, not by score rank'],
   ['unit_insprate.mjs',         [],                    60,  'one inspection frame rate, and only one place sets it'],
+  ['unit_autoexit.mjs',         [],                    60,  'idle CI exits once, at the right time; a busy line never does'],
   ['bpg_sweep.mjs',             ['--include-crashers'],300, '35 protocol cases: valid, malformed, framing abuse, crashers'],
   ['doorbell.mjs',              [],                    120, 'state doorbells: suppression, RC triplet, perif transitions'],
   ['fd_leak.mjs',               [],                    120, 'failed TCP CONNECTs leak no fds'],
