@@ -3,7 +3,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString, shapeDefFingerprint } from 'UTIL/MISC_Util';
-import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
+import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,DEF_LOCALIZER_SCOPED_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
 import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
@@ -956,9 +956,26 @@ function StateReducer(newState, action) {
             // Same key set the def loader resets, for the same reason: another
             // def's recipe settings are worse than none, because they configure
             // a locator that then looks right.
+            //
+            // keepMeasurements narrows that to the LOCALIZER's keys: the picture
+            // changed, so registration / trained features / extraction regions
+            // are gone whatever happens, but the calipers and the matching
+            // parameters were authored against the part, not against the frame,
+            // and re-drawing them for every retake is the thing this mode exists
+            // to avoid.
+            const _keep = !!(action.data && action.data.keepMeasurements);
             const _blank = Edit_info_Empty();
-            for (const k of DEF_SCOPED_EDIT_INFO_KEYS) newState.edit_info[k] = _blank[k];
-            newState.edit_info._obj.SetShapeList([]);
+            const _keys = _keep ? DEF_LOCALIZER_SCOPED_KEYS : DEF_SCOPED_EDIT_INFO_KEYS;
+            for (const k of _keys) newState.edit_info[k] = _blank[k];
+            if (_keep) {
+              // The localization polygons live in the shape list and belong to
+              // the localizer, so they go with it -- everything else stays.
+              newState.edit_info._obj.SetShapeList(
+                (newState.edit_info._obj.shapeList || []).filter(
+                  (sh) => !(sh && (sh.type === 'loc_include' || sh.type === 'loc_exclude'))));
+            } else {
+              newState.edit_info._obj.SetShapeList([]);
+            }
             newState.edit_info.edit_tar_info = null;
             newState.edit_info.inherentShapeList = newState.edit_info._obj.UpdateInherentShapeList();
             // What is on screen is no longer the saved def's reference image, so

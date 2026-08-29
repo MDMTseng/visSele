@@ -1750,6 +1750,22 @@ const default_MinRepeatInspReport = 2;
 // The edit_info fields that belong to the DEF rather than to the session, and
 // so must not survive a def switch. Read together with the reset in the def
 // loader; a new def-scoped setting added to Edit_info_Empty belongs here too.
+// The subset of DEF_SCOPED_EDIT_INFO_KEYS that belongs to the LOCALIZER rather
+// than to the measurements.
+//
+// A retake that keeps the measurement features still has to drop all of these:
+// the picture changed, so the registration, the trained features and the
+// extraction regions all describe a frame that no longer exists. Keeping any of
+// them would leave calipers placed against an origin the new image does not
+// have -- and it would still inspect, which is the failure mode this whole
+// branch keeps running into.
+export const DEF_LOCALIZER_SCOPED_KEYS = [
+  'def_image_reg', 'roi_refine_points',
+  '__shape_cache', '__shape_stale', '__shape_lastGood',
+  '__loc_include', '__loc_exclude',
+  '__img_fresh_capture', '__tmp_ref_image_path',
+];
+
 export const DEF_SCOPED_EDIT_INFO_KEYS = [
   'matching_angle_margin_deg', 'matching_angle_offset_deg', 'matching_face',
   'matching_version', 'inspection_downsample', 'sig_match_sim_thres',

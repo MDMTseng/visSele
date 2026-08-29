@@ -68,10 +68,13 @@ export function Shape_List_Update(shapeList)
 // <defModelPath>.png, and _ref_image_path is the HIGHEST priority template
 // source: the SBM studio trained and tested against the previous product's
 // saved picture while showing the new one.
-export function Def_Retake()
+// keepMeasurements: the retake replaces the PICTURE but the measurement features
+// and matching parameters stay. Everything the localizer owns still goes, because
+// it describes a frame the new image does not have.
+export function Def_Retake(keepMeasurements)
 {
   return {
-    type: EVENT.Def_Retake
+    type: EVENT.Def_Retake, data: { keepMeasurements: !!keepMeasurements }
   }
 }
 export function Shape_Decoration_ID_Order_Update(shape_id_order)

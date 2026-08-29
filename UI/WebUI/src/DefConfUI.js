@@ -1346,6 +1346,13 @@ function SettingUI({})
   const ACT_Migrate_To_Shape=() => {
     dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
     dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
+    // Straight into the studio afterwards. Converting is only half of it: the
+    // def now uses a locator with no trained features, and until 生成特徵點 has
+    // been pressed and the def re-saved it will fall back to sig360 -- looking,
+    // from the outside, exactly like the migration never happened. This is also
+    // the only way the SBM surfaces appear at all now, so leaving the operator
+    // to find them would be leaving them nothing to find.
+    setTimeout(() => openSBM2(true), 0);
 
     // SEED def_image_reg FROM THE SIGNATURE ANCHOR.
     //
@@ -1642,6 +1649,91 @@ function modShapeCleanUp(mod_shape)
 
 
 
+// The TAKE dialog: name and tags first, then one of five ways to start.
+//
+// The old one was five bare buttons in a footer with the string "<<<不重置"
+// floating between two of them, and no way to tell 立即 from 立即 except by
+// which row it was on. It also committed the moment anything was pressed, so a
+// mis-click reset the def.
+//
+// Nothing here dispatches. The name, the tags and the choice are local state;
+// the caller gets them in one go when an option is confirmed, and 取消 leaves
+// the def exactly as it was. That is the whole reason it is a component with
+// state rather than a footer full of onClicks.
+function TakeSetupDialog({ initName, initTag, triggerTimeout, onGo, onCancel }) {
+  const [name, setName] = React.useState(initName || '');
+  const [tag, setTag] = React.useState((initTag || []).join(','));
+
+  // A name is required, because after this the def is a NEW object saved under
+  // its own file. Letting it through empty means the save dialog later offers
+  // whatever the previous def was called, which is the one name it must not
+  // have.
+  const nameOk = !!name.trim();
+
+  const go = (opt) => onGo({
+    ...opt,
+    name: name.trim(),
+    tags: tag.split(',').map((t) => t.trim()).filter((t) => t.length),
+  });
+
+  const Opt = ({ title, sub, danger, onClick }) => (
+    <Button block disabled={!nameOk} onClick={onClick} danger={danger}
+      style={{ height: 'auto', minHeight: 52, padding: '8px 14px', marginBottom: 8,
+               textAlign: 'left', whiteSpace: 'normal' }}>
+      <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.4 }}>{title}</div>
+      <div style={{ fontSize: 12, opacity: 0.7, lineHeight: 1.5 }}>{sub}</div>
+    </Button>
+  );
+
+  return <div style={{ maxWidth: 560 }}>
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>物件名稱（必填）</div>
+      <Input value={name} onChange={(e) => setName(e.target.value)} size="large"
+        placeholder="例如 HY-1234-A" />
+      <div style={{ fontSize: 12, color: '#999', margin: '10px 0 4px' }}>標籤（逗號分隔,可空白）</div>
+      <Input value={tag} onChange={(e) => setTag(e.target.value)} size="large"
+        placeholder="例如 客戶A,銅件,量產" />
+      <div style={{ fontSize: 11.5, color: '#888', marginTop: 8, lineHeight: 1.7 }}>
+        選了下面任一個之後,這就是一個<b>新的物件</b>,跟目前開著的配方不再有關係:
+        存檔會存成新檔案,不會蓋掉原本那個。按取消則什麼都不會改變。
+      </div>
+    </div>
+
+    <div style={{ borderTop: '1px solid #333', paddingTop: 12 }}>
+      <div style={{ fontSize: 11, letterSpacing: '.1em', color: '#888', fontWeight: 600,
+                    marginBottom: 8 }}>不重拍</div>
+      <Opt title="使用現有圖像"
+        sub="沿用畫面上這張圖,其餘全部清空。適合已經有想要的圖、只是要從頭做一個新物件。"
+        onClick={() => go({ mode: 'existing' })} />
+
+      <div style={{ fontSize: 11, letterSpacing: '.1em', color: '#888', fontWeight: 600,
+                    margin: '14px 0 8px' }}>重新拍照 · 保留現有量測設定</div>
+      <Opt title="立即（保留現有量測設定）"
+        sub="馬上拍一張。量測特徵和比對參數留著,只有定位、SBM 特徵、特徵範圍要重做。"
+        onClick={() => go({ mode: 'snap', trigger_type: 0, timeout: -1, keep: true })} />
+      <Opt title={'觸發（保留現有量測設定）'}
+        sub={`等盤面訊號,最多 ${triggerTimeout / 1000} 秒。內容同上。`}
+        onClick={() => go({ mode: 'snap', trigger_type: 2, timeout: triggerTimeout, keep: true })} />
+
+      <div style={{ fontSize: 11, letterSpacing: '.1em', color: '#888', fontWeight: 600,
+                    margin: '14px 0 8px' }}>重新拍照 · 全新</div>
+      <Opt title="立即（全新）" danger
+        sub="馬上拍一張,並清空所有量測特徵與參數。等於從空白開始。"
+        onClick={() => go({ mode: 'snap', trigger_type: 0, timeout: -1, keep: false })} />
+      <Opt title={'觸發（全新）'} danger
+        sub={`等盤面訊號,最多 ${triggerTimeout / 1000} 秒,並清空所有量測特徵與參數。`}
+        onClick={() => go({ mode: 'snap', trigger_type: 2, timeout: triggerTimeout, keep: false })} />
+    </div>
+
+    {!nameOk && <div style={{ fontSize: 12, color: '#d89614', marginTop: 4 }}>
+      先填物件名稱才能選。</div>}
+
+    <div style={{ textAlign: 'right', marginTop: 12, borderTop: '1px solid #333', paddingTop: 12 }}>
+      <Button onClick={onCancel}>取消</Button>
+    </div>
+  </div>;
+}
+
 function DEFCONF_MODE_NEUTRAL_UI({})
 {
   const DICT = useSelector(state => state.UIData.DICT);
@@ -1937,6 +2029,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       //
       // Three ways out, and the third is deliberately available: an operator
       // who knows the def is being handed off mid-edit should not be trapped.
+      // Only for the shape locator. sig360 finds its own object frame from the
+      // silhouette and needs no registration line, so asking there is asking
+      // about something the def does not have and does not want.
+      const isShapeEngine = edit_info.locating_engine === 'shape_based';
       // A NEW OBJECT WITHOUT A REGISTRATION IS NOT A HALF-FINISHED DEF, IT IS A
       // WRONG ONE.
       //
@@ -1953,7 +2049,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       // Asked, not refused: the third button exists because a modal with no way
       // out is worse than the state it protects against, and someone handing a
       // def over mid-edit has a real reason to write it as-is.
-      if (edit_info.__img_fresh_capture && !edit_info.def_image_reg) {
+      if (isShapeEngine && edit_info.__img_fresh_capture && !edit_info.def_image_reg) {
         Modal.confirm({
           title: '這個新物件還沒設定定位',
           width: 520,
@@ -1970,8 +2066,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
       const staleWhy = edit_info.__shape_stale;
       const lastGood = edit_info.__shape_lastGood;
-      const isShape = edit_info.locating_engine === 'shape_based';
-      if (isShape && staleWhy) {
+      if (isShapeEngine && staleWhy) {
         Modal.confirm({
           title: 'SBM 特徵與目前設定不符',
           width: 520,
@@ -2381,159 +2476,134 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout palatte-purple-8 vbox"
       key="TAKE"
       text="take" onClick={() => {
-
-        function setModal_viewAsWait()
-        {
-          setModal_view({
-            onCancel:()=>{},//disable the cancel
-            footer:[],
-              
-            view:"請稍後...."
-            })
-        }
-
         // One fixed name, deliberately. A per-capture name would leave a file
         // behind for every retake in data/, and nothing would ever delete them;
         // reusing one means the previous scratch frame is overwritten by the
         // next capture, which is exactly the lifetime this needs. The leading
         // underscores keep it out of the way of the recipe names beside it.
         const TMP_REF_BASE = "data/__retake_ref";
+        const triggerTimeout = 10000;
 
-        function triggerSnapExam(trigger_type=0,timeout=-1,doReset=true)
-        {
-          
-          setModal_viewAsWait();
+        function setModal_viewAsWait(msg) {
+          setModal_view({ onCancel: () => {}, footer: [], view: msg || "請稍後...." });
+        }
+
+        // A NEW OBJECT MUST NOT BE ABLE TO OVERWRITE THE DEF IT CAME FROM.
+        //
+        // After any of the five options this is a different part, so the save
+        // dialog must not open pre-filled with the previous recipe's file name.
+        // Same folder (that is where its siblings live), new name, and a [N]
+        // suffix if something with that name is already there -- picked by
+        // actually listing the folder rather than by hoping.
+        //
+        // Best effort on purpose: if the listing fails, the plain name is used
+        // and the save browser's own "file exists" prompt is the backstop. A
+        // failed listing must not block a capture.
+        const claimNewDefPath = (name) => new Promise((resolve) => {
+          const dir = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1) || 'data/';
+          const safe = String(name).replace(/[\\/:*?"<>|]/g, '_').trim() || 'Sample';
+          const done = (taken) => {
+            let cand = safe;
+            for (let i = 1; taken.has(cand.toLowerCase()) && i < 999; i++) cand = safe + '[' + i + ']';
+            resolve(dir + cand);
+          };
+          try {
+            ACT_WS_SEND_BPG(CORE_ID, 'FB', 0, { path: dir, depth: 1 }, undefined, {
+              resolve: (darr) => {
+                const taken = new Set();
+                try {
+                  for (const pkt of (darr || [])) {
+                    const files = pkt && pkt.data && (pkt.data.files || pkt.data.list || pkt.data.content);
+                    for (const f of (files || [])) {
+                      const nm = (typeof f === 'string') ? f : (f && (f.name || f.path));
+                      if (!nm) continue;
+                      const base = String(nm).split('/').pop().replace(/\.[^.]+$/, '');
+                      taken.add(base.toLowerCase());
+                    }
+                  }
+                } catch (e) { log.warn('[take] folder listing unreadable', e); }
+                done(taken);
+              },
+              reject: () => done(new Set()),
+            });
+          } catch (e) { done(new Set()); }
+        });
+
+        // Everything the five options share, run once the picture is settled.
+        //
+        // Order matters and is not obvious: Def_Retake clears def-scoped keys,
+        // so the name, the tags, the engine and the scratch template path are
+        // all written AFTER it. An earlier version of this file set the template
+        // path first and spent a while looking like the retake had not happened.
+        const finishTake = (opt) => {
+          dispatch(DefConfAct.Def_Retake(!!opt.keep));
+          ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE);
+          dispatch(DefConfAct.EditInfo_Patch({ __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
+          dispatch(DefConfAct.DefFileName_Update(opt.name));
+          dispatch(DefConfAct.DefFileTag_Update(opt.tags));
+          // TAKE means "this is an SBM object". It is the one surface where that
+          // is not a guess: the operator just said they are starting a new part
+          // and picked how to photograph it.
+          dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
+          claimNewDefPath(opt.name).then((newPath) => {
+            ACT_Def_Model_Path_Update(newPath);
+            setModal_view(undefined);
+            // Deferred a tick so every dispatch above has landed; the studio
+            // reads edit_info on mount and would otherwise see the old def.
+            setTimeout(() => openSBM2(true), 0);
+          });
+        };
+
+        function triggerSnapExam(opt) {
+          setModal_viewAsWait("拍照中,請稍後....");
           ACT_DefConf_Lock_Level_Update(0);
           new Promise((resolve, reject) => {
             ACT_WS_SEND_BPG(CORE_ID, "EX", 0, {
-              trigger_type,
-              timeout,
-              img_property:{
-                down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
-              }
-            },
-              undefined, { resolve, reject });
-            //setTimeout(() => reject("Timeout"), 3000)
+              trigger_type: opt.trigger_type,
+              timeout: opt.timeout,
+              img_property: { down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL }
+            }, undefined, { resolve, reject });
           })
             .then((pkts) => {
-              
-              let SS=pkts.find(pkt=>pkt.type=="SS");
-              if(SS.data.ACK==true)
-              {              
-                let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
-                dispatch({
-                  type: "ATBundle",
-                  ActionThrottle_type: "express",
-                  data: acts
-                })
-                setModal_view(undefined);
-
-                // Give the new capture a template file immediately.
-                //
-                // The shape locator trains from a file on disk and has no path
-                // that uses the image in memory, so before this a freshly
-                // re-taken def could not generate features at all -- and the
-                // version before THAT stamped the previous def's .png, which
-                // trained the locator on a different part and then matched
-                // successfully. Writing the core's cached frame to a scratch
-                // sidecar makes the template exist the moment the picture does.
-                //
-                // Scratch, not a real save: no .def is written, defModelPath is
-                // untouched (so the save dialog does not default to this name),
-                // and nothing is uploaded -- DefFile_DB_SEND lives in
-                // commitSave and is not on this path. The def reaches the
-                // database when the operator actually saves it.
-                if(doReset)
-                {
-                  // AFTER the capture's own actions, not before them.
-                  //
-                  // This used to be dispatched outside the promise, so it ran
-                  // before the reply arrived -- and the reply carries a
-                  // sig360_extractor report, whose reducer case runs
-                  // Edit_info_reset(). That spreads Edit_info_Empty over
-                  // edit_info, which sets __img_fresh_capture back to false. The
-                  // retake wiped its own flag, so everything keyed off it (the
-                  // sample-image switchers, the studio's stale-overlay clear)
-                  // behaved as though nothing had been re-taken.
-                  dispatch(DefConfAct.Def_Retake());
-                  ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE);
-                  // Def_Retake clears the def-scoped keys, and this is one of
-                  // them -- so it is set after, never before.
-                  dispatch(DefConfAct.EditInfo_Patch({
-                    __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
-
-                  // AND GO STRAIGHT TO THE STUDIO.
-                  //
-                  // A new object has no registration -- Def_Retake just cleared
-                  // the def-scoped keys -- and registration is what every later
-                  // step is measured against: features are extracted relative to
-                  // it, the canvas rectifies by it, measurements are placed by
-                  // it. Carrying on without it produces work that has to be
-                  // redone, and the redo is not obvious, because a def with no
-                  // registration still inspects (sig360 finds the part) and
-                  // still looks fine.
-                  //
-                  // Deferred a tick: the dispatches above have to land first, or
-                  // the studio mounts against the PREVIOUS def's edit_info and
-                  // reads a registration that was just cleared.
-                  //
-                  // Note this also switches the def to shape_based, because that
-                  // is what this surface means -- same as the toolbar button. A
-                  // def that should stay on sig360 can be switched back in the
-                  // 定位方式 selector afterwards.
-                  setTimeout(() => openSBM2(true), 0);
-                }
+              let SS = pkts.find(pkt => pkt.type == "SS");
+              if (SS.data.ACK == true) {
+                let acts = pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt))
+                               .filter(act => act !== undefined);
+                dispatch({ type: "ATBundle", ActionThrottle_type: "express", data: acts });
+                finishTake(opt);
               }
-              else
-              {
-                setModal_view({
-                  footer:[],
-                  view:"圖像獲取失敗"
-                  })
-              }
-
+              else { setModal_view({ footer: [], view: "圖像獲取失敗" }); }
             })
             .catch((err) => {
               log.info(err);
-
-              setModal_view({
-                footer:[],
-                view:"圖像獲取異常"
-                })
-            })
+              setModal_view({ footer: [], view: "圖像獲取異常" });
+            });
         }
 
-        let triggerTimeout=10000;
-        let doRESET=true
         setModal_view({
-          footer:<>
-              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,false)}}>
-                立即
-              </Button>
-              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,false)}}>
-                {triggerTimeout/1000}s內觸發
-              </Button>
-              {"<<<不重置"}
-              <br/>
-              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,true)}}>
-                立即
-              </Button>
-              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,true)}}>
-                {triggerTimeout/1000}s內觸發
-              </Button>
-              <Button danger onClick={()=>setModal_view(undefined)}>
-                取消
-              </Button>
-              </>,
-            onOk: () => {
-              setModal_view(undefined);
-
-              
-            },
-            onCancel: () => { console.log("onCancel");setModal_view(undefined);},
-            title: dictLookUp("WARNING", DICT),
-            view: DICT.defConf.do_you_want_to_reset_def
-          })
+          title: "建立新物件",
+          footer: null,
+          width: 620,
+          onCancel: () => setModal_view(undefined),
+          view: <TakeSetupDialog
+            initName={edit_info.DefFileName}
+            initTag={edit_info.DefFileTag}
+            triggerTimeout={triggerTimeout}
+            onCancel={() => setModal_view(undefined)}
+            onGo={(opt) => {
+              if (opt.mode === 'existing') {
+                // No EX at all: the core still holds the frame that is on screen
+                // (it was cached by the LD that drew it), so writing that to the
+                // scratch sidecar gives the locator a template without taking a
+                // new picture.
+                setModal_viewAsWait("處理中....");
+                finishTake({ ...opt, keep: false });
+              } else {
+                triggerSnapExam(opt);
+              }
+            }}
+          />,
+        });
       }} />,
     (defConf_lock_level !=0) ? null :
     <BASE_COM.IconButton
@@ -2620,6 +2690,15 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }} />,
 
     
+    // THE SBM SURFACES ONLY EXIST FOR A DEF THAT USES THE SBM LOCATOR.
+    //
+    // They used to be unconditional, and pressing one silently switched the def
+    // to shape_based -- so a sig360 recipe could be converted by somebody who
+    // only meant to look. Conversion has consequences (features must be
+    // re-trained, the def re-saved), so it belongs to the one control that says
+    // so: 「→ migrate to shape_based」 in the localizer settings. These appear
+    // once that has been pressed.
+    (edit_info.locating_engine !== 'shape_based') ? null :
     <BASE_COM.IconButton
       iconType={<AimOutlined />}
       dict={DICT}
@@ -2692,6 +2771,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         });
       }} />,
 
+    (edit_info.locating_engine !== 'shape_based') ? null :
     <BASE_COM.IconButton
       iconType={<AimOutlined />}
       dict={DICT}
