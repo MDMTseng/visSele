@@ -26,6 +26,7 @@ import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
 import { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
 import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
+import { imageCentreInObjectFrame, expectedPosition } from './sbmExpectPose.mjs';
 import { HookCanvasComponent } from './SBMStudio';
 
 // ── Draw the reference image into the canvas world frame. ──────────────────────
@@ -440,6 +441,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   // Which block is expanded. undefined = follow the current step; -99 = the
   // user collapsed the current one and wants nothing open.
   const [openStep, setOpenStep] = useState(undefined);
+  // How far from its expected position a candidate may sit and still be
+  // accepted as THE part, in pixels because that is what an operator can see on
+  // the canvas. 0 turns the filter off entirely.
+  const [posTolPx, setPosTolPx] = useState(20);
   const [featPts, setFeatPts] = useState(undefined);   // {features:[],roi:[]} from the SF round-trip
   const featRef = useRef(undefined);                   // mirror — drawScene reads this so the
   featRef.current = featPts;                            // overlay never goes stale across redraws
@@ -458,6 +463,14 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   const work = useRef({ poly: [], cursor: null, line: null });
 
   const reg = edit_info.def_image_reg || {};
+  // The def's own mm/px and the image centre in the object frame: the two
+  // things every expected-position calculation needs. Kept here so the test and
+  // the sweep cannot disagree about them.
+  const def_mmpp = (edit_info._obj && typeof edit_info._obj.getEditorMmpp === 'function')
+    ? edit_info._obj.getEditorMmpp() : 1;
+  const imgW = (edit_info.img && (edit_info.img.width || edit_info.img.w)) || 2448;
+  const imgH = (edit_info.img && (edit_info.img.height || edit_info.img.h)) || 2048;
+  const pivot = imageCentreInObjectFrame(imgW, imgH, def_mmpp, reg);
   const obj = edit_info._obj;
   const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
   // NO component-level shapeList. Nothing in this studio reads it any more:
@@ -642,7 +655,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   // Both the single test and the robustness sweep go through here, so there is
   // one description of what a test run IS: the current unsaved def, the core's
   // cached image, the def's own mmpp, and nothing written back anywhere.
-  const inspectOnce = useCallback((perturb) => {
+  const inspectOnce = useCallback((perturb, expect) => {
     if (!sendBPG) return Promise.reject(new Error('no link'));
     let deffile;
     try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
@@ -680,9 +693,15 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     }, undefined, { resolve, reject }))
       .then((pkts) => {
         const rp = (pkts || []).find((p) => p.type === 'RP');
-        return inspectSummary(rp && rp.data, edit_info.def_image_reg);
+        // The filter only applies when the caller SAYS where the part should be.
+        // Without an expected position there is nothing to compare against, and
+        // guessing one from the def would quietly reject a part that has moved
+        // for a legitimate reason -- a different sample image, say.
+        const tolMm = (posTolPx > 0 && def_mmpp > 0) ? posTolPx * def_mmpp : undefined;
+        return inspectSummary(rp && rp.data, edit_info.def_image_reg,
+                              expect ? { expect, tolMm } : undefined);
       });
-  }, [sendBPG, edit_info]);
+  }, [sendBPG, edit_info, posTolPx, def_mmpp]);
 
   // "測試檢驗": run a REAL inspection with the current, unsaved settings and show
   // what the machine did with them.
@@ -694,12 +713,16 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   // undo is a test nobody runs twice.
   const runInspect = useCallback(() => {
     setInspBusy(true);
-    inspectOnce(null)
+    // Unperturbed, so the part must be where the def says it is. That is what
+    // makes the other three candidates on a busy frame answerable rather than
+    // just visible.
+    const expect = Number.isFinite(reg.cx) ? { x: reg.cx, y: reg.cy } : null;
+    inspectOnce(null, expect)
       .then(setInsp)
       .catch((e) => setInsp({ located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
                               why: 'core 沒有回應:' + (e && e.message ? e.message : e) }))
       .finally(() => setInspBusy(false));
-  }, [inspectOnce]);
+  }, [inspectOnce, reg.cx, reg.cy]);
 
   // ROBUSTNESS SWEEP: degrade the scene along one axis and watch where the
   // locator gives up.
@@ -727,7 +750,18 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       if (abortRef.current) break;
       const v = values[i];
       let sum;
-      try { sum = await inspectOnce(perturbFor(sweepAxis, v, seed)); }
+      // WHERE THE PART MUST BE AT THIS STEP.
+      //
+      // We chose the perturbation, so this is arithmetic rather than a guess --
+      // and it is the only thing that distinguishes "the part, moved" from "a
+      // different object that now scores higher". The baseline supplies the
+      // starting position; before it exists, the def's own registration does.
+      const _p = perturbFor(sweepAxis, v, seed);
+      const _from = (base && base.located && base.pose)
+        ? { cx: base.pose.cx, cy: base.pose.cy }
+        : (Number.isFinite(reg.cx) ? { cx: reg.cx, cy: reg.cy } : null);
+      const _expect = _from ? expectedPosition(_from, pivot, _p || {}) : null;
+      try { sum = await inspectOnce(_p, _expect); }
       catch (e) { sum = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
                           why: 'core 沒有回應' }; }
       if (i === 0) {
@@ -742,7 +776,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     }
     setSweep((sw) => (sw ? { ...sw, verdict: sweepVerdict(sweepAxis, rows),
                              aborted: abortRef.current } : sw));
-  }, [sweepAxis, sweepRange, inspectOnce]);
+  }, [sweepAxis, sweepRange, inspectOnce, pivot, reg.cx, reg.cy]);
 
   // "跑全部影像": the same test, once per sample sitting next to the def.
   //
@@ -1182,6 +1216,15 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         </Block>
 
         <Block n="⚙" idx={103} opt title="參數" summary="選用">
+          <Row label="位置容差" unit="px">
+            <InputNumber min={0} max={500} step={5} style={{ width: 92 }}
+              data-testid="sbm2-postol"
+              value={posTolPx} onChange={(v) => setPosTolPx(v || 0)} />
+          </Row>
+          <Hint>檢驗和掃描只接受<b style={{ color: P.ink }}>落在預期位置附近</b>的那個候選,
+            其餘視為干擾。擾動量是我們自己給的,所以預期位置算得出來 —— 靠位置認人,
+            不是靠分數名次。<b style={{ color: P.ink }}>設 0 關閉</b>(關掉就退回「取最高分」,
+            畫面上有幾顆就報幾顆)。</Hint>
           <Row label="min score 門檻" unit="0–100">
             <InputNumber min={1} max={99} step={1} style={{ width: 92 }}
               value={edit_info.shape_min_score ?? 50}

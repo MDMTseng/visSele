@@ -80,6 +80,7 @@ const RUNNABLE = [
   ['unit_defnaming.mjs',        [],                    60,  'def sidecar path keeps its directory; new names cannot collide'],
   ['unit_mmpp.mjs',             [],                    60,  'mm/px follows the picture, never silently substituted'],
   ['unit_def_scoped_keys.mjs',  [],                    60,  'the two def-scoped key lists agree; keep-mode keeps measurements'],
+  ['unit_expectpose.mjs',       [],                    60,  'the part is identified by position, not by score rank'],
   ['bpg_sweep.mjs',             ['--include-crashers'],300, '35 protocol cases: valid, malformed, framing abuse, crashers'],
   ['doorbell.mjs',              [],                    120, 'state doorbells: suppression, RC triplet, perif transitions'],
   ['fd_leak.mjs',               [],                    120, 'failed TCP CONNECTs leak no fds'],
