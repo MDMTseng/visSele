@@ -1702,9 +1702,30 @@ class TakePreviewCanvas extends React.Component {
 // the caller gets them in one go when 使用這一幀 is pressed, and cancelling
 // leaves the def as it was. The one thing that DOES escape is the live stream,
 // because frames land in edit_info.img -- see the restore on cancel.
-function TakeSetupDialog({ initName, initTag, triggerTimeout, mmpp, c_state, img,
-                          onGo, onCancel, onStreamStart, onStreamStop,
-                          onWaitTrigger, hasImage }) {
+function TakeSetupDialog({ triggerTimeout, onGo, onCancel, onStreamStart,
+                          onStreamStop, onWaitTrigger }) {
+  // THIS COMPONENT READS REDUX ITSELF. It must not be handed the live frame.
+  //
+  // The modal is opened by storing a React ELEMENT in state:
+  //   setModal_view({ view: <TakeSetupDialog img={edit_info.img} .../> })
+  // That element is a snapshot of the moment it was built. edit_info.img is
+  // replaced on every streamed frame, and the element is never rebuilt, so the
+  // preview showed the picture that was on screen when the dialog opened and
+  // never moved -- while the DefConf canvas behind it, which subscribes for
+  // itself, animated. Two views of the same slot disagreeing, with the live one
+  // hidden behind the dead one.
+  //
+  // useSelector subscribes THIS component, independently of whether its parent
+  // re-renders, which is the only thing that fixes a view stored in state.
+  const edit_info = useSelector((st) => st.UIData.edit_info);
+  const c_state = useSelector((st) => st.UIData.c_state);
+  const img = edit_info.img;
+  const mmpp = edit_info.mmpp;
+  const hasImage = !!img;
+  // Initial values only: the component mounts once per opening, so reading
+  // these here is the same snapshot the props used to carry.
+  const initName = edit_info.DefFileName;
+  const initTag = edit_info.DefFileTag;
   const [phase, setPhase] = React.useState('name');
   const [name, setName] = React.useState(initName || '');
   const [tag, setTag] = React.useState((initTag || []).join(','));
@@ -2252,16 +2273,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   };
 
   const edit_info = useSelector(state => state.UIData.edit_info);
-  // The TAKE dialog's preview canvas needs this: Preview_CanvasComponent gates
-  // pan-drag on the state machine's substate, so without it the operator sees
-  // the live frame but cannot move it.
-  //
-  // Declared HERE, in the component that uses it. The first version anchored the
-  // insert on `const edit_info = useSelector(...)` and landed in SettingUI,
-  // which has the same line -- so `c_state` was a free variable at the TAKE
-  // button and the bundler said nothing, because an unknown identifier is just
-  // a global to it. It threw the moment TAKE was pressed.
-  const c_state = useSelector(state => state.UIData.c_state);
   const FILE_default_camera_setting = useSelector(state => state.UIData.FILE_default_camera_setting);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
@@ -2703,9 +2714,19 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             IMG_ignore_calib: true,
           });
         };
+        // TWO things, and leaving out the second is why frames kept arriving
+        // after 停止串流: cancelling the subscription stops the core PUSHING, but
+        // the camera was put into free run by startStream and stays there,
+        // producing frames into the pipeline for anything else that is looking.
+        // CalibrationUI's cleanup does both; this did only the first.
+        //
+        // trigger_mode 1 is software trigger, i.e. the camera produces nothing
+        // until asked -- the state a static editor wants, and the same one
+        // calibration restores.
         const stopStream = () => {
           ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
             { _PGID_: TAKE_STREAM_PGID, _PGINFO_: { keep: false } });
+          ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { CameraSetting: { trigger_mode: 1 } });
         };
 
         // CANCEL RELOADS THE DEF. It does not try to put the editor back the way
@@ -2823,13 +2844,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           bodyStyle: { padding: 10, height: "86vh" },
           onCancel: () => closeTake(),
           view: <TakeSetupDialog
-            initName={edit_info.DefFileName}
-            initTag={edit_info.DefFileTag}
             triggerTimeout={triggerTimeout}
-            mmpp={edit_info.mmpp}
-            c_state={c_state}
-            img={edit_info.img}
-            hasImage={!!edit_info.img}
             onStreamStart={startStream}
             onStreamStop={stopStream}
             onWaitTrigger={waitForTrigger}
