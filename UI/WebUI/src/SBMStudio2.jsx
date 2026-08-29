@@ -654,8 +654,29 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp },
     };
     if (perturb) img_property.perturb = perturb;
+
+    // TEST THE PICTURE THE DEF WAS TRAINED ON.
+    //
+    // __CACHE_IMG__ is the image loaded when DefConf was entered -- normally the
+    // def's own .png, or whichever sample the image switcher last loaded, which
+    // is exactly what a test should use.
+    //
+    // It is NOT that after a TAKE. A stream does not update __CACHE_IMG__ (the
+    // captured frame lives in the scratch sidecar that stampRefImagePath points
+    // the trainer at), so the features came from the new part and the
+    // inspection ran against the OLD one. On a bench where the two pictures
+    // look alike the scores stay high and only the reported ORIENTATION gives
+    // it away -- it is the old image's part, at the old image's angle. The
+    // robustness sweep cannot catch this at all: it goes through this same
+    // function, so it degrades and measures the same wrong image, and every
+    // residual it computes is self-consistent.
+    //
+    // So while a capture is unsaved, test the sidecar. Train and test on one
+    // picture, always.
+    const freshRef = (edit_info.__img_fresh_capture && edit_info.__tmp_ref_image_path)
+      ? edit_info.__tmp_ref_image_path : null;
     return new Promise((resolve, reject) => sendBPG('II', 0, {
-      definfo: deffile, imgsrc: '__CACHE_IMG__', img_property,
+      definfo: deffile, imgsrc: freshRef || '__CACHE_IMG__', img_property,
     }, undefined, { resolve, reject }))
       .then((pkts) => {
         const rp = (pkts || []).find((p) => p.type === 'RP');

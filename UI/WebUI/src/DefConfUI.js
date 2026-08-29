@@ -2791,6 +2791,37 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           dispatch(DefConfAct.Def_Retake(!!opt.keep));
           ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE, opt.srcType);
           dispatch(DefConfAct.EditInfo_Patch({ __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
+
+          // PUT THE CAPTURED FRAME INTO THE CORE'S CACHE TOO.
+          //
+          // Everything downstream inspects __CACHE_IMG__: the studio's 跑一次檢驗
+          // and its robustness sweep, the orientation re-inspect fired when the
+          // studio closes, and therefore what the def canvas rectifies against.
+          // A stream never updates that cache -- the captured frame only reached
+          // the scratch sidecar -- so all of them were measuring the PREVIOUS
+          // recipe's picture while the features came from the new part. On a
+          // bench where the two look alike the scores stay high and only the
+          // reported ORIENTATION gives it away: it is the old image's part, at
+          // the old image's angle. The sweep cannot catch it either, because it
+          // degrades and measures that same wrong image and stays perfectly
+          // self-consistent.
+          //
+          // Dispatching ONLY the IM packet, the way useDefImages.switchImage
+          // does. A fire-and-forget LD has no promiseCBs, so BPG_WS hands the
+          // whole reply to WSDataDispatch -- including the sig360_extractor
+          // report, whose reducer case calls Edit_info_reset and would wipe the
+          // name, tags and engine set two lines above.
+          ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
+            { imgsrc: TMP_REF_BASE + ".png", down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
+            undefined, {
+              resolve: (darr) => {
+                const IM = (darr || []).find((p) => p.type === 'IM');
+                if (!IM) { log.warn('[take] LD returned no IM; the core may not hold the new frame'); return; }
+                const a = BPG_Protocol.map_BPG_Packet2Act(IM);
+                if (a) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+              },
+              reject: (e) => log.warn('[take] could not load the captured frame into the core', e),
+            });
           dispatch(DefConfAct.DefFileName_Update(opt.name));
           dispatch(DefConfAct.DefFileTag_Update(opt.tags));
           // TAKE means "this is an SBM object". It is the one surface where that
