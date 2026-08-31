@@ -1175,6 +1175,30 @@ volatile uint32_t GATE_REJ_RATE=0;    // faster than min_detect_sep_us
 //
 // 0 disables it, and that is the default: this must not change the behaviour
 // of a machine whose setup file predates it.
+// LAYER ONE, WITH THE SAME THREE STATES AS LAYER TWO.
+//
+// min_detect_sep_us is the camera's limit and it was always typed in, which
+// makes it wrong in a specific and invisible way: shrinking the ROI raises what
+// the camera can deliver, and the gate stays where it was. The throughput is
+// left on the table and nothing says so. Raising the exposure moves it the
+// other way, and then the number is wrong in the direction that produces
+// triggers with no frames.
+//
+// The camera knows. ResultingFrameRate is its own answer for the ROI and
+// exposure in force, and the core pushes it here as `cam_limit` -- the one
+// quantity in this chain the board cannot measure for itself.
+//
+// STALE MEANS FALL BACK, NOT CARRY ON. If the core stops talking, the last
+// figure is a fact about a camera nobody is watching any more, so after the
+// timeout the manual cap governs again. Falling back to the configured value is
+// conservative in the direction that matters: the manual cap was set by a
+// person for this machine, and the failure being avoided -- a gate opened wider
+// than the camera can feed -- poisons the pairing rather than dropping a part.
+volatile bool     GATE_CAM_AUTO=false;
+volatile uint32_t GATE_CAM_FPS_MHZ=0;         // last figure from the core
+volatile int64_t  GATE_CAM_FPS_MS=0;          // when it arrived
+volatile int32_t  GATE_CAM_MARGIN_PCT=90;     // admit at this % of the ceiling
+static const int32_t GATE_CAM_STALE_MS=90000; // 3 missed heartbeats
 volatile uint32_t GATE_PROC_SEP_US=0;        // floor on the filtered interval
 volatile int      GATE_PROC_IIR_SHIFT=3;     // 1/8 per sample (~8-part memory)
 volatile uint32_t GATE_PROC_AVG_US=0;        // the filter state, for the panel
@@ -1292,6 +1316,27 @@ volatile uint32_t GATE_PROC_SVC_ID_US=0;       // inter-departure, EWMA
 static   uint64_t PROC_LAST_REP_US=0;
 // The effective floor. One place computes it so the gate, the reply and any
 // future reader cannot disagree about what is actually in force.
+// What layer one is actually enforcing, in one place so the gate, the reply and
+// any future reader cannot disagree about it.
+static inline uint32_t gateMinSepEff()
+{
+  if(GATE_CAM_AUTO && GATE_CAM_FPS_MHZ > 0)
+  {
+    const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+    if(now_ms - GATE_CAM_FPS_MS < GATE_CAM_STALE_MS)
+    {
+      // fps_mhz is milli-hertz; interval_us = 1e9 / fps_mhz, then de-rated.
+      const uint64_t us = (uint64_t)1000000000ULL * 100
+                        / (uint32_t)GATE_CAM_FPS_MHZ / (uint32_t)GATE_CAM_MARGIN_PCT;
+      // Never BELOW the manual cap. Auto is allowed to discover that the camera
+      // is faster than someone assumed, but a person who wrote down a slower
+      // number may have had a reason this board cannot see.
+      return (uint32_t)us;
+    }
+  }
+  return SYS_MIN_PULSE_TIME_SEP_us;
+}
+
 static inline uint32_t gateProcSepEff()
 {
   const uint32_t add = GATE_PROC_AUTO ? GATE_PROC_AUTO_ADD_US : 0;
@@ -3082,7 +3127,7 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // SWITCH task, so it simply recirculates for another pass. Letting it through
   // instead would ask the camera for a frame it cannot deliver, and a trigger
   // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
-  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us){GATE_REJ_RATE++;return -8;}
+  if(curTime-_preTime<gateMinSepEff()){GATE_REJ_RATE++;return -8;}
   // Second layer: the filtered arrival rate, against the host's floor.
   //
   // Computed but NOT committed until the part is admitted. The first interval
@@ -7062,6 +7107,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // Stage clock running with the plate held still -- test rig only.
       jG["dry_run"]=(bool)DRY_RUN;
       jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;      // configured
+      // ... and what is actually enforced, which differs under cam_mode auto.
+      // Both, because "the camera says 82fps" and "the gate is admitting at
+      // 70/s" are different claims and only one of them is the machine.
+      jG["min_sep_eff_us"]=gateMinSepEff();
+      jG["cam_mode"] = GATE_CAM_AUTO ? "auto" : "manual";
+      jG["cam_fps_limit"] = GATE_CAM_FPS_MHZ / 1000.0;
+      {
+        const int64_t age = (int64_t)(esp_timer_get_time()/1000) - GATE_CAM_FPS_MS;
+        jG["cam_fps_age_s"] = GATE_CAM_FPS_MHZ ? (int)(age/1000) : -1;
+        // Said out loud rather than inferred from the age: a reader should not
+        // have to know the timeout to know the value is being ignored.
+        if(GATE_CAM_AUTO && (GATE_CAM_FPS_MHZ==0 || age >= GATE_CAM_STALE_MS))
+          jG["cam_fps_stale"] = true;
+      }
       jG["max_hz"]=SYS_MIN_PULSE_TIME_SEP_us ?
                      (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
       // What the gate is enforcing right now. Equal to the configured value
@@ -8082,6 +8141,25 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=true; rspAck=_gd_ok;
   }
 
+  else if(strcmp(type,"cam_limit")==0)
+  {
+    // {"type":"cam_limit","fps_mhz":N} -- pushed by the core on change and as a
+    // heartbeat. Recorded whatever the mode is, so switching to auto uses a
+    // figure that is already current instead of waiting for the next push.
+    if(doc["fps_mhz"].is<uint32_t>() || doc["fps_mhz"].is<int>())
+    {
+      const int v = doc["fps_mhz"];
+      if(v > 0)
+      {
+        GATE_CAM_FPS_MHZ = (uint32_t)v;
+        GATE_CAM_FPS_MS  = (int64_t)(esp_timer_get_time()/1000);
+      }
+    }
+    // No reply: this arrives on the same link the verdicts use, and an
+    // acknowledgement for a value that changes on its own would be traffic
+    // against the machine's own deadline for no reader.
+    doRsp=false; rspAck=false;
+  }
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
     // {"type":"trig_phantom_pulse","stealth":true}
@@ -9844,6 +9922,10 @@ void genMachineSetup(JsonDocument &jdoc)
   }
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
+    // Same shape as proc_mode, deliberately: the two layers are one idea asked
+    // twice, and an operator should not have to learn two vocabularies.
+    jGT["cam_mode"] = GATE_CAM_AUTO ? "auto" : "manual";
+    jGT["cam_margin_pct"] = GATE_CAM_MARGIN_PCT;
     jGT["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
     jGT["gate_ref"]=GATE_REF_CENTER?"center":"trailing";
     jGT["pulse_min_width"]=minWidth;
@@ -10081,7 +10163,7 @@ static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
    "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
    "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",
-   "proc_mode","proc_rate_hz",NULL};
+   "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -10315,6 +10397,15 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
+  if(jGT["cam_mode"].is<const char*>())
+    GATE_CAM_AUTO = (strcmp((const char*)jGT["cam_mode"],"auto")==0);
+  if(jGT["cam_margin_pct"].is<int>())
+  {
+    // Clamped: at 100% the gate asks for exactly what the camera claims it can
+    // sustain, with nothing left for jitter -- and above it, for more.
+    int v = jGT["cam_margin_pct"];
+    GATE_CAM_MARGIN_PCT = (v < 50) ? 50 : ((v > 99) ? 99 : v);
+  }
   // proc_mode / proc_rate_hz are applied BEFORE the raw keys, so a document
   // carrying both (a backup written by an older tool, say) ends up with the
   // explicit low-level value rather than with whatever the mode implied.
