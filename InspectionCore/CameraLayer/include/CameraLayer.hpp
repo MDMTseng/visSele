@@ -250,6 +250,28 @@ class CameraLayer{
   virtual int GetTriggerConfig(int *selector, int *mode, int *source, int *activation)
   { (void)selector; (void)mode; (void)source; (void)activation; return -1; }
 
+  // THE TRIGGER CEILING, ASKED RATHER THAN MEASURED.
+  //
+  // The gate's fire-rate cap has to sit under what the camera can actually
+  // deliver -- above it you get triggers with no frames, which does not lose a
+  // part, it poisons the host's pairing. Until now the only number available
+  // for that was cam_max_fps, derived from the shortest interval BETWEEN TWO
+  // FRAMES ACTUALLY RECEIVED. That is an observation, not a limit: it needs a
+  // run to exist at all, it reads low until something has driven the camera
+  // hard, and it is exactly unavailable at the moment somebody is sitting in
+  // front of the settings deciding what to type.
+  //
+  // ResultingFrameRate is the camera's own answer to the same question for the
+  // ROI and exposure it is carrying right now, available while idle and
+  // updating the instant either changes. It stays meaningful with
+  // AcquisitionFrameRateEnable off, which is how this camera runs under an
+  // external trigger: the node reports what the sensor can sustain, not a cap
+  // in force.
+  //
+  // Returns fps, or a negative value when the layer cannot answer -- and a
+  // negative must be shown as "unknown", never as a limit of zero.
+  virtual double GetResultingFps() { return -1.0; }
+
     virtual CameraLayer::status TriggerCount(int TYPE)
     {
         return CameraLayer::NAK;

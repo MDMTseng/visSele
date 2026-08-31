@@ -781,7 +781,92 @@ static LatHist g_histStageCpu[MatchingEngine::STAGE_MAX];
 // Exposed rather than logged because the log ring is not readable while a run
 // is live, which has blocked a check four times today.
 static std::atomic<uint64_t> g_camTrigCount{0};
+// SIMULATED SLOW HOST -- how long the verdict takes to come back.
+//
+// The one thing that cannot be tested by choosing settings: what the machine
+// does when the inspection itself is too slow for the deadline. The target
+// computer is weaker than this bench, so "it is fine here" says nothing about
+// it, and waiting to find out on the target is how the answer arrives as a
+// stopped line rather than as a measurement.
+//
+// Injected AFTER the match and BEFORE the verdict is dispatched, which is the
+// shape a slow host actually has: the frame arrived on time, the answer did
+// not. Delaying the capture instead would model a slow CAMERA, which is a
+// different failure with a different remedy.
+//
+// jitter is uniform +/-, because a constant delay is the one profile in which
+// a deadline is either always met or never met -- and the interesting region is
+// the one where it is sometimes met. Default off; this is never on in
+// production by accident because it has to be asked for by command or env.
+static std::atomic<int> g_debugDelayMs{0};
+static std::atomic<int> g_debugDelayJitterMs{0};
+static std::atomic<uint64_t> g_debugDelayN{0};
+
 static std::atomic<uint64_t> g_camFrameNum{0};
+
+// ---- one lit frame, with the trigger mode owned HERE ------------------------
+//
+// The WebUI used to do this itself: set trigger_mode 2, ask the board to flash
+// and pulse, set trigger_mode back. The restore was a hardcoded 1, and mode 1
+// is the mode that DISCARDS frames -- so pressing the snapshot button from
+// inside a running inspection dropped the camera out of the session's mode and
+// into the one that throws every frame away. The board kept flashing, no image
+// arrived, and clock calibration could not finish because it needs one frame
+// per sync pulse. Reported from the line as "the light flashes but nothing
+// comes in; refreshing the page fixes it" -- refreshing re-enters the session,
+// which re-issues the right mode.
+//
+// The panel could not have got this right: the correct mode to restore depends
+// on whether a session is running and which kind, and that is not the panel's
+// knowledge. It is this process's. So the sequence moves here, and the UI asks
+// for what it wants -- a lit frame -- rather than for a camera setting.
+//
+// RESTORATION IS ON A DEADLINE, not on the board answering. The failure this
+// exists to prevent is a camera left armed for a line nobody drives; a board
+// that never pulses must not be able to cause it.
+static std::mutex g_snapLock;
+static int      g_snapRestoreMode = -1;      // -1 = no snap in flight
+static uint64_t g_snapFrameMark   = 0;
+static std::chrono::steady_clock::time_point g_snapDeadline;
+
+// The camera's own trigger configuration, mapped back to the core's 0/1/2.
+// GenICam says Mode Off/On and a Source; the core says continuous / software /
+// hardware. From CameraLayer_HikRobot_Camera::TriggerMode:
+//     0 -> Mode Off,  Source SOFTWARE   (free-run, takeCount=-1)
+//     1 -> Mode On,   Source SOFTWARE   (resting, takeCount=0)
+//     2 -> Mode On,   Source LINE0      (board-driven, takeCount=-1)
+// Returns -1 when the device could not be read, and -1 is never guessed past:
+// this whole change exists because somebody guessed.
+static int cam_trigger_mode_now(CameraLayer *cam)
+{
+  if (cam == NULL) return -1;
+  int sel = -1, mode = -1, src = -1, act = -1;
+  // The RETURN CODE IS NOT THE TEST -- the fields are.
+  //
+  // GetTriggerConfig reports non-zero when ANY of the four nodes could not be
+  // read, and TriggerActivation is routinely unreadable on this camera while
+  // it is idle (measured: mode 1, source 7, activation -1, ok 0). Requiring the
+  // whole read to succeed refused every snapshot over a field this decision
+  // does not use. Each field says for itself: -1 means it could not be read,
+  // and the core's probe already documents that -1 is never a plausible value.
+  cam->GetTriggerConfig(&sel, &mode, &src, &act);
+  if (mode == 0) return 0;                 // Off -> free-run
+  if (mode == 1)
+  {
+    // SOFTWARE is the only source that means "resting"; everything else that
+    // reads back is a hardware line. Not just LINE0: TriggerMode(2) sets source
+    // 13 first ("anyway") and only falls back to LINE0, so a camera sitting in
+    // the layer's hardware mode reads 13 -- measured on this bench. Listing
+    // sources one by one refused the snapshot on the machine it was written for.
+    if (src == 7) return 1;                // On + SOFTWARE   -> resting
+    if (src >= 0) return 2;                // On + a real line -> board-driven
+  }
+  // Mode On with an UNREADABLE source is the one case that must not be
+  // guessed: 1 and 2 differ by exactly that field, and restoring the wrong one
+  // is what this whole path exists to stop.
+  return -1;
+}
+
 static std::atomic<int64_t>  g_camTrigMinusFrame{0};
 static std::atomic<uint64_t> g_camTrigValidN{0};
 
@@ -4447,6 +4532,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             cJSON_AddNumberToObject(robj, "cam_max_fps",
               g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
+            // The camera's OWN ceiling for the ROI and exposure it is carrying,
+            // beside the one observed from received frames. They answer
+            // different questions and both are worth having: cam_max_fps is
+            // what this run has demonstrated, cam_fps_limit is what the sensor
+            // says it could do -- available while idle, which is when somebody
+            // is actually choosing the gate cap. Absent from the reply when the
+            // layer cannot answer, so a reader never mistakes "unknown" for 0.
+            {
+              CameraLayer *c = NULL;
+              {
+                std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+                c = calib_bacpac.cam;
+              }
+              const double rfps = (c != NULL) ? c->GetResultingFps() : -1.0;
+              if (rfps > 0) cJSON_AddNumberToObject(robj, "cam_fps_limit", rfps);
+            }
 
             // Report-path latency distributions. Rides on perif_pairing rather
             // than a new GS item because fi_hold already polls this one -- and a
@@ -6195,6 +6296,222 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddStringToObject(retObj, "err",
                                     "one or more trigger nodes could not be read");
         }
+        session_ACK = true;
+      }
+      else if (strcmp(cmd_type, "cam_snap_lit") == 0)
+      {
+        // Take one frame with the board's light and its trigger, whatever the
+        // camera is doing right now, and put the camera back afterwards.
+        cJSON_AddStringToObject(retObj, "type", "cam_snap_lit");
+        CameraLayer *cam = NULL;
+        {
+          std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+          cam = calib_bacpac.cam;
+        }
+        if (cam == NULL)
+        {
+          cJSON_AddStringToObject(retObj, "err", "no camera");
+          session_ACK = false;
+        }
+        else
+        {
+          // The lock covers the STATE, not the hardware. Everything below it --
+          // a GenICam read, a mode change, a UART write -- takes tens of
+          // milliseconds and its own locks; holding this one across them would
+          // stall the watch thread that does the restoring, and nesting locks
+          // is what took the core down the first time this shipped.
+          bool busy = false;
+          {
+            std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+            busy = (g_snapRestoreMode >= 0);
+          }
+          if (busy)
+          {
+            // Two snaps in flight would have the second one save the first's
+            // temporary mode as the thing to restore -- and mode 2 is what the
+            // first one set. That is how "restore" becomes "leave it armed".
+            cJSON_AddStringToObject(retObj, "err", "a snapshot is already in flight");
+            session_ACK = false;
+          }
+          else
+          {
+            const int before = cam_trigger_mode_now(cam);
+            if (before < 0)
+            {
+              // Refuse rather than guess. A snapshot not taken is a button that
+              // did nothing; a wrong restore is a machine that stops seeing.
+              cJSON_AddStringToObject(retObj, "err",
+                "cannot read the camera trigger mode -- refusing to change it");
+              session_ACK = false;
+            }
+            else
+            {
+              CameraLayer::status st = cam->TriggerMode(2);
+              if (st != CameraLayer::ACK)
+              {
+                LOGE("[snap] TriggerMode(2) REFUSED; camera stays in mode %d", before);
+                cJSON_AddStringToObject(retObj, "err", "camera refused hardware trigger");
+                session_ACK = false;
+              }
+              else
+              {
+                {
+                  std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+                  g_snapRestoreMode = before;
+                  g_snapFrameMark   = g_camFrameNum.load();
+                  g_snapDeadline    = std::chrono::steady_clock::now()
+                                    + std::chrono::milliseconds(3000);
+                }
+                LOGI("[snap] mode %d -> 2 for one lit frame", before);
+                // Fire and forget: the board's own reply goes to whoever is
+                // listening on the PD path, and this must not block a WS
+                // handler for the length of a light hold.
+                // THE BOARD HAS NO "SNAP WITH LIGHT" COMMAND.
+                //
+                // The first version of this sent {"type":"cam_snap_with_light"}
+                // because that is what the WebUI helper is called -- but that
+                // helper is a CLIENT-SIDE SEQUENCE, not a firmware command, and
+                // the board simply ignored a type it does not know: no light,
+                // no pulse, no frame, and every restore logged "deadline, no
+                // frame". A name that exists on one side of a wire is not a
+                // protocol.
+                //
+                // So the sequence itself moves here, the same one PerifAPI ran:
+                // light on (with a backstop timeout), settle, pulse, settle,
+                // light off. The settles are why this is a detached thread and
+                // not inline -- a WS handler that sleeps 250ms holds up every
+                // other command on this connection, and the reply should go
+                // back the moment the sequence is under way.
+                //
+                // No lock is taken around the sends: sendcJsonTo_perifCH takes
+                // perif_tx_lock itself and works from the global rather than
+                // its argument. Taking it out here relocked a non-recursive
+                // std::mutex on the same thread, which is how the first version
+                // of this took the core down on the first press.
+                const int sent = 0;
+                std::thread([before]() {
+                  auto say = [](cJSON *j) {
+                    uint8_t buf[2000];
+                    int r = sendcJsonTo_perifCH(bpg_pi.perifCH, buf, sizeof(buf), true, j);
+                    cJSON_Delete(j);
+                    return r;
+                  };
+                  auto lightCmd = [](bool on) {
+                    cJSON *j = cJSON_CreateObject();
+                    cJSON_AddStringToObject(j, "type", "light");
+                    cJSON_AddStringToObject(j, "ch", "L1A");
+                    cJSON_AddBoolToObject(j, "on", on);
+                    // 4s backstop: the board drops the hold by itself if this
+                    // thread dies before the "off" below.
+                    cJSON_AddNumberToObject(j, "timeout_ms", on ? 4000 : 0);
+                    return j;
+                  };
+                  if (say(lightCmd(true)) < 0)
+                  {
+                    LOGE("[snap] light on failed -- no peripheral channel");
+                    return;   // the deadline restore in CamStateWatchThread cleans up
+                  }
+                  std::this_thread::sleep_for(std::chrono::milliseconds(120));
+                  cJSON *pulse = cJSON_CreateObject();
+                  cJSON_AddStringToObject(pulse, "type", "trig_cam_pulse");
+                  if (say(pulse) < 0) LOGE("[snap] trig_cam_pulse failed");
+                  std::this_thread::sleep_for(std::chrono::milliseconds(120));
+                  say(lightCmd(false));
+
+                  // RESTORE HERE, because this thread knows when the sequence is
+                  // over. The watch thread's deadline stays as the backstop for
+                  // the case this thread never gets here at all.
+                  //
+                  // Waiting for the frame counter instead does not work when the
+                  // machine is idle: g_camFrameNum only advances as frames go
+                  // through the image pipe, and outside a session nothing is
+                  // pumping it -- so every snapshot fell through to the 3s
+                  // deadline and the button reported "already in flight" for
+                  // three seconds after each press. A short settle covers the
+                  // transfer of the frame the pulse just took.
+                  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                  int restore = -1;
+                  {
+                    std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+                    if (g_snapRestoreMode >= 0) { restore = g_snapRestoreMode; g_snapRestoreMode = -1; }
+                  }
+                  if (restore >= 0)
+                  {
+                    std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+                    if (calib_bacpac.cam != NULL)
+                    {
+                      CameraLayer::status st = calib_bacpac.cam->TriggerMode(restore);
+                      if (st == CameraLayer::ACK)
+                        LOGI("[snap] restored trigger mode %d (sequence done)", restore);
+                      else
+                        LOGE("[snap] RESTORE OF MODE %d REFUSED -- the camera is still "
+                             "armed for the board's line", restore);
+                    }
+                  }
+                }).detach();
+                if (sent < 0)
+                {
+                  // The board never heard us, so nothing will pulse and nothing
+                  // will arrive. Put the camera back NOW rather than leaving it
+                  // armed for the deadline: this path knows there is no frame
+                  // coming, and the whole point is not to leave it armed.
+                  cam->TriggerMode(before);
+                  {
+                    std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+                    g_snapRestoreMode = -1;
+                  }
+                  LOGE("[snap] no peripheral channel -- restored mode %d", before);
+                  cJSON_AddStringToObject(retObj, "err", "no peripheral channel");
+                  session_ACK = false;
+                }
+                else
+                {
+                  cJSON_AddNumberToObject(retObj, "ok", 1);
+                  cJSON_AddNumberToObject(retObj, "restore_mode", before);
+                  session_ACK = true;
+                }
+              }
+            }
+          }
+        }
+      }
+      else if (strcmp(cmd_type, "insp_debug_delay") == 0)
+      {
+        // {"type":"insp_debug_delay","ms":N,"jitter_ms":J}   ms=0 turns it off
+        //
+        // Runtime rather than env-only so a test can SWEEP it: the interesting
+        // question is not "does 200ms break it" but "where is the edge", and
+        // restarting the core between points loses the run that is being
+        // measured.
+        cJSON_AddStringToObject(retObj, "type", "insp_debug_delay");
+        cJSON *jms = cJSON_GetObjectItem(json, "ms");
+        cJSON *jjt = cJSON_GetObjectItem(json, "jitter_ms");
+        if (cJSON_IsNumber(jms))
+        {
+          int v = jms->valueint;
+          if (v < 0) v = 0;
+          // 10s ceiling: past this the frame queue backs up faster than any
+          // verdict can drain it, and what is being measured stops being the
+          // deadline and starts being the queue.
+          if (v > 10000) v = 10000;
+          g_debugDelayMs.store(v);
+          if (v == 0) g_debugDelayN.store(0);
+        }
+        if (cJSON_IsNumber(jjt))
+        {
+          int v = jjt->valueint;
+          if (v < 0) v = 0;
+          if (v > 5000) v = 5000;
+          g_debugDelayJitterMs.store(v);
+        }
+        cJSON_AddNumberToObject(retObj, "ms", g_debugDelayMs.load());
+        cJSON_AddNumberToObject(retObj, "jitter_ms", g_debugDelayJitterMs.load());
+        cJSON_AddNumberToObject(retObj, "delayed_n", (double)g_debugDelayN.load());
+        // A delay left switched on is a machine that looks broken later, so it
+        // is never silent: this rides in the reply and in the log.
+        if (g_debugDelayMs.load() > 0)
+          LOGW("[debug] inspection delay ACTIVE: %d ms +/-%d -- NOT a production setting",
+               g_debugDelayMs.load(), g_debugDelayJitterMs.load());
         session_ACK = true;
       }
       else if (strcmp(cmd_type, "log_dump") == 0)
@@ -10193,6 +10510,43 @@ void CamStateWatchThread(bool *terminationflag)
   {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
+    // ---- put the camera back after a lit snapshot ----
+    //
+    // Whichever comes first: the frame arrived, or the deadline passed. The
+    // deadline is the point -- a board that never pulses must not be able to
+    // leave the camera armed for a line nobody drives, which is the state that
+    // makes a machine stop seeing with nothing in the log.
+    {
+      int restore = -1; bool by_frame = false;
+      {
+        std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+        if (g_snapRestoreMode >= 0)
+        {
+          by_frame = (g_camFrameNum.load() > g_snapFrameMark);
+          if (by_frame || std::chrono::steady_clock::now() > g_snapDeadline)
+          {
+            restore = g_snapRestoreMode;
+            g_snapRestoreMode = -1;
+          }
+        }
+      }
+      if (restore >= 0)
+      {
+        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+        if (calib_bacpac.cam != NULL)
+        {
+          CameraLayer::status st = calib_bacpac.cam->TriggerMode(restore);
+          if (st == CameraLayer::ACK)
+            LOGI("[snap] restored trigger mode %d (%s)", restore,
+                 by_frame ? "frame arrived" : "deadline, no frame");
+          else
+            LOGE("[snap] RESTORE OF MODE %d REFUSED -- the camera is still armed "
+                 "for the board's line and will not deliver frames until the "
+                 "next session sets a mode", restore);
+        }
+      }
+    }
+
     // ---- camera half ----
     int st;
     bool present;
@@ -11248,6 +11602,29 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         if (!slowFrameQueue.push(sf)) g_slowDropped.fetch_add(1);
       }
     }
+    // The simulated slow host, if one was asked for. Placed here so it is
+    // inside everything that measures the inspection -- the latency the board
+    // sees, the report timestamps, the deadline -- exactly as real work would
+    // be. A delay applied outside the measured region would produce a machine
+    // that misses its deadline while every number says it did not.
+    {
+      const int _dms = g_debugDelayMs.load();
+      if (_dms > 0)
+      {
+        int _j = g_debugDelayJitterMs.load();
+        int _sleep = _dms;
+        if (_j > 0)
+        {
+          // rand() is fine: this is a test fixture, not a simulation, and the
+          // property that matters is "sometimes over, sometimes under".
+          _sleep += (rand() % (2 * _j + 1)) - _j;
+          if (_sleep < 0) _sleep = 0;
+        }
+        g_debugDelayN.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(_sleep));
+      }
+    }
+
     // NULL on BOTH skipped paths. GetReport() returns the engine's LAST report,
     // so reading it after an inspection that did not run would publish the
     // PREVIOUS part's measurements as this frame's. The verdict path is

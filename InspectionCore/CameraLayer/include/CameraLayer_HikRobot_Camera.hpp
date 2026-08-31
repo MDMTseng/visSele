@@ -113,6 +113,7 @@ protected:
   void registerLineEvents();
   void logTriggerConfig(const char *when);
   int GetTriggerConfig(int *selector, int *mode, int *source, int *activation) override;
+  double GetResultingFps() override;
 
   bool acquisition_started=false;
   int mirrorFlag[2]={0,0};

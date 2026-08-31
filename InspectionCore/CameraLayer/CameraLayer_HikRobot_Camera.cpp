@@ -1107,6 +1107,19 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROIMirror(int Dir, int en)
 //
 // One config value, two camera layers, opposite meanings -- and the Mac bench
 // builds Aravis, so nothing there could ever expose it.
+double CameraLayer_HikRobot_Camera::GetResultingFps()
+{
+  if(handle == NULL) return -1.0;
+  MVCC_FLOATVALUE fv;
+  if(MV_OK != GetFloatValue("ResultingFrameRate", &fv)) return -1.0;
+  // fCurValue, not fMax: fMax is the node's range end, which on this camera is
+  // the sensor's ceiling at the smallest possible ROI. What the caller needs is
+  // the ceiling for the ROI and exposure IN FORCE, and that is the current
+  // value -- it moves when either is changed, which is the whole point of
+  // reading it live rather than filing a number once.
+  return (double)fv.fCurValue;
+}
+
 CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
 {
   // NaN first: every comparison below is false for it, so an unchecked NaN
