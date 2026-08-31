@@ -794,6 +794,15 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // reports both, so the panel never inverts a microsecond interval to find out
   // what it is doing -- which was the one arithmetic step every caller had to
   // repeat and only had to get wrong once.
+  // Layer one, read the same way as layer two: the device resolves the mode and
+  // reports what is actually in force, so the panel never derives one from the
+  // other. min_sep_us is what was configured; min_sep_eff_us is what the gate is
+  // enforcing, and under cam_mode auto they are different numbers.
+  const camMode = (gate && gate.cam_mode) || cfg.gate_cam_mode || 'manual';
+  const camFps = gate && gate.cam_fps_limit > 0 ? gate.cam_fps_limit : undefined;
+  const camStale = !!(gate && gate.cam_fps_stale);
+  const effSepUs = gate && gate.min_sep_eff_us > 0 ? gate.min_sep_eff_us : undefined;
+  const effHz = effSepUs ? 1000000 / effSepUs : undefined;
   const procMode = (gate && gate.proc_mode) || cfg.gate_proc_mode || 'off';
   const procHz = gate && gate.proc_rate_hz > 0 ? gate.proc_rate_hz : undefined;
   const procAvgHz = (gate && gate.proc_avg_us > 0)
@@ -1607,53 +1616,68 @@ build ${fw.build}`}>
             <span style={{ color: '#c33' }}>← 平均就來不及,料會一顆顆變 NA</span>
           )}
         </div>
+        {/* Layer one, in the same three-state shape as layer two below. The two
+            are one idea asked twice -- what limits the feed -- and an operator
+            should not have to learn two vocabularies for it. */}
         <div style={{ marginBottom: 4 }}>進料上限（相機）
-          <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
-            「有觸發、沒影格」。那不會配錯 —— 配對是靠時間戳,而視窗被夾在
-            料件間距的一半,相鄰物件的窗不重疊,所以掉的那一張只是讓它的物件
-            沒有回報:不致動、回流、計入無判決。代價是產能,持續下去才會撞停機門檻。
-            這是**單一間隔**的硬下限。</Why></div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          <Input
-            style={{ width: 150 }}
-            addonBefore="上限"
-            addonAfter="顆/秒"
-            placeholder={gateHz !== undefined ? String(gateHz) : ''}
-            value={hzInput}
-            onChange={(e) => setHzInput(e.target.value)}
-          />
-          <Button
-            loading={busy === 'gate'}
-            disabled={!(Number(hzInput) > 0)}
-            onClick={() => run('gate', (api) => api.machineSetupUpdate(
-              { min_detect_sep_us: Math.round(1000000 / Number(hzInput)) }, false, true))}
-          >套用</Button>
-          <span style={{ alignSelf: 'center', ...dim }}>
-            目前 {gateHz !== undefined ? `${gateHz} 顆/秒` : '—'}
-            {gateSepUs !== undefined ? ` (min_detect_sep_us=${gateSepUs})` : ''}
-          </span>
+          <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會有
+            觸發卻沒有影格 —— 那不會配錯(配對靠時間戳,視窗夾在間距的一半),
+            但那顆料沒有回報:不致動、回流、計入無判決,持續下去撞停機門檻。<br/><br/>
+            <b>自動</b>用相機自己回答的上限(ResultingFrameRate),它會隨 ROI 和
+            曝光即時改變 —— 那正是手填的數字維持不住的原因:改 ROI 的時候沒有人
+            會回頭想到閘門。</Why></div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Radio.Group size="small" value={camMode} disabled={busy === 'cammode'}
+            onChange={(e) => run('cammode', (api) => api.machineSetupUpdate(
+              { gate_cam_mode: e.target.value }, false, true))}>
+            <Radio.Button value="manual">手動</Radio.Button>
+            <Radio.Button value="auto">自動</Radio.Button>
+          </Radio.Group>
+
+          {camMode === 'manual' && (<>
+            <Input style={{ width: 140 }} addonAfter="顆/秒"
+              placeholder={gateHz !== undefined ? String(gateHz) : ''}
+              value={hzInput} onChange={(e) => setHzInput(e.target.value)} />
+            <Button size="small" loading={busy === 'gate'}
+              disabled={!(Number(hzInput) > 0)}
+              onClick={() => run('gate', (api) => api.machineSetupUpdate(
+                { min_detect_sep_us: Math.round(1000000 / Number(hzInput)) }, false, true))}
+            >套用</Button>
+            {camFps !== undefined && (
+              <a onClick={() => setHzInput(String(Math.floor(camFps * 0.9)))}>
+                填相機上限的 90% ({(camFps * 0.9).toFixed(1)})</a>
+            )}
+          </>)}
         </div>
 
-        {/* SECOND LAYER: the host, not the camera.
-            Above is a hard floor on ONE interval, set by what the camera can
-            deliver. This is a floor on the FILTERED average, set by what the
-            machine looking at the frames can keep up with -- and the two fail
-            differently. A camera that is asked too fast gives no frame; a host
-            that is asked too fast still answers, late, and late lands as an
-            unjudged part or a report matching no object. An average is the
-            right measure for it because the host has a pipeline: one short gap
-            is absorbed, a sustained rate is not. */}
-        {/* THREE STATES, NOT FIVE SETTINGS.
-            The device has proc_sep_us, proc_iir_shift, proc_auto,
-            proc_auto_max_us and proc_auto_rho_pct. A person setting up a
-            machine decides one thing: is the feed limited by the host, and if
-            so does the machine work it out or does someone type it in. The
-            other three are a filter constant nobody should touch and a runaway
-            bound that only matters when something is already wrong -- they stay
-            reachable through 設定備份 / 移機 and out of the way here.
+        <div style={{ ...dim, marginTop: 6 }}>
+          {camMode === 'manual'
+            ? `固定在 ${gateHz !== undefined ? gateHz : '—'} 顆/秒`
+              + (camFps !== undefined ? ` · 相機上限 ${camFps.toFixed(1)} fps` : '')
+            : (camFps !== undefined
+                ? `跟隨相機 ${camFps.toFixed(1)} fps × 90% = `
+                  + `${effHz !== undefined ? effHz.toFixed(1) : '—'} 顆/秒`
+                : '等待相機上限 —— 需要 core 連線')}
+        </div>
 
-            This replaces a text field, an 套用 button and a 關閉 button, where
-            "off" was expressed as clearing a number rather than as a choice. */}
+        {/* THE MANUAL NUMBER BEING ABOVE THE CAMERA IS THE CASE THIS EXISTS FOR,
+            and it is invisible without saying it: on this bench the configured
+            70.0/s sat above a 68.9 fps camera. */}
+        {camMode === 'manual' && camFps !== undefined && gateHz > camFps && (
+          <div style={{ color: '#c33', marginTop: 4 }}>
+            高於相機上限 {camFps.toFixed(1)} fps —— 會有觸發沒影格,那些料變成無判決。
+            改用自動,或填 {(camFps * 0.9).toFixed(0)}。
+          </div>
+        )}
+        {/* Stale is not an error and must not read as one: the board keeps using
+            the SLOWER of the last camera figure and the manual cap, so nothing
+            unsafe happens. What it means is that nobody is refreshing it. */}
+        {camMode === 'auto' && camStale && (
+          <div style={{ color: '#c60', marginTop: 4 }}>
+            相機上限已過期 —— 板子改用較慢的那個值。core 或 UI 沒有在更新它。
+          </div>
+        )}
+
         <div style={{ marginTop: 10, marginBottom: 4 }}>進料節流（主機）
           <Why>上面那條看相機能給多快,這條看主機算得多快。失效方式不同:相機來不及
             就是沒影格,主機來不及還是會回答,只是遲到 —— 遲到就是 NA 回流,再嚴重

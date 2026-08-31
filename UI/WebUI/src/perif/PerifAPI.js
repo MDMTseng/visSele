@@ -937,6 +937,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // The simple face: a mode and a rate in parts/second. The device resolves
     // them into the interval keys below, which stay settable for backups and
     // for the two advanced knobs no panel exposes.
+    'gate_cam_mode', 'gate_cam_margin_pct',
     'gate_proc_mode', 'gate_proc_rate_hz',
     'gate_proc_sep_us', 'gate_proc_iir_shift',
     'stepper_en_active', 'stepper_dir',
