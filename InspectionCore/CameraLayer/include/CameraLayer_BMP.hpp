@@ -23,7 +23,13 @@ class CameraLayer_BMP : public CameraLayer{
     protected:
     int cacheUseCounter=0;
     cv::Mat img_load;
-    static constexpr float exp_time_100ExpUs_v=5000;
+    // 1 ms IS FULL BRIGHTNESS. The reference used to be 5 ms, which made every
+    // simulated exposure a fraction of a number nothing else in the system
+    // shares; 1 ms is the plain reading -- a frame with no exposure metadata is
+    // a 1 ms frame, and it comes back exactly as it is on disk. Only the
+    // opt-in simulation below uses this at all; with nothing set the file is
+    // loaded untouched either way.
+    static constexpr float exp_time_100ExpUs_v=1000;
     const float exp_time_100ExpUs=exp_time_100ExpUs_v;
     float exp_time_us=1000;
     float a_gain=1;
