@@ -386,6 +386,25 @@ typedef struct pipeLineInfo{
   // gate->report latency stat. Wraps every ~71 min; a single latency sample
   // never spans that, so unsigned subtraction stays correct.
   uint32_t trig_us;
+  // A CLOCK SAMPLE WEARING A PART'S CLOTHES.
+  //
+  // Set on an injected object that exists only to give the timestamp matcher
+  // something to place, so the offset can be refreshed on an idle line. It goes
+  // through the ordinary gate and the ordinary registration order -- which is
+  // the whole reason for it: the sync-pulse path (calFireNow) bypasses that
+  // order, and everything expensive about calibration is the machinery that
+  // bypass needs to stay out of a real part's way. A queued object needs none
+  // of it; it simply queues.
+  //
+  // Stealth means three things, and all three are needed for it to be honest:
+  //   unseen by the line     -- no light. An idle machine flashing on a timer
+//                            reads as a fault, and
+  //                 the frame's TIMESTAMP is what is wanted, not its content
+  //   no blow    -- there is no part there to eject
+  //   no counts  -- it must not dilute the production tally. That tally is what
+  //                 "不可檢錯" is audited against, so an object nobody put on
+  //                 the plate must not appear in it.
+  uint8_t stealth;
   // Device clock at the instant THIS object's camera trigger fired. Full 64
   // bits, unlike trig_us: the offset arithmetic against the camera's own clock
   // would otherwise have to handle a 71-minute wrap, and 8 bytes x 100 objects
@@ -1128,6 +1147,38 @@ volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 // count there is no way to tell whether it is doing nothing or throwing away
 // half the parts.
 volatile uint32_t GATE_REJ_RATE=0;    // faster than min_detect_sep_us
+// SECOND-LAYER ADMISSION: the HOST's rate, not the camera's.
+//
+// min_detect_sep_us above is a hard floor on the interval between two adjacent
+// admitted parts, and it is set from what the CAMERA can deliver. That is not
+// the only limit. The other one is the machine that has to look at the frames,
+// and it fails in a completely different shape: the camera either produces a
+// frame or does not, but a host that is behind still answers -- late. Late is
+// the expensive failure here. It arrives after SWITCH, which is an unjudged
+// part (error 2), or after its slot has been swept, which is a report that
+// matches no object -- the two outcomes the line actually sees.
+//
+// A hard floor cannot see that coming, because it only ever looks at ONE gap.
+// A burst of two parts 8ms apart is fine if the ten before them were 60ms
+// apart; a steady 30ms stream is not fine even though no single gap is short.
+// What the host is up against is the AVERAGE arrival rate over the depth of
+// its own pipeline, so that is what this measures: a first-order low-pass on
+// the interval between admitted parts, tested against a floor of its own.
+//
+// The filter runs on ADMITTED intervals, and a rejection deliberately does not
+// commit. That makes it a control loop rather than a switch: while the average
+// is too fast nothing is admitted, so the next interval is longer, so the
+// average climbs, so admission resumes -- settling at the floor instead of
+// oscillating between all and nothing. A part turned away here is not lost; it
+// stays on the plate, no camera fires for it, no SWITCH task is scheduled, and
+// it comes round again on the next lap.
+//
+// 0 disables it, and that is the default: this must not change the behaviour
+// of a machine whose setup file predates it.
+volatile uint32_t GATE_PROC_SEP_US=0;        // floor on the filtered interval
+volatile int      GATE_PROC_IIR_SHIFT=3;     // 1/8 per sample (~8-part memory)
+volatile uint32_t GATE_PROC_AVG_US=0;        // the filter state, for the panel
+volatile uint32_t GATE_REJ_LOAD=0;           // turned away by this layer
 volatile uint32_t GATE_REJ_DIST=0;    // closer than the 2mm plate-distance gate
 volatile uint32_t GATE_REJ_BUSY=0;    // no room in RBuf / the ACT schedules
 volatile uint32_t GATE_ACCEPT=0;      // registered, for a rejection ratio
@@ -2885,6 +2936,11 @@ uint64_t _preTime=0;
 // Consumed by the next newPulseEvent: marks that object as a clock-sync pulse.
 // Only ever set by syncPulseService, which fires with the pipeline empty.
 static uint8_t SYNC_MARK_NEXT = 0;
+// Consumed by the next injected pulse, exactly as SYNC_MARK_NEXT is. A count
+// rather than a flag: the recal fires one, but a bench tool may ask for
+// several, and a flag would silently apply to only the first.
+static volatile uint32_t PHANTOM_STEALTH_PEND = 0;
+volatile uint32_t STEALTH_EMITTED = 0;      // how many have gone out
 // When a REAL part was last registered. Sync pulses must stay out of the way
 // of production -- see syncPulseService.
 static int64_t REAL_ACCEPT_MS = 0;
@@ -2909,6 +2965,21 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // instead would ask the camera for a frame it cannot deliver, and a trigger
   // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
   if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us){GATE_REJ_RATE++;return -8;}
+  // Second layer: the filtered arrival rate, against the host's floor.
+  //
+  // Computed but NOT committed until the part is admitted. The first interval
+  // after a quiet period seeds the filter rather than averaging against a stale
+  // value from the previous run -- an hour-old gap low-passed with a fresh one
+  // would let a whole burst through before the average caught up.
+  if(GATE_PROC_SEP_US)
+  {
+    const uint32_t dt = (uint32_t)(curTime-_preTime);
+    const uint32_t avg = GATE_PROC_AVG_US
+      ? (uint32_t)(GATE_PROC_AVG_US + (((int32_t)dt-(int32_t)GATE_PROC_AVG_US)>>GATE_PROC_IIR_SHIFT))
+      : dt;
+    if(avg < GATE_PROC_SEP_US){ GATE_REJ_LOAD++; return -10; }
+    GATE_PROC_AVG_US = avg;
+  }
   _preTime=curTime;
   NPE_MARK(0);
 
@@ -2937,6 +3008,8 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // slot arrives already retired and the drain frees it before it has lived.
   head->retired = 0;
   head->sync = SYNC_MARK_NEXT;
+  if(PHANTOM_STEALTH_PEND){ head->stealth = 1; PHANTOM_STEALTH_PEND--; STEALTH_EMITTED++; }
+  else                    head->stealth = 0;
   if(SYNC_MARK_NEXT==0) REAL_ACCEPT_MS = (int64_t)(esp_timer_get_time()/1000);
   SYNC_MARK_NEXT = 0;
   NPE_MARK(2);
@@ -2975,14 +3048,28 @@ int IRAM_ATTR ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
     // One coherent snapshot for this object's registration (see SPO_active).
     volatile stagePulseOffset* spo = SPO_active;
-    ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_off, 0, );
+    // The camera stages are pushed for a stealth object and the LIGHT stages are
+    // not:
+    // the trigger is what produces the (cam_ts, cam_us) pair this object exists
+    // for, and the exposure is irrelevant to a timestamp. A dark frame is the
+    // correct outcome here, not a degraded one.
+    if(pli->stealth == 0)
+    {
+      ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_on, 1, );
+      ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_off, 0, );
+    }
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_on, 1, pushLog(_task_););
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_off, 0, );
 
 
-    ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_off, 0, );
+    // BOTH lights, not just L1A. Stealth means no light on this machine, and a
+    // second station wired to a lamp would have flashed on every idle top-up --
+    // the exact thing this is for. The first version only skipped L1A.
+    if(pli->stealth == 0)
+    {
+      ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_on, 1, );
+      ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_off, 0, );
+    }
     ACT_PUSH_TASK(act_S.ACT_CAM2, pli, spo->CAM2_on, 1, );
     ACT_PUSH_TASK(act_S.ACT_CAM2, pli, spo->CAM2_off, 0, );
 
@@ -3213,6 +3300,26 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
       IO_TRACE_LOG(IOT_PIN_SWITCH,pli->insp_status,cur_pulse,pli->tid);
 
+      // A stealth object reaches SWITCH like anything else -- that is how it
+      // retires -- but decides nothing. No selector is pushed (there is no part
+      // to eject) and no counter moves, including CONSEC_UNANSWERED: an
+      // injected object that nobody answered is not evidence that the host has
+      // stopped answering, and letting it feed the stop threshold would turn
+      // the idle top-up into a source of halts. Which is the opposite of why
+      // it exists.
+      if (pli->stealth)
+      {
+        // Nothing decided. The station still RUNS -- the retirement block below
+        // sits outside this switch and runs unconditionally, so a stealth object
+        // is recycled like any other and RBuf does not leak a slot per top-up.
+        //
+        // "No blow" is not an early exit: the selector is a separate stage task
+        // (ACT_SEL1/2/3, fired at SEL*_on) and it is only ever queued from
+        // inside the switch below. Never pushing it is why nothing fires -- and
+        // why this does not show up as SEL_SUPPRESSED_N either, which counts an
+        // actuation that was asked for and not delivered.
+      }
+      else
       switch (pli->insp_status)
       {
         case 1:
@@ -4596,6 +4703,14 @@ static const int64_t CAL_PULSE_TIMEOUT_MS = 1500;
 // Idle before the offset is re-measured, set_setup "cam_recal_idle_ms".
 // 0 disables. See recalService for where 10s comes from.
 int32_t  CAM_RECAL_IDLE_MS = 10000;
+// The cheap top-up and how often it is not enough. Both, because "we replaced
+// the full recal with one object" is a claim that has to be checkable: a
+// fallback count that climbs says the single sample is not landing, and that is
+// a different fault from the one this avoids.
+volatile uint32_t RECAL_STEALTH_N=0, RECAL_STEALTH_OK_N=0, RECAL_FALLBACK_N=0;
+static int64_t  RECAL_PENDING_MS  = 0;    // 0 = nothing outstanding
+static uint64_t RECAL_PENDING_EST = 0;    // est_cam_us when it was fired
+static const int32_t RECAL_STEALTH_TIMEOUT_MS = 4000;
 uint32_t CAM_RECALS = 0;
 // The match window expressed as what it is: a POSITION tolerance, in um.
 // 0 = off, keep the explicit match_window_us. See setMachineSetup for the
@@ -4735,6 +4850,11 @@ static int calFireNow()
   head->retired      = 0;
   head->stage        = 0;
   head->sync         = 1;              // only sync objects teach the offset
+  // Cleared for the same reason cam_us and retired are: RBuf is a ring, so a
+  // recycled slot arrives carrying whatever the previous occupant was. A stale
+  // `stealth` here would silence a calibration object's own light -- and a dark
+  // calibration frame is one the matcher may never place.
+  head->stealth        = 0;
   RBuf.pushHead();
 
   // Same order as trig_cam_burst's emit_at: camera line first, then the light.
@@ -4954,10 +5074,70 @@ static void recalService()
     if(!p->sync) return;            // a real part is still in the machine
   }
 
+  // ONE STEALTH OBJECT, IN PLACE. The full RECAL is the fallback, not the plan.
+  //
+  // What this needs is one (cam_ts, cam_us) pair the matcher can place, because
+  // a valid model re-measures its offset OUTRIGHT from any in-window sample --
+  // that is how a running line keeps the offset fresh without calibrating at
+  // all. The idle top-up exists only because there are no parts to supply one.
+  // An injected object supplies one exactly the way a real part does.
+  //
+  // The full RECAL supplies it a different way, and pays for the difference:
+  // calFireNow bypasses the registration order, so it must be certain nothing
+  // real is in flight -- hence the shut gate, the held feeder, the drain guard,
+  // and CAL_RESET_PENDING, which drops the model and rebuilds it from eight
+  // samples. Dropping the model is the expensive part, and not because of the
+  // eight pulses: `valid == false` is the ONE condition under which an
+  // unplaceable report halts the machine immediately instead of being absorbed
+  // by the tolerance counters. So the routine top-up opened a window, every
+  // recal_idle_ms of idleness, in which a single stray report was a stop --
+  // to correct 0.038mm of drift.
+  //
+  // A queued object needs none of that. It goes through the ordinary gate in
+  // the ordinary order, so it cannot collide with a real part: it queues behind
+  // one. `valid` stays true throughout.
+  //
+  // Fall back only on evidence: if the sample does not land, the disagreement
+  // is no longer drift and rebuilding from scratch is the right answer.
   CAM_RECALS++;
-  djrl.dbg_printf("CAMSYNC RECAL: %llds idle, est drift %lld us -- topping up",
+  PHANTOM_STEALTH_PEND++;
+  phantomEmitOne();
+  RECAL_STEALTH_N++;
+  RECAL_PENDING_MS = now_ms;
+  RECAL_PENDING_EST = CAM_SYNC.est_cam_us;
+  djrl.dbg_printf("CAMSYNC RECAL: %llds idle, est drift %lld us -- one stealth object",
                   (long long)(idle_us/1000000),
                   (long long)(idle_us/1000000*35));
+}
+
+// Did the stealth object land? est_cam_us advances only on an ACCEPTED report, so
+// it moving is the same evidence the matcher acted on, not a proxy for it.
+//
+// The deadline is generous on purpose: the object has to travel to CAM1_on, be
+// captured, inspected and answered, and on a slow host that is the whole report
+// latency. Expiring early would fall back to the full RECAL for a machine that
+// was merely busy -- turning a cheap top-up into the expensive one exactly when
+// the machine can least afford it.
+static void recalPendingService()
+{
+  if(RECAL_PENDING_MS == 0) return;
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY){ RECAL_PENDING_MS = 0; return; }
+
+  if(CAM_SYNC.est_cam_us != RECAL_PENDING_EST)
+  {
+    RECAL_PENDING_MS = 0;
+    RECAL_STEALTH_OK_N++;
+    return;
+  }
+  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+  if(now_ms - RECAL_PENDING_MS < RECAL_STEALTH_TIMEOUT_MS) return;
+
+  RECAL_PENDING_MS = 0;
+  RECAL_FALLBACK_N++;
+  djrl.dbg_printf("CAMSYNC RECAL: stealth object did not land in %dms "
+                  "(stealth=%u ok=%u fallback=%u) -- full recal",
+                  (int)RECAL_STEALTH_TIMEOUT_MS,(unsigned)RECAL_STEALTH_N,
+                  (unsigned)RECAL_STEALTH_OK_N,(unsigned)RECAL_FALLBACK_N);
   SYS_STATE_Transfer(SYS_STATE_ACT::RECAL_START);
 }
 
@@ -6121,6 +6301,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
+    // The filter belongs to the run, for the same reason the unanswered budget
+    // does: a stale average from the previous run is not evidence about this one.
+    GATE_REJ_LOAD=0; GATE_PROC_AVG_US=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     GATE_DISCARD_STOP=0;
@@ -6300,7 +6483,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         // keeps the reasons and their meaning in the same place.
         const char *why="none"; uint32_t worst=0;
         struct { const char *n; uint32_t v; } R[] = {
-          {"rate",GATE_REJ_RATE},{"width",GATE_REJ_WIDTH},
+          {"rate",GATE_REJ_RATE},{"load",GATE_REJ_LOAD},{"width",GATE_REJ_WIDTH},
           {"unstable",GATE_REJ_UNSTABLE},{"dist",GATE_REJ_DIST},
           {"busy",GATE_REJ_BUSY},{"blocked",GATE_REJ_BLOCKED},
           {"stepper_off",GATE_REJ_STEPPER_OFF},{"gate_off",GATE_REJ_GATE_OFF},
@@ -6493,6 +6676,26 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
+      // The idle top-up, and how often the cheap form was not enough.
+      jHl["recal_stealth"]=RECAL_STEALTH_N;
+      jHl["recal_stealth_ok"]=RECAL_STEALTH_OK_N;
+      jHl["recal_fallback"]=RECAL_FALLBACK_N;
+      // WHETHER save_setup WOULD BE ACCEPTED RIGHT NOW, and if not, why.
+      //
+      // The rule has three parts (state, setpoint, plate actually stopped) and
+      // it exists for a hardware reason, not a bookkeeping one: erasing NVS
+      // disables the instruction cache, and StepGo / Run_ACTS / newPulseEvent
+      // are all flash-resident functions the timer ISR calls straight into.
+      //
+      // A UI that wants to grey out its save button has to know this, and the
+      // only two ways to know are to ask or to reimplement -- and a
+      // reimplementation of a safety rule is a copy that drifts silently the
+      // first time the rule changes. So the rule answers for itself, from the
+      // same function save_setup calls. Absent = savable.
+      {
+        const char *deny = cfgPersistDeny();
+        if(deny) jHl["cfg_persist_deny"]=deny;
+      }
 
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
@@ -6524,6 +6727,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       JsonObject jG=retdoc.createNestedObject("gate");
       jG["accept"]=GATE_ACCEPT;
       jG["rej_rate"]=GATE_REJ_RATE;
+      // The second layer, and the filter state it decided on. Both, because
+      // "why did throughput stop rising" needs the average as well as the count
+      // -- a rej_load that is climbing while avg sits exactly at the floor is
+      // the loop working; one climbing with avg far above it is not.
+      jG["rej_load"]=GATE_REJ_LOAD;
+      jG["proc_sep_us"]=GATE_PROC_SEP_US;
+      jG["proc_avg_us"]=GATE_PROC_AVG_US;
       jG["rej_dist"]=GATE_REJ_DIST;
       jG["rej_busy"]=GATE_REJ_BUSY;
       jG["disabled"]=(bool)GATE_DISABLED;
@@ -7533,7 +7743,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
+    // {"type":"trig_phantom_pulse","stealth":true}
+    //
+    // stealth: no light, no blow, no counts -- see pipeLineInfo::stealth. The
+    // default is false so every existing caller keeps the object it asked for.
+    if(doc["stealth"].is<bool>() && (bool)doc["stealth"]) PHANTOM_STEALTH_PEND++;
     phantomEmitOne();
+    retdoc["type"]="trig_phantom_pulse";
+    retdoc["stealth_pending"]=(uint32_t)PHANTOM_STEALTH_PEND;
     doRsp=rspAck=true;
   }
 
@@ -8666,6 +8883,10 @@ void firmwareLoop()
   syncPulseService();
   spinupService();
   recalService();
+  // Beside it, not inside it: recalService decides whether to ASK, this decides
+  // whether the asking worked. Separating them keeps the idle guard from having
+  // to re-run while a sample is outstanding.
+  recalPendingService();
   phantomTrainService();
   SEG_END(SEG_SVC_US); }
   // Drop a manual light hold when it expires, or the moment the machine leaves
@@ -9277,6 +9498,8 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["debounce_rise"]=DEBOUNCE_H_THRES;
     jGT["debounce_fall"]=DEBOUNCE_L_THRES;
     jGT["min_detect_dist_um"]=GATE_MIN_DIST_um;
+    jGT["proc_sep_us"]=GATE_PROC_SEP_US;
+    jGT["proc_iir_shift"]=GATE_PROC_IIR_SHIFT;
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
@@ -9477,12 +9700,17 @@ static const char *const K_PLATE[] =
    "stepper_dir",NULL};
 static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
-   "debounce_fall","min_detect_dist_um","gate_ref",NULL};
+   "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
+   "proc_iir_shift",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
 static const char *const K_SKIP[] =
-  {"mode","stop_after","unsafe",NULL};
+  // nomatch_stop_after was MISSING here while get_setup has emitted it since it
+  // was added. set_setup refuses a whole document containing an unrecognised
+  // key, so feeding a machine back its own get_setup output was refused -- which
+  // is exactly what a backup/restore does.
+  {"mode","stop_after","unsafe","nomatch_stop_after",NULL};
 static const char *const K_SPO[] =
   {"L1A_on","L1A_off","CAM1_on","CAM1_off","L2A_on","L2A_off","CAM2_on",
    "CAM2_off","SWITCH","SEL1_on","SEL1_off","SEL2_on","SEL2_off","SEL3_on",
@@ -9707,6 +9935,16 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
+  JSON_SETIF_ABLE(GATE_PROC_SEP_US,jGT,"proc_sep_us");
+  if(jGT["proc_iir_shift"].is<int>())
+  {
+    // Clamped, not refused -- it arrives from a field. 0 would make the "filter"
+    // the last interval alone (no memory, which is what layer 1 already is) and
+    // anything past 8 has a memory measured in minutes, so the loop would not
+    // react inside a run.
+    int v=jGT["proc_iir_shift"];
+    GATE_PROC_IIR_SHIFT = (v<1)?1:((v>8)?8:v);
+  }
   // report_match_ts is no longer settable -- see its declaration. Accepted as
   // true (a no-op), refused as false in the set_setup handler.
   // "report_match_pcnt" stays in the SCHEMA (K_CAM) but is no longer applied.
