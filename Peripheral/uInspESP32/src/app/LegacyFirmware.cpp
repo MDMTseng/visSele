@@ -1179,6 +1179,78 @@ volatile uint32_t GATE_PROC_SEP_US=0;        // floor on the filtered interval
 volatile int      GATE_PROC_IIR_SHIFT=3;     // 1/8 per sample (~8-part memory)
 volatile uint32_t GATE_PROC_AVG_US=0;        // the filter state, for the panel
 volatile uint32_t GATE_REJ_LOAD=0;           // turned away by this layer
+
+// THE FLOOR, CHOSEN BY THE QUEUE INSTEAD OF BY A PERSON.
+//
+// proc_sep_us above has to be typed in, and the number depends on the host: it
+// differs per computer, and it moves with the recipe, the ROI and the exposure.
+// So the setting most likely to be wrong is the one that has to be measured by
+// hand on every machine, and it is silently wrong -- too slow costs throughput,
+// too fast costs the thing it was added to prevent.
+//
+// The queue already knows. pipe.waiting is objects registered and not yet
+// answered, and it is the INTEGRAL of (arrival - service): it grows exactly
+// when the host is behind, whatever the latency numbers say.
+//
+// NOT its level, though. Little's law puts a healthy machine at L = lambda * W
+// -- at 21/s with ~430ms from gate to answer that is ~9 objects with nothing
+// wrong. A threshold on the level would have to know the speed and the stage
+// offsets, i.e. be characterised per machine, which is the problem being
+// solved. The GROWTH RATE needs none of that.
+//
+// And growth gives the answer directly rather than by groping. Admitting at r
+// while the queue grows at dW/dt means the host is serving at
+//
+//     s = r - dW/dt
+//
+// so the interval that would just keep up is 1/s. This aims a little slower
+// than that, and only ever ADDS to the manual floor -- the auto term cannot
+// make admission faster than what was configured, so its worst failure is
+// being more conservative than asked, never less.
+//
+// Off by default, like proc_sep_us: a machine whose setup predates this must
+// behave exactly as it did.
+volatile bool     GATE_PROC_AUTO=false;
+volatile uint32_t GATE_PROC_AUTO_ADD_US=0;     // what the loop has added
+volatile uint32_t GATE_PROC_AUTO_MAX_US=1000000; // 1s = 1/s, the runaway bound
+volatile uint32_t GATE_PROC_AUTO_CAP_N=0;      // times it sat at the bound
+volatile int32_t  GATE_PROC_DW_MQ=0;           // queue growth, milli-objects/s
+// Utilisation, in percent, and the target to hold it at.
+//
+// THE QUEUE IS THE WRONG SIGNAL TO STEER BY, and the reason is structural
+// rather than a matter of tuning: queue length is the INTEGRAL of
+// (arrival - service). Below saturation it barely moves, so there is no signal
+// in the region where there is still time to act; above saturation it diverges,
+// so there is no bound. It carries information exactly where it is too late.
+//
+// rho = lambda * service_time is the same fact stated as a cause instead of an
+// effect. It is bounded, it has usable resolution across the whole range, and
+// holding it at 0.8 means the queue never starts growing at all. From the bench
+// sweep, with the queue still reading zero unjudged throughout:
+//
+//     delay  0ms   service ~34ms  21/s -> rho 0.71   healthy
+//     delay 19ms   service ~53ms  21/s -> rho 1.11   already past the line
+//     delay 45ms   service ~79ms  21/s -> rho 1.66   halted
+//
+// rho crossed 1 at the 19ms point and said so in a number. The queue said
+// nothing there and everything at 45ms, which is the shape described above.
+//
+// The service time used here is the board's own REP_CAMLAT mean over the
+// sample window. That is exact while unsaturated and an OVER-estimate once a
+// backlog forms (it then contains queueing delay as well as service). The bias
+// is toward throttling harder when already behind, which is the safe
+// direction -- and the honest fix, having the core report its idle fraction
+// directly, can replace this estimate without changing the loop around it.
+volatile int32_t  GATE_PROC_RHO_PCT=0;         // measured, 100 = saturated
+volatile int32_t  GATE_PROC_RHO_TARGET=80;     // hold it here
+volatile uint32_t GATE_PROC_SVC_US=0;          // service time this window
+// The effective floor. One place computes it so the gate, the reply and any
+// future reader cannot disagree about what is actually in force.
+static inline uint32_t gateProcSepEff()
+{
+  const uint32_t add = GATE_PROC_AUTO ? GATE_PROC_AUTO_ADD_US : 0;
+  return GATE_PROC_SEP_US + add;
+}
 volatile uint32_t GATE_REJ_DIST=0;    // closer than the 2mm plate-distance gate
 volatile uint32_t GATE_REJ_BUSY=0;    // no room in RBuf / the ACT schedules
 volatile uint32_t GATE_ACCEPT=0;      // registered, for a rejection ratio
@@ -2971,14 +3043,17 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // after a quiet period seeds the filter rather than averaging against a stale
   // value from the previous run -- an hour-old gap low-passed with a fresh one
   // would let a whole burst through before the average caught up.
-  if(GATE_PROC_SEP_US)
   {
-    const uint32_t dt = (uint32_t)(curTime-_preTime);
-    const uint32_t avg = GATE_PROC_AVG_US
-      ? (uint32_t)(GATE_PROC_AVG_US + (((int32_t)dt-(int32_t)GATE_PROC_AVG_US)>>GATE_PROC_IIR_SHIFT))
-      : dt;
-    if(avg < GATE_PROC_SEP_US){ GATE_REJ_LOAD++; return -10; }
-    GATE_PROC_AVG_US = avg;
+    const uint32_t sep = gateProcSepEff();
+    if(sep)
+    {
+      const uint32_t dt = (uint32_t)(curTime-_preTime);
+      const uint32_t avg = GATE_PROC_AVG_US
+        ? (uint32_t)(GATE_PROC_AVG_US + (((int32_t)dt-(int32_t)GATE_PROC_AVG_US)>>GATE_PROC_IIR_SHIFT))
+        : dt;
+      if(avg < sep){ GATE_REJ_LOAD++; return -10; }
+      GATE_PROC_AVG_US = avg;
+    }
   }
   _preTime=curTime;
   NPE_MARK(0);
@@ -5040,6 +5115,176 @@ static void calibrationCleanup()
 // / 35us/s = 143s before a returning frame would even fall outside the match
 // window, and the first frame back re-measures the offset anyway. This is a
 // precision guarantee, not a failure guard.
+// The outer loop. Deliberately slow and deliberately dull.
+//
+// TIME SCALES. The admission filter inside newPulseEvent has tau ~ 7.5 admitted
+// parts (proc_iir_shift 3). An outer loop moving the floor that filter is
+// chasing has to be much slower than it or the two fight, so this samples at
+// 500ms and moves in small steps: at 20/s that is ~10 parts per sample and
+// several seconds to take effect, five to ten times the inner loop.
+//
+// COMING BACK DOWN IS SLOWER THAN GOING UP. Backing off must be prompt -- the
+// queue is already growing when this notices. Relaxing must not be, because a
+// queue that has just stopped growing is not evidence that the host is fast
+// again; it is evidence that the throttle is working. Decaying quickly would
+// re-admit at the old rate and oscillate.
+//
+// WHAT IT CANNOT DO. It never subtracts from the manual floor, and it is capped
+// at proc_auto_max_us. The failure it is being bounded against is the dangerous
+// one: pipe.waiting also grows for reasons that are not host slowness -- a
+// camera stall, a real fault -- and an unbounded controller would throttle
+// toward zero, leaving a machine that reports no unjudged parts, no halt and no
+// production. That looks like success. So the bound exists, hitting it is
+// COUNTED, and how much has been added is reported: a loop that is working and
+// a loop that has run away must not look the same on a screen.
+static void procAutoService()
+{
+  if(!GATE_PROC_AUTO)
+  {
+    if(GATE_PROC_AUTO_ADD_US){ GATE_PROC_AUTO_ADD_US=0; GATE_PROC_DW_MQ=0; }
+    return;
+  }
+  static int64_t  last_ms = 0;
+  static int32_t  last_waiting = -1;
+  static uint32_t last_accept = 0;
+
+  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+  if(last_ms && now_ms - last_ms < 500) return;
+
+  // Only while judging. In any other state the queue is draining or empty and
+  // its slope says nothing about the host.
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY)
+  {
+    last_ms = now_ms; last_waiting = -1; last_accept = GATE_ACCEPT;
+    return;
+  }
+
+  int waiting = 0;
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p = RBuf.getTail(i);
+    if(p==NULL) break;
+    if(p->insp_status == insp_status_UNSET) waiting++;
+  }
+
+  static uint32_t last_camlat_n = 0;
+  static uint64_t last_camlat_sum = 0;
+  static int      bs_run = 0;        // consecutive samples of real queue growth
+
+  const int64_t dt_ms = last_ms ? (now_ms - last_ms) : 0;
+  if(last_waiting >= 0 && dt_ms >= 250)
+  {
+    // --- the primary signal: utilisation over this window -------------------
+    const uint32_t cl_n   = REP_CAMLAT_N;
+    const uint64_t cl_sum = REP_CAMLAT_SUM_US;
+    const uint32_t dn     = cl_n - last_camlat_n;
+    if(dn > 0)
+    {
+      GATE_PROC_SVC_US = (uint32_t)((cl_sum - last_camlat_sum) / dn);
+      // rho uses the ADMITTED rate, because that is the one thing this loop
+      // can actually change.
+      const int32_t r_now = (int32_t)(((int64_t)(GATE_ACCEPT - last_accept) * 1000000) / dt_ms);
+      GATE_PROC_RHO_PCT = (int32_t)(((int64_t)r_now * (int64_t)GATE_PROC_SVC_US) / 10000000LL);
+    }
+    last_camlat_n = cl_n; last_camlat_sum = cl_sum;
+
+    // Queue growth in milli-objects per second, and the admitted rate over the
+    // same window. Both from counters this loop owns, so they cover exactly the
+    // same interval -- mixing a fresh queue reading with a stale rate is how a
+    // controller ends up reacting to arithmetic.
+    const int32_t dW_mq = (int32_t)(((int64_t)(waiting - last_waiting) * 1000000) / dt_ms);
+    const int32_t r_mq  = (int32_t)(((int64_t)(GATE_ACCEPT - last_accept) * 1000000) / dt_ms);
+    GATE_PROC_DW_MQ = dW_mq;
+
+    // 500 milli-objects/s of growth is the deadband: below it the queue is
+    // wandering, not climbing, and a controller that acts on wander is noise.
+    // --- what rho asks for --------------------------------------------------
+    //
+    // Hold rho at the target, i.e. admit no faster than service/target. This is
+    // PROACTIVE: it applies whether or not anything is backing up, which is the
+    // entire point of steering by the cause. Only ever added to the manual
+    // floor, never subtracted from it.
+    uint32_t want = 0;
+    if(GATE_PROC_SVC_US > 0 && GATE_PROC_RHO_TARGET > 0)
+    {
+      const uint64_t eff_us = (uint64_t)GATE_PROC_SVC_US * 100 / (uint32_t)GATE_PROC_RHO_TARGET;
+      want = (eff_us > GATE_PROC_SEP_US) ? (uint32_t)(eff_us - GATE_PROC_SEP_US) : 0;
+    }
+
+    // --- the backstop: the queue is growing anyway --------------------------
+    //
+    // Kept, demoted, and fenced. rho is an estimate and can be wrong -- a
+    // stalled camera, a service time the report path does not see -- and a
+    // climbing queue is direct evidence that whatever rho believes, the machine
+    // is behind. It can only ever ask for MORE throttle than rho did.
+    //
+    // THE FENCE EXISTS BECAUSE THE FIRST VERSION HAD NONE, and the backstop ate
+    // the loop. Its deadband was a flat 0.5 objects/s, which is reasonable
+    // against an admission rate of 20/s and is pure noise against 1.4/s -- and
+    // 1.4/s is exactly where the loop sits once it has throttled. Worse, it
+    // derived the service rate as (r - dW): with r small, any wobble drove that
+    // to zero and it asked for the bound. Measured: the floor jumped 149ms ->
+    // 907ms at one step and then never came down, because every recovery window
+    // was re-inflated by the same noise. rho was asking for 33ms throughout.
+    //
+    // So the queue now has to be growing at a rate COMPARABLE TO ADMISSION, not
+    // merely non-zero; it has to do so for three samples running, so a single
+    // wobble is not evidence; and it can never ask for more than four times
+    // what rho asked for, so an estimate built on a small r cannot run away.
+    const int32_t dead_mq = (r_mq / 3 > 1000) ? (r_mq / 3) : 1000;
+    if(dW_mq > dead_mq && r_mq > 0) bs_run++; else bs_run = 0;
+    if(bs_run >= 3)
+    {
+      const int32_t s_mq = r_mq - dW_mq;          // the host's service rate
+      uint32_t bs;
+      if(s_mq <= 0)
+      {
+        // Serving nothing measurable. Do not divide by it -- ask for the bound
+        // and let the cap and its counter make that visible.
+        bs = GATE_PROC_AUTO_MAX_US;
+      }
+      else
+      {
+        const uint64_t target_us = (uint64_t)1000000000ULL * 115 / (uint32_t)s_mq / 100;
+        bs = (target_us > GATE_PROC_SEP_US) ? (uint32_t)(target_us - GATE_PROC_SEP_US) : 0;
+      }
+      // Bounded by rho's own answer. When rho has no answer at all (no reports
+      // in this window) the backstop is the only signal there is, so it stands
+      // alone -- that is the stalled-camera case it exists for.
+      if(want > 0)
+      {
+        const uint32_t ceil4 = (want > GATE_PROC_AUTO_MAX_US / 4)
+                             ? GATE_PROC_AUTO_MAX_US : want * 4;
+        if(bs > ceil4) bs = ceil4;
+      }
+      if(bs > want) want = bs;
+    }
+
+    if(want > GATE_PROC_AUTO_MAX_US) want = GATE_PROC_AUTO_MAX_US;
+    // UP FAST, DOWN SLOW. Backing off must be prompt; relaxing must not be,
+    // because a machine that has stopped falling behind is evidence that the
+    // throttle is working, not that the host got quicker. A quarter of the way
+    // up per sample, a thirty-second of the way down.
+    if(want > GATE_PROC_AUTO_ADD_US)
+    {
+      GATE_PROC_AUTO_ADD_US += (want - GATE_PROC_AUTO_ADD_US) / 4 + 1;
+      if(GATE_PROC_AUTO_ADD_US >= GATE_PROC_AUTO_MAX_US)
+      {
+        GATE_PROC_AUTO_ADD_US = GATE_PROC_AUTO_MAX_US;
+        GATE_PROC_AUTO_CAP_N++;
+      }
+    }
+    else if(want < GATE_PROC_AUTO_ADD_US)
+    {
+      const uint32_t give = (GATE_PROC_AUTO_ADD_US - want) / 32 + 1;
+      GATE_PROC_AUTO_ADD_US = (GATE_PROC_AUTO_ADD_US > give)
+                            ? (GATE_PROC_AUTO_ADD_US - give) : 0;
+    }
+  }
+
+  last_ms = now_ms; last_waiting = waiting; last_accept = GATE_ACCEPT;
+}
+
 static void recalService()
 {
   if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
@@ -6304,6 +6549,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // The filter belongs to the run, for the same reason the unanswered budget
     // does: a stale average from the previous run is not evidence about this one.
     GATE_REJ_LOAD=0; GATE_PROC_AVG_US=0;
+    GATE_PROC_AUTO_ADD_US=0; GATE_PROC_AUTO_CAP_N=0; GATE_PROC_DW_MQ=0;
+    GATE_PROC_RHO_PCT=0; GATE_PROC_SVC_US=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     GATE_DISCARD_STOP=0;
@@ -6734,6 +6981,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jG["rej_load"]=GATE_REJ_LOAD;
       jG["proc_sep_us"]=GATE_PROC_SEP_US;
       jG["proc_avg_us"]=GATE_PROC_AVG_US;
+      // The auto term, and enough to tell a working loop from a runaway: how
+      // much it has added, what is actually in force, the growth it is reacting
+      // to, and how often it has sat at the bound.
+      jG["proc_auto"]=(bool)GATE_PROC_AUTO;
+      jG["proc_auto_add_us"]=GATE_PROC_AUTO_ADD_US;
+      jG["proc_eff_us"]=gateProcSepEff();
+      jG["proc_auto_cap_n"]=GATE_PROC_AUTO_CAP_N;
+      jG["proc_dw_mq"]=GATE_PROC_DW_MQ;
+      jG["proc_rho_pct"]=GATE_PROC_RHO_PCT;
+      jG["proc_svc_us"]=GATE_PROC_SVC_US;
       jG["rej_dist"]=GATE_REJ_DIST;
       jG["rej_busy"]=GATE_REJ_BUSY;
       jG["disabled"]=(bool)GATE_DISABLED;
@@ -8882,6 +9139,7 @@ void firmwareLoop()
   { SEG_BEGIN();
   syncPulseService();
   spinupService();
+  procAutoService();
   recalService();
   // Beside it, not inside it: recalService decides whether to ASK, this decides
   // whether the asking worked. Separating them keeps the idle guard from having
@@ -9500,6 +9758,9 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["min_detect_dist_um"]=GATE_MIN_DIST_um;
     jGT["proc_sep_us"]=GATE_PROC_SEP_US;
     jGT["proc_iir_shift"]=GATE_PROC_IIR_SHIFT;
+    jGT["proc_auto"]=(bool)GATE_PROC_AUTO;
+    jGT["proc_auto_max_us"]=GATE_PROC_AUTO_MAX_US;
+    jGT["proc_auto_rho_pct"]=GATE_PROC_RHO_TARGET;
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
@@ -9701,7 +9962,7 @@ static const char *const K_PLATE[] =
 static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
    "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
-   "proc_iir_shift",NULL};
+   "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -9936,6 +10197,22 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   JSON_SETIF_ABLE(GATE_PROC_SEP_US,jGT,"proc_sep_us");
+  JSON_SETIF_ABLE(GATE_PROC_AUTO_MAX_US,jGT,"proc_auto_max_us");
+  if(jGT["proc_auto_rho_pct"].is<int>())
+  {
+    // Clamped: 100 is saturation itself, where the queue is only marginally
+    // stable, and anything above it asks to be behind on purpose.
+    int v = jGT["proc_auto_rho_pct"];
+    GATE_PROC_RHO_TARGET = (v < 10) ? 10 : ((v > 95) ? 95 : v);
+  }
+  if(jGT["proc_auto"].is<bool>())
+  {
+    const bool on = jGT["proc_auto"];
+    // Turning it off drops what it had added, rather than leaving the machine
+    // throttled by a loop that is no longer running.
+    if(!on){ GATE_PROC_AUTO_ADD_US=0; GATE_PROC_DW_MQ=0; }
+    GATE_PROC_AUTO = on;
+  }
   if(jGT["proc_iir_shift"].is<int>())
   {
     // Clamped, not refused -- it arrives from a field. 0 would make the "filter"
