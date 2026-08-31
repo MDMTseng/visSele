@@ -33,12 +33,35 @@ ok('play reaches INSP_MODE', !!entered, String(entered));
 
 section('the machine actually produces');
 if (entered) {
-  // A REAL trigger, without moving anything.
+  // A REAL trigger, without moving anything -- AND WHAT THAT CANNOT PROVE.
   //
   // The plate is what makes parts arrive, and starting it moves hardware -- not
   // something a check should do on its own. trig_phantom_pulse is the part
-  // SIGNAL only: the core captures and inspects a real frame from the real
-  // camera, and nothing turns. That is exactly the half worth testing here.
+  // SIGNAL only, so it looked like the half worth testing here.
+  //
+  // It is not, and the firmware says so at phantomEmitOne():
+  //
+  //     Ask; do not emit. [...] The pulse lands on the next timer tick.
+  //     With the timer alarm off (PLATE_FREQ_CURRENT==0) the request simply
+  //     waits. Nothing is lost: a phantom's stage tasks are scheduled at
+  //     future step counts, so on a stationary plate it could never have
+  //     reached its camera either.
+  //
+  // So on a stopped plate every request queues and nothing is ever inspected.
+  // Measured 2026-08-31: 14 signals sent, 0 reports, and `ph_pend` standing at
+  // 33 with every gate counter -- accept, rej_rate, rej_busy, rej_blocked --
+  // unmoved, because newPulseEvent was never reached.
+  //
+  // This check asserted reports anyway. That is a check that can only fail, and
+  // it had been passing as SKIP purely because the console it needs was usually
+  // closed -- so opening the console did not reveal a machine fault, it
+  // revealed the check. A suite whose red light means "the plate is stopped"
+  // teaches people to ignore it, which is worse than not having the assertion.
+  //
+  // So: assert what a stopped plate CAN establish -- that the board accepted
+  // the signal and is holding it -- and let 快速驗證 below carry the real
+  // question (does the camera produce frames and the engine produce verdicts),
+  // which it already answers without moving anything.
   const before = await ev(`(function(){try{return window.__DIAG__().msgHz;}catch(e){return -1;}})()`);
   console.log('   msgHz before any trigger:', before);
   await ev(`window.__RC__ = 0; (function(){ var s = window.__GP_STORE__;
@@ -59,14 +82,39 @@ if (entered) {
       + ' -- no phantom triggers available (that console is not open)'); res(); });
   });
   await sleep(1500);
+  // The board's own account of what happened to those requests.
+  const pend = await new Promise((res) => {
+    const sock = net.connect(4099, '127.0.0.1');
+    let buf = '';
+    sock.on('connect', () => sock.write(JSON.stringify({ type: 'poll' }) + String.fromCharCode(10)));
+    sock.on('data', (d) => { buf += d.toString();
+      const m = /"ph_pend"\s*:\s*(\d+)/.exec(buf);
+      if (m) { sock.end(); res(Number(m[1])); } });
+    sock.on('error', () => res(null));
+    setTimeout(() => { try { sock.end(); } catch (e) {} res(null); }, 3000);
+  });
   const n = await ev(`window.__RC__||0`);
   const after = await ev(`(function(){try{var d=window.__DIAG__();return d.msgHz+' Hz, '+d.imgKBps+' KB/s';}catch(e){return '?';}})()`);
   console.log('   wire after triggers:', after);
   // SKIPPED, not failed, when there is no console to trigger through: 4099 is
   // the peripheral console, and without it the only part signal is the real
   // plate -- which moves hardware and is not this check's business.
-  ok('inspection reports arrive when a part is signalled',
-     phantomSent ? (n > 0) : null, `report actions=${n}`);
+  //
+  // Two outcomes are both correct here, and which one applies is decided by the
+  // plate, not by the machine's health:
+  //   plate turning -> the requests drain and reports arrive.
+  //   plate stopped -> they queue, ph_pend rises, and no report is possible.
+  // Asserting the first unconditionally is what made this leg lie.
+  if (phantomSent && pend !== null && pend > 0 && n === 0) {
+    console.log(`   plate is stopped -- ${pend} phantom signals queued (ph_pend),`
+              + ' waiting for a plate tick. Reports need the plate turning;'
+              + ' 快速驗證 below covers camera+engine without it.');
+    ok('the board accepted the part signals and is holding them', pend > 0,
+       `ph_pend=${pend}`);
+  } else {
+    ok('inspection reports arrive when a part is signalled',
+       phantomSent ? (n > 0) : null, `report actions=${n}, ph_pend=${pend}`);
+  }
   ok('the canvas is drawing', await ev(
     `(function(){var c=document.querySelector('canvas'); if(!c) return false;
        var r=c.getBoundingClientRect(); return r.width>100 && r.height>100;})()`));
