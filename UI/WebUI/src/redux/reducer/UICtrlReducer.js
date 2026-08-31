@@ -1196,8 +1196,16 @@ function StateReducer(newState, action) {
                 //
                 // Nothing here decides what to do about it. The save path does,
                 // because that is the last moment a def can still be fixed.
-                const touched = ['def_image_reg', 'roi_refine_points']
-                  .filter((k) => k in action.data);
+                // roi_refine_points is NOT here, and that is the point.
+                //
+                // They are attached to the feature set after extraction, never
+                // fed into it, and the core rebuilds them from the def on every
+                // cache load -- so moving one has never changed a feature. It
+                // was listed anyway, which meant adding a refine point marked
+                // the whole set stale and demanded a regeneration that produced
+                // byte-identical features. The core's fingerprint dropped them
+                // in the same change.
+                const touched = ['def_image_reg'].filter((k) => k in action.data);
                 if (touched.length && newState.edit_info.__shape_cache
                     && !newState.edit_info.__shape_stale) {
                   newState.edit_info.__shape_stale = touched.join('+');

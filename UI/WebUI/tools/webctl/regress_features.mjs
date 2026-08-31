@@ -176,7 +176,11 @@ async function toViewfinder(name) {
   section('the studio reflects the def, not a visited flag');
   if (await P.exists('sbm2')) {
     ok('progress starts at step 1', (await P.attr('sbm2', 'data-step')) === '1');
-    ok('nothing is marked done', (await P.attr('sbm2', 'data-done')) === '000');
+    // Four steps since ROI joined the sequence, and none of them is done on a
+    // fresh capture -- including ROI, which mirrors the feature step rather
+    // than gating on points of its own.
+    ok('nothing is marked done', (await P.attr('sbm2', 'data-done')) === '0000',
+       `data-done=${await P.attr('sbm2', 'data-done')}`);
 
     // Step 3's block is collapsed until it is current, so its button is not in
     // the DOM. Asserting on an absent element reads as "not disabled" -- the

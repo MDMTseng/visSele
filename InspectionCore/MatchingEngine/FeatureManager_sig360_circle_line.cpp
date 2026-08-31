@@ -7135,11 +7135,28 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 
 // Everything that would change the extracted features. If any of it moves, the
 // cache is stale and we re-extract -- loudly, never silently.
+// THE ROI POINTS ARE NOT PART OF THIS.
+//
+// They used to be, and it cost a re-extraction for something that does not
+// change a single extracted feature. sbm::extractFeatures never sees them: they
+// are attached to the FeatureSet afterwards as user_opt_points, and the CACHE
+// PATH ALREADY REBUILDS THEM FROM THE DEF on every load (see the note beside
+// cached.user_opt_points -- it has to, because the def may have been edited
+// since the cache was written).
+//
+// So a def whose only change was an ROI point had its whole feature set
+// invalidated, and outside the studio re-extraction is refused -- meaning the
+// def quietly fell back to sig360 for a setting that was never a feature input.
+//
+// `legacy` reproduces the old string so a cache written before this change is
+// still accepted: the features in it are correct, they were only fingerprinted
+// against something that did not belong. Remove the parameter once no def in
+// the field carries a v1-with-roi cache.
 static std::string shape_cache_fingerprint(const cv::Mat &templ,
                                            int num_features, const std::vector<int> &pyrT,
                                            float weak, float strong,
                                            const std::vector<acv_XY> &roi_pts, bool roi_set,
-                                           float angle_offset_deg)
+                                           float angle_offset_deg, bool legacy = false)
 {
   // Image identity: dimensions plus a cheap content sum. Not cryptographic --
   // it only has to notice "somebody swapped the reference picture".
@@ -7147,11 +7164,18 @@ static std::string shape_cache_fingerprint(const cv::Mat &templ,
   char buf[512];
   std::string pyr;
   for (size_t i = 0; i < pyrT.size(); i++) pyr += std::to_string(pyrT[i]) + ",";
+  if (!legacy)
+  {
+    snprintf(buf, sizeof(buf), "v1|%dx%d|%.0f|nf%d|T%s|w%.2f|s%.2f|ao%.4f",
+             templ.cols, templ.rows, sum, num_features, pyr.c_str(), weak, strong,
+             angle_offset_deg);
+    return std::string(buf);
+  }
+  // The pre-2026-08-30 string, kept only so an existing cache still matches.
   snprintf(buf, sizeof(buf), "v1|%dx%d|%.0f|nf%d|T%s|w%.2f|s%.2f|roi%d:%zu|ao%.4f",
            templ.cols, templ.rows, sum, num_features, pyr.c_str(), weak, strong,
            roi_set ? 1 : 0, roi_pts.size(), angle_offset_deg);
   std::string fp(buf);
-  // The ROI points participate: they change which refine samples are chosen.
   for (const acv_XY &p : roi_pts)
   {
     snprintf(buf, sizeof(buf), "|%.4f,%.4f", p.x, p.y);
@@ -7730,7 +7754,21 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
                                                    roi_pts_mm, roi_pts_set, angle_offset_deg);
     sbm::FeatureSet cached;
     cv::Rect ccrop; cv::Point2f corg;
-    if (shape_cache_load(shape_cache_in, fp, cached, ccrop, corg))
+    bool hit = shape_cache_load(shape_cache_in, fp, cached, ccrop, corg);
+    if (!hit)
+    {
+      // A def saved before the ROI points left the fingerprint. Its features are
+      // right; only the string they were stamped with is old. Accepting it is
+      // what stops this change from re-extracting every def in the field once.
+      const std::string legacy =
+        shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
+                                shape_weak_thres, shape_strong_thres,
+                                roi_pts_mm, roi_pts_set, angle_offset_deg, true);
+      hit = shape_cache_load(shape_cache_in, legacy, cached, ccrop, corg);
+      if (hit) LOGI("[shape] cache accepted on the pre-ROI-split fingerprint; "
+                    "it will be re-stamped on the next 生成特徵點");
+    }
+    if (hit)
     {
       // The crop must still be inside this image; a cache whose geometry does
       // not fit the sidecar is stale in a way the fingerprint cannot see.

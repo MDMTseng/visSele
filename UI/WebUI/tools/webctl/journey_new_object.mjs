@@ -220,7 +220,7 @@ const clickWorld = async (w) => {
     ok('the studio opens on the captured frame',
        await P.waitExists('sbm2', { timeout: 30000 }));
     ok('the def is a new object', (await P.store(`${EI}.DefFileName`)) === NAME);
-    ok('with nothing carried over', (await P.attr('sbm2', 'data-done')) === '000',
+    ok('with nothing carried over', (await P.attr('sbm2', 'data-done')) === '0000',
        `data-done=${await P.attr('sbm2', 'data-done')}`);
   }
 
@@ -416,7 +416,9 @@ const clickWorld = async (w) => {
        `data-features=${await P.attr('sbm2', 'data-features')}`);
     ok('the def now carries a feature cache', !!(await P.store(`${EI}.__shape_cache`)));
     ok('and the cache is not stale', !(await P.store(`${EI}.__shape_stale`)));
-    ok('all three steps are done', (await P.attr('sbm2', 'data-done')) === '111',
+    // Four now: ROI joined the sequence. It mirrors step 3 rather than gating,
+    // because "no explicit points" is a complete configuration, not an unfinished one.
+    ok('every step is done', (await P.attr('sbm2', 'data-done')) === '1111',
        `data-done=${await P.attr('sbm2', 'data-done')}`);
   }
 
