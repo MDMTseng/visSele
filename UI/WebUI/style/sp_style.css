@@ -691,3 +691,30 @@ body.sp_Style.blockS  {
 .variation2:hover span:after {
   color: #80e1ff;
 }
+
+
+/* uInsp control panel: wide, and against the right edge.
+   Alignment belongs on the WRAP, not on .ant-modal: antd centres the dialog
+   with `margin: 0 auto` and positions it with a `top` on the modal itself, so
+   an inline right/position on the dialog fights both. Flexing the wrap moves
+   the dialog without touching the rules antd owns, and it keeps working when
+   the dialog is resized.
+   Right rather than centred because this panel is read WHILE watching the
+   machine view it used to cover -- numbers on one side, the thing they describe
+   on the other. */
+.uinsp-modal-right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 16px 16px 16px 0;
+}
+.uinsp-modal-right .ant-modal {
+  top: 0;
+  margin: 0;
+  padding-bottom: 0;
+  max-width: calc(100vw - 32px);
+  /* On a Surface Go the requested width is wider than the screen, and the cap
+     above is what makes that safe -- the dialog shrinks instead of pushing the
+     page sideways. Stated because the width prop and this line are one
+     decision: raise the width, this is what keeps it from breaking small. */
+}

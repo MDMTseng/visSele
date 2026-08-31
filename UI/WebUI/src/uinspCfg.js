@@ -33,6 +33,8 @@ export const CFG_GROUP = {
   gate_debounce_rise:    ["gate", "debounce_rise"],
   gate_debounce_fall:    ["gate", "debounce_fall"],
   min_detect_dist_um:    ["gate", "min_detect_dist_um"],
+  gate_proc_sep_us:      ["gate", "proc_sep_us"],
+  gate_proc_iir_shift:   ["gate", "proc_iir_shift"],
 
   report_match_ts:       ["cam", "report_match_ts"],
   // report_match_pcnt is NOT mapped any more: pulse-count pairing was removed
@@ -51,6 +53,7 @@ export const CFG_GROUP = {
   // "stop_only" | "none"; the firmware still parses the older names.
   skip_policy_mode:      ["skip_policy", "mode"],
   unanswered_stop_after: ["skip_policy", "stop_after"],
+  nomatch_stop_after:    ["skip_policy", "nomatch_stop_after"],
 };
 
 // [group, key] -> flat name

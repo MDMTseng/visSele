@@ -128,17 +128,38 @@ const DEFAULT_START_FREQ = 8000;
 // armed for a hardware line nobody drives is worse than a failed snapshot --
 // everything that expects free-run then silently has no frames.
 function snapWithBoardTrigger(api, dispatch, CORE_ID) {
-  if (!api || typeof api.camSnapWithLight !== 'function')
-    return Promise.reject(new Error('韌體或介面不支援 camSnapWithLight'));
-  const setTrig = (mode) => new Promise((resolve) => {
-    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, 'ST', 0,
-      { CameraSetting: { trigger_mode: mode } }, undefined,
-      { resolve, reject: resolve }));
+  // ONE REQUEST, AND THE CORE OWNS THE CAMERA.
+  //
+  // This used to run the sequence itself: ST trigger_mode 2, ask the board to
+  // flash and pulse, ST trigger_mode back. The restore was a hardcoded 1, and
+  // mode 1 is the mode that DISCARDS frames -- so pressed from inside a running
+  // inspection it dropped the camera out of the session's mode into the one
+  // that throws every frame away. The board kept flashing, no image arrived,
+  // and the clock calibration could not finish because it needs one frame per
+  // sync pulse. From the line: "the light flashes but nothing comes in, and
+  // refreshing the page fixes it" -- refreshing re-enters the session, which
+  // re-issues the right mode.
+  //
+  // The panel could not have got this right. Which mode to restore depends on
+  // whether a session is running and which kind, and this panel does not know
+  // that -- the core does. So the panel now asks for what it wants, a lit
+  // frame, and the core saves the mode, switches, drives the board and puts it
+  // back on a deadline (see cam_snap_lit in wiringPanel).
+  return new Promise((resolve, reject) => {
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, 'SC', 0, { type: 'cam_snap_lit' },
+      undefined, {
+        resolve: (pkts) => {
+          const p = (pkts || []).find((q) => q && q.data && q.data.type === 'cam_snap_lit');
+          const d = p && p.data;
+          // An older core does not know this command and answers nothing that
+          // matches. Say so instead of reporting a snapshot that never happened.
+          if (!d) { reject(new Error('這個核心版本沒有 cam_snap_lit(需要更新 core)')); return; }
+          if (d.err) { reject(new Error(d.err)); return; }
+          resolve(d);
+        },
+        reject: (e) => reject(e instanceof Error ? e : new Error(String(e))),
+      }));
   });
-  return setTrig(2)
-    .then(() => api.camSnapWithLight())
-    .then((r) => setTrig(1).then(() => r),
-      (e) => setTrig(1).then(() => { throw e; }));
 }
 
 const LIGHT_HOLD_MS = 300000;
@@ -309,7 +330,7 @@ const HIST_W = { label: 88, n: 78, feed: 84 };
 // it is being read as a sorting fault rather than as the machine simply running
 // out of time. Stated as a margin, it is a number that can be watched BEFORE it
 // becomes a defect.
-function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
+function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, statSince }) {
   const n0v = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
   const has = (v) => typeof v === 'number' && isFinite(v);
 
@@ -324,6 +345,23 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
 
   const lat  = (stat && stat.report_latency) || {};
   const pipe = (stat && stat.pipe) || {};
+  // WHERE THE PAIRING ACTUALLY HAPPENS.
+  //
+  // This section used to read matched / pending / drops / offset_ms out of the
+  // core's perif_pairing. The core does not have them any more and has not for
+  // a while: the frame<->object match moved into the firmware, which is the
+  // side that fired the trigger and therefore knows the object and the instant.
+  // The core's item still exists and still carries link health, the verdict
+  // path and the latency histogram -- so nothing threw, every field simply read
+  // undefined, n0v turned that into 0, and the panel reported perfect silence.
+  //
+  // cam_sync is the board's own account of the same thing, and this strip is
+  // already polling it in get_running_stat.
+  const sync = (stat && stat.cam_sync) || null;
+  const health = (stat && stat.health) || {};
+  const sp = (cfg && cfg.skip_policy) || {};
+  const skipStop = sp.stop_after;
+  const nomatchStop = sp.nomatch_stop_after;
   const hz   = n0v(cfg && cfg.plate_freq);
   const off  = (cfg && cfg.stage_pulse_offset) || {};
   // Budget = camera to deadline. Both are stage-timer ticks at 2x plate_freq.
@@ -340,8 +378,31 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
   // The worst case is still the one that produces a defect, so it stays. It
   // just cannot be the only number, or "how is it running" has no answer on
   // this panel. Average first, worst second.
-  const spentMs  = has(lat.max_us) ? lat.max_us / 1000 : NaN;
-  const spentAvgMs = has(lat.avg_us) ? lat.avg_us / 1000 : NaN;
+  //
+  // AND cam_*, not the bare pair, because they are measured from different
+  // instants. The firmware keeps two clocks on every report and says so at the
+  // serialiser: avg_us/max_us run from trig_us, "Registration wall time ... for
+  // the gate->report latency stat" -- the GATE. cam_avg_us/cam_max_us run from
+  // cam_us, and carry the comment "From the camera trigger: the electronics
+  // alone, directly comparable to the CAM->SWITCH budget. avg_us above is NOT."
+  //
+  // This panel read the gate pair under a heading that says 相機 → SWITCH and
+  // subtracted it from a budget measured CAM1_on -> SWITCH. The difference is
+  // the part's ride from the gate to the camera, which is MECHANICAL: at 10000
+  // (tick rate 20000/s) and CAM1_on at 8010 ticks it is ~400ms, and it DOUBLES
+  // when the plate is slowed down. So the margin got worse the more you backed
+  // off the speed, and the reading looked like inspection compute time getting
+  // slower under load when it was the part taking longer to walk to the camera.
+  // Reported from the line in exactly those words.
+  //
+  // Fall back to the gate pair only when the board is too old to send cam_*,
+  // and label it, rather than silently showing a number that means something
+  // else under the same heading.
+  const camLat = has(lat.cam_avg_us);
+  const avgUs = camLat ? lat.cam_avg_us : lat.avg_us;
+  const maxUs = camLat ? lat.cam_max_us : lat.max_us;
+  const spentMs  = has(maxUs) ? maxUs / 1000 : NaN;
+  const spentAvgMs = has(avgUs) ? avgUs / 1000 : NaN;
   const marginMs = (isFinite(budgetMs) && isFinite(spentMs)) ? budgetMs - spentMs : NaN;
   const marginAvgMs = (isFinite(budgetMs) && isFinite(spentAvgMs)) ? budgetMs - spentAvgMs : NaN;
 
@@ -381,10 +442,17 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
       {hz > 0 ? <Row label="轉速"
                      value={`${plateRpm(hz).toFixed(1)} rpm · ${plateMmS(hz).toFixed(0)} mm/s`} /> : null}
 
-      <Head>判定期限（相機 → SWITCH）</Head>
+      <Head>判定期限（相機 → SWITCH）{camLat ? '' : ' · 舊韌體:以閘門起算'}</Head>
       <Row label="可用時間" value={isFinite(budgetMs) ? `${budgetMs.toFixed(0)} ms` : '—'} />
       <Row label="回報 平均 / 最慢"
-           value={has(lat.avg_us) ? `${(lat.avg_us/1000).toFixed(1)} / ${(lat.max_us/1000).toFixed(1)} ms` : '—'} />
+           value={has(avgUs) ? `${(avgUs/1000).toFixed(1)} / ${(maxUs/1000).toFixed(1)} ms` : '—'} />
+      {/* The gate pair, kept but named for what it is. It includes the ride
+          from the gate to the camera, so it grows when the plate slows down --
+          useful as a total dwell, useless as a budget. */}
+      {camLat && has(lat.avg_us)
+        ? <Row label="含進料段" sub="閘門起算"
+               value={`${(lat.avg_us/1000).toFixed(1)} / ${(lat.max_us/1000).toFixed(1)} ms`} />
+        : null}
       {/* Red once the slowest report has eaten the budget: past zero, a part
           reaches SWITCH with nothing decided about it. */}
       <Row label="餘裕 平均 / 最慢"
@@ -393,32 +461,78 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, pairing, stat, cfg }) {
                + `${isFinite(marginMs) ? marginMs.toFixed(0) : '—'} ms`
              : '—'}
            warn={isFinite(marginAvgMs) && marginAvgMs <= 0} />
+      {/* THE TWO WAYS RUNNING OUT OF TIME ACTUALLY SHOWS UP, and how much room
+          is left before either stops the line. A late verdict lands on one side
+          or the other depending on whether its object was still there: past
+          SWITCH it is an unjudged part (device error 2, the unanswered counter);
+          past the sweep the object is gone and the report matches nothing.
+          Both are bounded by a consecutive count, and neither bound was visible
+          anywhere -- so the first sign of either was the machine stopping. */}
+      <Head>逾時餘量</Head>
+      <Row label="無判決 連續 / 上限"
+           value={`${n0v(health.consec_unanswered)} / ${has(skipStop) ? skipStop : '—'}`}
+           warn={has(skipStop) && n0v(health.consec_unanswered) >= skipStop - 1} />
+      <Row label="對不上物件 連續 / 上限"
+           value={`${n0v(cnt.NOMATCH_CONSEC)} / ${has(nomatchStop) ? nomatchStop : '—'}`}
+           warn={has(nomatchStop) && n0v(cnt.NOMATCH_CONSEC) >= nomatchStop - 1} />
+      {/* The host-side admission layer, shown only when it is switched on. The
+          average is the number that says whether the loop is settled: parked at
+          the floor is the loop working; well above it with rej_load climbing is
+          something else turning parts away. */}
+      {has(gate && gate.proc_sep_us) && gate.proc_sep_us > 0 ? (<>
+        <Row label="進料抑制 已擋" value={exactN(n0v(gate.rej_load))} />
+        <Row label="濾波間隔 / 下限"
+             value={`${(n0v(gate.proc_avg_us)/1000).toFixed(0)} / `
+                  + `${(gate.proc_sep_us/1000).toFixed(0)} ms`} />
+      </>) : null}
       {has(pipe.waiting) || has(pipe.registered)
         ? <Row label="在製 等待 / 登記"
                value={`${n0v(pipe.waiting)} / ${n0v(pipe.registered)}`} /> : null}
+      {/* THE AVERAGE IS SINCE THE LAST RESET, AND THE MAXIMUM IS A HIGH-WATER.
+          avg_us is REP_LAT_SUM_US / REP_LAT_N and max_us is a peak-hold, both
+          running since the board booted -- so the pair can only ever climb, and
+          slowing the plate down cannot bring either back. A number that only
+          goes up reads as a machine that is degrading whether or not it is.
+          The window has to be resettable for the reading to mean anything, and
+          it has to SAY which window it is. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 2px' }}>
+        <span style={{ fontSize: 11, color: '#8c8c8c', flex: '1 1 auto' }}>
+          {statSince ? `統計自 ${statSince} 起` : '統計自開機起'}</span>
+        <Button size="small" data-testid="uinsp-reset-latency"
+                onClick={onResetStat}>重置統計</Button>
+      </div>
 
-      <Head>時間配對（核心）</Head>
-      {pairing ? (<>
+      <Head>時間配對（裝置）</Head>
+      {sync ? (<>
         {/* ZERO RESIDUAL AND NO RESIDUAL ARE NOT THE SAME READING, and this
-            printed them the same way. n0v turns an absent value into 0, and 0 is
-            this metric's IDEAL -- so a pairing that never ran displayed as
-            perfect timing. Seen tonight: 殘差 0/0 µs sitting directly above
-            已配對 0, which is the line that says the 0 above means nothing.
-            A metric whose failure mode looks like its best case cannot be
-            watched, so with nothing matched it now says so instead. */}
+            printed them the same way. n0v turns an absent value into 0, and 0
+            is this metric's IDEAL -- so a pairing that never ran displayed as
+            perfect timing. With nothing established it says so instead. */}
         <Row label="殘差 現在 / 最大"
-             value={n0v(pairing.matched) > 0
-               ? `${Math.round(n0v(pairing.resid_last_us))} / ${Math.round(n0v(pairing.resid_max_us))} µs`
+             value={n0v(sync.established) > 0
+               ? `${Math.round(n0v(sync.resid_us))} / ${Math.round(n0v(sync.resid_max_us))} µs`
                : '尚未配對'} />
-        <Row label="已配對" value={exactN(n0v(pairing.matched))}
-             warn={n0v(pairing.matched) === 0} />
-        <Row label="待配 / 丟棄"
-             value={`${n0v(pairing.pending)} / ${n0v(pairing.drops)}`}
-             warn={n0v(pairing.drops) > 0} />
-        {has(pairing.offset_ms)
-          ? <Row label="時鐘偏移" value={`${pairing.offset_ms.toFixed(1)} ms`}
-                 warn={pairing.offset_valid === false} /> : null}
-      </>) : <Row label="—" value="核心尚未回報" />}
+        {/* The number the match window should be set against: how much of it a
+            frame actually needed. Hundreds of µs against a window in the
+            thousands is real margin; creeping toward the window is not. */}
+        <Row label="用掉視窗 / 視窗"
+             value={has(sync.window_us)
+               ? `${Math.round(n0v(sync.delta_max_us))} / ${Math.round(sync.window_us)} µs`
+               : '—'}
+             warn={n0v(sync.window_us) > 0
+                   && n0v(sync.delta_max_us) > n0v(sync.window_us) * 0.5} />
+        <Row label="已配對" value={exactN(n0v(sync.established))}
+             warn={n0v(sync.established) === 0} />
+        {/* rejected is a frame that landed outside the window; two in a row and
+            the machine stops on CAM_CLOCK_LOST. rebuilds counts the times it
+            reached that. Both zero is the normal reading. */}
+        <Row label="拒絕 / 重建"
+             value={`${n0v(sync.rejected)} / ${n0v(sync.rebuilds)}`}
+             warn={n0v(sync.rejected) > 0 || n0v(sync.rebuilds) > 0} />
+        {has(sync.offset_us)
+          ? <Row label="時鐘偏移" value={`${(sync.offset_us / 1000).toFixed(1)} ms`}
+                 warn={sync.valid === false} /> : null}
+      </>) : <Row label="—" value="裝置尚未回報" />}
 
       {(n0v(cnt.SKIP) > 0 || n0v(cnt.UNANSWERED) > 0) ? (<>
         <Head>未判定</Head>
@@ -577,6 +691,9 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // two disagree.
   const [speed, setSpeed] = useState(undefined);
   const [hzInput, setHzInput] = useState('');        // gate fire-rate cap, in parts/s
+  const [procHzInput, setProcHzInput] = useState(''); // host throughput cap, in parts/s
+  const [stopAfterInput, setStopAfterInput] = useState('');
+  const [nomatchAfterInput, setNomatchAfterInput] = useState('');
 
   // When the last poll actually answered. Age, not a failure count, because the
   // failure mode here is silence: a request whose reply never comes back leaves
@@ -670,6 +787,41 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const gate = stat ? stat.gate : undefined;
   const gateSepUs = gate ? gate.min_sep_us : cfg.min_detect_sep_us;
   const gateHz = gateSepUs > 0 ? Math.round(1000000 / gateSepUs) : undefined;
+  // The second layer, in the same units as the first so the two can be read
+  // against each other: it only ever makes sense BELOW the camera cap.
+  const procSepUs = gate ? gate.proc_sep_us : cfg.gate_proc_sep_us;
+  const procHz = procSepUs > 0 ? Math.round(1000000 / procSepUs) : undefined;
+  const procAvgHz = (gate && gate.proc_avg_us > 0)
+    ? 1000000 / gate.proc_avg_us : undefined;
+  // The report latency as a RATE, so it reads against the parts/s field. cam_*
+  // and not the bare pair, for the same reason the 判定期限 rows use it: the
+  // gate pair carries the part's mechanical ride to the camera, which is not
+  // work the host does and does not bound how fast it can be fed.
+  const rlat = (stat && stat.report_latency) || {};
+  // THE CONSTRAINT EVERY OTHER KNOB IN THIS CARD SERVES.
+  //
+  // A part is photographed at CAM1_on and must be judged by SWITCH. That gap is
+  // the whole budget, it is set by the plate speed, and it is what decides
+  // whether an unjudged part is a rare event or the normal outcome. Every other
+  // control here is a way of keeping the report inside it -- so it is shown
+  // first, not filed in a different card from the settings that answer to it.
+  const spoNow = (cfg && cfg.stage_pulse_offset) || {};
+  const budgetMs = (setpoint_freq > 0 && spoNow.SWITCH > 0 && spoNow.CAM1_on > 0)
+    ? ticksToMs(spoNow.SWITCH - spoNow.CAM1_on, setpoint_freq) : undefined;
+  const spentAvgMs = rlat.cam_avg_us > 0 ? rlat.cam_avg_us / 1000 : undefined;
+  const spentMaxMs = rlat.cam_max_us > 0 ? rlat.cam_max_us / 1000 : undefined;
+  const marginAvgMs = (budgetMs !== undefined && spentAvgMs !== undefined)
+    ? budgetMs - spentAvgMs : undefined;
+  const marginMaxMs = (budgetMs !== undefined && spentMaxMs !== undefined)
+    ? budgetMs - spentMaxMs : undefined;
+  const healthNow = (stat && stat.health) || {};
+  // The device's own answer to "would save_setup be accepted right now".
+  // Absent means yes. Undefined on old firmware, which reads as savable on
+  // purpose -- see the button.
+  const persistDeny = healthNow.cfg_persist_deny;
+  const cntNow = (stat && stat.count) || {};
+  const reportHz = rlat.cam_avg_us > 0 ? 1000000 / rlat.cam_avg_us : undefined;
+  const reportWorstHz = rlat.cam_max_us > 0 ? 1000000 / rlat.cam_max_us : undefined;
 
   // Poll running stats while the panel is open.
   //
@@ -1190,6 +1342,39 @@ build ${fw.build}`}>
         >清除錯誤</Button>
         <Button size="small" loading={busy === 'rst'}
           onClick={() => run('rst', (api) => api.resetRunningStat())}>歸零統計</Button>
+        {/* PULLED OUT OF THE CARDS, because it belongs to all of them.
+            Every settable field on this panel writes RAM and takes effect on
+            the next part; this is the only thing that makes any of it survive a
+            power cycle. It lived inside two collapsed cards, which meant the
+            step that keeps the work was reachable only from the card you
+            happened to be in -- and tuning done in a third card was lost with
+            no error, looking like the machine had drifted overnight.
+
+            Enabled state comes from the DEVICE, not from a rule copied here:
+            health.cfg_persist_deny is computed by the same function save_setup
+            calls, so the button cannot disagree with what would actually
+            happen. Absent = savable. Unknown (old firmware, no stat yet) stays
+            ENABLED -- a greyed-out button with no explanation is worse than a
+            press that comes back with the firmware's own refusal text. */}
+        <Tooltip title={persistDeny
+          ? `裝置現在不接受存檔:${persistDeny}`
+          : '把目前所有設定寫進板子的 NVS,才會撐過重開機'}>
+          <span>
+            <Button size="small" type={persistDeny ? 'default' : 'primary'}
+              loading={busy === 'savenvs'} disabled={!!persistDeny}
+              data-testid="uinsp-save-nvs"
+              onClick={() => run('savenvs', (api) => api.saveSetupToDevice())}
+            >存入 NVS</Button>
+          </span>
+        </Tooltip>
+        {persistDeny && (
+          <span style={{ alignSelf: 'center', fontSize: 11, color: '#c60' }}>
+            {persistDeny === 'must be in IDLE or INSPECTION_MODE_READY' ? '要先停下檢測才能存檔'
+             : persistDeny === 'set plate_freq to 0 first' ? '要先把轉速設為 0 才能存檔'
+             : persistDeny === 'plate still moving; wait until SYS_STEP_COUNT stops' ? '轉盤還在轉,停穩才能存檔'
+             : persistDeny}
+          </span>
+        )}
       </div>
 
       {/* Where the camera fires, in the only frame that matters: distance along
@@ -1371,10 +1556,51 @@ build ${fw.build}`}>
         {snapWhy ? <div style={{ color: '#cf1322', marginTop: 6 }}>{snapWhy}</div> : null}
       </FoldCard>
 
-      <FoldCard style={{ marginBottom: 8 }} title={<span>進料節流(閘門)
-        <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
-          「有觸發、沒影格」—— 那會讓主機的配對永久錯位,不是只掉一顆料。
-          這裡把進料速率壓在相機之下。</Why></span>}>
+      {/* ONE CARD, BECAUSE THESE SETTINGS ARE ONE DECISION.
+          The feed caps, the judging deadline and the stop thresholds were in
+          three different places, and they cannot be chosen apart: the deadline
+          is set by the plate speed, whether it is met is set by the feed rate,
+          and the stop thresholds decide what happens when it is not. Tuning one
+          while looking at another card is how a machine ends up stopping on a
+          threshold that was chosen for a speed it no longer runs at.
+
+          The order below is the project's priority order, stated by the owner
+          on 2026-08-31: never mis-judge, then best effort, then avoid stopping.
+          An uncertain part is NA and rides round again -- that already satisfies
+          the first rule, so stopping is a separate and much stronger action,
+          reserved for losing track of WHICH part a report belongs to. */}
+      <FoldCard style={{ marginBottom: 8 }} title={<span>運作調節
+        <Why>三個目標,依優先序:<b>不可檢錯</b> &gt; best effort &gt; <b>盡量不停機</b>。
+          有疑問就 NA 讓料回流 —— 沒有致動就是再轉一圈,料不會掉,第一條就已經滿足了。
+          所以停機只留給「可能配到錯的物件」這種追蹤問題,不是給「這顆判不出來」。
+          這張卡把判定期限、兩層進料節流、停機門檻放在一起,因為它們是同一個決定:
+          期限由轉速決定,達不達得到由進料速率決定,達不到怎麼辦由門檻決定。</Why></span>}>
+
+        {/* The deadline, first, because it is what the rest is for. */}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 10,
+                      padding: '6px 8px', background: '#fafafa', borderRadius: 4 }}>
+          <span>判定期限
+            <Why>相機觸發到分選點的時間,由轉速和 CAM1_on/SWITCH 的間距決定。
+              回報時間是相機起算的(cam_avg_us),跟這個預算同一個起點才能相減。</Why>
+            {' '}<b>{budgetMs !== undefined ? `${budgetMs.toFixed(0)} ms` : '—'}</b></span>
+          <span>回報 平均/最慢 <b>
+            {spentAvgMs !== undefined ? spentAvgMs.toFixed(0) : '—'} / </b>
+            <b>{spentMaxMs !== undefined ? spentMaxMs.toFixed(0) : '—'} ms</b></span>
+          {/* Average first. The worst is a high-water mark that one slow frame
+              after a def build pins negative for the rest of the session, so on
+              its own it says nothing about how the machine is running now. */}
+          <span>餘裕 平均/最慢 <b style={{
+              color: marginAvgMs !== undefined && marginAvgMs <= 0 ? '#c33'
+                   : (marginMaxMs !== undefined && marginMaxMs <= 0 ? '#c60' : '#389e0d') }}>
+            {marginAvgMs !== undefined ? marginAvgMs.toFixed(0) : '—'} / {marginMaxMs !== undefined ? marginMaxMs.toFixed(0) : '—'} ms</b></span>
+          {marginAvgMs !== undefined && marginAvgMs <= 0 && (
+            <span style={{ color: '#c33' }}>← 平均就來不及,料會一顆顆變 NA</span>
+          )}
+        </div>
+        <div style={{ marginBottom: 4 }}>進料上限（相機）
+          <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
+            「有觸發、沒影格」—— 那會讓主機的配對永久錯位,不是只掉一顆料。
+            這是**單一間隔**的硬下限。</Why></div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           <Input
             style={{ width: 150 }}
@@ -1394,14 +1620,105 @@ build ${fw.build}`}>
             目前 {gateHz !== undefined ? `${gateHz} 顆/秒` : '—'}
             {gateSepUs !== undefined ? ` (min_detect_sep_us=${gateSepUs})` : ''}
           </span>
+        </div>
+
+        {/* SECOND LAYER: the host, not the camera.
+            Above is a hard floor on ONE interval, set by what the camera can
+            deliver. This is a floor on the FILTERED average, set by what the
+            machine looking at the frames can keep up with -- and the two fail
+            differently. A camera that is asked too fast gives no frame; a host
+            that is asked too fast still answers, late, and late lands as an
+            unjudged part or a report matching no object. An average is the
+            right measure for it because the host has a pipeline: one short gap
+            is absorbed, a sustained rate is not. */}
+        <div style={{ marginTop: 8, marginBottom: 4 }}>進料均速（主機）
+          <Why>上面那條看相機,這條看主機算得多快。失效方式不同:相機來不及就是
+            沒影格,主機來不及還是會回答,只是遲到 —— 遲到就是 NA 回流,再嚴重
+            就撞到下面的停機門檻。所以量的是**低通後的平均**到達間隔,不是單一間隔。
+            擋掉的料一樣回流,不會掉。</Why></div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+          <Input
+            style={{ width: 150 }}
+            addonBefore="均速"
+            addonAfter="顆/秒"
+            placeholder={procHz !== undefined ? String(procHz) : '關閉'}
+            value={procHzInput}
+            onChange={(e) => setProcHzInput(e.target.value)}
+          />
+          <Button
+            loading={busy === 'procgate'}
+            disabled={!(Number(procHzInput) > 0)}
+            onClick={() => run('procgate', (api) => api.machineSetupUpdate(
+              { gate_proc_sep_us: Math.round(1000000 / Number(procHzInput)) },
+              false, true))}
+          >套用</Button>
+          <Button
+            loading={busy === 'procgateoff'}
+            disabled={!(procSepUs > 0)}
+            onClick={() => run('procgateoff', (api) => api.machineSetupUpdate(
+              { gate_proc_sep_us: 0 }, false, true))}
+          >關閉</Button>
+          <span style={{ alignSelf: 'center', ...dim }}>
+            {procHz !== undefined ? `目前 ${procHz} 顆/秒` : '目前 關閉'}
+            {procAvgHz !== undefined ? ` · 濾波後實際 ${procAvgHz.toFixed(1)} /s` : ''}
+            {gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : ''}
+          </span>
+          {/* WHAT THE HOST IS CURRENTLY SPENDING, in the units of the field
+              above it. The floor being chosen here is a limit on the host, so
+              the number that decides it is the report latency -- and 1/latency
+              is that latency expressed as a rate, which is the only form in
+              which it can be compared to a parts/second cap without arithmetic
+              in somebody's head.
+              Average and worst are both offered because they bracket the
+              choice: at 1/avg the machine keeps up on average and the slow tail
+              is late; at 1/max nothing is ever late and throughput is set by
+              the worst frame the run has ever seen. The useful setting is
+              between them, which is a judgement the number cannot make -- so
+              both are shown and neither is applied on its own. */}
+          {reportHz !== undefined && (
+            <span style={{ alignSelf: 'center', ...dim }}>
+              目前回報 平均 {reportHz.toFixed(1)} /s
+              {reportWorstHz !== undefined ? ` · 最慢 ${reportWorstHz.toFixed(1)} /s` : ''}
+              <a style={{ marginLeft: 6 }}
+                 onClick={() => setProcHzInput(String(Math.max(1, Math.floor(reportHz))))}>
+                填平均</a>
+            </span>
+          )}
+          {/* Set above the camera cap it can never engage: layer 1 has already
+              turned the part away. Said rather than clamped -- the number is
+              legitimate on a machine whose camera cap is later raised. */}
+          {procHz !== undefined && gateHz !== undefined && procHz >= gateHz && (
+            <span style={{ alignSelf: 'center', color: '#c33' }}>
+              ← 高於相機上限,永遠不會作用
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
           {/* The camera ceiling, measured rather than assumed: shrinking the ROI
               height raises it, which is the lever for running parts closer
               together. The gate cap has to stay under this -- above it you get
               triggers with no frames, which is exactly what breaks the pairing. */}
+          {/* The camera's own answer for the ROI and exposure it is carrying.
+              Available while IDLE, which is the difference that matters: the
+              measured cam_max_fps below needs a run to exist, and this field is
+              filled in before one. Both are shown when both exist -- they
+              answer different questions, and a gap between them is itself
+              information (the sensor could go faster than this run drove it). */}
+          {pairing && pairing.cam_fps_limit > 0 && (
+            <span style={{ alignSelf: 'center',
+              color: gateHz > pairing.cam_fps_limit ? '#c33' : '#888' }}>
+              相機上限 {Number(pairing.cam_fps_limit).toFixed(1)} fps
+              {gateHz > pairing.cam_fps_limit ? ' ← 閘門開得比相機快' : ''}
+              <a style={{ marginLeft: 6 }}
+                 onClick={() => setHzInput(String(Math.floor(pairing.cam_fps_limit * 0.9)))}>
+                填 90%</a>
+            </span>
+          )}
           {pairing && pairing.cam_max_fps > 0 && (
             <span style={{ alignSelf: 'center',
               color: gateHz > pairing.cam_max_fps ? '#c33' : '#888' }}>
-              相機實測上限 {Number(pairing.cam_max_fps).toFixed(1)} fps
+              本次實測 {Number(pairing.cam_max_fps).toFixed(1)} fps
               {gateHz > pairing.cam_max_fps ? ' ← 閘門開得比相機快' : ''}
             </span>
           )}
@@ -1445,53 +1762,111 @@ build ${fw.build}`}>
               {gate.rej_busy}</b></span>
           </div>
         )}
-      </FoldCard>
 
-      {/* The skip policy: what the machine does about a part that reached the
-          selector unjudged.
+        {/* WHAT HAPPENS WHEN THE DEADLINE IS MISSED ANYWAY -- the last block,
+            because it is the last resort. Two thresholds, and they are not the
+            same kind of thing:
 
-          One switch now. It was two -- "slow" reacting to the RATE of skips and
-          "stop" to CONSECUTIVE ones -- and the firmware's `mode` string was
-          their product. The slow half was removed on 2026-08-12: widening the
-          gate could not shed load, because the bowl feeder sets the feed rate
-          and a part refused at the gate comes back next lap. The device still
-          parses the old four names, so a machine on older NVS reads correctly.
+            unanswered  = nobody judged this part. It was never actuated, so it
+                          is already safe; it rides round again. Stopping here
+                          protects nothing about quality, it only says "several
+                          in a row means the host has stopped answering".
+            nomatch     = a verdict arrived that cannot be placed against an
+                          object. THAT is the one that touches rule 1, because
+                          a report placed against the wrong object is a wrong
+                          sort. The firmware already tolerates the harmless
+                          shapes (no candidate, outside the window) and stops
+                          immediately when the clock itself is invalid.
 
-          This card exists because until 2026-08-11 there was NO way to reach
-          it: `skip_policy.mode` had no flat name in uinspCfg, so the tuning
-          values were writable while the thing they tune could not be turned
-          on -- and set_setup answered ack:true to every attempt. */}
-      <FoldCard style={{ marginBottom: 8 }} title={<span>漏判處置
-        <Why>「漏判」是料走到分選點時還沒有檢測結果。它不會掉 —— 沒有動作就是再轉一圈。
-          連續漏判代表主機或相機不再回答了,這時候繼續跑只是讓沒判過的料一顆顆通過,
-          所以看的是「連續」幾顆,不是比例。</Why></span>}>
-        {(() => {
-          const mode = cfg.skip_policy_mode
-            || (dev.skip_policy && dev.skip_policy.mode);
-          // The older four names still arrive from a device on older NVS.
-          const stop = mode === 'stop_only' || mode === 'slow_and_stop';
-          const push = (m) => run('skippol', (api) =>
-            api.machineSetupUpdate({ skip_policy_mode: m }, false, true));
-          return (
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap',
-                          alignItems: 'center' }}>
-              <span>
-                <Switch size="small" checked={stop} loading={busy === 'skippol'}
-                  onChange={(v) => push(v ? 'stop_only' : 'none')} />
-                {' '}連續漏判即停機
-              </span>
-              <span style={dim}>mode = {mode || '—'}</span>
-              {/* The firmware says this out loud rather than refusing it:
-                  "none" is legitimate on a bench and a machine that silently
-                  declines a setting is worse than one that tells you. */}
-              {!stop && (
-                <span style={{ color: '#c33' }}>
-                  已關閉 —— 漏判的料會一直無聲通過
+            Both live here with their LIVE consecutive counts beside them, so a
+            threshold is never chosen without seeing what the machine actually
+            does against it. */}
+        <div style={{ borderTop: '1px solid #eee', marginTop: 10, paddingTop: 8 }}>
+          <div style={{ marginBottom: 6 }}>漏判處置
+            <Why>「漏判」是料走到分選點時還沒有檢測結果。它不會掉 —— 沒有動作就是
+              再轉一圈。連續漏判代表主機或相機不再回答了。看的是「連續」幾顆,不是比例。
+              門檻訂太緊,機器只是暫時跟不上、正在自己調節的時候就會停 —— 那正是
+              「盡量不停機」要避免的;先開上面的均速節流,再把這個放寬。</Why>
+          </div>
+          {(() => {
+            const mode = cfg.skip_policy_mode
+              || (dev.skip_policy && dev.skip_policy.mode);
+            const stop = mode === 'stop_only' || mode === 'slow_and_stop';
+            const push = (m) => run('skippol', (api) =>
+              api.machineSetupUpdate({ skip_policy_mode: m }, false, true));
+            const cu = healthNow.consec_unanswered;
+            const cn = cntNow.NOMATCH_CONSEC;
+            const lim = cfg.unanswered_stop_after;
+            const nlim = cfg.nomatch_stop_after;
+            return (<>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap',
+                            alignItems: 'center', marginBottom: 8 }}>
+                <span>
+                  <Switch size="small" checked={stop} loading={busy === 'skippol'}
+                    onChange={(v) => push(v ? 'stop_only' : 'none')} />
+                  {' '}連續漏判即停機
                 </span>
-              )}
-            </div>
-          );
-        })()}
+                <span style={dim}>mode = {mode || '—'}</span>
+                {/* The firmware says this out loud rather than refusing it:
+                    "none" is legitimate on a bench and a machine that silently
+                    declines a setting is worse than one that tells you. */}
+                {!stop && (
+                  <span style={{ color: '#c33' }}>
+                    已關閉 —— 漏判的料會一直無聲通過
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap',
+                            alignItems: 'center', marginBottom: 6 }}>
+                <Input style={{ width: 175 }} addonBefore="無判決 連續"
+                  addonAfter="顆停" placeholder={lim !== undefined ? String(lim) : ''}
+                  value={stopAfterInput}
+                  onChange={(e) => setStopAfterInput(e.target.value)} />
+                <Button loading={busy === 'stopafter'}
+                  disabled={!(Number(stopAfterInput) >= 1)}
+                  onClick={() => run('stopafter', (api) => api.machineSetupUpdate(
+                    { unanswered_stop_after: Math.round(Number(stopAfterInput)) },
+                    false, true))}>套用</Button>
+                <span style={{ alignSelf: 'center', ...dim,
+                  color: lim > 0 && cu >= lim - 1 ? '#c33' : undefined }}>
+                  目前連續 {cu !== undefined ? cu : '—'} / {lim !== undefined ? lim : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap',
+                            alignItems: 'center' }}>
+                <Input style={{ width: 175 }} addonBefore="對不上 連續"
+                  addonAfter="顆停" placeholder={nlim !== undefined ? String(nlim) : ''}
+                  value={nomatchAfterInput}
+                  onChange={(e) => setNomatchAfterInput(e.target.value)} />
+                <Button loading={busy === 'nomatchafter'}
+                  disabled={!(Number(nomatchAfterInput) >= 1)}
+                  onClick={() => run('nomatchafter', (api) => api.machineSetupUpdate(
+                    { nomatch_stop_after: Math.round(Number(nomatchAfterInput)) },
+                    false, true))}>套用</Button>
+                <span style={{ alignSelf: 'center', ...dim,
+                  color: nlim > 0 && cn >= nlim - 1 ? '#c33' : undefined }}>
+                  目前連續 {cn !== undefined ? cn : '—'} / {nlim !== undefined ? nlim : '—'}
+                </span>
+                {/* Rule 1 lives on this line, so it says so. */}
+                <span style={dim}>← 這條牽涉到判錯,不要放太寬</span>
+              </div>
+            </>);
+          })()}
+        </div>
+
+        {/* EVERY FIELD IN THIS CARD IS RAM UNTIL THIS BUTTON IS PRESSED.
+            set_setup takes effect on the next part and does not touch flash;
+            save_setup is what survives a reboot. The station-timing card has
+            had this button and this sentence for a while, and this card had
+            neither -- so tuning done here would have come back after a power
+            cycle looking like the machine had drifted. The same button, in
+            both places, rather than one card quietly depending on the other. */}
+        <div style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 8,
+                      ...dim, fontSize: 11 }}>
+          上面的欄位套用後立刻生效(下一顆料起),但只在 RAM。要撐過重開機,用面板
+          最上面的「存入 NVS」—— 那顆按鈕管的是整個面板,所以不放在任何一張卡裡面。
+          存在板子上,不是存在這台電腦上;換板要用「設定備份 / 移機」。
+        </div>
       </FoldCard>
 
       {/* Every station, expressed the way it is actually adjusted: WHERE it
@@ -1678,12 +2053,9 @@ build ${fw.build}`}>
         )}
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
-          <Button size="small" type="primary" loading={busy === 'save'}
-            onClick={() => run('save', (api) => api.saveSetupToDevice())}
-          >存入 NVS</Button>
           <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq, ctr))}>還原成裝置目前值</Button>
           <span style={{ ...dim, fontSize: 11 }}>
-            編輯後離開欄位即套用(下一顆料起);存 NVS 才會撐過重開機
+            編輯後離開欄位即套用(下一顆料起);要撐過重開機,用面板最上面的「存入 NVS」
           </span>
         </div>
       </FoldCard>
@@ -1923,35 +2295,25 @@ export function UINSP_ESP32_MINI() {
   // shift, on a machine that is often a fanless tablet, to answer a question
   // nobody asked.
   //
-  // So it is gated on the popover: closed costs exactly nothing, open costs one
-  // GS a second and only while a person is looking at it. Everything else in
-  // the bubble -- counts, rates, latency, pipe depth, the SWITCH budget --
-  // comes from get_running_stat and machineSetup, which this strip already
-  // polls. Opening the bubble adds no serial traffic to the board at all.
-  //
-  // pairLive is NOT a dependency of the effect. That is exactly the mistake
-  // documented above: the reply is a fresh object every time, so listing it
-  // would re-arm the effect on every answer and rebuild the loop.
+  // The one-a-second GS poll that used to live here is gone with the section it
+  // fed. It asked the core for perif_pairing so the bubble could show pairing
+  // health; the pairing moved into the firmware, and the bubble now reads
+  // cam_sync out of get_running_stat, which this strip already polls. Nothing
+  // replaced the poll because nothing needed it -- the core's perif_pairing is
+  // still read elsewhere (cam_max_fps, link health) on the existing path.
   const [bubbleOpen, setBubbleOpen] = useState(false);
-  const [pairLive, setPairLive] = useState(null);
-  useEffect(() => {
-    if (!bubbleOpen) return undefined;
-    let live = true;
-    const ask = () => {
-      dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "GS", 0, { items: ["perif_pairing"] },
-        undefined, {
-          resolve: (pkts) => {
-            const gs = pkts.find((p) => p.type === "GS");
-            const pv = gs && gs.data && gs.data.perif_pairing;
-            if (live && pv) setPairLive(pv);
-          },
-          reject: () => {},
-        }));
-    };
-    ask();
-    const h = setInterval(ask, 1000);
-    return () => { live = false; clearInterval(h); };
-  }, [bubbleOpen, CORE_ID]);
+  // When the latency window was last zeroed, so the panel can say which window
+  // the numbers describe. Local: the board does not timestamp the reset, and a
+  // clock the operator can read beats one they cannot.
+  const [statSince, setStatSince] = useState(null);
+  const resetLatency = () => {
+    const api = getPerifAPI(API_ID);
+    if (!api) return;
+    api.resetLatencyStat().then((r) => {
+      if (r && r.ack === false) { log.warn('[stat] reset refused', r); return; }
+      setStatSince(new Date().toTimeString().slice(0, 5));
+    }, (e) => log.warn('[stat] reset failed', e));
+  };
 
   // Presses on the reset button, within a 5s window. Three, because inside a
   // modal the risk is no longer a stray click (you had to open it) -- it is
@@ -2436,7 +2798,8 @@ export function UINSP_ESP32_MINI() {
                overlayStyle={{ maxWidth: 320 }}
                visible={bubbleOpen} onVisibleChange={setBubbleOpen}
                content={<CountsBubble cnt={cnt} gate={gate} selOK={selOK} selNG={selNG}
-                                      rate={rate} pairing={pairLive} stat={stat} cfg={cfg} />}>
+                                      rate={rate} stat={stat} cfg={cfg}
+                                      statSince={statSince} onResetStat={resetLatency} />}>
         <div style={{ display: 'flex', gap: 4, cursor: 'pointer' }}
              data-testid="uinsp-counts-row">
           {selOK && selNG ? (<>

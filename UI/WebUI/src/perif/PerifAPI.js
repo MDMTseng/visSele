@@ -862,8 +862,15 @@ export class uInspESP32_API extends Perif_API_Base {
     // The gate's distance rejection. It was mapped in uinspCfg but missing
     // here, so the panel could display it and never write it.
     'min_detect_dist_um',
+    // The second admission layer: a floor on the low-pass filtered interval
+    // between admitted parts, set by what the HOST can keep up with rather than
+    // by what the camera can deliver. 0 disables it.
+    'gate_proc_sep_us', 'gate_proc_iir_shift',
     'stepper_en_active', 'stepper_dir',
     'unanswered_stop_after',
+    // The report-side twin of unanswered_stop_after. Settable on the device
+    // since the K_SKIP schema was corrected -- get_setup had always emitted it.
+    'nomatch_stop_after',
     'host_timeout_ms', 'pulses_per_rev', 'plate_diameter_mm',
     'stage_pulse_offset', 'io_on_level',
     // Per-station widths in MICROSECONDS -- the device converts to ticks
@@ -972,6 +979,20 @@ export class uInspESP32_API extends Perif_API_Base {
   jogEnd() { return this.sendP({ type: 'jog_end' }); }
 
   resetRunningStat() { return this.sendP({ type: 'reset_running_stat' }); }
+
+  // NOT resetRunningStat, and the firmware says why at the command itself:
+  // reset_running_stat also calls CAM_SYNC.reset(), throwing away the clock
+  // model, which costs ~10 s of reports that cannot be placed and was measured
+  // as a halt at state 112. That makes it useless for the one thing zeroing a
+  // counter is for -- comparing two conditions. This touches the latency
+  // counters and nothing else.
+  resetLatencyStat() { return this.sendP({ type: 'reset_latency_stat' }); }
+
+  // The six slowest reports, each split into its legs (camera->report, in-pass,
+  // gap since the previous, tx, rx), plus the board's own worst main loop. This
+  // is the reply that says WHICH SIDE of the UART lost the time; the averages
+  // in get_running_stat cannot.
+  getSpikes() { return this.sendP({ type: 'get_spikes' }); }
   getRunningStat() {
     return this.sendP({ type: 'get_running_stat' }).then((ret) => {
       this.runningStat = ret;

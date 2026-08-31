@@ -1764,10 +1764,25 @@ class ObjInfoList extends React.Component {
         {/* `visible`, not `open` -- antd 4.22.8 (see the note on the fake-camera
             modal in script.jsx). This one was dead the same way: 設定/診斷 set
             the state and no panel ever appeared. */}
+          {/* Wider, and pinned to the right edge.
+            560 was chosen when this was a short strip of counters. It now
+            carries 運作調節 -- input + button + two readouts on one row -- and
+            at 560 every one of those rows wrapped, which puts the number that
+            justifies a field on a different line from the field. 820 still
+            wrapped the wider rows; the CSS cap below keeps this honest on a
+            narrow screen, so the number here only needs to be right for the
+            screen that has the room. Centred, it
+            also sat on top of the live image, so tuning meant reading the
+            effect through the dialog covering it.
+            Right-aligned instead: the machine view stays visible on the left
+            while the numbers are adjusted on the right, which is the way this
+            panel is actually used. */}
         <Modal visible={this.state.uInspESP32_popUp === true} title="全檢設備 v2 (uInspESP32)"
           onCancel={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
           onOk={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
-          footer={null} destroyOnClose width={560}>
+          footer={null} destroyOnClose width={1180}
+          bodyStyle={{ maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}
+          wrapClassName="uinsp-modal-right">
           {this.state.uInspESP32_popUp === true ? <UINSP_ESP32_UI/> : null}
         </Modal>
         {fullScreenMODAL}
