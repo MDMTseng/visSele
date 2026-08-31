@@ -20,7 +20,6 @@ import { DEF_EXTENSION, defFileFilter, BPG_ExpCalc, CameraTransferCtrl as Camera
 import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
-import { SBMSetupView } from './SBMStudio';
 // v2 runs BESIDE v1, not instead of it. Both buttons stay until the new one
 // has been used on a machine for a while; a studio is where a def gets its
 // locator, and losing the ability to fall back would mean a bad build blocks
@@ -1556,8 +1555,8 @@ function SettingUI({})
 }
 
 
-// The SBM setup studio (self-contained hook canvas + tools) lives in SBMStudio.jsx;
-// imported as SBMSetupView at the top of this file.
+// The SBM setup studio lives in SBMStudio2.jsx; SBMStudio.jsx keeps only the
+// hook canvas both versions were built on.
 
 
 // A def load in flight is only valid until something else changes the def.
@@ -3125,89 +3124,21 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }} />,
 
     
-    // THE SBM SURFACES ONLY EXIST FOR A DEF THAT USES THE SBM LOCATOR.
+    // THE SBM SURFACE ONLY EXISTS FOR A DEF THAT USES THE SBM LOCATOR, AND
+    // ONLY WHILE THE DEF IS EDITABLE.
     //
-    // They used to be unconditional, and pressing one silently switched the def
-    // to shape_based -- so a sig360 recipe could be converted by somebody who
-    // only meant to look. Conversion has consequences (features must be
-    // re-trained, the def re-saved), so it belongs to the one control that says
-    // so: 「→ migrate to shape_based」 in the localizer settings. These appear
-    // once that has been pressed.
-    (edit_info.locating_engine !== 'shape_based') ? null :
-    <BASE_COM.IconButton
-      iconType={<AimOutlined />}
-      dict={DICT}
-      addClass="layout palatte-cyan-8 vbox width12"
-      data-testid="sbm-studio-v1"
-      key="SBMSETUP"
-      text="SBM定位設定" onClick={() => {
-        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
-        setModal_view({
-          title: "Shape-based 定位設定",
-          footer: null,
-          width: "96vw",
-          style: { top: 12 },
-          bodyStyle: { padding: 8 },
-          // The X is guarded too, because the studio applies LIVE: closing it does
-          // not discard anything, so leaving by the corner commits exactly the
-          // same broken state as 完成 would. Greying one and leaving the other
-          // open would just be theatre.
-          //
-          // It asks rather than refuses. A def whose reference image cannot be
-          // read can never regenerate, and a modal with no way out is worse than
-          // the state it is protecting against -- so "仍要離開" stays, and the
-          // save path asks once more before anything reaches disk.
-          onCancel: () => {
-            // Leaving the studio re-locates the object.
-            //
-            // The studio is where the registration line, the extraction region
-            // and the trained features are set -- all three change where the
-            // core thinks the part IS. The def canvas rectifies the image
-            // against the last inspection report, so without a fresh one it
-            // goes on drawing the picture aligned to the pose from BEFORE the
-            // edits: overlays that sit next to the part instead of on it.
-            //
-            // Same call the image switcher already makes for the same reason
-            // (useDefImages afterLoad). It lives in another component, so this
-            // goes through the window event that component listens for --
-            // the pattern defconf-images-changed already uses.
-            const closeIt = () => {
-              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
-              setModal_view(undefined);
-              window.dispatchEvent(new Event('defconf-orient-now'));
-            };
-            const lg = edit_info.__shape_lastGood;
-            if (!edit_info.__shape_stale) { closeIt(); return; }
-            Modal.confirm({
-              title: '特徵已失效', width: 500,
-              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
-                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
-              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
-              cancelText: '仍要離開',
-              onOk: () => {
-                if (lg) {
-                  dispatch(DefConfAct.EditInfo_Patch({
-                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
-                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
-                  }));
-                  closeIt();
-                }
-                // No last-good version: stay in the studio, where 生成特徵點 is.
-              },
-              onCancel: closeIt,
-            });
-          },
-          view: <SBMSetupView
-            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
-            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
-                             window.dispatchEvent(new Event('defconf-orient-now')); }}
-            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
-                            window.dispatchEvent(new Event('defconf-orient-now')); }}
-          />,
-        });
-      }} />,
-
-    (edit_info.locating_engine !== 'shape_based') ? null :
+    // It used to be unconditional, and pressing it silently switched the def to
+    // shape_based -- so a sig360 recipe could be converted by somebody who only
+    // meant to look. Conversion has consequences (features must be re-trained,
+    // the def re-saved), so it belongs to the one control that says so:
+    // -> migrate to shape_based, in the localizer settings.
+    //
+    // The lock is the second half of the same thought. defConf_lock_level != 0
+    // means the reducer drops DefConf actions that are not on a three-entry
+    // whitelist -- silently -- so the studio would open, accept a registration
+    // line, redraw itself as though it had taken it, and change nothing. An
+    // editor that cannot edit should not be reachable at all.
+    (edit_info.locating_engine !== 'shape_based' || defConf_lock_level != 0) ? null :
     <BASE_COM.IconButton
       iconType={<AimOutlined />}
       dict={DICT}

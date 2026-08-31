@@ -84,17 +84,43 @@ async function toViewfinder(name) {
   await dismissCamModal(ctl);
   ok('the editor opens on a known def', await freshDef(), JSON.stringify(await P.store(SM)));
 
-  section('SBM surfaces are gated on the locating engine');
+  section('the SBM entry is gated on the locator AND on the lock');
   {
+    // Two gates, one button. The locator gate is old: the entry used to be
+    // unconditional AND switched the engine on click, so a sig360 recipe was
+    // converted by being looked at.
+    //
+    // The lock gate is new, and it is the same defConf_lock_level that drops
+    // DefConf actions silently -- the studio would open, take a registration
+    // line, redraw itself as though it had kept it, and change nothing.
+    //
+    // The gate is asserted by DRIVING the lock, not by assuming the state the
+    // editor was entered in. Entering leaves it at 1, but a suite that reuses
+    // an open page inherits whatever the previous section left -- an assertion
+    // that depends on that is testing the order of the file.
     const engine = await P.store(`${EI}.locating_engine`);
-    const v1 = await P.exists('sbm-studio-v1');
-    const v2 = await P.exists('sbm-studio-v2');
-    if (engine === 'shape_based')
-      ok('a shape_based def offers both studios', v1 && v2, `v1=${v1} v2=${v2}`);
-    else
-      // The defect: the buttons were unconditional AND switched the engine on
-      // click, so a sig360 recipe was converted by being looked at.
-      ok('a sig360 def offers no SBM entry', !v1 && !v2, `engine=${engine} v1=${v1} v2=${v2}`);
+    const shown = () => P.exists('sbm-studio-v2');
+
+    if (engine !== 'shape_based') {
+      ok('a sig360 def offers no SBM entry', !(await shown()), `engine=${engine}`);
+    } else {
+      await P.dispatch({ type: 'DefConf_Lock_Level_Update', data: 1 });
+      ok('locked, so the studio is not offered', await P.waitFor('sbm entry gone',
+        async () => !(await shown()), { timeout: 5000 }));
+
+      await P.dispatch({ type: 'DefConf_Lock_Level_Update', data: 0 });
+      ok('unlocking reveals it', await P.waitFor('sbm entry', shown, { timeout: 5000 }));
+
+      await P.dispatch({ type: 'DefConf_Lock_Level_Update', data: 1 });
+      ok('locking again hides it', await P.waitFor('sbm entry gone',
+        async () => !(await shown()), { timeout: 5000 }));
+      await P.dispatch({ type: 'DefConf_Lock_Level_Update', data: 0 });
+    }
+
+    // v1 is gone. Asserted rather than assumed: two studios reading the same
+    // def is two places for the same bug, and a leftover button is how one
+    // comes back.
+    ok('the old studio is gone', !(await P.exists('sbm-studio-v1')));
   }
 
   section('TAKE: unsaved work is asked about, and the safe answer is safe');
