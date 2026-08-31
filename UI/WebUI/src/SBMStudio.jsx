@@ -18,7 +18,7 @@ import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
 
 // ── React wrapper: mount a DrawHook_CanvasComponent on a <canvas>, feed it the
 // image + the draw hook, resize via ReactResizeDetector. ──────────────────────
-export function HookCanvasComponent({ dhook, image, captureDrag, style }) {
+export function HookCanvasComponent({ dhook, image, captureDrag, style, mmpp }) {
   const canvasRef = useRef(null);
   const _ = useRef({ canvComp: undefined });
 
@@ -53,8 +53,23 @@ export function HookCanvasComponent({ dhook, image, captureDrag, style }) {
   // the view where it was.
   useEffect(() => {
     const c = _.current.canvComp; if (!c || !image) return;
+    // TELL THE CANVAS THE SCALE BEFORE HANDING IT THE PICTURE.
+    //
+    // SetImg fits the image to the view exactly once, and the fit divides by
+    // rUtil's mmpp -- which nobody had ever set on this canvas, so it was 1.
+    // The scene is drawn at the def's real mmpp (~0.014 for this camera), so
+    // the fit came out ~70x too small: a new object opened in the studio as a
+    // forty-pixel stamp near the corner, and the operator had to zoom in by
+    // hand before the registration line could be drawn at all.
+    //
+    // Invisible on an OLD def, which is why it survived: those carry a
+    // signature, the def canvas has already been panned by the time anyone
+    // opens the studio, and a wrong first fit just looks like a view someone
+    // left zoomed out. It is the new-object path -- the one place with nothing
+    // to compare against -- where it actually costs something.
+    if (Number.isFinite(mmpp) && mmpp > 0) c.rUtil.renderParam.mmpp = mmpp;
     c.SetImg(image); c.draw();
-  }, [image]);
+  }, [image, mmpp]);
 
   const onResize = (w, h) => { const c = _.current.canvComp; if (c) { c.resize(w, h); c.draw(); } };
 
@@ -1024,7 +1039,7 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
     <div style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #333',
                   position: 'relative' }}>
       <HookCanvasComponent key={edit_info.img ? 'img' : 'noimg'}
-        dhook={dhook} image={edit_info.img} captureDrag={captureDrag} />
+        dhook={dhook} image={edit_info.img} captureDrag={captureDrag} mmpp={mmpp} />
       {edit_info.img ? null : (
         // A blank canvas and a stale one look the same to someone who just
         // opened this; say which it is.

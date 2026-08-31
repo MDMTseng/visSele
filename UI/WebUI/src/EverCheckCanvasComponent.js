@@ -339,6 +339,24 @@ class EverCheckCanvasComponent_proto {
   constructor(canvasDOM) {
     this.canvas = canvasDOM;
 
+    // A DEFAULT, because the base class CALLS this on its own.
+    //
+    // zoom_emit fires 500 ms after any pan or zoom, from a debounce timer, and
+    // every subclass but one assigns an EmitEvent in its constructor. The one
+    // that does not is DrawHook_CanvasComponent -- the SBM studio's canvas --
+    // which has no event consumer at all: it draws through a hook, and the
+    // down_samp_level negotiation zoom_emit exists for means nothing to it.
+    //
+    // So panning the studio canvas threw `this.EmitEvent is not a function`
+    // out of a timer, half a second after the pointer stopped. The console said
+    // so; the screen did not, and the next React commit after it landed did not
+    // happen -- which is how the studio's own 套用並離開 stopped closing the
+    // modal. Found by the journey test, which pans the canvas the way a person
+    // does instead of dispatching to it.
+    //
+    // Subclasses assign over this after super(), so nothing else changes.
+    this.EmitEvent = (event) => { log.debug(event); };
+
     this.canvas.onmousemove = this.onmousemove.bind(this);
     this.canvas.onmousedown = (ev)=>{
       ev.preventDefault();
@@ -964,6 +982,19 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   // Fit the loaded image to the view once, on first SetImg.
+  //
+  // The fit divides by rUtil's mmpp, which HookCanvasComponent now sets from
+  // the def before handing over the picture -- without it the mmpp was 1 and a
+  // newly captured object came up about seventy times too small.
+  //
+  // It still lands at roughly a fifth of the canvas rather than filling it,
+  // because the proto sizes the view from img_info.scale * img_info.width while
+  // this canvas draws secCanvas at mmpp per secCanvas pixel. Computing it from
+  // secCanvas instead was tried and is WRONG here: at the first SetImg that
+  // buffer is still the low-resolution preview, so the fit overshoots by the
+  // downsample factor and the picture opens larger than the view. Fixing it
+  // properly means re-fitting when the full-resolution frame lands, not
+  // changing the arithmetic.
   SetImg(img_info) {
     super.SetImg(img_info);
     if (!this._fitDone && this.img_info) { this.scaleImageToFitScreen(); this._fitDone = true; }
@@ -1224,68 +1255,50 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
         // a def image, so it must NOT apply def_image_reg rotation -- ignore reg
         // and fall through to the centering-only branch below.
         const reg = this.disableImageAlign ? null : (this.edit_DB_info && this.edit_DB_info.def_image_reg);
-        const ref = this.db_obj && this.db_obj.sig360info && this.db_obj.sig360info.reports
-                    && this.db_obj.sig360info.reports[0];
-        if (reg && ref && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
-          const refAngle = ref.orientation || 0;
-          const imgAngle = reg.angle || 0;
-          const flip = reg.isFlipped || false;
-          const differs = reg.cx !== ref.cx || reg.cy !== ref.cy || imgAngle !== refAngle;
-          // The CENTRING happens either way. Only the ROTATION is conditional.
-          //
-          // `if (differs)` used to wrap both, and for an init-image save --
-          // where the registration is by construction identical to the
-          // reference -- that meant NO TRANSFORM AT ALL: the image drawn at the
-          // origin, correct scale, zero offset, with the def features sitting
-          // wherever the object frame put them. The legacy path below centres
-          // every other def by exactly this amount, so skipping it here was
-          // never "identity", it was a missing translate.
-          //
-          // It surfaces the day a def gains a def_image_reg and not before:
-          // without one, `reg` is falsy and the legacy path centres correctly.
-          // Re-saving a def writes it -- which is why this arrived with a def
-          // edit and not with any change to the rendering code.
-          flip ? ctx.scale(1, -1) : ctx.scale(1, 1);
-          if (differs) ctx.rotate(imgAngle);   // -> reference orientation
-          ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp);   // image sig360 -> origin
+        // ONE PATH, because there is only one computation.
+        //
+        // THE SIGNATURE CARRIES NO ANGLE. The reference frame IS the source
+        // image at 0 degrees -- measured on this bench, sig360's
+        // reports[0].orientation is 0 on every def, whatever angle the part was
+        // sitting at. All of the rotation lives in def_image_reg.angle, which
+        // is written straight off an inspection report and is in ROTATE space,
+        // so rotating the image BY it brings the object upright.
+        //
+        // This used to be two branches. The one for defs with a sig360 report
+        // rotated; the one for defs without -- every def built through
+        // TAKE -> SBM, which never runs a sig360 extraction -- only translated.
+        // Those defs came up in the main preview at the right scale, in the
+        // right place, at the ORIGINAL angle, while the def editor showed the
+        // same recipe upright because it rectifies against a live inspection
+        // report. Reported as a preview bug; it was this missing rotate.
+        //
+        // The old rotate was also guarded by `differs` (reg not equal to the
+        // reference). With orientation always 0 that guard only ever suppressed
+        // a rotate(0), so collapsing the branches changes nothing that worked
+        // and gives the two kinds of def one behaviour.
+        //
+        // Same three operations, same order, as the def editor's own fallback
+        // (DEFCONF_CanvasComponent) and as SBMStudio's drawImage: mirror,
+        // rotate the object upright, then put its origin at (0,0). The features
+        // and every measurement were authored in that frame.
+        if (reg && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
+          if (reg.isFlipped) ctx.scale(1, -1);
+          if (reg.angle) ctx.rotate(reg.angle);
+          ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp);
         }
         else
         {
-          // The centering-only path, and the one that silently did nothing.
+          // No registration at all: legacy sig360 defs, and the calibration
+          // preview, which deliberately ignores reg (disableImageAlign).
           //
-          // getsig360infoCenter() throws when sig360info is not loaded yet --
-          // which is exactly the state the canvas is in on the FIRST draw after
-          // a def is opened. The empty catch below swallowed it, the translate
-          // never ran, and the image was drawn at the origin with the correct
-          // SCALE and no offset: the def features in one corner and the part in
-          // another, with nothing logged anywhere.
+          // getsig360infoCenter() catches internally and returns {0,0} when
+          // there is no report, and translate(0,0) is a no-op -- so a def with
+          // neither used to be drawn at the origin, correct scale, no offset,
+          // silently. It says so now.
           let center = (this.db_obj && this.db_obj.getsig360infoCenter)
                        ? this.db_obj.getsig360infoCenter() : { x: 0, y: 0 };
-          // SHAPE-BASED DEFS HAVE NO SIG360 REPORT, and both paths above ask
-          // for one.
-          //
-          // `ref` is the RUNTIME sig360 report, not the def's stored data, so a
-          // def whose locating_engine is shape_based never has it -- the branch
-          // above is skipped however good its def_image_reg is, and this branch
-          // then calls getsig360infoCenter(), which does not throw: it catches
-          // internally and returns {0,0}. translate(0,0) is a no-op, so the
-          // image is drawn at the origin with the correct SCALE and no offset,
-          // silently. That is the whole bug, and it appeared the day a def was
-          // switched from sig360 to SBM -- nothing in the rendering path
-          // changed.
-          //
-          // The stored registration is the same quantity the sig360 centre
-          // would have been (on test1.hydef def_image_reg.cx/cy is 15.025,
-          // 9.305 -- identical to the @__SIGNATURE__ anchor), so it is the
-          // correct fallback rather than an approximation. Used only when the
-          // sig360 centre is absent, so nothing that works today changes.
-          if (!center.x && !center.y && reg
-              && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
-            center = { x: reg.cx, y: reg.cy };
-            log.info("[imgAlign] no sig360 report (shape-based def) -- placing "
-                     + "the def image from def_image_reg", center);
-          }
-          if (center && isFinite(center.x) && isFinite(center.y))
+          if (center && isFinite(center.x) && isFinite(center.y)
+              && (center.x || center.y))
             ctx.translate(-center.x/mmpp, -center.y/mmpp);
           else
             log.error("[imgAlign] no sig360 centre and no def_image_reg -- the "
@@ -2132,16 +2145,31 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   ctrlLogic() {
 
-
-
-    if (
-      this.edit_DB_info.inherentShapeList === null ||
-      this.edit_DB_info.inherentShapeList === undefined ||
-      this.edit_DB_info.inherentShapeList.length == 0) {
+    // AN EMPTY inherentShapeList IS NOT A CORRUPT DEF.
+    //
+    // This used to raise ERROR on it, and ERROR takes the state machine out of
+    // the inspection screen. inherentShapeList is built from the def's INHERENT
+    // features, and for sig360 defs that is the signature -- its silhouette,
+    // centre and orientation shapes -- so "empty" really did mean "nothing
+    // loaded". A shape_based def has no signature: its only inherent entry is
+    // @__SBM_INFO__, which is data, not a drawable shape, so the list is
+    // legitimately empty and the def is perfectly good.
+    //
+    // The symptom was precise and baffling: in InspectionUI you could zoom
+    // (draw() only) as much as you liked, but the first DRAG dropped you back
+    // to the main menu -- because a drag is the one interaction that runs this
+    // function. Nothing was wrong with the recipe.
+    //
+    // So: only a MISSING def is an error now. An empty list just means there
+    // are no shapes to hit-test, and returning early leaves panning alone --
+    // the camera drag is started in onmousemove, before this is called.
+    if (!this.edit_DB_info || !this.edit_DB_info._obj) {
       this.ERROR_LOCK = true;
       this.EmitEvent({ type: "ERROR", data: ("Define Config is not valid or the corrupted...") });
       return;
     }
+    const _inherent = this.edit_DB_info.inherentShapeList;
+    if (!_inherent || _inherent.length === 0) return;
     //let mmpp = this.rUtil.get_mmpp();
     let wMat = this.worldTransform();
     //log.debug("this.camera.matrix::",wMat);
