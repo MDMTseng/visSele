@@ -21,7 +21,7 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function makeProbe(ev) {
   // Poll a predicate. Returns true, or false on timeout -- never throws, because
   // "it did not happen" is an assertion result, not a harness failure.
-  const waitFor = async (what, fn, { timeout = 15000, interval = 120 } = {}) => {
+  const waitFor = async (what, fn, { timeout = 15000, interval = 60 } = {}) => {
     const t0 = Date.now();
     for (;;) {
       let v = false;
@@ -112,6 +112,11 @@ export function makeProbe(ev) {
 export function makeTally() {
   const rows = [];
   let pass = 0, fail = 0, skip = 0;
+  // Wall clock per section, printed with the section that follows it. A suite
+  // that is "slow" is almost always slow in ONE place, and without this the
+  // only way to find out is to sit and watch it.
+  const t0 = Date.now();
+  let sectionAt = t0, sectionName = null;
   const ok = (name, cond, detail) => {
     if (cond === null || cond === undefined) {
       skip++; rows.push(['SKIP', name, detail]);
@@ -124,9 +129,15 @@ export function makeTally() {
       console.log(`  FAIL ${name}${detail ? '  -- ' + detail : ''}`);
     }
   };
-  const section = (s) => console.log('\n' + s);
+  const section = (s) => {
+    if (sectionName) console.log('     (' + ((Date.now() - sectionAt) / 1000).toFixed(1) + 's)');
+    sectionName = s; sectionAt = Date.now();
+    console.log('\n' + s);
+  };
   const done = () => {
-    console.log(`\n${pass} ok, ${fail} FAIL, ${skip} skipped`);
+    if (sectionName) console.log('     (' + ((Date.now() - sectionAt) / 1000).toFixed(1) + 's)');
+    console.log(`\n${pass} ok, ${fail} FAIL, ${skip} skipped`
+              + `  in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     return fail;
   };
   return { ok, section, done, get counts() { return { pass, fail, skip }; } };
