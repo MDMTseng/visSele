@@ -30,6 +30,24 @@ import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
 import { imageCentreInObjectFrame, expectedPosition } from './sbmExpectPose.mjs';
 import { HookCanvasComponent } from './SBMStudio';
 
+// THE APP IS LIGHT, AND THIS PANEL HAD BEEN WRITTEN FOR A DARK ONE.
+//
+// ink was #e8eaed -- near-white text -- which only reads on a dark ground.
+// The modal's ground is white, so every label in the rail was pale grey on
+// white: legible on the bench where it was written, washed out on the
+// machine. The panel now takes its colours from the app's own theme
+// (style/sp_style.css: theme_color_1 #82CBCB, theme_color_2 #5191a5) and
+// PAINTS ITS OWN GROUND, so it no longer depends on what the host happens to
+// be.
+//
+// accent is the deeper #5191a5, not #82CBCB: the light teal is a fill, not a
+// text colour -- it fails contrast on white at any size worth reading.
+const P = { ink: '#1f2529', dim: '#6b7780', line: '#dde3e5',
+            ground: '#ffffff', panel: '#f3f7f7',
+            accent: '#5191a5', accentSoft: '#82CBCB',
+            ok: '#389e0d', bad: '#cf1322',
+            badBg: '#fff1f0', okBg: '#f6ffed' };
+
 // ── Draw the reference image into the canvas world frame. ──────────────────────
 // Normal (object) frame: rectify by def_image_reg so object-frame-mm overlays land on
 // the part. Raw frame (locline tool): only scale by mmpp, so world == image-mm and the
@@ -276,14 +294,14 @@ function InspectPanel({ insp, onClear }) {
     const gap = L && Number.isFinite(L.best) && Number.isFinite(L.thres)
       ? L.thres - L.best : null;
     return <div style={{ fontSize: 11, marginTop: 4, border: '1px solid #a61d24',
-                         borderRadius: 4, padding: 6, background: '#2a1215' }}>
-      <div style={{ color: '#ff7875', fontWeight: 600, marginBottom: 3 }}>定位失敗</div>
-      <div style={{ color: '#d89a9a', lineHeight: 1.5 }}>{insp.why}</div>
-      {gap !== null && <div style={{ color: '#d89a9a', marginTop: 4 }}>
+                         borderRadius: 4, padding: 6, background: P.badBg }}>
+      <div style={{ color: P.bad, fontWeight: 600, marginBottom: 3 }}>定位失敗</div>
+      <div style={{ color: '#a84a3f', lineHeight: 1.5 }}>{insp.why}</div>
+      {gap !== null && <div style={{ color: '#a84a3f', marginTop: 4 }}>
         差距很小的話,先看照明和 matching 參數;差很多通常是特徵範圍或 coarse scale。
       </div>}
       {L && L.candidates === 0 && !Number.isFinite(L.best) &&
-        <div style={{ color: '#d89a9a', marginTop: 4 }}>
+        <div style={{ color: '#a84a3f', marginTop: 4 }}>
           先按「🔵 生成特徵點」看有沒有抽到特徵——沒有特徵就不會有候選。
         </div>}
       <Button size="small" type="link" onClick={onClear}>清除</Button>
@@ -313,13 +331,13 @@ function InspectPanel({ insp, onClear }) {
     </div>}
     <div style={row}>
       <span>量測</span>
-      <b><span style={{ color: '#00c853' }}>{insp.counts.ok} OK</span>
+      <b><span style={{ color: P.ok }}>{insp.counts.ok} OK</span>
         {insp.counts.na > 0 && <span style={{ color: '#ff1744' }}>　{insp.counts.na} NA</span>}
         {insp.counts.ng > 0 && <span style={{ color: '#ff1744' }}>　{insp.counts.ng} NG</span>}
       </b>
     </div>
     {bad.length > 0 && <div style={{ marginTop: 3, maxHeight: 150, overflowY: 'auto' }}>
-      {bad.map((r) => <div key={r.type + r.id} style={{ fontSize: 11, color: '#ff5252',
+      {bad.map((r) => <div key={r.type + r.id} style={{ fontSize: 11, color: P.bad,
                             borderTop: '1px solid #333', padding: '2px 0' }}>
         <b>#{r.id}</b> {r.name || r.type}
         <div style={{ color: '#c77' }}>{r.reason}</div>
@@ -353,12 +371,12 @@ function SweepPanel({ sweep, floor }) {
   // shortens. The spread stays legible as the printed number next to it.
   const bar = (sim) => headroom(sim, floor);
   return <div style={{ marginTop: 4 }}>
-    <div style={{ fontSize: 11, color: '#999' }}>
+    <div style={{ fontSize: 11, color: P.dim }}>
       {sweep.done}/{sweep.total}{sweep.aborted ? '(已中止)' : ''}
       <span style={{ marginLeft: 6 }} title="長條 = 分數距離接受門檻還有多少餘裕(滿格 = 1.0)">
         門檻 {floor.toFixed(2)}</span>
     </div>
-    {sweep.verdict && <div style={{ fontSize: 11, color: '#69c0ff', margin: '3px 0',
+    {sweep.verdict && <div style={{ fontSize: 11, color: P.accent, margin: '3px 0',
                                     lineHeight: 1.5 }}>{sweep.verdict}</div>}
     <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 3 }}>
       {sweep.rows.map((r, i) => {
@@ -366,21 +384,21 @@ function SweepPanel({ sweep, floor }) {
         return <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4,
                      fontSize: 11, fontVariantNumeric: 'tabular-nums',
                      borderTop: '1px solid #333', padding: '1px 0',
-                     background: isBase ? '#111c2a' : undefined }}>
-          <span style={{ width: 46, textAlign: 'right', color: isBase ? '#69c0ff' : '#ccc' }}>
+                     background: isBase ? '#eaf3f6' : undefined }}>
+          <span style={{ width: 46, textAlign: 'right', color: isBase ? P.accent : P.ink }}>
             {fmt(r.value)}{u}</span>
-          <span style={{ width: 34, flex: '0 0 auto', height: 8, background: '#222',
+          <span style={{ width: 34, flex: '0 0 auto', height: 8, background: '#e3e8ea',
                          borderRadius: 2, overflow: 'hidden' }}>
             {r.located && <span style={{ display: 'block', height: '100%',
               width: `${Math.max(4, bar(r.sim) * 100)}%`,
               background: '#00c853' }} />}
           </span>
-          <span style={{ width: 42, color: r.located ? '#ccc' : '#ff5252' }}>
+          <span style={{ width: 42, color: r.located ? P.ink : P.bad }}>
             {r.located ? r.sim.toFixed(3) : '失敗'}</span>
           {Number.isFinite(r.residual)
             ? <span style={{ flex: '1 1 auto', textAlign: 'right',
                              color: r.signSuspect ? '#ffab00'
-                                  : Math.abs(r.residual) > 0.5 ? '#ff9100' : '#888' }}
+                                  : Math.abs(r.residual) > 0.5 ? '#b26a00' : P.dim }}
                 title={`施加 ${fmt(r.expected)}${u},量到 ${fmt(r.moved)}${u}`}>
                 {r.residual >= 0 ? '+' : ''}{r.residual.toFixed(3)}{u}
                 {r.signSuspect ? ' ⚠符號' : ''}
@@ -408,10 +426,10 @@ function BatchPanel({ batch, onClear }) {
   const offs = found.map((r) => (r.sum.poseDelta ? r.sum.poseDelta.dist : NaN))
                     .filter(Number.isFinite);
   return <div style={{ marginTop: 4 }}>
-    <div style={{ fontSize: 11, color: '#999' }}>
+    <div style={{ fontSize: 11, color: P.dim }}>
       {batch.done}/{batch.total}{batch.aborted ? '（已中止）' : ''}
     </div>
-    {batch.done === batch.total && <div style={{ fontSize: 11, color: '#69c0ff',
+    {batch.done === batch.total && <div style={{ fontSize: 11, color: P.accent,
         margin: '3px 0', lineHeight: 1.5 }}>
       {found.length}/{done.length} 張定位成功
       {offs.length ? `，位姿偏差最大 ${Math.max(...offs).toFixed(3)}mm` : ''}
@@ -425,10 +443,10 @@ function BatchPanel({ batch, onClear }) {
           <div style={{ display: 'flex', gap: 4 }}>
             <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden',
                            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                           color: ok ? '#ccc' : '#ff5252' }} title={r.name}>{r.name}</span>
-            {ok && <span style={{ color: '#888' }}>{s.pose.similarity.toFixed(3)}</span>}
+                           color: ok ? P.ink : P.bad }} title={r.name}>{r.name}</span>
+            {ok && <span style={{ color: P.dim }}>{s.pose.similarity.toFixed(3)}</span>}
             {ok && s.poseDelta &&
-              <span style={{ color: s.poseDelta.dist > 0.1 ? '#ff9100' : '#888' }}>
+              <span style={{ color: s.poseDelta.dist > 0.1 ? '#b26a00' : P.dim }}>
                 {s.poseDelta.dist.toFixed(3)}mm</span>}
             {ok && <span style={{ color: s.counts.na + s.counts.ng ? '#ff1744' : '#00c853' }}>
               {s.counts.ok}/{s.counts.ok + s.counts.na + s.counts.ng}</span>}
@@ -987,8 +1005,18 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     !!(reg && Number.isFinite(reg.cx)),
     nIncl > 0,
     !!edit_info.__shape_cache && !edit_info.__shape_stale,
+    // ROI IS A STEP, BUT IT DOES NOT GATE.
+    //
+    // It belongs in the sequence -- it is part of setting a recipe up, not a
+    // diagnostic tool -- but there is no state of it that is WRONG: no points
+    // means the matcher auto-selects, which is a complete configuration and the
+    // one most defs ship with. So it is done once there are features to refine,
+    // whether the points are explicit or automatic. A step that could never be
+    // satisfied would stop the panel from ever reading "done", and this panel
+    // exists to say when the def is finished.
+    !!edit_info.__shape_cache && !edit_info.__shape_stale,
   ];
-  const STEP_T = ['定位', '特徵範圍', '生成特徵'];
+  const STEP_T = ['定位', '特徵範圍', '生成特徵', 'ROI 取樣點'];
   const curStep = stepDone.findIndex((d) => !d);          // -1 = all done
   const shownStep = openStep !== undefined ? openStep : (curStep < 0 ? 2 : curStep);
 
@@ -1007,8 +1035,6 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     roi: ['ROI 取樣點', '點畫面新增,點既有的點刪除。改它不影響特徵,不需要重新生成。'],
   };
 
-  const P = { ink: '#e8eaed', dim: '#8b929c', line: '#333', accent: '#1668dc',
-              ok: '#49aa19', bad: '#d4380d' };
 
   // 40px on everything touchable. antd size="small" is 24px, which is not
   // reliably hittable with a finger on a 10-inch panel.
@@ -1032,7 +1058,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     const open = opt ? openStep === idx : shownStep === idx;
     const done = !opt && stepDone[idx];
     const now = !opt && idx === curStep;
-    return <div style={{ borderTop: opt ? '1px dashed ' + P.line : '1px solid #262626' }}>
+    return <div style={{ borderTop: opt ? '1px dashed ' + P.line : '1px solid ' + P.line }}>
       <div role="button" tabIndex={0}
         data-testid={'sbm2-block-' + (opt ? 'opt' : 'step') + '-' + idx}
         data-done={done ? '1' : '0'} data-now={now ? '1' : '0'}
@@ -1070,7 +1096,8 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     data-roi={String(roiPts.length)}
     data-regions={nIncl + '/' + nExcl}
     data-tool={tool}
-    style={{ display: 'flex', height: '100%', minHeight: 0, gap: 8, color: P.ink }}>
+    style={{ display: 'flex', height: '100%', minHeight: 0, gap: 8,
+             color: P.ink, background: P.ground }}>
     {/* Landscape: canvas | rail. Portrait: canvas above, rail below.
         The v1 studio is height:84vh with a fixed 240px column, which overflows a
         portrait 10-inch screen; this is flex in both directions and the canvas
@@ -1103,9 +1130,11 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
             style={{ width: 44, height: 44, borderRadius: 9, display: 'flex',
               alignItems: 'center', justifyContent: 'center', fontSize: 19, cursor: 'pointer',
               userSelect: 'none', touchAction: 'manipulation',
-              background: tool === id ? P.accent : 'rgba(255,255,255,.08)',
-              border: '1px solid ' + (tool === id ? 'transparent' : 'rgba(255,255,255,.14)'),
-              color: '#eef1f5' }}>{ic}</div>
+              // Kept dark on purpose: these float over the camera image, not
+              // over the panel, and a light chip vanishes against a bright part.
+              background: tool === id ? P.accent : 'rgba(20,28,32,.55)',
+              border: '1px solid ' + (tool === id ? 'transparent' : 'rgba(255,255,255,.25)'),
+              color: '#f2f6f7' }}>{ic}</div>
         ))}
       </div>
 
@@ -1136,12 +1165,12 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       {/* Not a tool and not a step. A def in this state leaves here unable to use
           its own locator, invisibly -- so it keeps the top and both exits. */}
       {edit_info.__shape_stale &&
-        <div style={{ flex: '0 0 auto', border: '1px solid ' + P.bad, background: '#2a1215',
+        <div style={{ flex: '0 0 auto', border: '1px solid ' + P.bad, background: P.badBg,
                       borderRadius: 8, padding: 11, marginBottom: 9 }}>
-          <div style={{ color: '#ff7875', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+          <div style={{ color: P.bad, fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
             ⚠ 特徵已失效</div>
-          <div style={{ color: '#e0b4b4', fontSize: 12.5, lineHeight: 1.6 }}>
-            你改了定位,目前的 SBM 特徵跟它對不上了。<b style={{ color: '#ff7875' }}>
+          <div style={{ color: '#a84a3f', fontSize: 12.5, lineHeight: 1.6 }}>
+            你改了定位,目前的 SBM 特徵跟它對不上了。<b style={{ color: P.bad }}>
             這樣離開的話,這個 def 不會用 SBM 定位</b>——它會退回 sig360,而且畫面上看不出來。
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
@@ -1161,10 +1190,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       {/* PINNED. The block below scrolls; this must not, or the reader loses
           their place exactly when the panel is long enough to need it. */}
       <div style={{ flex: '0 0 auto', border: '1px solid ' + P.line, borderRadius: 8,
-                    background: '#1f232a', padding: '9px 10px 10px', marginBottom: 9 }}>
+                    background: P.panel, padding: '9px 10px 10px', marginBottom: 9 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
           <span style={{ fontSize: 11, letterSpacing: '.08em', color: P.dim, fontWeight: 600 }}>
-            步驟 {curStep < 0 ? 3 : curStep + 1}／3</span>
+            步驟 {curStep < 0 ? STEP_T.length : curStep + 1}／{STEP_T.length}</span>
           <span style={{ fontSize: 14, fontWeight: 600 }}>
             {curStep < 0 ? '都完成了' : STEP_T[curStep]}</span>
         </div>
@@ -1239,9 +1268,23 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           {stepDone[0]
             ? <Hint>把目前的定位、範圍、邊緣門檻送給 core,抽出這個配方要用的特徵點(藍)。
                 需要 &lt;配方名&gt;.png 已經在磁碟上。</Hint>
-            : <Hint><b style={{ color: '#e0902f' }}>要先做第 1 步「定位」。</b>
+            : <Hint><b style={{ color: '#b26a00' }}>要先做第 1 步「定位」。</b>
                 特徵是相對於定位原點抽出來的 —— 沒有原點就抽,畫出來會落在影像角落,
                 而且你一畫定位線它們就失效了。</Hint>}
+        </Block>
+
+        <Block n="4" idx={3} title="ROI 取樣點"
+          summary={roiPts.length ? roiPts.length + ' 點' : '自動'}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <Button style={{ flex: 1, height: H }} loading={genBusy} onClick={autoFillRoi}>⚙ 自動產生</Button>
+            <Button style={{ height: H }} onClick={() => onRoi([])}>清除</Button>
+          </div>
+          <Button block style={{ height: H }} type={tool === 'roi' ? 'primary' : 'default'}
+            data-testid="sbm2-roi-edit"
+            onClick={() => pick('roi')}>◻ 編輯 ROI 點</Button>
+          <Hint>core 只用這些點做定位微調。全部清除＝只做粗定位。
+            <b style={{ color: P.ink }}>改這裡不會讓特徵失效</b>,不需要重新生成 ——
+            這些點是掛在特徵上的,不是抽特徵的輸入。</Hint>
         </Block>
 
         <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,
@@ -1297,15 +1340,6 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
             NOTE: the reducer still marks the cache stale on roi_refine_points --
             until that is changed, this label is the intent and not yet the
             behaviour. */}
-        <Block n="＋" idx={102} opt title="ROI 取樣點" summary={'選用 · ' + roiPts.length}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-            <Button style={{ flex: 1, height: H }} loading={genBusy} onClick={autoFillRoi}>⚙ 自動產生</Button>
-            <Button style={{ height: H }} onClick={() => onRoi([])}>清除</Button>
-          </div>
-          <Button block style={{ height: H }} type={tool === 'roi' ? 'primary' : 'default'}
-            onClick={() => pick('roi')}>◻ 編輯 ROI 點</Button>
-          <Hint>core 只用這些點做定位微調。全部清除＝只做粗定位。</Hint>
-        </Block>
 
         <Block n="⚙" idx={103} opt title="參數" summary="選用">
           <Row label="位置容差" unit="px">
