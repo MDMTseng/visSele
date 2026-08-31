@@ -1210,6 +1210,32 @@ volatile uint32_t GATE_REJ_LOAD=0;           // turned away by this layer
 //
 // Off by default, like proc_sep_us: a machine whose setup predates this must
 // behave exactly as it did.
+// ONE DECISION, NOT FIVE SETTINGS.
+//
+// The throttle grew five keys -- proc_sep_us, proc_iir_shift, proc_auto,
+// proc_auto_max_us, proc_auto_rho_pct -- and a person setting up a machine has
+// exactly one thing to decide: should the feed be limited by the host, and if
+// so, does the machine work it out or does someone type it in. Everything else
+// is either a filter constant nobody should touch or a runaway bound that only
+// matters when something is already wrong.
+//
+// So the settable face is a mode and a rate:
+//
+//     gate.proc_mode    "off" | "manual" | "auto"
+//     gate.proc_rate_hz  parts per second, for "manual"
+//
+// IN THE UNIT PEOPLE THINK IN. Every other key here is microseconds of
+// interval, and every caller was dividing 1000000 by something before it could
+// say what it meant -- the panel did, the tests did, and the one place that
+// forgot would have been wrong by a factor nobody would notice. The interval
+// stays underneath as proc_sep_us because that is what the gate compares
+// against; it is derived here, once.
+//
+// The manual floor no longer applies underneath "auto". It was there so the
+// auto term could never admit faster than a configured cap, but
+// min_detect_sep_us -- the camera's own limit, layer one -- already guarantees
+// that and applies in every mode. Two settings enforcing one rule is how they
+// end up disagreeing.
 volatile bool     GATE_PROC_AUTO=false;
 volatile uint32_t GATE_PROC_AUTO_ADD_US=0;     // what the loop has added
 volatile uint32_t GATE_PROC_AUTO_MAX_US=1000000; // 1s = 1/s, the runaway bound
@@ -1244,6 +1270,26 @@ volatile int32_t  GATE_PROC_DW_MQ=0;           // queue growth, milli-objects/s
 volatile int32_t  GATE_PROC_RHO_PCT=0;         // measured, 100 = saturated
 volatile int32_t  GATE_PROC_RHO_TARGET=80;     // hold it here
 volatile uint32_t GATE_PROC_SVC_US=0;          // service time this window
+// The other half of the service estimate: how far apart the ANSWERS are.
+//
+// Report latency and inter-departure are each exact in one regime and wrong in
+// the other, and they are wrong in opposite directions -- so the smaller of the
+// two is right in both:
+//
+//   host not saturated  latency  = service exactly (nothing is queued)
+//                       departure spacing = the ARRIVAL interval, >= service
+//   host saturated      latency  = queueing + service, an over-estimate
+//                       departure spacing = service exactly (answers are
+//                                           back to back; the core cannot
+//                                           emit faster than it works)
+//
+// min() picks the exact one each time without needing to detect which regime
+// the machine is in -- which matters because detecting it is the hard part.
+// This removes the one weakness of the latency-only estimate (over-stating
+// service once a backlog forms) and it needs nothing from the core: both
+// timestamps are the board's own clock at the moment a report arrived.
+volatile uint32_t GATE_PROC_SVC_ID_US=0;       // inter-departure, EWMA
+static   uint64_t PROC_LAST_REP_US=0;
 // The effective floor. One place computes it so the gate, the reply and any
 // future reader cannot disagree about what is actually in force.
 static inline uint32_t gateProcSepEff()
@@ -5180,7 +5226,11 @@ static void procAutoService()
     const uint32_t dn     = cl_n - last_camlat_n;
     if(dn > 0)
     {
-      GATE_PROC_SVC_US = (uint32_t)((cl_sum - last_camlat_sum) / dn);
+      const uint32_t lat_us = (uint32_t)((cl_sum - last_camlat_sum) / dn);
+      const uint32_t id_us  = GATE_PROC_SVC_ID_US;
+      // See GATE_PROC_SVC_ID_US: each is exact in one regime and an
+      // over-estimate in the other, so the smaller is the service time.
+      GATE_PROC_SVC_US = (id_us > 0 && id_us < lat_us) ? id_us : lat_us;
       // rho uses the ADMITTED rate, because that is the one thing this loop
       // can actually change.
       const int32_t r_now = (int32_t)(((int64_t)(GATE_ACCEPT - last_accept) * 1000000) / dt_ms);
@@ -6551,6 +6601,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     GATE_REJ_LOAD=0; GATE_PROC_AVG_US=0;
     GATE_PROC_AUTO_ADD_US=0; GATE_PROC_AUTO_CAP_N=0; GATE_PROC_DW_MQ=0;
     GATE_PROC_RHO_PCT=0; GATE_PROC_SVC_US=0;
+    GATE_PROC_SVC_ID_US=0; PROC_LAST_REP_US=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     GATE_DISCARD_STOP=0;
@@ -6984,6 +7035,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // The auto term, and enough to tell a working loop from a runaway: how
       // much it has added, what is actually in force, the growth it is reacting
       // to, and how often it has sat at the bound.
+      jG["proc_mode"] = GATE_PROC_AUTO ? "auto"
+                      : (GATE_PROC_SEP_US ? "manual" : "off");
+      // What the gate is actually admitting at, in the unit the setting uses,
+      // so a panel never has to invert a microsecond interval to show it.
+      {
+        const uint32_t eff = gateProcSepEff();
+        jG["proc_rate_hz"] = eff ? (1000000 / eff) : 0;
+      }
       jG["proc_auto"]=(bool)GATE_PROC_AUTO;
       jG["proc_auto_add_us"]=GATE_PROC_AUTO_ADD_US;
       jG["proc_eff_us"]=gateProcSepEff();
@@ -6991,6 +7050,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jG["proc_dw_mq"]=GATE_PROC_DW_MQ;
       jG["proc_rho_pct"]=GATE_PROC_RHO_PCT;
       jG["proc_svc_us"]=GATE_PROC_SVC_US;
+      // Both inputs, not just the winner: which one is smaller says which
+      // regime the machine is in, and that is worth being able to read.
+      jG["proc_svc_id_us"]=GATE_PROC_SVC_ID_US;
       jG["rej_dist"]=GATE_REJ_DIST;
       jG["rej_busy"]=GATE_REJ_BUSY;
       jG["disabled"]=(bool)GATE_DISABLED;
@@ -7404,6 +7466,28 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         // those would put the whole uptime into the average.
         if(tarP->cam_us!=0 && now64>(int64_t)tarP->cam_us)
         {
+          // Answer-to-answer spacing, sampled here because this is the
+          // moment an answer exists. Nothing decides whether the machine is
+          // backlogged: min() in procAutoService does that, and it does it by
+          // arithmetic rather than by a threshold somebody has to choose.
+          {
+            const uint64_t rep_now = (uint64_t)now64;
+            if(PROC_LAST_REP_US)
+            {
+              const uint64_t gap = rep_now - PROC_LAST_REP_US;
+              // A gap of minutes is the line having been stopped, not a slow
+              // host; it must not be allowed to poison the average.
+              if(gap > 0 && gap < 2000000ULL)
+              {
+                const uint32_t idt = (uint32_t)gap;
+                GATE_PROC_SVC_ID_US = GATE_PROC_SVC_ID_US
+                  ? (uint32_t)(GATE_PROC_SVC_ID_US
+                      + (((int32_t)idt - (int32_t)GATE_PROC_SVC_ID_US) >> 3))
+                  : idt;
+              }
+            }
+            PROC_LAST_REP_US = rep_now;
+          }
           uint32_t clat=(uint32_t)(now64-(int64_t)tarP->cam_us);
           REP_CAMLAT_N++;
           REP_CAMLAT_SUM_US+=clat;
@@ -9745,7 +9829,18 @@ void genMachineSetup(JsonDocument &jdoc)
     jP["diameter_mm"]=plate_diameter_mm;
     jP["stepper_en_active"]=stepper_en_active;
     jP["stepper_dir"]=stepper_dir_level;
-    jP["speed_band_pct"]=SPEED_BAND_PCT;
+    // speed_band_pct IS NOT EMITTED ANY MORE. The band it configured was
+    // deleted in 3becdfd6 and nothing has read SPEED_BAND_PCT since -- every
+    // remaining mention of it in this file is a comment describing a mechanism
+    // that no longer exists. It was still being written, clamped to 50, and
+    // handed out in every backup, so it kept propagating into new config files
+    // as though it did something.
+    //
+    // Not deleted from K_PLATE, deliberately: set_setup refuses a whole
+    // document containing an unrecognised key, so removing the schema entry
+    // would make every existing backup unrestorable. Accepted and ignored is
+    // the honest state, and no longer emitting it is what stops it spreading.
+    // Same pattern as report_match_pcnt.
   }
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
@@ -9756,6 +9851,11 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["debounce_rise"]=DEBOUNCE_H_THRES;
     jGT["debounce_fall"]=DEBOUNCE_L_THRES;
     jGT["min_detect_dist_um"]=GATE_MIN_DIST_um;
+    // The simple face first. proc_mode and proc_rate_hz are what a UI should
+    // read and write; the rest is what they resolve to.
+    jGT["proc_mode"] = GATE_PROC_AUTO ? "auto"
+                     : (GATE_PROC_SEP_US ? "manual" : "off");
+    jGT["proc_rate_hz"] = GATE_PROC_SEP_US ? (1000000 / GATE_PROC_SEP_US) : 0;
     jGT["proc_sep_us"]=GATE_PROC_SEP_US;
     jGT["proc_iir_shift"]=GATE_PROC_IIR_SHIFT;
     jGT["proc_auto"]=(bool)GATE_PROC_AUTO;
@@ -9764,7 +9864,11 @@ void genMachineSetup(JsonDocument &jdoc)
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
-    jCM["report_match_ts"]=REPORT_MATCH_TS;
+    // report_match_ts IS NOT EMITTED ANY MORE, for the same reason: timestamp
+    // matching is the only matching there is, the variable is a constant true,
+    // and no branch reads it. It is still accepted (as true) so old documents
+    // restore; cam_sync.authoritative still reports it where a diagnostic
+    // reader expects it.
     jCM["match_window_us"]=CamClockSync::TOL_US;
     // The setting, and what it currently BUYS in millimetres. The second one is
     // emitted whichever mode is in use, because the hazard the microsecond form
@@ -9956,13 +10060,28 @@ void genMachineSetup(JsonDocument &jdoc)
 // So the schema is written down once, here, and anything not in it is named
 // back to the caller. An unrecognised key is a caller that believes something
 // false about the machine, and that is worth an error rather than silence.
+// KEYS THAT ARE ACCEPTED AND DO NOTHING.
+//
+// Each of these configured a mechanism that has since been removed. They stay
+// in the schemas below because set_setup refuses a whole document containing an
+// unrecognised key, so dropping them would make existing backups unrestorable
+// -- but genMachineSetup no longer emits them, so they stop appearing in new
+// ones and die out on their own.
+//
+//   plate.speed_band_pct    the speed band, deleted 3becdfd6
+//   cam.report_match_ts     timestamp matching is now the only matching
+//   cam.report_match_pcnt   refused loudly rather than ignored, see set_setup
+//
+// If you are adding a fourth, put it here rather than leaving it to be
+// discovered by someone grepping for why a setting does nothing.
 static const char *const K_PLATE[] =
   {"freq","accel","speed_band_pct","pulses_per_rev","diameter_mm","stepper_en_active",
    "stepper_dir",NULL};
 static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
    "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
-   "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",NULL};
+   "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",
+   "proc_mode","proc_rate_hz",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -10196,7 +10315,49 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
-  JSON_SETIF_ABLE(GATE_PROC_SEP_US,jGT,"proc_sep_us");
+  // proc_mode / proc_rate_hz are applied BEFORE the raw keys, so a document
+  // carrying both (a backup written by an older tool, say) ends up with the
+  // explicit low-level value rather than with whatever the mode implied.
+  if(jGT["proc_rate_hz"].is<int>())
+  {
+    const int hz = jGT["proc_rate_hz"];
+    // 0 means "no manual rate", which is what "off" is made of. Above 1000/s
+    // the interval rounds to nothing useful and the camera cap governs anyway.
+    GATE_PROC_SEP_US = (hz > 0 && hz <= 1000) ? (uint32_t)(1000000 / hz) : 0;
+  }
+  if(jGT["proc_mode"].is<const char*>())
+  {
+    const char *m = jGT["proc_mode"];
+    if(strcmp(m,"auto")==0)
+    {
+      GATE_PROC_AUTO = true;
+      // Auto stands alone; see the note at GATE_PROC_AUTO. Leaving a stale
+      // manual floor underneath it would silently raise the throttle the loop
+      // reports, and the loop would look like it had chosen that number.
+      GATE_PROC_SEP_US = 0;
+    }
+    else if(strcmp(m,"manual")==0)
+    {
+      GATE_PROC_AUTO = false; GATE_PROC_AUTO_ADD_US = 0;
+    }
+    else if(strcmp(m,"off")==0)
+    {
+      GATE_PROC_AUTO = false; GATE_PROC_AUTO_ADD_US = 0; GATE_PROC_SEP_US = 0;
+    }
+    // An unrecognised mode is refused by the schema check above, not silently
+    // treated as one of these.
+  }
+  // The raw interval still wins over the mode, so a backup restores exactly the
+  // value it recorded rather than whatever the mode implies -- EXCEPT under
+  // "auto", where a manual floor underneath the loop would silently raise the
+  // throttle the loop then reports as its own choice. A hand-written document
+  // asking for both is asking for two different things; the mode is the one
+  // that was stated in words.
+  if(!(jGT["proc_mode"].is<const char*>()
+       && strcmp((const char*)jGT["proc_mode"],"auto")==0))
+  {
+    JSON_SETIF_ABLE(GATE_PROC_SEP_US,jGT,"proc_sep_us");
+  }
   JSON_SETIF_ABLE(GATE_PROC_AUTO_MAX_US,jGT,"proc_auto_max_us");
   if(jGT["proc_auto_rho_pct"].is<int>())
   {

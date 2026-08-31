@@ -24,6 +24,7 @@ import Divider from 'antd/lib/divider';
 import Modal from 'antd/lib/modal';
 import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
+import Radio from 'antd/lib/radio';
 import Tooltip from 'antd/lib/tooltip';
 import Popover from 'antd/lib/popover';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
@@ -789,10 +790,19 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const gateHz = gateSepUs > 0 ? Math.round(1000000 / gateSepUs) : undefined;
   // The second layer, in the same units as the first so the two can be read
   // against each other: it only ever makes sense BELOW the camera cap.
-  const procSepUs = gate ? gate.proc_sep_us : cfg.gate_proc_sep_us;
-  const procHz = procSepUs > 0 ? Math.round(1000000 / procSepUs) : undefined;
+  // ONE READING, WHATEVER THE MODE. The device resolves mode + rate itself and
+  // reports both, so the panel never inverts a microsecond interval to find out
+  // what it is doing -- which was the one arithmetic step every caller had to
+  // repeat and only had to get wrong once.
+  const procMode = (gate && gate.proc_mode) || cfg.gate_proc_mode || 'off';
+  const procHz = gate && gate.proc_rate_hz > 0 ? gate.proc_rate_hz : undefined;
   const procAvgHz = (gate && gate.proc_avg_us > 0)
     ? 1000000 / gate.proc_avg_us : undefined;
+  // What the loop is doing, for the auto row. rho is the number that says
+  // whether it has headroom; svc is what it thinks the host costs per part.
+  const procRho = gate && gate.proc_rho_pct > 0 ? gate.proc_rho_pct : undefined;
+  const procSvcMs = gate && gate.proc_svc_us > 0 ? gate.proc_svc_us / 1000 : undefined;
+  const procCapN = (gate && gate.proc_auto_cap_n) | 0;
   // The report latency as a RATE, so it reads against the parts/s field. cam_*
   // and not the bare pair, for the same reason the 判定期限 rows use it: the
   // gate pair carries the part's mechanical ride to the camera, which is not
@@ -1631,68 +1641,96 @@ build ${fw.build}`}>
             unjudged part or a report matching no object. An average is the
             right measure for it because the host has a pipeline: one short gap
             is absorbed, a sustained rate is not. */}
-        <div style={{ marginTop: 8, marginBottom: 4 }}>進料均速（主機）
-          <Why>上面那條看相機,這條看主機算得多快。失效方式不同:相機來不及就是
-            沒影格,主機來不及還是會回答,只是遲到 —— 遲到就是 NA 回流,再嚴重
-            就撞到下面的停機門檻。所以量的是**低通後的平均**到達間隔,不是單一間隔。
-            擋掉的料一樣回流,不會掉。</Why></div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-          <Input
-            style={{ width: 150 }}
-            addonBefore="均速"
-            addonAfter="顆/秒"
-            placeholder={procHz !== undefined ? String(procHz) : '關閉'}
-            value={procHzInput}
-            onChange={(e) => setProcHzInput(e.target.value)}
-          />
-          <Button
-            loading={busy === 'procgate'}
-            disabled={!(Number(procHzInput) > 0)}
-            onClick={() => run('procgate', (api) => api.machineSetupUpdate(
-              { gate_proc_sep_us: Math.round(1000000 / Number(procHzInput)) },
-              false, true))}
-          >套用</Button>
-          <Button
-            loading={busy === 'procgateoff'}
-            disabled={!(procSepUs > 0)}
-            onClick={() => run('procgateoff', (api) => api.machineSetupUpdate(
-              { gate_proc_sep_us: 0 }, false, true))}
-          >關閉</Button>
-          <span style={{ alignSelf: 'center', ...dim }}>
-            {procHz !== undefined ? `目前 ${procHz} 顆/秒` : '目前 關閉'}
-            {procAvgHz !== undefined ? ` · 濾波後實際 ${procAvgHz.toFixed(1)} /s` : ''}
-            {gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : ''}
-          </span>
-          {/* WHAT THE HOST IS CURRENTLY SPENDING, in the units of the field
-              above it. The floor being chosen here is a limit on the host, so
-              the number that decides it is the report latency -- and 1/latency
-              is that latency expressed as a rate, which is the only form in
-              which it can be compared to a parts/second cap without arithmetic
-              in somebody's head.
-              Average and worst are both offered because they bracket the
-              choice: at 1/avg the machine keeps up on average and the slow tail
-              is late; at 1/max nothing is ever late and throughput is set by
-              the worst frame the run has ever seen. The useful setting is
-              between them, which is a judgement the number cannot make -- so
-              both are shown and neither is applied on its own. */}
-          {reportHz !== undefined && (
-            <span style={{ alignSelf: 'center', ...dim }}>
-              目前回報 平均 {reportHz.toFixed(1)} /s
-              {reportWorstHz !== undefined ? ` · 最慢 ${reportWorstHz.toFixed(1)} /s` : ''}
-              <a style={{ marginLeft: 6 }}
-                 onClick={() => setProcHzInput(String(Math.max(1, Math.floor(reportHz))))}>
-                填平均</a>
-            </span>
-          )}
-          {/* Set above the camera cap it can never engage: layer 1 has already
-              turned the part away. Said rather than clamped -- the number is
-              legitimate on a machine whose camera cap is later raised. */}
-          {procHz !== undefined && gateHz !== undefined && procHz >= gateHz && (
-            <span style={{ alignSelf: 'center', color: '#c33' }}>
-              ← 高於相機上限,永遠不會作用
-            </span>
-          )}
+        {/* THREE STATES, NOT FIVE SETTINGS.
+            The device has proc_sep_us, proc_iir_shift, proc_auto,
+            proc_auto_max_us and proc_auto_rho_pct. A person setting up a
+            machine decides one thing: is the feed limited by the host, and if
+            so does the machine work it out or does someone type it in. The
+            other three are a filter constant nobody should touch and a runaway
+            bound that only matters when something is already wrong -- they stay
+            reachable through 設定備份 / 移機 and out of the way here.
+
+            This replaces a text field, an 套用 button and a 關閉 button, where
+            "off" was expressed as clearing a number rather than as a choice. */}
+        <div style={{ marginTop: 10, marginBottom: 4 }}>進料節流（主機）
+          <Why>上面那條看相機能給多快,這條看主機算得多快。失效方式不同:相機來不及
+            就是沒影格,主機來不及還是會回答,只是遲到 —— 遲到就是 NA 回流,再嚴重
+            就撞到下面的停機門檻。擋掉的料一樣回流,不會掉。<br/><br/>
+            <b>自動</b>是預設的選擇:板子量自己的服務時間,把利用率壓在目標值,
+            料號換了、ROI 改了、電腦換了都不用重設。<b>手動</b>只在你要固定住一個
+            數字的時候用。</Why></div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Radio.Group
+            size="small"
+            value={procMode}
+            disabled={busy === 'procmode'}
+            onChange={(e) => {
+              const m = e.target.value;
+              // manual with nothing typed yet takes the report average as its
+              // starting point, because that is the number the field would be
+              // filled from anyway and an empty manual mode throttles nothing.
+              const hz = m !== 'manual' ? undefined
+                : (Number(procHzInput) > 0 ? Math.round(Number(procHzInput))
+                   : (reportHz ? Math.max(1, Math.floor(reportHz)) : undefined));
+              if (m === 'manual' && !hz) { setProcHzInput(''); return; }
+              run('procmode', (api) => api.machineSetupUpdate(
+                hz ? { gate_proc_mode: m, gate_proc_rate_hz: hz }
+                   : { gate_proc_mode: m }, false, true));
+            }}>
+            <Radio.Button value="off">關閉</Radio.Button>
+            <Radio.Button value="manual">手動</Radio.Button>
+            <Radio.Button value="auto">自動</Radio.Button>
+          </Radio.Group>
+
+          {procMode === 'manual' && (<>
+            <Input
+              style={{ width: 140 }}
+              addonAfter="顆/秒"
+              placeholder={procHz !== undefined ? String(procHz) : ''}
+              value={procHzInput}
+              onChange={(e) => setProcHzInput(e.target.value)}
+            />
+            <Button size="small" loading={busy === 'procrate'}
+              disabled={!(Number(procHzInput) > 0)}
+              onClick={() => run('procrate', (api) => api.machineSetupUpdate(
+                { gate_proc_rate_hz: Math.round(Number(procHzInput)) }, false, true))}
+            >套用</Button>
+            {reportHz !== undefined && (
+              <a onClick={() => setProcHzInput(String(Math.max(1, Math.floor(reportHz))))}>
+                填目前回報平均 {reportHz.toFixed(1)}/s</a>
+            )}
+          </>)}
         </div>
+
+        {/* What it is actually doing, in one line, phrased for the mode it is
+            in. A mode that reads the same in all three states is a mode
+            somebody has to test by changing it. */}
+        <div style={{ ...dim, marginTop: 6 }}>
+          {procMode === 'off' && '沒有主機節流 —— 進料只受相機上限管。'}
+          {procMode === 'manual' && (procHz !== undefined
+            ? `固定在 ${procHz} 顆/秒${gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : ''}`
+            : '尚未設定速率')}
+          {procMode === 'auto' && (procHz !== undefined
+            ? `自動找到 ${procHz} 顆/秒`
+              + (procSvcMs !== undefined ? ` · 服務 ${procSvcMs.toFixed(0)}ms` : '')
+              + (procRho !== undefined ? ` · 利用率 ${procRho}%` : '')
+              + (gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : '')
+            : '量測中 —— 需要幾秒的回報才會有值')}
+        </div>
+        {/* THE ONE THING THAT DISTINGUISHES A WORKING LOOP FROM A RUNAWAY.
+            A controller pinned at its bound reports no unjudged parts, no halt
+            and no production, which looks like success. Only this says
+            otherwise, so it is never folded into the line above. */}
+        {procMode === 'auto' && procCapN > 0 && (
+          <div style={{ color: '#c33', marginTop: 4 }}>
+            自動節流已觸頂 {procCapN} 次 —— 它在盡量慢卻還是跟不上,查相機或主機是不是卡住了
+          </div>
+        )}
+        {procMode !== 'off' && procHz !== undefined && gateHz !== undefined && procHz >= gateHz && (
+          <div style={{ color: '#c33', marginTop: 4 }}>
+            高於相機上限 {gateHz} 顆/秒,永遠不會作用
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
           {/* The camera ceiling, measured rather than assumed: shrinking the ROI

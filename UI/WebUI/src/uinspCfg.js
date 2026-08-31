@@ -33,6 +33,8 @@ export const CFG_GROUP = {
   gate_debounce_rise:    ["gate", "debounce_rise"],
   gate_debounce_fall:    ["gate", "debounce_fall"],
   min_detect_dist_um:    ["gate", "min_detect_dist_um"],
+  gate_proc_mode:        ["gate", "proc_mode"],
+  gate_proc_rate_hz:     ["gate", "proc_rate_hz"],
   gate_proc_sep_us:      ["gate", "proc_sep_us"],
   gate_proc_iir_shift:   ["gate", "proc_iir_shift"],
 
