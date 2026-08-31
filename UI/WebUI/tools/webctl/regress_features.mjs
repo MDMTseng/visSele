@@ -28,7 +28,7 @@
 //   - wait for a CONDITION, never a duration. A fixed sleep encodes the speed of
 //     the machine it was written on: wasteful here, a false failure on a slower
 //     one, and it has to be re-tuned every time the app gets heavier.
-import { makeCtl, toMain, dismissCamModal, loadRecipe } from './lib_enter.mjs';
+import { makeCtl, toMain, dismissCamModal, loadRecipe, freshPage } from './lib_enter.mjs';
 import { makeProbe, makeTally } from './_rf_lib.mjs';
 
 const MODEL = process.argv[2] || process.env.WEBCTL_MODEL || 'data/test1';
@@ -77,7 +77,7 @@ async function toViewfinder(name) {
 
 (async () => {
   console.log(`app ${APP}   model ${MODEL}`);
-  await api('/goto', { url: APP });
+  await freshPage(ctl, APP);
   await P.waitFor('app mounted', async () =>
     (await ev(`typeof window.__GP_STORE__`)) === 'object', { timeout: 40000 });
   await toMain(ctl);
@@ -253,6 +253,16 @@ async function toViewfinder(name) {
       await P.click('take-keep');
       ok('the switch reads kept',
          await P.waitAttr('take-capture', 'data-keep', '1', { timeout: 5000 }));
+      // Watch for the registration coming BACK, and name what did it. This is
+      // how the ATBundle race was caught: a def-load reply landing after the
+      // retake re-applied the old def, about one run in three, and the only
+      // visible trace was this assertion failing with the old values in place.
+      await ev(`(function(){var st=window.__GP_STORE__; if(st.__kw) return; st.__kw=1;
+        window.__KLOG__=[]; var d=st.dispatch.bind(st);
+        st.dispatch=function(a){ var b=(st.getState().UIData.edit_info||{}).def_image_reg;
+          var r=d(a); var c=(st.getState().UIData.edit_info||{}).def_image_reg;
+          if(!!b!==!!c) window.__KLOG__.push((c?'RESTORED by ':'cleared by ')+(a&&a.type));
+          return r; }; })()`);
       await P.click('take-use-frame');
       await P.waitExists('sbm2', { timeout: 30000 });
       const featsAfter = await P.store(`(${EI}._obj.shapeList||[]).length`);
@@ -260,10 +270,27 @@ async function toViewfinder(name) {
          featsAfter === featsBefore && featsBefore > 0, `${featsBefore} -> ${featsAfter}`);
       // The other half, and the one nothing can restore: these describe a frame
       // that no longer exists, so keep-mode has to clear them too.
-      ok('the registration is still cleared', !(await P.store(`${EI}.def_image_reg`)));
-      ok('the feature cache is still cleared', !(await P.store(`${EI}.__shape_cache`)));
+      // Polled, not read once. The studio opens as soon as the capture lands,
+      // and the patch that clears the old localizer arrives on its own tick --
+      // so reading immediately caught the pre-clear state about one run in
+      // three and reported a working app as broken.
+      const _regCleared = await P.waitFor('reg cleared', async () =>
+        !(await P.store(`${EI}.def_image_reg`)), { timeout: 8000 });
+      ok('the registration is still cleared', _regCleared,
+         `reg=${JSON.stringify(await P.store(`${EI}.def_image_reg`))} `
+       + `log=${JSON.stringify(await P.store('window.__KLOG__||[]'))} `
+       + `keep=${await P.attr('take-capture','data-keep')} `
+       + `fresh=${JSON.stringify(await P.store(`${EI}.__img_fresh_capture`))}`);
+      ok('the feature cache is still cleared',
+         await P.waitFor('cache cleared', async () =>
+           !(await P.store(`${EI}.__shape_cache`)), { timeout: 8000 }));
     }
   }
+
+  // LEAVE THE APP AT MAIN. The next suite can then reuse this page instead of
+  // reloading, and a reload costs ~7s of camera-reconnect modal that nothing
+  // can hurry. Best-effort: a suite that already failed must still report.
+  await toMain(ctl).catch(() => {});
 
   process.exit(T.done() ? 1 : 0);
 })().catch((e) => {

@@ -219,6 +219,27 @@ const server = http.createServer(async (req, res) => {
         case '/mouse':              // selector-free coordinate click (replay fallback)
           await page.mouse.click(b.x, b.y);
           return json(res, 200, { ok: true });
+        case '/drag': {
+          // A real press-move-release through the browser's input pipeline.
+          // The canvas tools (registration line, polygons, ROI points) are the
+          // only way to author a def, and none of them can be reached by a
+          // click: /mouse alone cannot draw a line. Synthesising MouseEvents in
+          // the page would also work, but it bypasses the hit-testing and the
+          // capture semantics that the draw hooks rely on, so a drag that
+          // "works" in the test could still be broken for a person.
+          //
+          // steps because a single jump from press to release delivers ONE move
+          // event, and a hook that builds its shape incrementally sees a
+          // straight line with no middle -- which some of them treat as a click.
+          const steps = Math.max(1, b.steps || 12);
+          await page.mouse.move(b.x1, b.y1);
+          await page.mouse.down();
+          for (let i = 1; i <= steps; i++)
+            await page.mouse.move(b.x1 + (b.x2 - b.x1) * i / steps,
+                                  b.y1 + (b.y2 - b.y1) * i / steps);
+          await page.mouse.up();
+          return json(res, 200, { ok: true });
+        }
         case '/key':                // keyboard key press at page level
           await page.keyboard.press(b.key);
           return json(res, 200, { ok: true });

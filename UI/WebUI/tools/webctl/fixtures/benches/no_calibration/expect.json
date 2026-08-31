@@ -1,0 +1,9 @@
+{
+  "why": "a machine that has never been calibrated: no honest scale exists, so the rule must fall through to the def's cam_param and never invent a number",
+  "instrumentMmpp": null,
+  "editorMmpp_noSignature": null,
+  "editorMmpp_withSignature": 0.02,
+  "machine_setting": {
+    "InspectionMode": "FI"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "why": "the bench as it stands: a telecentric lens with a real calibration",
+  "instrumentMmpp": 0.01388594314,
+  "editorMmpp_noSignature": 0.01388594314,
+  "editorMmpp_withSignature": 0.02,
+  "machine_setting": {
+    "InspectionMode": "FI"
+  }
+}
