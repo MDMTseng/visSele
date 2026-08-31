@@ -1198,7 +1198,17 @@ volatile bool     GATE_CAM_AUTO=false;
 volatile uint32_t GATE_CAM_FPS_MHZ=0;         // last figure from the core
 volatile int64_t  GATE_CAM_FPS_MS=0;          // when it arrived
 volatile int32_t  GATE_CAM_MARGIN_PCT=90;     // admit at this % of the ceiling
-static const int32_t GATE_CAM_STALE_MS=90000; // 3 missed heartbeats
+// Settable so the fallback can be OBSERVED. At the shipped 90s it cannot be:
+// the peripheral console lives inside the core, so stopping the core removes
+// the only way to ask the board anything, and querying over serial resets the
+// board and clears the very state under test. Set it below the core's 30s
+// heartbeat and the value expires between heartbeats with the core still
+// running -- so both directions, falling back and recovering, are visible from
+// a machine that is otherwise untouched.
+//
+// A test hook that changes the thing being tested is worth nothing, so this one
+// changes only WHEN the existing rule fires, not what it does.
+volatile int32_t GATE_CAM_STALE_MS=90000;     // 3 missed heartbeats
 volatile uint32_t GATE_PROC_SEP_US=0;        // floor on the filtered interval
 volatile int      GATE_PROC_IIR_SHIFT=3;     // 1/8 per sample (~8-part memory)
 volatile uint32_t GATE_PROC_AVG_US=0;        // the filter state, for the panel
@@ -1322,20 +1332,36 @@ static inline uint32_t gateMinSepEff()
 {
   if(GATE_CAM_AUTO && GATE_CAM_FPS_MHZ > 0)
   {
+    // fps_mhz is milli-hertz; interval_us = 1e9 / fps_mhz, then de-rated.
+    const uint64_t us = (uint64_t)1000000000ULL * 100
+                      / (uint32_t)GATE_CAM_FPS_MHZ / (uint32_t)GATE_CAM_MARGIN_PCT;
     const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
     if(now_ms - GATE_CAM_FPS_MS < GATE_CAM_STALE_MS)
-    {
-      // fps_mhz is milli-hertz; interval_us = 1e9 / fps_mhz, then de-rated.
-      const uint64_t us = (uint64_t)1000000000ULL * 100
-                        / (uint32_t)GATE_CAM_FPS_MHZ / (uint32_t)GATE_CAM_MARGIN_PCT;
-      // Never BELOW the manual cap. Auto is allowed to discover that the camera
-      // is faster than someone assumed, but a person who wrote down a slower
-      // number may have had a reason this board cannot see.
       return (uint32_t)us;
-    }
+
+    // STALE: THE SLOWER OF THE TWO, not the manual one.
+    //
+    // The first version fell back to the manual cap, on the argument that a
+    // person had chosen it for this machine. The bench disproved that on the
+    // first run it was verified: min_detect_sep_us here is 14286us = 70.0
+    // parts/s while the camera's own ResultingFrameRate is 68.9 fps, so going
+    // stale made the gate FASTER -- straight back to asking for frames the
+    // camera cannot produce, which is the failure auto exists to prevent. The
+    // fallback had been aimed in the dangerous direction by an argument that
+    // sounded careful.
+    //
+    // The last camera figure is stale as a statement about the CURRENT ROI, but
+    // as a BOUND it is still better evidence than a number typed in months ago.
+    // Taking the larger interval is safe whichever way the truth has moved: if
+    // the ROI shrank the camera is now faster and this costs a little
+    // throughput; if it grew, this is the only one of the two still pointing
+    // the right way.
+    return (us > (uint64_t)SYS_MIN_PULSE_TIME_SEP_us)
+             ? (uint32_t)us : SYS_MIN_PULSE_TIME_SEP_us;
   }
   return SYS_MIN_PULSE_TIME_SEP_us;
 }
+
 
 static inline uint32_t gateProcSepEff()
 {
@@ -9926,6 +9952,7 @@ void genMachineSetup(JsonDocument &jdoc)
     // twice, and an operator should not have to learn two vocabularies.
     jGT["cam_mode"] = GATE_CAM_AUTO ? "auto" : "manual";
     jGT["cam_margin_pct"] = GATE_CAM_MARGIN_PCT;
+    jGT["cam_stale_ms"] = GATE_CAM_STALE_MS;
     jGT["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
     jGT["gate_ref"]=GATE_REF_CENTER?"center":"trailing";
     jGT["pulse_min_width"]=minWidth;
@@ -10163,7 +10190,7 @@ static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
    "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
    "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",
-   "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct",NULL};
+   "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct","cam_stale_ms",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -10399,6 +10426,14 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
   if(jGT["cam_mode"].is<const char*>())
     GATE_CAM_AUTO = (strcmp((const char*)jGT["cam_mode"],"auto")==0);
+  if(jGT["cam_stale_ms"].is<int>())
+  {
+    // Floor of 1s: below that the heartbeat interval stops being the thing
+    // under test and jitter is. No ceiling -- a long one is just a machine that
+    // trusts its core, which is the shipped default.
+    int v = jGT["cam_stale_ms"];
+    GATE_CAM_STALE_MS = (v < 1000) ? 1000 : v;
+  }
   if(jGT["cam_margin_pct"].is<int>())
   {
     // Clamped: at 100% the gate asks for exactly what the camera claims it can
