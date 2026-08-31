@@ -5,10 +5,15 @@
 //     env SOAK_FREQ=10000   plate frequency (default 8000)
 //     env SOAK_NOCLEAN=1    drop the station's clean_regions for the run
 //
-// SOAK_FREQ IS CAPPED AT 10000 AND THE CAP IS PHYSICAL, NOT ARBITRARY: above it
-// the plate throws parts off. The firmware clamp is 60000, which is no help
-// here -- it is the mechanical limit of the plate, and this machine's operator
-// set 10000. A soak is not the place to find the throwing point.
+// SOAK_FREQ IS CAPPED, AND THE CAP IS PHYSICAL, NOT ARBITRARY: above it the
+// plate throws parts off. The firmware clamp is 60000, which is no help here --
+// what matters is the mechanical limit of THIS plate, which only the operator
+// knows. A soak is not the place to find the throwing point by experiment.
+//
+// The cap was 10000. Raised to 12000 on 2026-08-30 at the operator's explicit
+// instruction ("soak run 6 hr 12000speed"), asked and confirmed before the run.
+// It is a number somebody decided, not a number anybody measured -- if a later
+// run scatters parts, this line is the reason and it should come back down.
 //
 // SOAK_NOCLEAN is how the load is raised without touching the plate. This
 // station's clean gate blocks ~82% of frames, and a blocked frame costs 0.003ms
@@ -44,7 +49,8 @@ import net from 'node:net';
 const MIN = Number(process.argv[2] || 360);
 const URL = process.argv[3] || 'http://localhost:8082/';
 const FREQ_WANT = Number(process.env.SOAK_FREQ || 8000);
-const FREQ = Math.min(FREQ_WANT, 10000);   // see the note above: 10000 throws parts
+const FREQ_CAP = Number(process.env.SOAK_FREQ_CAP || 12000);   // see the note above
+const FREQ = Math.min(FREQ_WANT, FREQ_CAP);
 const NOCLEAN = process.env.SOAK_NOCLEAN === '1';
 const MSET_PATH = 'C:/Users/w2110/Documents/workspace/visSele/InspectionCore/Core0_1/data/machine_setting.json';
 const OUT = 'C:/Users/w2110/Downloads/pw';
@@ -319,7 +325,8 @@ console.log('t_min,heapMB,totalMB,uiRSS_MB,coreRSS_MB,domNodes,state,'
           + 'nm_orphan,nm_window,nm_consec,statwin_ms,'
           + 'ackfalse,locked,unapplied,frame_gap,frame_lost,'
           + 'lat_avg_ms,lat_max_ms,lat_tail_n,'
-          + 'resid_us,resid_max_us,dmax_us,ts_rej,cal_fail,cal_lost,win_us,drift_us_s,'
+          + 'resid_us,resid_max_us,dmax_us,miss_last_us,miss_max_us,rebuilds,'
+          + 'ts_rej,cal_fail,cal_lost,win_us,drift_us_s,'
           + 'err,panel');
 const t0 = Date.now();
 let faults = 0;
@@ -365,6 +372,15 @@ for (let i = 0; i <= MIN; i++) {
                cs(s).resid_us !== undefined ? cs(s).resid_us : '',
                cs(s).resid_max_us !== undefined ? cs(s).resid_max_us : '',
                cs(s).delta_max_us !== undefined ? cs(s).delta_max_us : '',
+               // The deltas of frames the gate REFUSED, and how often the clock
+               // had to be rebuilt. delta_max_us records only what was ACCEPTED,
+               // so without these a halt says "two frames were outside the
+               // window" and nothing about whether they were 6 ms out or 400 ms
+               // out -- and those have completely different causes. The 12000
+               // run stopped on exactly that question and could not answer it.
+               cs(s).miss_delta_last_us !== undefined ? cs(s).miss_delta_last_us : '',
+               cs(s).miss_delta_max_us !== undefined ? cs(s).miss_delta_max_us : '',
+               cs(s).rebuilds !== undefined ? cs(s).rebuilds : '',
                cs(s).rejected !== undefined ? cs(s).rejected : '',
                cs(s).cal_fails !== undefined ? cs(s).cal_fails : '',
                cs(s).cal_pulse_lost !== undefined ? cs(s).cal_pulse_lost : '',

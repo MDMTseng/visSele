@@ -1,0 +1,611 @@
+<title>12000 Soak Trace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+
+<style>
+  /* Dark-first: this is read during an unattended run, often at night, next to
+     a machine. Light is defined in full underneath, not inverted. */
+  :root {
+    --ground:#14161a; --panel:#1b1e24; --panel-2:#20242b; --line:#2b3039;
+    --ink:#e9e6e0; --dim:#8d8a83; --faint:#5d5a54;
+    --accent:#e0913c;            /* the backlit plate */
+    --good:#5aa96b; --warn:#d8b13a; --crit:#d1584a;
+    --t-ui:#e0913c; --t-core:#79a8c9; --t-heap:#9d8ec4;
+    --t-seen:#8d8a83; --t-admit:#79a8c9; --t-sorted:#5aa96b; --t-na:#d8b13a;
+    --grid:#242830; --shadow:0 1px 0 rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --ground:#f3f1ec; --panel:#ffffff; --panel-2:#faf8f4; --line:#e0dbd2;
+    --ink:#1c1e22; --dim:#6c6963; --faint:#a5a199;
+    --accent:#b96e1d;
+    --good:#3d7f4d; --warn:#9a7a12; --crit:#b3402f;
+    --t-ui:#b96e1d; --t-core:#3d6f92; --t-heap:#6a5a94;
+    --t-seen:#8d8a83; --t-admit:#3d6f92; --t-sorted:#3d7f4d; --t-na:#9a7a12;
+    --grid:#eae5dc; --shadow:0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground:#f3f1ec; --panel:#ffffff; --panel-2:#faf8f4; --line:#e0dbd2;
+      --ink:#1c1e22; --dim:#6c6963; --faint:#a5a199;
+      --accent:#b96e1d;
+      --good:#3d7f4d; --warn:#9a7a12; --crit:#b3402f;
+      --t-ui:#b96e1d; --t-core:#3d6f92; --t-heap:#6a5a94;
+      --t-seen:#8d8a83; --t-admit:#3d6f92; --t-sorted:#3d7f4d; --t-na:#9a7a12;
+      --grid:#eae5dc; --shadow:0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.06);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size:15px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1180px; margin:0 auto; padding:28px 22px 64px; }
+
+  .lab {
+    font-family:"IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+    text-transform:uppercase; letter-spacing:.13em; font-size:11px; font-weight:600;
+    color:var(--dim);
+  }
+  .num { font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+
+  /* ── masthead ────────────────────────────────────────────────────────── */
+  header { display:flex; flex-wrap:wrap; gap:18px 26px; align-items:flex-end;
+           border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:22px; }
+  h1 { margin:0; font-family:"IBM Plex Sans Condensed", sans-serif; font-weight:600;
+       font-size:30px; letter-spacing:-.01em; text-wrap:balance; }
+  h1 .hz { color:var(--accent); }
+  .sub { color:var(--dim); font-size:13.5px; margin-top:2px; }
+  .pill { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:2px;
+          border:1px solid var(--line); background:var(--panel); font-size:12.5px; }
+  .pill .dot { width:7px; height:7px; border-radius:50%; background:var(--good); }
+  .pill.run .dot { animation:blink 2.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+  @media (prefers-reduced-motion: reduce) { .pill.run .dot { animation:none; } }
+
+  /* ── elapsed ─────────────────────────────────────────────────────────── */
+  .elapsed { margin:0 0 24px; }
+  .bar { height:6px; background:var(--panel-2); border:1px solid var(--line); position:relative; }
+  .bar > i { position:absolute; inset:0 auto 0 0; background:var(--accent); display:block; }
+  .bar-foot { display:flex; justify-content:space-between; margin-top:6px; }
+
+  /* ── stat cards ──────────────────────────────────────────────────────── */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(196px,1fr)); gap:12px;
+           margin-bottom:26px; }
+  .card { background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow);
+          padding:13px 15px 14px; display:flex; flex-direction:column; gap:3px; }
+  .card .v { font-family:"IBM Plex Mono", monospace; font-variant-numeric:tabular-nums;
+             font-size:25px; font-weight:500; letter-spacing:-.02em; line-height:1.15; }
+  .card .v small { font-size:13px; color:var(--dim); font-weight:400; margin-left:3px; }
+  .card .note { font-size:12px; color:var(--dim); }
+  .card.flag-good .v { color:var(--good); }
+  .card.flag-warn .v { color:var(--warn); }
+  .card.flag-crit .v { color:var(--crit); }
+  .spark { width:100%; height:26px; display:block; margin-top:4px; }
+
+  /* ── run comparison ──────────────────────────────────────────────────── */
+  .runs { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:12px; }
+  .run { background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow);
+         padding:14px 15px; display:flex; flex-direction:column; gap:6px; position:relative; }
+  .run.live { border-color:var(--accent); }
+  .run h3 { margin:0; font-family:"IBM Plex Sans Condensed", sans-serif; font-size:16px;
+            font-weight:600; display:flex; align-items:center; gap:8px; }
+  .run .swatch { width:10px; height:10px; flex:0 0 10px; }
+  .run .outcome { font-size:12.5px; font-weight:500; }
+  .run .outcome.bad { color:var(--crit); }
+  .run .outcome.good { color:var(--good); }
+  .run .outcome.live { color:var(--accent); }
+  .run dl { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:4px 0 0;
+            font-size:12.5px; }
+  .run dt { color:var(--dim); }
+  .run dd { margin:0; font-family:"IBM Plex Mono", monospace; font-variant-numeric:tabular-nums;
+            text-align:right; }
+  .cmpbtns { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .cmpbtns button { font:inherit; font-size:12.5px; padding:5px 12px; cursor:pointer;
+    background:var(--panel); color:var(--dim); border:1px solid var(--line); border-radius:2px; }
+  .cmpbtns button[aria-pressed="true"] { color:var(--ink); border-color:var(--accent); }
+  .cmpbtns button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ── charts ──────────────────────────────────────────────────────────── */
+  .chart { background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow);
+           margin-bottom:14px; }
+  .chart-head { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:baseline;
+                padding:12px 15px 8px; border-bottom:1px solid var(--line); }
+  .chart-head h2 { margin:0; font-family:"IBM Plex Sans Condensed", sans-serif;
+                   font-size:15px; font-weight:600; letter-spacing:.01em; }
+  .chart-head .why { color:var(--dim); font-size:12.5px; flex:1 1 240px; }
+  .keys { display:flex; gap:14px; flex-wrap:wrap; }
+  .key { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
+  .key i { width:14px; height:2px; display:inline-block; }
+  .key b { font-family:"IBM Plex Mono", monospace; font-weight:500; color:var(--ink);
+           font-variant-numeric:tabular-nums; }
+  canvas.plot { width:100%; height:190px; display:block; touch-action:none; }
+
+  /* ── table ───────────────────────────────────────────────────────────── */
+  .tablewrap { overflow-x:auto; background:var(--panel); border:1px solid var(--line);
+               box-shadow:var(--shadow); }
+  table { border-collapse:collapse; width:100%; font-family:"IBM Plex Mono", monospace;
+          font-size:12.5px; font-variant-numeric:tabular-nums; }
+  th, td { padding:6px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--grid); }
+  th { position:sticky; top:0; background:var(--panel-2); color:var(--dim); font-weight:500;
+       text-align:right; font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  td:first-child, th:first-child { text-align:left; }
+  tbody tr:hover { background:var(--panel-2); }
+
+  .panelquote { font-family:"IBM Plex Mono", monospace; font-size:12.5px; color:var(--dim);
+                background:var(--panel-2); border:1px solid var(--line); padding:10px 13px;
+                overflow-x:auto; white-space:pre-wrap; }
+  section { margin-bottom:30px; }
+  .sect-head { display:flex; align-items:baseline; gap:12px; margin:0 0 10px; }
+  .sect-head h2 { margin:0; font-family:"IBM Plex Sans Condensed", sans-serif; font-size:17px;
+                  font-weight:600; }
+  .sect-head .rule { flex:1; height:1px; background:var(--line); }
+  footer { color:var(--dim); font-size:13px; border-top:1px solid var(--line); padding-top:16px; }
+  footer code { font-family:"IBM Plex Mono", monospace; color:var(--ink); font-size:12.5px; }
+  a { color:var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Six-hour soaks · <span class="hz num" id="h1speed"></span></h1>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
+      <span class="pill run" id="statepill"><span class="dot"></span><span id="statetext">—</span></span>
+      <span class="pill"><span class="lab">taken</span>&nbsp;<span class="num" id="taken">—</span></span>
+    </div>
+  </header>
+
+  <div class="elapsed">
+    <div class="bar"><i id="barfill" style="width:0%"></i></div>
+    <div class="bar-foot">
+      <span class="lab">elapsed <span class="num" id="elapsed" style="color:var(--ink)"></span></span>
+      <span class="lab">of 360 min</span>
+    </div>
+  </div>
+
+  <section id="cmp">
+    <div class="sect-head"><h2>Three runs</h2><span class="rule"></span>
+      <span class="lab">same machine, same recipe</span></div>
+    <div class="runs" id="runs"></div>
+    <div class="chart" style="margin-top:14px">
+      <div class="chart-head">
+        <h2>Side by side</h2>
+        <span class="why" id="cmpwhy"></span>
+        <span class="keys" id="cmpkeys"></span>
+      </div>
+      <canvas class="plot" data-cmp="1"></canvas>
+    </div>
+    <div class="cmpbtns" id="cmpbtns"></div>
+  </section>
+
+  <div class="sect-head" style="margin-top:26px"><h2 id="detailhead"></h2><span class="rule"></span>
+    <span class="lab">the run in detail</span></div>
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <div class="sect-head"><h2>Traces</h2><span class="rule"></span>
+      <span class="lab">hover to read a minute</span></div>
+    <div id="charts"></div>
+  </section>
+
+  <section>
+    <div class="sect-head"><h2>Panel, as the machine reports it</h2><span class="rule"></span></div>
+    <div class="panelquote" id="panelquote"></div>
+  </section>
+
+  <section>
+    <div class="sect-head"><h2>Every sample</h2><span class="rule"></span>
+      <span class="lab"><span class="num" id="rowcount"></span> rows</span></div>
+    <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <footer>
+    <div class="lab" style="margin-bottom:8px">How this run was set up</div>
+    <div class="panelquote" id="setup" style="margin-bottom:14px"></div>
+    <p style="max-width:66ch">
+      Sampled once a minute by <code>soak6h.mjs</code>, which holds the machine's host link open
+      for the whole run — the peripheral channel belongs to the browser that opened it, so the
+      plate stops if that browser goes away. A flat heap on a stopped machine is the most
+      convincing wrong answer this bench can produce, which is why the panel text and the board
+      state are sampled alongside the memory and shown here together.
+    </p>
+    <p style="max-width:66ch">
+      Cumulative counters (<code>cal_fail</code>, <code>cal_lost</code>, <code>nm_orphan</code>)
+      carry values from before this run; the cards show the change since minute zero, which is the
+      only part this run is responsible for.
+    </p>
+  </footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+/* Three runs, one page. The DETAIL half still describes a single run -- the
+   latest -- because that is the one somebody is watching; the comparison above
+   is what the other two are for. */
+const RUNS = DATA.runs;
+const RUN_COLOR = ['--t-core', '--t-na', '--t-ui'];      // 12000, 10000 old, 10000 new
+const LIVE = RUNS[RUNS.length - 1];
+const R = LIVE.rows;
+const last = R[R.length - 1] || {};
+const first = R[0] || {};
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+const int = (v) => (v === null || v === undefined) ? '—' : Math.round(v).toLocaleString('en-US');
+
+/* ── masthead ─────────────────────────────────────────────────────────── */
+$('sub').textContent = `${RUNS.length} runs on this bench · the newest has ${R.length} samples,`
+  + ` one a minute`;
+$('taken').textContent = DATA.takenLocal;
+$('detailhead').textContent = LIVE.label;
+const running = last.state === 101;
+$('statetext').textContent = running ? 'RUN · state 101' : `state ${last.state ?? '—'}`;
+$('statepill').classList.toggle('run', running);
+$('statepill').querySelector('.dot').style.background =
+  running ? 'var(--good)' : 'var(--crit)';
+
+const tMin = last.t_min || 0;
+$('h1speed').textContent = LIVE.label.replace(/[^0-9]/g, '') || '';
+$('elapsed').textContent = `${fmt(tMin)} min`;
+$('barfill').style.width = Math.min(100, (tMin / DATA.targetMin) * 100).toFixed(2) + '%';
+
+/* ── cards ────────────────────────────────────────────────────────────── */
+// Δ since minute zero, because a cumulative counter's absolute value belongs to
+// the board's history and not to this run.
+const d = (k) => (last[k] ?? 0) - (first[k] ?? 0);
+const zeroed = ['ackfalse','unapplied','frame_gap','frame_lost','ts_rej','locked'];
+const zeroSum = zeroed.reduce((a, k) => a + (last[k] || 0), 0);
+
+const cards = [
+  { lab:'parts admitted', v:fmt(last.admit_s, 1), unit:'/s',
+    note:`seen ${fmt(last.seen_s,1)}/s · sorted ${fmt(last.sorted_s,1)}/s · NA ${fmt(last.na_s,1)}/s`,
+    spark:'admit_s' },
+  { lab:'browser RSS', v:int(last.uiRSS_MB), unit:'MB',
+    note:`${d('uiRSS_MB') >= 0 ? '+' : ''}${int(d('uiRSS_MB'))} MB since minute 0`,
+    spark:'uiRSS_MB', flag: d('uiRSS_MB') > 1500 ? 'warn' : '' },
+  { lab:'core RSS', v:int(last.coreRSS_MB), unit:'MB',
+    note:`${d('coreRSS_MB') >= 0 ? '+' : ''}${int(d('coreRSS_MB'))} MB since minute 0`,
+    spark:'coreRSS_MB' },
+  { lab:'JS heap', v:fmt(last.heapMB, 1), unit:'MB',
+    note:`of ${fmt(last.totalMB,1)} MB allocated`, spark:'heapMB' },
+  { lab:'report latency', v:fmt(last.lat_avg_ms, 1), unit:'ms avg',
+    note:`worst this minute ${fmt(last.lat_max_ms,1)} ms`, spark:'lat_avg_ms' },
+  // The pairing budget, as a fraction. A raw microsecond count means nothing
+  // without the window it is spent against.
+  { lab:'match window used', v:fmt(((last.dmax_us || 0) / (last.win_us || 5000)) * 100, 2), unit:'%',
+    note:`widest accepted ${int(last.dmax_us)} µs of ${int(last.win_us)} µs`,
+    spark:'dmax_us',
+    flag: ((last.dmax_us || 0) / (last.win_us || 5000)) > 0.5 ? 'crit'
+        : ((last.dmax_us || 0) / (last.win_us || 5000)) > 0.2 ? 'warn' : 'good' },
+  { lab:'counters that must stay 0', v:int(zeroSum), unit:'',
+    note:zeroed.map((k) => `${k} ${last[k] ?? '—'}`).join(' · '),
+    flag: zeroSum === 0 ? 'good' : 'crit' },
+];
+$('cards').innerHTML = cards.map((c, i) => `
+  <div class="card ${c.flag ? 'flag-' + c.flag : ''}">
+    <span class="lab">${c.lab}</span>
+    <span class="v">${c.v}${c.unit ? `<small>${c.unit}</small>` : ''}</span>
+    <span class="note">${c.note}</span>
+    ${c.spark ? `<canvas class="spark" data-k="${c.spark}"></canvas>` : ''}
+  </div>`).join('');
+
+/* -- the three runs, compared ------------------------------------------ */
+const summarise = (run) => {
+  const rows = run.rows, last = rows[rows.length - 1] || {}, first = rows[0] || {};
+  const running = rows.filter((r) => r.state === 101);
+  const at = (k) => running.map((r) => r[k]).filter((v) => v !== null && v !== undefined);
+  const med = (a) => { if (!a.length) return null;
+    const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
+  const lastRun = running[running.length - 1] || {};
+  const share = (lastRun.admit_s > 0) ? (lastRun.sorted_s / lastRun.admit_s) * 100 : null;
+  const partsM = String(last.panel || '').match(/進料\s*([0-9.]+k?)/);
+  return {
+    minutes: running.length ? running[running.length - 1].t_min : 0,
+    halted: last.state !== 101 && rows.length > 3,
+    err: String(last.err || '[]'),
+    latAvg: med(at('lat_avg_ms')), latMaxMed: med(at('lat_max_ms')),
+    tailMed: med(at('lat_tail_n')),
+    verdictShare: share,
+    skips: (last.skip ?? 0) - (first.skip ?? 0),
+    uiRSS: med(at('uiRSS_MB')),
+    parts: partsM ? partsM[1] : '-',
+  };
+};
+
+const SUM = RUNS.map(summarise);
+$('runs').innerHTML = RUNS.map((run, i) => {
+  const s = SUM[i], live = (i === RUNS.length - 1) && !run.done && !s.halted;
+  const outcome = s.halted ? `stopped at ${fmt(s.minutes, 0)} min - err ${s.err}`
+                : live ? `running - ${fmt(s.minutes, 0)} min so far`
+                : `ran ${fmt(s.minutes, 0)} min`;
+  return `<div class="run${live ? ' live' : ''}">
+    <h3><span class="swatch" style="background:var(${RUN_COLOR[i]})"></span>${run.label}</h3>
+    <span class="outcome ${s.halted ? 'bad' : live ? 'live' : 'good'}">${outcome}</span>
+    <span style="font-size:12px;color:var(--dim)">${run.note}</span>
+    <dl>
+      <dt>parts in</dt><dd>${s.parts}</dd>
+      <dt>judged</dt><dd>${s.verdictShare === null ? '-' : fmt(s.verdictShare, 0) + '%'}</dd>
+      <dt>latency, median</dt><dd>${fmt(s.latAvg, 1)} ms</dd>
+      <dt>worst per minute</dt><dd>${fmt(s.latMaxMed, 0)} ms</dd>
+      <dt>slow reports/min</dt><dd>${fmt(s.tailMed, 0)}</dd>
+      <dt>parts skipped</dt><dd>${int(s.skips)}</dd>
+      <dt>browser RSS</dt><dd>${int(s.uiRSS)} MB</dd>
+    </dl></div>`;
+}).join('');
+
+// One metric at a time, all three runs on the same minute axis. A picker rather
+// than six stacked charts: the runs differ in LENGTH more than in shape, and
+// stacking made that the only thing anyone could see.
+const CMP = [
+  { k:'lat_avg_ms', name:'report latency (avg)', unit:'ms',
+    why:'The steady number. 12000 sat at 35.8 ms; dropping to 10000 halved it, and correcting the offsets put half of that back - because the machine went from skipping most parts to actually judging them.' },
+  { k:'lat_max_ms', name:'worst latency in the minute', unit:'ms',
+    why:'The spikes are what cost parts: every skip in the 12000 run arrived with one of these, and the halt came on the third.' },
+  { k:'lat_tail_n', name:'slow reports in the minute', unit:'',
+    why:'How MANY reports were slow, not just the worst one. The 12000 run reached 833 in one minute; at 10000 it barely leaves zero.' },
+  { k:'dmax_us', name:'widest accepted pairing', unit:'us',
+    why:'Of a 5000 us window. It sits at 4-6 us and jumped to 32-37 during every episode that cost parts - the only early warning the 12000 run gave.' },
+  { k:'skip', name:'parts skipped (cumulative)', unit:'',
+    why:'The cost, counted. Flat is the answer.' },
+  { k:'uiRSS_MB', name:'browser RSS', unit:'MB',
+    why:'The reason a soak runs six hours at all. All three plateau; none of them ramp.' },
+];
+let cmpK = 0;
+$('cmpbtns').innerHTML = CMP.map((c, i) =>
+  `<button type="button" data-i="${i}" aria-pressed="${i === 0}">${c.name}</button>`).join('');
+$('cmpbtns').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  cmpK = +b.dataset.i;
+  [...$('cmpbtns').children].forEach((x, i) => x.setAttribute('aria-pressed', i === cmpK));
+  drawAll();
+});
+
+function drawCompare(cv) {
+  const spec = CMP[cmpK];
+  const { ctx, w, h } = setup(cv, 190);
+  const padL = 46, padR = 14, padT = 12, padB = 22;
+  const series = RUNS.map((run) => run.rows.map((r) => [r.t_min, r[spec.k]])
+    .filter((p) => p[1] !== null && p[1] !== undefined && !Number.isNaN(p[1])));
+  const vals = series.flat().map((p) => p[1]);
+  if (!vals.length) return;
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals);
+  if (lo === hi) hi = lo + 1;
+  hi += (hi - lo) * 0.1;
+  const tMax = Math.max(DATA.targetMin, ...series.flat().map((p) => p[0]));
+  const X = (t) => padL + (t / tMax) * (w - padL - padR);
+  const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (h - padT - padB);
+
+  ctx.strokeStyle = css('--grid'); ctx.lineWidth = 1; ctx.fillStyle = css('--faint');
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * (i / 4), y = Math.round(Y(v)) + .5;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1), padL - 7, y);
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let t = 0; t <= tMax; t += 60) {
+    const x = Math.round(X(t)) + .5;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, h - padB); ctx.stroke();
+    ctx.fillText(t + 'm', x, h - padB + 5);
+  }
+  series.forEach((pts, i) => {
+    if (!pts.length) return;
+    ctx.beginPath();
+    pts.forEach((p, n) => n === 0 ? ctx.moveTo(X(p[0]), Y(p[1])) : ctx.lineTo(X(p[0]), Y(p[1])));
+    ctx.strokeStyle = css(RUN_COLOR[i]); ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.stroke();
+    const e = pts[pts.length - 1];
+    // A run that STOPPED is marked with a cross where it stopped; one still
+    // going gets a dot. The shape says which, without reading the legend.
+    ctx.strokeStyle = ctx.fillStyle = css(RUN_COLOR[i]);
+    if (SUM[i].halted) {
+      const x = X(e[0]), y = Y(e[1]), r = 4;
+      ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
+      ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r); ctx.lineWidth = 2; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(X(e[0]), Y(e[1]), 3, 0, 7); ctx.fill();
+    }
+  });
+  $('cmpwhy').textContent = spec.why;
+  $('cmpkeys').innerHTML = RUNS.map((run, i) => {
+    const pts = series[i], v = pts.length ? pts[pts.length - 1][1] : null;
+    return `<span class="key"><i style="background:var(${RUN_COLOR[i]})"></i>${run.label}
+      <b>${v === null ? '-' : (Math.abs(v) >= 100 ? Math.round(v) : Number(v).toFixed(1))} ${spec.unit}</b></span>`;
+  }).join('');
+}
+
+/* ── plotting ─────────────────────────────────────────────────────────── */
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function setup(cv, h) {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = cv.clientWidth || 600;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+function sparkline(cv) {
+  const k = cv.dataset.k;
+  const { ctx, w, h } = setup(cv, 26);
+  const ys = R.map((r) => r[k]).filter((v) => v !== null);
+  if (ys.length < 2) return;
+  const lo = Math.min(...ys), hi = Math.max(...ys), span = (hi - lo) || 1;
+  const X = (i) => (i / (R.length - 1)) * (w - 2) + 1;
+  const Y = (v) => h - 2 - ((v - lo) / span) * (h - 5);
+  ctx.beginPath();
+  R.forEach((r, i) => { if (r[k] === null) return;
+    i === 0 ? ctx.moveTo(X(i), Y(r[k])) : ctx.lineTo(X(i), Y(r[k])); });
+  ctx.strokeStyle = css('--accent'); ctx.lineWidth = 1.25; ctx.stroke();
+  ctx.lineTo(X(R.length - 1), h); ctx.lineTo(X(0), h); ctx.closePath();
+  ctx.fillStyle = css('--accent') + '22'; ctx.fill();
+}
+
+// One strip chart: several traces on a shared minute axis, drawn like a pen
+// recorder -- faint grid, one pen per series, the live end marked.
+const CHARTS = [
+  { title:'Memory', why:'The reason a soak runs this long. Flat is the answer; a ramp that never falls back is the one that matters.',
+    series:[ {k:'uiRSS_MB', name:'browser RSS', c:'--t-ui', unit:'MB'},
+             {k:'coreRSS_MB', name:'core RSS', c:'--t-core', unit:'MB'},
+             {k:'heapMB', name:'JS heap', c:'--t-heap', unit:'MB'} ] },
+  { title:'Throughput', why:'Parts per second at each stage. The gap between seen and sorted is what the station filter and the NA verdicts take out.',
+    series:[ {k:'seen_s', name:'seen', c:'--t-seen', unit:'/s'},
+             {k:'admit_s', name:'admitted', c:'--t-admit', unit:'/s'},
+             {k:'sorted_s', name:'sorted', c:'--t-sorted', unit:'/s'},
+             {k:'na_s', name:'no verdict', c:'--t-na', unit:'/s'} ] },
+  { title:'Report latency', why:'From the part passing the gate to its verdict reaching the board. The maximum is what a sorter misses on.',
+    series:[ {k:'lat_avg_ms', name:'average', c:'--t-admit', unit:'ms'},
+             {k:'lat_max_ms', name:'worst in the minute', c:'--t-na', unit:'ms'} ] },
+  // SPLIT, because they are not the same quantity and sharing an axis hides the
+  // one that matters: at ±10 µs the residual flatlines against a drift measured
+  // in hundreds, and the eye reads "nothing happening" where the actual news is
+  // how much of the 5 ms match window is being used.
+  { title:'Frame pairing error', why:'How far a frame lands from the part it is paired with, against a 5000 µs match window. This is the number that decides whether a frame belongs to the part the machine thinks it does — the window is the budget, these are the spend.',
+    series:[ {k:'resid_us', name:'residual', c:'--t-core', unit:'µs'},
+             {k:'resid_max_us', name:'worst residual', c:'--t-na', unit:'µs'},
+             {k:'dmax_us', name:'widest accepted', c:'--t-ui', unit:'µs'} ] },
+  { title:'Clock drift', why:'The two crystals differ by about 83 µs per second on this camera/board pair — the firmware says so in as many words, and it is tracked out rather than eliminated. It is a rate, not an error: what it leaves behind is the pairing error above.',
+    series:[ {k:'drift_us_s', name:'drift', c:'--t-ui', unit:'µs/s'} ] },
+];
+
+const charts = [];
+$('charts').innerHTML = CHARTS.map((c, ci) => `
+  <div class="chart">
+    <div class="chart-head">
+      <h2>${c.title}</h2>
+      <span class="why">${c.why}</span>
+      <span class="keys">${c.series.map((s, si) =>
+        `<span class="key"><i style="background:var(${s.c})"></i>${s.name}
+           <b data-read="${ci}-${si}">—</b></span>`).join('')}</span>
+    </div>
+    <canvas class="plot" data-ci="${ci}"></canvas>
+  </div>`).join('');
+
+function drawChart(cv, spec, hoverIdx) {
+  const { ctx, w, h } = setup(cv, 190);
+  const padL = 46, padR = 14, padT = 12, padB = 22;
+  const vals = spec.series.flatMap((s) => R.map((r) => r[s.k])).filter((v) => v !== null && !Number.isNaN(v));
+  if (!vals.length) return;
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  if (lo > 0 && lo < (hi - lo)) lo = 0;                 // keep zero in view when it is near
+  const tMax = Math.max(DATA.targetMin, last.t_min || 1);
+  const X = (t) => padL + (t / tMax) * (w - padL - padR);
+  const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (h - padT - padB);
+
+  // grid + axes
+  ctx.strokeStyle = css('--grid'); ctx.lineWidth = 1;
+  ctx.fillStyle = css('--faint');
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * (i / 4), y = Math.round(Y(v)) + .5;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1), padL - 7, y);
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let t = 0; t <= tMax; t += 60) {
+    const x = Math.round(X(t)) + .5;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, h - padB); ctx.stroke();
+    ctx.fillText(t + 'm', x, h - padB + 5);
+  }
+
+  spec.series.forEach((s) => {
+    const col = css(s.c);
+    const pts = R.map((r) => [r.t_min, r[s.k]]).filter((p) => p[1] !== null && !Number.isNaN(p[1]));
+    if (!pts.length) return;
+    if (spec.series.length <= 3) {                       // area only when it reads
+      ctx.beginPath();
+      ctx.moveTo(X(pts[0][0]), Y(Math.max(lo, Math.min(hi, 0))));
+      pts.forEach((p) => ctx.lineTo(X(p[0]), Y(p[1])));
+      ctx.lineTo(X(pts[pts.length - 1][0]), Y(Math.max(lo, Math.min(hi, 0))));
+      ctx.closePath(); ctx.fillStyle = col + '14'; ctx.fill();
+    }
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(X(p[0]), Y(p[1])) : ctx.lineTo(X(p[0]), Y(p[1])));
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.stroke();
+    const e = pts[pts.length - 1];
+    ctx.beginPath(); ctx.arc(X(e[0]), Y(e[1]), 2.8, 0, 7); ctx.fillStyle = col; ctx.fill();
+  });
+
+  if (hoverIdx !== null && R[hoverIdx]) {
+    const x = Math.round(X(R[hoverIdx].t_min)) + .5;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, h - padB);
+    ctx.strokeStyle = css('--dim'); ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke();
+    ctx.setLineDash([]);
+    spec.series.forEach((s) => {
+      const v = R[hoverIdx][s.k]; if (v === null) return;
+      ctx.beginPath(); ctx.arc(x, Y(v), 3.4, 0, 7);
+      ctx.fillStyle = css(s.c); ctx.fill();
+      ctx.strokeStyle = css('--panel'); ctx.lineWidth = 1.4; ctx.stroke();
+    });
+  }
+}
+
+function readout(idx) {
+  const row = idx === null ? last : R[idx];
+  CHARTS.forEach((c, ci) => c.series.forEach((s, si) => {
+    const el = document.querySelector(`[data-read="${ci}-${si}"]`);
+    const v = row ? row[s.k] : null;
+    el.textContent = (v === null || v === undefined) ? '—'
+      : (Math.abs(v) >= 100 ? Math.round(v) : Number(v).toFixed(1)) + ' ' + s.unit;
+  }));
+}
+
+let hover = null;
+function drawAll() {
+  document.querySelectorAll('canvas.plot').forEach((cv) => {
+    if (cv.dataset.cmp) drawCompare(cv);
+    else drawChart(cv, CHARTS[+cv.dataset.ci], hover);
+  });
+  document.querySelectorAll('canvas.spark').forEach(sparkline);
+  readout(hover);
+}
+
+document.querySelectorAll('canvas.plot').forEach((cv) => {
+  const pick = (ev) => {
+    const r = cv.getBoundingClientRect();
+    const padL = 46, padR = 14;
+    const tMax = Math.max(DATA.targetMin, last.t_min || 1);
+    const t = ((ev.clientX - r.left - padL) / (r.width - padL - padR)) * tMax;
+    let best = 0, bd = Infinity;
+    R.forEach((row, i) => { const dd = Math.abs(row.t_min - t); if (dd < bd) { bd = dd; best = i; } });
+    hover = best; drawAll();
+  };
+  cv.addEventListener('pointermove', pick);
+  cv.addEventListener('pointerleave', () => { hover = null; drawAll(); });
+});
+addEventListener('resize', drawAll);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+
+/* ── panel + table ────────────────────────────────────────────────────── */
+$('panelquote').textContent = (last.panel || '—');
+$('setup').textContent = LIVE.setupLines.join('\n');
+
+const SHOW = ['t_min','uiRSS_MB','coreRSS_MB','heapMB','seen_s','admit_s','sorted_s','na_s',
+              'lat_avg_ms','lat_max_ms','resid_us','dmax_us','drift_us_s','ts_rej','skip','state'];
+const HEAD = { t_min:'min', uiRSS_MB:'ui RSS', coreRSS_MB:'core RSS', heapMB:'heap',
+               seen_s:'seen/s', admit_s:'admit/s', sorted_s:'sorted/s', na_s:'NA/s',
+               lat_avg_ms:'lat avg', lat_max_ms:'lat max', resid_us:'resid µs',
+               dmax_us:'widest µs', drift_us_s:'drift µs/s', ts_rej:'ts rej',
+               skip:'skip', state:'state' };
+$('tbl').querySelector('thead').innerHTML =
+  '<tr>' + SHOW.map((k) => `<th>${HEAD[k]}</th>`).join('') + '</tr>';
+$('tbl').querySelector('tbody').innerHTML = R.slice().reverse().map((r) =>
+  '<tr>' + SHOW.map((k) => {
+    const v = r[k];
+    return `<td>${v === null || v === undefined ? '—'
+      : (typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(1) : v)}</td>`;
+  }).join('') + '</tr>').join('');
+$('rowcount').textContent = R.length;
+
+drawAll();
+</script>
