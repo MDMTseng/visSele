@@ -162,6 +162,19 @@ let healthTimer = null;
 // and honoured when the reply arrives, never run in parallel.
 let healthInFlight = false;
 let healthPokePending = false;
+// The last ceiling actually sent to the boards, and when. See the relay below.
+let camFpsSent = 0;
+let camFpsSentAt = 0;
+// SHORTER THAN THE POLL THAT CARRIES IT. At 30000 against a 30000ms poll the
+// comparison is a race with itself: a poll arriving on time fails
+// `now - sent > 30000` by a millisecond, the heartbeat is skipped, and the next
+// chance is another 30s away. Measured before this was noticed --
+// cam_fps_age_s climbed past 30 to 43 and 50 with the relay silent, which looks
+// exactly like a broken link and was a comparison against the wrong constant.
+//
+// 25s: every scheduled poll satisfies it, and three of them still fit inside
+// the board's 90s staleness window.
+const CAM_FPS_HEARTBEAT_MS = 25000;
 function queryLinkHealthNow() {
   if (!deps.sendBPG) return;
   if (Object.keys(registry).length === 0) return;
@@ -197,16 +210,39 @@ function queryLinkHealthNow() {
         // measurement into the config the operator owns and could persist to
         // NVS. If this stops arriving the board falls back on its own; it is
         // not this relay's job to be reliable, only honest.
-        if (pair && pair.cam_fps_limit > 0) {
-          const mhz = Math.round(pair.cam_fps_limit * 1000);
-          Object.keys(registry).forEach((id) => {
-            const api = registry[id];
-            if (!api || typeof api.send !== 'function') return;
+        // ON CHANGE, plus a heartbeat -- not on every poll.
+        //
+        // This shares the link that carries verdicts, and the machine's deadline
+        // is made of their latency, so an unchanged value is traffic bought with
+        // the thing being protected. The poll itself can now be prompt (the
+        // camera doorbell pokes it) precisely BECAUSE sending is gated: checking
+        // often and sending rarely costs the board nothing.
+        //
+        // The heartbeat is not optional. The board decides on its own when the
+        // figure has gone stale, and it must be able to tell "the camera has not
+        // changed" from "nobody is talking to me any more" -- without one, those
+        // are the same silence.
+        const fps = pair && pair.cam_fps_limit;
+        if (fps > 0) {
+          const mhz = Math.round(fps * 1000);
+          const moved = !(camFpsSent > 0) || Math.abs(mhz - camFpsSent) > camFpsSent * 0.01;
+          const due = Date.now() - camFpsSentAt > CAM_FPS_HEARTBEAT_MS;
+          // A guard clause here would `return` out of the whole resolve
+          // callback and take the link-health handling below with it -- on
+          // every poll where the ceiling had NOT moved, which is almost all of
+          // them. Scoped, not early-returned.
+          if (moved || due) {
+            camFpsSent = mhz;
+            camFpsSentAt = Date.now();
+            Object.keys(registry).forEach((id) => {
+              const api = registry[id];
+              if (!api || typeof api.send !== 'function') return;
             // No reply is expected or wanted: this shares the link that carries
             // verdicts, and the machine's deadline is made of their latency.
-            try { api.send({ type: 'cam_limit', fps_mhz: mhz }, () => {}, () => {}); }
-            catch (e) { /* a link mid-teardown is not an error worth raising */ }
-          });
+              try { api.send({ type: 'cam_limit', fps_mhz: mhz }, () => {}, () => {}); }
+              catch (e) { /* a link mid-teardown is not an error worth raising */ }
+            });
+          }
         }
 
         const lk = pair && pair.link;
