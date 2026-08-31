@@ -7383,6 +7383,16 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
   cv::Mat templ = cv::imread(png, cv::IMREAD_GRAYSCALE);
   if (templ.empty()) { LOGE("[shape] cannot read template image: %s", png.c_str()); return -1; }
+  // WHICH FILE, EVERY TIME. The core trains from a file on disk, never from the
+  // picture the studio is showing, and when those two are not the same image
+  // every symptom downstream is misleading. One line, so a log from the line
+  // answers "what was it actually looking at" without a second visit.
+  {
+    cv::Scalar mu, sd;
+    cv::meanStdDev(templ, mu, sd);
+    LOGI("[shape] template %s (%dx%d, mean=%.1f sd=%.1f)",
+         png.c_str(), templ.cols, templ.rows, mu[0], sd[0]);
+  }
 
   // Derive the object mask + centroid via Otsu. The part is the largest
   // connected component that does NOT touch the image border -- the backlit
@@ -7823,7 +7833,58 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     }
     if (fset.numFeatures() < 16)
     {
-      LOGE("[shape] only %d features extractable; aborting shape training", fset.numFeatures());
+      // SAY WHAT WE WERE LOOKING AT.
+      //
+      // Zero features with the mask REMOVED is not a region problem and not a
+      // threshold problem -- it means the picture line2Dup was handed has no
+      // edges in it. From the operator's side that is indistinguishable from
+      // "the region excluded the part", and the studio's message said exactly
+      // that, so the next hour goes into redrawing a region that was never
+      // wrong. The one thing that separates the two is what the image looks
+      // like, so print it: a template that is blank, or the wrong file, shows
+      // up here as a near-zero spread.
+      double lo = 0, hi = 0;
+      cv::Scalar mu, sd;
+      if (!templ_use.empty())
+      {
+        cv::Mat g1 = templ_use;
+        if (g1.channels() != 1) cv::cvtColor(templ_use, g1, cv::COLOR_BGR2GRAY);
+        cv::minMaxLoc(g1, &lo, &hi);
+        cv::meanStdDev(g1, mu, sd);
+      }
+      LOGE("[shape] only %d features extractable; aborting shape training. "
+           "template %dx%d ch%d  min=%.0f max=%.0f mean=%.1f sd=%.1f  "
+           "(weak=%.1f strong=%.1f). sd near 0 means the template file is blank "
+           "or is not the picture on screen -- check <recipe>.png / _ref_image_path",
+           fset.numFeatures(), templ_use.cols, templ_use.rows, templ_use.channels(),
+           lo, hi, mu[0], sd[0], shape_weak_thres, shape_strong_thres);
+
+      // IS IT THE THRESHOLDS? Ask, instead of leaving it to be guessed.
+      //
+      // A picture with plenty of edges still yields nothing when weak/strong sit
+      // above its gradient magnitudes -- a low-contrast part, a dimmer lamp, a
+      // shorter exposure. That reads identically to a blank template from the
+      // outside, and the two want opposite actions. One extra extraction at a
+      // deliberately low threshold separates them, and it costs nothing because
+      // we only get here when the training has already failed.
+      try
+      {
+        sbm::FeatureSet probe = sbm::extractFeatures(templ_use, cv::Mat(), shape_num_features,
+                                                     shape_pyramid_T, 10.0f, 20.0f);
+        if (probe.numFeatures() >= 16)
+          LOGE("[shape] ...but weak=10 strong=20 yields %d features on the SAME image: "
+               "this is a THRESHOLD problem, not a blank template and not the region. "
+               "Lower 邊緣門檻 (weak/strong) in the SBM studio's 參數 and re-generate.",
+               probe.numFeatures());
+        else
+          LOGE("[shape] and even weak=10 strong=20 yields only %d: the image itself "
+               "has nothing to extract -- wrong or blank template file.",
+               probe.numFeatures());
+      }
+      catch (const std::exception &e)
+      {
+        LOGE("[shape] threshold probe failed: %s", e.what());
+      }
       return -1;
     }
     fset.setOrigin(origin_use.x, origin_use.y);
