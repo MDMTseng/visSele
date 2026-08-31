@@ -176,7 +176,40 @@ function queryLinkHealthNow() {
     resolve: (pkts) => {
       try {
         const gs = (pkts || []).find((p) => p.type === 'GS');
-        const lk = gs && gs.data && gs.data.perif_pairing && gs.data.perif_pairing.link;
+        const pair = gs && gs.data && gs.data.perif_pairing;
+
+        // RELAY THE CAMERA'S CEILING TO THE BOARD.
+        //
+        // The board sizes its own admission cap from ResultingFrameRate when
+        // gate.cam_mode is "auto", and it is the one quantity in that chain it
+        // cannot measure: only the core can ask the camera. The core reports it
+        // here; this forwards it. Keeping the forwarding in the UI keeps
+        // peripheral-specific policy out of the core, which has no business
+        // knowing what a board wants or in what units.
+        //
+        // This poll is the right carrier and not a new timer: it already runs
+        // on a 30s cadence whenever any link is registered -- independent of
+        // whether any panel is mounted -- and the value it needs is already in
+        // the reply it is already making.
+        //
+        // Sent as a runtime FACT, not as a setting: cam_limit is transient
+        // state with an age, and writing min_detect_sep_us instead would put a
+        // measurement into the config the operator owns and could persist to
+        // NVS. If this stops arriving the board falls back on its own; it is
+        // not this relay's job to be reliable, only honest.
+        if (pair && pair.cam_fps_limit > 0) {
+          const mhz = Math.round(pair.cam_fps_limit * 1000);
+          Object.keys(registry).forEach((id) => {
+            const api = registry[id];
+            if (!api || typeof api.send !== 'function') return;
+            // No reply is expected or wanted: this shares the link that carries
+            // verdicts, and the machine's deadline is made of their latency.
+            try { api.send({ type: 'cam_limit', fps_mhz: mhz }, () => {}, () => {}); }
+            catch (e) { /* a link mid-teardown is not an error worth raising */ }
+          });
+        }
+
+        const lk = pair && pair.link;
         if (!lk) return;
         Object.keys(registry).forEach((id) => {
           const cur = links[id];

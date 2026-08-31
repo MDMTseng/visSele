@@ -10510,55 +10510,20 @@ void CamStateWatchThread(bool *terminationflag)
   {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    // ---- tell the board what the camera can actually do ----
+    // The camera's ceiling is REPORTED (perif_pairing.cam_fps_limit) and not
+    // pushed to the board from here.
     //
-    // The gate's fire-rate cap has to sit under the camera's ceiling, and until
-    // now that number was typed in by hand: it differs per camera, and it moves
-    // the moment the ROI or the exposure changes. Shrinking the ROI raises the
-    // ceiling, which is the lever for running parts closer together -- and the
-    // gate stays at the old number, so the throughput is simply left on the
-    // table with nothing on any screen to say so.
+    // Pushing it meant this process knew that a peripheral wants an fps figure,
+    // in what units, in what message, and on what cadence -- peripheral policy
+    // living in the half of the system that is supposed to be about cameras and
+    // inspection. The board's admission rules are not this process's business,
+    // and every future board would have added another branch here.
     //
-    // ResultingFrameRate is the camera's own answer for the configuration in
-    // force, readable while idle. Only this process can ask it, so this is the
-    // one thing in the admission chain the board genuinely cannot measure for
-    // itself -- everything else it already computes from its own clock.
-    //
-    // Sent on CHANGE, not on a timer: a value that has not moved is not news,
-    // and the peripheral link carries verdicts whose latency is the machine's
-    // deadline. The 5% band is wider than the node's own jitter and far
-    // narrower than any ROI change.
-    {
-      static double s_lastSentFps = 0.0;
-      static int    s_sinceHeartbeat = 0;
-      CameraLayer *c = NULL;
-      {
-        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
-        c = calib_bacpac.cam;
-      }
-      const double fps = (c != NULL) ? c->GetResultingFps() : -1.0;
-      // A heartbeat every 30s as well as on change: the board falls back to its
-      // manual cap when the value goes stale, and it must be able to tell "the
-      // camera has not changed" from "the core stopped talking". Without one,
-      // a steady camera looks identical to a dead link.
-      const bool moved = (fps > 0) &&
-        (s_lastSentFps <= 0 || fabs(fps - s_lastSentFps) > s_lastSentFps * 0.05);
-      if (fps > 0 && (moved || ++s_sinceHeartbeat >= 30))
-      {
-        cJSON *j = cJSON_CreateObject();
-        cJSON_AddStringToObject(j, "type", "cam_limit");
-        // Milli-hertz, integer: the board has no business parsing a float out
-        // of a link whose framing this process is responsible for.
-        cJSON_AddNumberToObject(j, "fps_mhz", (double)(long long)(fps * 1000.0 + 0.5));
-        uint8_t buf[256];
-        if (sendcJsonTo_perifCH(bpg_pi.perifCH, buf, sizeof(buf), true, j) >= 0)
-        {
-          s_lastSentFps = fps;
-          s_sinceHeartbeat = 0;
-        }
-        cJSON_Delete(j);
-      }
-    }
+    // The WebUI relays it instead, off the perif_pairing poll it already runs.
+    // That is not a weaker path than this one was: bpg_pi.perifCH is created
+    // and destroyed with the WS clients, so a push from here already required a
+    // UI to be connected -- it only hid the dependency. See
+    // PerifAPI.queryLinkHealthNow.
 
     // ---- put the camera back after a lit snapshot ----
     //
