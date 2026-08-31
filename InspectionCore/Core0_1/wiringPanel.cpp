@@ -1107,7 +1107,10 @@ static inline void beat(ThreadBeat &b, uint64_t now_us)
 // better number anyway: it is what the CURRENT ROI, exposure and transport
 // really sustain. It is the ceiling the gate fire-rate limit has to stay
 // under -- ask for triggers faster than this and you get triggers with no
-// frames, which is what poisons the pairing.
+// frames. Those are UNANSWERED parts -- pairing is by timestamp with the window
+// clamped to half the part separation, so a missing frame cannot be matched to a
+// neighbour; its object is simply never reported, so it is not actuated and it
+// recirculates. The cost is throughput, and a stop only if it is sustained.
 double g_camMinIntervalMs = 0;
 
 // How late a cam_trig announcement has ever been relative to its own frame.

@@ -1609,7 +1609,9 @@ build ${fw.build}`}>
         </div>
         <div style={{ marginBottom: 4 }}>進料上限（相機）
           <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
-            「有觸發、沒影格」—— 那會讓主機的配對永久錯位,不是只掉一顆料。
+            「有觸發、沒影格」。那不會配錯 —— 配對是靠時間戳,而視窗被夾在
+            料件間距的一半,相鄰物件的窗不重疊,所以掉的那一張只是讓它的物件
+            沒有回報:不致動、回流、計入無判決。代價是產能,持續下去才會撞停機門檻。
             這是**單一間隔**的硬下限。</Why></div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           <Input
@@ -1736,7 +1738,9 @@ build ${fw.build}`}>
           {/* The camera ceiling, measured rather than assumed: shrinking the ROI
               height raises it, which is the lever for running parts closer
               together. The gate cap has to stay under this -- above it you get
-              triggers with no frames, which is exactly what breaks the pairing. */}
+              triggers with no frames -- unanswered parts, not mis-paired ones
+              (the window is clamped to half the separation), so the cost is
+              throughput and, sustained, the stop threshold. */}
           {/* The camera's own answer for the ROI and exposure it is carrying.
               Available while IDLE, which is the difference that matters: the
               measured cam_max_fps below needs a run to exist, and this field is

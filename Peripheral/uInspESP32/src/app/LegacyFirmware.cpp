@@ -1193,7 +1193,21 @@ volatile uint32_t GATE_REJ_RATE=0;    // faster than min_detect_sep_us
 // timeout the manual cap governs again. Falling back to the configured value is
 // conservative in the direction that matters: the manual cap was set by a
 // person for this machine, and the failure being avoided -- a gate opened wider
-// than the camera can feed -- poisons the pairing rather than dropping a part.
+// than the camera can feed.
+//
+// WHAT THAT COSTS, stated correctly: a trigger with no frame is an UNANSWERED part, not a
+// mis-paired one. Pairing is by timestamp and the window is clamped to
+// min_detect_sep_us/2, so adjacent objects' windows cannot overlap and a frame
+// can only land in one of them -- the firmware says the only exception is
+// min_detect_sep_us < 400us, i.e. 2500 parts/s, which is unreachable. The
+// missing frame simply leaves its object unreported: not actuated, recirculated,
+// counted, and escalating only through the consecutive-unanswered threshold.
+//
+// This comment used to say it poisoned the pairing. That was true when frames
+// were matched by order and tid; it has not been true since matching moved to
+// timestamps, and an over-stated hazard is not harmless -- it argues for
+// conservatism that the machine does not need and hides the cost that is real,
+// which is throughput and, sustained, a stop.
 volatile bool     GATE_CAM_AUTO=false;
 volatile uint32_t GATE_CAM_FPS_MHZ=0;         // last figure from the core
 volatile int64_t  GATE_CAM_FPS_MS=0;          // when it arrived
@@ -1362,6 +1376,26 @@ static inline uint32_t gateMinSepEff()
   return SYS_MIN_PULSE_TIME_SEP_us;
 }
 
+
+// AGAINST THE SPACING IN FORCE, not the one that was typed in.
+//
+// The window has to stay under half the part spacing or two neighbours' windows
+// overlap and a lost frame can be matched to the wrong object. That rule was
+// enforced against SYS_MIN_PULSE_TIME_SEP_us, which was the spacing -- until
+// cam_mode "auto" made the effective spacing something else.
+//
+// Auto is usually SLOWER than the manual value (this bench: manual 70.0/s,
+// camera 68.9), and slower is safe. But it is not slower by construction: a
+// camera faster than the number somebody typed gives a smaller interval. At 150
+// fps auto yields 7407us, half of which is 3703us -- under the 5000us window,
+// so the windows overlap and the one hazard this clamp exists for is reachable
+// again, this time without anyone entering a strange value.
+//
+// So the clamp reads the effective spacing, and it is re-run wherever that can
+// change: set_setup, and the arrival of a new camera figure. A guard evaluated
+// only where one of its inputs changes is not a guard.
+static inline uint32_t gateMinSepEff();
+static void clampMatchWindowToSpacing();
 
 static inline uint32_t gateProcSepEff()
 {
@@ -5406,6 +5440,27 @@ static void procAutoService()
   last_ms = now_ms; last_waiting = waiting; last_accept = GATE_ACCEPT;
 }
 
+static void clampMatchWindowToSpacing()
+{
+  const uint32_t sep = gateMinSepEff();
+  if(sep == 0) return;
+  int32_t cap = (int32_t)(sep/2);
+  if(cap < 200) cap = 200;   // the noise floor wins; see below
+  if(CamClockSync::TOL_US > cap)
+  {
+    djrl.dbg_printf("CAMSYNC window %ld us clamped to %ld us "
+                    "(spacing in force %lu us, window must stay under half)",
+                    (long)CamClockSync::TOL_US,(long)cap,(unsigned long)sep);
+    CamClockSync::TOL_US = cap;
+  }
+  // Below this the two floors conflict and no window is both matchable and
+  // safe. Say so rather than leaving a silently unsafe combination.
+  if(sep < 400)
+    djrl.dbg_printf("CAMSYNC WARNING: spacing %lu us is below twice the window "
+                    "noise floor -- a lost frame could be matched to a "
+                    "neighbour",(unsigned long)sep);
+}
+
 static void recalService()
 {
   if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
@@ -8179,6 +8234,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       {
         GATE_CAM_FPS_MHZ = (uint32_t)v;
         GATE_CAM_FPS_MS  = (int64_t)(esp_timer_get_time()/1000);
+        // The spacing in force may have just changed, and the match window has
+        // to stay under half of it. Cheap, and this is the only other place the
+        // effective spacing moves.
+        clampMatchWindowToSpacing();
       }
     }
     // No reply: this arrives on the same link the verdicts use, and an
@@ -10624,26 +10683,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // rather than rejected: refusing the write would leave the machine on the
   // previous value with no obvious sign, and a narrower window is always the
   // safe direction -- it can only cause a halt, never a mis-sort.
-  if(SYS_MIN_PULSE_TIME_SEP_us > 0)
-  {
-    int32_t cap = (int32_t)(SYS_MIN_PULSE_TIME_SEP_us/2);
-    if(cap < 200) cap = 200;   // the noise floor wins; see below
-    if(CamClockSync::TOL_US > cap)
-    {
-      djrl.dbg_printf("CAMSYNC window %ld us clamped to %ld us "
-                      "(min_detect_sep_us=%lu, window must stay under half)",
-                      (long)CamClockSync::TOL_US,(long)cap,
-                      (unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
-      CamClockSync::TOL_US = cap;
-    }
-    // Below this the two floors conflict and no window is both matchable and
-    // safe. Physically unreachable (400us spacing is 2500 parts/s), but say so
-    // rather than leaving a silently unsafe combination.
-    if(SYS_MIN_PULSE_TIME_SEP_us < 400)
-      djrl.dbg_printf("CAMSYNC WARNING: min_detect_sep_us=%lu is below twice "
-                      "the window noise floor -- a lost frame could be matched "
-                      "to a neighbour",(unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
-  }
+  clampMatchWindowToSpacing();
   JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jCM,"drift_comp");
   JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jCM,"recal_idle_ms");
   JSON_SETIF_ABLE(CAL_PULSE_WIDTH_US,jCM,"cal_pulse_us");
