@@ -189,7 +189,16 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
   window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
   // Live view of the perif link store (a function, so it's always current).
-  import('./perif/PerifAPI').then(m => { window.__GP_PERIF_LINKS__ = m.getPerifLinksSnapshot; });
+  //
+  // getPerifAPI comes with it: the peripheral is the half of the machine a
+  // browser-driven check cannot otherwise reach, and the backlight is the
+  // obvious case -- a CI check against a dark plate proves nothing, and the
+  // only way to light it from outside the panel is this handle. QA-only, same
+  // as every other __GP_ hook here, and stripped from production with them.
+  import('./perif/PerifAPI').then(m => {
+    window.__GP_PERIF_LINKS__ = m.getPerifLinksSnapshot;
+    window.__GP_PERIF__ = m.getPerifAPI;
+  });
   window.__GP_LOG__ = log; // loglevel module — for QA to verify the diag ring captures loglevel output
 }
 

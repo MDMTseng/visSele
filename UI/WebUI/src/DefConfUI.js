@@ -1560,8 +1560,27 @@ function SettingUI({})
 // imported as SBMSetupView at the top of this file.
 
 
+// A def load in flight is only valid until something else changes the def.
+//
+// The load is a round trip: LD goes out, and when the reply lands its packets
+// are dispatched as one bundle that RE-APPLIES the whole def -- registration,
+// feature cache, image, the lot. If a retake (or another load) happened while
+// that was in the air, the bundle silently puts the OLD def back on top of it.
+//
+// That is not theoretical: TAKE pressed shortly after opening a recipe produced
+// a "new object" carrying the previous def's def_image_reg and __shape_cache,
+// with __img_fresh_capture back to false -- every measurement then pinned to an
+// origin from a frame that no longer exists, and nothing on screen says so. It
+// reproduced about one run in three in the regression suite (RESTORED by
+// ATBundle, three times, right after Def_Retake).
+//
+// So each load takes a ticket, and only the current ticket may dispatch.
+let defLoadGen = 0;
+export function invalidateDefLoads() { return ++defLoadGen; }
+
 function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch)
 {
+  const myGen = ++defLoadGen;
   function actionGen_W_IGNORE_LOCK(pkts)
   {
     return{
@@ -1590,6 +1609,11 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
     },
   })
     .then(({ pkts }) => {
+      if (myGen !== defLoadGen) {
+        log.warn('[loadDef] reply dropped -- the def changed while it was in flight',
+                 { defModelPath, myGen, now: defLoadGen });
+        return;
+      }
       dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
       // new Promise((resolve, reject) => {
@@ -1912,9 +1936,31 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   // showing. Defaulting to the former and forgetting to say so is how a
   // "capture" ends up saving the PREVIOUS recipe's picture, with nothing on
   // screen looking any different (see saveAlternateImage, which hit this).
+  // A FAILED TEMPLATE WRITE MUST NOT LOOK LIKE A SUCCESSFUL ONE EITHER.
+  //
+  // This is how TAKE gives the shape locator a template before the def has a
+  // name: the captured frame is written to a scratch sidecar and its path is
+  // stamped into the def-info. It was fire-and-forget, so an unwritable path or
+  // an empty core cache landed nowhere -- and the first thing the operator saw
+  // was 生成特徵失敗 in the SBM studio, several steps later, pointing at
+  // thresholds and regions that were never the problem.
+  //
+  // Same treatment as ACT_Report_Save above, for the same reason.
   const ACT_Cache_Img_Save= (id, fileName, srcType) =>
     dispatch(UIAct.EV_WS_SEND_BPG(id, "SV", 0,
-      { filename: fileName, type: srcType || "__CACHE_IMG__" }
+      { filename: fileName, type: srcType || "__CACHE_IMG__" },
+      undefined,
+      { resolve: (darr) => {
+          const ack = (darr || []).map((p) => p && p.data)
+            .find((d) => d && d.cmd === 'SV');
+          if (ack && ack.ACK === false) {
+            log.error('[action] template-save REFUSED', fileName, ack.errMsg);
+            Modal.error({ title: '暫存樣板影像寫入失敗',
+              content: (ack.errMsg || '核心沒有給原因') + '　（' + fileName + '.png）'
+                     + ' — 接下來的「生成特徵點」會因為讀不到樣板而失敗。' });
+          }
+        },
+        reject: (e) => log.error('[action] template-save no reply', fileName, e) }
     ))
 
 
@@ -2881,6 +2927,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           // single-shot path worked and the stream and reuse-image paths, added
           // later, did not. Doing it here covers all three by construction.
           ACT_DefConf_Lock_Level_Update(0);
+          // Anything still in flight belongs to the def we are leaving behind.
+          // Without this the reply lands after the retake and puts it back.
+          invalidateDefLoads();
           dispatch(DefConfAct.Def_Retake(!!opt.keep));
           ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE, opt.srcType);
           dispatch(DefConfAct.EditInfo_Patch({ __tmp_ref_image_path: TMP_REF_BASE + ".png" }));

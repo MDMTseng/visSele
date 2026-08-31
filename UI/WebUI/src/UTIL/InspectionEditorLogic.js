@@ -851,6 +851,18 @@ export class InspectionEditorLogic {
     if (defInfo.cam_param && this.cameraParam === undefined) {
       this.cameraParam = defInfo.cam_param;
     }
+    // KEPT SEPARATELY, and kept even when a live camera param overwrites the
+    // rendering one: the file's cam_param carries fields the editor does not
+    // own -- exposure_time is the one that bit -- and regenerating the def from
+    // the editor's copy alone drops them.
+    //
+    // Two consequences, and the quiet one is the worse: the def's exposure_time
+    // is GONE the next time the WebUI saves, and until then every exit from the
+    // editor warns "變更的欄位 cam_param" on a def nobody touched. Saving does
+    // not settle it, because the core stamps the field back on the way out --
+    // so the round trip never converges and the warning becomes noise people
+    // learn to click through.
+    if (defInfo.cam_param) this.defCamParam = defInfo.cam_param;
     // A pure-SBM def has no sig360 block (inherentfeatures empty). Only seed
     // sig360info when a signature feature is actually present; otherwise the editor
     // frame comes from def_image_reg + cam_param (getEditorMmpp), not sig360.
@@ -1053,7 +1065,11 @@ export class InspectionEditorLogic {
       "ver": "0.0.1.0",
       "unit": "px",
       "mmpp": (sig && sig.mmpp) || this.getEditorMmpp(),
-      cam_param: (sig && sig.cam_param) || this.cameraParam,
+      // Merged, not replaced: the file's fields first, then whatever the
+      // editor/camera actually knows. Anything the editor has an opinion about
+      // (mmpb2b, ppb2b) still wins; anything only the file carries survives.
+      cam_param: { ...(this.defCamParam || {}),
+                   ...((sig && sig.cam_param) || this.cameraParam || {}) },
       features: this.shapeList,
       inherentfeatures: this.inherentShapeList
     };

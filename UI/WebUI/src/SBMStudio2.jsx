@@ -22,6 +22,7 @@ import { Button, InputNumber, Select, Modal } from 'antd';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { defFileGeneration, stampRefImagePath } from 'UTIL/MISC_Util';
+import { refPngPathOf } from 'UTIL/defNaming.mjs';
 import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
 import { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
@@ -176,6 +177,14 @@ function drawScene(g, canvas, ctx_state) {
   }
 }
 
+// The registration a press-at-o / release-at-t drag means. Shared by the mouse
+// path and the dev test API below, so the automated journey commits exactly what
+// a person's drag commits -- a test that rebuilt this arithmetic itself would go
+// on passing after the real one changed.
+export function regFromDrag(o, t) {
+  return { cx: o.x, cy: o.y, angle: -Math.atan2(t.y - o.y, t.x - o.x), isFlipped: false };
+}
+
 // ── The SBM control (mouse) logic. ─────────────────────────────────────────────
 function ctrlScene(g, canvas, ctx_state) {
   const { tool, work, roiPts, onPoly, onReg, onRoi } = ctx_state;
@@ -247,7 +256,7 @@ function ctrlScene(g, canvas, ctx_state) {
       // world x-axis if angle is MINUS the image angle. Storing the raw atan2
       // here rectified by 2x the drawn angle, invisibly, because every def on
       // this bench has a registration angle of ~0. See imageAngleOf().
-      onReg({ cx: o.x, cy: o.y, angle: -Math.atan2(t.y - o.y, t.x - o.x), isFlipped: false });
+      onReg(regFromDrag(o, t));
       work.line = null;
     }
   }
@@ -580,17 +589,46 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           // sidecar is genuinely template-less.
           const noTemplate = !!(edit_info && edit_info.__img_fresh_capture
                                 && !edit_info.__tmp_ref_image_path);
-          Modal.error({
+          // NAME THE FILE, AND SAY WHETHER IT IS THERE.
+          //
+          // "參考影像讀不到, 或特徵範圍把零件整個排除了" is two completely
+          // different faults in one sentence, and the operator cannot tell them
+          // apart from the screen -- so they tune thresholds and redraw regions
+          // against a missing file. The core trains from a path we already
+          // know (stampRefImagePath just wrote it into the def-info), so ASK
+          // the core to read it: if it cannot, that is the answer, and if it
+          // can, the region is genuinely the thing to look at.
+          const templ = (deffile.featureSet && deffile.featureSet[0]
+                         && deffile.featureSet[0]._ref_image_path)
+                     || refPngPathOf(edit_info.defModelPath || '');
+          const say = (readable) => Modal.error({
             title: noTemplate ? '還沒有樣板影像,無法生成特徵' : '生成特徵失敗',
             content: noTemplate
               ? '這張影像是剛重新擷取的,還沒有寫進磁碟。SBM 的樣板必須是檔案 —— '
                 + '存檔時才會把它寫成 <配方名>.png。先存一次檔,再回來生成特徵。'
                 + '(不會沿用前一個配方的圖:那會訓練出另一個零件的特徵,而且會匹配成功。)'
               : nFeat === 0
-                ? '核心沒有抽到任何特徵。通常是參考影像讀不到,或特徵範圍把零件整個排除了。'
-                  + '先前的特徵沒有被覆蓋。'
+                ? (readable === false
+                    ? '讀不到樣板影像:' + templ + '。核心是從檔案訓練的,不是從畫面上這張圖。'
+                      + '這通常代表 TAKE 的暫存影像沒有寫成功,或這個配方還沒存過檔。'
+                      + '先前的特徵沒有被覆蓋。'
+                    : '樣板影像讀得到(' + templ + '),但核心沒有抽到任何特徵。'
+                      + '核心會在遮罩拿掉之後再試一次,所以最常見的原因是'
+                      + '邊緣門檻太高(現在 weak=' + (edit_info.shape_weak_thres ?? 50)
+                      + ' / strong=' + (edit_info.shape_strong_thres ?? 80)
+                      + ',在下面的「參數」裡調低再生成一次);其次才是特徵範圍把零件整個排除了。'
+                      + '核心的 log 會直接說是哪一種。先前的特徵沒有被覆蓋。')
                 : '核心抽到了特徵但沒有回傳可儲存的結果。先前的特徵沒有被覆蓋。',
           });
+          if (noTemplate || nFeat !== 0) say(null);
+          else
+            new Promise((res, rej) => sendBPG('LD', 0, { filename: templ }, undefined,
+                                              { resolve: res, reject: rej }))
+              .then((pk) => {
+                const ld = (pk || []).map((x) => x && x.data).find((d) => d && d.cmd === 'LD');
+                say(!(ld && ld.ACK === false));
+              })
+              .catch(() => say(false));
         }
         // 把核心訓練出來的特徵存進 def, 之後載入不必重抽 (見 MISC_Util 的
         // __shape_cache 說明)。點在畫面上只是視覺化, 這一行才是真的留下來的。
@@ -816,8 +854,62 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     setBatch((b) => (b ? { ...b, aborted: abortRef.current } : b));
   }, [imageList, currentImagePath, switchImage, inspectOnce]);
 
+  // DEV ONLY: author the canvas geometry directly, in world mm.
+  //
+  // Driving the canvas with a synthetic pointer works and is worth doing for
+  // ONE interaction -- it is how the fit bug was found, and it is the only way
+  // to know the tools respond to a human at all -- but it is a poor way to
+  // author SHAPES. A polygon becomes four clicks that have to be slower than
+  // the 200 ms double-release guard, land inside a view that is still settling,
+  // and close within 12 px of the first vertex; when one of those slips the
+  // test reports "the region tool is broken", which is not what happened.
+  //
+  // These go through the SAME commit callbacks the mouse path calls, so what a
+  // test writes is what a drag writes -- the geometry is supplied, the app's
+  // own logic still runs. Stripped from production with the __DEV_MODE__
+  // branches.
+  useEffect(() => {
+    if (!__DEV_MODE__ || typeof window === 'undefined') return undefined;
+    window.__SBM2_TEST__ = {
+      tool: (id) => setTool(id),
+      // o and t are the press and release points of the drag this replaces.
+      reg: (o, t) => onReg(regFromDrag(o, t)),
+      poly: (kind, pts) => onPoly(kind === 'exclude' ? 'loc_exclude' : 'loc_include', pts),
+      roi: (pts) => onRoi(pts),
+    };
+    return () => { delete window.__SBM2_TEST__; };
+  }, [onReg, onPoly, onRoi]);
+
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = captureDrag;
+    // DEV ONLY: hand the automated journey test the live world->page mapping.
+    //
+    // The canvas pans and zooms, so a test that clicks fixed page coordinates
+    // is really asserting where the camera happened to be -- it draws the
+    // registration line across whatever the viewport shows today and fails the
+    // moment the fit changes or the window is a different shape. With this it
+    // can say "the origin is at object (0,0)" and let the same transform the
+    // renderer uses work out where that is on screen.
+    //
+    // Stripped from the production bundle with the rest of the __DEV_MODE__
+    // branches, and it only ever READS the camera.
+    if (__DEV_MODE__ && typeof window !== 'undefined') {
+      window.__SBM2_CANVAS__ = canvas;
+      // The reference image's size in world mm, so a test can aim at the PART
+      // ("the middle of the picture") rather than at a pixel of the viewport.
+      // In locline mode world == image-mm; in every other tool world is the
+      // object frame, whose origin is the registration.
+      const _sec = canvas.secCanvas;
+      window.__SBM2_IMG__ = _sec ? { wpx: _sec.width, hpx: _sec.height, mmpp,
+                                     wmm: _sec.width * mmpp, hmm: _sec.height * mmpp } : null;
+      window.__SBM2_TO_PAGE__ = (wx, wy) => {
+        const m = new DOMMatrix().setMatrixValue(canvas.worldTransform());
+        const p = m.transformPoint(new DOMPoint(wx, wy));
+        const r = canvas.canvas.getBoundingClientRect();
+        return { x: r.left + p.x * r.width / canvas.canvas.width,
+                 y: r.top + p.y * r.height / canvas.canvas.height };
+      };
+    }
     const ctx_state = { reg, mmpp, shapeList: locShapes, work: work.current,
       featPts: featRef.current, insp: inspRef.current,
       roiPts, tool, onPoly, onReg, onRoi };
@@ -988,7 +1080,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     <div className="sbm2-canvas" style={{ position: 'relative', border: '1px solid ' + P.line,
                                           borderRadius: 6, overflow: 'hidden' }}>
       <HookCanvasComponent key={edit_info.img ? 'img' : 'noimg'}
-        dhook={dhook} image={edit_info.img} captureDrag={captureDrag} />
+        dhook={dhook} image={edit_info.img} captureDrag={captureDrag} mmpp={mmpp} />
 
       {edit_info.img ? null : (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
