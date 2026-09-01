@@ -102,3 +102,11 @@ export_v2/
 # scratch log from a hand-run core
 InspectionCore/Core0_1/core.log
 UI/Launcher/release-builds
+
+# Bench soak artefacts -- outputs, not sources. The tools that make them are
+# tracked; the megabytes of samples they produce are not.
+UI/WebUI/dist-soak/
+UI/WebUI/tools/webctl/soak_logs/
+UI/WebUI/tools/webctl/soak_auto.jsonl
+UI/WebUI/tools/webctl/proc_track.json
+UI/WebUI/tools/webctl/compare_throttle.json
