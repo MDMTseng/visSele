@@ -5858,6 +5858,13 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
 
 void RESET_REPORT(FeatureReport_sig360_circle_line_single &srep)
 {
+    // Back to "not measured" every frame, BEFORE anything can fail early and
+    // leave the previous part's number sitting here. The pool is reused across
+    // frames, and reportDataPool.resize() value-initialises new entries to 0 --
+    // which is the value of a perfect fit. A stale or zeroed residual on a
+    // report that never ran a refine is exactly the false reassurance this
+    // field exists to prevent.
+    srep.refine_residual = -1.0f;
 
     vector<FeatureReport_circleReport> &detectedCircles = *srep.detectedCircles;
     vector<FeatureReport_lineReport> &detectedLines = *srep.detectedLines;
@@ -6286,6 +6293,10 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
       return -3;
     }
     singleReport.similarity=similarFactor;
+    // The sig360 path runs no ROI refine, so there is no fit residual to report.
+    // -1, not 0: zero is what a perfect fit reads, and "perfect" must not be
+    // indistinguishable from "never measured".
+    singleReport.refine_residual = -1.0f;
 
 
 
@@ -8889,6 +8900,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
               singleReport.Center.x, singleReport.Center.y, m.angle, corr_deg, (int)m.flipped);
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
+    // Attached AFTER the measurement, not inside it. SingleMatching_shape calls
+    // RESET_REPORT twice more on its re-measure passes (the locating-anchor
+    // second pass), so a value set before those is wiped by them -- which is
+    // exactly what happened: the matcher computed 0.227 and the report carried
+    // -1. Set here, the last write before the copy into `reports`, there is no
+    // reset left to run.
+    singleReport.refine_residual = m.refine_residual;
     if (dbg)
       fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
     if (ret == 0) reports.push_back(singleReport);

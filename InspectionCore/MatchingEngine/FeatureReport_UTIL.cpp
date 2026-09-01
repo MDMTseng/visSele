@@ -543,6 +543,16 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   cJSON_AddNumberToObject(report_jobj, "rotate", report.rotate);
   cJSON_AddBoolToObject(report_jobj, "isFlipped", report.isFlipped);
   cJSON_AddNumberToObject(report_jobj, "similarity", report.similarity);
+  // ROI refine's own fit residual (px). Emitted only when the matcher actually
+  // computed one, so a sig360 report and a shape report under a different refine
+  // mode stay byte-identical to what they emitted before this field existed --
+  // and a consumer can tell "not measured" from "measured as zero" by the key's
+  // absence rather than by a sentinel it has to know about.
+  //
+  // `similarity` is the COARSE score and cannot see refine go wrong; this can.
+  // Observation only for now -- nothing branches on it yet.
+  if (report.refine_residual >= 0)
+    cJSON_AddNumberToObject(report_jobj, "refine_residual", report.refine_residual);
 
   acv_XY offset = {0};
   const vector<FeatureReport_circleReport> &detectedCircle = *report.detectedCircles;

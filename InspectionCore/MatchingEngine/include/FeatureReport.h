@@ -569,6 +569,23 @@ typedef struct FeatureReport_sig360_circle_line_single{
   int labeling_idx;
   float rotate;
   float similarity;
+  // HOW WELL THE POSE ACTUALLY FITS, which `similarity` does not say.
+  //
+  // `similarity` is the COARSE match score, computed before refine runs, so it
+  // cannot see refine going wrong -- and refine going wrong is silent: measured
+  // an ICP pose 18 px off its true position while `similarity` still read 99.6.
+  // It is also blind to clutter laid over the part (99.6 -> 96.9 while the p95
+  // position error went to 2.9 px).
+  //
+  // This is the ROI refine's own fit residual: mean |point-to-line| distance
+  // (px) of the matched sample points at the final pose. Measured against
+  // deliberate damage it tracks the position error the score misses --
+  // 0.06 clean, 0.42 at 20% clutter, 1.46 at 20% occlusion, 4.73 at 40%.
+  //
+  // -1 = not computed: the sig360 path, or a shape run under a refine mode
+  // other than ROI. NOT zero, because zero is the value of a perfect fit and
+  // "perfect" and "never measured" must not read the same.
+  float refine_residual;
   bool  isFlipped;
   float scale;
   char *targetName;
