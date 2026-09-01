@@ -35,7 +35,7 @@ export const CFG_GROUP = {
   min_detect_dist_um:    ["gate", "min_detect_dist_um"],
   gate_cam_mode:         ["gate", "cam_mode"],
   gate_cam_margin_pct:   ["gate", "cam_margin_pct"],
-  gate_proc_discount_pct:["gate", "proc_discount_pct"],
+  gate_proc_capacity_pct:["gate", "proc_capacity_pct"],
   gate_proc_mode:        ["gate", "proc_mode"],
   gate_proc_rate_hz:     ["gate", "proc_rate_hz"],
   gate_proc_sep_us:      ["gate", "proc_sep_us"],

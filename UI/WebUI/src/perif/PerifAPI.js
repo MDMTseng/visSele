@@ -462,7 +462,7 @@ export class Perif_API_Base {
         // showing the old value as though nothing had been asked.
         //
         // Three separate hours went into that failure this week: a board on
-        // older firmware refusing gate.proc_discount_pct (hunted as "the
+        // older firmware refusing gate.proc_capacity_pct (hunted as "the
         // backstop must be overriding it"), nomatch_stop_after unsettable for
         // weeks because it was missing from the schema, and a whole-config
         // restore refused for the same reason. Every one of them presented as
@@ -969,7 +969,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // them into the interval keys below, which stay settable for backups and
     // for the two advanced knobs no panel exposes.
     'gate_cam_mode', 'gate_cam_margin_pct',
-    'gate_proc_mode', 'gate_proc_rate_hz', 'gate_proc_discount_pct',
+    'gate_proc_mode', 'gate_proc_rate_hz', 'gate_proc_capacity_pct',
     'gate_proc_sep_us', 'gate_proc_iir_shift',
     'stepper_en_active', 'stepper_dir',
     'unanswered_stop_after',

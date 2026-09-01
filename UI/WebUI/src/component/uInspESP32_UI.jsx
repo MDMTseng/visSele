@@ -716,7 +716,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [procHzInput, setProcHzInput] = useState(''); // host throughput cap, in parts/s
   const [stopAfterInput, setStopAfterInput] = useState('');
   const [nomatchAfterInput, setNomatchAfterInput] = useState('');
-  const [discountInput, setDiscountInput] = useState('');
+  const [capacityInput, setCapacityInput] = useState('');
 
   // When the last poll actually answered. Age, not a failure count, because the
   // failure mode here is silence: a request whose reply never comes back leaves
@@ -848,7 +848,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // single number cannot: only 探測 climbing is a loop still finding headroom,
   // only 退讓 climbing is one being pushed back, and both climbing is one
   // hunting around an edge it has already found.
-  const discountPct = (gate && gate.proc_discount_pct) | 0;
+  const capacityPct = (gate && gate.proc_capacity_pct) | 0;
   const probeUp = (gate && gate.proc_probe_up_n) | 0;
   const backoff = (gate && gate.proc_backoff_n) | 0;
   // The report latency as a RATE, so it reads against the parts/s field. cam_*
@@ -1787,15 +1787,15 @@ build ${fw.build}`}>
               barely moves when the recipe changes, which is exactly what made
               the absolute number impossible to keep correct. */}
           {procMode === 'auto' && (<>
-            <Input style={{ width: 130 }} addonBefore="折扣" addonAfter="%"
-              placeholder={discountPct > 0 ? String(discountPct) : '自動探測'}
-              value={discountInput}
-              onChange={(e) => setDiscountInput(e.target.value)} />
-            <Button size="small" loading={busy === 'discount'}
-              onClick={() => run('discount', (api) => api.machineSetupUpdate(
-                { gate_proc_discount_pct: Number(discountInput) > 0
-                    ? Math.round(Number(discountInput)) : 0 }, false, true))}
-            >{Number(discountInput) > 0 ? '套用' : '改回探測'}</Button>
+            <Input style={{ width: 130 }} addonBefore="產能" addonAfter="%"
+              placeholder={capacityPct > 0 ? String(capacityPct) : '自動探測'}
+              value={capacityInput}
+              onChange={(e) => setCapacityInput(e.target.value)} />
+            <Button size="small" loading={busy === 'capacity'}
+              onClick={() => run('capacity', (api) => api.machineSetupUpdate(
+                { gate_proc_capacity_pct: Number(capacityInput) > 0
+                    ? Math.round(Number(capacityInput)) : 0 }, false, true))}
+            >{Number(capacityInput) > 0 ? '套用' : '改回探測'}</Button>
           </>)}
         </div>
 
@@ -1807,14 +1807,14 @@ build ${fw.build}`}>
           {procMode === 'manual' && (procHz !== undefined
             ? `固定在 ${procHz} 顆/秒${gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : ''}`
             : '尚未設定速率')}
-          {procMode === 'auto' && discountPct > 0 && procHz !== undefined
-            && `折扣 ${discountPct}% × 平均 `
+          {procMode === 'auto' && capacityPct > 0 && procHz !== undefined
+            && `產能 ${capacityPct}% · 平均 `
                + `${procSvcMeanMs !== undefined ? procSvcMeanMs.toFixed(0) : '—'}ms`
-               + ` = ${procHz} 顆/秒`
+               + ` → ${procHz} 顆/秒`
                + (procRho !== undefined ? ` · 利用率 ${procRho}%` : '')
                + (backoff > 0 ? ` · 退讓 ${backoff}` : '')
                + (gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : '')}
-          {procMode === 'auto' && discountPct === 0 && (procHz !== undefined
+          {procMode === 'auto' && capacityPct === 0 && (procHz !== undefined
             ? `自動找到 ${procHz} 顆/秒`
               + (procSvcMs !== undefined
                   ? ` · 服務 ${procSvcMs.toFixed(0)}ms(中值)`
