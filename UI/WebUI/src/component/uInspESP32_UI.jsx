@@ -832,6 +832,12 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // whether it has headroom; svc is what it thinks the host costs per part.
   const procRho = gate && gate.proc_rho_pct > 0 ? gate.proc_rho_pct : undefined;
   const procSvcMs = gate && gate.proc_svc_us > 0 ? gate.proc_svc_us / 1000 : undefined;
+  // The window MEAN beside the median the loop sizes itself from. The distance
+  // between them is the spikiness, and it is worth showing: a throttle sized
+  // from a typical part and one sized from a tail behave very differently, and
+  // until now nothing on this screen said which was happening.
+  const procSvcMeanMs = gate && gate.proc_svc_mean_us > 0
+    ? gate.proc_svc_mean_us / 1000 : undefined;
   const procCapN = (gate && gate.proc_auto_cap_n) | 0;
   // WHAT THE LOOP IS DOING, not just where it ended up. These were added to the
   // firmware and never put on screen, so the advice "watch proc_probe_up_n"
@@ -1767,7 +1773,11 @@ build ${fw.build}`}>
             : '尚未設定速率')}
           {procMode === 'auto' && (procHz !== undefined
             ? `自動找到 ${procHz} 顆/秒`
-              + (procSvcMs !== undefined ? ` · 服務 ${procSvcMs.toFixed(0)}ms` : '')
+              + (procSvcMs !== undefined
+                  ? ` · 服務 ${procSvcMs.toFixed(0)}ms(中值)`
+                    + (procSvcMeanMs !== undefined && procSvcMeanMs > procSvcMs * 1.25
+                        ? ` 平均 ${procSvcMeanMs.toFixed(0)}ms` : '')
+                  : '')
               + (procRho !== undefined ? ` · 利用率 ${procRho}%` : '')
               + ` · 探測 ${probeUp} / 退讓 ${backoff}`
               + (gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : '')

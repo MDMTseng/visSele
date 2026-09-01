@@ -1366,6 +1366,44 @@ volatile uint32_t GATE_PROC_BACKOFF_N=0;       // times a queue pushed back
 // This removes the one weakness of the latency-only estimate (over-stating
 // service once a backlog forms) and it needs nothing from the core: both
 // timestamps are the board's own clock at the moment a report arrived.
+// MEDIANS, NOT MEANS. The report time is spiky -- measured on the target
+// machine, mean 61.3ms against a worst of 252.9ms -- and a mean over a short
+// window is not robust to that: with ~10 reports in a 500ms window, one 372ms
+// outlier among 60ms neighbours lifts the mean to 91ms, a 1.5x jump from a
+// single part. That is a poor number to size a throttle from, and it is a
+// dangerous one to feed the "latency doubled means the job changed" rule, which
+// a couple of spikes could trip into a backoff nothing asked for.
+//
+// A median over a short ring ignores the tail entirely: it takes half the
+// samples to move it, which is the definition of the run of slow parts that
+// actually means something.
+//
+// It does NOT fix the bias. Latency exceeds service time by the pipeline depth
+// whatever the distribution, so the median is still an over-estimate and the
+// probe is still what corrects it. The median removes the noise; the probe
+// removes the bias. Different problems, both real.
+#define PROC_RING_N 15
+static volatile uint32_t PROC_LAT_RING[PROC_RING_N];
+static volatile uint32_t PROC_ID_RING[PROC_RING_N];
+static volatile uint8_t  PROC_LAT_I=0, PROC_LAT_N=0;
+static volatile uint8_t  PROC_ID_I=0,  PROC_ID_N=0;
+// Insertion sort on at most fifteen uint32 twice a second. The obvious
+// objection is the right one to answer out loud: this is ~50 comparisons in a
+// service that already scans RBuf, and it runs in the main loop, not the ISR.
+static uint32_t ringMedian(volatile uint32_t *ring, uint8_t n)
+{
+  if(n == 0) return 0;
+  uint32_t t[PROC_RING_N];
+  for(uint8_t i=0;i<n;i++) t[i]=ring[i];
+  for(uint8_t i=1;i<n;i++)
+  {
+    const uint32_t k=t[i]; int8_t j=(int8_t)i-1;
+    while(j>=0 && t[j]>k){ t[j+1]=t[j]; j--; }
+    t[j+1]=k;
+  }
+  return t[n/2];
+}
+volatile uint32_t GATE_PROC_SVC_MEAN_US=0;     // for comparison, not for control
 volatile uint32_t GATE_PROC_SVC_ID_US=0;       // inter-departure, EWMA
 static   uint64_t PROC_LAST_REP_US=0;
 // The effective floor. One place computes it so the gate, the reply and any
@@ -5361,11 +5399,18 @@ static void procAutoService()
     const uint32_t dn     = cl_n - last_camlat_n;
     if(dn > 0)
     {
-      const uint32_t lat_us = (uint32_t)((cl_sum - last_camlat_sum) / dn);
-      const uint32_t id_us  = GATE_PROC_SVC_ID_US;
+      GATE_PROC_SVC_MEAN_US = (uint32_t)((cl_sum - last_camlat_sum) / dn);
+      // Medians of the recent rings, not the window mean and not the EWMA: see
+      // PROC_LAT_RING. The mean is still computed and reported so the gap
+      // between them is visible -- that gap IS the spikiness, and an operator
+      // watching a throttle should be able to see whether it is sizing itself
+      // from a typical part or from a tail.
+      const uint32_t lat_us = ringMedian(PROC_LAT_RING, PROC_LAT_N);
+      const uint32_t id_us  = ringMedian(PROC_ID_RING, PROC_ID_N);
       // See GATE_PROC_SVC_ID_US: each is exact in one regime and an
       // over-estimate in the other, so the smaller is the service time.
-      GATE_PROC_SVC_US = (id_us > 0 && id_us < lat_us) ? id_us : lat_us;
+      if(lat_us > 0)
+        GATE_PROC_SVC_US = (id_us > 0 && id_us < lat_us) ? id_us : lat_us;
       // rho uses the ADMITTED rate, because that is the one thing this loop
       // can actually change.
       const int32_t r_now = (int32_t)(((int64_t)(GATE_ACCEPT - last_accept) * 1000000) / dt_ms);
@@ -6796,6 +6841,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     GATE_PROC_RHO_PCT=0; GATE_PROC_SVC_US=0;
     GATE_PROC_PROBE_UP_N=0; GATE_PROC_BACKOFF_N=0;
     GATE_PROC_SVC_ID_US=0; PROC_LAST_REP_US=0;
+    PROC_LAT_N=PROC_LAT_I=PROC_ID_N=PROC_ID_I=0; GATE_PROC_SVC_MEAN_US=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     GATE_DISCARD_STOP=0;
@@ -7247,6 +7293,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // Both inputs, not just the winner: which one is smaller says which
       // regime the machine is in, and that is worth being able to read.
       jG["proc_svc_id_us"]=GATE_PROC_SVC_ID_US;
+      // The window mean beside the median the loop actually uses. Far
+      // apart means a spiky report time; together means a steady one.
+      jG["proc_svc_mean_us"]=GATE_PROC_SVC_MEAN_US;
       // Probing and backing off must be distinguishable from a loop that has
       // settled: both counters climbing together is a controller hunting, one
       // climbing alone is one that has found an edge and is holding it.
@@ -7698,11 +7747,17 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
                   ? (uint32_t)(GATE_PROC_SVC_ID_US
                       + (((int32_t)idt - (int32_t)GATE_PROC_SVC_ID_US) >> 3))
                   : idt;
+                PROC_ID_RING[PROC_ID_I] = idt;
+                PROC_ID_I = (uint8_t)((PROC_ID_I + 1) % PROC_RING_N);
+                if(PROC_ID_N < PROC_RING_N) PROC_ID_N++;
               }
             }
             PROC_LAST_REP_US = rep_now;
           }
           uint32_t clat=(uint32_t)(now64-(int64_t)tarP->cam_us);
+          PROC_LAT_RING[PROC_LAT_I] = clat;
+          PROC_LAT_I = (uint8_t)((PROC_LAT_I + 1) % PROC_RING_N);
+          if(PROC_LAT_N < PROC_RING_N) PROC_LAT_N++;
           REP_CAMLAT_N++;
           REP_CAMLAT_SUM_US+=clat;
           if(clat>REP_CAMLAT_MAX_US)REP_CAMLAT_MAX_US=clat;
