@@ -97,8 +97,13 @@ insp_crash_*.dmp
 # presses 傾印核心日誌. 8-9MB of churn per press, and it is never a source file.
 latest_dump.dump
 
-# v2 app assembly output (make v2_app) -- a build product, not a source
-export_v2/
+# App assembly output -- a build product, not a source.
+#
+# A pattern rather than another literal: scripts/build_export.sh takes the
+# destination as its first argument, so the name is whatever the person running
+# it chose. This file already collected `export/`, then `export_v2/`, one line
+# per name somebody happened to use; export_rc2/ would have been the third.
+export_*/
 # scratch log from a hand-run core
 InspectionCore/Core0_1/core.log
 UI/Launcher/release-builds
