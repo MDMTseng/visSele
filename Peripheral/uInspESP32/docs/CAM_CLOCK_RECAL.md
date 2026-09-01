@@ -180,7 +180,7 @@ earlier false conclusion that drift compensation "showed no improvement".
 |---|---|---|
 | `cam.recal_idle_ms` | 10000 | idle before a top-up; 0 disables |
 | `cam.drift_comp` | true | project the offset forward by `slope_ppb` |
-| `cam.match_window_us` | 5000 | `TOL_US`; must stay under `min_detect_sep_us/2` |
+| `cam.match_window_us` | 5000 | `TOL_US`; clamped to half the spacing IN FORCE (`gateMinSepEff()`), which is not `min_detect_sep_us` under `cam_mode: auto` |
 
 `health.recal_stealth` / `recal_stealth_ok` / `recal_fallback` are the counters
 to watch. A `recal_fallback` that climbs means the single sample is not landing,

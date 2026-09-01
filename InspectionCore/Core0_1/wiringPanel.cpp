@@ -1107,7 +1107,10 @@ static inline void beat(ThreadBeat &b, uint64_t now_us)
 // better number anyway: it is what the CURRENT ROI, exposure and transport
 // really sustain. It is the ceiling the gate fire-rate limit has to stay
 // under -- ask for triggers faster than this and you get triggers with no
-// frames, which is what poisons the pairing.
+// frames. Those are UNANSWERED parts -- pairing is by timestamp with the window
+// clamped to half the part separation, so a missing frame cannot be matched to a
+// neighbour; its object is simply never reported, so it is not actuated and it
+// recirculates. The cost is throughput, and a stop only if it is sustained.
 double g_camMinIntervalMs = 0;
 
 // How late a cam_trig announcement has ever been relative to its own frame.
@@ -10510,6 +10513,21 @@ void CamStateWatchThread(bool *terminationflag)
   {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
+    // The camera's ceiling is REPORTED (perif_pairing.cam_fps_limit) and not
+    // pushed to the board from here.
+    //
+    // Pushing it meant this process knew that a peripheral wants an fps figure,
+    // in what units, in what message, and on what cadence -- peripheral policy
+    // living in the half of the system that is supposed to be about cameras and
+    // inspection. The board's admission rules are not this process's business,
+    // and every future board would have added another branch here.
+    //
+    // The WebUI relays it instead, off the perif_pairing poll it already runs.
+    // That is not a weaker path than this one was: bpg_pi.perifCH is created
+    // and destroyed with the WS clients, so a push from here already required a
+    // UI to be connected -- it only hid the dependency. See
+    // PerifAPI.queryLinkHealthNow.
+
     // ---- put the camera back after a lit snapshot ----
     //
     // Whichever comes first: the frame arrived, or the deadline passed. The
@@ -10560,17 +10578,46 @@ void CamStateWatchThread(bool *terminationflag)
                    : (int)CameraLayer::NAK;
     }
 
-    if (!(primed && st == last_status && present == last_present))
+    // THE CEILING BELONGS IN THE CHANGE KEY, because it moves for reasons the
+    // status and presence flags cannot see.
+    //
+    // ResultingFrameRate answers for the ROI and exposure in force, so it moves
+    // whenever either is changed -- and neither touches cam_status or present.
+    // Without it in the key, an operator shrinking the ROI changes what the
+    // camera can deliver and nothing rings; whoever cares finds out on their
+    // next scheduled poll, which is 30s away.
+    //
+    // Ringing here rather than telling a board about it: this is the camera
+    // summary changing, which is this process's own business and its own
+    // existing doorbell. What anyone does with the news is theirs.
+    //
+    // Banded at 2%, not compared exactly: the node has its own jitter, and a
+    // doorbell that rings on noise is a poll with extra steps.
+    static double last_fps = -1.0;
+    double fps_now = -1.0;
+    {
+      CameraLayer *c = NULL;
+      {
+        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+        c = calib_bacpac.cam;
+      }
+      if (c != NULL) fps_now = c->GetResultingFps();
+    }
+    const bool fps_moved = (fps_now > 0) &&
+      (last_fps <= 0 || fabs(fps_now - last_fps) > last_fps * 0.02);
+
+    if (!(primed && st == last_status && present == last_present && !fps_moved))
     {
       const bool announce = primed;   // first pass only establishes the baseline
       primed = true;
       last_status = st;
       last_present = present;
+      if (fps_now > 0) last_fps = fps_now;
       if (announce)
       {
         const size_t subs = bpg_pi.streamSubscriberCount();
-        LOGI("camera state changed: cam_status=%d present=%d (subscribers=%u)",
-             st, (int)present, (unsigned)subs);
+        LOGI("camera state changed: cam_status=%d present=%d fps=%.2f (subscribers=%u)",
+             st, (int)present, fps_now, (unsigned)subs);
         if (subs != 0)
           pushCamStateDoorbell(st, present);
       }

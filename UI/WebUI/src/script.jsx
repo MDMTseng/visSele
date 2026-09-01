@@ -689,6 +689,17 @@ class APPMasterX extends React.Component {
     if (doorbell) {
       log.info("[cam-doorbell] camera state changed, re-querying", doorbell.data.camera_state);
       if (this.camStatQuery) this.camStatQuery.pokeNow();
+      // The camera's frame-rate ceiling is part of what just changed (the core
+      // has it in the doorbell's change key), and the board sizes its admission
+      // cap from it under gate.cam_mode "auto". Re-read perif_pairing now so the
+      // relay in queryLinkHealthNow forwards it, instead of the board carrying
+      // a stale ceiling until the 30s safety-net poll.
+      //
+      // Which direction that matters in: a ROI made SMALLER leaves the board
+      // slower than it needs to be, costing throughput. A ROI made LARGER, or a
+      // longer exposure, leaves it asking for frames the camera can no longer
+      // deliver -- unanswered parts, and sustained, a stop.
+      pokeLinkHealthNow();
     }
     // Perif-link doorbell (core pgID 0xCA12): the link summary changed --
     // counters moving, suspect flip, channel gone. Re-read perif_pairing now

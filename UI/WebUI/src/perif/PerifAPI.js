@@ -162,6 +162,19 @@ let healthTimer = null;
 // and honoured when the reply arrives, never run in parallel.
 let healthInFlight = false;
 let healthPokePending = false;
+// The last ceiling actually sent to the boards, and when. See the relay below.
+let camFpsSent = 0;
+let camFpsSentAt = 0;
+// SHORTER THAN THE POLL THAT CARRIES IT. At 30000 against a 30000ms poll the
+// comparison is a race with itself: a poll arriving on time fails
+// `now - sent > 30000` by a millisecond, the heartbeat is skipped, and the next
+// chance is another 30s away. Measured before this was noticed --
+// cam_fps_age_s climbed past 30 to 43 and 50 with the relay silent, which looks
+// exactly like a broken link and was a comparison against the wrong constant.
+//
+// 25s: every scheduled poll satisfies it, and three of them still fit inside
+// the board's 90s staleness window.
+const CAM_FPS_HEARTBEAT_MS = 25000;
 function queryLinkHealthNow() {
   if (!deps.sendBPG) return;
   if (Object.keys(registry).length === 0) return;
@@ -176,7 +189,63 @@ function queryLinkHealthNow() {
     resolve: (pkts) => {
       try {
         const gs = (pkts || []).find((p) => p.type === 'GS');
-        const lk = gs && gs.data && gs.data.perif_pairing && gs.data.perif_pairing.link;
+        const pair = gs && gs.data && gs.data.perif_pairing;
+
+        // RELAY THE CAMERA'S CEILING TO THE BOARD.
+        //
+        // The board sizes its own admission cap from ResultingFrameRate when
+        // gate.cam_mode is "auto", and it is the one quantity in that chain it
+        // cannot measure: only the core can ask the camera. The core reports it
+        // here; this forwards it. Keeping the forwarding in the UI keeps
+        // peripheral-specific policy out of the core, which has no business
+        // knowing what a board wants or in what units.
+        //
+        // This poll is the right carrier and not a new timer: it already runs
+        // on a 30s cadence whenever any link is registered -- independent of
+        // whether any panel is mounted -- and the value it needs is already in
+        // the reply it is already making.
+        //
+        // Sent as a runtime FACT, not as a setting: cam_limit is transient
+        // state with an age, and writing min_detect_sep_us instead would put a
+        // measurement into the config the operator owns and could persist to
+        // NVS. If this stops arriving the board falls back on its own; it is
+        // not this relay's job to be reliable, only honest.
+        // ON CHANGE, plus a heartbeat -- not on every poll.
+        //
+        // This shares the link that carries verdicts, and the machine's deadline
+        // is made of their latency, so an unchanged value is traffic bought with
+        // the thing being protected. The poll itself can now be prompt (the
+        // camera doorbell pokes it) precisely BECAUSE sending is gated: checking
+        // often and sending rarely costs the board nothing.
+        //
+        // The heartbeat is not optional. The board decides on its own when the
+        // figure has gone stale, and it must be able to tell "the camera has not
+        // changed" from "nobody is talking to me any more" -- without one, those
+        // are the same silence.
+        const fps = pair && pair.cam_fps_limit;
+        if (fps > 0) {
+          const mhz = Math.round(fps * 1000);
+          const moved = !(camFpsSent > 0) || Math.abs(mhz - camFpsSent) > camFpsSent * 0.01;
+          const due = Date.now() - camFpsSentAt > CAM_FPS_HEARTBEAT_MS;
+          // A guard clause here would `return` out of the whole resolve
+          // callback and take the link-health handling below with it -- on
+          // every poll where the ceiling had NOT moved, which is almost all of
+          // them. Scoped, not early-returned.
+          if (moved || due) {
+            camFpsSent = mhz;
+            camFpsSentAt = Date.now();
+            Object.keys(registry).forEach((id) => {
+              const api = registry[id];
+              if (!api || typeof api.send !== 'function') return;
+            // No reply is expected or wanted: this shares the link that carries
+            // verdicts, and the machine's deadline is made of their latency.
+              try { api.send({ type: 'cam_limit', fps_mhz: mhz }, () => {}, () => {}); }
+              catch (e) { /* a link mid-teardown is not an error worth raising */ }
+            });
+          }
+        }
+
+        const lk = pair && pair.link;
         if (!lk) return;
         Object.keys(registry).forEach((id) => {
           const cur = links[id];
@@ -383,9 +452,40 @@ export class Perif_API_Base {
     publish(this.id, { machineSetup: this.machineSetup });
     this.send(uinspRegroup({ type: 'set_setup', ...newMachineInfo }),
       (ret) => {
+        // A REFUSED WRITE USED TO LOOK EXACTLY LIKE A SUCCESSFUL ONE.
+        //
+        // set_setup refuses a WHOLE document containing a key the firmware does
+        // not know, and names the offenders back -- deliberately, because "an
+        // unrecognised key is a caller that believes something false about the
+        // machine". This threw that away under `//HACK: just assume it will
+        // work`, so the setting silently did not apply and the panel went on
+        // showing the old value as though nothing had been asked.
+        //
+        // Three separate hours went into that failure this week: a board on
+        // older firmware refusing gate.proc_capacity_pct (hunted as "the
+        // backstop must be overriding it"), nomatch_stop_after unsettable for
+        // weeks because it was missing from the schema, and a whole-config
+        // restore refused for the same reason. Every one of them presented as
+        // "the number does not change" with nothing anywhere saying why.
+        //
+        // The device already says why. This just stops discarding it.
+        if (ret && ret.ack === false) {
+          const why = ret.unknown
+            ? `這個韌體不認得 ${ret.unknown}（需要更新韌體）`
+            : (ret.err || 'set_setup 被裝置拒絕');
+          log.error('[machine-setup] set_setup REFUSED', ret);
+          // Published rather than thrown: the caller is usually a button that
+          // has already returned, and the panel is where a person is looking.
+          publish(this.id, { setupError: { why, at: Date.now(), sent: newMachineInfo } });
+          return;
+        }
         log.debug('[machine-setup] set_setup ack', ret);
-        //HACK: just assume it will work
-      }, (e) => log.warn('[machine-setup] set_setup failed', e));
+        publish(this.id, { setupError: null });
+      }, (e) => {
+        log.warn('[machine-setup] set_setup failed', e);
+        publish(this.id, { setupError: { why: String(e && e.message || e), at: Date.now(),
+                                         sent: newMachineInfo } });
+      });
   }
 
   machineSetupReSync() {
@@ -868,7 +968,8 @@ export class uInspESP32_API extends Perif_API_Base {
     // The simple face: a mode and a rate in parts/second. The device resolves
     // them into the interval keys below, which stay settable for backups and
     // for the two advanced knobs no panel exposes.
-    'gate_proc_mode', 'gate_proc_rate_hz',
+    'gate_cam_mode', 'gate_cam_margin_pct',
+    'gate_proc_mode', 'gate_proc_rate_hz', 'gate_proc_capacity_pct',
     'gate_proc_sep_us', 'gate_proc_iir_shift',
     'stepper_en_active', 'stepper_dir',
     'unanswered_stop_after',
