@@ -957,6 +957,10 @@ uint32_t STAT_MAX_RESET_REQ=0;
 // orphan is a late/duplicate report with nothing to pair to, a window miss is
 // the clock. Neither is cleared by reset_stat_maximum: they are counts.
 uint32_t NOMATCH_ORPHAN_N=0, NOMATCH_WINDOW_N=0, CONSEC_NOMATCH=0;
+// Reports that arrived after their object had been swept. See the NOMATCH
+// classification: counted, never escalated, because the part they belong to was
+// already counted once as UNANSWERED.
+uint32_t NOMATCH_LATE_N=0;
 // Consecutive tolerated NOMATCHes before the machine stops anyway. 8 is
 // deliberately well under the pipeline depth (~22 registered objects) so a
 // genuinely lost pipeline halts long before a full lap of unjudged parts.
@@ -7216,6 +7220,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // WINDOW is the clock drifting out of the match window (and that one is
     // CAM_CLOCK_LOST's to escalate). CONSEC is what the stop threshold reads.
     jCountInfo["NOMATCH_ORPHAN"]=NOMATCH_ORPHAN_N;
+    // Late answers for parts already swept -- see the NOMATCH branch.
+    jCountInfo["NOMATCH_LATE"]=NOMATCH_LATE_N;
     jCountInfo["NOMATCH_WINDOW"]=NOMATCH_WINDOW_N;
     jCountInfo["NOMATCH_CONSEC"]=CONSEC_NOMATCH;
 
@@ -8017,19 +8023,49 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       const bool gateWatching = (cam_ts != 0 && cat != -1 && nearest != NULL);
       bool fatal;
       const char *why;
+      // A REPORT THAT OUTLIVED ITS OBJECT IS ALREADY COUNTED, ONCE.
+      //
+      // Pushed to the limit the host answers late; the part reaches SWITCH
+      // unanswered, is recorded as UNANSWERED and swept. The report then
+      // arrives to find its object gone, so `nearest` is a NEIGHBOUR a whole
+      // spacing away -- tens of milliseconds outside the window.
+      //
+      // Counting that as a nomatch escalates ONE physical event on TWO
+      // independent thresholds: it has already advanced CONSEC_UNANSWERED
+      // toward skip_policy.stop_after, and it would now also advance
+      // CONSEC_NOMATCH toward nomatch_stop_after. Two ways to halt for the same
+      // late answer, and the second one is a threshold about PAIRING, which is
+      // not what went wrong.
+      //
+      // Fixing CAM_CLOCK_LOST for this exact case moved the halt here rather
+      // than removing it -- reported from the line within the hour. Same 4x
+      // window test as the clock guard, deliberately, so the two cannot
+      // disagree about what "a whole spacing away" means.
+      //
+      // Still counted and reported: a machine where this climbs is a machine
+      // running late, and that is worth seeing. It is bounded by the unanswered
+      // threshold that already owns it.
+      const bool late_swept = (nearest != NULL && gateWatching
+                               && nearestDelta > (int64_t)CamClockSync::TOL_US * 4);
+
       if(!CAM_SYNC.valid)      { fatal = true;  why = "clock-invalid"; }
       else if(nearest == NULL) { fatal = false; why = "no-object";     NOMATCH_ORPHAN_N++; }
+      else if(late_swept)      { fatal = false; why = "late-swept";    NOMATCH_LATE_N++; }
       else if(gateWatching)    { fatal = false; why = "out-of-window"; NOMATCH_WINDOW_N++; }
       else                     { fatal = true;  why = "unwatched";     }
 
-      if(!fatal && ++CONSEC_NOMATCH >= (uint32_t)NOMATCH_STOP_AFTER)
+      // late_swept neither advances the counter nor clears it: it is not
+      // evidence that the pairing is failing, and it is not evidence that the
+      // pairing is fine either.
+      if(!fatal && !late_swept && ++CONSEC_NOMATCH >= (uint32_t)NOMATCH_STOP_AFTER)
       {
         fatal = true;
         why = "consecutive";
       }
-      djrl.dbg_printf("NOMATCH %s consec=%u orphan=%u window=%u -> %s",
+      djrl.dbg_printf("NOMATCH %s consec=%u orphan=%u window=%u late=%u -> %s",
                       why, (unsigned)CONSEC_NOMATCH,
                       (unsigned)NOMATCH_ORPHAN_N, (unsigned)NOMATCH_WINDOW_N,
+                      (unsigned)NOMATCH_LATE_N,
                       fatal ? "STOP" : "tolerated");
       if(fatal)
         SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_MATCHES_NO_OBJECT);

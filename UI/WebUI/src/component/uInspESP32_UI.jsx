@@ -557,9 +557,10 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
             Shown only when non-zero, and beside the two counters it is easy to
             confuse with: this climbing while those stay flat is the HOST
             running late, and that wants a throttle, not a calibration. */}
-        {n0v(sync.far_miss) > 0
+        {n0v(sync.far_miss) > 0 || n0v(cnt.NOMATCH_LATE) > 0
           ? <Row label="遠離視窗" sub="回報遲到,非時鐘"
-                 value={exactN(n0v(sync.far_miss))} /> : null}
+                 value={`${exactN(n0v(sync.far_miss))} / ${exactN(n0v(cnt.NOMATCH_LATE))}`} />
+          : null}
         {has(sync.offset_us)
           ? <Row label="時鐘偏移" value={`${(sync.offset_us / 1000).toFixed(1)} ms`}
                  warn={sync.valid === false} /> : null}
