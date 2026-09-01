@@ -210,7 +210,7 @@ add_library(common_lib STATIC
   common_lib/json_seg_parser.cpp common_lib/vis_geom.cpp)
 force_cxx(common_lib/Util.c common_lib/Util2.c)
 target_include_directories(common_lib PUBLIC
-  common_lib/include contrib/Compat_dirent/${PLAT}/include)
+  common_lib/include contrib/compat_dirent/${PLAT}/include)
 target_link_libraries(common_lib PUBLIC cJSON logctrl lodepng mjpegLib simple_uart opencv_core)
 if(WIN32 OR MINGW OR MSYS)
   target_compile_options(common_lib PRIVATE -Wa,-mbig-obj)
@@ -429,7 +429,14 @@ if(NOT WIN32)
 endif()
 
 # copy aravis dylib next to the binary for rpath loading (mac)
-if(FEATURE_ARAVIS)
+#
+# APPLE only, and that is the whole point of the guard: ARAVIS_DIR is set in the
+# APPLE branch above and NOWHERE else, so on Linux -- where FEATURE_ARAVIS is ON
+# by default -- this expanded to "copy /src/libaravis-0.8.0.dylib", a POST_BUILD
+# step that fails every single build of visSele after it has already linked.
+# Linux takes its Aravis from pkg-config (the else branch above), so the shared
+# object is on the system loader path and there is nothing to copy.
+if(FEATURE_ARAVIS AND APPLE)
   add_custom_command(TARGET visSele POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       ${ARAVIS_DIR}/src/libaravis-0.8.0.dylib $<TARGET_FILE_DIR:visSele>)

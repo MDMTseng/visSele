@@ -34,6 +34,10 @@
 #define LOG_RING_H
 
 #include <stdint.h>
+#include <stddef.h>   /* size_t -- used by log_ring_total_bytes() below. libc++
+                       * and MinGW's libstdc++ drag it in through <atomic>;
+                       * glibc's does not, so on Linux this header only compiled
+                       * where something else had already included it. */
 #include <atomic>
 
 /* ---------- protocol constants ---------- */

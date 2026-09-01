@@ -335,6 +335,13 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
     case 230400:
         sp = B230400;
         break;
+    /* BSD/macOS termios takes the literal bit rate as its speed_t, so these
+     * three are written out as plain numbers. Linux does NOT: its speed_t is a
+     * small tag (B460800 is 0x1004), and the __linux__ block below already
+     * gives all three the correct constant -- so on Linux these are both wrong
+     * AND duplicates of the cases below, which is a hard compile error rather
+     * than the silently-wrong baud it would otherwise be. */
+#ifndef __linux__
     case 460800:
         sp = 460800;
         break;
@@ -344,6 +351,7 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
     case 1152000:
         sp = 1152000;
         break;
+#endif
 #ifdef __linux__
     case 460800:
         sp = B460800;
@@ -564,7 +572,7 @@ int simple_uart_list(char ***namesp, char ***descriptionp)
     if (glob("/sys/class/tty/ttyS[0-9]*", 0, NULL, &g) >= 0) {
         char buffer[100];
         char **new_names;
-        new_names = realloc(names, (count + g.gl_pathc) * sizeof(char *));
+        new_names = (char **)realloc(names, (count + g.gl_pathc) * sizeof(char *));
         if (!new_names) {
             globfree(&g);
             free(names);
@@ -582,7 +590,7 @@ int simple_uart_list(char ***namesp, char ***descriptionp)
     if (glob ("/sys/class/tty/ttyUSB[0-9]*", 0, NULL, &g) >= 0) {
         char buffer[100];
         char **new_names;
-        new_names = realloc(names, (count + g.gl_pathc) * sizeof (char *));
+        new_names = (char **)realloc(names, (count + g.gl_pathc) * sizeof (char *));
         if (!new_names) {
             globfree(&g);
             free(names);
