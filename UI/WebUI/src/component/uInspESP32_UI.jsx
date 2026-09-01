@@ -820,6 +820,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // reports what is actually in force, so the panel never derives one from the
   // other. min_sep_us is what was configured; min_sep_eff_us is what the gate is
   // enforcing, and under cam_mode auto they are different numbers.
+  // The device's own reason for refusing the last write, if it refused one.
+  const setupError = CONN && CONN.setupError;
   const camMode = (gate && gate.cam_mode) || cfg.gate_cam_mode || 'manual';
   const camFps = gate && gate.cam_fps_limit > 0 ? gate.cam_fps_limit : undefined;
   const camStale = !!(gate && gate.cam_fps_stale);
@@ -1625,6 +1627,19 @@ build ${fw.build}`}>
           An uncertain part is NA and rides round again -- that already satisfies
           the first rule, so stopping is a separate and much stronger action,
           reserved for losing track of WHICH part a report belongs to. */}
+      {/* A REFUSED SETTING, IN THE PLACE THE SETTING WAS CHANGED. Not a toast:
+          this needs to still be on screen when somebody comes back to the panel
+          wondering why the number did not move, which is minutes later. */}
+      {setupError && (
+        <div style={{ background: '#fff1f0', border: '1px solid #ffa39e',
+                      borderRadius: 3, padding: '8px 12px', marginBottom: 8,
+                      color: '#a8071a', fontSize: 13 }}>
+          設定沒有套用：{setupError.why}
+          <span style={{ ...dim, marginLeft: 8 }}>
+            {Object.keys(setupError.sent || {}).join(', ')}
+          </span>
+        </div>
+      )}
       <FoldCard style={{ marginBottom: 8 }} title={<span>運作調節
         <Why>三個目標,依優先序:<b>不可檢錯</b> &gt; best effort &gt; <b>盡量不停機</b>。
           有疑問就 NA 讓料回流 —— 沒有致動就是再轉一圈,料不會掉,第一條就已經滿足了。

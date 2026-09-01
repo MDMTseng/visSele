@@ -452,9 +452,40 @@ export class Perif_API_Base {
     publish(this.id, { machineSetup: this.machineSetup });
     this.send(uinspRegroup({ type: 'set_setup', ...newMachineInfo }),
       (ret) => {
+        // A REFUSED WRITE USED TO LOOK EXACTLY LIKE A SUCCESSFUL ONE.
+        //
+        // set_setup refuses a WHOLE document containing a key the firmware does
+        // not know, and names the offenders back -- deliberately, because "an
+        // unrecognised key is a caller that believes something false about the
+        // machine". This threw that away under `//HACK: just assume it will
+        // work`, so the setting silently did not apply and the panel went on
+        // showing the old value as though nothing had been asked.
+        //
+        // Three separate hours went into that failure this week: a board on
+        // older firmware refusing gate.proc_discount_pct (hunted as "the
+        // backstop must be overriding it"), nomatch_stop_after unsettable for
+        // weeks because it was missing from the schema, and a whole-config
+        // restore refused for the same reason. Every one of them presented as
+        // "the number does not change" with nothing anywhere saying why.
+        //
+        // The device already says why. This just stops discarding it.
+        if (ret && ret.ack === false) {
+          const why = ret.unknown
+            ? `這個韌體不認得 ${ret.unknown}（需要更新韌體）`
+            : (ret.err || 'set_setup 被裝置拒絕');
+          log.error('[machine-setup] set_setup REFUSED', ret);
+          // Published rather than thrown: the caller is usually a button that
+          // has already returned, and the panel is where a person is looking.
+          publish(this.id, { setupError: { why, at: Date.now(), sent: newMachineInfo } });
+          return;
+        }
         log.debug('[machine-setup] set_setup ack', ret);
-        //HACK: just assume it will work
-      }, (e) => log.warn('[machine-setup] set_setup failed', e));
+        publish(this.id, { setupError: null });
+      }, (e) => {
+        log.warn('[machine-setup] set_setup failed', e);
+        publish(this.id, { setupError: { why: String(e && e.message || e), at: Date.now(),
+                                         sent: newMachineInfo } });
+      });
   }
 
   machineSetupReSync() {
