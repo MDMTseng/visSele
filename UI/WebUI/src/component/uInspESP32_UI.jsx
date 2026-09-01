@@ -841,6 +841,11 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // enforcing, and under cam_mode auto they are different numbers.
   // The device's own reason for refusing the last write, if it refused one.
   const setupError = CONN && CONN.setupError;
+  // The selector test pattern, if one is running. Read from the device rather
+  // than kept locally: it survives a page reload and it must be impossible for
+  // the panel to show "off" while the machine is blowing to a pattern.
+  const selTestMode = (stat && stat.sel_test) || 'off';
+  const selTestSel = (stat && stat.sel_test_sel) || 1;
   const camMode = (gate && gate.cam_mode) || cfg.gate_cam_mode || 'manual';
   const camFps = gate && gate.cam_fps_limit > 0 ? gate.cam_fps_limit : undefined;
   const camStale = !!(gate && gate.cam_fps_stale);
@@ -1649,6 +1654,17 @@ build ${fw.build}`}>
       {/* A REFUSED SETTING, IN THE PLACE THE SETTING WAS CHANGED. Not a toast:
           this needs to still be on screen when somebody comes back to the panel
           wondering why the number did not move, which is minutes later. */}
+      {/* A machine blowing to a test pattern must not be mistakable for one
+          sorting on its verdicts, and the person who left it on is usually not
+          the person who finds it. Top of the panel, red, not foldable. */}
+      {selTestMode !== 'off' && (
+        <div style={{ background: '#fff1f0', border: '1px solid #ffa39e',
+                      borderRadius: 3, padding: '8px 12px', marginBottom: 8,
+                      color: '#a8071a', fontSize: 13 }}>
+          <b>吹氣測試模式</b>：{selTestMode === 'all' ? '每一顆都吹' : '一顆吹一顆不吹'}
+          {' '}SEL{selTestSel} —— <b>判定結果沒有在分選</b>。調完請關掉。
+        </div>
+      )}
       {setupError && (
         <div style={{ background: '#fff1f0', border: '1px solid #ffa39e',
                       borderRadius: 3, padding: '8px 12px', marginBottom: 8,
@@ -2219,6 +2235,44 @@ build ${fw.build}`}>
               ? ' ← 餘裕不足 1.5x,慢的那幾顆會來不及判定' : ''}
           </div>
         )}
+
+        {/* PUTTING THE BLOW WHERE THE PART IS. Here, not in a diagnostics
+            drawer, because this is the card where SEL*_on is being dragged and
+            the whole point is to watch the plate while changing the number.
+
+            全部 finds the blow at all. 交替 is what actually settles the
+            offset: with every part blown, every puff looks like every other and
+            an offset a whole part out is indistinguishable from a correct one.
+            Alternating leaves a comb on the plate, and taking the wrong
+            alternate is a difference anybody can see without instruments. */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12,
+                      flexWrap: 'wrap', borderTop: '1px solid #eee', paddingTop: 10 }}>
+          <span>吹氣測試
+            <Why>把判定結果換成固定的吹氣樣式,好把 SEL*_on 對到料上。
+              <b>全部</b>:每一顆都吹。<b>交替</b>:一顆吹一顆不吹,盤上留下梳齒 ——
+              偏半顆會變成「吹錯那一顆」,不需要儀器就看得出來。<br/><br/>
+              這會<b>覆蓋真實判定</b>,所以它是指令不是設定:存不進 NVS,重開就沒了。
+              開著的時候整個面板都會提醒。</Why></span>
+          <Radio.Group size="small" value={selTestMode} disabled={busy === 'seltest'}
+            onChange={(e) => run('seltest', (api) =>
+              api.sendP({ type: 'sel_test', mode: e.target.value, sel: selTestSel }))}>
+            <Radio.Button value="off">關閉</Radio.Button>
+            <Radio.Button value="all">全部</Radio.Button>
+            <Radio.Button value="alt">交替</Radio.Button>
+          </Radio.Group>
+          <Radio.Group size="small" value={selTestSel} disabled={busy === 'seltest'}
+            onChange={(e) => run('seltest', (api) =>
+              api.sendP({ type: 'sel_test', mode: selTestMode, sel: e.target.value }))}>
+            <Radio.Button value={1}>SEL1</Radio.Button>
+            <Radio.Button value={2}>SEL2</Radio.Button>
+            <Radio.Button value={3}>SEL3</Radio.Button>
+          </Radio.Group>
+          {selTestMode !== 'off' && (
+            <span style={{ color: '#a8071a' }}>
+              判定結果沒有在分選 —— 現在吹的是測試樣式
+            </span>
+          )}
+        </div>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
           <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq, ctr))}>還原成裝置目前值</Button>

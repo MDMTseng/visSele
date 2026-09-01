@@ -271,6 +271,33 @@ bool SYS_STEPPER_DISABLED=false;
 // plate_freq asks for. Physical speed is zero by construction rather than by
 // trusting the driver to honour an enable pin.
 volatile bool DRY_RUN=false;
+// SELECTOR TEST MODE -- for putting the blow where the part is.
+//
+// Setting SEL*_on by eye is hard for a reason that is not about the number: a
+// run where every part is blown gives no way to tell WHICH part each puff
+// belonged to. Every blow looks like every other, so an offset a whole part out
+// looks exactly like a correct one.
+//
+// 1 = ALL   every verdict becomes the chosen selector. Good for finding the
+//           blow at all, and for checking the pulse width against the part.
+// 2 = ALT   alternate the chosen selector and NA, so the plate comes out as a
+//           comb. Half a part of error stops being invisible: the wrong
+//           alternate gets taken, and that is a difference anybody can see
+//           without instruments.
+//
+// A COMMAND, NOT A SETTING, deliberately -- the same choice set_dry_run makes.
+// This overrides real verdicts, so it must not be able to reach NVS and come
+// back after a power cycle on a machine somebody believes is sorting properly.
+// It lives in RAM, it dies on reset, and it is reported everywhere the state is.
+volatile int      SEL_TEST_MODE=0;      // 0 off, 1 all, 2 alternate
+volatile int      SEL_TEST_SEL=1;       // which selector to fire
+volatile uint32_t SEL_TEST_N=0;         // parts it has decided for
+// Said out loud on every change and in every status reply. A machine sorting on
+// a test pattern must never be mistakable for one sorting on its verdicts, and
+// the person who left it on is usually not the person who finds it.
+#define LOGW_SEL_TEST() djrl.dbg_printf( \
+  "SEL TEST MODE ACTIVE: %s -> SEL%d -- verdicts are NOT being sorted", \
+  SEL_TEST_MODE==1?"all":"alternate", SEL_TEST_SEL)
 
 // 30000us = 33/s. This was 4000us (250/s), which is faster than ANY camera
 // configuration measured on this machine -- 5420us (184.5 fps) at the
@@ -3680,7 +3707,15 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
         // actuation that was asked for and not delivered.
       }
       else
-      switch (pli->insp_status)
+      // THE VERDICT IS REPLACED HERE AND NOWHERE EARLIER, so everything the
+      // host decided still happened: the part was inspected, its report was
+      // paired, the counters that describe the INSPECTION are untouched. Only
+      // the actuation is redirected. That keeps a test run readable -- NG/OK
+      // still mean what they measured -- and it keeps the substitution in one
+      // place where it is obvious.
+      switch (SEL_TEST_MODE == 0 ? (int)pli->insp_status
+              : (SEL_TEST_MODE == 1 ? SEL_TEST_SEL
+                 : ((SEL_TEST_N++ & 1) ? SEL_TEST_SEL : 0xFFFF)))
       {
         case 1:
           CONSEC_UNANSWERED=0;
@@ -7413,6 +7448,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jG["freq_stable"]=SYS_FREQ_STABLE;
       // Stage clock running with the plate held still -- test rig only.
       jG["dry_run"]=(bool)DRY_RUN;
+      // Never silent, for the same reason the fault injector is not: a test
+      // pattern that outlives the person who set it is a machine sorting to a
+      // rule nobody remembers choosing.
+      if(SEL_TEST_MODE)
+      {
+        retdoc["sel_test"] = SEL_TEST_MODE==1 ? "all" : "alt";
+        retdoc["sel_test_sel"] = SEL_TEST_SEL;
+      }
       jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;      // configured
       // ... and what is actually enforced, which differs under cam_mode auto.
       // Both, because "the camera says 82fps" and "the gate is admitting at
@@ -8511,6 +8554,38 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // acknowledgement for a value that changes on its own would be traffic
     // against the machine's own deadline for no reader.
     doRsp=false; rspAck=false;
+  }
+  else if(strcmp(type,"sel_test")==0)
+  {
+    // {"type":"sel_test","mode":"off"|"all"|"alt","sel":1..3}
+    retdoc["type"]="sel_test";
+    if(doc["sel"].is<int>())
+    {
+      const int v = doc["sel"];
+      if(v>=1 && v<=3) SEL_TEST_SEL = v;
+    }
+    // The ack is tracked, not assigned at the end. The first version set
+    // rspAck=false for a bad mode and then overwrote it with true two lines
+    // later, so an unrecognised mode came back as {"err":"...","ack":true} --
+    // a refusal wearing an acceptance, which is the exact failure this session
+    // spent an afternoon on elsewhere.
+    bool ok = true;
+    if(doc["mode"].is<const char*>())
+    {
+      const char *m = doc["mode"];
+      if(strcmp(m,"off")==0)      SEL_TEST_MODE = 0;
+      else if(strcmp(m,"all")==0) SEL_TEST_MODE = 1;
+      else if(strcmp(m,"alt")==0) SEL_TEST_MODE = 2;
+      else { retdoc["err"]="mode must be off|all|alt"; ok = false; }
+      // Only on a mode that was understood: restarting the phase for a typo
+      // would shift the comb the operator is lining up against.
+      if(ok) SEL_TEST_N = 0;
+    }
+    retdoc["mode"] = SEL_TEST_MODE==1 ? "all" : (SEL_TEST_MODE==2 ? "alt" : "off");
+    retdoc["sel"]  = SEL_TEST_SEL;
+    if(SEL_TEST_MODE)
+      LOGW_SEL_TEST();
+    doRsp=true; rspAck=ok;
   }
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
