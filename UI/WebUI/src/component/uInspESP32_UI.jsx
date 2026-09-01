@@ -551,6 +551,15 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
         <Row label="拒絕 / 重建"
              value={`${n0v(sync.rejected)} / ${n0v(sync.rebuilds)}`}
              warn={n0v(sync.rejected) > 0 || n0v(sync.rebuilds) > 0} />
+        {/* Ruled OUT as clock evidence rather than counted against it -- a miss
+            a whole object-spacing wide is a report that arrived after its
+            object was swept, which the clock cannot cause and cannot fix.
+            Shown only when non-zero, and beside the two counters it is easy to
+            confuse with: this climbing while those stay flat is the HOST
+            running late, and that wants a throttle, not a calibration. */}
+        {n0v(sync.far_miss) > 0
+          ? <Row label="遠離視窗" sub="回報遲到,非時鐘"
+                 value={exactN(n0v(sync.far_miss))} /> : null}
         {has(sync.offset_us)
           ? <Row label="時鐘偏移" value={`${(sync.offset_us / 1000).toFixed(1)} ms`}
                  warn={sync.valid === false} /> : null}

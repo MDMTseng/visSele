@@ -504,6 +504,8 @@ struct CamClockSync
   // climbing means the offset really is moving.
   uint32_t rejected = 0, rebuilds = 0;
   uint16_t consec_reject = 0;
+  // Misses too large to be a clock. See gate().
+  uint32_t far_miss = 0;
   // Set when the clock has been lost and the machine must stop. Raised here,
   // acted on at the call site, which is where SYS_STATE_Transfer lives.
   bool     fault_pending = false;
@@ -598,7 +600,7 @@ struct CamClockSync
   {
     valid=false; offset_us=0; boot_n=0;
     last_resid_us=0; max_resid_us=0;
-    learned=rejected=rebuilds=0; consec_reject=0;
+    learned=rejected=rebuilds=0; consec_reject=0; far_miss=0;
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
@@ -683,6 +685,42 @@ struct CamClockSync
   void gate(uint64_t cam_ts, uint64_t nearest_cam_us, int64_t nearest_delta)
   {
     if(!valid) return;
+    // A MISS THIS LARGE IS NOT EVIDENCE ABOUT THE CLOCK.
+    //
+    // The offset is re-measured from every accepted report, so it is never more
+    // than one report old -- about 50ms at 20 parts/s -- and the drift it can
+    // accumulate in that time is 50ms x 50us/s = 2.5us. Three orders of
+    // magnitude inside the window. A clock error therefore reaches the window
+    // edge gradually or not at all; it cannot jump, because crystals do not.
+    //
+    // What DOES land a whole object-spacing away is a report for an object that
+    // has since been retired. Pushed to its limit the host answers late, the
+    // part passes SWITCH unanswered and is swept, and the report arrives to find
+    // its object gone -- so `nearest` is a NEIGHBOUR, one spacing off, tens of
+    // milliseconds outside a 3ms window. Two of those in a row halted the
+    // machine on CAM_CLOCK_LOST, and the operator's report is exactly that: it
+    // happens when the system is pushed to the limit.
+    //
+    // The reasoning is already written down here for the calibration case --
+    // "the frame is accounted for; it is simply not evidence about the clock"
+    // -- and guarded with a tombstone. It is equally true for a retired real
+    // part and was never applied to one.
+    //
+    // Four windows is the separation, and it is not a tuned number: drift can
+    // reach single-digit microseconds between reports, and a neighbouring slot
+    // is at least one admission interval away, which the layer-one cap keeps
+    // above twice the window by construction. Anything in between is genuinely
+    // ambiguous and is still counted as a real miss.
+    if(nearest_delta > (int64_t)TOL_US * 4)
+    {
+      far_miss++;
+      miss_delta_last_us = nearest_delta;
+      if(nearest_delta > miss_delta_max_us) miss_delta_max_us = nearest_delta;
+      // consec_reject deliberately NOT advanced, and deliberately not reset
+      // either: this frame says nothing either way, so it should leave the
+      // clock's own tally exactly as it found it.
+      return;
+    }
     if(nearest_delta > TOL_US)
     {
       rejected++;
@@ -7434,6 +7472,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // rejected up while resid stays small = the outlier guard doing its job.
       // rebuilds up = the offset genuinely moved and was re-learned.
       jS["rejected"]=CAM_SYNC.rejected;
+      // Misses ruled out as clock evidence -- almost always a report for an
+      // object that was swept before it arrived. Climbing while `rejected` and
+      // `rebuilds` stay flat is the host running late, not the clock drifting,
+      // and those want completely different fixes.
+      jS["far_miss"]=CAM_SYNC.far_miss;
       jS["rebuilds"]=CAM_SYNC.rebuilds;
       // Unambiguous samples emitted. `learned` should now equal this: any
       // excess means something other than a sync pulse taught the estimate.
