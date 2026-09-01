@@ -299,6 +299,31 @@ volatile uint32_t SEL_TEST_N=0;         // parts it has decided for
   "SEL TEST MODE ACTIVE: %s -> SEL%d -- verdicts are NOT being sorted", \
   SEL_TEST_MODE==1?"all":"alternate", SEL_TEST_SEL)
 
+// IT REDIRECTS SORTING DECISIONS; IT DOES NOT INVENT THEM.
+//
+// Only a verdict that would have been sorted anyway (1/2/3) is replaced. NA,
+// SKIP and UNSET pass through untouched, for two reasons that are both about
+// the pattern staying readable:
+//
+//   NA means the machine could not judge, and often that there was no part in
+//   that slot at all. Blowing it puts a puff on empty plate -- and when the
+//   whole exercise is deciding whether the puff lands on the part, a puff with
+//   no part is the most misleading thing that can appear.
+//
+//   In ALT it is worse than wasteful. If NA consumed a phase the comb would
+//   come out irregular, and the comb's regularity IS the measurement: half a
+//   part of error is read off the teeth being wrong, which needs the teeth to
+//   be right when the offset is right.
+//
+// So the alternation counter advances only on parts that were actually judged.
+static inline int selTestVerdict(int real)
+{
+  if(SEL_TEST_MODE == 0) return real;
+  if(real != 1 && real != 2 && real != 3) return real;   // not a sort; leave it
+  if(SEL_TEST_MODE == 1) return SEL_TEST_SEL;
+  return (SEL_TEST_N++ & 1) ? SEL_TEST_SEL : 0xFFFF;     // alternate with NA
+}
+
 // 30000us = 33/s. This was 4000us (250/s), which is faster than ANY camera
 // configuration measured on this machine -- 5420us (184.5 fps) at the
 // production crop, 28425us (~35 fps) at full frame. A compiled default that
@@ -3713,9 +3738,7 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
       // the actuation is redirected. That keeps a test run readable -- NG/OK
       // still mean what they measured -- and it keeps the substitution in one
       // place where it is obvious.
-      switch (SEL_TEST_MODE == 0 ? (int)pli->insp_status
-              : (SEL_TEST_MODE == 1 ? SEL_TEST_SEL
-                 : ((SEL_TEST_N++ & 1) ? SEL_TEST_SEL : 0xFFFF)))
+      switch (selTestVerdict((int)pli->insp_status))
       {
         case 1:
           CONSEC_UNANSWERED=0;
