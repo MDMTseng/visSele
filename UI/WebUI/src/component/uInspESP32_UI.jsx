@@ -453,11 +453,20 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
       ))}
       <Row label="已判定合計" value={exactN(judged)} />
       {gate && has(gate.accept)
-        ? <Row label="進料" sub="gate" value={exactN(gate.accept)} /> : null}
+        ? <Row label="閘門放行" sub={has(gate.edges) && gate.edges > 0
+              ? `原始 ${exactN(gate.edges)}` : 'gate'}
+               value={exactN(gate.accept)} /> : null}
 
       <Head>速度</Head>
       {rate ? (<>
-        <Row label="進料" value={`${rate.g.toFixed(1)} /s`} />
+        {/* 閘門, not 進料. This is gate.accept -- what was ADMITTED, after both
+            throttle layers and every rejection filter have had their say. A
+            label reading 進料 invites the reading "this is how much material is
+            arriving", which is the one question it does not answer: raw arrivals
+            are gate.edges, and admitted is what is left of them. The distinction
+            decides whether a low number means "feed more" or "the throttle is
+            working". */}
+        <Row label="閘門" sub="放行" value={`${rate.g.toFixed(1)} /s`} />
         <Row label="檢測" value={`${rate.i.toFixed(1)} /s`} />
         <Row label="OK"   value={`${rate.o.toFixed(1)} /s`} color="#389e0d" />
       </>) : <Row label="—" value="尚未取樣" />}
@@ -3050,7 +3059,7 @@ export function UINSP_ESP32_MINI() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
                     fontSize: 10, color: '#888', lineHeight: 1.2 }}>
         {rate ? (<>
-          <span style={{ flex: 1, minWidth: 0 }}>進料 {rate.g.toFixed(1)}/s</span>
+          <span style={{ flex: 1, minWidth: 0 }}>閘門 {rate.g.toFixed(1)}/s</span>
           <span style={{ flex: 1, minWidth: 0 }}>檢測 {rate.i.toFixed(1)}/s</span>
           <span style={{ flex: 1, minWidth: 0, color: '#389e0d' }}>OK {rate.o.toFixed(1)}/s</span>
         </>) : <span style={{ flex: 1 }} />}
