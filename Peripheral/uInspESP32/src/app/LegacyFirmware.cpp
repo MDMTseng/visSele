@@ -5389,12 +5389,25 @@ static void procAutoService()
     // PROACTIVE: it applies whether or not anything is backing up, which is the
     // entire point of steering by the cause. Only ever added to the manual
     // floor, never subtracted from it.
-    uint32_t want = 0;
+    // The latency-derived figure, kept as a NUMBER and not as a target.
+    //
+    // Re-asserting it every sample is what made the probe useless twice: the
+    // probe lowers the throttle, this recomputes the same 82.5ms, and whichever
+    // rule runs next pulls it straight back. Two versions of that fight were
+    // written before it was clear that the estimate must not be in the steady
+    // -state loop at all -- it is biased high by the pipeline depth, so a loop
+    // that keeps returning to it keeps returning to a number the machine has
+    // already disproved.
+    //
+    // It gets exactly two jobs below: start the loop somewhere sane, and catch
+    // a change too large to be that bias.
+    uint32_t lat_want = 0;
     if(GATE_PROC_SVC_US > 0 && GATE_PROC_RHO_TARGET > 0)
     {
       const uint64_t eff_us = (uint64_t)GATE_PROC_SVC_US * 100 / (uint32_t)GATE_PROC_RHO_TARGET;
-      want = (eff_us > GATE_PROC_SEP_US) ? (uint32_t)(eff_us - GATE_PROC_SEP_US) : 0;
+      lat_want = (eff_us > GATE_PROC_SEP_US) ? (uint32_t)(eff_us - GATE_PROC_SEP_US) : 0;
     }
+    uint32_t want = 0;   // the backstop's ask; 0 means it is not asking
 
     // --- the backstop: the queue is growing anyway --------------------------
     //
@@ -5436,53 +5449,58 @@ static void procAutoService()
       // Bounded by rho's own answer. When rho has no answer at all (no reports
       // in this window) the backstop is the only signal there is, so it stands
       // alone -- that is the stalled-camera case it exists for.
-      if(want > 0)
+      if(lat_want > 0)
       {
-        const uint32_t ceil4 = (want > GATE_PROC_AUTO_MAX_US / 4)
-                             ? GATE_PROC_AUTO_MAX_US : want * 4;
+        const uint32_t ceil4 = (lat_want > GATE_PROC_AUTO_MAX_US / 4)
+                             ? GATE_PROC_AUTO_MAX_US : lat_want * 4;
         if(bs > ceil4) bs = ceil4;
       }
-      if(bs > want) want = bs;
+      want = bs;
     }
 
-    // THE PROBE. Only when the evidence says there is nothing to be afraid of:
-    // the queue is not merely small but not growing, and nothing has gone
-    // unjudged. Then take one small step toward admitting faster than the
-    // estimate allows -- 3% of the current throttle, so the approach to the
-    // real limit is gradual from any distance.
+    // WHO IS ALLOWED TO MOVE THE THROTTLE, and when.
     //
-    // Bounded by what the estimate would have asked for on its own? No --
-    // deliberately not. The whole point is that the estimate is wrong in a
-    // knowable direction, and a probe that cannot exceed it cannot find
-    // anything. What bounds it is the queue: the moment one appears, the
-    // backstop above asks for more throttle and wins, because `want` is a max
-    // over both and the probe only subtracts from the RESULT.
-    if(GATE_PROC_PROBE && GATE_PROC_AUTO_ADD_US > 0
-       && waiting <= 2 && dW_mq <= 0 && bs_run == 0)
+    //   nothing set yet    the latency figure, as a starting point
+    //   queue growing      the backstop, fast -- this is the only steady-state
+    //                      reason to slow down, and it is evidence, not a model
+    //   latency doubled    the latency figure again: a jump that large is not
+    //                      the pipeline-depth bias, it is a different job
+    //                      (a recipe change, a slower part), and waiting for a
+    //                      queue to prove it would spend parts to learn it
+    //   otherwise, safe    the probe, slowly, downward
+    //
+    // The ordering matters more than any of the constants: everything that can
+    // raise is checked before the one thing that can lower, so a machine in
+    // trouble is never probed at.
+    if(GATE_PROC_AUTO_ADD_US == 0 && lat_want > 0)
     {
-      const uint32_t step = GATE_PROC_AUTO_ADD_US / 32 + 1;
-      if(want > step) { want -= step; GATE_PROC_PROBE_UP_N++; }
+      GATE_PROC_AUTO_ADD_US = lat_want;   // bootstrap
     }
-    if(want > GATE_PROC_AUTO_ADD_US) GATE_PROC_BACKOFF_N++;
-    if(want > GATE_PROC_AUTO_MAX_US) want = GATE_PROC_AUTO_MAX_US;
-    // UP FAST, DOWN SLOW. Backing off must be prompt; relaxing must not be,
-    // because a machine that has stopped falling behind is evidence that the
-    // throttle is working, not that the host got quicker. A quarter of the way
-    // up per sample, a thirty-second of the way down.
-    if(want > GATE_PROC_AUTO_ADD_US)
+    else if(want > GATE_PROC_AUTO_ADD_US)
     {
-      GATE_PROC_AUTO_ADD_US += (want - GATE_PROC_AUTO_ADD_US) / 4 + 1;
+      GATE_PROC_AUTO_ADD_US += (want - GATE_PROC_AUTO_ADD_US) / 2 + 1;
+      GATE_PROC_BACKOFF_N++;
       if(GATE_PROC_AUTO_ADD_US >= GATE_PROC_AUTO_MAX_US)
       {
         GATE_PROC_AUTO_ADD_US = GATE_PROC_AUTO_MAX_US;
         GATE_PROC_AUTO_CAP_N++;
       }
     }
-    else if(want < GATE_PROC_AUTO_ADD_US)
+    else if(lat_want > GATE_PROC_AUTO_ADD_US * 2)
     {
-      const uint32_t give = (GATE_PROC_AUTO_ADD_US - want) / 32 + 1;
-      GATE_PROC_AUTO_ADD_US = (GATE_PROC_AUTO_ADD_US > give)
-                            ? (GATE_PROC_AUTO_ADD_US - give) : 0;
+      GATE_PROC_AUTO_ADD_US = lat_want;   // the job changed under us
+      GATE_PROC_BACKOFF_N++;
+    }
+    else if(GATE_PROC_PROBE && GATE_PROC_AUTO_ADD_US > 0
+            && waiting <= 2 && dW_mq <= 0 && bs_run == 0)
+    {
+      // 1/32 per sample at 2 samples a second is about 6% a second, so a 40%
+      // overestimate is walked off in roughly eight seconds -- fast enough to
+      // matter on a shift, slow enough that one quiet moment cannot dismantle
+      // the throttle before the queue can answer.
+      const uint32_t step = GATE_PROC_AUTO_ADD_US / 32 + 1;
+      GATE_PROC_AUTO_ADD_US -= step;
+      GATE_PROC_PROBE_UP_N++;
     }
   }
 

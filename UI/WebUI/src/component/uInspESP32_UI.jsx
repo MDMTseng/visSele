@@ -833,6 +833,14 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const procRho = gate && gate.proc_rho_pct > 0 ? gate.proc_rho_pct : undefined;
   const procSvcMs = gate && gate.proc_svc_us > 0 ? gate.proc_svc_us / 1000 : undefined;
   const procCapN = (gate && gate.proc_auto_cap_n) | 0;
+  // WHAT THE LOOP IS DOING, not just where it ended up. These were added to the
+  // firmware and never put on screen, so the advice "watch proc_probe_up_n"
+  // meant reading JSON. Separately, because together they say something a
+  // single number cannot: only 探測 climbing is a loop still finding headroom,
+  // only 退讓 climbing is one being pushed back, and both climbing is one
+  // hunting around an edge it has already found.
+  const probeUp = (gate && gate.proc_probe_up_n) | 0;
+  const backoff = (gate && gate.proc_backoff_n) | 0;
   // The report latency as a RATE, so it reads against the parts/s field. cam_*
   // and not the bare pair, for the same reason the 判定期限 rows use it: the
   // gate pair carries the part's mechanical ride to the camera, which is not
@@ -1761,6 +1769,7 @@ build ${fw.build}`}>
             ? `自動找到 ${procHz} 顆/秒`
               + (procSvcMs !== undefined ? ` · 服務 ${procSvcMs.toFixed(0)}ms` : '')
               + (procRho !== undefined ? ` · 利用率 ${procRho}%` : '')
+              + ` · 探測 ${probeUp} / 退讓 ${backoff}`
               + (gate && gate.rej_load > 0 ? ` · 已擋 ${gate.rej_load}` : '')
             : '量測中 —— 需要幾秒的回報才會有值')}
         </div>
