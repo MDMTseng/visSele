@@ -9,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "package": "electron-packager . --overwrite --arch=x64 --prune=true --out=release-builds"
+    "package": "electron-packager . --overwrite --prune=true --out=release-builds"
   },
   "devDependencies": {
     "electron": "^31.7.7",
