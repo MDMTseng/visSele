@@ -360,9 +360,16 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
   // already polling it in get_running_stat.
   const sync = (stat && stat.cam_sync) || null;
   const health = (stat && stat.health) || {};
-  const sp = (cfg && cfg.skip_policy) || {};
-  const skipStop = sp.stop_after;
-  const nomatchStop = sp.nomatch_stop_after;
+  // FLAT NAMES. cfg is the FLATTENED setup (machineSetupReSync runs it through
+  // uinspFlatten before publishing), so cfg.skip_policy does not exist -- the
+  // keys are unanswered_stop_after and nomatch_stop_after. Reading the grouped
+  // shape gave undefined, and the panel rendered "連續 0 / —" for both
+  // thresholds: the live count with no bound to read it against, which is the
+  // state this row was added to end. Seen on the machine, not in review.
+  // (skip_policy_mode a few hundred lines below already used the flat name --
+  // one file, two conventions, and only one of them was right.)
+  const skipStop = cfg && cfg.unanswered_stop_after;
+  const nomatchStop = cfg && cfg.nomatch_stop_after;
   const hz   = n0v(cfg && cfg.plate_freq);
   const off  = (cfg && cfg.stage_pulse_offset) || {};
   // Budget = camera to deadline. Both are stage-timer ticks at 2x plate_freq.
@@ -424,7 +431,21 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
   );
 
   return (
-    <div data-testid="uinsp-counts-bubble" style={{ fontSize: 13, lineHeight: 1.8, minWidth: 240 }}>
+    // SCROLLS RATHER THAN OVERFLOWS. This grew from a strip of bin counts into
+    // five sections, and a Popover does not clip -- on a short screen the last
+    // sections simply render past the bottom of the window with no way to reach
+    // them. The Surface Go is the machine this panel is used on, and 逾時餘量
+    // and 時間配對 are at the end.
+    //
+    // 78vh, not a fixed pixel height: the popover is anchored to a control part
+    // way down the page, so what is left below it is a fraction of the window,
+    // not a constant.
+    <div data-testid="uinsp-counts-bubble"
+         style={{ fontSize: 13, lineHeight: 1.8, minWidth: 240,
+                  maxHeight: '78vh', overflowY: 'auto', overflowX: 'hidden',
+                  // Room for the scrollbar so it never sits on top of the
+                  // numbers it is scrolling.
+                  paddingRight: 4 }}>
       {rows.map(([name, v, color, sel]) => (
         <div key={name} data-bin={name} data-value={v}>
           <Row label={name} sub={sel !== name ? sel : ''} value={exactN(v)} color={color} />

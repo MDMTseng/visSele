@@ -1318,6 +1318,36 @@ volatile int32_t  GATE_PROC_DW_MQ=0;           // queue growth, milli-objects/s
 volatile int32_t  GATE_PROC_RHO_PCT=0;         // measured, 100 = saturated
 volatile int32_t  GATE_PROC_RHO_TARGET=80;     // hold it here
 volatile uint32_t GATE_PROC_SVC_US=0;          // service time this window
+// PROBING UPWARD, because the estimate is an upper bound and the loop's own
+// throttling stops it from ever being corrected.
+//
+// svc is derived from REPORT LATENCY, and latency is not the cost of a part.
+// Camera transfer, inspection and the serial return overlap, so throughput is
+// set by the slowest stage while latency is their sum: using it as the service
+// time understates capacity by the pipeline depth. Measured on the target
+// machine 2026-09-01 -- mean latency 67.2ms, so the loop settled at
+// 67.2/0.8 = 84ms = 11.9/s and reported 13, while the same machine ran
+// steadily at a hand-set 20/s, i.e. 50ms a part. Depth about 1.35.
+//
+// The board could see this and does not, because of a fixed point it creates
+// itself: inter-departure only equals the service time while the host is
+// BACKLOGGED, and a loop that has throttled to 13 guarantees it never is. So
+// min(latency, inter-departure) picks latency, latency is the over-estimate,
+// and the estimate that could correct it never gets a measurement. The machine
+// does not discover it can go faster because it never tries.
+//
+// The same panel showed why it should have tried: pipe.waiting was 9 against
+// Little's law L = 20.3/s x 0.461s = 9.4 -- every object in transit, none
+// queued. Nothing was struggling.
+//
+// So: additive increase while there is demonstrably no queue, multiplicative
+// backoff when one appears. TCP's answer to the identical problem -- the
+// bottleneck cannot be computed, only probed -- and it settles just past the
+// point where a queue begins, which is exactly where inter-departure becomes
+// the accurate estimator. The two mechanisms correct each other.
+volatile bool     GATE_PROC_PROBE=true;        // additive increase, on by default
+volatile uint32_t GATE_PROC_PROBE_UP_N=0;      // steps taken upward
+volatile uint32_t GATE_PROC_BACKOFF_N=0;       // times a queue pushed back
 // The other half of the service estimate: how far apart the ANSWERS are.
 //
 // Report latency and inter-departure are each exact in one regime and wrong in
@@ -5415,6 +5445,25 @@ static void procAutoService()
       if(bs > want) want = bs;
     }
 
+    // THE PROBE. Only when the evidence says there is nothing to be afraid of:
+    // the queue is not merely small but not growing, and nothing has gone
+    // unjudged. Then take one small step toward admitting faster than the
+    // estimate allows -- 3% of the current throttle, so the approach to the
+    // real limit is gradual from any distance.
+    //
+    // Bounded by what the estimate would have asked for on its own? No --
+    // deliberately not. The whole point is that the estimate is wrong in a
+    // knowable direction, and a probe that cannot exceed it cannot find
+    // anything. What bounds it is the queue: the moment one appears, the
+    // backstop above asks for more throttle and wins, because `want` is a max
+    // over both and the probe only subtracts from the RESULT.
+    if(GATE_PROC_PROBE && GATE_PROC_AUTO_ADD_US > 0
+       && waiting <= 2 && dW_mq <= 0 && bs_run == 0)
+    {
+      const uint32_t step = GATE_PROC_AUTO_ADD_US / 32 + 1;
+      if(want > step) { want -= step; GATE_PROC_PROBE_UP_N++; }
+    }
+    if(want > GATE_PROC_AUTO_ADD_US) GATE_PROC_BACKOFF_N++;
     if(want > GATE_PROC_AUTO_MAX_US) want = GATE_PROC_AUTO_MAX_US;
     // UP FAST, DOWN SLOW. Backing off must be prompt; relaxing must not be,
     // because a machine that has stopped falling behind is evidence that the
@@ -6727,6 +6776,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     GATE_REJ_LOAD=0; GATE_PROC_AVG_US=0;
     GATE_PROC_AUTO_ADD_US=0; GATE_PROC_AUTO_CAP_N=0; GATE_PROC_DW_MQ=0;
     GATE_PROC_RHO_PCT=0; GATE_PROC_SVC_US=0;
+    GATE_PROC_PROBE_UP_N=0; GATE_PROC_BACKOFF_N=0;
     GATE_PROC_SVC_ID_US=0; PROC_LAST_REP_US=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
@@ -7179,6 +7229,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // Both inputs, not just the winner: which one is smaller says which
       // regime the machine is in, and that is worth being able to read.
       jG["proc_svc_id_us"]=GATE_PROC_SVC_ID_US;
+      // Probing and backing off must be distinguishable from a loop that has
+      // settled: both counters climbing together is a controller hunting, one
+      // climbing alone is one that has found an edge and is holding it.
+      jG["proc_probe"]=(bool)GATE_PROC_PROBE;
+      jG["proc_probe_up_n"]=GATE_PROC_PROBE_UP_N;
+      jG["proc_backoff_n"]=GATE_PROC_BACKOFF_N;
       jG["rej_dist"]=GATE_REJ_DIST;
       jG["rej_busy"]=GATE_REJ_BUSY;
       jG["disabled"]=(bool)GATE_DISABLED;
@@ -10029,6 +10085,7 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["proc_auto"]=(bool)GATE_PROC_AUTO;
     jGT["proc_auto_max_us"]=GATE_PROC_AUTO_MAX_US;
     jGT["proc_auto_rho_pct"]=GATE_PROC_RHO_TARGET;
+    jGT["proc_probe"]=(bool)GATE_PROC_PROBE;
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
@@ -10249,7 +10306,8 @@ static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
    "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
    "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",
-   "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct","cam_stale_ms",NULL};
+   "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct","cam_stale_ms",
+   "proc_probe",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -10544,6 +10602,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     JSON_SETIF_ABLE(GATE_PROC_SEP_US,jGT,"proc_sep_us");
   }
   JSON_SETIF_ABLE(GATE_PROC_AUTO_MAX_US,jGT,"proc_auto_max_us");
+  if(jGT["proc_probe"].is<bool>()) GATE_PROC_PROBE = jGT["proc_probe"];
   if(jGT["proc_auto_rho_pct"].is<int>())
   {
     // Clamped: 100 is saturation itself, where the queue is only marginally
