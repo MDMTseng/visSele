@@ -1345,6 +1345,30 @@ volatile uint32_t GATE_PROC_SVC_US=0;          // service time this window
 // bottleneck cannot be computed, only probed -- and it settles just past the
 // point where a queue begins, which is exactly where inter-departure becomes
 // the accurate estimator. The two mechanisms correct each other.
+// THE OTHER WAY TO SOLVE THE SAME PROBLEM: state the bias instead of finding it.
+//
+// The probe discovers the pipeline depth by testing for it. This declares it:
+// admit at MEAN service time x discount, and let a person set the discount
+// once. Nothing hunts, nothing settles, the number on the screen is the number
+// that was asked for -- which on a production machine is worth something the
+// adaptive version cannot offer.
+//
+// It is a ratio, and that is why it is worth having rather than going back to
+// typing an absolute rate. The pipeline depth is a property of how the host
+// overlaps transfer and inspection; it barely moves when the recipe changes,
+// while the absolute rate moves with every one. So this is the per-machine
+// constant that has a chance of staying correct.
+//
+// Calibrating it on the target machine: mean 82.5ms against a hand-verified
+// stable 50ms is 60%; the probe independently settled around 59ms, i.e. 71%.
+// So the honest range is 60-75 and the two methods agree to within the margin
+// somebody would leave anyway.
+//
+// 0 = off, and off is the default: the adaptive loop stays the behaviour a
+// machine gets without being asked. When set, the backstop still overrides --
+// a declared discount is a claim about the host, not permission to ignore a
+// queue that is actually growing.
+volatile int32_t  GATE_PROC_DISCOUNT_PCT=0;
 volatile bool     GATE_PROC_PROBE=true;        // additive increase, on by default
 volatile uint32_t GATE_PROC_PROBE_UP_N=0;      // steps taken upward
 volatile uint32_t GATE_PROC_BACKOFF_N=0;       // times a queue pushed back
@@ -5517,7 +5541,29 @@ static void procAutoService()
     // The ordering matters more than any of the constants: everything that can
     // raise is checked before the one thing that can lower, so a machine in
     // trouble is never probed at.
-    if(GATE_PROC_AUTO_ADD_US == 0 && lat_want > 0)
+    // DECLARED DISCOUNT, if one was set. Straight from the MEAN -- the median
+    // is the robust estimator for a loop that has to survive its own noise,
+    // but this mode is a person saying "the average part costs X and I want
+    // to run at a stated fraction of it", and the average is the quantity that
+    // sentence is about.
+    //
+    // The backstop still wins. Someone stating the discount is telling the
+    // machine what they believe about the host; a queue growing is the machine
+    // reporting what is happening to it, and only one of those is evidence.
+    if(GATE_PROC_DISCOUNT_PCT > 0 && GATE_PROC_SVC_MEAN_US > 0)
+    {
+      const uint64_t d_us = (uint64_t)GATE_PROC_SVC_MEAN_US
+                          * (uint32_t)GATE_PROC_DISCOUNT_PCT / 100;
+      uint32_t d_add = (d_us > GATE_PROC_SEP_US) ? (uint32_t)(d_us - GATE_PROC_SEP_US) : 0;
+      if(want > d_add) { d_add = want; GATE_PROC_BACKOFF_N++; }
+      if(d_add > GATE_PROC_AUTO_MAX_US)
+      {
+        d_add = GATE_PROC_AUTO_MAX_US;
+        GATE_PROC_AUTO_CAP_N++;
+      }
+      GATE_PROC_AUTO_ADD_US = d_add;
+    }
+    else if(GATE_PROC_AUTO_ADD_US == 0 && lat_want > 0)
     {
       GATE_PROC_AUTO_ADD_US = lat_want;   // bootstrap
     }
@@ -7299,6 +7345,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // Probing and backing off must be distinguishable from a loop that has
       // settled: both counters climbing together is a controller hunting, one
       // climbing alone is one that has found an edge and is holding it.
+      jG["proc_discount_pct"]=GATE_PROC_DISCOUNT_PCT;
       jG["proc_probe"]=(bool)GATE_PROC_PROBE;
       jG["proc_probe_up_n"]=GATE_PROC_PROBE_UP_N;
       jG["proc_backoff_n"]=GATE_PROC_BACKOFF_N;
@@ -10159,6 +10206,7 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["proc_auto_max_us"]=GATE_PROC_AUTO_MAX_US;
     jGT["proc_auto_rho_pct"]=GATE_PROC_RHO_TARGET;
     jGT["proc_probe"]=(bool)GATE_PROC_PROBE;
+    jGT["proc_discount_pct"]=GATE_PROC_DISCOUNT_PCT;
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
@@ -10380,7 +10428,7 @@ static const char *const K_GATE[] =
    "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
    "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",
    "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct","cam_stale_ms",
-   "proc_probe",NULL};
+   "proc_probe","proc_discount_pct",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
@@ -10676,6 +10724,16 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   }
   JSON_SETIF_ABLE(GATE_PROC_AUTO_MAX_US,jGT,"proc_auto_max_us");
   if(jGT["proc_probe"].is<bool>()) GATE_PROC_PROBE = jGT["proc_probe"];
+  if(jGT["proc_discount_pct"].is<int>())
+  {
+    // Clamped to 20..200. Below 20 the throttle is five times the measured mean
+    // faster than the host said it can go, which is not a discount, it is a
+    // different machine; above 100 it is an inflation and the adaptive mode is
+    // the better tool for wanting to be slower than measured.
+    int v = jGT["proc_discount_pct"];
+    if(v != 0) v = (v < 20) ? 20 : ((v > 200) ? 200 : v);
+    GATE_PROC_DISCOUNT_PCT = v;
+  }
   if(jGT["proc_auto_rho_pct"].is<int>())
   {
     // Clamped: 100 is saturation itself, where the queue is only marginally
