@@ -302,15 +302,21 @@ volatile uint32_t SEL_TEST_N=0;         // parts it has decided for
 // IT REDIRECTS SORTING DECISIONS; IT DOES NOT INVENT THEM.
 //
 // Only a verdict that would have been sorted anyway (1/2/3) is replaced. NA,
-// SKIP and UNSET pass through untouched, for two reasons that are both about
-// the pattern staying readable:
+// SKIP and UNSET pass through untouched.
 //
-//   NA means the machine could not judge, and often that there was no part in
-//   that slot at all. Blowing it puts a puff on empty plate -- and when the
-//   whole exercise is deciding whether the puff lands on the part, a puff with
-//   no part is the most misleading thing that can appear.
+// SOME NA IS A DECISION NOT TO ACTUATE, not a failure to judge. Parts that are
+// touching or too close together are marked NA precisely because a blow there
+// would take the wrong one. Overriding that in test mode makes the machine do
+// the exact thing the verdict was protecting against -- and it would do it
+// while somebody is head-down watching the disc, which is when it is least
+// likely to be noticed. That is the reason this rule exists; the two below are
+// only why it also makes the pattern better.
 //
-//   In ALT it is worse than wasteful. If NA consumed a phase the comb would
+//   An NA slot often has no part in it at all. Blowing it puts a puff on empty
+//   plate, and when the whole exercise is deciding whether the puff lands on
+//   the part, a puff with no part is the most misleading thing on the disc.
+//
+//   In ALT it is worse than wasteful. If an NA consumed a phase the comb would
 //   come out irregular, and the comb's regularity IS the measurement: half a
 //   part of error is read off the teeth being wrong, which needs the teeth to
 //   be right when the offset is right.
