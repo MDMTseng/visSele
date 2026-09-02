@@ -224,6 +224,27 @@
  
 }
 
+/* Connected, not yet usable: the port is open, the device has not answered.
+   Amber like offline because both mean "do not rely on this yet", but a class
+   of its own -- offline is the absence of a link and this is a link that has
+   not proved itself, and the day those want to look different this is where
+   it is done. Pulsing, because unlike offline it is expected to end. */
+.color-pending-anim svg, .color-pending-anim span
+{
+  color:rgb(250, 173, 20);
+  animation: color-pending-anim-key 1.2s ease-in-out infinite;
+}
+
+@keyframes color-pending-anim-key {
+  0%   {color: rgb(250, 173, 20);}
+  50%  {color: rgb(255, 214, 122);}
+  100% {color: rgb(250, 173, 20);}
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .color-pending-anim svg, .color-pending-anim span { animation: none; }
+}
+
 
 @keyframes color-offline-anim-key {
   from {color: rgb(255, 28, 0);}

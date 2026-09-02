@@ -12,7 +12,7 @@
 // "Save to NVS" makes it survive a reboot.
 import React, { useState, useEffect, useRef } from 'react';
 import { PerifStatusPanel } from '../perif/PerifStatus';
-import { usePerifConn, getPerifAPI, perifGetObj } from '../perif/PerifAPI';
+import { usePerifConn, usePerifLink, getPerifAPI, perifGetObj } from '../perif/PerifAPI';
 import { useSelector, useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Input from 'antd/lib/input';
@@ -2504,6 +2504,12 @@ export function UINSP_ESP32_MINI() {
   const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
   const CORE_ID = useSelector((s) => s.ConnInfo.CORE_ID);
   const CONN = usePerifConn(useSelector((s) => s.ConnInfo.uInspESP32_API_ID));
+  // THE RAW LINK, not the legacy view. usePerifConn maps SUSPECT to
+  // WS_CONNECTED on purpose (a doubtful link is when the setup panel is needed
+  // most), which is right for the modal and wrong here: this strip is the
+  // operator's controls, and pressing them at a board that is not there is the
+  // thing to prevent.
+  const LINK = usePerifLink(useSelector((s) => s.ConnInfo.uInspESP32_API_ID));
   const withApi = (cb) => cb(getPerifAPI(API_ID));
 
   const stat = GetObjElement(CONN, ['runningStat']);
@@ -2872,14 +2878,58 @@ export function UINSP_ESP32_MINI() {
     </Tag>
   );
 
+  // CONNECTED is the port, not the board. Until a PING has been answered and
+  // the configuration has been read back there is nothing to drive -- same two
+  // facts the status-bar icon turns amber on, so the strip and the icon can
+  // never disagree.
+  const linkState = (LINK && LINK.state) || 'DISCONNECTED';
+  const notReady = linkState !== 'CONNECTED'
+    || LINK.pingSeen === false || LINK.cfgSeen === false;
+  const notReadyWhat = linkState === 'SUSPECT' ? '設備連線異常'
+    : linkState === 'CONNECTED' ? '設備連線中' : '設備未連線';
+  const notReadyWhy = linkState === 'SUSPECT'
+      ? '裝置沒有回應,指令可能送不到 —— 先確認機器與線路'
+    : linkState !== 'CONNECTED' ? '等待與控制板建立連線'
+    : LINK.pingSeen === false ? '已開啟序列埠,但控制板還沒回話'
+    : '正在讀取控制板的設定';
+
   return (
     // maxWidth/overflow are load-bearing. This strip renders inside an antd
     // Menu title, which is `white-space:nowrap` and does not constrain its
     // children, so a `block` button sizes itself against an unbounded box and
     // drags the whole strip wider than the sidebar -- everything then clips at
     // the left edge and the counts read as "NANS".
-    <div style={{ margin: '2px 12px 4px 12px', textAlign: 'left',
-                  maxWidth: '100%', overflow: 'hidden', whiteSpace: 'normal' }}>
+    <div data-testid="uinsp-mini"
+         style={{ margin: '2px 12px 4px 12px', textAlign: 'left',
+                  maxWidth: '100%', overflow: 'hidden', whiteSpace: 'normal',
+                  position: 'relative' }}>
+      {/* NOTHING HERE IS PRESSABLE UNTIL THE BOARD HAS ANSWERED.
+          Every control on this strip is a command down the serial link, and a
+          command sent at a link that is not up does not fail loudly -- it is
+          queued, or acked by the core's open port, and the operator is left
+          pressing start at a plate that never turns. The counts behind the
+          overlay stay READABLE on purpose: they are the last thing the machine
+          said, and hiding them would remove the only evidence of where a run
+          stopped. Grey and unpressable, not blank. */}
+      {notReady ? (
+        <div data-testid="uinsp-mini-blocked"
+             onClickCapture={(e) => { e.preventDefault(); e.stopPropagation(); }}
+             style={{ position: 'absolute', inset: 0, zIndex: 5,
+                      background: 'rgba(140,140,140,0.62)',
+                      cursor: 'not-allowed', borderRadius: 4,
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      textAlign: 'center', padding: 8 }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 13,
+                        textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+            {notReadyWhat}
+          </div>
+          <div style={{ color: '#fff', fontSize: 11, marginTop: 4, opacity: 0.92,
+                        textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+            {notReadyWhy}
+          </div>
+        </div>
+      ) : null}
       {/* One button, and it says what pressing it DOES -- not what the machine
           currently is. A switch shows state and leaves the action implied,
           which is the wrong way round for something that starts a spinning

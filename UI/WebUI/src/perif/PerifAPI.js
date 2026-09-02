@@ -80,6 +80,16 @@ const PING_STARVED_RATIO = 1.5;
 // links[id] = { state: 'DISCONNECTED'|'CONNECTING'|'CONNECTED'|'SUSPECT',
 //               connInfo, machineStatus, machineSetup, deviceState,
 //               runningStat, linkHealth (core perif_pairing.link), ... }
+//
+// CONNECTED is not the same as USABLE, and two facts separate them:
+//   pingSeen -- a PING has been ANSWERED since this connect. Until then all
+//               that happened is the core opened a port; the device has not
+//               said one word.
+//   cfgSeen  -- the board's get_setup reply has arrived, so its configuration
+//               is known. Only devices that keep their config on the board
+//               publish this (uInspESP32); undefined means "not applicable".
+// Both start false on every connect. The status bar paints CONNECTED-but-not-
+// both as its own colour rather than green -- see _linkToConn in script.jsx.
 let links = {};
 const listeners = new Set();
 
@@ -344,7 +354,11 @@ export class Perif_API_Base {
   connect(connInfo) {
     if (this.inReconnection == true) return false;
 
-    publish(this.id, { state: 'CONNECTING', connInfo });
+    // Nothing has been heard on this link yet, and the last connect's answer
+    // says nothing about this one -- a reconnect exists precisely because the
+    // previous link stopped working.
+    this._pingSeen = false;
+    publish(this.id, { state: 'CONNECTING', connInfo, pingSeen: false });
     this.connInfo = connInfo;
     this._applyPingTuning(connInfo);
     this.inReconnection = true;
@@ -379,7 +393,16 @@ export class Perif_API_Base {
               this.CONN_ID = PD_data.CONN_ID;
               this._failN = 0;
               this._nextAttemptAt = 0;
-              publish(this.id, { state: 'CONNECTED', CONN_ID: this.CONN_ID });
+              // WHAT SUCCEEDED HERE IS THE CORE OPENING THE PORT, not the
+              // device answering. When this reconnect is the watchdog's last
+              // resort after a silent device, saying CONNECTED puts the status
+              // bar back to green on the strength of a port open -- and the
+              // device is still silent. Stay SUSPECT until a PING is answered;
+              // the recovery branch in _sendPing publishes CONNECTED then.
+              // Untouched for every other reason to connect (flag unset).
+              publish(this.id, this._reconnectAfterSilence
+                ? { state: 'SUSPECT', suspectSrc: 'local', CONN_ID: this.CONN_ID }
+                : { state: 'CONNECTED', CONN_ID: this.CONN_ID });
 
               if (this.machineSetup !== undefined) {
                 this.onBeforeSetupPush();
@@ -674,6 +697,15 @@ export class Perif_API_Base {
       delete ret['st'];
       this.onPingStatus({ ...ret });
       this.PINGCount = 0;
+      // A REPLY, counted. PINGCount is not evidence of one: the ESP32
+      // override's RESYNC path zeroes it deliberately to buy the link another
+      // cycle, so "PINGCount === 0" also means "we just gave up and escalated".
+      // Reading that as health is how a dead link kept repainting itself green.
+      this._pingReplies = (this._pingReplies || 0) + 1;
+      // THE FIRST WORD FROM THE DEVICE since this connect. Published as a
+      // transition, not on every reply -- a publish per second would re-render
+      // every link consumer for a fact that changes once.
+      if (this._pingSeen !== true) { this._pingSeen = true; publish(this.id, { pingSeen: true }); }
     }, (errorInfo) => console.log(errorInfo));
   }
 
@@ -883,6 +915,10 @@ export class uInspESP32_API extends Perif_API_Base {
         publish(this.id, { state: 'SUSPECT', suspectSrc: 'local' });
         deps.sendBPG('PD', 0, { type: 'RESYNC', CONN_ID: this.CONN_ID },
           undefined, { resolve: (d) => d, reject: (d) => d });
+        // Mark where the reply counter stood, so the recovery branch below can
+        // ask "has one arrived SINCE" instead of trusting the counter this very
+        // line is about to falsify.
+        this._pingReplyMark = this._pingReplies || 0;
         this.PINGCount = 0;      // give the link one more cycle to answer
         this.triggerPing();
         return;
@@ -890,8 +926,21 @@ export class uInspESP32_API extends Perif_API_Base {
       perifLog.error('[link] RESET did not recover the link -- reconnecting '
         + '(this resets the board and ends the run)');
       this._linkResyncTries = 0;
-    } else if (this.PINGCount === 0) {
-      this._linkResyncTries = 0;   // link is healthy again
+      this._reconnectAfterSilence = true;
+    } else if (this.PINGCount === 0 && (this._pingReplies || 0) > (this._pingReplyMark || 0)) {
+      // A REPLY has arrived since the last escalation -- that, and only that,
+      // is the link being healthy again.
+      //
+      // The condition used to be `PINGCount === 0` alone, and the RESYNC branch
+      // above sets PINGCount = 0 itself. So against a device that had genuinely
+      // stopped talking the sequence was: six silent ticks -> SUSPECT + RESYNC
+      // + counter zeroed -> next tick reads the zero as health and publishes
+      // CONNECTED. The status-bar icon was red for one tick in every seven,
+      // which on screen is never. Worse, the same branch zeroed
+      // _linkResyncTries, so LINK_RESYNC_MAX was unreachable and the link sat
+      // in a RESYNC-every-7s loop that could not escalate to a reconnect.
+      this._linkResyncTries = 0;
+      this._reconnectAfterSilence = false;
       if ((links[this.id] || {}).state === 'SUSPECT' && !((links[this.id] || {}).linkHealth || {}).suspect)
         publish(this.id, { state: 'CONNECTED', suspectSrc: null });
     }
@@ -930,8 +979,11 @@ export class uInspESP32_API extends Perif_API_Base {
       if (this._resyncTries > 0) {
         log.info('[uInspESP32] config resync arrived after', this._resyncTries, 'tries');
         this._resyncTries = 0;
-        publish(this.id, { cfgResyncTries: 0 });
       }
+      // Published unconditionally, including on the first kick that finds a
+      // cached cfg: cfgSeen is what the status bar reads, and leaving it unset
+      // on the one path that succeeds immediately would strand the icon.
+      publish(this.id, { cfgResyncTries: 0, cfgSeen: true });
       return;                                  // got it, stop
     }
     if (this.CONN_ID === undefined) return;    // a reconnect will restart this
@@ -940,7 +992,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // Published so the panel can say "not read yet, N tries" instead of
     // claiming the board is running compile defaults -- which is a different
     // fact, and the one that sends someone to the wrong place.
-    publish(this.id, { cfgResyncTries: this._resyncTries });
+    publish(this.id, { cfgResyncTries: this._resyncTries, cfgSeen: false });
     if (this._resyncTries === uInspESP32_API.RESYNC_FAST_TRIES) {
       log.warn('[uInspESP32] config resync still empty after',
                this._resyncTries, 'tries -- backing off, still trying');

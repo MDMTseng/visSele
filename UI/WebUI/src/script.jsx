@@ -282,6 +282,13 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
       // because a machine that may not be sorting deserves red, not grey.
       case "WS_SUSPECT":
         return "color-error-anim";
+      // The port is open and the device has not yet proved it is there --
+      // no answered PING, or no configuration read back. Green would say the
+      // machine is ready to sort when nobody has heard from it, and grey would
+      // say it is absent when the link may be seconds from coming up. Its own
+      // colour, because it is its own state.
+      case "WS_PENDING":
+        return "color-pending-anim";
       default:
         return "color-noresource-anim";
         break;
@@ -301,10 +308,20 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   // peripheral row's click -- 全檢設備v2「設定/診斷」叫不出面板就是這個。
   const _linkToConn = (link, id) => {
     if (!link || (link.state === 'DISCONNECTED' && link.connInfo === undefined)) return undefined;
-    const t = link.state === 'CONNECTED' ? 'WS_CONNECTED'
+    // CONNECTED only means the core opened the port. Until the device has
+    // answered a PING and (where it owns its config) handed its settings back,
+    // it is PENDING -- see the store-shape note in PerifAPI.js.
+    const pending = link.pingSeen === false || link.cfgSeen === false;
+    const t = link.state === 'CONNECTED' ? (pending ? 'WS_PENDING' : 'WS_CONNECTED')
       : link.state === 'SUSPECT' ? 'WS_SUSPECT'
       : 'WS_DISCONNECTED';
-    return { id, type: t, brief_info: link.state === 'SUSPECT' ? '連線異常' : undefined };
+    // Say WHICH half is missing. "連線中" for both would send whoever is
+    // standing at the machine to look at the cable when the cable is fine and
+    // the board simply has not answered get_setup yet.
+    const brief = t === 'WS_SUSPECT' ? '連線異常'
+      : t !== 'WS_PENDING' ? undefined
+      : link.pingSeen === false ? '尚未回應' : '讀取設定中';
+    return { id, type: t, brief_info: brief };
   };
   const uInspConn      = _linkToConn(usePerifLink(ConnInfo.uInsp_API_ID),      ConnInfo.uInsp_API_ID);
   const uInspESP32Conn = _linkToConn(usePerifLink(ConnInfo.uInspESP32_API_ID), ConnInfo.uInspESP32_API_ID);
