@@ -123,3 +123,11 @@ InspectionCore/Core0_1/data.zip
 # Working directory created by samples/bringup/run.sh -- a machine's own state,
 # same reason data/ is ignored.
 samples/bringup/run/
+
+# ...but samples/bringup/data/ IS the sample, not a machine's state, and the
+# bare `data` rule near the top of this file matches a directory of that name at
+# ANY depth. It silently swallowed the whole bring-up dataset out of the commit
+# that added it: the tree looked complete locally and a fresh clone got run.sh
+# and frames/ with nothing to run them on.
+!samples/bringup/data/
+!samples/bringup/data/**

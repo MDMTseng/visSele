@@ -1,0 +1,13 @@
+{
+  "_comment": "Sample machine: fake camera, no peripheral, no database. See samples/README.md",
+
+  "InspectionMode": "FI",
+  "setting_directory": "data/",
+
+  "FI_INSP_NG_SNAP": false,
+  "FI_INSP_NG_SNAP_MAX_NUM": 200,
+
+  "_comment_db": "The real file names three internal servers here (inspection_db_ws_url_, cusdisp_db_fetch_url_, inspection_monitor_url). They are absent on purpose: this repository is public, and a sample that ships someone's database address is a leak, not a convenience. Nothing in the bring-up needs them -- reports are simply not archived.",
+
+  "_comment_peripheral": "No *_peripheral_conn_info key, so the WebUI reports the sorter as 'not configured' and never tries to open a serial port. That is the correct shape for a machine with no board attached; do NOT copy the real file's uInspESP32 block here, because the core has exactly ONE peripheral channel and any client that CONNECTs evicts the previous one. The file's own convention for disabling a block is a trailing '1' on the key name."
+}

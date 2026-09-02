@@ -1,22 +1,32 @@
 {
-  "_comment": "What this machine must say about samples/headless/sample1.png. Produced by the run this file gates, then pinned -- not typed from a specification. Regenerate with run.sh --bless after a deliberate change, and say in the commit message why the number moved.",
-
+  "_comment": "What this machine must say about samples/headless/sample1.png. Pinned from a real run (run.sh --bless), and CHECKED against a truth that is known independently: the fixture generator centres the part at 1224,1024 px, which in this def's frame is exactly (15.3000, 12.8000) mm. See ground_truth.",
   "objects": 1,
-
   "object0": {
-    "cx_mm": 15.3125,
-    "cy_mm": 12.7750005722046,
-    "rotate_deg": 0.0,
-    "scale": 1.0,
+    "cx_mm": 15.3000459671021,
+    "cy_mm": 12.7970561981201,
+    "rotate_deg": 0.000117778778076172,
+    "scale": 1,
     "similarity": 0.99609375
   },
-
   "tolerance": {
-    "_comment": "Position to 10 um -- the part is drawn at 0.0125 mm/px, so 10 um is under one pixel and any real drift shows. Similarity is a floor, not a window: a better match is not a regression.",
+    "_comment": "10 um, and that number is doing work: losing ROI refine moves the answer by 1.0 px in x and 2.0 px in y (0.0125 / 0.025 mm), so a def that silently falls back to coarse matching FAILS this check instead of passing it quietly. That is the regression this gate exists to catch. Similarity is a floor, not a window: a better match is not a regression.",
     "cx_mm": 0.01,
     "cy_mm": 0.01,
     "rotate_deg": 0.5,
     "scale": 0.01,
     "similarity_min": 0.99
+  },
+  "ground_truth": {
+    "_comment": "Not used by the check -- recorded so the pinned numbers can be judged rather than merely reproduced. make_sbm_fixture_image.py draws the part centred on the frame, so the answer is derivable and does not depend on any run.",
+    "cx_mm": 15.3,
+    "cy_mm": 12.8,
+    "coarse_only_error_px": [
+      1.0,
+      -2.0
+    ],
+    "with_roi_refine_error_px": [
+      0.004,
+      -0.23
+    ]
   }
 }

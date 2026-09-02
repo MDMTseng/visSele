@@ -78,30 +78,42 @@ back empty, run the core with its log on stderr:
 INSP_LOG_KEEP_STDERR=1 visSele --insp <image> <def> out.json
 ```
 
-### What this gate does NOT cover
+### What this gate covers
 
-**Coarse matching, not the full locating chain.** `sample1.hydef` loads its
-trained model from the `shape_cache` embedded in the def, and that cache carries
-the pyramid levels but not `FeatureSet::refine_points` -- those are a by-product
-of extraction, which the cache exists to skip. With no refine points and no
-explicit `roi_refine_points`, `selectOptimizedPoints()` returns nothing and the
-ROI refine stage is skipped: the match succeeds, the score is high, and the
-position is coarse. Measured on a synthetic scene at roughly 40x -- 2.0-2.8 px
-coarse against 0.06 px refined.
+**The full locating chain, coarse plus ROI refine.** `sample1.hydef` carries
+eight `roi_refine_points` on the part's outline, and that is what makes the
+difference: a def loaded from its embedded `shape_cache` gets the pyramid levels
+but NOT `FeatureSet::refine_points` (those are a by-product of extraction, which
+the cache exists to skip). Without either, `selectOptimizedPoints()` returns
+nothing and the ROI stage is silently skipped -- the match still succeeds with a
+high score, and only the accuracy is gone. Explicit ROI points are read from the
+def and rebuilt on every cache load, so this sample refines.
 
-So a PASS here means the coarse stage agrees to the last bit, which is a real
-and useful result -- it is what proves an engine port computes the same numbers
--- but it is not the whole locator. Since 2026-09-02 the core says so at load:
+The pinned numbers can be judged rather than merely reproduced, because the
+answer is known: `make_sbm_fixture_image.py` centres the part on the frame, so
+the true position is (15.3000, 12.8000) mm in this def's frame.
+
+| | cx error | cy error |
+|---|---|---|
+| coarse only | +1.0 px | -2.0 px |
+| with ROI refine | +0.004 px | -0.23 px |
+
+The 10 um tolerance is set against that gap on purpose: **a def that loses ROI
+refine fails this check** rather than passing quietly, which is the failure mode
+the gate exists for. Since 2026-09-02 the core also says so at load:
 
 ```
 [shape] '<def>' loads from its cache and carries no roi_refine_points,
         so ROI refine will NOT run -- this def locates at coarse accuracy only.
 ```
 
-This sample also runs `shape_weak_thres` / `shape_strong_thres` at **30/30**,
-where the core's defaults are 50/80 -- worth knowing before using it as a
-performance baseline, because `skip_voting` is documented as safe only at the
-higher pair.
+Two things this sample is NOT. It is a **locator** fixture, not a metrology one:
+the def's `mmpp` (0.0125) is nominal and does not match the scale the image was
+actually drawn at, so positions in the def frame are exact but absolute
+millimetres are not physical. And it runs `shape_weak_thres` /
+`shape_strong_thres` at **30/30** where the core defaults to 50/80 -- worth
+knowing before using it as a performance baseline, since `skip_voting` is
+documented as safe only at the higher pair.
 
 If a number moves for a reason you understand and accept, `run.sh --bless`
 rewrites `expect.json` from the current run. Say in the commit message why it

@@ -7978,7 +7978,21 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         liftForUI(*shapeFeatureSet, ccrop);
         LOGI("[shape] from def cache: crop [%d,%d %dx%d] origin(%.1f,%.1f) variants=%d",
              ccrop.x, ccrop.y, ccrop.width, ccrop.height, corg.x, corg.y, nv);
-        if (getenv("SHAPE_DBG"))
+        // UNCONDITIONAL. A cache hit is finished here; everything below is
+        // extraction, which is an authoring action.
+        //
+        // b9ce38d4 added `if (getenv("SHAPE_DBG"))` above this line meaning to
+        // put an fprintf between the two. The fprintf never arrived, so the
+        // `return` became the body of the `if` and the early exit only happened
+        // under a debug environment variable. Every ordinary cache hit has been
+        // falling through into the extraction block ever since: with implicit
+        // extraction off it logs "this def has no usable __shape_cache" over
+        // the "loaded N features from def cache" line it just printed and
+        // raises the sig360-fallback warning, and with
+        // SBM_ALLOW_IMPLICIT_EXTRACT=1 it re-extracts -- which is the one thing
+        // the cache exists to avoid. Matching still worked throughout, because
+        // shapeFeatureSet and shape_ready are already set above; what was
+        // broken was every account of what had happened.
         return 0;
       }
     }
