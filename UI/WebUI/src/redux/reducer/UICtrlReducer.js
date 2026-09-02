@@ -1183,16 +1183,23 @@ function StateReducer(newState, action) {
                 // CHANGING THE REGISTRATION OR THE ROI POINTS INVALIDATES THE
                 // TRAINED FEATURES — but do NOT throw them away.
                 //
-                // The core fingerprints __shape_cache over the reference image,
-                // the extraction thresholds, the ROI points AND
-                // def_image_reg.angle, so after a change the cache no longer
-                // matches and the def falls back to sig360.
+                // The core no longer refuses a cache whose fingerprint has
+                // moved -- it loads it and warns. So this flag no longer means
+                // "the def is about to fall back to sig360"; it means the
+                // features, and the crop and origin that came with them, are
+                // older than the registration on screen, and that registration
+                // is therefore not in effect yet.
                 //
-                // Deleting it was the first fix and it made things worse: the
-                // def then leaves the studio with NO features at all, which is
-                // strictly less recoverable than a stale set. Keep the last one
-                // that WORKED, together with the settings it was trained
-                // against, so there is always something to go back to.
+                // Still worth tracking, for two reasons: it is the only thing
+                // that can tell the operator a setting is waiting for a
+                // generation, and __shape_lastGood is the revert.
+                //
+                // Deleting the cache was the first fix and it made things
+                // worse: the def then leaves the studio with NO features at
+                // all, which is strictly less recoverable than an older set.
+                // Keep the last one that WORKED, together with the settings it
+                // was trained against, so there is always something to go back
+                // to.
                 //
                 // Nothing here decides what to do about it. The save path does,
                 // because that is the last moment a def can still be fixed.

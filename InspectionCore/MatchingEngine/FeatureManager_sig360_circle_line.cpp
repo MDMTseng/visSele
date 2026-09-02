@@ -7227,8 +7227,33 @@ static cJSON *shape_cache_serialise(const sbm::FeatureSet &fs, const cv::Rect &c
   return o;
 }
 
-// Returns true only when the cache is present, well-formed AND its fingerprint
-// matches what this def+image would produce now.
+// Returns true when the cache is present and well-formed. THE FINGERPRINT IS
+// NOT A GATE.
+//
+// It used to be: a mismatch refused the cache, and outside the studio implicit
+// re-extraction is off, so the def silently fell back to sig360 -- a different
+// localizer, for a def that carries a perfectly good trained model.
+//
+// The cache IS the trained model. Producing it is an explicit act (generate
+// features in the SBM studio), and the fields the fingerprint covers -- feature
+// count, pyramid, the two thresholds, the angle offset -- are inputs to THAT
+// act and to nothing else. Once the model exists they describe how it was made,
+// not whether it is usable. Refusing to load a model because the recipe that
+// would produce a DIFFERENT model has changed is a category error, and its
+// failure mode is the worst kind: the machine keeps running, on another
+// localizer, saying nothing anyone would notice.
+//
+// It also never worked as advertised. Every def in the field is stamped with
+// the pre-2026-08-30 string, so this check failed on EVERY load and a second,
+// looser comparison rescued it -- while the log said "cache stale;
+// re-extracting", which was not what happened and had been printing for weeks.
+//
+// What still refuses a cache is what actually makes it unusable: wrong version,
+// malformed structure, or (at the call site) a crop that does not fit the
+// reference image. A fingerprint difference is now reported and no more. It is
+// real information -- somebody changed an extraction parameter, or swapped the
+// picture -- and the answer to it is to press regenerate, not to have the
+// machine quietly change localizer underneath the operator.
 static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
                              sbm::FeatureSet &fs, cv::Rect &crop,
                              cv::Point2f &origin_in_crop)
@@ -7244,17 +7269,20 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
     // whether one def needs regenerating or every def in the fleet does. The
     // fields are | separated and in a fixed order, so the differing one is
     // visible by eye without tooling.
-    LOGW("[shape] cache stale; re-extracting || was: %s || now: %s",
+    // A warning, because it is worth seeing and worth acting on -- and only a
+    // warning, because nothing here refuses anything.
+    LOGW("[shape] cache was stamped with different extraction parameters; using it "
+         "as-is (regenerate the features to re-extract) || was: %s || now: %s",
          (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
          fingerprint.c_str());
     // Also on stderr under SHAPE_DBG: the ring log is not reachable from a
     // shell, and this is the message that says whether ONE def needs
     // regenerating or every def does.
     if (getenv("SHAPE_DBG"))
-      fprintf(stderr, "[SHAPE_DBG] cache stale\n  was: %s\n  now: %s\n",
+      fprintf(stderr, "[SHAPE_DBG] cache fingerprint differs (loading anyway)\n  was: %s\n  now: %s\n",
               (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
               fingerprint.c_str());
-    return false;
+    // and carry on loading it.
   }
   cJSON *c = cJSON_GetObjectItem(cache, "crop");
   cJSON *og = cJSON_GetObjectItem(cache, "origin");
@@ -7755,20 +7783,11 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
                                                    roi_pts_mm, roi_pts_set, angle_offset_deg);
     sbm::FeatureSet cached;
     cv::Rect ccrop; cv::Point2f corg;
+    // `fp` is passed for the report, not for a verdict: shape_cache_load
+    // logs how it differs and loads the cache either way. The second,
+    // pre-ROI-split comparison that used to rescue every def in the field is
+    // gone with the gate it was rescuing them from.
     bool hit = shape_cache_load(shape_cache_in, fp, cached, ccrop, corg);
-    if (!hit)
-    {
-      // A def saved before the ROI points left the fingerprint. Its features are
-      // right; only the string they were stamped with is old. Accepting it is
-      // what stops this change from re-extracting every def in the field once.
-      const std::string legacy =
-        shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
-                                shape_weak_thres, shape_strong_thres,
-                                roi_pts_mm, roi_pts_set, angle_offset_deg, true);
-      hit = shape_cache_load(shape_cache_in, legacy, cached, ccrop, corg);
-      if (hit) LOGI("[shape] cache accepted on the pre-ROI-split fingerprint; "
-                    "it will be re-stamped on the next 生成特徵點");
-    }
     if (hit)
     {
       // The crop must still be inside this image; a cache whose geometry does

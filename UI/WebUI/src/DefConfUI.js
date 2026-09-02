@@ -2064,11 +2064,24 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             }
             const lg = edit_info.__shape_lastGood;
             if (!edit_info.__shape_stale) { closeIt(); return; }
+            // SAY WHAT ACTUALLY HAPPENS.
+            //
+            // This used to say the def would fall back to sig360 and that the
+            // screen would not show it. That was true while the core refused a
+            // cache whose fingerprint had moved; it is not true now -- the
+            // cache loads regardless, and the def still locates with SBM.
+            //
+            // The real consequence is narrower and worth stating exactly: the
+            // features, the crop and the origin all come from the cache, so a
+            // registration edited after the last generation is simply not in
+            // effect. Nothing is broken and nothing is lost; a setting is
+            // waiting for a generation. That is a warning, not a trap, so the
+            // dialog no longer stands between anyone and the door.
             Modal.confirm({
-              title: '特徵已失效', width: 500,
-              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
-                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
-              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
+              title: '定位設定尚未生效', width: 500,
+              content: '定位設定改過,但特徵還是上一次生成的。SBM 定位照常運作,'
+                     + '不過它用的是舊的定位原點——新的設定要按「生成特徵點」才會生效。',
+              okText: lg ? '還原上一版並離開' : '回去生成',
               cancelText: '仍要離開',
               onOk: () => {
                 if (lg) {
@@ -2272,12 +2285,12 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       const lastGood = edit_info.__shape_lastGood;
       if (isShapeEngine && staleWhy) {
         Modal.confirm({
-          title: 'SBM 特徵與目前設定不符',
+          title: '定位設定尚未生效',
           width: 520,
           content: '改了' + (staleWhy === 'def_image_reg' ? '定位'
                           : staleWhy === 'roi_refine_points' ? 'ROI 點' : '定位和 ROI 點')
-                 + ',現有特徵已經不適用。這樣存檔的話,這個 def 不會用 SBM 定位——'
-                 + '它會退回 sig360,而且畫面上看不出來。',
+                 + ',但特徵還是上一次生成的。存檔沒問題,SBM 定位也照常運作——'
+                 + '只是它會用舊的定位原點,新的設定要按「生成特徵點」才會生效。',
           okText: '還原上一版定位設定',
           cancelText: '仍要存檔',
           // Restoring all three together makes the cache valid again by
@@ -2290,9 +2303,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               __shape_stale: undefined, __shape_lastGood: undefined,
             }));
             Modal.info({ title: '已還原', content:
-              '定位設定與特徵都回到上一個可用的版本。請重新存檔。' });
+              '定位設定與特徵都回到上一個一致的版本。請重新存檔。' });
           },
-          onCancel: () => { log.warn('[save] saving with STALE sbm features'); proceed(); },
+          onCancel: () => { log.warn('[save] saving with features older than the registration'); proceed(); },
         });
         return;
       }

@@ -1783,6 +1783,8 @@ const default_MinRepeatInspReport = 2;
 export const DEF_LOCALIZER_SCOPED_KEYS = [
   'def_image_reg', 'roi_refine_points',
   '__shape_cache', '__shape_stale', '__shape_lastGood',
+  // Uncommitted extraction thresholds -- see __shape_weak_draft below.
+  '__shape_weak_draft', '__shape_strong_draft',
   '__loc_include', '__loc_exclude',
   '__img_fresh_capture', '__tmp_ref_image_path',
 ];
@@ -1797,6 +1799,20 @@ export const DEF_SCOPED_EDIT_INFO_KEYS = [
   // The trained line2Dup set and its staleness flags: another def's features
   // are worse than none, because they train a matcher that then looks right.
   '__shape_cache', '__shape_stale', '__shape_lastGood',
+  // THE EXTRACTION THRESHOLDS AS TYPED, BEFORE ANY EXTRACTION HAS USED THEM.
+  //
+  // weak/strong are inputs to feature extraction and to nothing else. Writing
+  // them into the def the moment the field changes produced a def whose stated
+  // thresholds were not the thresholds its trained features were made with --
+  // a def that describes a model it does not contain. The panel says "邊緣門檻改了
+  // 要重新生成特徵才會生效", which is true, and the file did not honour it.
+  //
+  // So the typed value lives here until 生成特徵點 comes back with a feature set
+  // that was actually extracted with it, and only then is it committed to
+  // shape_weak_thres / shape_strong_thres. defFileGeneration never reads these,
+  // so an abandoned edit cannot reach the def at all -- not by saving, not by
+  // 立即測試, not by leaving the studio.
+  '__shape_weak_draft', '__shape_strong_draft',
   // Set by 重新設定/TAKE; a def LOAD makes the on-screen image the def's own
   // again, so this belongs to the def like everything else here.
   '__img_fresh_capture', '__tmp_ref_image_path',

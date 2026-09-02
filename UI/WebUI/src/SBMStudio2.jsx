@@ -560,6 +560,20 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     setTool('pan');
   }, [dispatch, edit_info]);
 
+  // The extraction thresholds, in their two states.
+  //
+  // *Saved* is what the def carries, and therefore what the trained features
+  // were made with. *Shown* is what the operator has typed. They differ only
+  // between a keystroke and the next successful generation; while they do, the
+  // panel says so and the def keeps the saved pair.
+  const weakSaved   = edit_info.shape_weak_thres ?? 50;
+  const strongSaved = edit_info.shape_strong_thres ?? 80;
+  const weakShown   = edit_info.__shape_weak_draft ?? weakSaved;
+  const strongShown = edit_info.__shape_strong_draft ?? strongSaved;
+  const weakPending   = weakShown !== weakSaved;
+  const strongPending = strongShown !== strongSaved;
+  const threshPending = weakPending || strongPending;
+
   // "生成特徵點": push the current (in-progress) def to the core's SF command and
   // overlay the returned line2Dup features + ROI points. Trains from the on-disk
   // <def>.png, so a brand-new or freshly re-taken def must be saved first --
@@ -567,7 +581,14 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   const genFeatures = useCallback((regenerate) => {
     if (!sendBPG) return;
     let deffile;
-    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    try {
+      // Extract with what is ON SCREEN, commit it only if that extraction
+      // works. The draft is overlaid here and nowhere else -- this is the one
+      // path on which an unextracted threshold is allowed to have an effect.
+      deffile = defFileGeneration({ ...edit_info,
+        shape_weak_thres: weakShown, shape_strong_thres: strongShown });
+      stampRefImagePath(deffile, edit_info);
+    }
     catch (e) { return; }
     setGenBusy(true);
     // regenerate: true means 生成特徵點 -- extract fresh and ignore whatever
@@ -654,13 +675,20 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           // Clearing __shape_stale is the point: these features were trained
           // against the settings as they stand NOW, so the def is consistent
           // again and the save guard has nothing to complain about.
+          // COMMIT POINT. The features in hand were extracted with weakShown /
+          // strongShown, so those two now describe the def truthfully and the
+          // drafts have nothing left to hold.
           dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: sf.data.shape_cache,
                                                __shape_stale: undefined,
-                                               __shape_lastGood: undefined }));
+                                               __shape_lastGood: undefined,
+                                               shape_weak_thres: weakShown,
+                                               shape_strong_thres: strongShown,
+                                               __shape_weak_draft: undefined,
+                                               __shape_strong_draft: undefined }));
       })
       .catch(() => {})
       .finally(() => setGenBusy(false));
-  }, [sendBPG, edit_info]);
+  }, [sendBPG, edit_info, weakShown, strongShown]);
 
   const captureDrag = (tool === 'locline' || tool === 'roi');
   // "自動產生 ROI 點": ask the core for its auto-selected ROI points and put them into
@@ -1382,15 +1410,22 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           <div style={{ borderTop: '1px solid ' + P.line, margin: '10px 0 8px' }} />
           <Row label="weak 弱邊" unit="1–255">
             <InputNumber min={1} max={255} step={5} style={{ width: 92 }}
-              value={edit_info.shape_weak_thres ?? 50}
-              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_weak_thres: v }))} />
+              data-testid="sbm2-weak" data-pending={weakPending ? '1' : '0'}
+              value={weakShown}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ __shape_weak_draft: v }))} />
           </Row>
           <Row label="strong 強邊" unit="1–255">
             <InputNumber min={1} max={255} step={5} style={{ width: 92 }}
-              value={edit_info.shape_strong_thres ?? 80}
-              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_strong_thres: v }))} />
+              data-testid="sbm2-strong" data-pending={strongPending ? '1' : '0'}
+              value={strongShown}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ __shape_strong_draft: v }))} />
           </Row>
-          <Hint>邊緣門檻改了<b style={{ color: P.ink }}>要重新生成特徵</b>才會生效。</Hint>
+          {threshPending
+            ? <Hint><b style={{ color: '#ff7875' }}>尚未生成</b>：目前的特徵仍是用
+                weak {weakSaved} / strong {strongSaved} 抽出來的。按
+                <b style={{ color: P.ink }}>生成特徵點</b>才會採用新的門檻，
+                在那之前存檔也不會寫進 def。</Hint>
+            : <Hint>邊緣門檻改了<b style={{ color: P.ink }}>要重新生成特徵</b>才會生效。</Hint>}
         </Block>
       </div>
 
@@ -1403,8 +1438,8 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         {curStep < 0
           ? <Button data-testid="sbm2-next" data-action="close" type="primary" block
               style={{ height: 48, fontSize: 15, fontWeight: 600 }}
-              data-enabled={edit_info.__shape_stale ? '0' : '1'}
-              disabled={!!edit_info.__shape_stale}
+              data-enabled="1"
+              data-stale={edit_info.__shape_stale ? '1' : '0'}
               onClick={() => onClose && onClose()}>✓ 套用並離開</Button>
           : <Button data-testid="sbm2-next"
               data-action={curStep === 0 ? 'locline' : curStep === 1 ? 'include' : 'generate'}
@@ -1418,6 +1453,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
               }}>
               {curStep === 0 ? '✛ 設定定位線' : curStep === 1 ? '＋ 畫 include 區' : '🔵 生成特徵點'}
             </Button>}
+        {/* The button above is never disabled. A stale feature set is worth
+            saying out loud and is not worth trapping somebody in a modal for --
+            the def still locates with SBM, it just locates with the features it
+            already had. */}
         <div style={{ fontSize: 11.5, color: edit_info.__shape_stale ? '#ff7875' : P.dim,
                       textAlign: 'center', marginTop: 6 }}>
           {edit_info.__shape_stale ? '要先處理上面的「特徵已失效」'
