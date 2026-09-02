@@ -7940,6 +7940,34 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
                "ROI points IGNORED (auto-selection used)");
 #endif
         }
+        else
+        {
+          // ROI REFINE WILL NOT RUN FOR THIS DEF, AND NOTHING ELSE SAYS SO.
+          //
+          // selectOptimizedPoints() takes user_opt_points when they are set and
+          // otherwise selects from FeatureSet::refine_points -- which the JSON
+          // cache does not carry. The binary FeatureSet format serialises them
+          // (shape_matcher.cpp:65/128); shape_cache_serialise() does not, and
+          // refine_points are a by-product of extractFeatures(), which the
+          // cache path exists to skip. So on this path the set is empty, the
+          // empty-guard returns nothing, and the whole ROI stage is skipped.
+          //
+          // The match still succeeds and the score is still high, because the
+          // coarse stage needs only `levels`. What is missing is the accuracy:
+          // measured on a synthetic scene at ~40x -- coarse 2.0-2.8 px against
+          // 0.06 px refined -- and MatchResult::refine_residual stays -1, which
+          // no reader would notice because nothing in the core reads it.
+          //
+          // Reported from a Linux port bring-up on samples/headless/sample1,
+          // found only by adding stderr probes to the matcher. Said once, at
+          // load, naming the def: a per-match log would be noise on a machine
+          // running parts, and this is a property of the def, not of a frame.
+          LOGW("[shape] '%s' loads from its cache and carries no "
+               "roi_refine_points, so ROI refine will NOT run -- this def "
+               "locates at coarse accuracy only. Open it in the SBM studio and "
+               "press regenerate to extract refine points, or give it explicit "
+               "ROI points.", def_path.empty() ? "(def)" : def_path.c_str());
+        }
         shapeFeatureSet = std::make_shared<sbm::FeatureSet>(cached);
         shape_crop = ccrop;
         shape_origin_in_crop = corg;

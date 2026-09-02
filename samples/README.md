@@ -78,6 +78,31 @@ back empty, run the core with its log on stderr:
 INSP_LOG_KEEP_STDERR=1 visSele --insp <image> <def> out.json
 ```
 
+### What this gate does NOT cover
+
+**Coarse matching, not the full locating chain.** `sample1.hydef` loads its
+trained model from the `shape_cache` embedded in the def, and that cache carries
+the pyramid levels but not `FeatureSet::refine_points` -- those are a by-product
+of extraction, which the cache exists to skip. With no refine points and no
+explicit `roi_refine_points`, `selectOptimizedPoints()` returns nothing and the
+ROI refine stage is skipped: the match succeeds, the score is high, and the
+position is coarse. Measured on a synthetic scene at roughly 40x -- 2.0-2.8 px
+coarse against 0.06 px refined.
+
+So a PASS here means the coarse stage agrees to the last bit, which is a real
+and useful result -- it is what proves an engine port computes the same numbers
+-- but it is not the whole locator. Since 2026-09-02 the core says so at load:
+
+```
+[shape] '<def>' loads from its cache and carries no roi_refine_points,
+        so ROI refine will NOT run -- this def locates at coarse accuracy only.
+```
+
+This sample also runs `shape_weak_thres` / `shape_strong_thres` at **30/30**,
+where the core's defaults are 50/80 -- worth knowing before using it as a
+performance baseline, because `skip_voting` is documented as safe only at the
+higher pair.
+
 If a number moves for a reason you understand and accept, `run.sh --bless`
 rewrites `expect.json` from the current run. Say in the commit message why it
 moved; a blessed number with no reason is how a regression becomes the baseline.
