@@ -4282,7 +4282,11 @@ class APP_DEFCONF_MODE extends React.Component {
           && this.props.defConf_lock_level == 0
           && (this.props.edit_info.locating_engine || 'sig360') !== 'shape_based' &&
           <div key="oldver" style={{
-                 position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
+                 // Below the timing caption, not on top of it. At 8 it covered
+                 // the second status line, which is where the per-phase
+                 // breakdown lands -- the one number being read while a def is
+                 // being worked on.
+                 position: 'absolute', top: 44, left: '50%', transform: 'translateX(-50%)',
                  zIndex: 20, display: 'flex', alignItems: 'center', gap: 10,
                  background: '#a8071a', color: '#fff', borderRadius: 4,
                  padding: '6px 12px', fontSize: 13,
