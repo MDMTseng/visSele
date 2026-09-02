@@ -123,7 +123,10 @@ export function SearchPointPropertySheet({
       {onProbeEdges && <EdgeProfileView
         profile={edgeProfile} busy={probeBusy} note={probeNote}
         minStrength={shape.edge?.min_strength}
+        manualOffset={shape.edge?.manual_offset}
         onChange={(min_strength) => updateSub('edge', { min_strength })}
+        onOffset={(manual_offset) => updateSub('edge',
+          { manual_offset: Number(manual_offset.toFixed(5)) })}
         onProbe={runProbe} />}
       <NumberField label="include_range" value={shape.edge?.include_range}
         onCommit={(include_range) => updateSub('edge', { include_range })}

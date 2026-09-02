@@ -79,7 +79,30 @@ struct SearchPointPeaks
 {
   std::vector<float> pos;
   std::vector<float> str;
+  // Where along the BAR the candidate sits. Not a measurement -- the scan
+  // localizes one axis -- but it is what makes the candidate cloud a SHAPE
+  // rather than a list, and the shape is the point when the edge being found is
+  // curved.
+  //
+  // Locating the apex of a shallow arc is the case: each row's first hit varies
+  // with the square of its distance from the apex, and the algorithm returns
+  // the weighted centroid of everything within include_range of the nearest
+  // hit -- which sits DEEPER than the apex, by more the wider that band is.
+  // Widening it for noise and then dialling manual_offset back by eye is the
+  // workflow that follows, and with `along` the offset is a fit rather than a
+  // judgement.
+  std::vector<float> along;
   float span = 0;           // how far the search reaches (px)
+  float mmpp = 0;           // px -> mm, so an offset can be suggested in def units
+  // THE ANSWER, in the same frame as the candidates.
+  //
+  // Without it a panel wanting to say "the result sits N px from the apex" has
+  // to re-implement the selection -- the band, the alpha taper, the weighting --
+  // and then drifts from it at the first change. sel_pos is what the scan
+  // returned along the search direction, before manual_offset is applied, so an
+  // offset suggested against it is the whole correction and not part of one.
+  float sel_pos = 0, sel_along = 0;
+  bool  sel_ok = false;
 };
 
 

@@ -320,8 +320,19 @@ static void AddSearchPeaks2JSON(cJSON *parent, const SearchPointPeaks &pk)
   cJSON *o = cJSON_CreateObject();
   cJSON_AddStringToObject(o, "kind", "peaks");
   cJSON_AddNumberToObject(o, "span", pk.span);
+  cJSON_AddNumberToObject(o, "mmpp", pk.mmpp);
   cJSON_AddItemToObject(o, "p", cJSON_CreateFloatArray(pk.pos.data(), (int)pk.pos.size()));
   cJSON_AddItemToObject(o, "s", cJSON_CreateFloatArray(pk.str.data(), (int)pk.str.size()));
+  // a[i] is p[i]'s position along the bar: the pair makes the candidate cloud a
+  // curve, which is what an apex can be fitted to.
+  if (pk.along.size() == pk.pos.size())
+    cJSON_AddItemToObject(o, "a", cJSON_CreateFloatArray(pk.along.data(), (int)pk.along.size()));
+  // The point the scan actually returned, in the candidates' own frame.
+  if (pk.sel_ok)
+  {
+    cJSON_AddNumberToObject(o, "sel_p", pk.sel_pos);
+    cJSON_AddNumberToObject(o, "sel_a", pk.sel_along);
+  }
   cJSON *extra = cJSON_GetObjectItem(parent, "extra");
   if (!extra)
   {

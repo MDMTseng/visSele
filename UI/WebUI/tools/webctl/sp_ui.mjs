@@ -110,3 +110,23 @@ console.log('surfaces  :', await ev(`(function(){
        + ' | plot '+sv.backgroundColor+' opaque='+opaque(sv.backgroundColor)
        + ' | button '+getComputedStyle(btn).backgroundColor
        + ' h='+Math.round(btn.getBoundingClientRect().height);})()`));
+
+// THE APEX OF A CURVED EDGE.
+//
+// The scan returns the weighted centroid of the band within include_range of the
+// nearest hit; on a curve that sits DEEPER than the apex, by more the wider the
+// band is. Widening it for noise and dialling manual_offset back by eye is the
+// workflow this replaces with a fit -- so the fit has to be there, and the
+// offset it suggests has to reach the def.
+const apex = await ev(`(function(){
+  var b=document.querySelector('[data-testid="edge-profile-offset"]');
+  if(!b) return 'no apex row (straight edge, or fit not convex)';
+  return 'suggest manual_offset='+b.getAttribute('data-offset')+' | '+b.textContent.trim();})()`);
+console.log('apex fit  :', apex);
+if (apex.indexOf('suggest') === 0) {
+  await ev(`document.querySelector('[data-testid="edge-profile-offset"]').click()`);
+  await sleep(1500);
+  console.log('applied   :', await ev(`(function(){
+    var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===4;});
+    return 'shape.edge.manual_offset='+(sh&&sh.edge&&sh.edge.manual_offset);})()`));
+}

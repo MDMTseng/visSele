@@ -1248,6 +1248,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            &out, &str, def.id, &rep.cal_hits, &spClipped,
                            DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
                            def.rel_strength, &relMoved);
+      // The scale the panel needs to express an offset in the def's own units.
+      if (DbgEmit("edge_profile") && eT.getBacpac() && eT.getBacpac()->sampler)
+        rep.cal_peaks.mmpp = eT.getBacpac()->sampler->mmpP_ideal();
       // SAY WHEN THE RELATIVE RULE IS THE ONE DECIDING.
       //
       // relMoved is set when the nearest candidate that clears min_strength is

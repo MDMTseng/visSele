@@ -248,10 +248,15 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (outPeaks)
   {
     outPeaks->span = (float)nP;
-    outPeaks->pos.reserve(cand.size());
-    outPeaks->str.reserve(cand.size());
+    outPeaks->pos.reserve(candRaw.size());
+    outPeaks->str.reserve(candRaw.size());
+    outPeaks->along.reserve(candRaw.size());
     for (const SPEdgePt &c : candRaw)
-    { outPeaks->pos.push_back(c.perpCoord + cp); outPeaks->str.push_back(c.peak); }
+    {
+      outPeaks->pos.push_back(c.perpCoord + cp);
+      outPeaks->str.push_back(c.peak);
+      outPeaks->along.push_back(c.searchCoord);
+    }
   }
   _sc.stop();
   if (cand.empty()) return false;
@@ -347,6 +352,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     const double cols = needed < 3 ? 3 : (needed > spcv_nP ? spcv_nP : needed);
     mephase::count("spcv_samp_min", (double)spcv_nS * cols);
   }
+  if (outPeaks) { outPeaks->sel_pos = eP + cp; outPeaks->sel_along = eS; outPeaks->sel_ok = true; }
   if (outPt) *outPt = acvVecAdd(pt, acvVecAdd(acvVecMult(s, eS), acvVecMult(perp, eP)));
   if (outW) *outW = (float)Ws;
 

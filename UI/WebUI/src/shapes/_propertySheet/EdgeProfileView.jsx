@@ -94,8 +94,35 @@ const BTN = { ...STEP_BTN_STYLE, flex: 1, minWidth: 0, whiteSpace: 'nowrap',
               height: 24, fontSize: 11.5, padding: '0 6px', lineHeight: '22px' };
 const HINT = { fontSize: 11.5, color: INK_DIM, marginTop: 4, lineHeight: 1.35 };
 
+// Weighted least squares for y = ax^2 + bx + c, by normal equations. Three
+// unknowns, so a 3x3 solve is the whole of it and a library would be a
+// dependency for nine multiplies.
+function fitParabola(x, y, w) {
+  const S = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  for (let i = 0; i < x.length; i++) {
+    const p = [x[i] * x[i], x[i], 1], wi = w[i];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) S[r][c] += wi * p[r] * p[c];
+      S[r][3] += wi * p[r] * y[i];
+    }
+  }
+  for (let col = 0; col < 3; col++) {
+    let piv = col;
+    for (let r = col + 1; r < 3; r++) if (Math.abs(S[r][col]) > Math.abs(S[piv][col])) piv = r;
+    if (Math.abs(S[piv][col]) < 1e-12) return null;
+    const t = S[col]; S[col] = S[piv]; S[piv] = t;
+    for (let r = 0; r < 3; r++) {
+      if (r === col) continue;
+      const f = S[r][col] / S[col][col];
+      for (let c = col; c < 4; c++) S[r][c] -= f * S[col][c];
+    }
+  }
+  return [S[0][3] / S[0][0], S[1][3] / S[1][1], S[2][3] / S[2][2]];
+}
+
 export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
-                                  onChange, onProbe, busy, note }) {
+                                  onChange, onProbe, onOffset, manualOffset,
+                                  busy, note }) {
   const [hover, setHover] = useState(null);
   // The dragged value lives here as well as on the shape.
   //
@@ -159,7 +186,44 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     // So the suggestion is that same number as a fixed floor. Applying it
     // changes nothing today and makes the rule visible, which is what has to
     // happen before it can stop being a hidden one.
-    return { pts, peak: peak || 1, span: profile.span || 1,
+    // THE APEX OF A CURVED EDGE, AND WHY manual_offset EXISTS.
+    //
+    // The scan returns the weighted centroid of everything within include_range
+    // of the nearest hit. On a straight edge that is the edge. On a CURVE it is
+    // not: each row's first hit grows with the square of its distance from the
+    // apex, so the centroid sits DEEPER than the apex, by more the wider the
+    // band is. Locating the apex of a shallow arc wants a wide band for noise
+    // and a narrow one for truth, and the way out has been to widen it and then
+    // dial manual_offset back by eye.
+    //
+    // The bias is not a matter of judgement. Fit the cap the candidates trace
+    // and its vertex is the apex; the distance from there to the point the core
+    // reported (sel_p, sent so this does not have to re-implement the
+    // selection and drift from it) is the offset, in px, ready to be written in
+    // the def's units. Measured on test1: 0.17 to 0.50 px, 2.4 to 6.9 um, and
+    // proportional to the band exactly as the model says.
+    let apex = null, bias = null;
+    if (profile.a && profile.a.length === pts.length && profile.sel_p !== undefined) {
+      const thrRel = 0.40 * peak;
+      const near = [];
+      let pMin = Infinity;
+      for (let i = 0; i < pts.length; i++)
+        if (pts[i].str >= thrRel && pts[i].pos < pMin) pMin = pts[i].pos;
+      for (let i = 0; i < pts.length; i++)
+        if (pts[i].str >= thrRel && pts[i].pos - pMin <= 5)
+          near.push([profile.a[i], pts[i].pos, pts[i].str]);
+      if (near.length >= 5) {
+        const c = fitParabola(near.map((q) => q[0]), near.map((q) => q[1]), near.map((q) => q[2]));
+        // Convex only: a concave or flat fit means these candidates are not a
+        // cap, and an "apex" from one would be a number with no referent.
+        if (c && c[0] > 0) {
+          apex = c[2] - (c[1] * c[1]) / (4 * c[0]);
+          bias = profile.sel_p - apex;
+        }
+      }
+    }
+    return { pts, peak: peak || 1, span: profile.span || 1, apex, bias,
+             sel: profile.sel_p, mmpp: profile.mmpp || 0,
              suggest: Math.round(0.40 * peak) };
   }, [profile]);
 
@@ -253,7 +317,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   }
 
   if (peaks) {
-    const { pts, peak, span, suggest } = peaks;
+    const { pts, peak, span, suggest, apex, bias, sel, mmpp } = peaks;
     const px = (d) => PADL + (d / span) * (W - PADL - 6);
     const py = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);
     const over = pts.filter((q) => q.str >= thr);
@@ -271,6 +335,8 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
               fill="rgba(198,40,40,.07)" />
         <line x1={PADL} x2={W - 6} y1={py(thr)} y2={py(thr)}
               stroke={WARN} strokeWidth="1.2" strokeDasharray="4 3" />
+        {apex !== null && <line x1={px(apex)} x2={px(apex)} y1={PADT} y2={py(0)}
+                                stroke="#8e24aa" strokeWidth="1" />}
         {chosen && <line x1={px(chosen.pos)} x2={px(chosen.pos)} y1={PADT} y2={py(0)}
                          stroke={PICKED} strokeWidth="1" strokeDasharray="3 3" />}
         {pts.map((q, k) => {
@@ -292,6 +358,27 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
                 　門檻擋下了 {held} 個更近的候選</span>}</>
           : '這個門檻下沒有任何候選，這個 search point 會是 NA'}
       </div>
+      {/* THE CURVE'S APEX, when the candidates trace one.
+          Absent on a straight edge, where the fit is not convex and there is
+          nothing to correct -- the panel then says nothing rather than
+          inventing a vertex for a line. */}
+      {bias !== null && Math.abs(bias) > 0.02 && <div style={{
+          marginTop: 5, paddingTop: 5, borderTop: '1px solid #e4e4e4' }}>
+        <div style={{ fontSize: 11.5, color: INK, lineHeight: 1.35 }}>
+          弧頂在 <b>{apex.toFixed(2)}px</b>，回報值 {sel.toFixed(2)}px
+          <span style={{ color: WARN }}>　差 {bias.toFixed(2)}px
+            {mmpp > 0 && '（' + (bias * mmpp * 1000).toFixed(1) + 'µm）'}</span>
+        </div>
+        {onOffset && mmpp > 0 && <button type="button"
+          data-testid="edge-profile-offset" data-offset={(-bias * mmpp).toFixed(5)}
+          onClick={() => onOffset(-bias * mmpp)}
+          style={{ ...BTN, flex: 'none', width: '100%', marginTop: 4 }}>
+          manual_offset ← {(-bias * mmpp).toFixed(4)}
+        </button>}
+        <div style={HINT}>
+          include_range 越寬雜訊越少、頂點偏差越大。紫線是擬合的弧頂。
+        </div>
+      </div>}
       {controls(Math.ceil(peak * 1.1), suggest,
         <div style={HINT}>
           藍＝採用的首擊　綠＝過門檻但更遠　紅＝被擋下
