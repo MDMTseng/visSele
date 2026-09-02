@@ -5327,6 +5327,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // being returned alongside, so the number and the picture agree.
             cJSON_AddNumberToObject(jobj, "insp_wall_ms", insp_wall_ms);
             cJSON_AddNumberToObject(jobj, "insp_cpu_ms",  insp_cpu_ms);
+            // WHERE THAT WENT, for this frame.
+            //
+            // insp_wall_ms is one number, and one number cannot say whether a
+            // slow CHECK is the shape matcher, the caliper windows, or a
+            // channel extract nobody suspected -- which is exactly the question
+            // the editor asks after every change it makes. The phase timers are
+            // already running (mephase, reset per FeatureMatching), so this is
+            // the same breakdown the bench profile reads, attached to the frame
+            // the operator is looking at.
+            //
+            // Names are the producers' own, so the caption cannot drift from
+            // the code. prep/sbm/morph/measure partition the match; anything
+            // else (sp_gather, sp_scan) is NESTED inside one of them and must
+            // not be added to the total -- the consumer is told which by the
+            // fact that the four sum to the match and the rest do not.
+            if (mephase::n_ > 0)
+            {
+              cJSON *ph = cJSON_CreateObject();
+              for (int _i = 0; _i < mephase::n_; _i++)
+                cJSON_AddNumberToObject(ph, mephase::name_[_i], mephase::ms_[_i]);
+              cJSON_AddItemToObject(jobj, "insp_phase_ms", ph);
+            }
             // Reported, not folded in. This is real time the editor waits, so
             // hiding it would make INST_CHECK feel slow with nothing to point
             // at -- but it is a per-PRESS cost, not a per-part one, and the

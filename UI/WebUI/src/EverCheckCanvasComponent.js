@@ -86,6 +86,38 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   if (loc === 'shape_based') txt += '   定位 SBM';
   else if (loc === 'sig360') txt += '   定位 sig360';
 
+  // WHERE THE TIME WENT, on a second line.
+  //
+  // One number cannot say whether a slow CHECK is the shape matcher, the
+  // caliper windows, or a channel extract nobody suspected -- and that is the
+  // question the editor asks after every change it makes.
+  //
+  // The four that PARTITION the match are shown in the order they run and
+  // summed; anything else the core sent is nested inside one of them and is
+  // listed after a divider, never added. Unknown names are printed as they
+  // arrive rather than dropped: a phase added in the core should appear here
+  // without this file having to be edited to allow it.
+  const TOP = [['prep', '前處理'], ['sbm', '形狀比對'],
+               ['morph', '形變'], ['measure', '量測']];
+  const ph = rp.phase_ms;
+  let sub = '';
+  if (ph && typeof ph === 'object') {
+    const seen = {};
+    const parts = [];
+    for (const [k, label] of TOP) {
+      if (typeof ph[k] !== 'number') continue;
+      seen[k] = 1;
+      parts.push(label + ' ' + ph[k].toFixed(2));
+    }
+    const nested = Object.keys(ph)
+      .filter((k) => !seen[k] && typeof ph[k] === 'number' && ph[k] > 0)
+      .map((k) => k + ' ' + ph[k].toFixed(2));
+    if (parts.length) {
+      sub = parts.join('  ');
+      if (nested.length) sub += '   〔內含 ' + nested.join('  ') + '〕';
+    }
+  }
+
   ctx.save();
   // setTransform directly, NOT self.setMatrix(): that helper is defined on some
   // canvas subclasses and not others (the inspection view has no such method),
@@ -112,7 +144,10 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   const pad = 6, safeLeft = 216;
   const x = Math.min(Math.max(imgTopLeft_dev.x, safeLeft),
                      Math.max(safeLeft, self.canvas.width - ctx.measureText(txt).width - pad));
-  const y = Math.min(Math.max(imgTopLeft_dev.y - 4, 18), self.canvas.height - pad);
+  // Room for the second line when there is one, so the breakdown cannot be the
+  // half that falls off the bottom edge.
+  const y = Math.min(Math.max(imgTopLeft_dev.y - 4, 18),
+                     self.canvas.height - pad - (sub ? 14 : 0));
 
   // Readable over both the pale plate and whatever falls outside it.
   ctx.lineWidth = 3;
@@ -120,6 +155,16 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   ctx.strokeText(txt, x, y);
   ctx.fillStyle = '#00b0ff';
   ctx.fillText(txt, x, y);
+  if (sub) {
+    // Smaller and dimmer: it is the detail behind the headline number, and it
+    // must not compete with it or with the part underneath.
+    ctx.font = '600 11px Arial';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(sub, x, y + 13);
+    ctx.fillStyle = 'rgba(0,176,255,0.75)';
+    ctx.fillText(sub, x, y + 13);
+  }
   ctx.restore();
 }
 

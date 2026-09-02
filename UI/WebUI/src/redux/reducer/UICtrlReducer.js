@@ -916,6 +916,10 @@ function StateReducer(newState, action) {
                   wall_ms:  GetObjElement(action,["data","insp_wall_ms"]),
                   cpu_ms:   GetObjElement(action,["data","insp_cpu_ms"]),
                   build_ms: GetObjElement(action,["data","def_build_ms"]),
+                  // The per-phase breakdown of THIS frame, names as the core
+                  // produced them. Absent against an older core, and then the
+                  // caption simply has one less line.
+                  phase_ms: GetObjElement(action,["data","insp_phase_ms"]),
                 } };
 
               //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
