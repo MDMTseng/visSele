@@ -134,10 +134,15 @@ const auto = await ev(`(function(){
   b.click();
   return 'suggest='+s+' cleanGap='+c;})()`);
 await sleep(500);
+// Null-safe, like the settled read below: a failed probe removes the plot and
+// leaves the panel explaining why, and a throw here would bury that message.
 console.log('auto          :', auto, '->', await ev(`(function(){
   var e=document.querySelector('[data-testid="edge-profile-plot"]');
   var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
-  return 'pass='+e.getAttribute('data-pass')+' shape='+(sh&&sh.edge&&sh.edge.min_strength);})()`));
+  var mn=' shape='+(sh&&sh.edge&&sh.edge.min_strength);
+  if (e) return 'pass='+e.getAttribute('data-pass')+mn;
+  var t=document.body.innerText, i=t.indexOf('檢查邊緣強度');
+  return 'NO PLOT -- ' + (i<0?'picker gone':t.slice(i,i+60).split(String.fromCharCode(10)).join(' | ')) + mn;})()`));
 
 // Letting go of the slider runs ONE inspection, so the canvas shows what the
 // new threshold actually did. Asserted by the busy state appearing on release
@@ -199,3 +204,61 @@ await sleep(500);
 const midDrag = await hits();
 console.log(`hits on canvas   : before ${before}, mid-drag ${midDrag}`,
   before > 0 && midDrag === before ? '-> kept' : '-> LOST');
+
+// THE WHOLE SHEET, not just this block, must paint its own ground.
+//
+// .overlay is `background: none` by design -- every floating panel in the app
+// uses it, and most sit over something plain. This one sits over the CAMERA
+// IMAGE, so the frame read straight through the labels and on a dark part of
+// the object "min_strength" was simply not there. Walk up from a real label and
+// require an opaque ancestor before the body.
+console.log('sheet ground :', await ev(`(function(){
+  var lbl=[].slice.call(document.querySelectorAll('*')).filter(function(e){
+    return e.children.length===0 && (e.textContent||'').trim()==='min_strength';})[0];
+  if(!lbl) return 'no sheet';
+  var p=lbl, hops=0;
+  while(p && p!==document.body && hops<12){
+    var m=/rgba?\(([^)]+)\)/.exec(getComputedStyle(p).backgroundColor);
+    var a=m ? (m[1].split(',').length<4 ? 1 : parseFloat(m[1].split(',')[3])) : 0;
+    if(a>=0.99) return 'opaque at '+hops+' hops: '+(p.className||p.tagName);
+    p=p.parentElement; hops++;
+  }
+  return 'TRANSPARENT all the way to body';})()`));
+
+// NO WHITE TEXT ON A PALE GROUND.
+//
+// Read-only values had no colour of their own and inherited the app's dark-theme
+// white, so the type row read as a label with nothing after it. The inputs never
+// showed the problem because INPUT_STYLE sets its own ink; only the plain text
+// did.
+//
+// The test compares each leaf against THE GROUND BEHIND IT, not against a fixed
+// idea of light. White on the purple header and white in a blue dropdown are
+// correct and must not be reported -- a check that cries wolf on those is a
+// check nobody reads. SVG text is painted by `fill`, not `color`, so it is read
+// from the right property or it reports the inherited colour it never uses.
+console.log('sheet ink    :', await ev(`(function(){
+  var host=[].slice.call(document.querySelectorAll('*')).filter(function(x){
+    return x.children.length===0 && (x.textContent||'').trim()==='min_strength';})[0];
+  if(!host) return 'no sheet';
+  var panel=host; for(var k=0;k<8 && panel.parentElement;k++) panel=panel.parentElement;
+  var lum=function(c){ var m=(c||'').match(/[0-9]+/g);
+    return (m&&m.length>=3) ? (+m[0]+ +m[1]+ +m[2])/3 : null; };
+  var ground=function(e){
+    for(var p=e;p;p=p.parentElement){
+      var cs=getComputedStyle(p), m=(cs.backgroundColor||'').match(/[0-9.]+/g);
+      if(!m) continue;
+      var a=(m.length<4)?1:parseFloat(m[3]);
+      if(a>=0.99) return (+m[0]+ +m[1]+ +m[2])/3;
+    }
+    return 255; }; 
+  var bad=[];
+  [].slice.call(panel.querySelectorAll('*')).forEach(function(e){
+    if(e.children.length) return;
+    var t=(e.textContent||'').trim(); if(!t) return;
+    var cs=getComputedStyle(e);
+    var ink=lum(e.ownerSVGElement||e.tagName==='text' ? cs.fill : cs.color);
+    if(ink===null) return;
+    if(ink>200 && ground(e)>160) bad.push(t.slice(0,12));
+  });
+  return bad.length ? 'WHITE ON PALE: '+bad.slice(0,8).join(' ') : 'every leaf legible against its own ground';})()`));

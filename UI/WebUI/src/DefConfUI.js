@@ -3674,7 +3674,12 @@ class APP_DEFCONF_MODE extends React.Component {
             iconType={<ArrowLeftOutlined/>}
             addClass="layout black vbox width4"
             key="<" onClick={() => this.props.ACT_Fail()} />,
-          <div key="MEASURE" className="s width8 lblue vbox">MEASURE</div>,
+          // Dark ink on the pale header. It inherits the panel's white, which was
+          // right while the panel floated over the camera image and is wrong now
+          // that it has a ground of its own -- and was already wrong here, since
+          // .lblue is rgb(204,204,238). Set locally rather than on the panel:
+          // 複製 / 刪除 / CHECK sit on dark bars and need the white they inherit.
+          <div key="MEASURE" className="s width8 lblue vbox" style={{ color: '#333' }}>MEASURE</div>,
         ];
 
 
@@ -3861,7 +3866,7 @@ class APP_DEFCONF_MODE extends React.Component {
             iconType={<ArrowLeftOutlined/>}
             onClick={() => this.props.ACT_Fail()} />,
 
-          <div key="EDIT_Text" className="s width8 lblue vbox">EDIT</div>,
+          <div key="EDIT_Text" className="s width8 lblue vbox" style={{ color: '#333' }}>EDIT</div>,
           <div key="HLINE" className="s HX0_1"></div>
         ]
 
@@ -4196,7 +4201,17 @@ class APP_DEFCONF_MODE extends React.Component {
 
         <DefConfImageSwitcher />
 
-        <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
+        {/* THE PANEL PAINTS ITS OWN GROUND.
+            .overlay is `background: none` by design -- it is the class every
+            floating panel in the app uses, and most of them sit over something
+            plain. This one sits over the CAMERA IMAGE, so the frame read
+            straight through the labels: on a dark or busy part of the part
+            being inspected, "min_strength" and the section headers simply were
+            not there. Reported twice from the bench.
+            Scoped here rather than in basis.css: the fix belongs to the screen
+            whose background is a photograph, not to every overlay. */}
+        <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}
+             style={{ background: '#f2f2f2' }}>
           {MenuSet}
         </div>
 

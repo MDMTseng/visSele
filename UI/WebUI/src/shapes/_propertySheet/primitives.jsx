@@ -32,6 +32,15 @@ export const LABEL_STYLE = {
 };
 export const VALUE_STYLE = {
   flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 3,
+  // Read-only values inherit their colour, and what they were inheriting was
+  // the app's dark-theme white -- invisible on this sheet. The inputs never
+  // showed it because INPUT_STYLE sets its own #222; the plain text next to
+  // them did, so "類型 線段/Line" read as a label with nothing after it.
+  //
+  // Set on the value cell rather than on each span: the cell is where a value
+  // lives whatever kind it is, and a per-call colour is a thing to forget the
+  // next time a row is added.
+  color: '#222',
 };
 export const INPUT_STYLE = {
   width: '100%', height: 22, fontSize: 12, padding: '0 4px',
