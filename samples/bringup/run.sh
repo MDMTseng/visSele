@@ -30,7 +30,7 @@ export LD_LIBRARY_PATH="$BINDIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DYLD_LIBRARY_PATH="$BINDIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 case "$BINDIR" in *mingw*|*msys*)
   for d in /mingw64/bin /c/msys64/mingw64/bin "${MSYSTEM_PREFIX:-}/bin"; do
-    [ -n "$d" ] && [ -d "$d" ] && export PATH="$PATH:$d"
+    { [ -n "$d" ] && [ -d "$d" ] && export PATH="$PATH:$d"; } || true
   done ;;
 esac
 

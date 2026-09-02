@@ -23,8 +23,18 @@ OpenCV is required. Everything else is optional, and on Linux the camera SDKs
 default OFF-except-Aravis already:
 
 ```sh
-cmake -S InspectionCore -B InspectionCore/build/linux_x64 -DFEATURE_ARAVIS=OFF
-cmake --build InspectionCore/build/linux_x64 --target visSele -j
+cmake --preset linux-x64 -DFEATURE_ARAVIS=OFF
+cmake --build InspectionCore/build/linux-x64 --target visSele -j
+```
+
+The preset name is **`linux-x64`** (`InspectionCore/CMakePresets.json`); plain
+`linux` is not one and cmake will refuse it. Presets put the binary in
+`InspectionCore/build/<presetName>/`, which is where the scripts here look. If
+you would rather not use a preset:
+
+```sh
+cmake -S InspectionCore -B InspectionCore/build/linux-x64 -DFEATURE_ARAVIS=OFF
+cmake --build InspectionCore/build/linux-x64 --target visSele -j
 ```
 
 `-DFEATURE_ARAVIS=OFF` is worth doing for a first build. `CameraLayer_BMP` and

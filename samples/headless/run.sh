@@ -60,7 +60,9 @@ export DYLD_LIBRARY_PATH="$BINDIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 case "$BINDIR" in
   *mingw*|*msys*)
     for d in /mingw64/bin /c/msys64/mingw64/bin "${MSYSTEM_PREFIX:-}/bin"; do
-      [ -n "$d" ] && [ -d "$d" ] && export PATH="$PATH:$d"
+      # `|| true`: under `set -e` a loop whose last iteration ends in a false
+      # test takes the whole script down, and MSYSTEM_PREFIX is often unset.
+      { [ -n "$d" ] && [ -d "$d" ] && export PATH="$PATH:$d"; } || true
     done ;;
 esac
 
