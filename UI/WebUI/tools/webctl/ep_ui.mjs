@@ -85,9 +85,9 @@ async function setSlider(v) {
     var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
     setter.call(s, '${v}');
     s.dispatchEvent(new Event('input',{bubbles:true}));
-    s.dispatchEvent(new Event('change',{bubbles:true}));
+    s.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
     return true;})()`);
-  await sleep(400);
+  await sleep(1200);
   return ev(`(function(){
     var e=document.querySelector('[data-testid="edge-profile-plot"]');
     var st=window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList.find(function(s){return s.id===1;});
@@ -97,6 +97,9 @@ async function setSlider(v) {
          +' shape='+(sh&&sh.edge&&sh.edge.min_strength);
   })()`);
 }
+// Each step drags and releases, because the commit is on release now: during a
+// drag nothing is written, which is what keeps the previous hits on the canvas
+// to compare against.
 console.log('slider -> 105 :', await setSlider(105));
 console.log('slider -> 200 :', await setSlider(200));
 console.log('slider -> 60  :', await setSlider(60));
@@ -165,3 +168,24 @@ console.log('settled pass     :',
 console.log('shape min        :', await ev(`(function(){
   var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
   return sh&&sh.edge&&sh.edge.min_strength;})()`));
+
+// THE REPORTED SYMPTOM: the hits vanished the moment the thumb moved.
+//
+// Committing the threshold changes the shape, and a shape change drops the
+// inspection report -- so the overlay the operator was comparing against
+// disappeared at the start of every drag. Nothing is committed during a drag
+// now, so the last real answer stays on screen until a new one replaces it.
+const hits = () => ev(`(function(){
+  var r=window.__GP_STORE__.getState().UIData.edit_info.inspReport;
+  try { return r.reports[0].detectedLines[0].extra.cal_hits.length; }
+  catch(e) { return 0; }})()`);
+const before = await hits();
+await ev(`(function(){
+  var s=document.querySelector('[data-testid="edge-profile-slider"]');
+  var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+  [90,95,100].forEach(function(v){ setter.call(s,String(v)); s.dispatchEvent(new Event('input',{bubbles:true})); });
+  return true;})()`);
+await sleep(500);
+const midDrag = await hits();
+console.log(`hits on canvas   : before ${before}, mid-drag ${midDrag}`,
+  before > 0 && midDrag === before ? '-> kept' : '-> LOST');

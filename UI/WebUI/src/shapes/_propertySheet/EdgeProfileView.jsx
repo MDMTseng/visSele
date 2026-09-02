@@ -52,6 +52,10 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   // Set while a drag has moved the value and not yet been acted on. A drag
   // fires onChange continuously; only its END is worth an inspection.
   const dirty = useRef(false);
+  // The dragged value, in a ref as well as in state. dragEnd runs from an event
+  // handler that may be in the SAME tick as the setState that produced the
+  // value -- reading it from the render closure would commit the previous one.
+  const latest = useRef(null);
   const committed = Math.max(0, Number(minStrength) || 0);
   const [seen, setSeen] = useState(committed);
   if (committed !== seen) { setSeen(committed); setPending(null); }
@@ -123,9 +127,12 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   const x = (i) => PADL + (i / (n - 1)) * (W - PADL - 6);
   const y = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);   // 0 at the bottom
   const pass = best.filter((b) => b >= thr).length;
+  // The drag's one commit: write the value, then inspect with it.
   const dragEnd = () => {
     if (!dirty.current || busy) return;
     dirty.current = false;
+    const v = latest.current;
+    if (v != null && v !== committed) onChange(v);
     if (onProbe) onProbe();
   };
   // The headroom the setting has: how far the floor could move before it starts
@@ -164,9 +171,21 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <input type="range" min={0} max={Math.ceil(peak * 1.1)} step={1} value={thr}
              data-testid="edge-profile-slider"
+             // NOTHING IS COMMITTED WHILE DRAGGING.
+             //
+             // It used to write the threshold on every change, and the shape
+             // changing throws away the inspection report -- so the hits on the
+             // canvas vanished the moment the thumb moved, taking away the
+             // reference the operator was comparing against. Losing the
+             // "before" is losing the point of a slider.
+             //
+             // The drag needs no commit anyway: the curve and the caliper count
+             // are computed from the payload already in hand. So the value stays
+             // local until the drag ends, and the canvas keeps showing the last
+             // real answer until there is a new one to replace it with.
              onChange={(e) => {
                const v = Number(e.target.value);
-               setPending(v); onChange(v); dirty.current = true;
+               latest.current = v; setPending(v); dirty.current = true;
              }}
              // LET GO AND SEE WHAT IT DID.
              //
@@ -206,7 +225,8 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <button type="button" data-testid="edge-profile-auto"
         data-suggest={suggest} data-clean={clean ? '1' : '0'}
-        onClick={() => { setPending(suggest); onChange(suggest); dirty.current = true; dragEnd(); }}
+        onClick={() => { latest.current = suggest; setPending(suggest);
+                         dirty.current = true; dragEnd(); }}
         style={{ padding: '3px 10px', cursor: 'pointer' }}>
         自動設定 {suggest}
       </button>
