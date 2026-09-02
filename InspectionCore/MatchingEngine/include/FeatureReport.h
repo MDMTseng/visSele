@@ -32,6 +32,34 @@ struct CaliperHit
   float strength;
 };
 
+// THE EVIDENCE A THRESHOLD IS SET AGAINST.
+//
+// edge.min_strength decides which gradient peaks count as edges at all, and it
+// is expressed in raw gradient units -- 0..~460 on this station, depending on
+// contrast, exposure and lens. That is not a number anybody can arrive at by
+// thinking, and the defs show it: 10 is the WebUI's default, the field defs
+// carry 30, one carries 0, against real edges measuring 380-460. The floor is
+// effectively off, and something else has been silently standing in for it.
+//
+// So the panel has to show what is actually there. Not the chosen edge -- the
+// WHOLE across-edge gradient profile, ungated, including the peaks that fall
+// below the current setting. A slider can only be moved down on evidence that
+// exists below it, and the gap between the noise peaks and the real one is the
+// only thing that says where the floor belongs.
+//
+// Ungated also means the slider is a local computation: the profile carries
+// every candidate, so moving it re-picks in the browser with no round trip.
+//
+// Signed, because polarity is part of the selection (rising/falling/any) and a
+// magnitude cannot express it. Index i is at (-L + i*step) px across the edge,
+// measured from the caliper centre along the search direction.
+struct CaliperProfiles
+{
+  std::vector<std::vector<float>> grad;   // one per caliper, nAcross entries
+  float step = 0;                         // px between samples across the edge
+  float L    = 0;                         // half-span; i=0 sits at -L
+};
+
 
 #define FeatureManager_NAME_LENGTH 32
 
@@ -375,6 +403,9 @@ typedef struct FeatureReport_lineReport{
   // Per-caliper hits when locating==1 (caliper). Empty in the contour path.
   // Length == def->cal_count when populated. See Caliper.h CaliperHit.
   std::vector<CaliperHit> cal_hits;
+  // Only when DEBUG_EMIT edge_profile is on; nothing is sampled for it
+  // otherwise. See CaliperProfiles.
+  CaliperProfiles cal_prof;
 }FeatureReport_lineReport;
 
 
@@ -390,6 +421,7 @@ typedef struct FeatureReport_circleReport{
   acv_XY pt1,pt2,pt3;//mapped 3 pts on circle
   // Per-caliper hits when locating==1 (caliper); empty in the contour path.
   std::vector<CaliperHit> cal_hits;
+  CaliperProfiles cal_prof;    // see FeatureReport_lineReport
 }FeatureReport_circleReport;
 
 

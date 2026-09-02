@@ -175,10 +175,44 @@ cJSON* JudgeReportVector2JSON(const vector< FeatureReport_judgeReport> &judges ,
 // that does not need the overlay.
 static std::map<std::string, bool> g_dbg_emit = {
     {"cal_hits", true},
+    // The threshold-setting evidence. Off until a panel asks for it.
+    {"edge_profile", false},
 };
+
+// DEBUG_EMIT=name[,name...] turns payloads on for a whole process, once, at
+// first use. The ST command is the live switch and stays the one the WebUI
+// uses; this exists because --insp has no command channel at all, so without it
+// an offline run -- the CI check, a bench comparison, this file's own
+// verification -- cannot see a payload that is off by default.
+//
+// A leading "-" turns one off, so a default-on payload can be dropped the same
+// way: DEBUG_EMIT=-cal_hits,edge_profile
+static void dbg_emit_env_once()
+{
+  static bool done = false;
+  if (done) return;
+  done = true;
+  const char *e = getenv("DEBUG_EMIT");
+  if (!e || !*e) return;
+  std::string cur;
+  std::string all(e);
+  all.push_back(',');
+  for (char c : all)
+  {
+    if (c != ',') { if (c != ' ') cur.push_back(c); continue; }
+    if (cur.empty()) continue;
+    bool on = true;
+    if (cur[0] == '-') { on = false; cur.erase(0, 1); }
+    auto f = g_dbg_emit.find(cur);
+    if (f == g_dbg_emit.end()) LOGW("DEBUG_EMIT env: unknown payload \"%s\"", cur.c_str());
+    else { f->second = on; LOGI("DEBUG_EMIT env %s=%d", cur.c_str(), (int)on); }
+    cur.clear();
+  }
+}
 
 bool DbgEmit(const char *name)
 {
+  dbg_emit_env_once();
   auto it = g_dbg_emit.find(name);
   return (it != g_dbg_emit.end()) && it->second;
 }
@@ -229,6 +263,44 @@ static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, 
   cJSON_AddItemToObject(extra, "cal_hits", arr);
 }
 
+// The across-edge gradient behind every caliper on this primitive, ungated.
+//
+//   edge_profile: { step, L, g: [[...],[...]] }
+//
+// g[i] is caliper i, in the same order as cal_hits, so the panel can pair a
+// profile with the hit it produced. Sample j of a profile sits at
+// (-L + j*step) px across the edge, measured from that caliper's centre along
+// its search direction. Signed: the sign is the polarity the selector matches
+// on (rising = dark->light), and folding it away would make polarity
+// unsettable from the picture.
+//
+// A caliper that found NOTHING still emits its profile. That is the case the
+// operator most needs to see -- "nothing passed the floor" and "there is no
+// edge here" look identical in the measurement and completely different in the
+// profile.
+//
+// Default OFF and it stays off outside recipe setup: at nAcross 67 this is
+// ~670 numbers per primitive, which is an order more than cal_hits.
+static void AddCalProfile2JSON(cJSON *parent, const CaliperProfiles &prof)
+{
+  if (!DbgEmit("edge_profile")) return;
+  if (prof.grad.empty()) return;
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "step", prof.step);
+  cJSON_AddNumberToObject(o, "L", prof.L);
+  cJSON *g = cJSON_CreateArray();
+  for (const std::vector<float> &one : prof.grad)
+    cJSON_AddItemToArray(g, cJSON_CreateFloatArray(one.data(), (int)one.size()));
+  cJSON_AddItemToObject(o, "g", g);
+  cJSON *extra = cJSON_GetObjectItem(parent, "extra");
+  if (!extra)
+  {
+    extra = cJSON_CreateObject();
+    cJSON_AddItemToObject(parent, "extra", extra);
+  }
+  cJSON_AddItemToObject(extra, "edge_profile", o);
+}
+
 cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, acv_XY center_offset)
 {
 
@@ -252,6 +324,7 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
     // Emit caliper-mode per-caliper hits even on STATUS_NA — the user wants to
     // see where the calipers tried and failed when the fit didn't converge.
     AddCalHits2JSON(cfj, vec[j].cal_hits, center_offset);
+    AddCalProfile2JSON(cfj, vec[j].cal_prof);
 
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
 
@@ -378,6 +451,7 @@ cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
       acv_LineFit2JSON(lfj,vec[j].line,center_offset);
     AddCalHits2JSON(lfj, vec[j].cal_hits, center_offset);
+    AddCalProfile2JSON(lfj, vec[j].cal_prof);
     cJSON_AddItemToArray(detectedLines_jarr, lfj );
   }
   return detectedLines_jarr;

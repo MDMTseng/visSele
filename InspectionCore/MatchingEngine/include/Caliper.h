@@ -37,10 +37,15 @@ struct CaliperParams
 // (image px) and its strength, returns true.
 // outProfile/outPos (optional, for debug): the across-edge averaged grayscale
 // profile and the sub-pixel edge index into it (0..nAcross-1).
+// outGrad (optional): the SIGNED across-edge gradient the edge selector ran on
+// -- the ungated evidence behind the answer, for the threshold UI. See
+// CaliperProfiles in FeatureReport.h for why it is the whole profile and not
+// the chosen peak.
 bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo = nullptr,
-                     std::vector<float> *outProfile = nullptr, float *outPos = nullptr);
+                     std::vector<float> *outProfile = nullptr, float *outPos = nullptr,
+                     std::vector<float> *outGrad = nullptr);
 
 // ---- Search-point first-hit scan (CoreHub remap+sobel+topmost, ported) -------
 // A search point SCANS for the FIRST edge hit along a ray; it must NOT average
@@ -70,6 +75,7 @@ struct CaliperLineResult
   float confidence;// mean inlier edge confidence (strength*unambiguity*sharpness)
   bool ok;
   std::vector<CaliperHit> hits; // length == count; entry i is the i'th caliper
+  CaliperProfiles prof;         // only when DbgEmit("edge_profile")
 };
 
 // Place `count` calipers evenly along p0->p1 (caliper search direction =
@@ -133,6 +139,7 @@ struct CaliperCircleResult
   float confidence;// mean inlier edge confidence
   bool ok;
   std::vector<CaliperHit> hits; // length == count; entry i is the i'th caliper
+  CaliperProfiles prof;         // only when DbgEmit("edge_profile")
 };
 
 // Place `count` calipers along the arc [angStart,angEnd] (rad) of the nominal

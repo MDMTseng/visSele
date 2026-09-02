@@ -135,7 +135,8 @@ static void caliper_dump_line_strip(const char *prefix, const char *name, const 
 static bool profile_to_edge(const float *profile, int nAcross, float step, float L,
                             const EdgeSelectParams &edge, acv_XY center, acv_XY s,
                             acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
-                            float *outPos, const uint8_t *valid = nullptr)
+                            float *outPos, const uint8_t *valid = nullptr,
+                            std::vector<float> *outGrad = nullptr)
 {
   std::vector<float> grad(nAcross, 0);
   for (int i = 1; i < nAcross - 1; i++) grad[i] = profile[i + 1] - profile[i - 1];
@@ -154,6 +155,10 @@ static bool profile_to_edge(const float *profile, int nAcross, float step, float
     if (!valid[0]) grad[0] = 0;
     if (!valid[nAcross - 1]) grad[nAcross - 1] = 0;
   }
+  // Copied out BEFORE the selector runs, and copied out even when the selector
+  // finds nothing: "no edge passed the floor" is exactly the case the operator
+  // needs to see the profile for.
+  if (outGrad) *outGrad = grad;
   float pos, str;
   if (!edge_select(grad.data(), nAcross, edge, &pos, &str, outInfo)) return false;
   if (outPos) *outPos = pos;
@@ -166,7 +171,8 @@ static bool profile_to_edge(const float *profile, int nAcross, float step, float
 bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
-                     std::vector<float> *outProfile, float *outPos)
+                     std::vector<float> *outProfile, float *outPos,
+                     std::vector<float> *outGrad)
 {
   if (outInfo) *outInfo = EdgeSelectInfo();
   if (gray.empty()) return false;
@@ -226,7 +232,7 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   }
   if (outProfile) *outProfile = profile;
   return profile_to_edge(profile.data(), nAcross, step, L, p.edge, center, s,
-                         outPt, outStrength, outInfo, outPos, vprof.data());
+                         outPt, outStrength, outInfo, outPos, vprof.data(), outGrad);
 }
 
 // NO CALLERS as of 2026-09-02. The live search point is SearchPointCV.cpp's
@@ -349,6 +355,11 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count);
     return r;
   }
+  // Sampled only when someone is going to look at it. The gradient is a
+  // by-product -- profile_to_edge builds it either way -- so what this costs is
+  // the copy and the wire bytes, not the measurement.
+  const bool wantProf = DbgEmit("edge_profile");
+  if (wantProf) { r.prof.step = step; r.prof.L = L; r.prof.grad.reserve(count); }
   std::vector<acv_XY> pts; std::vector<float> w;
 
   // ONE GATHER PER CALIPER, exactly as the arc path does.
@@ -391,8 +402,11 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     // entry as not-a-measurement) is the shared one rather than a second
     // implementation of it that has to be kept in agreement.
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
+    std::vector<float> grad;
     bool ok = caliper_measure(gray, c, perp, cal, bacpac, &pt, &str, &info,
-                              dbg ? &profile : nullptr, &pos);
+                              dbg ? &profile : nullptr, &pos,
+                              wantProf ? &grad : nullptr);
+    if (wantProf) r.prof.grad.push_back(std::move(grad));
     // Lens-undistort BEFORE the fit so a distortion-curved edge fits the true
     // straight line, not a biased one. We also undistort the nominal anchor
     // `c` so the missed-caliper visualization (stored as a CaliperHit with
@@ -528,6 +542,12 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   while (span < 0) span += 2 * (float)M_PI;
   while (span >= 2 * (float)M_PI) span -= 2 * (float)M_PI;
 
+  // Sampled only when someone is going to look at it. The gradient is a
+  // by-product -- profile_to_edge builds it either way -- so what this costs is
+  // the copy and the wire bytes, not the measurement.
+  const bool wantProf = DbgEmit("edge_profile");
+  if (wantProf) { r.prof.step = (cal.step > 0 ? cal.step : 1.0f);
+                  r.prof.L = cal.length; r.prof.grad.reserve(count); }
   std::vector<acv_XY> pts; std::vector<float> w;
   // Per-caliper hits, always tracked. See caliper_locate_line for the encoding.
   r.hits.assign(count, CaliperHit{{0,0}, 0, 0.0f});
@@ -538,9 +558,11 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     acv_XY dir = { cosf(a), sinf(a) };               // radial = across-edge
     acv_XY c = acvVecAdd(center0, acvVecMult(dir, radius0));
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
-    std::vector<float> prof;
+    std::vector<float> prof, grad;
     bool ok = caliper_measure(gray, c, dir, cal, bacpac, &pt, &str, &info,
-                              dbg ? &prof : nullptr, &pos);
+                              dbg ? &prof : nullptr, &pos,
+                              wantProf ? &grad : nullptr);
+    if (wantProf) r.prof.grad.push_back(std::move(grad));
     // Undistort the inlier hit (used for the Kasa fit) and the nominal radial
     // anchor (used as the missed-caliper marker at status=0) -- see
     // caliper_locate_line for the rationale and the NaN demote-on-divergence.

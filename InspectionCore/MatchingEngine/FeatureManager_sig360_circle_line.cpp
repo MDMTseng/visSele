@@ -4787,6 +4787,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       dbg_pix_hits.push_back(pix_pt);
       dbg_pix_st.push_back(h.status);
     }
+    cr.cal_prof = std::move(rr.prof);   // see LineMatching_caliper
     // Debug dump: cropped 4x view of the caliper search arc + hits + fitted
     // circle, identical pattern to LineMatching_caliper's overlay.
     if (getenv("INSP_DUMP_CALIPER_DEBUG"))
@@ -5166,6 +5167,11 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     ih.pt = acvVecAdd(h.pt, off);
     Report.cal_hits.push_back(ih);
   }
+  // Empty unless DEBUG_EMIT edge_profile is on. Not rebased: the profile is an
+  // across-edge series, its index already carries its own geometry (-L + i*step
+  // px along the search direction), and it has no position in the image to
+  // correct.
+  Report.cal_prof = std::move(r.prof);
   // Debug: dump the caliper input image with the search line + hit dots
   // overlaid so the user can eyeball whether the green Xs they see in the
   // WebUI match what the caliper actually returned in image-pixel space.
