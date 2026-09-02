@@ -14,6 +14,7 @@
 import { caliperConfigProblem, CALIPER_MIN_COUNT_LINE } from '../_caliperFields';
 import { EDGE_MIN_STRENGTH } from '../_caliperSeed';
 import { EdgeProfileView } from './EdgeProfileView.jsx';
+import { B } from './bounds';
 import React, { useEffect } from 'react';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
@@ -90,7 +91,7 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('line')}</span></Row>
     <TextField label={t('name')} value={shape.name}
       onCommit={(name) => update({ name })} />
-    <NumberField label={t('margin')} value={shape.margin}
+    <NumberField {...B.margin} label={t('margin')} value={shape.margin}
       onCommit={(margin) => update({ margin })}
       tweak={defaultTweak} />  {/* default: ×2 ÷2 ±0.1 ±0.01 */}
     {/* 凸點連線 is the CONTOUR path's envelope: it walks the contour for the
@@ -112,16 +113,17 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
 
     {isCaliper && <>
       <Section label={t('caliper')}>
-        <NumberField label={t('count')} value={shape.caliper?.count} step={1}
+        <NumberField {...B.count_line} label={t('count')} value={shape.caliper?.count}
           onCommit={(count) => updateSub('caliper', { count })}
           tweak={{ add: [1] }} />
-        <NumberField label={t('width')} value={shape.caliper?.width}
+        <NumberField {...B.cal_width} label={t('width')} value={shape.caliper?.width}
           onCommit={(width) => updateSub('caliper', { width })}
           tweak ={defaultTweak}/>
-        <NumberField label={t('min_inliers')} value={shape.caliper?.min_inliers} step={1}
+        <NumberField {...B.min_inliers} max={shape.caliper?.count}
+          label={t('min_inliers')} value={shape.caliper?.min_inliers}
           onCommit={(min_inliers) => updateSub('caliper', { min_inliers })}
           tweak={{  add: [1] }} />
-        <NumberField label={t('max_error')} value={shape.caliper?.max_error}
+        <NumberField {...B.max_error} label={t('max_error')} value={shape.caliper?.max_error}
           onCommit={(max_error) => updateSub('caliper', { max_error })}
           tweak ={defaultTweak}/>
         {/* Said HERE, beside the fields that cause it. The overlay draws
@@ -143,10 +145,10 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
           options={EDGE_POLARITIES} optionLabel={(v) => t('opt_' + v)}
           onChange={(polarity) => updateSub('edge', { polarity })} />
         {shape.edge?.method === 'nth' &&
-          <NumberField label={t('nth')} value={shape.edge?.nth} step={1}
+          <NumberField {...B.nth} label={t('nth')} value={shape.edge?.nth}
             onCommit={(nth) => updateSub('edge', { nth })}
             tweak={{ add: [1] }} />}
-        <NumberField label={t('min_strength')} value={shape.edge?.min_strength}
+        <NumberField {...B.min_strength} label={t('min_strength')} value={shape.edge?.min_strength}
           onCommit={(min_strength) => updateSub('edge', { min_strength })}
           tweak ={defaultTweak}/>
         {onProbeEdges && <EdgeProfileView

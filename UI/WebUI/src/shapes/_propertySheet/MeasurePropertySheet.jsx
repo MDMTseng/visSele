@@ -11,6 +11,7 @@
 // Calc subtype: the bespoke `calc_f` editor (postfix-expression builder)
 // remains as Measure_Calc_Editor in DefConfUI.js; we embed it directly here
 // instead of redoing it as primitives.
+import { B } from './bounds';
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
@@ -71,18 +72,18 @@ export function MeasurePropertySheet({
     {/* Target + control/spec limits */}
     <Section label={t('target')}>
       {shape.angleDeg !== undefined &&
-        <NumberField label={t('angleDeg')} value={shape.angleDeg}
+        <NumberField {...B.angleDeg} label={t('angleDeg')} value={shape.angleDeg}
           onCommit={(v) => commitField(shape, 'angleDeg', wrap360(v), onUpdate)}
           quickActions={angleActs('angleDeg', shape.angleDeg)} />}
-      <NumberField label={t('value')} value={shape.value}
+      <NumberField {...B.limit} label={t('value')} value={shape.value}
         onCommit={set('value')} tweak={limitTweak} />
-      <NumberField label={t('USL')} value={shape.USL}
+      <NumberField {...B.limit} label={t('USL')} value={shape.USL}
         onCommit={set('USL')} tweak={limitTweak} />
-      <NumberField label={t('LSL')} value={shape.LSL}
+      <NumberField {...B.limit} label={t('LSL')} value={shape.LSL}
         onCommit={set('LSL')} tweak={limitTweak} />
-      <NumberField label={t('UCL')} value={shape.UCL}
+      <NumberField {...B.limit} label={t('UCL')} value={shape.UCL}
         onCommit={set('UCL')} tweak={limitTweak} />
-      <NumberField label={t('LCL')} value={shape.LCL}
+      <NumberField {...B.limit} label={t('LCL')} value={shape.LCL}
         onCommit={set('LCL')} tweak={limitTweak} />
     </Section>
 
@@ -97,21 +98,21 @@ export function MeasurePropertySheet({
       checked={!!shape.back_value_setup}
       onChange={(v) => commitField(shape, 'back_value_setup', v, onUpdate)} />}
     {BACK_SIDE_LIMITS_ENABLED && shape.back_value_setup && <Section label={t('back')}>
-      <NumberField label={t('value_b')} value={shape.value_b}
+      <NumberField {...B.limit} label={t('value_b')} value={shape.value_b}
         onCommit={set('value_b')} tweak={limitTweak} />
-      <NumberField label={t('USL_b')} value={shape.USL_b}
+      <NumberField {...B.limit} label={t('USL_b')} value={shape.USL_b}
         onCommit={set('USL_b')} tweak={limitTweak} />
-      <NumberField label={t('LSL_b')} value={shape.LSL_b}
+      <NumberField {...B.limit} label={t('LSL_b')} value={shape.LSL_b}
         onCommit={set('LSL_b')} tweak={limitTweak} />
-      <NumberField label={t('UCL_b')} value={shape.UCL_b}
+      <NumberField {...B.limit} label={t('UCL_b')} value={shape.UCL_b}
         onCommit={set('UCL_b')} tweak={limitTweak} />
-      <NumberField label={t('LCL_b')} value={shape.LCL_b}
+      <NumberField {...B.limit} label={t('LCL_b')} value={shape.LCL_b}
         onCommit={set('LCL_b')} tweak={limitTweak} />
     </Section>}
 
     {/* Behavior */}
     <Section label={t('behavior')}>
-      <NumberField label={t('importance')} value={shape.importance} step={1}
+      <NumberField {...B.importance} label={t('importance')} value={shape.importance}
         onCommit={set('importance')} tweak={{ add: [1] }} />
       {/* <NumberField label={t('width')} value={shape.width}
         onCommit={set('width')} tweak={sizeTweak} /> */}
@@ -129,10 +130,10 @@ export function MeasurePropertySheet({
 
     {/* Calibration mapping value_A/B → value_X/Y */}
     <Section label={t('value_mapping')}>
-      <NumberField label={t('value_A')} value={shape.value_A} onCommit={set('value_A')} tweak={sizeTweak} />
-      <NumberField label={t('value_B')} value={shape.value_B} onCommit={set('value_B')} tweak={sizeTweak} />
-      <NumberField label={t('value_X')} value={shape.value_X} onCommit={set('value_X')} tweak={sizeTweak} />
-      <NumberField label={t('value_Y')} value={shape.value_Y} onCommit={set('value_Y')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_A')} value={shape.value_A} onCommit={set('value_A')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_B')} value={shape.value_B} onCommit={set('value_B')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_X')} value={shape.value_X} onCommit={set('value_X')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_Y')} value={shape.value_Y} onCommit={set('value_Y')} tweak={sizeTweak} />
     </Section>
 
     {/* circle_info subtype: which scalar to extract */}

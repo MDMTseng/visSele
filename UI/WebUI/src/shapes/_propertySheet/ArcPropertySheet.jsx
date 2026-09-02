@@ -7,6 +7,7 @@
 import { caliperConfigProblem, CALIPER_MIN_COUNT_ARC } from '../_caliperFields';
 import { ARC_POLARITY, EDGE_MIN_STRENGTH } from '../_caliperSeed';
 import { EdgeProfileView } from './EdgeProfileView.jsx';
+import { B } from './bounds';
 import React, { useEffect } from 'react';
 import { arcSweep } from 'UTIL/MathTools';
 import {
@@ -86,7 +87,7 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('arc')}</span></Row>
     <TextField label={t('name')} value={shape.name}
       onCommit={(name) => update({ name })} />
-    <NumberField label={t('margin')} value={shape.margin}
+    <NumberField {...B.margin} label={t('margin')} value={shape.margin}
       onCommit={(margin) => update({ margin })}
       tweak={defaultTweak} />
     {/* direction is stored as ±1; checked = -1, unchecked = +1 */}
@@ -102,16 +103,17 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
 
     {isCaliper && <>
       <Section label={t('caliper')}>
-        <NumberField label={t('count')} value={shape.caliper?.count} step={1}
+        <NumberField {...B.count_arc} label={t('count')} value={shape.caliper?.count}
           onCommit={(count) => updateSub('caliper', { count })}
           tweak={{ add: [1] }} />
-        <NumberField label={t('width')} value={shape.caliper?.width}
+        <NumberField {...B.cal_width} label={t('width')} value={shape.caliper?.width}
           onCommit={(width) => updateSub('caliper', { width })}
           tweak={defaultTweak} />
-        <NumberField label={t('min_inliers')} value={shape.caliper?.min_inliers} step={1}
+        <NumberField {...B.min_inliers} max={shape.caliper?.count}
+          label={t('min_inliers')} value={shape.caliper?.min_inliers}
           onCommit={(min_inliers) => updateSub('caliper', { min_inliers })}
           tweak={{ add: [1] }} />
-        <NumberField label={t('max_error')} value={shape.caliper?.max_error}
+        <NumberField {...B.max_error} label={t('max_error')} value={shape.caliper?.max_error}
           onCommit={(max_error) => updateSub('caliper', { max_error })}
           tweak={defaultTweak} />
         {/* Same as the line sheet: said beside the fields that cause it,
@@ -132,10 +134,10 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
           options={EDGE_POLARITIES} optionLabel={(v) => t('opt_' + v)}
           onChange={(polarity) => updateSub('edge', { polarity })} />
         {shape.edge?.method === 'nth' &&
-          <NumberField label={t('nth')} value={shape.edge?.nth} step={1}
+          <NumberField {...B.nth} label={t('nth')} value={shape.edge?.nth}
             onCommit={(nth) => updateSub('edge', { nth })}
             tweak={{ add: [1] }} />}
-        <NumberField label={t('min_strength')} value={shape.edge?.min_strength}
+        <NumberField {...B.min_strength} label={t('min_strength')} value={shape.edge?.min_strength}
           onCommit={(min_strength) => updateSub('edge', { min_strength })}
           tweak={defaultTweak} />
         {onProbeEdges && <EdgeProfileView

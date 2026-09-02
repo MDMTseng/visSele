@@ -12,6 +12,7 @@
 //     core runs ONE caliper along the search vector — see search_point.js).
 //   - `ref[0]` slot — references one line shape; clicking enters ref-pick mode
 //     via onTracePick(["ref", "0"]).
+import { B } from './bounds';
 import React, { useEffect } from 'react';
 import { EdgeProfileView } from './EdgeProfileView.jsx';
 import {
@@ -86,13 +87,13 @@ export function SearchPointPropertySheet({
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('search_point')}</span></Row>
     <TextField label={t('name')} value={shape.name}
       onCommit={(name) => update({ name })} />
-    <NumberField label={t('margin')} value={shape.margin}
+    <NumberField {...B.margin} label={t('margin')} value={shape.margin}
       onCommit={(margin) => update({ margin })}
       tweak={defaultTweak} />
-    <NumberField label={t('width')} value={shape.width}
+    <NumberField {...B.width} label={t('width')} value={shape.width}
       onCommit={(width) => update({ width })}
       tweak={defaultTweak} />
-    <NumberField label={t('angleDeg')} value={shape.angleDeg}
+    <NumberField {...B.angleDeg} label={t('angleDeg')} value={shape.angleDeg}
       onCommit={(v) => update({ angleDeg: wrap360(v) })}
       quickActions={angleActions} />
     <SwitchField label={t('search_far')}
@@ -114,10 +115,10 @@ export function SearchPointPropertySheet({
       <DropdownField label={t('polarity')} value={shape.edge?.polarity}
         options={EDGE_POLARITIES} optionLabel={(v) => t('opt_' + v)}
         onChange={(polarity) => updateSub('edge', { polarity })} />
-      <NumberField label={t('nth')} value={shape.edge?.nth} step={1}
+      <NumberField {...B.nth} label={t('nth')} value={shape.edge?.nth}
         onCommit={(nth) => updateSub('edge', { nth })}
         tweak={{ add: [1] }} />
-      <NumberField label={t('min_strength')} value={shape.edge?.min_strength}
+      <NumberField {...B.min_strength} label={t('min_strength')} value={shape.edge?.min_strength}
         onCommit={(min_strength) => updateSub('edge', { min_strength })}
         tweak={defaultTweak} />
       {onProbeEdges && <EdgeProfileView
@@ -128,10 +129,10 @@ export function SearchPointPropertySheet({
         onOffset={(manual_offset) => updateSub('edge',
           { manual_offset: Number(manual_offset.toFixed(5)) })}
         onProbe={runProbe} />}
-      <NumberField label={t('include_range')} value={shape.edge?.include_range}
+      <NumberField {...B.include_range} label={t('include_range')} value={shape.edge?.include_range}
         onCommit={(include_range) => updateSub('edge', { include_range })}
         tweak={defaultTweak} />
-      <NumberField label={t('manual_offset')} value={shape.edge?.manual_offset}
+      <NumberField {...B.manual_offset} label={t('manual_offset')} value={shape.edge?.manual_offset}
         onCommit={(manual_offset) => updateSub('edge', { manual_offset })}
         tweak={defaultTweak} />
     </Section>}

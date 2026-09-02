@@ -135,7 +135,19 @@ export function Section({ label, onClick, children }) {
 //                   field's own value + onCommit.
 //   quickActions  — escape hatch: raw JSX for non-numeric tweak patterns
 //                   (used by shape-specific button groups).
-export function NumberField({ label, value, onCommit, step = 0.0001, quickActions, tweak }) {
+// min/max/int: the field's CONTRACT, enforced on commit and not only offered to
+// the spinner.
+//
+// `type=number` with min/max constrains the arrows and nothing else -- typing
+// -5 into a caliper count, or 0 where the core runs 2, was accepted, written to
+// the def and then silently re-interpreted by the core's own clamp. The value on
+// screen was not the value the machine used, which is the same class of defect
+// as edge.min_strength defaulting to 10 with nothing saying so.
+//
+// Clamping shows itself: the box snaps to the bound as soon as it commits, so a
+// refused number is visible rather than quietly rewritten deeper down.
+export function NumberField({ label, value, onCommit, step = 0.0001,
+                              min, max, int, quickActions, tweak }) {
   const [local, setLocal] = useState(() => toFixed4(value));
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setLocal(toFixed4(value)); }, [value]);
@@ -144,7 +156,10 @@ export function NumberField({ label, value, onCommit, step = 0.0001, quickAction
     editing.current = false;
     const n = parseFloat(local);
     if (Number.isFinite(n)) {
-      const rounded = parseFloat(n.toFixed(4));
+      let v = int ? Math.round(n) : parseFloat(n.toFixed(4));
+      if (typeof min === 'number' && v < min) v = min;
+      if (typeof max === 'number' && v > max) v = max;
+      const rounded = int ? v : parseFloat(v.toFixed(4));
       onCommit(rounded);
       setLocal('' + rounded);
     } else {
@@ -165,7 +180,7 @@ export function NumberField({ label, value, onCommit, step = 0.0001, quickAction
 
   return <Row label={label} actions={actions}>
     <input
-      type="number" step={step} style={INPUT_STYLE} value={local}
+      type="number" step={step} min={min} max={max} style={INPUT_STYLE} value={local}
       onChange={(e) => { editing.current = true; setLocal(e.target.value); }}
       onBlur={commit}
       onKeyDown={(e) => {
