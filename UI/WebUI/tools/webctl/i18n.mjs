@@ -24,7 +24,9 @@ for (let i = 0; i < 60; i++) {
 const pick = (type) => ev(`(function(){
   var ei=window.__GP_STORE__.getState().UIData.edit_info;
   var sl=(ei._obj&&ei._obj.shapeList)||[];
-  var t=sl.find(function(s){return s.type==='${type}'&&s.locating==='caliper';});
+  // measure has no locating mode; the others are only interesting in caliper.
+  var t=sl.find(function(s){return s.type==='${type}' &&
+    (s.type==='measure' || s.locating==='caliper');});
   if(!t) return 'none';
   window.__GP_STORE__.dispatch({ type: 'Edit_Tar_Update', data: t });
   window.__GP_STORE__.dispatch({ type: 'Shape_Edit' });
@@ -36,10 +38,27 @@ const pick = (type) => ev(`(function(){
 // NAME is latin ([4][1]), and so are numbers and units.
 const BANNED = ['locating', 'min_strength', 'include_range', 'manual_offset',
                 'min_inliers', 'max_error', 'polarity', 'strongest', 'falling',
-                'rising', 'contour', 'caliper'];
-for (const type of ['line', 'arc', 'search_point']) {
-  console.log('selected  :', await pick(type));
-  await sleep(900);
+                'rising', 'contour', 'caliper', 'fit_mode', 'outer', 'inner',
+                // the measure sheet
+                'USL', 'LSL', 'UCL', 'LCL', 'target', 'behavior', 'value mapping',
+                'baseLine', 'calc_f', 'distance', '(pick)',
+                // NG->NA / NA->NG stay: those two are the industry's own words
+                // for the swap, and 換算 A/B/X/Y keep their variable letters.
+                'NGasNA', 'NAasNG'];
+for (const type of ['line', 'arc', 'search_point', 'measure']) {
+  // Wait for the SHEET, and re-select while waiting. Entering SHAPE_EDIT and
+  // setting the target from outside the app race, so the first attempt lands on
+  // the shape LIST -- which is why a fixed sleep reported NO SHEET for whichever
+  // primitive happened to go first.
+  let sel = await pick(type);
+  for (let i = 0; i < 20; i++) {
+    const up = await ev(`[].slice.call(document.querySelectorAll('*')).some(function(x){
+      return x.children.length===0 && (x.textContent||'').trim()==='名稱';})`);
+    if (up) break;
+    await sleep(300);
+    sel = await pick(type);
+  }
+  console.log('selected  :', sel);
   const left = await ev(`(function(){
     var host=[].slice.call(document.querySelectorAll('*')).filter(function(x){
       return x.children.length===0 && /^(\u540D\u7A31|\u985E\u578B)$/.test((x.textContent||'').trim());})[0];

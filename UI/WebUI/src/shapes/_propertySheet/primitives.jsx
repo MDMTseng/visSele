@@ -278,11 +278,15 @@ export function NumberTweakActions({ value, onCommit, mul, add }) {
 // clicks call `onPick()` which the parent routes to ref-pick mode.
 // `refEntry` is the {id, element} object from shape.ref[slotIdx].
 // `shapeList` is consulted to resolve the referenced shape's display name.
-export function RefSlot({ refEntry, shapeList, onPick }) {
+// emptyLabel: what an unfilled slot says. Passed in rather than hard-coded so
+// the words stay in the dictionary with the rest of the sheet's; a slot that
+// HAS a reference shows that shape's own name, which is the def author's text
+// and is never translated.
+export function RefSlot({ refEntry, shapeList, onPick, emptyLabel }) {
   const resolved = refEntry && shapeList && shapeList.find((s) => s.id === refEntry.id);
   const label = resolved
     ? (resolved.name || `id ${resolved.id}`)
-    : (refEntry && refEntry.id !== undefined ? `id ${refEntry.id}` : '(pick)');
+    : (refEntry && refEntry.id !== undefined ? `id ${refEntry.id}` : (emptyLabel || '(pick)'));
   return <AntButton size="small" onClick={onPick} style={{
     fontSize: 11, height: 22, padding: '0 8px',
     maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',

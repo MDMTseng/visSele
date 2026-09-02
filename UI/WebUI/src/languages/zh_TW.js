@@ -57,6 +57,14 @@ export default {
         opt_any:"不限",
         opt_rising:"黑→白",
         opt_falling:"白→黑",
+        pick_ref:"（點選）",
+        // Envelope fit: the centre is least-squares either way, the RADIUS is
+        // the mean, the largest, or the smallest |centre-hit|. "平均/外包/內包"
+        // is what the shop calls them.
+        fit_mode:"擬合方式",
+        opt_ls:"平均",
+        opt_outer:"外包",
+        opt_inner:"內包",
         ERROR:"錯誤",
         ERROR_INFO:"系統訊息",
         WARNING:"警告",
@@ -146,8 +154,8 @@ export default {
     },
     measure:{
       quality_essential:"品質必需",
-      NGasNA:"NG->A",
-      NAasNG:"NA->G",
+      NGasNA:"NG→NA",
+      NAasNG:"NA→NG",
       orientation_essential:"朝向必需",
 
       value_adjust:"數值加",
@@ -173,7 +181,33 @@ export default {
       LCT:"下管制公差",
 
       importance:"重要等級",
-      quadrant:"量測象限"
+      quadrant:"量測象限",
+
+      // The rest of the measure sheet. The limits already had words here and
+      // the sheet was printing the keys anyway -- USL/LSL/UCL/LCL were on
+      // screen in English next to a dictionary that has said 規格上限 all along.
+      target:"目標與規格",
+      back:"背面",
+      behavior:"判定行為",
+      value_mapping:"數值換算",
+      value_A:"換算 A",
+      value_B:"換算 B",
+      value_X:"換算 X",
+      value_Y:"換算 Y",
+      baseLine:"基準線",
+      calc_f:"運算式",
+      // Subtypes, shown translated and stored as they are.
+      opt_distance:"距離",
+      opt_angle:"角度",
+      opt_radius:"半徑",
+      opt_calc:"運算",
+      opt_circle_info:"圓資訊",
+      opt_max_diameter:"最大直徑",
+      opt_min_diameter:"最小直徑",
+      opt_roughness_max:"最大粗糙度",
+      opt_roughness_min:"最小粗糙度",
+      opt_roughness_rmse:"粗糙度 RMSE",
+      opt_NA:"未設定"
     },
     search_point:{
       search_far:"近/遠",

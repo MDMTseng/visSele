@@ -96,8 +96,8 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
     {!lockCaliper &&
       <DropdownField label={t('locating')} value={shape.locating || 'contour'}
         options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)} onChange={flipLocating} />}
-    <DropdownField label={t('fit_mode') || 'fit_mode'} value={shape.fit_mode || 'ls'}
-      options={['ls', 'outer', 'inner']}
+    <DropdownField label={t('fit_mode')} value={shape.fit_mode || 'ls'}
+      options={['ls', 'outer', 'inner']} optionLabel={(v) => t('opt_' + v)}
       onChange={(fit_mode) => update({ fit_mode })} />
 
     {isCaliper && <>

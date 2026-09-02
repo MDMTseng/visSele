@@ -138,7 +138,7 @@ export function SearchPointPropertySheet({
 
     <Section label={t('ref') || 'ref'}>
       <Row label={t('0') || '0'}>
-        <RefSlot refEntry={refEntry} shapeList={shapeList}
+        <RefSlot emptyLabel={t('pick_ref')} refEntry={refEntry} shapeList={shapeList}
           onPick={() => onTracePick && onTracePick(['ref', '0'])} />
       </Row>
     </Section>
