@@ -1283,6 +1283,43 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       }
       if (ok)
       {
+        // A SEARCH POINT MEASURES ONE AXIS. THE OTHER IS NOT A MEASUREMENT.
+        //
+        // The scan finds a peak per row across the search direction and picks
+        // one; the coordinate ALONG THE BAR that comes back with it is the
+        // strength-weighted mean of the accepted rows -- "where along the bar
+        // the edge happened to be strongest". It moves with contrast, with a
+        // speck of dirt, with the threshold. Measured this session while
+        // changing nothing but a gate: one search point moved 18.5um and
+        // another 72um purely along the bar, with the edge itself unmoved.
+        //
+        // The morph already knows how to be told this: an anchor carries a 2x2
+        // precision, and an edge anchor sets w_minor = 0 so only the search
+        // normal constrains the warp (solve_tps, mode 2, which is the default).
+        // The switch is the def's `anchor_corner`, and on the 10155 def all
+        // nine search points have it TRUE -- so every one of them is feeding
+        // that unmeasured coordinate into the TPS as though it were data.
+        //
+        // Not corrected here, because forcing w_minor would silently change the
+        // warp on every def in the field -- the same reason edge.rel_strength
+        // became a number instead of being deleted. Said out loud instead, with
+        // the size of the fabricated correction, so it can be turned off per
+        // def by somebody who has looked.
+        if (def.data.anglefollow.anchor_corner)
+        {
+          const acv_XY d = acvVecSub(out, acvVecSub(pt, off));
+          const float alongBar = d.x * barVec.x + d.y * barVec.y;
+          const float mmpp_sp = eT.getBacpac() && eT.getBacpac()->sampler
+                              ? eT.getBacpac()->sampler->mmpP_ideal() : 0.f;
+          if (fabsf(alongBar) > 0.5f)
+            LOGW_EVERY_N(200, "search_point id=%d: anchor_corner=true, but a search "
+                              "point localizes ONE axis. The along-bar coordinate is "
+                              "%.2f px (%.1f um) from the anchor and is not a "
+                              "measurement -- it is going into the TPS as one. Set "
+                              "anchor_corner=false unless this scan really finds a "
+                              "corner.",
+                         def.id, alongBar, alongBar * mmpp_sp * 1000.0f);
+        }
         rep.pt = acvVecAdd(out, off);
         if (sp_lens)
         {
