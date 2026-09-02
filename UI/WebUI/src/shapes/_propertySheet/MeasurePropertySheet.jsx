@@ -20,7 +20,7 @@ import { BACK_SIDE_LIMITS_ENABLED } from 'UTIL/backSideLimits';
 import { Measure_Calc_Editor } from 'JSSRCROOT/DefConfUI';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
-  RefSlot, StepButton, translate,
+  RefSlot, StepButton, NumberTweakActions, translate,
 } from './primitives.jsx';
 
 const SUBTYPES = Object.values(SHAPE_TYPE.measure_subtype).filter(v => v !== 'NA');
@@ -41,8 +41,44 @@ function commitField(shape, key, newVal, onUpdate) {
 
 const wrap360 = (v) => ((Number(v) % 360) + 360) % 360;
 
+// SETTING A NUMBER SHOULD NOT REQUIRE A KEYBOARD.
+//
+// Target and limits are the numbers an operator changes most, on a machine
+// where typing is the slowest and least reliable thing they can do. Two buttons
+// remove nearly all of it:
+//
+//   目標   ← the value just measured, rounded to 0.01. Rounding is the point:
+//          a target of 2.3175 is a reading, not a specification.
+//   規格/管制上下限  ← the target, as a starting point. From there +0.1 / +0.01
+//          walks it out, which is how a tolerance is actually chosen.
+//
+// They sit in the same popover as the existing +/- steps, so they cost no
+// vertical space in a 200px column, and each offers itself only when it has
+// something to give -- no CHECK yet, no measured value, no button.
+function TargetActions({ measured, value, onCommit, tweak }) {
+  const has = Number.isFinite(measured);
+  return <>
+    {has && <StepButton title={'用量測值 ' + measured.toFixed(4)}
+      onClick={() => onCommit(Math.round(measured * 100) / 100)}>
+      ←{(Math.round(measured * 100) / 100).toFixed(2)}
+    </StepButton>}
+    <NumberTweakActions value={value} onCommit={onCommit}
+      mul={tweak && tweak.mul} add={tweak && tweak.add} />
+  </>;
+}
+
+function LimitActions({ target, value, onCommit, tweak }) {
+  const has = Number.isFinite(target);
+  return <>
+    {has && <StepButton title={'跟隨目標 ' + target}
+      onClick={() => onCommit(target)}>←目標</StepButton>}
+    <NumberTweakActions value={value} onCommit={onCommit}
+      mul={tweak && tweak.mul} add={tweak && tweak.add} />
+  </>;
+}
+
 export function MeasurePropertySheet({
-  shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'measure',
+  shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'measure', measured,
 }) {
   const t = (key) => translate(dict, dictTheme, key);
   const set = (key) => (v) => commitField(shape, key, v, onUpdate);
@@ -76,15 +112,25 @@ export function MeasurePropertySheet({
           onCommit={(v) => commitField(shape, 'angleDeg', wrap360(v), onUpdate)}
           quickActions={angleActs('angleDeg', shape.angleDeg)} />}
       <NumberField {...B.limit} label={t('value')} value={shape.value}
-        onCommit={set('value')} tweak={limitTweak} />
+        onCommit={set('value')}
+        quickActions={<TargetActions measured={measured} value={shape.value}
+          onCommit={set('value')} tweak={limitTweak} />} />
       <NumberField {...B.limit} label={t('USL')} value={shape.USL}
-        onCommit={set('USL')} tweak={limitTweak} />
+        onCommit={set('USL')}
+        quickActions={<LimitActions target={shape.value} value={shape.USL}
+          onCommit={set('USL')} tweak={limitTweak} />} />
       <NumberField {...B.limit} label={t('LSL')} value={shape.LSL}
-        onCommit={set('LSL')} tweak={limitTweak} />
+        onCommit={set('LSL')}
+        quickActions={<LimitActions target={shape.value} value={shape.LSL}
+          onCommit={set('LSL')} tweak={limitTweak} />} />
       <NumberField {...B.limit} label={t('UCL')} value={shape.UCL}
-        onCommit={set('UCL')} tweak={limitTweak} />
+        onCommit={set('UCL')}
+        quickActions={<LimitActions target={shape.value} value={shape.UCL}
+          onCommit={set('UCL')} tweak={limitTweak} />} />
       <NumberField {...B.limit} label={t('LCL')} value={shape.LCL}
-        onCommit={set('LCL')} tweak={limitTweak} />
+        onCommit={set('LCL')}
+        quickActions={<LimitActions target={shape.value} value={shape.LCL}
+          onCommit={set('LCL')} tweak={limitTweak} />} />
     </Section>
 
     {/* Back-side limit set (toggle + nested copy) */}

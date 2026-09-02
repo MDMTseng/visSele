@@ -3465,8 +3465,20 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
       const PSheetMod = getShapeModule(edit_tar.type);
       const PSheet = PSheetMod && PSheetMod.PropertySheet;
       if (PSheet) {
+        // WHAT THE MACHINE JUST MEASURED, for the fields that want to be set
+        // from it rather than typed. Read from the report rather than from the
+        // shape: the shape carries the DEF's target, and the two must not be
+        // confused. Absent until a CHECK has run, and then the button that uses
+        // it simply does not offer itself.
+        const _measured = (() => {
+          const j = GetObjElement(edit_info, ['inspReport', 'reports', 0, 'judgeReports']);
+          if (!Array.isArray(j)) return undefined;
+          const hit = j.find((e) => e && e.id === edit_tar.id);
+          return (hit && Number.isFinite(hit.value)) ? hit.value : undefined;
+        })();
         UIArr.push(<PSheet
           key="propertySheet"
+          measured={_measured}
           shape={edit_tar}
           shapeList={shape_list}
           dict={DICT}
