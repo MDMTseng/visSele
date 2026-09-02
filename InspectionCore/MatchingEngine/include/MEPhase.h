@@ -25,7 +25,12 @@
 namespace mephase {
 
 static const int PHASE_MAX      = 12;
-static const int PHASE_NAME_MAX = 20;
+// Long enough for "<phase>/<name>" at the lengths actually used. A name that
+// does not fit is truncated on the way in AND on the way out (see slot()), so
+// it still finds itself -- but two keys that differ only past the limit would
+// then be the same counter, which is worth knowing about rather than
+// discovering as a wrong number.
+static const int PHASE_NAME_MAX = 32;
 
 // Timers (ms, accumulated over the frame).
 int    slot(const char *name);        // claim/find; -1 when full

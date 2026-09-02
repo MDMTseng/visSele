@@ -20,13 +20,30 @@ double nowMs()
   return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
 }
 
+// COMPARE WHAT WILL BE STORED, NOT WHAT WAS PASSED.
+//
+// The names are kept in fixed buffers, so a long one is truncated on the way
+// in. Comparing the full string against the truncated copy means such a name
+// never matches itself: every call claimed a FRESH slot until the table was
+// full, and after that the measurement silently vanished. Found on
+// "measure/spcv_samp_min" -- 21 characters against a 20-byte buffer -- which
+// reported an average of 5.3 for a quantity that is ~5800 every frame.
+//
+// Truncating the lookup key the same way makes it idempotent at any length.
+static void fit(char *dst, const char *src)
+{
+  snprintf(dst, PHASE_NAME_MAX, "%s", src);
+}
+
 int slot(const char *n)
 {
   if (n == 0) return -1;
+  char key[PHASE_NAME_MAX];
+  fit(key, n);
   for (int i = 0; i < n_; i++)
-    if (strncmp(name_[i], n, PHASE_NAME_MAX) == 0) return i;
+    if (strcmp(name_[i], key) == 0) return i;
   if (n_ >= PHASE_MAX) return -1;
-  snprintf(name_[n_], PHASE_NAME_MAX, "%s", n);
+  snprintf(name_[n_], PHASE_NAME_MAX, "%s", key);
   ms_[n_] = 0.0;
   return n_++;
 }
@@ -36,10 +53,12 @@ void add(int s, double ms) { if (s >= 0 && s < PHASE_MAX) ms_[s] += ms; }
 int countSlot(const char *n)
 {
   if (n == 0) return -1;
+  char key[PHASE_NAME_MAX];
+  fit(key, n);          // see slot(): the stored form is what must be compared
   for (int i = 0; i < cn_; i++)
-    if (strncmp(cname_[i], n, PHASE_NAME_MAX) == 0) return i;
+    if (strcmp(cname_[i], key) == 0) return i;
   if (cn_ >= COUNT_MAX) return -1;
-  snprintf(cname_[cn_], PHASE_NAME_MAX, "%s", n);
+  snprintf(cname_[cn_], PHASE_NAME_MAX, "%s", key);
   cval_[cn_] = 0.0;
   return cn_++;
 }
@@ -65,7 +84,7 @@ void count(const char *n, double v)
 {
   if (n == 0) return;
   const char *ph = currentPhase();
-  char key[PHASE_NAME_MAX * 2];
+  char key[PHASE_NAME_MAX * 2];   // countSlot truncates; this only has to hold it
   if (ph[0]) snprintf(key, sizeof(key), "%s/%s", ph, n);
   else       snprintf(key, sizeof(key), "%s", n);
   countAdd(countSlot(key), v);

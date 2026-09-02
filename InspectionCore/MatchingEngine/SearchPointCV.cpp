@@ -83,6 +83,17 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   }
   mephase::count("spcv_scan", 1);
   mephase::count("spcv_samp", (double)nS * (double)nP);
+  // Where an early exit COULD have stopped, counted before writing one.
+  //
+  // This is a first-hit search that samples the entire band before looking at
+  // any of it. Scanning the perp axis from the near end and stopping once the
+  // answer is bracketed is the obvious optimisation -- but it needs the global
+  // maximum gone, i.e. edge.rel_strength = 0, and it is a rewrite of a
+  // numerically delicate loop. So the saving is measured first, with the answer
+  // the scan actually produced, and the loop is left alone until the number
+  // says it is worth the risk. See mephase::count in Caliper.cpp for the same
+  // discipline applied to the line band.
+  const int spcv_nS = nS, spcv_nP = nP;
 
   float cs = (nS - 1) * 0.5f;            // row -> searchCoord (cs - i)
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
@@ -91,6 +102,16 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   int gW = gray.cols, gH = gray.rows;
   cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
   cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
+  // GATHER vs SCAN, because they answer different questions.
+  //
+  // An early exit along the perp axis only saves the part of the work that is
+  // proportional to how far it scans. If the cost is the GATHER -- a bilinear
+  // remap plus a backlight-factor lookup per sample, on rotated coordinates
+  // that touch the source image all over -- then stopping early saves it. If
+  // the cost is the SCAN, a fused Sobel over a band small enough to sit in L1,
+  // then stopping early saves almost nothing and the rewrite is not worth its
+  // risk. Nobody knew which, so it is measured before it is optimised.
+  { mephase::Timer _g("sp_gather");
   for (int i = 0; i < nS; i++)
   {
     float searchCoord = cs - i;
@@ -108,12 +129,18 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
         continue;
       }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
+      // The backlight factor already costs nothing when there is no calibration
+      // to apply: sampleBackLightFactor_ImgCoord returns 1 on a NaN exposure.
+      // Measured on this bench, which has none -- gather 0.64 ms with it and
+      // 0.63/0.64 without, i.e. inside the noise. On a station that IS
+      // calibrated, factorSampling() runs per sample and its cost is unmeasured.
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       // !(v > 0) catches NaN as well as negatives: the backlight factor is
       // NaN outside the calibration grid, and casting a NaN float to
       // unsigned char is UB, not "some grey value".
       d[j] = !(v > 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
     }
+  }
   }
 
   // FUSED PASS: per interior search row, walk the contiguous perp line once. Gradient along
@@ -148,6 +175,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   std::vector<float> eline(nP);
   std::vector<float> eraw(outPeaks ? nP : 0);
   float maxPeak = 0;
+  mephase::Timer _sc("sp_scan");
   for (int i = 1; i < nS - 1; i++)
   {
     const unsigned char *r0 = g.ptr<unsigned char>(i-1), *r1 = g.ptr<unsigned char>(i), *r2 = g.ptr<unsigned char>(i+1);
@@ -225,6 +253,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     for (const SPEdgePt &c : candRaw)
     { outPeaks->pos.push_back(c.perpCoord + cp); outPeaks->str.push_back(c.peak); }
   }
+  _sc.stop();
   if (cand.empty()) return false;
 
   // STRENGTH GATE, relative to the strongest peak in the window.
@@ -309,6 +338,14 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       for (auto &e: eps){ acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e.searchCoord), acvVecMult(perp, e.perpCoord))); fprintf(cf, "EDGE,%.0f,%.0f,%.2f,%.2f\n", pt.x, pt.y, ep.x, ep.y); }
       fclose(cf);
     }
+  }
+  {
+    // Columns needed to bracket the answer: everything up to the first hit,
+    // plus the consider band it averages over, plus the two-column lag any
+    // 3x3-based scan carries.
+    const double needed = (double)(pMin + cp) + (double)considerRange + 2.0;
+    const double cols = needed < 3 ? 3 : (needed > spcv_nP ? spcv_nP : needed);
+    mephase::count("spcv_samp_min", (double)spcv_nS * cols);
   }
   if (outPt) *outPt = acvVecAdd(pt, acvVecAdd(acvVecMult(s, eS), acvVecMult(perp, eP)));
   if (outW) *outW = (float)Ws;
