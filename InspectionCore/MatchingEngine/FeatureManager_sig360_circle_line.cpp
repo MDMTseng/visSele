@@ -1231,6 +1231,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         break;
       }
       float edgeSuppress = def.edge_min_strength;
+      int relMoved = 0;
 
       // include_range is an OPTIONAL band: absent means the step is not
       // applied, and an explicit 0 means the same thing said out loud. Both
@@ -1245,7 +1246,24 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            includeRangePx, alphaKeep,
                            eT.getBacpac(),
                            &out, &str, def.id, &rep.cal_hits, &spClipped,
-                           DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr);
+                           DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
+                           def.rel_strength, &relMoved);
+      // SAY WHEN THE RELATIVE RULE IS THE ONE DECIDING.
+      //
+      // relMoved is set when the nearest candidate that clears min_strength is
+      // NOT the one that was measured -- i.e. the answer came from
+      // rel_strength, not from the def's own floor. That is worth knowing
+      // because rel_strength is relative to whatever else is in the window: it
+      // moves when a neighbour or a burr arrives, and the measured point can
+      // move with it. A def in that state is one edge-profile session away from
+      // not being.
+      if (relMoved > 0)
+        LOGW_EVERY_N(100, "search_point id=%d: the answer came from "
+                          "edge.rel_strength (%.2f), not from min_strength "
+                          "(%.0f) -- %d nearer candidate(s) cleared the floor "
+                          "and were dropped by the relative rule. Set the floor "
+                          "against the edge profile.",
+                     def.id, def.rel_strength, edgeSuppress, relMoved);
       // Lens correction (full-image px). A search point is a single robust
       // centroid (no line/circle fit), so undistorting the final point is the
       // exact lens correction for it. The per-column display hits are
@@ -1562,6 +1580,9 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.include_range = 0;
   searchPoint.manual_offset = 0;
   searchPoint.alpha_keep = 0;
+  // Today's hard-coded rule, as the default. A def that says nothing keeps
+  // exactly the behaviour it has always had.
+  searchPoint.rel_strength = 0.40f;
   searchPoint.edge_set = 0;
   {
     char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
@@ -1591,6 +1612,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("include_range", featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE, &searchPoint.include_range);
       take   ("manual_offset", featureDef_searchPoint::EDGE_SET_MANUAL_OFFSET, &searchPoint.manual_offset);
       take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
+      take   ("rel_strength",  featureDef_searchPoint::EDGE_SET_REL_STRENGTH,  &searchPoint.rel_strength);
       // mask_dilate is gone (2026-08-26). Say so rather than ignoring it: a def
       // that carries the key was tuned by somebody who believed it did
       // something, and silently dropping it is how a knob becomes folklore.

@@ -35,7 +35,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outW, int spId,
                      std::vector<CaliperHit> *outHits, bool *outClipped,
-                     SearchPointPeaks *outPeaks)
+                     SearchPointPeaks *outPeaks, float relStrength,
+                     int *outRelMoved)
 {
   if (outClipped) *outClipped = false;
   if (gray.empty()) return false;
@@ -226,8 +227,13 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   }
   if (cand.empty()) return false;
 
-  // STRENGTH GATE: keep only edges whose peak gradient is a strong fraction of the strongest.
-  const float peakFrac = 0.40f;
+  // STRENGTH GATE, relative to the strongest peak in the window.
+  //
+  // A number rather than a constant since 2026-09-02, defaulting to the 0.40 it
+  // was hard-coded to. 0 leaves min_strength as the only floor -- which is
+  // where this should end up, once floors are set against the edge profile
+  // instead of guessed. See featureDef_searchPoint::rel_strength.
+  const float peakFrac = (relStrength > 0) ? relStrength : 0.0f;
   float peakThresh = maxPeak * peakFrac;
   std::vector<SPEdgePt> eps;
   for (auto &c : cand) if (c.peak >= peakThresh) eps.push_back(c);
@@ -239,6 +245,16 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // extreme. Average the edges within `considerRange` of the top (legacy reng), peak-weighted.
   float pMin = 1e9f;
   for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;   // top along perpendicular
+  // How much of that answer came from the relative rule: candidates that
+  // cleared min_strength (every entry of `cand` has, by construction) and sit
+  // NEARER than the one chosen, but did not survive peakThresh. Zero means the
+  // def's own floor would have produced the same point.
+  if (outRelMoved)
+  {
+    int n = 0;
+    for (auto &c : cand) if (c.perpCoord < pMin && c.peak < peakThresh) n++;
+    *outRelMoved = n;
+  }
   if (dbg) {
     float pa=1e9,pb=-1e9,sa=1e9,sb=-1e9; for(auto&e:eps){pa=std::min(pa,e.perpCoord);pb=std::max(pb,e.perpCoord);sa=std::min(sa,e.searchCoord);sb=std::max(sb,e.searchCoord);}
     fprintf(stderr,"[SPCV] pt=(%.0f,%.0f) eps=%zu perp[%.0f,%.0f] search[%.0f,%.0f] perpTop=%.0f\n",pt.x,pt.y,eps.size(),pa,pb,sa,sb,pMin);

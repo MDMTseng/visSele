@@ -44,6 +44,18 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // and the answer is a best-effort over whatever was left --
                      // which is exactly what a measurement must not silently be.
                      bool *outClipped = nullptr,
-                     SearchPointPeaks *outPeaks = nullptr);
+                     SearchPointPeaks *outPeaks = nullptr,
+                     // relStrength: keep candidates at or above this fraction of
+                     // the strongest peak in the window, then take the nearest
+                     // survivor. 0.40 is what this was hard-coded to; 0 turns it
+                     // off and leaves min_strength as the only floor. See
+                     // featureDef_searchPoint::rel_strength for why it is a
+                     // number now rather than a constant.
+                     float relStrength = 0.40f,
+                     // Set to the number of candidates that cleared
+                     // min_strength, sat NEARER than the one measured, and were
+                     // dropped by relStrength -- i.e. how much of the answer
+                     // came from the relative rule rather than the def's floor.
+                     int *outRelMoved = nullptr);
 
 #endif // SEARCH_POINT_CV_H

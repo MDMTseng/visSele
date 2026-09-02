@@ -262,6 +262,26 @@ typedef struct featureDef_searchPoint{
   // NO LONGER "0 means use the tuned default" -- see edge_set below. 0 is a
   // value the def can mean, and it is honoured.
   float alpha_keep;
+  //   rel_strength: THE RULE THAT USED TO HAVE NO NAME.
+  //
+  //     search_point_cv keeps candidates whose peak is at least this fraction
+  //     of the STRONGEST peak anywhere in the window, then takes the nearest
+  //     survivor. It was a hard-coded 0.40 with no setting and no display, and
+  //     it is load-bearing: measured on the 10155 def, three of nine search
+  //     points are held on their edge by it alone -- one of them 13.8px (192um)
+  //     from the nearest candidate that min_strength admits.
+  //
+  //     That is a threshold relative to whatever else happens to be in the
+  //     window, so a neighbouring part or a burr raises it and the measured
+  //     point can move to a different edge with nothing said. It should not
+  //     exist once min_strength is set against real evidence -- which is what
+  //     the edge-profile panel is for -- but deleting it would silently change
+  //     every def in the field that is currently leaning on it.
+  //
+  //     So it becomes a number: default 0.40, exactly today's behaviour, and 0
+  //     turns it off. Removal is now a per-def decision somebody makes on
+  //     purpose, and the core says out loud when a def is relying on it.
+  float rel_strength;      // default 0.40
   // WHICH of the edge knobs the def actually said something about.
   //
   // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
@@ -293,6 +313,7 @@ typedef struct featureDef_searchPoint{
     EDGE_SET_INCLUDE_RANGE= 1u << 1,
     EDGE_SET_MANUAL_OFFSET= 1u << 2,
     EDGE_SET_ALPHA_KEEP   = 1u << 4,
+    EDGE_SET_REL_STRENGTH = 1u << 6,
     // 1u << 5 was EDGE_SET_MASK_DILATE. Left as a hole rather than reused: a
     // new knob taking that bit would read as "set" on nothing, but the number
     // is in dumps and logs going back months and a reused bit makes those lie.
