@@ -95,23 +95,23 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
       onChange={(v) => update({ direction: v ? -1 : 1 })} />
     {!lockCaliper &&
       <DropdownField label={t('locating')} value={shape.locating || 'contour'}
-        options={['contour', 'caliper']} onChange={flipLocating} />}
+        options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)} onChange={flipLocating} />}
     <DropdownField label={t('fit_mode') || 'fit_mode'} value={shape.fit_mode || 'ls'}
       options={['ls', 'outer', 'inner']}
       onChange={(fit_mode) => update({ fit_mode })} />
 
     {isCaliper && <>
-      <Section label="caliper">
-        <NumberField label="count" value={shape.caliper?.count} step={1}
+      <Section label={t('caliper')}>
+        <NumberField label={t('count')} value={shape.caliper?.count} step={1}
           onCommit={(count) => updateSub('caliper', { count })}
           tweak={{ add: [1] }} />
         <NumberField label={t('width')} value={shape.caliper?.width}
           onCommit={(width) => updateSub('caliper', { width })}
           tweak={defaultTweak} />
-        <NumberField label="min_inliers" value={shape.caliper?.min_inliers} step={1}
+        <NumberField label={t('min_inliers')} value={shape.caliper?.min_inliers} step={1}
           onCommit={(min_inliers) => updateSub('caliper', { min_inliers })}
           tweak={{ add: [1] }} />
-        <NumberField label="max_error" value={shape.caliper?.max_error}
+        <NumberField label={t('max_error')} value={shape.caliper?.max_error}
           onCommit={(max_error) => updateSub('caliper', { max_error })}
           tweak={defaultTweak} />
         {/* Same as the line sheet: said beside the fields that cause it,
@@ -124,18 +124,18 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
           </div>
         )}
       </Section>
-      <Section label="edge">
-        <DropdownField label="method" value={shape.edge?.method}
-          options={EDGE_METHODS}
+      <Section label={t('edge')}>
+        <DropdownField label={t('method')} value={shape.edge?.method}
+          options={EDGE_METHODS} optionLabel={(v) => t('opt_' + v)}
           onChange={(method) => updateSub('edge', { method })} />
-        <DropdownField label="polarity" value={shape.edge?.polarity}
-          options={EDGE_POLARITIES}
+        <DropdownField label={t('polarity')} value={shape.edge?.polarity}
+          options={EDGE_POLARITIES} optionLabel={(v) => t('opt_' + v)}
           onChange={(polarity) => updateSub('edge', { polarity })} />
         {shape.edge?.method === 'nth' &&
-          <NumberField label="nth" value={shape.edge?.nth} step={1}
+          <NumberField label={t('nth')} value={shape.edge?.nth} step={1}
             onCommit={(nth) => updateSub('edge', { nth })}
             tweak={{ add: [1] }} />}
-        <NumberField label="min_strength" value={shape.edge?.min_strength}
+        <NumberField label={t('min_strength')} value={shape.edge?.min_strength}
           onCommit={(min_strength) => updateSub('edge', { min_strength })}
           tweak={defaultTweak} />
         {onProbeEdges && <EdgeProfileView

@@ -11,6 +11,52 @@ export default {
     },
 
     _:{
+        // Primitive-editing vocabulary, shared by every property sheet.
+        //
+        // These fields were on screen in English -- locating, min_strength,
+        // include_range, manual_offset -- on a machine operated in Chinese. A
+        // setting nobody can read is a setting nobody adjusts, which is how
+        // min_strength ended up at whatever the default was on every def in the
+        // field.
+        //
+        // Here rather than under line/arc/search_point: they mean the same thing
+        // in all three, and three copies is three chances to drift.
+        locating:"定位方式",
+        caliper:"卡尺",
+        edge:"邊緣",
+        count:"卡尺數",
+        min_inliers:"最少有效點",
+        max_error:"容許殘差",
+        method:"選邊規則",
+        polarity:"邊緣明暗",
+        nth:"第幾個",
+        min_strength:"邊緣強度門檻",
+        include_range:"納入範圍",
+        manual_offset:"人工偏移",
+        rel_strength:"相對強度門檻",
+        // Dropdown VALUES. Prefixed because the stored value stays English and
+        // some of them collide with a field name ("nth" is both a rule and a
+        // field).
+        opt_contour:"輪廓",
+        opt_caliper:"卡尺",
+        opt_strongest:"最強",
+        opt_first:"最近",
+        opt_last:"最遠",
+        opt_middle:"中間",
+        opt_nth:"第 n 個",
+        // WHAT THE SCAN CROSSES, not a word for a sign.
+        //
+        // "rising"/"falling" name the sign of the gradient, which is a fact
+        // about the arithmetic. What the operator can check against the picture
+        // is the brightness change along the search: on this backlit station the
+        // part is dark on a bright field, so the silhouette's outer edge is the
+        // white-to-black one. Deliberately no 外緣/內緣 note -- the polarity is
+        // relative to the SEARCH DIRECTION, so which side is "outer" depends on
+        // which way the arrow points, and a hint that is right half the time is
+        // worse than the transition stated plainly.
+        opt_any:"不限",
+        opt_rising:"黑→白",
+        opt_falling:"白→黑",
         ERROR:"錯誤",
         ERROR_INFO:"系統訊息",
         WARNING:"警告",

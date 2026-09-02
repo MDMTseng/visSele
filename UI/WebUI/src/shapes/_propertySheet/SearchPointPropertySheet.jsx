@@ -99,7 +99,7 @@ export function SearchPointPropertySheet({
       checked={!!shape.search_far}
       onChange={(v) => update({ search_far: v })} />
     <DropdownField label={t('locating')} value={shape.locating || 'contour'}
-      options={['contour', 'caliper']} onChange={flipLocating} />
+      options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)} onChange={flipLocating} />
     <SwitchField label={t('locating_anchor')}
       checked={!!shape.locating_anchor}
       onChange={(v) => update({ locating_anchor: v })} />
@@ -107,17 +107,17 @@ export function SearchPointPropertySheet({
       checked={!!shape.anchor_corner}
       onChange={(v) => update({ anchor_corner: v })} />}
 
-    {shape.locating === 'caliper' && <Section label="edge">
-      <DropdownField label="method" value={shape.edge?.method}
-        options={EDGE_METHODS}
+    {shape.locating === 'caliper' && <Section label={t('edge')}>
+      <DropdownField label={t('method')} value={shape.edge?.method}
+        options={EDGE_METHODS} optionLabel={(v) => t('opt_' + v)}
         onChange={(method) => updateSub('edge', { method })} />
-      <DropdownField label="polarity" value={shape.edge?.polarity}
-        options={EDGE_POLARITIES}
+      <DropdownField label={t('polarity')} value={shape.edge?.polarity}
+        options={EDGE_POLARITIES} optionLabel={(v) => t('opt_' + v)}
         onChange={(polarity) => updateSub('edge', { polarity })} />
-      <NumberField label="nth" value={shape.edge?.nth} step={1}
+      <NumberField label={t('nth')} value={shape.edge?.nth} step={1}
         onCommit={(nth) => updateSub('edge', { nth })}
         tweak={{ add: [1] }} />
-      <NumberField label="min_strength" value={shape.edge?.min_strength}
+      <NumberField label={t('min_strength')} value={shape.edge?.min_strength}
         onCommit={(min_strength) => updateSub('edge', { min_strength })}
         tweak={defaultTweak} />
       {onProbeEdges && <EdgeProfileView
@@ -128,10 +128,10 @@ export function SearchPointPropertySheet({
         onOffset={(manual_offset) => updateSub('edge',
           { manual_offset: Number(manual_offset.toFixed(5)) })}
         onProbe={runProbe} />}
-      <NumberField label="include_range" value={shape.edge?.include_range}
+      <NumberField label={t('include_range')} value={shape.edge?.include_range}
         onCommit={(include_range) => updateSub('edge', { include_range })}
         tweak={defaultTweak} />
-      <NumberField label="manual_offset" value={shape.edge?.manual_offset}
+      <NumberField label={t('manual_offset')} value={shape.edge?.manual_offset}
         onCommit={(manual_offset) => updateSub('edge', { manual_offset })}
         tweak={defaultTweak} />
     </Section>}

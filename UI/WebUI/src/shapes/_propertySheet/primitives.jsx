@@ -210,10 +210,15 @@ export function SwitchField({ label, checked, onChange }) {
 // ───── DropdownField ─────────────────────────────────────────────────────
 // Single-select list. `value` is the current selection; clicking shows a
 // menu of `options`; onChange is called with the new value.
-export function DropdownField({ label, value, options, onChange }) {
+// optionLabel: how a stored value is SHOWN. The value written to the def stays
+// English -- it is a wire format -- while the operator reads the transition or
+// the rule in their own language. Identity by default, so a caller that has
+// nothing to translate is unchanged.
+export function DropdownField({ label, value, options, onChange, optionLabel }) {
+  const show = optionLabel || ((v) => v);
   const menu = (
     <Menu onClick={(ev) => onChange(options[ev.key])}>
-      {options.map((opt, idx) => <Menu.Item key={idx}>{opt}</Menu.Item>)}
+      {options.map((opt, idx) => <Menu.Item key={idx}>{show(opt)}</Menu.Item>)}
     </Menu>
   );
   return <Row label={label}>
@@ -226,7 +231,7 @@ export function DropdownField({ label, value, options, onChange }) {
         minWidth: 96, gap: 6,
       }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {value ?? '—'}
+          {value === undefined || value === null ? '—' : show(value)}
         </span>
         <CaretDownOutlined />
       </a>
