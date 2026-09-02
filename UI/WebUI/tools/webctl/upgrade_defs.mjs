@@ -31,6 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import WebSocket from 'ws';
+import JSum from 'jsum';
 
 const args = process.argv.slice(2);
 const targets = [];
@@ -81,6 +82,18 @@ ws.binaryType = 'arraybuffer';
 let pg = 1;
 const bail = (why, code = 1) => { console.error(why); try { ws.close(); } catch {} process.exit(code); };
 ws.on('error', (e) => bail('ws: ' + e.message));
+
+// The digest the editor will recompute on load. Must match
+// InspectionEditorLogic.rootDefInfoLoading exactly.
+function defSha1(featureSet) {
+  const clone = JSON.parse(JSON.stringify(featureSet));
+  clone.forEach((feature) => {
+    Object.keys(feature)
+      .filter((k) => k.startsWith('__'))
+      .forEach((k) => { delete feature[k]; });
+  });
+  return JSum.digest(clone, 'sha1', 'hex');
+}
 
 // The SBM entry inside one featureSet, or null when this def has no shape
 // localiser at all (every def in the shared folder is still sig360 today).
@@ -159,6 +172,18 @@ ws.on('message', (d) => {
     return next();
   }
 
+  // A def whose stored hash does not match its own contents is already in a
+  // state the editor refuses. Re-stamping it here would make it open again
+  // while hiding whatever caused the mismatch, so leave it for a person.
+  if (cur.def.featureSet_sha1 !== undefined
+      && defSha1(cur.def.featureSet) !== cur.def.featureSet_sha1) {
+    console.log('FAIL');
+    report.failed.push([cur.p,
+      'its stored featureSet_sha1 already does not match its contents -- this def '
+      + 'is refused by the editor as it stands. Not re-stamping it here.']);
+    return next();
+  }
+
   // THE CHECK. Coarse features must come back exactly as the def already had
   // them; anything else means this def would start measuring differently, and
   // that is a decision for a person, not for a batch script.
@@ -176,6 +201,24 @@ ws.on('message', (d) => {
   const sbm = sbmOf(out.featureSet[0]);
   if (sbm.__shape_cache) delete sbm.__shape_cache;
   sbm.shape_cache = fresh;
+
+  // RE-STAMP featureSet_sha1, or the def becomes unopenable.
+  //
+  // The editor hashes the featureSet on load and HARD BLOCKS a mismatch -- "a
+  // failed integrity check means the def must NOT be trusted for inspection",
+  // which is the right call and exactly what a file edited behind its own back
+  // looks like. Only keys starting with `__` at the TOP level of each
+  // featureSet entry are excluded; inherentfeatures is an ordinary key, so the
+  // cache inside @__SBM_INFO__ is hashed and rewriting it moves the digest.
+  //
+  // The first version of this script did not do this. It reported eight defs
+  // upgraded, every one of them verified as reproducing its coarse features
+  // exactly -- and every one of them refused by the editor afterwards. The
+  // check it did have was measuring the right thing and the wrong layer.
+  //
+  // Same rule as InspectionEditorLogic.rootDefInfoLoading, deliberately
+  // duplicated rather than approximated: same library, same strip, same order.
+  out.featureSet_sha1 = defSha1(out.featureSet);
 
   const nWin = (fresh.roi.at || []).length;
   if (dry) {

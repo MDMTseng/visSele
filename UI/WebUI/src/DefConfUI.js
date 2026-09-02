@@ -1338,6 +1338,14 @@ let sbm2Opener = null;
 // every other setting carry over untouched. def_image_reg is already stored at
 // save; reference_image is emitted from the def name. Re-SAVE afterwards to
 // persist.
+// Open the SBM studio without changing anything first. The migration helper
+// below also opens it, but it has a def to convert on the way; a def that is
+// already shape_based and merely stored in the old format needs the studio and
+// nothing else.
+export function openShapeStudio() {
+  setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
+}
+
 export function migrateDefToShapeBased(dispatch, edit_info) {
   dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
   dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
@@ -4311,6 +4319,61 @@ class APP_DEFCONF_MODE extends React.Component {
               })}>升級</Button>
           </div>}
 
+        {/* SHAPE_BASED, BUT STORED THE OLD WAY.
+            A def whose features were saved before the format carried its own
+            ROI windows keeps the coarse feature levels and nothing else. The
+            core no longer loads that -- it refuses and asks for a regenerate --
+            but without this the operator finds out when the machine will not
+            run, which is the worst moment and the least informative place.
+            One key tells them apart: a cache written before the change has no
+            `roi`. edit_info.__shape_cache is the def's own, carried in by the
+            load (InspectionEditorLogic reads it out of @__SBM_INFO__), so this
+            is what the file says and not what some later step recomputed. */}
+        {/* NOT gated on the lock, unlike the migration banner above.
+            That one is hidden under a lock because pressing it dispatches
+            DefConf actions the reducer would drop -- a button that quietly does
+            nothing. This one states a fact about the FILE: the machine will not
+            load it. That is true whether or not the def is locked for editing,
+            and it is exactly what someone looking at a locked recipe needs to
+            know. The button is the part that needs an unlocked def, so the
+            button is what the lock hides. */}
+        {substate === UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL
+          && defModelPath
+          && (this.props.edit_info.locating_engine || 'sig360') === 'shape_based'
+          && this.props.edit_info.__shape_cache
+          && !this.props.edit_info.__shape_cache.roi &&
+          <div key="oldfmt" data-testid="oldfmt-banner" style={{
+                 position: 'absolute', top: 44, left: '50%', transform: 'translateX(-50%)',
+                 zIndex: 20, display: 'flex', alignItems: 'center', gap: 10,
+                 background: '#a8071a', color: '#fff', borderRadius: 4,
+                 padding: '6px 12px', fontSize: 13,
+                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>
+            <span>這個 def 是舊格式,機器不會載入</span>
+            {this.props.defConf_lock_level != 0
+              ? <span style={{ opacity: 0.85 }}>（解鎖後可重新產生）</span>
+              : <Button size="small" danger type="primary" data-testid="oldfmt-def"
+              style={{ background: '#fff', color: '#a8071a', borderColor: '#fff' }}
+              onClick={() => Modal.confirm({
+                title: '重新產生特徵點（舊格式）',
+                width: 540,
+                content: (<div style={{ lineHeight: 1.9 }}>
+                  <div>這個 def 存的是<b>舊格式的特徵</b>:只有粗比對用的特徵層,
+                    沒有 ROI 精修要用的視窗和選點。</div>
+                  <div style={{ marginTop: 8 }}>舊版核心會載入它,但<b>只做粗比對</b> ——
+                    分數一樣高、報告看起來一樣正常,少掉的只有精度。新版核心
+                    <b>直接拒絕載入</b>,所以這台機器不會用這個 def 跑。</div>
+                  <div style={{ marginTop: 8 }}>接著會打開「SBM定位設定」,在裡面按
+                    <b>生成特徵點</b>,然後<b>重新存檔</b>。存好之後 def 會自己帶著需要的
+                    像素,連參考影像都不用放在旁邊。</div>
+                  <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                    整批轉換用 tools/webctl/upgrade_defs.mjs —— 它走的是同一條路,
+                    而且會檢查重抽的特徵跟原本存的一致才寫回。</div>
+                </div>),
+                okText: '開始設定', cancelText: '先不要',
+                onOk: () => this.props.ACT_Open_Shape_Studio(),
+              })}>重新產生</Button>}
+          </div>}
+
 
 
       </div>
@@ -4337,6 +4400,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_DefConf_Lock_Level_Update: (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) },
 
     ACT_Migrate_To_Shape: (edit_info) => migrateDefToShapeBased(dispatch, edit_info),
+    ACT_Open_Shape_Studio: () => openShapeStudio(),
     ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
     ACT_WS_SEND_BPG: (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args)),
     ACT_ClearImage: () => { dispatch(UIAct.EV_WS_Image_Update(null)) },
