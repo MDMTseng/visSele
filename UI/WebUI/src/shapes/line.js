@@ -18,6 +18,18 @@ export const type = 'line';
 // switching to "caliper" lazy-inits them with the core's defaults (count=30).
 export const fields = {
   vertex_touch_searching: { editor: 'switch', default: false, normalize: (v) => v === true },
+  // Envelope fit: the DIRECTION is always least squares, only the OFFSET moves
+  // -- the line slides along its own normal onto the extreme inlier. Sibling of
+  // the arc's fit_mode, where the centre stays LS and only the radius becomes an
+  // envelope. Caliper mode only; the contour path has vertex_touch_searching.
+  // Core: featureDef_line.fit_mode.
+  fit_mode: {
+    editor: (ctx) => (ctx.edit_tar.locating === 'caliper')
+      ? { __OBJ__: ctx.renderMethods.Dropdown_List, list: ['ls', 'front', 'back'] }
+      : undefined,
+    default: 'ls',
+    normalize: (v) => (v === 'front' || v === 'back') ? v : 'ls',
+  },
   locating: {
     editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['contour', 'caliper'] }),
     default: 'contour',

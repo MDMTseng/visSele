@@ -65,6 +65,11 @@ export default {
         opt_ls:"平均",
         opt_outer:"外包",
         opt_inner:"內包",
+        // The line's two envelope sides. Which one is "front" is fixed by the
+        // direction the def drew the line (p0->p1), so it is a thing to try and
+        // see rather than a thing to reason about from the words.
+        opt_front:"前凸點",
+        opt_back:"後凸點",
         ERROR:"錯誤",
         ERROR_INFO:"系統訊息",
         WARNING:"警告",

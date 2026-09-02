@@ -93,9 +93,19 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
     <NumberField label={t('margin')} value={shape.margin}
       onCommit={(margin) => update({ margin })}
       tweak={defaultTweak} />  {/* default: ×2 ÷2 ±0.1 ±0.01 */}
-    <SwitchField label={t('vertex_touch_searching')}
-      checked={shape.vertex_touch_searching}
-      onChange={(v) => update({ vertex_touch_searching: v })} />
+    {/* 凸點連線 is the CONTOUR path's envelope: it walks the contour for the
+        touching vertices. The caliper path has hits, not a contour, so the same
+        intent is served by sliding the fitted line onto its extreme hit -- and
+        offering a switch that the mode cannot honour is how a setting becomes
+        folklore. One or the other, never both. */}
+    {shape.locating !== 'caliper' &&
+      <SwitchField label={t('vertex_touch_searching')}
+        checked={shape.vertex_touch_searching}
+        onChange={(v) => update({ vertex_touch_searching: v })} />}
+    {shape.locating === 'caliper' &&
+      <DropdownField label={t('fit_mode')} value={shape.fit_mode || 'ls'}
+        options={['ls', 'front', 'back']} optionLabel={(v) => t('opt_' + v)}
+        onChange={(fit_mode) => update({ fit_mode })} />}
     {!lockCaliper &&
       <DropdownField label={t('locating')} value={shape.locating || 'contour'}
         options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)} onChange={flipLocating} />}

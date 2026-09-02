@@ -196,6 +196,19 @@ typedef struct featureDef_line{
   // Width/length/step are def-file mm; LineMatching_ReportGen converts them
   // to px (/= mmpp) before the matching engine consumes them.
   int locating;            // default 0
+  // ENVELOPE FIT: the DIRECTION is always least squares, only the OFFSET moves.
+  //
+  // 0 = ls      the fitted line, through the weighted centroid (unchanged)
+  // 1 = front   slid along its own normal until it touches the extreme inlier
+  //             on the normal's NEGATIVE side
+  // 2 = back    the same, on the positive side
+  //
+  // Same idea as featureDef_circle::fit_mode, where the centre stays least
+  // squares and only the radius becomes an envelope: a fit that follows the
+  // edge's direction but rests on the material rather than averaging through
+  // it. The normal is (-dir.y, dir.x) with dir oriented p0->p1, so which side
+  // is "front" is fixed by how the def drew the line.
+  int fit_mode;            // 0=ls, 1=front, 2=back
   int cal_count;           // # calipers along the line
   float cal_width;         // projection width (mm at def-level; px at use)
   float cal_length;        // search half-length across the edge (mm); <=0 => use initMatchingMargin

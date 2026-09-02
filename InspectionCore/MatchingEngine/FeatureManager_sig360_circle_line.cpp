@@ -1845,6 +1845,16 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   {
     char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) line.locating = 1;
+    line.fit_mode = 0;
+    {
+      char *fm = (char *)JFetch(line_obj, "fit_mode", cJSON_String);
+      if (fm)
+      {
+        if      (strcmp(fm, "front") == 0) line.fit_mode = 1;
+        else if (strcmp(fm, "back")  == 0) line.fit_mode = 2;
+        else                               line.fit_mode = 0;
+      }
+    }
     cJSON *calo = JFetch_OBJECT(line_obj, "caliper");
     if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", CALIPER_PARSE_DEFAULT_COUNT);
                 line.cal_width = JFetch_NUMBER_ex(calo, "width", CALIPER_PARSE_DEFAULT_WIDTH);
@@ -5204,6 +5214,29 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     // shifts their measures. Mirrors SingleMatching_line's target_vec dot-flip.
     acv_XY tdir = acvVecSub(lineDef.p1, lineDef.p0);
     if (r.dir.x * tdir.x + r.dir.y * tdir.y < 0) { r.dir.x = -r.dir.x; r.dir.y = -r.dir.y; }
+
+    // Envelope offset. The direction above is the least-squares one and stays
+    // that way; this only slides the line along its own normal until it rests
+    // on the extreme INLIER -- outliers are already rejected, and letting one
+    // define the envelope is how a speck of dirt becomes the measurement.
+    //
+    // Applied after the p0->p1 orientation on purpose: the normal, and so which
+    // side "front" means, follows the direction the def drew, not the sign the
+    // TLS solver happened to return.
+    if (lineDef.fit_mode != 0 && r.nInlier > 0)
+    {
+      const acv_XY n = { -r.dir.y, r.dir.x };
+      bool any = false; float ext = 0;
+      for (const auto &h : r.hits)
+      {
+        if (h.status != 2) continue;          // inliers only
+        const float d = (h.pt.x - r.anchor.x) * n.x + (h.pt.y - r.anchor.y) * n.y;
+        if (!any) { ext = d; any = true; }
+        else if (lineDef.fit_mode == 1) { if (d < ext) ext = d; }   // front = min
+        else                            { if (d > ext) ext = d; }   // back  = max
+      }
+      if (any) r.anchor = acvVecAdd(r.anchor, acvVecMult(n, ext));
+    }
 
     acv_XY anchor = acvVecAdd(r.anchor, off); // back to image coords
     Report.line.line.line_anchor = anchor;
