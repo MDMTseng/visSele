@@ -65,17 +65,20 @@ const readout = await ev(`(function(){
 })()`);
 console.log(readout);
 
-// What is asserted here is the LOCAL re-pick: the payload is ungated, so moving
+// Two things are asserted: the LOCAL re-pick (the payload is ungated, so moving
 // the threshold recounts which calipers would find their edge with no round
-// trip to the machine. That is the property the whole design rests on.
+// trip), and that the value lands on the shape.
 //
-// The commit onto the shape is NOT asserted, and the reason is the harness, not
-// the control: this suite selects the shape by dispatching into the store,
-// which bypasses ec_canvas -- and Shape_Set is emitted BY the canvas. Under the
-// same synthetic selection the property sheet's pre-existing min_strength field
-// does not write either, which is how that was established. Asserting it here
-// would fail for a reason that has nothing to do with the feature, and a test
-// that cries wolf is worse than the assertion is worth.
+// The second needs the def UNLOCKED. defConf_lock_level != 0 filters Shape_Set
+// out in the reducer, so with the lock on the slider redraws and writes
+// nothing -- and so does the property sheet's own min_strength field, which is
+// how that was first mistaken for a bug in this control.
+// Shape_Set is filtered while the def is locked; unlock before asserting that
+// anything lands.
+await ev(`window.__GP_STORE__.dispatch({ type: 'DefConf_Lock_Level_Update', data: 0 })`);
+await sleep(400);
+console.log('lock level    :', await ev(`window.__GP_STORE__.getState().UIData.defConf_lock_level`));
+
 async function setSlider(v) {
   await ev(`(function(){
     var s=document.querySelector('[data-testid="edge-profile-slider"]');
@@ -88,7 +91,10 @@ async function setSlider(v) {
   return ev(`(function(){
     var e=document.querySelector('[data-testid="edge-profile-plot"]');
     var st=window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList.find(function(s){return s.id===1;});
-    return 'pass='+(e?e.getAttribute('data-pass'):'?')+' shown='+(document.querySelector('[data-testid="edge-profile-slider"]')||{}).value;
+    var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
+    return 'pass='+(e?e.getAttribute('data-pass'):'?')
+         +' shown='+(document.querySelector('[data-testid="edge-profile-slider"]')||{}).value
+         +' shape='+(sh&&sh.edge&&sh.edge.min_strength);
   })()`);
 }
 console.log('slider -> 105 :', await setSlider(105));
@@ -110,3 +116,17 @@ await sleep(6000);
 const after = await hz();
 console.log(`msgHz  idle ${Number(idle).toFixed(2)}  during ${Number(during).toFixed(2)}  after ${Number(after).toFixed(2)}`);
 console.log(Number(after) <= Number(idle) + 1 ? 'OK: the stream stopped' : 'FAIL: still streaming');
+
+// 自動設定: a suggestion derived from the two numbers that bound the floor --
+// the weakest edge found and the strongest competing peak.
+const auto = await ev(`(function(){
+  var b=document.querySelector('[data-testid="edge-profile-auto"]');
+  if(!b) return 'no auto button';
+  var s=b.getAttribute('data-suggest'), c=b.getAttribute('data-clean');
+  b.click();
+  return 'suggest='+s+' cleanGap='+c;})()`);
+await sleep(500);
+console.log('auto          :', auto, '->', await ev(`(function(){
+  var e=document.querySelector('[data-testid="edge-profile-plot"]');
+  var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
+  return 'pass='+e.getAttribute('data-pass')+' shape='+(sh&&sh.edge&&sh.edge.min_strength);})()`));

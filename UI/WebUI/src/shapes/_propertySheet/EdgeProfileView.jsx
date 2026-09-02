@@ -63,13 +63,43 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     let peak = 0;
     for (const one of g) for (const v of one) if (Math.abs(v) > peak) peak = Math.abs(v);
     const n = g[0].length;
-    // Per-caliper: the strongest peak of the selected polarity. This is the
-    // number the floor is compared against, so it is what the readout counts.
-    const best = g.map((one) => {
-      const p = peaksOf(one, polarity);
-      return p.length ? Math.max(...p.map((q) => q.v)) : 0;
-    });
-    return { g, peak: peak || 1, n, best };
+    // Per caliper: the strongest peak of the selected polarity -- the one the
+    // core would pick -- and the strongest of the REST, which is what a floor
+    // set too low would let win instead.
+    const best = [], runner = [];
+    for (const one of g) {
+      const p = peaksOf(one, polarity).map((q) => q.v).sort((a, b) => b - a);
+      best.push(p.length ? p[0] : 0);
+      runner.push(p.length > 1 ? p[1] : 0);
+    }
+    // WHERE THE FLOOR BELONGS, from the two numbers that bound it.
+    //
+    //   signal = the WEAKEST edge the calipers actually found. Go above this
+    //            and a caliper stops finding its edge -- the floor may not.
+    //   noise  = the STRONGEST competing peak anywhere in the windows. Stay
+    //            below this and that peak can be picked instead, which is not a
+    //            missing measurement but a wrong one.
+    //
+    // The gap between them is the whole reason this panel exists, and the
+    // suggestion is the geometric mean of the two: scale-free, so it does not
+    // drift when the lighting or the lens changes the units, and it sits in
+    // proportion rather than at a fixed offset from either side.
+    //
+    // No gap means the answer is not "pick better" -- there is no threshold
+    // that separates them, and the honest suggestion is a floor that keeps
+    // every caliper working while the panel says the separation is poor.
+    const live = best.filter((b) => b > 0);
+    const signal = live.length ? Math.min(...live) : 0;
+    const noise = runner.length ? Math.max(...runner) : 0;
+    const clean = signal > 0 && signal > noise * 1.25;
+    let suggest = clean
+      ? Math.sqrt(signal * Math.max(noise, 1))
+      : signal * 0.5;
+    // Never above the weakest real edge: a suggestion that drops a caliper the
+    // moment it is applied is not a suggestion.
+    if (signal > 0) suggest = Math.min(suggest, signal * 0.85);
+    suggest = Math.max(0, Math.round(suggest));
+    return { g, peak: peak || 1, n, best, signal, noise, clean, suggest };
   }, [profile, polarity]);
 
   if (!model) {
@@ -86,7 +116,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     </div>;
   }
 
-  const { g, peak, n, best } = model;
+  const { g, peak, n, best, signal, noise, clean, suggest } = model;
   const x = (i) => PADL + (i / (n - 1)) * (W - PADL - 6);
   const y = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);   // 0 at the bottom
   const pass = best.filter((b) => b >= thr).length;
@@ -144,6 +174,21 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     <div style={{ fontSize: 11.5, opacity: 0.65, marginTop: 2 }}>
       綠線是會被採用的 caliper，紅線是被門檻濾掉的。粉紅區域以下都不算邊。
     </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+      <button type="button" data-testid="edge-profile-auto"
+        data-suggest={suggest} data-clean={clean ? '1' : '0'}
+        onClick={() => { setPending(suggest); onChange(suggest); }}
+        style={{ padding: '3px 10px', cursor: 'pointer' }}>
+        自動設定 {suggest}
+      </button>
+      <span style={{ fontSize: 11.5, opacity: 0.65 }}>
+        最弱的邊 {Math.round(signal)}、最強的雜訊峰 {Math.round(noise)}
+      </span>
+    </div>
+    {!clean && <div style={{ fontSize: 11.5, color: '#ff7875', marginTop: 2 }}>
+      雜訊峰和真實邊沒有分開，沒有一個門檻分得掉它們。建議值只保證每個 caliper
+      還找得到邊，不保證找到的是對的那條 —— 先看看 caliper 位置或寬度。
+    </div>}
     <button type="button" onClick={onProbe} disabled={busy}
       data-testid="edge-profile-recheck"
       style={{ marginTop: 6, padding: '3px 10px', cursor: busy ? 'default' : 'pointer' }}>
