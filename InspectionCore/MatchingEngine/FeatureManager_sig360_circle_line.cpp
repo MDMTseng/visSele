@@ -8202,11 +8202,24 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   if (!shapeMatcher || originalImage_cv.empty()) return -1;
 
   cv::Mat scene;
-  // Source is BGR-replicated grayscale (B=G=R), so pull channel 0 -- much cheaper
-  // than a weighted cvtColor on a multi-megapixel frame.
-  if (originalImage_cv.channels() == 1) scene = originalImage_cv;
-  else cv::extractChannel(originalImage_cv, scene, 0);
-  if (!scene.isContinuous()) scene = scene.clone();
+  // Phase timing, in the four pieces that would be acted on differently:
+  // `prep` is pixel shuffling, `sbm` is the shape matcher, `morph` is the
+  // anchor re-location iteration, `measure` is the caliper/judge tree. Nesting
+  // is deliberate -- morph and measure are per-object and sum over the loop.
+  mephase::Timer _ph_prep("prep");
+  // The full frame, still interleaved. Channel 0 is pulled out AFTER the
+  // station crop is known, not here.
+  //
+  // Doing it here cost 5.1 ms of the 14.6 ms inspection -- 35% -- measured on
+  // test1: an extractChannel over 2448x2048 followed by a clone of the crop,
+  // to hand line2Dup a window that is a few hundred px on a side. 99% of those
+  // pixels were converted and thrown away. It is pure memory traffic; there is
+  // no arithmetic in it to optimise, only work not to do.
+  //
+  // Nothing downstream sees a difference: the crop rect is computed against
+  // the frame's dimensions, which extractChannel never changed, and the
+  // extract-then-crop and crop-then-extract results are the same pixels.
+  cv::Mat srcFull = originalImage_cv;
 
   // Magnification portability: rescale the model to the live mmpp before matching so
   // a def teach-ed on one camera locates correctly on a different-magnification one
@@ -8262,7 +8275,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
                   (int)std::floor(bacpac->insp_region_y - sOff.y),
                   (int)std::ceil(bacpac->insp_region_w),
                   (int)std::ceil(bacpac->insp_region_h));
-    cv::Rect crop = want & cv::Rect(0, 0, scene.cols, scene.rows);
+    cv::Rect crop = want & cv::Rect(0, 0, srcFull.cols, srcFull.rows);
     // Is the region big enough to hold the part AT EVERY ANGLE?
     //
     // The footprint that has to fit is the level-0 FEATURE bounding box, not
@@ -8336,20 +8349,33 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
                      crop.width, crop.height, need, need);
     }
     if (crop.width > 0 && crop.height > 0 &&
-        (crop.width < scene.cols || crop.height < scene.rows))
+        (crop.width < srcFull.cols || crop.height < srcFull.rows))
     {
       LOGI_EVERY_N(100, "[shape] station crop %dx%d at (%d,%d) no pad (scene was %dx%d)",
-                   crop.width, crop.height, crop.x, crop.y, scene.cols, scene.rows);
-      scene = scene(crop).clone();     // line2Dup wants a continuous buffer
+                   crop.width, crop.height, crop.x, crop.y, srcFull.cols, srcFull.rows);
+      srcFull = srcFull(crop);         // a view; the copy happens in the extract below
       sceneCropOff = crop.tl();
     }
   }
 
+  // Channel pull, on the region and not the frame. Source is BGR-replicated
+  // grayscale (B=G=R), so channel 0 is the image -- much cheaper than a
+  // weighted cvtColor. extractChannel writes a fresh continuous buffer, which
+  // is also what line2Dup requires, so the crop's clone() is subsumed here
+  // rather than being a second pass over the same pixels.
+  if (srcFull.channels() == 1) scene = srcFull;
+  else cv::extractChannel(srcFull, scene, 0);
+  if (!scene.isContinuous()) scene = scene.clone();
+
   // Scene downscaling for speed is the def's shape_match_scale (handled inside
   // ShapeMatcher); ROI refine restores full-res accuracy.
   std::vector<sbm::MatchResult> ms;
-  try { ms = shapeMatcher->match(scene); }
-  catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+  _ph_prep.stop();            // prep ends here; the matcher is its own phase
+  {
+    ME_PHASE("sbm");
+    try { ms = shapeMatcher->match(scene); }
+    catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+  }
 
   // Lift crop-local poses back to scene px immediately, so every consumer below
   // -- the station test, the measurement, the report -- sees exactly the values
