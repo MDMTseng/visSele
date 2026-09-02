@@ -119,3 +119,7 @@ InspectionCore/Core0_1/crash_reports/
 # A 73MB blob of sample data that was tracked once and should not have been.
 # Deleted from the tree here; the history still carries it.
 InspectionCore/Core0_1/data.zip
+
+# Working directory created by samples/bringup/run.sh -- a machine's own state,
+# same reason data/ is ignored.
+samples/bringup/run/

@@ -1,0 +1,22 @@
+{
+  "_comment": "What this machine must say about samples/headless/sample1.png. Produced by the run this file gates, then pinned -- not typed from a specification. Regenerate with run.sh --bless after a deliberate change, and say in the commit message why the number moved.",
+
+  "objects": 1,
+
+  "object0": {
+    "cx_mm": 15.3125,
+    "cy_mm": 12.7750005722046,
+    "rotate_deg": 0.0,
+    "scale": 1.0,
+    "similarity": 0.99609375
+  },
+
+  "tolerance": {
+    "_comment": "Position to 10 um -- the part is drawn at 0.0125 mm/px, so 10 um is under one pixel and any real drift shows. Similarity is a floor, not a window: a better match is not a regression.",
+    "cx_mm": 0.01,
+    "cy_mm": 0.01,
+    "rotate_deg": 0.5,
+    "scale": 0.01,
+    "similarity_min": 0.99
+  }
+}
