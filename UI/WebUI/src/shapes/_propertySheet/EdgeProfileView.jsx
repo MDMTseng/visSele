@@ -49,7 +49,25 @@ function peaksOf(g, polarity) {
   return out;
 }
 
-const W = 320, H = 132, PADL = 30, PADB = 16, PADT = 8;
+// THE PLOT IS DRAWN AT A FIXED SIZE AND DISPLAYED AT THE PANEL'S.
+//
+// The property sheet is a narrow column -- about 250px on the bench screen --
+// and a 320px SVG in it is clipped or squeezed depending on the container. All
+// the geometry below stays in these coordinates and the viewBox does the
+// fitting, uniformly, so nothing has to be recomputed against a measured width
+// and the aspect never distorts.
+// Sized close to the column it lands in (measured 196px on the bench screen),
+// NOT to a comfortable drawing size. The viewBox scales the text along with the
+// geometry, so a 320-wide design in a 186-wide panel renders its 10px labels at
+// 5.8px -- present, and unreadable. Near 1:1 they stay legible, and a widened
+// panel makes them bigger rather than leaving a gap.
+const W = 210, H = 112, PADL = 24, PADB = 14, PADT = 7;
+const PLOT_STYLE = { background: 'rgba(127,127,127,.06)', borderRadius: 4,
+                     width: '100%', height: 'auto', display: 'block' };
+// Two buttons on one row in a narrow column: each takes half, and neither is
+// allowed to wrap its label into a two-line box (which is what it did).
+const BTN = { flex: 1, minWidth: 0, whiteSpace: 'nowrap', fontSize: 11.5,
+              padding: '4px 6px', cursor: 'pointer' };
 
 export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
                                   onChange, onProbe, busy, note }) {
@@ -182,12 +200,12 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
       <button type="button" data-testid="edge-profile-auto" data-suggest={suggestV}
         onClick={() => { latest.current = suggestV; setPending(suggestV);
                          dirty.current = true; dragEnd(); }}
-        style={{ padding: '3px 10px', cursor: 'pointer' }}>
-        自動設定 {suggestV}
+        style={BTN}>
+        自動 {suggestV}
       </button>
       <button type="button" onClick={onProbe} disabled={busy}
         data-testid="edge-profile-recheck"
-        style={{ padding: '3px 10px', cursor: busy ? 'default' : 'pointer' }}>
+        style={{ ...BTN, cursor: busy ? 'default' : 'pointer' }}>
         {busy ? '檢查中…' : '重新檢查'}
       </button>
     </div>
@@ -219,7 +237,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     const chosen = over.length ? over.reduce((a, b) => (b.pos < a.pos ? b : a)) : null;
     const held = chosen ? pts.filter((q) => q.pos < chosen.pos).length : 0;
     return <div style={{ padding: '4px 0' }}>
-      <svg width={W} height={H} style={{ background: 'rgba(127,127,127,.06)', borderRadius: 4 }}
+      <svg viewBox={`0 0 ${W} ${H}`} style={PLOT_STYLE}
            data-testid="edge-profile-plot" data-kind="peaks"
            data-cands={pts.length} data-pass={over.length}
            data-first={chosen ? chosen.pos.toFixed(1) : ''}>
@@ -239,7 +257,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
         <text x={4} y={py(thr) + 4} fontSize="10" fill="#ff7875">{Math.round(thr)}</text>
         <text x={4} y={py(peak) + 9} fontSize="10" fill="rgba(127,127,127,.8)">{Math.round(peak)}</text>
         <text x={PADL} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">近 0px</text>
-        <text x={W - 46} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">遠 {span.toFixed(0)}px</text>
+        <text x={W - 42} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">遠 {span.toFixed(0)}px</text>
       </svg>
       <div style={{ fontSize: 11.5, marginTop: 4, color: chosen ? 'inherit' : '#ff7875' }}>
         {chosen
@@ -265,9 +283,10 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   const weakest = best.length ? Math.min(...best.filter((b) => b > 0)) : 0;
 
   return <div style={{ padding: '4px 0' }}>
-    <svg width={W} height={H} style={{ background: 'rgba(127,127,127,.06)', borderRadius: 4 }}
+    <svg viewBox={`0 0 ${W} ${H}`} style={PLOT_STYLE}
          data-testid="edge-profile-plot" data-kind="profile"
-         data-calipers={g.length} data-pass={pass}>
+         data-calipers={g.length} data-pass={pass}
+         data-clean={clean ? '1' : '0'}>
       {/* the dead zone: anything in here is not an edge at the current floor */}
       <rect x={PADL} y={y(thr)} width={W - PADL - 6} height={Math.max(0, y(0) - y(thr))}
             fill="rgba(255,120,117,.10)" />
@@ -287,7 +306,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
       <text x={4} y={y(thr) + 4} fontSize="10" fill="#ff7875">{Math.round(thr)}</text>
       <text x={4} y={y(peak) + 9} fontSize="10" fill="rgba(127,127,127,.8)">{Math.round(peak)}</text>
       <text x={PADL} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">−{profile.L.toFixed(0)}px</text>
-      <text x={W - 34} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">+{profile.L.toFixed(0)}px</text>
+      <text x={W - 32} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">+{profile.L.toFixed(0)}px</text>
     </svg>
 
     {/* Says what the setting DOES, in calipers, because that is the thing that

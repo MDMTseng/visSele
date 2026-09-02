@@ -125,7 +125,12 @@ console.log(Number(after) <= Number(idle) + 1 ? 'OK: the stream stopped' : 'FAIL
 const auto = await ev(`(function(){
   var b=document.querySelector('[data-testid="edge-profile-auto"]');
   if(!b) return 'no auto button';
-  var s=b.getAttribute('data-suggest'), c=b.getAttribute('data-clean');
+  var s=b.getAttribute('data-suggest');
+  // data-clean is on the PLOT, not the button: it describes the evidence, not
+  // the control. Reading it off the button returned null and printed it as a
+  // result -- a test reporting "null" as if it were an answer.
+  var pl=document.querySelector('[data-testid="edge-profile-plot"]');
+  var c=pl?pl.getAttribute('data-clean'):'?';
   b.click();
   return 'suggest='+s+' cleanGap='+c;})()`);
 await sleep(500);
@@ -163,8 +168,13 @@ await ev(`(function(){
   return true;})()`);
 await sleep(3000);
 console.log('probe on release :', await ev(`window.__SAW_BUSY__`), '(expected true)');
-console.log('settled pass     :',
-  await ev(`document.querySelector('[data-testid="edge-profile-plot"]').getAttribute('data-pass')`));
+// Null-safe on purpose: if the probe failed the plot is gone and the panel is
+// showing why, and a test that throws here hides the message that explains it.
+console.log('settled pass     :', await ev(`(function(){
+  var e=document.querySelector('[data-testid="edge-profile-plot"]');
+  if (e) return e.getAttribute('data-pass');
+  var t=document.body.innerText, i=t.indexOf('檢查邊緣強度');
+  return 'NO PLOT -- ' + (i<0 ? 'picker gone' : t.slice(i, i+60).split(String.fromCharCode(10)).join(' | '));})()`));
 console.log('shape min        :', await ev(`(function(){
   var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
   return sh&&sh.edge&&sh.edge.min_strength;})()`));
