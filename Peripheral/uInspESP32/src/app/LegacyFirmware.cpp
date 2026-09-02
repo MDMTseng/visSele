@@ -289,20 +289,34 @@ volatile bool DRY_RUN=false;
 // This overrides real verdicts, so it must not be able to reach NVS and come
 // back after a power cycle on a machine somebody believes is sorting properly.
 // It lives in RAM, it dies on reset, and it is reported everywhere the state is.
-volatile int      SEL_TEST_MODE=0;      // 0 off, 1 all, 2 alternate
+volatile int      SEL_TEST_MODE=0;      // 0 off, 1 all, 2 alternate, 3 middle
 volatile int      SEL_TEST_SEL=1;       // which selector to fire
 volatile uint32_t SEL_TEST_N=0;         // parts it has decided for
+// MIDDLE mode's second state: the disc turns with NOTHING being blown until
+// somebody presses start, then exactly one part is sorted and it returns here.
+//
+// A blow test wants ONE puff with un-blown parts beside it, so the spread can
+// be read off what did and did not move. "all" and "alt" cannot show that --
+// every part, or every other part, is in the air, and there is nothing left on
+// the plate to compare against. Three parts placed touching, one puff on the
+// middle one, and the answer is the two that stayed.
+volatile bool     SEL_TEST_ARMED=false; // middle mode: start pressed, waiting
 // Said out loud on every change and in every status reply. A machine sorting on
 // a test pattern must never be mistakable for one sorting on its verdicts, and
 // the person who left it on is usually not the person who finds it.
+#define SEL_TEST_MODE_NAME() (SEL_TEST_MODE==1 ? "all" \
+                            : SEL_TEST_MODE==2 ? "alternate" \
+                            : SEL_TEST_MODE==3 ? "middle" : "off")
 #define LOGW_SEL_TEST() djrl.dbg_printf( \
   "SEL TEST MODE ACTIVE: %s -> SEL%d -- verdicts are NOT being sorted", \
-  SEL_TEST_MODE==1?"all":"alternate", SEL_TEST_SEL)
+  SEL_TEST_MODE_NAME(), SEL_TEST_SEL)
 
-// IT REDIRECTS SORTING DECISIONS; IT DOES NOT INVENT THEM.
+// IT REDIRECTS SORTING DECISIONS; IT DOES NOT INVENT THEM -- EXCEPT IN MIDDLE.
 //
-// Only a verdict that would have been sorted anyway (1/2/3) is replaced. NA,
-// SKIP and UNSET pass through untouched.
+// In "all" and "alt", only a verdict that would have been sorted anyway (1/2/3)
+// is replaced; NA, SKIP and UNSET pass through untouched. Middle mode is the
+// one exception and says why at the point it makes it: the parts are placed by
+// hand and some of the NA are the thing being tested.
 //
 // SOME NA IS A DECISION NOT TO ACTUATE, not a failure to judge. Parts that are
 // touching or too close together are marked NA precisely because a blow there
@@ -325,6 +339,43 @@ volatile uint32_t SEL_TEST_N=0;         // parts it has decided for
 static inline int selTestVerdict(int real)
 {
   if(SEL_TEST_MODE == 0) return real;
+
+  // MIDDLE MODE COUNTS AND BLOWS REGARDLESS OF THE VERDICT, and is the only
+  // mode that does. Handled above the guard below, deliberately.
+  //
+  // That guard exists because on a production disc the machine cannot know WHY
+  // a part came out NA, and "parts touching" is one of the reasons -- blowing
+  // there takes the wrong one. In middle mode none of that holds: the parts
+  // were placed by hand, one at a time, by the person standing over the disc,
+  // and SOME OF THOSE NA ARE THE THING BEING TESTED -- deliberately touching
+  // parts, put there to see what the puff does to them.
+  //
+  // Skipping them would also break the count the operator is working from. They
+  // placed three parts and asked for the second; if the second happens to be NA
+  // the puff would silently move to the third, and the spread would be measured
+  // against a part nobody meant.
+  //
+  // One puff, on the part they counted to, whatever the verdict says about it.
+  if(SEL_TEST_MODE == 3)
+  {
+    // HOLD, then the SECOND part judged after start, then HOLD again.
+    //
+    // The second and not the first: the point is a puff with an un-blown part
+    // on EACH side of it. The first part after start has nothing ahead of it,
+    // so a spread that reaches forward would have nothing to land on and the
+    // test would only measure half of what it is for.
+    //
+    // Every part counts here, including NA -- see the note above. That is the
+    // opposite of what ALT does, and for the opposite reason: ALT runs on a
+    // production disc where an NA slot is often empty, and counting one would
+    // put a puff on bare plate. Here the operator put every part there on
+    // purpose and knows what each one is.
+    if(!SEL_TEST_ARMED) return 0xFFFF;                   // hold: nothing sorted
+    if(++SEL_TEST_N < 2) return 0xFFFF;
+    SEL_TEST_ARMED = false;                              // one shot, back to hold
+    return SEL_TEST_SEL;
+  }
+
   if(real != 1 && real != 2 && real != 3) return real;   // not a sort; leave it
   if(SEL_TEST_MODE == 1) return SEL_TEST_SEL;
   return (SEL_TEST_N++ & 1) ? SEL_TEST_SEL : 0xFFFF;     // alternate with NA
@@ -2299,6 +2350,32 @@ struct ACT_INFO
       (rb).pushHead();                                              \
     }                                                               \
     _task_;                                                           \
+  }
+
+// THE SAME QUEUE, WITH NO OBJECT BEHIND IT.
+//
+// Every other actuation is anchored to the gate pulse of the part that earned
+// it. A manual blow has no part: the operator is holding the button, watching
+// the disc, and the anchor is NOW. Everything downstream is unchanged -- the
+// same ring, the same Run_ACTS, the same pins -- so the puff is the same puff
+// the machine would have produced, which is the only reason the measurement
+// transfers.
+//
+// src stays NULL, as it already does for the verdict path's own pushes, so the
+// diagnostics that walk back to a part simply find none.
+#define ACT_PUSH_TASK_AT(rb, anchorPulse, pulseOffset, _info)        \
+  {                                                                 \
+    ACT_INFO *_task_;                                               \
+    _task_ = (rb).getHead();                                        \
+    if (_task_)                                                     \
+    {                                                               \
+      _task_->gate_pulse = (anchorPulse);                           \
+      _task_->offset     = (pulseOffset);                           \
+      _task_->src        = NULL;                                    \
+      _task_->info       = _info;                                   \
+      (rb).pushHead();                                              \
+    }                                                               \
+    _task_;                                                         \
   }
 
 //EXP:
@@ -4926,6 +5003,55 @@ StaticJsonDocument <3072>doc;
 // has to raise the host's limit first.
 StaticJsonDocument <3584>retdoc;
 
+// LEAVING CAPTURE MODE IS NOT OPTIONAL ON THE WAY INTO INSPECTION.
+//
+// While a jog is held the timer is on onTimerJog, and that handler does exactly
+// one job: emit steps and count them. It does NOT advance SYS_STEP_COUNT, does
+// not sense the gate, does not run Run_ACTS. Inspection entered on top of it is
+// a machine whose position counter is frozen: every actuation is anchored on a
+// gate_pulse that can never arrive, so nothing is ever blown, while the plate
+// still turns and the feeder still feeds. Nothing reports it either -- from
+// every counter's point of view no part was ever detected, so the screen shows
+// a machine calmly running with nothing to do.
+//
+// jog_arm already refuses outside IDLE. The other direction was never guarded,
+// and forgetting to release is the easiest mistake on that panel to make: the
+// mode is entered to read one number off, and the number is what the operator
+// leaves with.
+//
+// RELEASED, not refused, when releasing is safe. At a standstill this is
+// exactly what jog_end does, and "start inspecting" is not an ambiguous intent.
+// A plate still coasting is refused instead, for the same reason jog_end
+// refuses it -- the handler must not be pulled out from under a turning plate.
+static bool jogReleaseForInspection()
+{
+  if(JOG_STATE==0) return true;
+
+  PLATE_FREQ_TARGET=0;
+  JOG_MOVING=false; JOG_STOP_REQ=false;
+
+  if(JOG_ATTACHED && PLATE_FREQ_CURRENT!=0.0f)
+  {
+    retdoc["err"]="jog_still_moving";
+    retdoc["why"]="capture mode still has the plate turning";
+    retdoc["hint"]="wait for it to stop, then retry";
+    return false;
+  }
+
+  if(JOG_ATTACHED)
+  {
+    timerAttachInterrupt(timer, &onTimer, true);
+    JOG_ATTACHED=false;
+  }
+  digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);
+  JOG_STATE=0;
+  retdoc["jog_released"]=true;
+  retdoc["jog_disp"]=JOG_DISP;      // still worth reading; it is why they were there
+  djrl.dbg_printf("capture mode was still on at inspection entry -- released it "
+                  "(disp=%ld). The production ISR is back.", (long)JOG_DISP);
+  return true;
+}
+
 
 
 bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc, bool &doRsp,bool &isACK);
@@ -7482,8 +7608,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // rule nobody remembers choosing.
       if(SEL_TEST_MODE)
       {
-        retdoc["sel_test"] = SEL_TEST_MODE==1 ? "all" : "alt";
+        // THE WIRE NAME, not the sentence. SEL_TEST_MODE_NAME() spells the mode
+        // out for a human reading a log ("alternate", "middle"); the WebUI
+        // matches on the short form it sends ("alt", "mid"), and mixing the two
+        // makes the radio show nothing selected and hides the start button that
+        // only exists in mid.
+        retdoc["sel_test"] = SEL_TEST_MODE==1 ? "all"
+                           : SEL_TEST_MODE==2 ? "alt"
+                           : SEL_TEST_MODE==3 ? "mid" : "off";
         retdoc["sel_test_sel"] = SEL_TEST_SEL;
+        if(SEL_TEST_MODE == 3) retdoc["sel_test_armed"] = (bool)SEL_TEST_ARMED;
       }
       jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;      // configured
       // ... and what is actually enforced, which differs under cam_mode auto.
@@ -8396,9 +8530,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["hint"]="set plate.freq before entering inspection mode";
       doRsp=true; rspAck=false;
     }
+    else if(!jogReleaseForInspection())
+    {
+      retdoc["type"]="enter_insp_mode";
+      doRsp=true; rspAck=false;
+    }
     else
     {
       SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
+      retdoc["type"]="enter_insp_mode";
       doRsp=rspAck=true;
     }
   }
@@ -8436,6 +8576,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["err"]="io_not_configured";
       retdoc["why"]=IO_SAFE_WHY;
       retdoc["hint"]="set_setup a complete io_on_level (see get_schema)";
+      doRsp=true; rspAck=false;
+    }
+    else if(!jogReleaseForInspection())
+    {
+      retdoc["type"]="enter_insp_test_mode";
       doRsp=true; rspAck=false;
     }
     else
@@ -8605,15 +8750,103 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       if(strcmp(m,"off")==0)      SEL_TEST_MODE = 0;
       else if(strcmp(m,"all")==0) SEL_TEST_MODE = 1;
       else if(strcmp(m,"alt")==0) SEL_TEST_MODE = 2;
-      else { retdoc["err"]="mode must be off|all|alt"; ok = false; }
+      else if(strcmp(m,"mid")==0) SEL_TEST_MODE = 3;
+      else { retdoc["err"]="mode must be off|all|alt|mid"; ok = false; }
       // Only on a mode that was understood: restarting the phase for a typo
       // would shift the comb the operator is lining up against.
-      if(ok) SEL_TEST_N = 0;
+      //
+      // Entering middle mode DISARMS. Selecting the mode is "stop blowing so I
+      // can place the parts"; the blow is a second, deliberate press.
+      if(ok) { SEL_TEST_N = 0; SEL_TEST_ARMED = false; }
     }
-    retdoc["mode"] = SEL_TEST_MODE==1 ? "all" : (SEL_TEST_MODE==2 ? "alt" : "off");
-    retdoc["sel"]  = SEL_TEST_SEL;
+    // {"type":"sel_test","start":true} -- arm middle mode for ONE part.
+    //
+    // Refused in any other mode rather than ignored: a start that silently does
+    // nothing is indistinguishable, from the operator's side, from a start that
+    // armed and then found no part to blow.
+    if(doc["start"].is<bool>() && doc["start"].as<bool>())
+    {
+      if(SEL_TEST_MODE == 3)
+      {
+        SEL_TEST_N = 0;
+        SEL_TEST_ARMED = true;
+        djrl.dbg_printf("SEL TEST MIDDLE: armed -- the 2nd part judged from now "
+                        "goes to SEL%d, everything else is NA", SEL_TEST_SEL);
+      }
+      else { retdoc["err"]="start needs mode mid"; ok = false; }
+    }
+    retdoc["mode"]  = SEL_TEST_MODE==1 ? "all"
+                    : SEL_TEST_MODE==2 ? "alt"
+                    : SEL_TEST_MODE==3 ? "mid" : "off";
+    retdoc["sel"]   = SEL_TEST_SEL;
+    // What the operator needs back: is it holding, or is a puff still coming?
+    if(SEL_TEST_MODE == 3)
+    {
+      retdoc["armed"] = (bool)SEL_TEST_ARMED;
+      retdoc["n"]     = (uint32_t)SEL_TEST_N;
+    }
     if(SEL_TEST_MODE)
       LOGW_SEL_TEST();
+    doRsp=true; rspAck=ok;
+  }
+  else if(strcmp(type,"blow")==0)
+  {
+    // {"type":"blow","sel":1..3} -- one puff, right now, from no verdict.
+    //
+    // For measuring what the air does: arrange parts however you like, watch
+    // the disc, press it when the part you want is where you want it. There is
+    // no object, no gate pulse, no pairing -- which is the point. The gate's
+    // own minimum separation (min_detect_sep_us, 30ms here) means tightly
+    // packed parts are NOT all detected, so any test that counts objects is
+    // counting something other than what the operator placed. This counts
+    // nothing.
+    //
+    // The DELAY IS THE OPERATOR'S. The puff goes out at the next tick rather
+    // than at SEL*_on, because SEL*_on is the distance from a gate pulse and
+    // there is no gate pulse. Pressing early or late is theirs to learn, and
+    // learning it is part of what the test is for.
+    //
+    // The WIDTH is the configured one (SEL*_off - SEL*_on). A puff of a
+    // different length would be a different puff, and then nothing measured
+    // here would say anything about the machine's own.
+    retdoc["type"]="blow";
+    int sel = doc["sel"].is<int>() ? (int)doc["sel"] : 1;
+    bool ok = (sel>=1 && sel<=3);
+    if(!ok) retdoc["err"]="sel must be 1..3";
+    else
+    {
+      // The same guard the verdict path uses. A manual blow that fires while
+      // the plate is stopped or dry run is on would be the one actuation on
+      // this machine that ignores them, and dry run would stop meaning dry.
+      const bool sel_ok = PLATE_RUNNING && SYS_STEPPER_DISABLED==false
+                          && DRY_RUN==false && !faultSuppressSel();
+      if(!sel_ok) { retdoc["err"]="blocked: plate stopped, dry run, or fault"; ok=false; }
+      else
+      {
+        volatile stagePulseOffset* spo = SPO_active;
+        const uint32_t now = SYS_STEP_COUNT;
+        uint32_t width = 0;
+        switch(sel)
+        {
+          case 1: width = spo->SEL1_off - spo->SEL1_on; break;
+          case 2: width = spo->SEL2_off - spo->SEL2_on; break;
+          default:width = spo->SEL3_off - spo->SEL3_on; break;
+        }
+        switch(sel)
+        {
+          case 1: ACT_PUSH_TASK_AT(act_S.ACT_SEL1, now, 0, 1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL1, now, width, 0); break;
+          case 2: ACT_PUSH_TASK_AT(act_S.ACT_SEL2, now, 0, 1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL2, now, width, 0); break;
+          default:ACT_PUSH_TASK_AT(act_S.ACT_SEL3, now, 0, 1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL3, now, width, 0); break;
+        }
+        retdoc["sel"]   = sel;
+        retdoc["width"] = width;
+        djrl.dbg_printf("MANUAL BLOW: SEL%d for %lu pulses -- no verdict, no object",
+                        sel, (unsigned long)width);
+      }
+    }
     doRsp=true; rspAck=ok;
   }
   else if(strcmp(type,"trig_phantom_pulse")==0)

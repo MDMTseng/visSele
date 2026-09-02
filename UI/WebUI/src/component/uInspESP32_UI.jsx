@@ -846,6 +846,10 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // the panel to show "off" while the machine is blowing to a pattern.
   const selTestMode = (stat && stat.sel_test) || 'off';
   const selTestSel = (stat && stat.sel_test_sel) || 1;
+  // Middle mode has a second state the other two do not: armed, or holding.
+  // The operator needs it back, because "nothing was blown" is the correct
+  // outcome of holding AND of a start that found no part.
+  const selTestArmed = !!(stat && stat.sel_test_armed);
   const camMode = (gate && gate.cam_mode) || cfg.gate_cam_mode || 'manual';
   const camFps = gate && gate.cam_fps_limit > 0 ? gate.cam_fps_limit : undefined;
   const camStale = !!(gate && gate.cam_fps_stale);
@@ -2251,7 +2255,17 @@ build ${fw.build}`}>
             <Why>把判定結果換成固定的吹氣樣式,好把 SEL*_on 對到料上。
               <b>全部</b>:每一顆都吹。<b>交替</b>:一顆吹一顆不吹,盤上留下梳齒 ——
               偏半顆會變成「吹錯那一顆」,不需要儀器就看得出來。<br/><br/>
-              <b>本來就是 NA 的維持 NA</b>,不會被改成吹。<b>有些 NA 是「不要致動」
+              <b>單顆</b>:量的是<b>擴散範圍</b>,不是相位。選了之後機器<b>什麼都不吹</b>,
+              可以擋住閘門、把三顆料手工緊密排好、讓盤子轉起來;按<b>開始</b>之後,
+              從那時起判定的<b>第二顆</b>會被吹,其他全部維持 NA,然後自動回到不吹。
+              一股氣、兩側各留一顆沒動的料 —— 旁邊那兩顆有沒有被帶走,就是擴散範圍
+              的答案。<br/>
+              取第二顆而不是第一顆:第一顆前面沒有東西,往前擴散的氣就沒有東西可以
+              打到,那樣只量到一半。<br/>
+              <b>單顆模式不跳過 NA</b>:料是手工排的,有些 NA 是刻意擺出來要測的
+              (例如故意相夾),而且跳過會讓計數對不上 —— 你數的第二顆如果剛好是 NA,
+              氣會悄悄跑到第三顆去,量到的就不是你要的那一顆。<br/><br/>
+              <b>全部/交替:本來就是 NA 的維持 NA</b>,不會被改成吹。<b>有些 NA 是「不要致動」
               的決定而不是「判不出來」</b> —— 料件相夾或靠太近時會被標成 NA,正是因為
               在那裡吹會吹錯顆。測試模式覆蓋它,等於讓機器去做那個判定正在防止的事,
               而且是在你低頭看盤、最不會注意到的時候。<br/><br/>
@@ -2266,6 +2280,7 @@ build ${fw.build}`}>
             <Radio.Button value="off">關閉</Radio.Button>
             <Radio.Button value="all">全部</Radio.Button>
             <Radio.Button value="alt">交替</Radio.Button>
+            <Radio.Button value="mid">單顆</Radio.Button>
           </Radio.Group>
           <Radio.Group size="small" value={selTestSel} disabled={busy === 'seltest'}
             onChange={(e) => run('seltest', (api) =>
@@ -2274,11 +2289,55 @@ build ${fw.build}`}>
             <Radio.Button value={2}>SEL2</Radio.Button>
             <Radio.Button value={3}>SEL3</Radio.Button>
           </Radio.Group>
+          {/* MIDDLE MODE IS TWO PRESSES, and the second one is the whole test.
+              Choosing 單顆 stops the blowing so parts can be placed by hand;
+              開始 releases exactly one puff. The button only exists in that
+              mode, so it cannot be pressed in a state where it does nothing. */}
+          {selTestMode === 'mid' && (
+            <Button size="small" type={selTestArmed ? 'default' : 'primary'}
+              danger={selTestArmed} disabled={busy === 'seltest'}
+              onClick={() => run('seltest', (api) => api.sendP(selTestArmed
+                // Armed with no part arriving would otherwise be a state with no
+                // way out but a mode change the radio will not re-fire, because
+                // it is already on 單顆. Re-sending the mode disarms.
+                ? { type: 'sel_test', mode: 'mid', sel: selTestSel }
+                : { type: 'sel_test', start: true }))}>
+              {selTestArmed ? '取消（等待第二顆中）' : '開始（吹第二顆）'}
+            </Button>
+          )}
           {selTestMode !== 'off' && (
             <span style={{ color: '#a8071a' }}>
               判定結果沒有在分選 —— 現在吹的是測試樣式
             </span>
           )}
+        </div>
+
+        {/* ONE PUFF, FROM NO VERDICT.
+            Separate from the test patterns above because it is a different kind
+            of thing: those redirect decisions the machine made, this makes none.
+            Nothing is counted, so the gate's own minimum separation -- which
+            silently drops parts placed too close -- cannot corrupt it. */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10,
+                      flexWrap: 'wrap' }}>
+          <span>手動吹氣
+            <Why>不看判定、不看物件、不看閘門,按下去就吹一下,寬度用目前設定的
+              SEL*_off − SEL*_on。<br/><br/>
+              用來量<b>影響範圍</b>:料愛怎麼排就怎麼排(可以連續緊排),看著盤子,
+              在你要的那顆到位時按下去,然後看<b>旁邊幾顆被帶走</b>。<br/><br/>
+              <b>時機是你自己抓的</b>。氣是下一個 tick 就出去,不會套用 SEL*_on ——
+              那個偏移是「距離閘門脈波多遠」,而這裡根本沒有閘門脈波。<br/><br/>
+              為什麼不用數物件的方式做:閘門有一道最小間隔(min_detect_sep_us,
+              目前 {String(stat && stat.min_sep_us || '—')}us),比它更近的料<b>根本不會被偵測成物件</b>。
+              料排得越密越容易踩到,而踩到的時候畫面上不會有任何提示 ——
+              機器數的「第幾顆」就不是你排的第幾顆了。這個功能什麼都不數。<br/><br/>
+              盤子停著、乾跑模式、或有故障抑制時會拒絕 —— 那是分選路徑自己的
+              條件,手動吹氣沒有理由是機器上唯一無視它們的致動。</Why></span>
+          {[1, 2, 3].map((n) => (
+            <Button key={n} size="small" disabled={busy === 'blow'}
+              onClick={() => run('blow', (api) => api.sendP({ type: 'blow', sel: n }))}>
+              吹 SEL{n}
+            </Button>
+          ))}
         </div>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
