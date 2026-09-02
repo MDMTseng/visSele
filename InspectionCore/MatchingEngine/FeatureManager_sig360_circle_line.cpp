@@ -8114,132 +8114,23 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
   };
 
-  // Cache hit? Then the crop and the features are already known: take the crop
-  // straight out of the sidecar and skip Otsu + connectedComponents +
-  // extractFeatures entirely. The sidecar imread above still had to happen --
-  // ROI refine matches against those pixels -- but a def is loaded once per
-  // inspection session, so that read costs nothing per part.
+  // THERE IS ONE WAY TO LOAD A TRAINED LOCALISER, and it is above: a def that
+  // carries its own pixels. What used to sit here was a second one -- take the
+  // feature levels out of the def, then go to disk for the picture -- and the
+  // two disagreed in a way nothing reported. That path did not carry
+  // refine_points, so a def loaded through it located at coarse accuracy with a
+  // high score and a report that read as normal; the accuracy simply was not
+  // there. Having two routes to the same object is also what made a dangling
+  // `if` above a `return` survive: with one route there is nothing to fall
+  // through to.
+  //
+  // A def in the old format now falls through to extraction, which is refused
+  // outside the studio -- see shape_extract_allowed. That is the intended
+  // outcome and not a regression to work around: open it in the SBM studio and
+  // press generate. The features it produces are the ones that get stored, and
+  // storing them completely is the whole point.
   if (shape_force_extract())
-    LOGI("[shape] regenerate requested: ignoring any cached feature set");
-  else
-  {
-    const std::string fp = shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
-                                                   shape_weak_thres, shape_strong_thres,
-                                                   roi_pts_mm, roi_pts_set, angle_offset_deg);
-    sbm::FeatureSet cached;
-    cv::Rect ccrop; cv::Point2f corg;
-    // `fp` is passed for the report, not for a verdict: shape_cache_load
-    // logs how it differs and loads the cache either way. The second,
-    // pre-ROI-split comparison that used to rescue every def in the field is
-    // gone with the gate it was rescuing them from.
-    bool hit = shape_cache_load(shape_cache_in, fp, cached, ccrop, corg);
-    if (hit)
-    {
-      // The crop must still be inside this image; a cache whose geometry does
-      // not fit the sidecar is stale in a way the fingerprint cannot see.
-      cv::Rect fitted = ccrop & cv::Rect(0, 0, templ.cols, templ.rows);
-      if (fitted != ccrop || ccrop.width < 16 || ccrop.height < 16)
-      {
-        LOGW("[shape] cached crop [%d,%d %dx%d] does not fit %dx%d image; re-extracting",
-             ccrop.x, ccrop.y, ccrop.width, ccrop.height, templ.cols, templ.rows);
-      }
-      else
-      {
-        cached.templ_image = templ(ccrop).clone();   // ROI refine reads this
-        cached.setOrigin(corg.x, corg.y);
-        cached.setAngleOffset(angle_offset_deg);
-
-        // The user's ROI refine points are NOT part of the cached feature set --
-        // they are a def field, and the def may have been edited since. Rebuild
-        // them here exactly as the extraction path does, from the crop geometry
-        // the cache carries: originPx = crop.tl() + origin_in_crop.
-        //
-        // Skipping this was a real defect, not a cosmetic one: without the
-        // explicit points the matcher silently fell back to auto-selected ones
-        // and the located centre moved 2px (0.028mm) against the extraction
-        // path. A cache that changes the answer is worse than no cache.
-        if (roi_pts_set && def_mmpp > 0)
-        {
-#ifdef SBM_HAS_USER_OPT_POINTS
-          const cv::Point2f orgFull(ccrop.x + corg.x, ccrop.y + corg.y);
-          const float tcx = ccrop.width / 2.0f, tcy = ccrop.height / 2.0f;
-          cached.user_opt_points.clear();
-          cached.user_opt_points.reserve(roi_pts_mm.size());
-          for (const acv_XY &q : roi_pts_mm)
-          {
-            acv_XY full = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
-                                                      acv_XY(orgFull.x, orgFull.y), def_mmpp);
-            cached.user_opt_points.push_back(cv::Point2f(full.x - ccrop.x - tcx,
-                                                         full.y - ccrop.y - tcy));
-          }
-          cached.user_opt_points_set = true;
-          LOGI("[shape] cache + %d explicit ROI refine points (user)",
-               (int)cached.user_opt_points.size());
-          dump_roi_tiles("cache", cached.templ_image, ccrop,
-                         acv_XY(orgFull.x, orgFull.y), roi_pts_mm, cached.user_opt_points,
-                         reg_sin, reg_cos, reg_flip_f, def_mmpp);
-#else
-          LOGW("[shape] this build lacks sbm user_opt_points; cached def's explicit "
-               "ROI points IGNORED (auto-selection used)");
-#endif
-        }
-        else
-        {
-          // ROI REFINE WILL NOT RUN FOR THIS DEF, AND NOTHING ELSE SAYS SO.
-          //
-          // selectOptimizedPoints() takes user_opt_points when they are set and
-          // otherwise selects from FeatureSet::refine_points -- which the JSON
-          // cache does not carry. The binary FeatureSet format serialises them
-          // (shape_matcher.cpp:65/128); shape_cache_serialise() does not, and
-          // refine_points are a by-product of extractFeatures(), which the
-          // cache path exists to skip. So on this path the set is empty, the
-          // empty-guard returns nothing, and the whole ROI stage is skipped.
-          //
-          // The match still succeeds and the score is still high, because the
-          // coarse stage needs only `levels`. What is missing is the accuracy:
-          // measured on a synthetic scene at ~40x -- coarse 2.0-2.8 px against
-          // 0.06 px refined -- and MatchResult::refine_residual stays -1, which
-          // no reader would notice because nothing in the core reads it.
-          //
-          // Reported from a Linux port bring-up on samples/headless/sample1,
-          // found only by adding stderr probes to the matcher. Said once, at
-          // load, naming the def: a per-match log would be noise on a machine
-          // running parts, and this is a property of the def, not of a frame.
-          LOGW("[shape] '%s' loads from its cache and carries no "
-               "roi_refine_points, so ROI refine will NOT run -- this def "
-               "locates at coarse accuracy only. Open it in the SBM studio and "
-               "press regenerate to extract refine points, or give it explicit "
-               "ROI points.", def_path.empty() ? "(def)" : def_path.c_str());
-        }
-        shapeFeatureSet = std::make_shared<sbm::FeatureSet>(cached);
-        shape_crop = ccrop;
-        shape_origin_in_crop = corg;
-        shape_cache_fp = fp;
-        int nv = buildShapeMatcher(1.0f);
-        if (nv <= 0) { LOGE("[shape] addModel from cache failed (%d)", nv); return -1; }
-        shape_ready = true;
-        liftForUI(*shapeFeatureSet, ccrop);
-        LOGI("[shape] from def cache: crop [%d,%d %dx%d] origin(%.1f,%.1f) variants=%d",
-             ccrop.x, ccrop.y, ccrop.width, ccrop.height, corg.x, corg.y, nv);
-        // UNCONDITIONAL. A cache hit is finished here; everything below is
-        // extraction, which is an authoring action.
-        //
-        // b9ce38d4 added `if (getenv("SHAPE_DBG"))` above this line meaning to
-        // put an fprintf between the two. The fprintf never arrived, so the
-        // `return` became the body of the `if` and the early exit only happened
-        // under a debug environment variable. Every ordinary cache hit has been
-        // falling through into the extraction block ever since: with implicit
-        // extraction off it logs "this def has no usable __shape_cache" over
-        // the "loaded N features from def cache" line it just printed and
-        // raises the sig360-fallback warning, and with
-        // SBM_ALLOW_IMPLICIT_EXTRACT=1 it re-extracts -- which is the one thing
-        // the cache exists to avoid. Matching still worked throughout, because
-        // shapeFeatureSet and shape_ready are already set above; what was
-        // broken was every account of what had happened.
-        return 0;
-      }
-    }
-  }
+    LOGI("[shape] regenerate requested: extracting from the reference image");
 
   // FROM HERE DOWN IS EXTRACTION, and extraction is an AUTHORING action.
   //
@@ -8257,10 +8148,23 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   // pressed a button and is looking at the result.
   if (!shape_extract_allowed())
   {
-    LOGE("[shape] this def has no usable __shape_cache and implicit extraction "
-         "is off -- open the SBM studio and press 生成特徵點, then save. "
-         "(escape hatch for recovering a machine without an editing session: "
-         "SBM_ALLOW_IMPLICIT_EXTRACT=1)");
+    // Name the two cases apart. "No features" and "features in a format this
+    // core no longer loads" send whoever is standing at the machine to
+    // different places, and the second one is now the common one.
+    const bool legacy = (shape_cache_in != NULL &&
+                         cJSON_GetObjectItem(shape_cache_in, "roi") == NULL);
+    if (legacy)
+      LOGE("[shape] this def stores its features in the OLD format (no ROI "
+           "windows), which this core no longer loads -- it kept the feature "
+           "levels but not the points ROI refine needs, so it could only ever "
+           "locate coarsely. Open it in the SBM studio and press 生成特徵點, "
+           "then save; the def will then carry everything it needs and stop "
+           "depending on the reference image on disk.");
+    else
+      LOGE("[shape] this def has no features and implicit extraction is off -- "
+           "open the SBM studio and press 生成特徵點, then save. "
+           "(escape hatch for recovering a machine without an editing session: "
+           "SBM_ALLOW_IMPLICIT_EXTRACT=1)");
     return -2;
   }
 

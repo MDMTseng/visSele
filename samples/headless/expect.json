@@ -1,10 +1,10 @@
 {
-  "_comment": "What this machine must say about samples/headless/sample1.png. Pinned from a real run (run.sh --bless), and CHECKED against a truth that is known independently: the fixture generator centres the part at 1224,1024 px, which in this def's frame is exactly (15.3000, 12.8000) mm. See ground_truth.",
+  "_comment": "What this machine must say about samples/headless/sample1.png. Pinned from a real run (run.sh --bless) and checked against a truth known independently: the fixture generator centres the part at 1224,1024 px, which in this def's frame is exactly (15.3000, 12.8000) mm. The def is SELF-CONTAINED -- it carries its own ROI windows, so no template image is read from disk. sample1.png is the frame being inspected, not the template.",
   "objects": 1,
   "object0": {
-    "cx_mm": 15.3000459671021,
-    "cy_mm": 12.7970561981201,
-    "rotate_deg": 0.000117778778076172,
+    "cx_mm": 15.2999801635742,
+    "cy_mm": 12.7999563217163,
+    "rotate_deg": 1.23977661132812e-05,
     "scale": 1,
     "similarity": 0.99609375
   },
@@ -25,8 +25,8 @@
       -2.0
     ],
     "with_roi_refine_error_px": [
-      0.004,
-      -0.23
+      -0.0016,
+      -0.0035
     ]
   }
 }

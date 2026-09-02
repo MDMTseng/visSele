@@ -90,14 +90,12 @@ INSP_LOG_KEEP_STDERR=1 visSele --insp <image> <def> out.json
 
 ### What this gate covers
 
-**The full locating chain, coarse plus ROI refine.** `sample1.hydef` carries
-eight `roi_refine_points` on the part's outline, and that is what makes the
-difference: a def loaded from its embedded `shape_cache` gets the pyramid levels
-but NOT `FeatureSet::refine_points` (those are a by-product of extraction, which
-the cache exists to skip). Without either, `selectOptimizedPoints()` returns
-nothing and the ROI stage is silently skipped -- the match still succeeds with a
-high score, and only the accuracy is gone. Explicit ROI points are read from the
-def and rebuilt on every cache load, so this sample refines.
+**The full locating chain, coarse plus ROI refine, from a def that carries its
+own pixels.** `sample1.hydef` stores the ROI windows the refiner reads -- eight
+56x56 patches, about 1 kB of PNG -- along with the point selection they belong
+to. Nothing is read from disk to locate: `sample1.png` is the frame being
+inspected, not the template. Upgrade an older def with
+`UI/WebUI/tools/webctl/upgrade_defs.mjs`.
 
 The pinned numbers can be judged rather than merely reproduced, because the
 answer is known: `make_sbm_fixture_image.py` centres the part on the frame, so
@@ -106,7 +104,7 @@ the true position is (15.3000, 12.8000) mm in this def's frame.
 | | cx error | cy error |
 |---|---|---|
 | coarse only | +1.0 px | -2.0 px |
-| with ROI refine | +0.004 px | -0.23 px |
+| with ROI refine | -0.0016 px | -0.0035 px |
 
 The 10 um tolerance is set against that gap on purpose: **a def that loses ROI
 refine fails this check** rather than passing quietly, which is the failure mode
