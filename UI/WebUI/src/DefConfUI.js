@@ -1319,6 +1319,74 @@ let renderMethods = {
   },
 }
 
+// THE STUDIO'S OPENER, PUBLISHED BY THE COMPONENT THAT OWNS THE MODAL.
+//
+// Migration is two halves -- flip the engine, then go train features -- and the
+// second half has to open a modal that only DEFCONF_MODE_NEUTRAL_UI can open,
+// because the modal is its state. ACT_Migrate_To_Shape used to just CALL
+// openSBM2 from SettingUI, where the name is not in scope: the two dispatches
+// before it landed, the call threw ReferenceError, and everything after it --
+// including seeding def_image_reg from the sig360 anchor -- never ran. What the
+// operator got was the exact half-migrated def the code below warns about: a
+// shape_based def with no trained features, which falls back to sig360 and
+// looks, from the outside, like the migration never happened.
+let sbm2Opener = null;
+
+// MIGRATION, IN ONE PLACE, CALLABLE FROM ANYWHERE THAT HAS A DISPATCH.
+//
+// Flip the engine + apply the recommended fast coarse scale. anchor_corner and
+// every other setting carry over untouched. def_image_reg is already stored at
+// save; reference_image is emitted from the def name. Re-SAVE afterwards to
+// persist.
+export function migrateDefToShapeBased(dispatch, edit_info) {
+  dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
+  dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
+
+  // SEED def_image_reg FROM THE SIGNATURE ANCHOR.
+  //
+  // def_image_reg is the object frame's origin and angle, and an absent one is
+  // not a neutral default: SBMStudio's drawImage translates by -(cx, cy), so
+  // 0,0 puts the frame origin at the IMAGE CORNER. Every caliper is then placed
+  // relative to a corner, and the part rotates about a corner -- which measures
+  // fine on the reference image, where the rotation is zero, and goes wrong on a
+  // part that arrives turned. Nothing reports it.
+  //
+  // A sig360 def already carries the right answer. Its object frame is anchored
+  // at the signature centre, and the two quantities are the SAME one in the same
+  // units (EverCheckCanvasComponent's image-align path already uses one as the
+  // other's fallback), so migration can carry the frame across rather than
+  // dropping it and asking the operator to redraw a frame the def already had.
+  //
+  // Only when the def has no registration of its own -- a def that has been
+  // through the studio has one that was authored deliberately.
+  const ei = edit_info || {};
+  if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
+    const rep = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
+                && ei._obj.sig360info.reports[0];
+    if (rep && Number.isFinite(rep.cx) && Number.isFinite(rep.cy)) {
+      dispatch(DefConfAct.EditInfo_Patch({
+        def_image_reg: {
+          cx: rep.cx, cy: rep.cy,
+          angle: Number.isFinite(rep.orientation) ? rep.orientation : 0,
+          // The reference image is the frame's own definition, so it is not
+          // flipped with respect to itself.
+          isFlipped: false,
+        },
+      }));
+    }
+  }
+
+  // Straight into the studio afterwards. Converting is only half of it: the def
+  // now uses a locator with no trained features, and until 生成特徵點 has been
+  // pressed and the def re-saved it falls back to sig360. This is also the only
+  // way the SBM surfaces appear at all, so leaving the operator to find them
+  // would be leaving them nothing to find.
+  //
+  // Ordered after the seeding, not before it: the studio reads def_image_reg
+  // when it opens.
+  setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
+}
+
 function SettingUI({})
 {
   
@@ -1346,54 +1414,7 @@ function SettingUI({})
   // flip the engine + apply the recommended fast coarse scale. anchor_corner and all
   // other settings are carried over untouched. def_image_reg is already stored at save;
   // reference_image is emitted from the def name. Re-SAVE afterwards to persist.
-  const ACT_Migrate_To_Shape=() => {
-    dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
-    dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
-    // Straight into the studio afterwards. Converting is only half of it: the
-    // def now uses a locator with no trained features, and until 生成特徵點 has
-    // been pressed and the def re-saved it will fall back to sig360 -- looking,
-    // from the outside, exactly like the migration never happened. This is also
-    // the only way the SBM surfaces appear at all now, so leaving the operator
-    // to find them would be leaving them nothing to find.
-    setTimeout(() => openSBM2(true), 0);
-
-    // SEED def_image_reg FROM THE SIGNATURE ANCHOR.
-    //
-    // def_image_reg is the object frame's origin and angle, and an absent one
-    // is not a neutral default: SBMStudio's drawImage translates by -(cx, cy),
-    // so 0,0 puts the frame origin at the IMAGE CORNER. Every caliper is then
-    // placed relative to a corner, and the part rotates about a corner -- which
-    // measures fine on the reference image, where the rotation is zero, and
-    // goes wrong on a part that arrives turned. Nothing reports it.
-    //
-    // A sig360 def already carries the right answer. Its object frame is
-    // anchored at the signature centre, and the two quantities are the SAME one
-    // in the same units: EverCheckCanvasComponent's image-align path notes that
-    // on test1.hydef def_image_reg.cx/cy reads 15.025, 9.305, identical to the
-    // @__SIGNATURE__ anchor, and uses one as the other's fallback. So migration
-    // can carry the frame across rather than dropping it and asking the operator
-    // to redraw a frame the def already had.
-    //
-    // Only when the def has no registration of its own -- a def that has been
-    // through the studio has one that was authored deliberately, and this must
-    // not overwrite it.
-    const ei = edit_info;
-    if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
-      const rep = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
-                  && ei._obj.sig360info.reports[0];
-      if (rep && Number.isFinite(rep.cx) && Number.isFinite(rep.cy)) {
-        dispatch(DefConfAct.EditInfo_Patch({
-          def_image_reg: {
-            cx: rep.cx, cy: rep.cy,
-            angle: Number.isFinite(rep.orientation) ? rep.orientation : 0,
-            // The reference image is the frame's own definition, so it is not
-            // flipped with respect to itself.
-            isFlipped: false,
-          },
-        }));
-      }
-    }
-  };
+  const ACT_Migrate_To_Shape=() => migrateDefToShapeBased(dispatch, edit_info);
 
   const DICT = useSelector(state => state.UIData.DICT);
   return [
@@ -2008,6 +2029,14 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   // cleared -- and every later action (generate, inspect, save) is measured
   // against a registration that is not there yet. Rather than let that be
   // discovered later, the studio is opened at the moment the picture arrives.
+  // Published for migrateDefToShapeBased, which needs to open this modal from
+  // outside. No dep array on purpose: openSBM2 closes over this render's
+  // dispatch/setModal_view, so a stale one would set state on an old closure.
+  useEffect(() => {
+    sbm2Opener = openSBM2;
+    return () => { if (sbm2Opener === openSBM2) sbm2Opener = null; };
+  });
+
   const openSBM2 = (auto) => {
         dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
         setModal_view({
@@ -4236,6 +4265,48 @@ class APP_DEFCONF_MODE extends React.Component {
 
         {AddtionalInfo}
 
+        {/* AN OLD DEF SAYS SO, ON THE PICTURE, WHERE THE WORK HAPPENS.
+            A def still on the sig360 localizer is not broken -- it inspects --
+            so nothing anywhere said it was the old one. The migration button
+            existed, in the localizer section of a scrolling settings panel,
+            which is not somewhere anyone looks unless they already know to.
+            Top centre, over the image, because that is where the operator is
+            looking and because the banner has to be impossible to mistake for
+            part of the recipe.
+            Only in NEUTRAL and only unlocked: in a drawing substate it would
+            cover the work, and under a lock the reducer drops the DefConf
+            actions the migration is made of -- silently. A button that quietly
+            does nothing is worse than no button. */}
+        {substate === UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL
+          && defModelPath
+          && this.props.defConf_lock_level == 0
+          && (this.props.edit_info.locating_engine || 'sig360') !== 'shape_based' &&
+          <div key="oldver" style={{
+                 position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
+                 zIndex: 20, display: 'flex', alignItems: 'center', gap: 10,
+                 background: '#a8071a', color: '#fff', borderRadius: 4,
+                 padding: '6px 12px', fontSize: 13,
+                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>
+            <span>這是舊版定位（sig360）</span>
+            <Button size="small" danger type="primary" data-testid="upgrade-def"
+              style={{ background: '#fff', color: '#a8071a', borderColor: '#fff' }}
+              onClick={() => Modal.confirm({
+                title: '升級到 shape-based 定位（v2）',
+                width: 520,
+                content: (<div style={{ lineHeight: 1.9 }}>
+                  <div>定位引擎換成 shape_based,量測設定、anchor_corner 等其他設定<b>原封不動</b>。</div>
+                  <div style={{ marginTop: 8 }}>升級後<b>還沒有特徵點</b> —— 接著會直接打開
+                    「SBM定位設定」,在裡面按<b>生成特徵點</b>,然後<b>重新存檔</b>。</div>
+                  <div style={{ marginTop: 8, color: '#a8071a' }}>
+                    這兩步沒做完,這個 def 會退回用 sig360 檢驗,而畫面上看不出差別。</div>
+                  <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                    存檔前都還沒有寫到磁碟,不想要的話直接離開不要存就好。</div>
+                </div>),
+                okText: '升級並開始設定', cancelText: '先不要',
+                onOk: () => this.props.ACT_Migrate_To_Shape(this.props.edit_info),
+              })}>升級</Button>
+          </div>}
+
 
 
       </div>
@@ -4261,6 +4332,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
 
     ACT_DefConf_Lock_Level_Update: (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) },
 
+    ACT_Migrate_To_Shape: (edit_info) => migrateDefToShapeBased(dispatch, edit_info),
     ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
     ACT_WS_SEND_BPG: (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args)),
     ACT_ClearImage: () => { dispatch(UIAct.EV_WS_Image_Update(null)) },
