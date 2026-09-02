@@ -6,6 +6,7 @@
 //   - caliper width auto-default = arc length / count (not chord length).
 import { caliperConfigProblem, CALIPER_MIN_COUNT_ARC } from '../_caliperFields';
 import { ARC_POLARITY, EDGE_MIN_STRENGTH } from '../_caliperSeed';
+import { EdgeProfileView } from './EdgeProfileView.jsx';
 import React, { useEffect } from 'react';
 import { arcSweep } from 'UTIL/MathTools';
 import {
@@ -31,7 +32,7 @@ function defaultCaliperWidth(shape, count) {
   return (L > 0 && count > 0) ? L / count : 0.1;
 }
 
-export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', lockCaliper = false }) {
+export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', lockCaliper = false, onProbeEdges}) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
     ...shape,
@@ -52,6 +53,23 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
       };
     }
     update(patch);
+  };
+
+  // Edge-profile probe. The payload belongs to THIS shape and to the caliper
+  // geometry currently on screen, so it is dropped whenever either moves --
+  // stale evidence under a live slider is worse than no evidence.
+  const [edgeProfile, setEdgeProfile] = React.useState(null);
+  const [probeBusy, setProbeBusy]     = React.useState(false);
+  const [probeNote, setProbeNote]     = React.useState(null);
+  const calGeom = JSON.stringify([shape.id, shape.locating, shape.caliper]);
+  useEffect(() => { setEdgeProfile(null); setProbeNote(null); }, [calGeom]);
+  const runProbe = () => {
+    if (!onProbeEdges) return;
+    setProbeBusy(true); setProbeNote(null);
+    onProbeEdges(shape)
+      .then((p) => { setEdgeProfile(p); })
+      .catch((e) => { setEdgeProfile(null); setProbeNote(String(e && e.message || e)); })
+      .finally(() => setProbeBusy(false));
   };
 
   const t = (key) => translate(dict, dictTheme, key);
@@ -120,6 +138,12 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
         <NumberField label="min_strength" value={shape.edge?.min_strength}
           onCommit={(min_strength) => updateSub('edge', { min_strength })}
           tweak={defaultTweak} />
+        {onProbeEdges && <EdgeProfileView
+          profile={edgeProfile} busy={probeBusy} note={probeNote}
+          minStrength={shape.edge?.min_strength}
+          polarity={shape.edge?.polarity}
+          onChange={(min_strength) => updateSub('edge', { min_strength })}
+          onProbe={runProbe} />}
       </Section>
     </>}
   </div>;

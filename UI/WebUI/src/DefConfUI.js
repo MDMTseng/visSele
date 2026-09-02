@@ -3310,7 +3310,71 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 // which technically works (React calls it as a component) but is fragile against
 // Rules-of-Hooks tooling and confuses readers. As a top-level function component
 // it's idiomatic, lint-friendly, and easier to extract further (next: shape-slice).
-function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
+function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
+                       ACT_EDIT_TAR_ELE_TRACE_UPDATE,
+                       ACT_WS_SEND_BPG, CORE_ID, edit_info }) {
+  // ONE inspection, for ONE primitive's edge profile.
+  //
+  // Deliberately not part of 快速驗證: the payload is ~730 numbers per
+  // primitive, and a stream would carry it for every primitive on every frame
+  // for as long as the panel is open. This asks once, for the shape the
+  // operator is looking at, and turns the payload back off on the way out --
+  // including on failure, because a debug payload left latched on a production
+  // stream is exactly the kind of thing nobody notices until the archive grows.
+  //
+  // The def sent is the one being edited, so the profile answers for the
+  // caliper geometry currently on screen (count, width, length), not for
+  // whatever was last saved.
+  const probeEdgeProfile = (shape) => {
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return Promise.reject(new Error('def 產生失敗')); }
+    const off = () => ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { DEBUG_EMIT: { edge_profile: false } });
+    ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { DEBUG_EMIT: { edge_profile: true } });
+
+    // One frame is not evidence of absence. A part in motion, a frame taken
+    // between two of them, a localizer that missed once -- any of those returns
+    // an empty report, and reporting "no object" off a single attempt sends the
+    // operator to look at the wrong thing. Bounded, because the alternative is
+    // a stream, and a stream carries this payload for every primitive on every
+    // frame for as long as the panel is open.
+    const TRIES = 5;
+    const once = () => new Promise((resolve, reject) => {
+      ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
+        { _PGID_: 11007, _PGINFO_: { keep: false }, definfo: deffile },
+        undefined,
+        {
+          resolve: (pkts) => {
+            const RP = (pkts || []).find((p) => p.type === "RP");
+            const reports = GetObjElement(RP, ["data", "reports", 0, "reports"]);
+            const one = reports && reports[0];
+            if (!one) { reject(new Error('這一張沒有定位到物件')); return; }
+            // Match by id, not by index: a NA primitive is absent from the
+            // list, so position means nothing.
+            const pools = [].concat(one.detectedLines || [], one.detectedCircles || []);
+            const hit = pools.find((e) => e && e.id === shape.id);
+            if (!hit) { reject(new Error('這個 primitive 沒有回報（可能是 NA）')); return; }
+            const prof = hit.extra && hit.extra.edge_profile;
+            if (!prof || !prof.g || !prof.g.length) {
+              reject(new Error('核心沒有送 edge_profile（版本太舊？）')); return;
+            }
+            resolve(prof);
+          },
+          reject: (e) => reject(e instanceof Error ? e : new Error(String(e))),
+        });
+    });
+
+    const attempt = (n, lastErr) => (n <= 0)
+      ? Promise.reject(lastErr || new Error('沒有取得 edge_profile'))
+      : once().catch((e) => attempt(n - 1, e));
+
+    // off() on BOTH ends, because a debug payload left latched on a production
+    // stream is the kind of thing nobody notices until the archive grows.
+    return attempt(TRIES).then(
+      (p) => { off(); return p; },
+      (e) => { off(); throw e; });
+  };
+
 
     const DICT = useSelector(state => state.UIData.DICT);
     // New-version (shape_based) defs: measurement primitives must use caliper locating
@@ -3377,6 +3441,7 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
           dict={DICT}
           dictTheme={edit_tar.type}
           lockCaliper={lockCaliper}
+          onProbeEdges={probeEdgeProfile}
           onUpdate={(next) => ec_canvas.SetShape(next, next.id)}
           onTracePick={(keyTrace) => ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace)}
         />);
