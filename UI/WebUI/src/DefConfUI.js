@@ -3313,6 +3313,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
                        ACT_EDIT_TAR_ELE_TRACE_UPDATE,
                        ACT_WS_SEND_BPG, CORE_ID, edit_info }) {
+  const dispatch = useDispatch();
   // ONE primitive's edge profile, from the image already on screen.
   //
   // II + __CACHE_IMG__ is the request the CHECK button makes: one inspection of
@@ -3356,6 +3357,19 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
         {
           resolve: (pkts) => {
             const RP = (pkts || []).find((p) => p.type === "RP");
+            // Put the report on the CANVAS too, the way CHECK and
+            // sendOrientationInspect do. A threshold change moves which edge
+            // each caliper picks, and the hits and the fitted line move with
+            // it -- so the answer the operator is judging should be the one on
+            // screen, not the one from before the drag. IGNORE_DEFCONF_LOCK
+            // because a locked def still gets to be looked at.
+            const put = (pkt) => {
+              if (pkt === undefined) return;
+              const a = BPG_Protocol.map_BPG_Packet2Act(pkt);
+              if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+            };
+            put(RP);
+            put((pkts || []).find((p) => p.type === "IM"));
             const reports = GetObjElement(RP, ["data", "reports", 0, "reports"]);
             const one = reports && reports[0];
             if (!one) {

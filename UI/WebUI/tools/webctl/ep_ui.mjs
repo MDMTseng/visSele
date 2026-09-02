@@ -130,3 +130,38 @@ console.log('auto          :', auto, '->', await ev(`(function(){
   var e=document.querySelector('[data-testid="edge-profile-plot"]');
   var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
   return 'pass='+e.getAttribute('data-pass')+' shape='+(sh&&sh.edge&&sh.edge.min_strength);})()`));
+
+// Letting go of the slider runs ONE inspection, so the canvas shows what the
+// new threshold actually did. Asserted by the busy state appearing on release
+// and not during the drag -- an inspection per pixel of travel would make both
+// the control and the machine useless.
+const busyNow = () => ev(`(function(){var b=document.querySelector('[data-testid="edge-profile-recheck"]');
+  return b ? b.textContent.indexOf('檢查中') >= 0 : false;})()`);
+await ev(`(function(){
+  var s=document.querySelector('[data-testid="edge-profile-slider"]');
+  var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+  [70,72,74,76].forEach(function(v){ setter.call(s,String(v)); s.dispatchEvent(new Event('input',{bubbles:true})); });
+  return true;})()`);
+await sleep(300);
+console.log('busy during drag :', await busyNow(), '(expected false)');
+// The inspection is fast enough on a cached image that polling from node can
+// miss the whole busy window. Watch from inside the page instead: hook the
+// button's text for a second and report whether it ever said 檢查中.
+await ev(`(function(){
+  window.__SAW_BUSY__ = false;
+  var t0 = Date.now();
+  (function poll(){
+    var b = document.querySelector('[data-testid="edge-profile-recheck"]');
+    if (b && b.textContent.indexOf('檢查中') >= 0) window.__SAW_BUSY__ = true;
+    if (Date.now() - t0 < 2500) requestAnimationFrame(poll);
+  })();
+  document.querySelector('[data-testid="edge-profile-slider"]')
+    .dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  return true;})()`);
+await sleep(3000);
+console.log('probe on release :', await ev(`window.__SAW_BUSY__`), '(expected true)');
+console.log('settled pass     :',
+  await ev(`document.querySelector('[data-testid="edge-profile-plot"]').getAttribute('data-pass')`));
+console.log('shape min        :', await ev(`(function(){
+  var sh=(window.__GP_STORE__.getState().UIData.edit_info._obj.shapeList||[]).find(function(x){return x.id===1;});
+  return sh&&sh.edge&&sh.edge.min_strength;})()`));

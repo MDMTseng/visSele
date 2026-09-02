@@ -14,7 +14,7 @@
 //
 // Everything the slider does is computed from that payload in the browser, so
 // dragging it is instant and costs the machine nothing. One 檢查 per look.
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 
 // A peak is a local maximum of the signed gradient on the side the polarity
 // selects -- the same rule edge_select applies, so what is counted here is what
@@ -49,6 +49,9 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   // whenever the shape's own value arrives, so the two cannot drift: what is
   // shown is either what the shape says or what is on its way there.
   const [pending, setPending] = useState(null);
+  // Set while a drag has moved the value and not yet been acted on. A drag
+  // fires onChange continuously; only its END is worth an inspection.
+  const dirty = useRef(false);
   const committed = Math.max(0, Number(minStrength) || 0);
   const [seen, setSeen] = useState(committed);
   if (committed !== seen) { setSeen(committed); setPending(null); }
@@ -120,6 +123,11 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   const x = (i) => PADL + (i / (n - 1)) * (W - PADL - 6);
   const y = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);   // 0 at the bottom
   const pass = best.filter((b) => b >= thr).length;
+  const dragEnd = () => {
+    if (!dirty.current || busy) return;
+    dirty.current = false;
+    if (onProbe) onProbe();
+  };
   // The headroom the setting has: how far the floor could move before it starts
   // dropping calipers that currently find their edge.
   const weakest = best.length ? Math.min(...best.filter((b) => b > 0)) : 0;
@@ -156,7 +164,28 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <input type="range" min={0} max={Math.ceil(peak * 1.1)} step={1} value={thr}
              data-testid="edge-profile-slider"
-             onChange={(e) => { const v = Number(e.target.value); setPending(v); onChange(v); }}
+             onChange={(e) => {
+               const v = Number(e.target.value);
+               setPending(v); onChange(v); dirty.current = true;
+             }}
+             // LET GO AND SEE WHAT IT DID.
+             //
+             // The recolouring under the thumb is arithmetic on the payload in
+             // hand -- it says which peaks pass, and nothing more. What the
+             // threshold actually changes is which edge each caliper PICKS, and
+             // therefore where the hits sit and where the line fits, and none of
+             // that is derivable here. So the end of a drag runs one inspection
+             // and the canvas snaps to the answer.
+             //
+             // At the END, not during: a drag emits a change per pixel of
+             // travel, and an inspection per pixel would make the control
+             // unusable and the machine busy. mouseup covers the mouse,
+             // touchend and pointerup the rest, and mouseleave the drag that
+             // ends outside the control -- all four collapse to one because
+             // `dirty` is cleared by the first that fires.
+             onMouseUp={dragEnd} onTouchEnd={dragEnd}
+             onPointerUp={dragEnd} onMouseLeave={dragEnd}
+             onKeyUp={dragEnd}
              style={{ flex: 1 }} />
       <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 34, textAlign: 'right' }}>
         {Math.round(thr)}
@@ -177,7 +206,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <button type="button" data-testid="edge-profile-auto"
         data-suggest={suggest} data-clean={clean ? '1' : '0'}
-        onClick={() => { setPending(suggest); onChange(suggest); }}
+        onClick={() => { setPending(suggest); onChange(suggest); dirty.current = true; dragEnd(); }}
         style={{ padding: '3px 10px', cursor: 'pointer' }}>
         自動設定 {suggest}
       </button>
