@@ -27,7 +27,7 @@ const wrap360 = (v) => ((Number(v) % 360) + 360) % 360;
 
 export function SearchPointPropertySheet({
   shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'search_point',
-  onProbeEdges,
+  lockCaliper = false, onProbeEdges,
 }) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
@@ -68,6 +68,14 @@ export function SearchPointPropertySheet({
       .finally(() => setProbeBusy(false));
   };
 
+  // Locked defs are caliper-only, so a shape that arrives as contour is put
+  // right rather than left in a state the def cannot measure. Same effect as
+  // the line and arc sheets.
+  useEffect(() => {
+    if (lockCaliper && shape.locating !== 'caliper') flipLocating('caliper');
+    // eslint-disable-next-line
+  }, [lockCaliper, shape.id]);
+
   const t = (key) => translate(dict, dictTheme, key);
   const defaultTweak = { mul: [1.5], add: [0.1] };
 
@@ -99,8 +107,17 @@ export function SearchPointPropertySheet({
     <SwitchField label={t('search_far')}
       checked={!!shape.search_far}
       onChange={(v) => update({ search_far: v })} />
-    <DropdownField label={t('locating')} value={shape.locating || 'contour'}
-      options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)} onChange={flipLocating} />
+    {/* A CHOICE THE DEF CANNOT HONOUR IS NOT A CHOICE.
+        On a shape_based def there is no contour to follow -- the core says so
+        at load ("CONTOUR locating ... cannot be measured by the shape locator
+        ... they will report nothing, silently") -- so contour is not an option,
+        it is a way to switch a feature off without being told. The line and arc
+        sheets have hidden it since lockCaliper existed; this one never received
+        the prop, so the search point kept offering it. */}
+    {!lockCaliper &&
+      <DropdownField label={t('locating')} value={shape.locating || 'contour'}
+        options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)}
+        onChange={flipLocating} />}
     <SwitchField label={t('locating_anchor')}
       checked={!!shape.locating_anchor}
       onChange={(v) => update({ locating_anchor: v })} />
@@ -108,7 +125,7 @@ export function SearchPointPropertySheet({
       checked={!!shape.anchor_corner}
       onChange={(v) => update({ anchor_corner: v })} />}
 
-    {shape.locating === 'caliper' && <Section label={t('edge')}>
+    {(lockCaliper || shape.locating === 'caliper') && <Section label={t('edge')}>
       <DropdownField label={t('method')} value={shape.edge?.method}
         options={EDGE_METHODS} optionLabel={(v) => t('opt_' + v)}
         onChange={(method) => updateSub('edge', { method })} />

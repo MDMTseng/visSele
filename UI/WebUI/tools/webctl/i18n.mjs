@@ -69,3 +69,29 @@ for (const type of ['line', 'arc', 'search_point', 'measure']) {
     return bad.length ? 'ENGLISH LEFT: '+bad.join(' ') : 'all translated';})()`);
   console.log('  ' + type + ': ' + left);
 }
+
+// A LOCKED DEF OFFERS NO LOCATING CHOICE.
+//
+// locating_engine 'shape_based' means there is no contour to follow -- the core
+// says at load that contour features "will report nothing, silently" -- so the
+// selector is not a choice, it is a way to switch a feature off without being
+// told. The line and arc sheets have hidden it since lockCaliper existed; the
+// search point sheet never received the prop.
+const locked = await ev(`window.__GP_STORE__.getState().UIData.edit_info.locating_engine === 'shape_based'`);
+console.log('shape_based  :', locked);
+for (const type of ['line', 'arc', 'search_point']) {
+  let s2 = await pick(type);
+  for (let i = 0; i < 20; i++) {
+    const up = await ev(`[].slice.call(document.querySelectorAll('*')).some(function(x){
+      return x.children.length===0 && (x.textContent||'').trim()==='名稱';})`);
+    if (up) break;
+    await sleep(300); s2 = await pick(type);
+  }
+  const shown = await ev(`(function(){
+    var host=[].slice.call(document.querySelectorAll('*')).filter(function(x){
+      return x.children.length===0 && (x.textContent||'').trim()==='名稱';})[0];
+    if(!host) return 'no sheet';
+    var p=host; for(var k=0;k<8&&p.parentElement;k++) p=p.parentElement;
+    return p.innerText.indexOf('定位方式')>=0 ? 'SELECTOR SHOWN' : 'hidden';})()`);
+  console.log('  ' + type + ': 定位方式 ' + shown);
+}
