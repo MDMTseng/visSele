@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
-import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
+import { Shape_Attr_Fill, InspectionEditorLogic } from 'UTIL/InspectionEditorLogic';
 import { fieldFor, getShapeModule } from 'JSSRCROOT/shapes';
 import { applyFieldChange } from 'JSSRCROOT/shapes/_schemaHelpers';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
@@ -3097,6 +3097,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                   let mod_shape=dclone(shape);
                   
                   edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,shape_list, insp_rep,true);
+                  // A measurement that did not happen must not move the def.
+                  mod_shape = InspectionEditorLogic.KeepDefGeometryIfNotMeasured(shape, mod_shape);
 
                   mod_shape=modShapeCleanUp(mod_shape);
                   if(mod_shape!==undefined)
@@ -4037,6 +4039,11 @@ class APP_DEFCONF_MODE extends React.Component {
                               || '核心沒有給原因。線被拖離邊緣超過 margin 時,caliper 掃不到邊就是這個結果。',
                           });
                         }
+
+                        // Same rule as INST_CHECK: NA keeps the def's geometry
+                        // and carries only the status, the reason and the hits.
+                        mod_shape = InspectionEditorLogic.KeepDefGeometryIfNotMeasured(
+                          this.props.edit_tar_info, mod_shape);
 
                         mod_shape=modShapeCleanUp(mod_shape);
                         if(mod_shape!==undefined)

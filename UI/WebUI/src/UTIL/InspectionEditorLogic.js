@@ -1304,10 +1304,23 @@ export class InspectionEditorLogic {
       } else {
         delete eObject.cal_hits;
       }
-      ["pt1", "pt2", "pt3"].forEach((key) => {
-        if (eObject[key] === undefined) return;
-        eObject[key] = pointForwardTrans(eObject[key]);
-      });
+      // ...AND ONLY WHERE THE CANVAS IS IN IMAGE FRAME.
+      //
+      // cal_hits_forward above already asks this question (`if (!hits ||
+      // oriBase) return hits`); the shape's own points were moved regardless,
+      // and the def editor renders in OBJECT frame. So in DefConfUI an NA
+      // feature was translated by the object's position -- about (15mm, 9mm) on
+      // this part -- and left the visible area entirely. Reported from the
+      // bench as "I cannot find the primitive on screen anymore".
+      //
+      // In the object frame the def's own geometry is already the right answer:
+      // it IS where this would have been measured. Nothing to transform.
+      if (!oriBase) {
+        ["pt1", "pt2", "pt3"].forEach((key) => {
+          if (eObject[key] === undefined) return;
+          eObject[key] = pointForwardTrans(eObject[key]);
+        });
+      }
       // Carried so the overlay can say WHY next to the shape. Without it an NA
       // is a grey outline with no explanation, which is only marginally better
       // than the nothing it used to be.
@@ -1532,6 +1545,36 @@ export class InspectionEditorLogic {
         eObject[key] = pointInvTrans(eObject[key]);
       });
     }
+  }
+
+  // A MEASUREMENT THAT DID NOT HAPPEN MUST NOT MOVE THE DEF.
+  //
+  // CHECK writes the adjusted shapes back into the shape list -- that is the
+  // snap the operator relies on when dragging a line onto an edge. But it did it
+  // for EVERY shape, including the ones the core reported NA and the ones it did
+  // not report at all, so a failed measurement rewrote the def's own geometry
+  // with whatever the failure produced. Press CHECK twice on a primitive that
+  // cannot measure and the def has drifted twice, with nothing said.
+  //
+  // The display fields still come through: status, the reason, and the caliper
+  // hits are exactly what makes an NA legible. Only the GEOMETRY is refused.
+  //
+  // `orig` is the pre-adjust clone; `adjusted` is what the adjust produced.
+  static KeepDefGeometryIfNotMeasured(orig, adjusted) {
+    if (!adjusted) return adjusted;
+    // SUCCESS is the only status whose geometry is a measurement. NA, FAILURE
+    // and UNSET all mean "the def's own points are still the best answer", and
+    // a shape the core never reported has no status at all.
+    if (adjusted.inspection_status === INSPECTION_STATUS.SUCCESS) return adjusted;
+    const keep = { ...orig };
+    for (const k of ['inspection_status', 'na_reason', 'cal_hits']) {
+      if (adjusted[k] !== undefined) keep[k] = adjusted[k];
+      else delete keep[k];
+    }
+    // Per-frame derived fields never belong to the def; the adjust deletes them
+    // on NA and they must not survive from an earlier SUCCESS either.
+    delete keep._pt1; delete keep._pt2; delete keep.adj_pt1;
+    return keep;
   }
 
   ShapeListAdjustsWithInspectionResult(shapeList, InspResult, oriBase = false) {
