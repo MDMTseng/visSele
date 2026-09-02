@@ -9971,6 +9971,98 @@ volatile uint32_t LOOP_PASS_T0_US=0, LOOP_PREV_GAP_US=0;
 #define SEG_END(V) do{ uint32_t _d=(uint32_t)esp_timer_get_time()-_seg_t0; \
                        if(_d>(V)) (V)=_d; }while(0)
 
+// WHY THE CHIP LAST BOOTED, SAID ONCE, WITHOUT BEING ASKED.
+//
+// esp_reset_reason() already answers this, and get_running_stat already carries
+// it -- but only to whoever asks, and the only thing that asks is the ESP32
+// panel in the WebUI while an operator has it open. So a panic at 3am reboots
+// the board, the machine recovers on its own, and by morning the evidence is
+// gone: the reason is overwritten by the next boot, error_hist lives in RAM,
+// and the panic backtrace went out the UART as noise. Nothing anywhere records
+// that it happened.
+//
+// ON THE EXISTING EVENT PATH, NOT A NEW ONE. system_info is already an
+// unsolicited event, already stamped with EVENT_SEQ so the host can detect
+// event loss, and the core already treats a line containing "system_info" as a
+// fault and logs it in full without truncation. Adding a frame type would mean
+// a new parser path on both sides for one string a day.
+//
+// AFTER THE LINK IS PROVEN, NOT AT BOOT. The board reboots at the moment the
+// host opens the port -- DTR/RTS is wired to EN on a dev board -- and at that
+// moment the boot ROM is printing 115200 into a port read at 230400. Anything
+// sent into that is lost at best, and at worst is one more thing for the host's
+// parser to resynchronise past. So this waits for a frame to arrive FROM the
+// host: that is proof the link is up, framed and at the right baud.
+//
+// Announced once per boot. A repeat would be indistinguishable from a second
+// reboot, which is the exact fact this exists to report.
+static bool BOOT_ANNOUNCED=false;
+static void bootReasonService()
+{
+  if(BOOT_ANNOUNCED) return;
+  if(djrl.rx_frames==0) return;          // the host is transmitting
+
+  // A FRAME ARRIVING IS NOT THE HOST BEING ABLE TO HEAR US.
+  //
+  // Measured, on the very crash this exists to report: the board panicked, came
+  // back, saw host frames within a second, announced PANIC -- and the host
+  // never logged it. Its parser was still in ERROR_SEC chewing through the
+  // panic backtrace this same reboot had sprayed onto the wire, and it stays
+  // there until it can resynchronise. The announcement went out into that and
+  // was eaten. What the host eventually logged was the NEXT boot (a POWERON
+  // caused by its own recovery reopening the port), i.e. the one message that
+  // says nothing was the only one that survived.
+  //
+  // Inbound traffic proves the host's transmitter. Nothing the board can see
+  // proves the host's receiver, so this waits instead: the board sends a
+  // SYSTIME heartbeat every second, and the host resynchronises on the first
+  // whole frame it gets, so a couple of seconds is several chances to recover.
+  static uint32_t link_seen_ms=0;
+  if(link_seen_ms==0) { link_seen_ms=millis(); return; }
+
+  // SAID THREE TIMES, BECAUSE ONE DELIVERY IS NOT A DELIVERY HERE.
+  //
+  // There is no acknowledgement on this path -- system_info is an unsolicited
+  // event -- and the one link this has to cross is the link that was, seconds
+  // ago, full of the panic dump that caused the reboot. Measured: a single
+  // announcement at +2.5s was still lost while the host worked its way back to
+  // a frame boundary. Repeats are harmless (the host logs a line; the fact does
+  // not change between copies) and the loss they cover is total.
+  //
+  // Three, spread out, then silence. A message that keeps repeating forever
+  // stops being a boot notice and becomes noise on a wire that is measured in
+  // milliseconds per frame.
+  static int announce_n=0;
+  static const uint32_t AT_MS[3]={2500,8000,20000};
+  if(announce_n>=3) { BOOT_ANNOUNCED=true; return; }
+  if(millis()-link_seen_ms < AT_MS[announce_n]) return;
+  announce_n++;
+
+  static const char* rr_names[]={"UNKNOWN","POWERON","EXT","SW","PANIC",
+                                 "INT_WDT","TASK_WDT","WDT","DEEPSLEEP",
+                                 "BROWNOUT","SDIO"};
+  const int rr=(int)esp_reset_reason();
+  const char* nm=(rr>=0 && rr<11)?rr_names[rr]:"?";
+
+  TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+  if(!commInfo) { announce_n--; return; }   // queue full; retry this one
+
+  // The text goes in `log`, which system_info already carries and the core
+  // already logs verbatim. POWERON is called out as the ambiguous one it is:
+  // on a dev board it is also what re-opening the serial port produces, so
+  // "the board power-cycled" and "the host opened the port" look identical
+  // here -- and only one of those is a fault.
+  static char msg[96];
+  snprintf(msg,sizeof(msg),
+           "boot: reset_reason=%d(%s)%s", rr, nm,
+           (rr==ESP_RST_POWERON||rr==ESP_RST_EXT)
+             ? " -- power cycle or a host port open, not necessarily a fault"
+             : " -- THE FIRMWARE DIED AND REBOOTED");
+  commInfo->type=TaskQ2CommInfo_Type::system_info;
+  commInfo->log=msg;
+  TaskQ2CommInfoQ.pushHead();
+}
+
 void firmwareLoop()
 {
   {
@@ -9997,6 +10089,7 @@ void firmwareLoop()
   // to re-run while a sample is outstanding.
   recalPendingService();
   phantomTrainService();
+  bootReasonService();
   SEG_END(SEG_SVC_US); }
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.
