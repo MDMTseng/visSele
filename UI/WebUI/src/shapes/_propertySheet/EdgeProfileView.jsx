@@ -248,9 +248,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
         {busy ? '檢查中…' : '檢查邊緣強度'}
       </button>
       {note && <div style={{ ...HINT, color: WARN }}>{note}</div>}
-      <div style={HINT}>
-        跑一張影像，把實際量到的邊緣梯度畫出來，門檻就照著圖設。
-      </div>
+      <div style={HINT}>跑一張影像，照著實際的邊緣梯度設門檻。</div>
     </div>;
   }
 
@@ -296,8 +294,8 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
       </div>
       {controls(Math.ceil(peak * 1.1), suggest,
         <div style={HINT}>
-          藍點是被採用的首擊，綠點過了門檻但更遠，紅點被門檻擋下。
-          建議值是核心目前內部規則（最強候選的 40%）寫成的固定門檻。
+          藍＝採用的首擊　綠＝過門檻但更遠　紅＝被擋下
+          <br />建議值＝核心內部規則（最強的 40%）寫成固定門檻
         </div>)}
     </div>;
   }
@@ -346,13 +344,12 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
         <span style={{ color: INK_DIM }}>　（最弱的一個是 {Math.round(weakest)}）</span>}
     </div>
     {controls(Math.ceil(peak * 1.1), suggest, <>
-      <div style={HINT}>
-        綠線是會被採用的 caliper，紅線是被門檻濾掉的。淡紅區域以下都不算邊。
-        最弱的邊 {Math.round(signal)}、最強的雜訊峰 {Math.round(noise)}。
-      </div>
+      {/* SHORT, because the column is 200px and the numbers say more than the
+          sentences do. Nine lines of prose pushed the buttons below the fold and
+          repeated what the readout above had already stated. */}
+      <div style={HINT}>綠＝採用　紅＝被濾掉　·　邊 {Math.round(signal)}／雜訊 {Math.round(noise)}</div>
       {!clean && <div style={{ ...HINT, color: WARN, marginTop: 2 }}>
-        雜訊峰和真實邊沒有分開，沒有一個門檻分得掉它們。建議值只保證每個 caliper
-        還找得到邊，不保證找到的是對的那條 —— 先看看 caliper 位置或寬度。
+        雜訊和邊沒分開，門檻分不掉 —— 看 caliper 位置或寬度。
       </div>}
     </>)}
   </div>;
