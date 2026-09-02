@@ -125,6 +125,20 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   
   virtual int recv_RESET()=0;
   virtual int recv_ERROR(ERROR_TYPE errorcode)=0;
+
+  // A BYTE THAT ARRIVED OUTSIDE ANY FRAME, HANDED OVER INSTEAD OF DROPPED.
+  //
+  // recv_ERROR is told the error CODE and never the byte, so INIT_CHAR_ERROR --
+  // "something is on this wire that is not our protocol" -- discards the only
+  // evidence of what that something was. On this machine the something is
+  // usually an ESP32 panic backtrace: the panic handler prints it on the same
+  // UART, and the boot ROM prints at 115200 into a port we read at 230400, so
+  // a firmware crash reaches the core as exactly this and then vanishes.
+  //
+  // Non-pure with an empty default on purpose: four other channels implement
+  // this interface and none of them has an opinion about stray bytes. A
+  // subclass that wants the evidence overrides it; the rest are unchanged.
+  virtual void recv_stray(uint8_t c) { (void)c; }
   
   // int send_data(int head_room,uint8_t *data,int len,int leg_room)
   // {

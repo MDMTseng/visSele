@@ -1607,6 +1607,30 @@ class PerifChannel:public Data_JsonRaw_Layer
   // the selector, a serial protocol error), and clear_error reaches it straight
   // from the WebUI over the peripheral passthrough -- the core is not consulted
   // and would otherwise never learn the ring was emptied.
+  // WHAT THE DEVICE SAYS ABOUT ITSELF, IN THE CORE'S OWN LOG.
+  //
+  // system_info is the firmware's unsolicited "something happened to me"
+  // event -- a latched protocol error, and now the reason it last booted. It
+  // has always reached the WebUI, and the core has always been able to print
+  // it, but ONLY under INSP_PERIF_LOG. That is exactly backwards for what this
+  // event is for: the panic at 3am with nobody watching is the case where the
+  // WebUI is not open and no developer has set an environment variable, and it
+  // is the only case where the message matters.
+  //
+  // So it is logged unconditionally, at WARN, into the ring that a crash dump
+  // carries. Cheap by construction: these events are rare (a fault or a boot),
+  // and the strstr below rejects every routine reply before any parsing.
+  void tap_device_log(uint8_t *raw, int rawL)
+  {
+    if (strstr((const char *)raw, "system_info") == NULL) return;
+    cJSON *j = cJSON_Parse((const char *)raw);
+    if (j == NULL) return;
+    const cJSON *lg = cJSON_GetObjectItem(j, "log");
+    if (lg != NULL && cJSON_IsString(lg) && lg->valuestring != NULL)
+      LOGW("[perif ch=%d] device says: %s", ID, lg->valuestring);
+    cJSON_Delete(j);
+  }
+
   void tap_device_state(uint8_t *raw, int rawL)
   {
     if (machine_type != PERIF_UINSP_ESP32) return;
@@ -1964,11 +1988,17 @@ class PerifChannel:public Data_JsonRaw_Layer
 
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
+    // A frame parsed, so whatever noise came before it has ended. This is the
+    // flush point that matters: it fires once per episode, at the moment the
+    // link recovers, and costs nothing when there was no noise.
+    stray_flush("link resynchronised");
+
     if(opcode==1 )
     {
       tap_trigger_info(raw, rawL);
       tap_device_reply(raw, rawL);
       tap_device_state(raw, rawL);
+      tap_device_log(raw, rawL);
       retire_stale_triggers();
       keep_clock_warm();
       // Verbatim copy to the dev console, before any envelope or truncation.
@@ -2082,6 +2112,81 @@ class PerifChannel:public Data_JsonRaw_Layer
   {
     // printf("Get recv_ERROR:%d\n",errorcode);
     return 0;
+  }
+
+  // ---- what the device says when it is not speaking our protocol -----------
+  //
+  // An ESP32 panic prints its backtrace on this same UART, and the boot ROM
+  // that follows prints at 115200 into a port we read at 230400. Both arrive
+  // as bytes outside a frame, which until now were dropped one at a time and
+  // never logged. So a firmware crash was invisible from the core: the link
+  // went quiet, came back, and the only trace left anywhere was
+  // esp_reset_reason() sitting in a health reply nobody was asking for.
+  //
+  // ONE LINE PER EPISODE, NOT ONE PER BYTE. A reset sprays hundreds of bytes;
+  // logging each would flush the ring that holds the reason we are reading it.
+  // So the bytes accumulate here and are emitted when the noise ENDS -- either
+  // the buffer filling or the next frame that parses, i.e. the link
+  // resynchronising. No timer and no thread: both flush points are already on
+  // the RX thread, which is also the only thread that appends (recv_stray and
+  // recv_jsonRaw_data are both called from Data_Layer_Protocol::recv_data),
+  // so this needs no lock.
+  // 2 KB because of WHERE the useful part sits. A measured ESP32 panic opens
+  // with "Guru Meditation Error" and a full register dump -- around 700 bytes
+  // of A0..A15 -- and only then prints the Backtrace: line, which is the one
+  // line that says where it died. At 512 the capture stopped mid-register-dump
+  // and threw away the answer.
+  static const int STRAY_MAX = 2048;
+  char     stray_buf[STRAY_MAX];
+  int      stray_len = 0;
+  uint32_t stray_dropped = 0;   // bytes past the buffer: counted, not kept
+
+  void recv_stray(uint8_t c) override
+  {
+    if (stray_len < STRAY_MAX) stray_buf[stray_len++] = (char)c;
+    else                       stray_dropped++;
+  }
+
+  void stray_flush(const char *why)
+  {
+    if (stray_len == 0) return;
+
+    const int n = stray_len;
+    const bool more = (stray_dropped != 0);
+    stray_len = 0;
+    stray_dropped = 0;
+
+    // CHUNKED, because a log slot holds 240 bytes.
+    //
+    // The first version built one string and handed it to LOGW, and the ring
+    // cut it at the slot boundary -- so the feature that exists to preserve a
+    // panic backtrace preserved the first two lines of one. A backtrace is the
+    // part that identifies the crash, and it is at the END.
+    //
+    // Printable-ised as it goes. A panic dump is text, but the 115200 boot ROM
+    // read at 230400 is not, and raw control bytes break the ring viewer that
+    // has to read this.
+    const int CHUNK = 150;
+    char out[CHUNK * 4 + 8];
+    int  part = 0;
+    const int parts = (n + CHUNK - 1) / CHUNK;
+
+    LOGW("[perif ch=%d] %d byte(s) outside any frame%s (%s) -- the device is "
+         "talking to something that is not us; on this link that is usually an "
+         "ESP32 panic backtrace or the 115200 boot ROM. %d line(s) follow:",
+         ID, n, more ? " (+more, truncated)" : "", why, parts);
+
+    for (int base = 0; base < n; base += CHUNK) {
+      int o = 0;
+      for (int i = base; i < n && i < base + CHUNK && o < (int)sizeof(out) - 6; i++) {
+        unsigned char b = (unsigned char)stray_buf[i];
+        if (b == 0x0a || b == 0x0d)      out[o++] = ' ';
+        else if (b >= 0x20 && b < 0x7f)  out[o++] = (char)b;
+        else o += snprintf(out + o, sizeof(out) - o, "[%02x]", b);
+      }
+      out[o] = 0;
+      LOGW("[perif ch=%d] stray %d/%d: %s", ID, ++part, parts, out);
+    }
   }
   
   void connected(Data_Layer_IF* ch){
