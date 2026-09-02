@@ -39,6 +39,20 @@ function peaksOf(g, polarity) {
 export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
                                   onChange, onProbe, busy, note }) {
   const [hover, setHover] = useState(null);
+  // The dragged value lives here as well as on the shape.
+  //
+  // Committing upward is the point of the control, but the commit is a round
+  // trip through the canvas and the store, and a slider that waits for that
+  // before it redraws feels broken while being dragged. So the drag updates
+  // locally and immediately -- the curve recolours and the caliper count moves
+  // under the thumb -- and the same value goes up. `pending` is cleared
+  // whenever the shape's own value arrives, so the two cannot drift: what is
+  // shown is either what the shape says or what is on its way there.
+  const [pending, setPending] = useState(null);
+  const committed = Math.max(0, Number(minStrength) || 0);
+  const [seen, setSeen] = useState(committed);
+  if (committed !== seen) { setSeen(committed); setPending(null); }
+  const thr = pending == null ? committed : pending;
   const W = 320, H = 132, PADL = 30, PADB = 16, PADT = 8;
 
   const model = useMemo(() => {
@@ -75,7 +89,6 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   const { g, peak, n, best } = model;
   const x = (i) => PADL + (i / (n - 1)) * (W - PADL - 6);
   const y = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);   // 0 at the bottom
-  const thr = Math.max(0, Number(minStrength) || 0);
   const pass = best.filter((b) => b >= thr).length;
   // The headroom the setting has: how far the floor could move before it starts
   // dropping calipers that currently find their edge.
@@ -113,7 +126,7 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <input type="range" min={0} max={Math.ceil(peak * 1.1)} step={1} value={thr}
              data-testid="edge-profile-slider"
-             onChange={(e) => onChange(Number(e.target.value))}
+             onChange={(e) => { const v = Number(e.target.value); setPending(v); onChange(v); }}
              style={{ flex: 1 }} />
       <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 34, textAlign: 'right' }}>
         {Math.round(thr)}

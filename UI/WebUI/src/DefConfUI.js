@@ -3313,43 +3313,58 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
                        ACT_EDIT_TAR_ELE_TRACE_UPDATE,
                        ACT_WS_SEND_BPG, CORE_ID, edit_info }) {
-  // ONE inspection, for ONE primitive's edge profile.
+  // ONE primitive's edge profile, from the image already on screen.
   //
-  // Deliberately not part of 快速驗證: the payload is ~730 numbers per
-  // primitive, and a stream would carry it for every primitive on every frame
-  // for as long as the panel is open. This asks once, for the shape the
-  // operator is looking at, and turns the payload back off on the way out --
-  // including on failure, because a debug payload left latched on a production
-  // stream is exactly the kind of thing nobody notices until the archive grows.
+  // II + __CACHE_IMG__ is the request the CHECK button makes: one inspection of
+  // the frame the editor is holding. No camera, no subscription, nothing to
+  // stop afterwards.
   //
-  // The def sent is the one being edited, so the profile answers for the
-  // caliper geometry currently on screen (count, width, length), not for
-  // whatever was last saved.
+  // This started as a CI stream, which was wrong in three ways and each one
+  // cost something. A CI subscription is started with keep:true and ended by a
+  // separate keep:false -- sending keep:false WITH definfo does not make a
+  // one-shot, it registers like any other, so the first version left five
+  // streams running and the camera never stopped. Ending them properly still
+  // left a live stream during the measurement, and a live stream rewrites the
+  // editor's shape list every frame, so the slider's own writes were being
+  // overwritten as fast as they were made. Reaching for CancelNowInsp's
+  // trigger_mode reset to tidy up made it worse again: that is a machine-wide
+  // setting changed by a panel-local probe, and after it the property sheet
+  // stopped writing to the store at all.
+  //
+  // None of it was needed. The threshold is being set against a picture the
+  // operator is looking at, so the right frame is that one -- which also makes
+  // the probe repeatable, and makes "no object" a fact about the def rather
+  // than about the instant the button was pressed.
   const probeEdgeProfile = (shape) => {
     let deffile;
     try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
     catch (e) { return Promise.reject(new Error('def 產生失敗')); }
+
     const off = () => ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { DEBUG_EMIT: { edge_profile: false } });
     ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { DEBUG_EMIT: { edge_profile: true } });
 
-    // One frame is not evidence of absence. A part in motion, a frame taken
-    // between two of them, a localizer that missed once -- any of those returns
-    // an empty report, and reporting "no object" off a single attempt sends the
-    // operator to look at the wrong thing. Bounded, because the alternative is
-    // a stream, and a stream carries this payload for every primitive on every
-    // frame for as long as the panel is open.
-    const TRIES = 5;
-    const once = () => new Promise((resolve, reject) => {
-      ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
-        { _PGID_: 11007, _PGINFO_: { keep: false }, definfo: deffile },
+    return new Promise((resolve, reject) => {
+      ACT_WS_SEND_BPG(CORE_ID, "II", 0,
+        {
+          definfo: deffile,
+          imgsrc: "__CACHE_IMG__",
+          img_property: {
+            calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp },
+          },
+        },
         undefined,
         {
           resolve: (pkts) => {
             const RP = (pkts || []).find((p) => p.type === "RP");
             const reports = GetObjElement(RP, ["data", "reports", 0, "reports"]);
             const one = reports && reports[0];
-            if (!one) { reject(new Error('這一張沒有定位到物件')); return; }
-            // Match by id, not by index: a NA primitive is absent from the
+            if (!one) {
+              // The core says why when it can; CHECK surfaces the same field.
+              const why = GetObjElement(RP, ["data", "reports", 0, "locate", "reason"]);
+              reject(new Error(why || '這張影像沒有偵測到物件'));
+              return;
+            }
+            // Match by id, not by index: an NA primitive is absent from the
             // list, so position means nothing.
             const pools = [].concat(one.detectedLines || [], one.detectedCircles || []);
             const hit = pools.find((e) => e && e.id === shape.id);
@@ -3362,17 +3377,8 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
           },
           reject: (e) => reject(e instanceof Error ? e : new Error(String(e))),
         });
-    });
-
-    const attempt = (n, lastErr) => (n <= 0)
-      ? Promise.reject(lastErr || new Error('沒有取得 edge_profile'))
-      : once().catch((e) => attempt(n - 1, e));
-
-    // off() on BOTH ends, because a debug payload left latched on a production
-    // stream is the kind of thing nobody notices until the archive grows.
-    return attempt(TRIES).then(
-      (p) => { off(); return p; },
-      (e) => { off(); throw e; });
+    }).then((p) => { off(); return p; },
+            (e) => { off(); throw e; });
   };
 
 
