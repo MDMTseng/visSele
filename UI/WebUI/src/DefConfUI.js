@@ -3380,12 +3380,21 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
             }
             // Match by id, not by index: an NA primitive is absent from the
             // list, so position means nothing.
-            const pools = [].concat(one.detectedLines || [], one.detectedCircles || []);
+            const pools = [].concat(one.detectedLines || [], one.detectedCircles || [],
+                                    one.searchPoints || []);
             const hit = pools.find((e) => e && e.id === shape.id);
             if (!hit) { reject(new Error('這個 primitive 沒有回報（可能是 NA）')); return; }
+            // A caliper sends a curve (g), a search point sends candidates
+            // (p/s). Accept either; the panel branches on `kind`.
             const prof = hit.extra && hit.extra.edge_profile;
-            if (!prof || !prof.g || !prof.g.length) {
-              reject(new Error('核心沒有送 edge_profile（版本太舊？）')); return;
+            const usable = prof && ((prof.g && prof.g.length) || (prof.p && prof.p.length));
+            if (!usable) {
+              // Say what DID arrive. "The core did not send it" is a guess, and
+              // it was wrong the first time it was read: the payload was there
+              // and in a shape this check did not recognise.
+              reject(new Error('沒有可用的 edge_profile（extra: '
+                + Object.keys((hit && hit.extra) || {}).join(',') + '）'));
+              return;
             }
             resolve(prof);
           },

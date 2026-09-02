@@ -31,6 +31,8 @@ enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 // strength-gated row edge (the `eps` set). status=2 if within considerRange
 // of the perp-top (contributed to the final point), else 1; strength=peak
 // gradient. Coords in the SAME frame as outPt (gray's image coords).
+// outPeaks (optional): every candidate the selector saw, UNGATED -- the
+// evidence a min_strength is set against. See SearchPointPeaks.
 bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      float edgeSuppress, float considerRange,
@@ -41,6 +43,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // image. The band is then not the band the def asked for,
                      // and the answer is a best-effort over whatever was left --
                      // which is exactly what a measurement must not silently be.
-                     bool *outClipped = nullptr);
+                     bool *outClipped = nullptr,
+                     SearchPointPeaks *outPeaks = nullptr);
 
 #endif // SEARCH_POINT_CV_H

@@ -12,7 +12,8 @@
 //     core runs ONE caliper along the search vector — see search_point.js).
 //   - `ref[0]` slot — references one line shape; clicking enters ref-pick mode
 //     via onTracePick(["ref", "0"]).
-import React from 'react';
+import React, { useEffect } from 'react';
+import { EdgeProfileView } from './EdgeProfileView.jsx';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
   RefSlot, StepButton, NumberTweakActions, translate,
@@ -25,6 +26,7 @@ const wrap360 = (v) => ((Number(v) % 360) + 360) % 360;
 
 export function SearchPointPropertySheet({
   shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'search_point',
+  onProbeEdges,
 }) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
@@ -46,6 +48,23 @@ export function SearchPointPropertySheet({
       };
     }
     update(patch);
+  };
+
+  // Edge-profile probe. The payload belongs to THIS shape and to the window
+  // geometry currently on screen, so it is dropped whenever either moves --
+  // stale evidence under a live slider is worse than no evidence.
+  const [edgeProfile, setEdgeProfile] = React.useState(null);
+  const [probeBusy, setProbeBusy]     = React.useState(false);
+  const [probeNote, setProbeNote]     = React.useState(null);
+  const spGeom = JSON.stringify([shape.id, shape.locating, shape.margin, shape.width]);
+  useEffect(() => { setEdgeProfile(null); setProbeNote(null); }, [spGeom]);
+  const runProbe = () => {
+    if (!onProbeEdges) return;
+    setProbeBusy(true); setProbeNote(null);
+    onProbeEdges(shape)
+      .then((p) => { setEdgeProfile(p); })
+      .catch((e) => { setEdgeProfile(null); setProbeNote(String(e && e.message || e)); })
+      .finally(() => setProbeBusy(false));
   };
 
   const t = (key) => translate(dict, dictTheme, key);
@@ -101,6 +120,11 @@ export function SearchPointPropertySheet({
       <NumberField label="min_strength" value={shape.edge?.min_strength}
         onCommit={(min_strength) => updateSub('edge', { min_strength })}
         tweak={defaultTweak} />
+      {onProbeEdges && <EdgeProfileView
+        profile={edgeProfile} busy={probeBusy} note={probeNote}
+        minStrength={shape.edge?.min_strength}
+        onChange={(min_strength) => updateSub('edge', { min_strength })}
+        onProbe={runProbe} />}
       <NumberField label="include_range" value={shape.edge?.include_range}
         onCommit={(include_range) => updateSub('edge', { include_range })}
         tweak={defaultTweak} />

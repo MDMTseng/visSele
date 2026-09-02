@@ -301,6 +301,36 @@ static void AddCalProfile2JSON(cJSON *parent, const CaliperProfiles &prof)
   cJSON_AddItemToObject(extra, "edge_profile", o);
 }
 
+// The search-point form of the same payload:
+//
+//   edge_profile: { kind: "peaks", span, p: [...], s: [...] }
+//
+// Entry i is one candidate: p[i] px along the search direction from the near
+// end (so the first hit is the smallest p), s[i] its peak gradient. Ungated --
+// including the ones the selector's own 0.40-of-the-strongest rule drops, which
+// are exactly the ones a person needs to see to know whether the floor is
+// doing the work or that rule is.
+//
+// Same key as the caliper form deliberately: one thing to ask for, one place to
+// look, and `kind` says which shape arrived. A caliper profile has no `kind`.
+static void AddSearchPeaks2JSON(cJSON *parent, const SearchPointPeaks &pk)
+{
+  if (!DbgEmit("edge_profile")) return;
+  if (pk.pos.empty()) return;
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddStringToObject(o, "kind", "peaks");
+  cJSON_AddNumberToObject(o, "span", pk.span);
+  cJSON_AddItemToObject(o, "p", cJSON_CreateFloatArray(pk.pos.data(), (int)pk.pos.size()));
+  cJSON_AddItemToObject(o, "s", cJSON_CreateFloatArray(pk.str.data(), (int)pk.str.size()));
+  cJSON *extra = cJSON_GetObjectItem(parent, "extra");
+  if (!extra)
+  {
+    extra = cJSON_CreateObject();
+    cJSON_AddItemToObject(parent, "extra", extra);
+  }
+  cJSON_AddItemToObject(extra, "edge_profile", o);
+}
+
 cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, acv_XY center_offset)
 {
 
@@ -394,6 +424,7 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
       cJSON_AddStringToObject(spj, "na_reason", vec[j].na_reason);
     }
     AddCalHits2JSON(spj, vec[j].cal_hits, center_offset);
+    AddSearchPeaks2JSON(spj, vec[j].cal_peaks);
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
 
   }

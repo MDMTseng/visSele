@@ -34,7 +34,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outW, int spId,
-                     std::vector<CaliperHit> *outHits, bool *outClipped)
+                     std::vector<CaliperHit> *outHits, bool *outClipped,
+                     SearchPointPeaks *outPeaks)
 {
   if (outClipped) *outClipped = false;
   if (gray.empty()) return false;
@@ -119,15 +120,32 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // +/-1 perp difference) -- this also subsumes the old "blur along the edge". Sign by
   // polarity, subtract the noise floor, then emit every strict local maximum (sub-pixel via
   // a 3-point parabola). One row buffer, no strided access.
-  auto sgn = [&](int gx) -> float {
+  auto pol = [&](int gx) -> float {
     float e = (float)gx;
     if (polarity == SP_LIGHT_TO_DARK) e = -e;
     else if (polarity == SP_BOTH) e = fabsf(e);
-    e -= edgeSuppress; return e < 0 ? 0.f : e;
+    return e;
+  };
+  auto sgn = [&](int gx) -> float {
+    float e = pol(gx) - edgeSuppress; return e < 0 ? 0.f : e;
   };
   std::vector<SPEdgePt> cand;
+  // The SAME peaks, without min_strength taken out of them.
+  //
+  // sgn() subtracts the floor before the local-maximum search, so a candidate
+  // weaker than the current setting does not merely fail a test -- it never
+  // exists. Reporting `cand` as "the evidence" would therefore show only what
+  // the floor already admits, and a panel for LOWERING a threshold that cannot
+  // show anything below it is worse than none: it looks like proof that there
+  // is nothing down there.
+  //
+  // So when someone is going to look, the peaks are found a second time on the
+  // unsuppressed gradient. Strictly extra work, and only when the payload is
+  // asked for; the measurement below still runs on `cand` and is untouched.
+  std::vector<SPEdgePt> candRaw;
   cv::Mat sobViz; if (dbg) sobViz = cv::Mat::zeros(nS, nP, CV_16S);
   std::vector<float> eline(nP);
+  std::vector<float> eraw(outPeaks ? nP : 0);
   float maxPeak = 0;
   for (int i = 1; i < nS - 1; i++)
   {
@@ -160,10 +178,25 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     {
       int gx = (r0[j+1] + 2*r1[j+1] + r2[j+1]) - (r0[j-1] + 2*r1[j-1] + r2[j-1]); // perp gradient
       if (sv) sv[j] = (int16_t)gx;
+      const bool bad = (!vr[j-1] || !vr[j] || !vr[j+1] ||
+                        !v0[j-1] || !v0[j+1] || !v2[j-1] || !v2[j+1]);
       float e = sgn(gx);
-      if (!vr[j-1] || !vr[j] || !vr[j+1] ||
-          !v0[j-1] || !v0[j+1] || !v2[j-1] || !v2[j+1]) e = 0;  // off-image -> drop spurious border edge
+      if (bad) e = 0;  // off-image -> drop spurious border edge
       eline[j] = e;
+      if (outPeaks) { float r = pol(gx); eraw[j] = (bad || r < 0) ? 0.f : r; }
+    }
+    if (outPeaks)
+    {
+      eraw[0] = eraw[nP-1] = 0.f;
+      for (int j = 1; j < nP - 1; j++)
+      {
+        float e = eraw[j];
+        if (e <= 0 || e < eraw[j-1] || e < eraw[j+1]) continue;
+        float den = eraw[j-1] - 2.f*e + eraw[j+1];
+        float sub = (den != 0.f) ? 0.5f * (eraw[j-1] - eraw[j+1]) / den : 0.f;
+        if (sub > 1) sub = 1; if (sub < -1) sub = -1;
+        candRaw.push_back({cs - i, (j + sub) - cp, e});
+      }
     }
     for (int j = 1; j < nP - 1; j++)               // local maxima along the contiguous perp line
     {
@@ -175,6 +208,21 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       cand.push_back({cs - i, (j + sub) - cp, e});  // {searchCoord, perpCoord, peak}
       if (e > maxPeak) maxPeak = e;
     }
+  }
+  // Every candidate, before the selector's gate touches them. Emitted even
+  // when the scan goes on to fail: "nothing here cleared the floor" and "there
+  // is no edge here" are the same outcome and completely different pictures.
+  //
+  // perpCoord is signed and centred; the panel wants a distance along the
+  // search, so it is shifted to start at 0 at the near end. Sign follows the
+  // first-hit rule (min perpCoord), so smaller stays nearer.
+  if (outPeaks)
+  {
+    outPeaks->span = (float)nP;
+    outPeaks->pos.reserve(cand.size());
+    outPeaks->str.reserve(cand.size());
+    for (const SPEdgePt &c : candRaw)
+    { outPeaks->pos.push_back(c.perpCoord + cp); outPeaks->str.push_back(c.peak); }
   }
   if (cand.empty()) return false;
 

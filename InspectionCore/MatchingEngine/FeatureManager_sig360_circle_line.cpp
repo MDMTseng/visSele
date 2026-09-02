@@ -1244,7 +1244,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            margin, width, sp_et, edgeSuppress,
                            includeRangePx, alphaKeep,
                            eT.getBacpac(),
-                           &out, &str, def.id, &rep.cal_hits, &spClipped);
+                           &out, &str, def.id, &rep.cal_hits, &spClipped,
+                           DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr);
       // Lens correction (full-image px). A search point is a single robust
       // centroid (no line/circle fit), so undistorting the final point is the
       // exact lens correction for it. The per-column display hits are

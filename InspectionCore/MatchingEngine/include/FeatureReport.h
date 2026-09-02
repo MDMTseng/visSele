@@ -60,6 +60,28 @@ struct CaliperProfiles
   float L    = 0;                         // half-span; i=0 sits at -L
 };
 
+// The same question for a SEARCH POINT, which needs a different answer.
+//
+// A caliper averages along the edge and picks a peak out of one profile, so the
+// profile is the evidence. A search point does not average: it finds a peak per
+// ROW independently and then takes the one NEAREST the origin along the search
+// direction. What a threshold acts on there is the candidate set -- every
+// per-row peak in the window -- and two things decide the answer: how strong a
+// candidate is, and how far along the search it sits.
+//
+// So this carries the candidates themselves, ungated, rather than a curve. pos
+// is the distance along the search direction in px, increasing away from the
+// origin, so the first hit is the smallest. str is the peak height BEFORE the
+// selector's own 0.40-of-the-strongest gate, which is the whole point: a
+// threshold cannot be moved down onto candidates that were filtered out before
+// anyone could see them.
+struct SearchPointPeaks
+{
+  std::vector<float> pos;
+  std::vector<float> str;
+  float span = 0;           // how far the search reaches (px)
+};
+
 
 #define FeatureManager_NAME_LENGTH 32
 
@@ -468,6 +490,8 @@ typedef struct FeatureReport_searchPointReport{
   // 0/0 = not a caliper-mode scan.
   int cal_used = 0;
   int cal_total = 0;
+  // Only when DEBUG_EMIT edge_profile is on. See SearchPointPeaks.
+  SearchPointPeaks cal_peaks;
 }FeatureReport_searchPointReport;
 
 
