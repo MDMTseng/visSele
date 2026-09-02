@@ -92,3 +92,21 @@ console.log('floor 154  :', await setSlider(154));
 console.log('auto       :', await ev(`(function(){
   var b=document.querySelector('[data-testid="edge-profile-auto"]');
   return 'suggest='+b.getAttribute('data-suggest');})()`));
+
+// A panel that floats over the camera image must paint its own ground.
+//
+// The sheet is transparent -- the frame shows through anything that does not
+// paint a background -- which is fine for a row of white inputs and fatal for a
+// plot and three lines of prose. Reported from the bench as unreadable text over
+// a busy part of the image.
+console.log('surfaces  :', await ev(`(function(){
+  var svg=document.querySelector('[data-testid="edge-profile-plot"]');
+  var box=svg.parentElement;
+  var cs=getComputedStyle(box), sv=getComputedStyle(svg);
+  var btn=document.querySelector('[data-testid="edge-profile-auto"]');
+  var opaque=function(c){ var m=/rgba?\(([^)]+)\)/.exec(c); if(!m) return false;
+    var p=m[1].split(','); return p.length<4 || parseFloat(p[3])>=0.99; };
+  return 'block '+cs.backgroundColor+' opaque='+opaque(cs.backgroundColor)
+       + ' | plot '+sv.backgroundColor+' opaque='+opaque(sv.backgroundColor)
+       + ' | button '+getComputedStyle(btn).backgroundColor
+       + ' h='+Math.round(btn.getBoundingClientRect().height);})()`));

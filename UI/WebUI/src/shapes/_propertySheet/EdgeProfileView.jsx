@@ -28,6 +28,7 @@
 // Same slider, same commit, same 自動設定; different picture, and a different
 // sentence underneath it.
 import React, { useMemo, useRef, useState } from 'react';
+import { INPUT_STYLE, STEP_BTN_STYLE } from './primitives.jsx';
 
 // A peak is a local maximum of the signed gradient on the side the polarity
 // selects -- the same rule edge_select applies, so what is counted here is what
@@ -62,12 +63,36 @@ function peaksOf(g, polarity) {
 // 5.8px -- present, and unreadable. Near 1:1 they stay legible, and a widened
 // panel makes them bigger rather than leaving a gap.
 const W = 210, H = 112, PADL = 24, PADB = 14, PADT = 7;
-const PLOT_STYLE = { background: 'rgba(127,127,127,.06)', borderRadius: 4,
-                     width: '100%', height: 'auto', display: 'block' };
+
+// THE PANEL IS TRANSPARENT. THIS BLOCK CANNOT BE.
+//
+// The property sheet floats over the canvas, and the frame shows through
+// everything that does not paint its own background -- which is fine for a row
+// of white inputs and fatal for a plot and three lines of prose. On a dark or
+// busy part of the image the hint text and the grid simply disappeared.
+//
+// So the whole block sits on an opaque surface of its own, and every colour in
+// it is chosen against that surface rather than against whatever the camera is
+// looking at. Borrowed from primitives.jsx (INPUT_STYLE, STEP_BTN_STYLE) so it
+// reads as part of the sheet and follows it if those change.
+const SURFACE = {
+  background: '#fbfbfb', border: '1px solid #ddd', borderRadius: 4,
+  padding: '6px 6px 7px', margin: '4px 0',
+};
+const PLOT_STYLE = { background: '#fff', border: '1px solid #e4e4e4',
+                     borderRadius: 3, width: '100%', height: 'auto',
+                     display: 'block' };
+const INK      = '#222';                 // same as INPUT_STYLE's text
+const INK_DIM  = '#666';                 // same as SECTION_HEADER_STYLE
+const WARN     = '#c62828';              // readable on the pale surface
+const OK_LINE  = 'rgba(56,142,60,.85)';
+const BAD_LINE = 'rgba(198,40,40,.75)';
+const PICKED   = '#1565c0';              // the sheet's own accent
 // Two buttons on one row in a narrow column: each takes half, and neither is
 // allowed to wrap its label into a two-line box (which is what it did).
-const BTN = { flex: 1, minWidth: 0, whiteSpace: 'nowrap', fontSize: 11.5,
-              padding: '4px 6px', cursor: 'pointer' };
+const BTN = { ...STEP_BTN_STYLE, flex: 1, minWidth: 0, whiteSpace: 'nowrap',
+              height: 24, fontSize: 11.5, padding: '0 6px', lineHeight: '22px' };
+const HINT = { fontSize: 11.5, color: INK_DIM, marginTop: 4, lineHeight: 1.35 };
 
 export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
                                   onChange, onProbe, busy, note }) {
@@ -191,7 +216,9 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
              onMouseUp={dragEnd} onTouchEnd={dragEnd}
              onPointerUp={dragEnd} onMouseLeave={dragEnd} onKeyUp={dragEnd}
              style={{ flex: 1 }} />
-      <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 34, textAlign: 'right' }}>
+      <span style={{ ...INPUT_STYLE, width: 44, flex: '0 0 44px', height: 20,
+                     lineHeight: '18px', textAlign: 'right',
+                     fontVariantNumeric: 'tabular-nums' }}>
         {Math.round(thr)}
       </span>
     </div>
@@ -209,18 +236,19 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
         {busy ? '檢查中…' : '重新檢查'}
       </button>
     </div>
-    {note && <div style={{ fontSize: 11.5, color: '#ff7875', marginTop: 4 }}>{note}</div>}
+    {note && <div style={{ ...HINT, color: WARN }}>{note}</div>}
   </>;
 
   if (!model && !peaks) {
-    return <div style={{ padding: '6px 0' }}>
+    return <div style={SURFACE}>
       <button type="button" onClick={onProbe} disabled={busy}
         data-testid="edge-profile-check"
-        style={{ padding: '4px 12px', cursor: busy ? 'default' : 'pointer' }}>
+        style={{ ...BTN, flex: 'none', width: '100%',
+                 cursor: busy ? 'default' : 'pointer' }}>
         {busy ? '檢查中…' : '檢查邊緣強度'}
       </button>
-      {note && <div style={{ fontSize: 11.5, color: '#ff7875', marginTop: 4 }}>{note}</div>}
-      <div style={{ fontSize: 11.5, opacity: 0.65, marginTop: 4 }}>
+      {note && <div style={{ ...HINT, color: WARN }}>{note}</div>}
+      <div style={HINT}>
         跑一張影像，把實際量到的邊緣梯度畫出來，門檻就照著圖設。
       </div>
     </div>;
@@ -236,38 +264,38 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     // reason to look at this plot.
     const chosen = over.length ? over.reduce((a, b) => (b.pos < a.pos ? b : a)) : null;
     const held = chosen ? pts.filter((q) => q.pos < chosen.pos).length : 0;
-    return <div style={{ padding: '4px 0' }}>
+    return <div style={SURFACE}>
       <svg viewBox={`0 0 ${W} ${H}`} style={PLOT_STYLE}
            data-testid="edge-profile-plot" data-kind="peaks"
            data-cands={pts.length} data-pass={over.length}
            data-first={chosen ? chosen.pos.toFixed(1) : ''}>
         <rect x={PADL} y={py(thr)} width={W - PADL - 6} height={Math.max(0, py(0) - py(thr))}
-              fill="rgba(255,120,117,.10)" />
+              fill="rgba(198,40,40,.07)" />
         <line x1={PADL} x2={W - 6} y1={py(thr)} y2={py(thr)}
-              stroke="#ff7875" strokeWidth="1.5" strokeDasharray="4 3" />
+              stroke={WARN} strokeWidth="1.2" strokeDasharray="4 3" />
         {chosen && <line x1={px(chosen.pos)} x2={px(chosen.pos)} y1={PADT} y2={py(0)}
-                         stroke="#1890ff" strokeWidth="1" strokeDasharray="3 3" />}
+                         stroke={PICKED} strokeWidth="1" strokeDasharray="3 3" />}
         {pts.map((q, k) => {
           const isFirst = chosen && q === chosen;
           return <circle key={k} cx={px(q.pos)} cy={py(q.str)} r={isFirst ? 4 : 2.2}
-                   fill={isFirst ? '#1890ff'
-                       : q.str >= thr ? 'rgba(82,196,26,.75)' : 'rgba(255,120,117,.6)'} />;
+                   fill={isFirst ? PICKED : q.str >= thr ? OK_LINE : BAD_LINE} />;
         })}
-        <line x1={PADL} x2={W - 6} y1={py(0)} y2={py(0)} stroke="rgba(127,127,127,.5)" />
-        <text x={4} y={py(thr) + 4} fontSize="10" fill="#ff7875">{Math.round(thr)}</text>
-        <text x={4} y={py(peak) + 9} fontSize="10" fill="rgba(127,127,127,.8)">{Math.round(peak)}</text>
-        <text x={PADL} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">近 0px</text>
-        <text x={W - 42} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">遠 {span.toFixed(0)}px</text>
+        <line x1={PADL} x2={W - 6} y1={py(0)} y2={py(0)} stroke="#bbb" />
+        <text x={3} y={py(thr) + 4} fontSize="9" fill={WARN}>{Math.round(thr)}</text>
+        <text x={3} y={py(peak) + 8} fontSize="9" fill={INK_DIM}>{Math.round(peak)}</text>
+        <text x={PADL} y={H - 3} fontSize="9" fill={INK_DIM}>近 0px</text>
+        <text x={W - 42} y={H - 3} fontSize="9" fill={INK_DIM}>遠 {span.toFixed(0)}px</text>
       </svg>
-      <div style={{ fontSize: 11.5, marginTop: 4, color: chosen ? 'inherit' : '#ff7875' }}>
+      <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35,
+                    color: chosen ? INK : WARN }}>
         {chosen
           ? <>首擊在 {chosen.pos.toFixed(1)}px，強度 {Math.round(chosen.str)}
-              {held > 0 && <span style={{ color: '#ff7875' }}>
+              {held > 0 && <span style={{ color: WARN }}>
                 　門檻擋下了 {held} 個更近的候選</span>}</>
           : '這個門檻下沒有任何候選，這個 search point 會是 NA'}
       </div>
       {controls(Math.ceil(peak * 1.1), suggest,
-        <div style={{ fontSize: 11.5, opacity: 0.65, marginTop: 4 }}>
+        <div style={HINT}>
           藍點是被採用的首擊，綠點過了門檻但更遠，紅點被門檻擋下。
           建議值是核心目前內部規則（最強候選的 40%）寫成的固定門檻。
         </div>)}
@@ -282,16 +310,16 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
   // dropping calipers that currently find their edge.
   const weakest = best.length ? Math.min(...best.filter((b) => b > 0)) : 0;
 
-  return <div style={{ padding: '4px 0' }}>
+  return <div style={SURFACE}>
     <svg viewBox={`0 0 ${W} ${H}`} style={PLOT_STYLE}
          data-testid="edge-profile-plot" data-kind="profile"
          data-calipers={g.length} data-pass={pass}
          data-clean={clean ? '1' : '0'}>
       {/* the dead zone: anything in here is not an edge at the current floor */}
       <rect x={PADL} y={y(thr)} width={W - PADL - 6} height={Math.max(0, y(0) - y(thr))}
-            fill="rgba(255,120,117,.10)" />
+            fill="rgba(198,40,40,.07)" />
       <line x1={PADL} x2={W - 6} y1={y(thr)} y2={y(thr)}
-            stroke="#ff7875" strokeWidth="1.5" strokeDasharray="4 3" />
+            stroke={WARN} strokeWidth="1.2" strokeDasharray="4 3" />
       {g.map((one, k) => {
         const d = one.map((v, i) => {
           const s = polarity === 'rising' ? v : polarity === 'falling' ? -v : Math.abs(v);
@@ -299,30 +327,30 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
         }).join(' ');
         const on = best[k] >= thr;
         return <path key={k} d={d} fill="none" strokeWidth={hover === k ? 2 : 1}
-                     stroke={on ? 'rgba(82,196,26,.75)' : 'rgba(255,120,117,.75)'}
+                     stroke={on ? OK_LINE : BAD_LINE}
                      onMouseEnter={() => setHover(k)} onMouseLeave={() => setHover(null)} />;
       })}
-      <line x1={PADL} x2={W - 6} y1={y(0)} y2={y(0)} stroke="rgba(127,127,127,.5)" />
-      <text x={4} y={y(thr) + 4} fontSize="10" fill="#ff7875">{Math.round(thr)}</text>
-      <text x={4} y={y(peak) + 9} fontSize="10" fill="rgba(127,127,127,.8)">{Math.round(peak)}</text>
-      <text x={PADL} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">−{profile.L.toFixed(0)}px</text>
-      <text x={W - 32} y={H - 3} fontSize="10" fill="rgba(127,127,127,.8)">+{profile.L.toFixed(0)}px</text>
+      <line x1={PADL} x2={W - 6} y1={y(0)} y2={y(0)} stroke="#bbb" />
+      <text x={3} y={y(thr) + 4} fontSize="9" fill={WARN}>{Math.round(thr)}</text>
+      <text x={3} y={y(peak) + 8} fontSize="9" fill={INK_DIM}>{Math.round(peak)}</text>
+      <text x={PADL} y={H - 3} fontSize="9" fill={INK_DIM}>−{profile.L.toFixed(0)}px</text>
+      <text x={W - 32} y={H - 3} fontSize="9" fill={INK_DIM}>+{profile.L.toFixed(0)}px</text>
     </svg>
 
     {/* Says what the setting DOES, in calipers, because that is the thing that
         goes NA -- a fit needs min_inliers of them, not a good-looking graph. */}
-    <div style={{ fontSize: 11.5, marginTop: 4,
-                  color: pass === g.length ? 'inherit' : '#ff7875' }}>
+    <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35,
+                  color: pass === g.length ? INK : WARN }}>
       {pass}/{g.length} 個 caliper 在這個門檻下找得到邊
       {pass === g.length && weakest > 0 &&
-        <span style={{ opacity: 0.65 }}>　（最弱的一個是 {Math.round(weakest)}）</span>}
+        <span style={{ color: INK_DIM }}>　（最弱的一個是 {Math.round(weakest)}）</span>}
     </div>
     {controls(Math.ceil(peak * 1.1), suggest, <>
-      <div style={{ fontSize: 11.5, opacity: 0.65, marginTop: 4 }}>
-        綠線是會被採用的 caliper，紅線是被門檻濾掉的。粉紅區域以下都不算邊。
+      <div style={HINT}>
+        綠線是會被採用的 caliper，紅線是被門檻濾掉的。淡紅區域以下都不算邊。
         最弱的邊 {Math.round(signal)}、最強的雜訊峰 {Math.round(noise)}。
       </div>
-      {!clean && <div style={{ fontSize: 11.5, color: '#ff7875', marginTop: 2 }}>
+      {!clean && <div style={{ ...HINT, color: WARN, marginTop: 2 }}>
         雜訊峰和真實邊沒有分開，沒有一個門檻分得掉它們。建議值只保證每個 caliper
         還找得到邊，不保證找到的是對的那條 —— 先看看 caliper 位置或寬度。
       </div>}
