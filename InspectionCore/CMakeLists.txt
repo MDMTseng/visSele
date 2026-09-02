@@ -300,6 +300,7 @@ endif()
 # --- MatchingEngine --------------------------------------------------------
 add_library(MatchingEngine STATIC
   MatchingEngine/MatchingEngine.cpp MatchingEngine/MatchingCore.cpp
+  MatchingEngine/MEPhase.cpp
   MatchingEngine/FeatureManager.cpp MatchingEngine/FeatureExtractor.cpp
   MatchingEngine/ContourGrid.cpp MatchingEngine/FeatureManager_group.cpp
   MatchingEngine/SignatureTools.cpp

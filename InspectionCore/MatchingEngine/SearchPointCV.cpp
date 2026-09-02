@@ -1,4 +1,5 @@
 #include "SearchPointCV.h"
+#include "MEPhase.h"
 #include <opencv2/opencv.hpp>
 #include "CvBridge.h"                // cvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
@@ -78,6 +79,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       return false;
     }
   }
+  mephase::count("spcv_scan", 1);
+  mephase::count("spcv_samp", (double)nS * (double)nP);
+
   float cs = (nS - 1) * 0.5f;            // row -> searchCoord (cs - i)
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 

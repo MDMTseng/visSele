@@ -9,6 +9,7 @@ using namespace std;
 #include "FeatureManager_group.h"
 
 #include "cJSON.h"
+#include "MEPhase.h"
 
 
 class MatchingEngine {
@@ -50,6 +51,10 @@ public:
   static double lastStageMs[STAGE_MAX];
   static double lastStageCpuMs[STAGE_MAX];
   static int    lastStageN;
+
+  // Named sub-stage timing and work counting INSIDE one bundle member live in
+  // MEPhase.h, which the Caliper layer also uses -- see there for why. Reset
+  // once per FeatureMatching call, from here.
   ~MatchingEngine();
 };
 

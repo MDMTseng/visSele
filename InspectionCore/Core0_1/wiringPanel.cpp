@@ -769,6 +769,14 @@ static LatHist g_histMatchCpu;
 // frame costs can be attributed to a stage instead of guessed at.
 static LatHist g_histStage[MatchingEngine::STAGE_MAX];
 static LatHist g_histStageCpu[MatchingEngine::STAGE_MAX];
+// Named phases INSIDE a bundle member. On a one-manager def the stage histogram
+// above and g_histMatch are the same number, and neither says where the time
+// went; these do.
+static LatHist g_histPhase[mephase::PHASE_MAX];
+// Work done per frame, in the unit the cost scales with (caliper scans and
+// grayscale samples). Time alone does not transfer to a bigger part or a
+// different edge estimator; time per sample does.
+static LatHist g_histCount[mephase::COUNT_MAX];
 
 // The camera's hardware trigger count, and what it says that frameNum cannot.
 //
@@ -4594,6 +4602,32 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "cpu_max_ms", g_histStageCpu[_si].max_ms);
                 cJSON_AddNumberToObject(o, "cpu_avg_ms", g_histStageCpu[_si].n
                   ? g_histStageCpu[_si].sum_ms / g_histStageCpu[_si].n : 0.0);
+              }
+              // Phases carry their own names, so they are keyed by name.
+              for (int _pi = 0; _pi < mephase::n_; _pi++)
+              {
+                char kb[32];
+                snprintf(kb, sizeof(kb), "ph_%s", mephase::name_[_pi]);
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, kb, o);
+                cJSON_AddNumberToObject(o, "n", (double)g_histPhase[_pi].n);
+                cJSON_AddNumberToObject(o, "max_ms", g_histPhase[_pi].max_ms);
+                cJSON_AddNumberToObject(o, "avg_ms", g_histPhase[_pi].n
+                  ? g_histPhase[_pi].sum_ms / g_histPhase[_pi].n : 0.0);
+              }
+              // Work counters. Not milliseconds -- avg_ms here reads as
+              // "per frame", and it is the denominator the phase times are
+              // meant to be divided by.
+              for (int _ci = 0; _ci < mephase::cn_; _ci++)
+              {
+                char kb[32];
+                snprintf(kb, sizeof(kb), "cnt_%s", mephase::cname_[_ci]);
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, kb, o);
+                cJSON_AddNumberToObject(o, "n", (double)g_histCount[_ci].n);
+                cJSON_AddNumberToObject(o, "max_ms", g_histCount[_ci].max_ms);
+                cJSON_AddNumberToObject(o, "avg_ms", g_histCount[_ci].n
+                  ? g_histCount[_ci].sum_ms / g_histCount[_ci].n : 0.0);
               }
               for (auto &e : hs)
               {
@@ -11604,6 +11638,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         g_histStage[_si].add(MatchingEngine::lastStageMs[_si]);
         g_histStageCpu[_si].add(MatchingEngine::lastStageCpuMs[_si]);
       }
+      // Every claimed phase is added, including the ones this frame spent 0 in
+      // -- a phase that only records when it is entered has an average over a
+      // different denominator than its neighbours, which is precisely the
+      // comparison being made.
+      for (int _pi = 0; _pi < mephase::n_; _pi++)
+        g_histPhase[_pi].add(mephase::ms_[_pi]);
+      for (int _ci = 0; _ci < mephase::cn_; _ci++)
+        g_histCount[_ci].add(mephase::cval_[_ci]);
     }
     {
       // Threshold, cap and queue depth are all bounded so a bad run cannot

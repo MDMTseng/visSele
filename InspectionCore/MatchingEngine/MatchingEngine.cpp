@@ -1,7 +1,11 @@
 #ifndef _WIN32
 #include <sys/resource.h>
+#else
+#include <windows.h>
 #endif
 #include <ctime>
+#include <cstring>
+#include <cstdio>
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
 #include "FeatureManager_sig360_circle_line.h"
@@ -145,7 +149,19 @@ static inline double me_now_ms()
 }
 static inline double me_proc_cpu_ms()
 {
-#ifndef _WIN32
+#ifdef _WIN32
+  // Without this the cpu column reads 0.00 on the bench machine, which is not
+  // "nothing ran" but "nobody implemented it" -- and the two look identical in
+  // the report, so the field was worse than absent.
+  FILETIME c, e, k, u;
+  if (GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u))
+  {
+    ULARGE_INTEGER ku, uu;
+    ku.LowPart = k.dwLowDateTime; ku.HighPart = k.dwHighDateTime;
+    uu.LowPart = u.dwLowDateTime; uu.HighPart = u.dwHighDateTime;
+    return (double)(ku.QuadPart + uu.QuadPart) / 10000.0;   // 100ns -> ms
+  }
+#else
   struct rusage ru;
   if (getrusage(RUSAGE_SELF, &ru) == 0)
     return ru.ru_utime.tv_sec * 1000.0 + ru.ru_utime.tv_usec / 1000.0
@@ -164,6 +180,7 @@ int MatchingEngine::FeatureMatching(cv::Mat &img_cv)
 {
   const int n = (int)featureBundle.size();
   lastStageN = n < STAGE_MAX ? n : STAGE_MAX;
+  mephase::reset();
   for(int i=0;i<n;i++)
   {
     const bool rec = (i < STAGE_MAX);

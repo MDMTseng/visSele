@@ -2,6 +2,7 @@
 #include "Caliper.h"
 #include "JudgeCALC.h"
 #include "LabelingCV.h"
+#include "MEPhase.h"
 
 #include "SearchPointCV.h"
 #include "logctrl.h"
@@ -8565,6 +8566,7 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   float cached_sin = sin(angle);
 
   // ---- locating-anchor morph loop (mirror SingleMatching 5172-5259) ----
+  mephase::Timer _ph_morph("morph");
   for (int j = 0; j < detectedSearchPoints.size(); j++)
     cm.anchorPairs[j].to = acv_XY(NAN, NAN);
   cm.resetTransform();
@@ -8620,6 +8622,8 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   morph_place_alpha = 1.0f;   // final measurement uses the full converged warp
 
   // ---- official measurement (mirror SingleMatching 5261-5314) ----
+  _ph_morph.stop();
+  ME_PHASE("measure");
   RESET_REPORT(singleReport);
   for (int j = 0; j < judgeReports.size(); j++)
   {
