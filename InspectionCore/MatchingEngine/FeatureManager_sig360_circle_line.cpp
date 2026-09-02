@@ -7287,7 +7287,185 @@ static std::string shape_cache_fingerprint(const cv::Mat &templ,
   return fp;
 }
 
-static cJSON *shape_cache_serialise(const sbm::FeatureSet &fs, const cv::Rect &crop,
+// ---------------------------------------------------------------------------
+// SELF-CONTAINED DEFS: the pixels ROI refine needs, and nothing else.
+//
+// The def used to carry a feature set but not the picture it was taken from, so
+// locating still needed the sidecar .png on disk -- and the whole crop of it.
+// For a part that fills a 5 MP sensor that is 3.6 MB of base64 per def.
+//
+// It is also far more than the refiner reads. Each selected point is touched
+// over +/-(kDefaultROIHalf + search_extra) = +/-25 px, so what actually matters
+// is a small window per point. Eight of those is ~20 kB of PNG REGARDLESS of
+// how big the part is -- 176x smaller than the crop, and constant.
+//
+// The consequence is deliberate rather than a limitation: a def stored this way
+// must also carry its POINT SELECTION, because auto-selection scores candidates
+// by reading the image around each one, and outside the stored windows there is
+// nothing to read. That is the same thing the operator is doing when they check
+// that a feature point does not appear where it must not -- the selection IS
+// the curated artifact, so freezing the pixels and freezing the choice are one
+// act rather than two.
+static const int kRoiTileHalf = 28;   // 25 read + 2 for the 3x3 blur + 1 spare
+
+static bool b64_decode(const char *in, std::vector<unsigned char> &out)
+{
+  static int8_t rev[256];
+  static bool init = false;
+  if (!init)
+  {
+    memset(rev, -1, sizeof(rev));
+    static const char *tbl =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (int i = 0; i < 64; i++) rev[(unsigned char)tbl[i]] = (int8_t)i;
+    init = true;
+  }
+  out.clear();
+  if (in == NULL) return false;
+  int acc = 0, bits = 0;
+  for (const char *p = in; *p != 0; p++)
+  {
+    if (*p == '=' || *p == '\n' || *p == '\r' || *p == ' ') continue;
+    int8_t v = rev[(unsigned char)*p];
+    if (v < 0) return false;
+    acc = (acc << 6) | v; bits += 6;
+    if (bits >= 8) { bits -= 8; out.push_back((unsigned char)((acc >> bits) & 0xFF)); }
+  }
+  return true;
+}
+
+// The points this def will refine with, decided once here rather than at every
+// match. user_opt_points when the def named them; otherwise whatever the
+// selector would have chosen, frozen at the defaults the matcher uses.
+static std::vector<cv::Point2f> roi_points_to_freeze(sbm::FeatureSet &fs)
+{
+  if (fs.user_opt_points_set) return fs.user_opt_points;
+  return fs.selectOptimizedPoints(sbm::kDefaultOptPointsPublic, -1.0f, false);
+}
+
+// One PNG holding every window side by side, plus where each one came from.
+static cJSON *roi_tiles_serialise(sbm::FeatureSet &fs)
+{
+  if (fs.templ_image.empty()) return NULL;
+  std::vector<cv::Point2f> sel = roi_points_to_freeze(fs);
+  if (sel.empty()) return NULL;
+
+  const int H = kRoiTileHalf, S = 2 * H;
+  if (fs.templ_image.cols < S || fs.templ_image.rows < S) return NULL;
+  const float tcx = fs.templ_width / 2.0f, tcy = fs.templ_height / 2.0f;
+
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "half", H);
+  cJSON *at  = cJSON_AddArrayToObject(o, "at");    // tile top-left, template px
+  cJSON *pts = cJSON_AddArrayToObject(o, "pts");   // the frozen selection
+
+  std::vector<cv::Mat> tiles;
+  for (size_t i = 0; i < sel.size(); i++)
+  {
+    int tx = (int)std::lround(sel[i].x + tcx) - H;
+    int ty = (int)std::lround(sel[i].y + tcy) - H;
+    // Clamp so the window is whole. A clipped tile would silently change what
+    // the refiner sees against the run that produced it.
+    tx = std::max(0, std::min(fs.templ_image.cols - S, tx));
+    ty = std::max(0, std::min(fs.templ_image.rows - S, ty));
+    tiles.push_back(fs.templ_image(cv::Rect(tx, ty, S, S)).clone());
+    cJSON *a = cJSON_CreateArray();
+    cJSON_AddItemToArray(a, cJSON_CreateNumber(tx));
+    cJSON_AddItemToArray(a, cJSON_CreateNumber(ty));
+    cJSON_AddItemToArray(at, a);
+
+    // The nearest refine point, carried with the selection. Match time looks it
+    // up by proximity for the constraint normal and the cornerness; storing the
+    // one that answers means the dense candidate set -- hundreds of points that
+    // exist only to be searched -- does not have to travel at all.
+    int best = -1; float bd = 1e18f;
+    for (size_t k = 0; k < fs.refine_points.size(); k++)
+    {
+      float dx = sel[i].x - fs.refine_points[k].px;
+      float dy = sel[i].y - fs.refine_points[k].py;
+      float d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = (int)k; }
+    }
+    const sbm::FeatureSet::RefinePt *rp = (best >= 0) ? &fs.refine_points[best] : NULL;
+    cJSON *pj = cJSON_CreateArray();
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(sel[i].x));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(sel[i].y));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? rp->nx : 0.0f));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? rp->ny : 0.0f));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? rp->cornerness : 0.0f));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? (double)rp->type : 0.0));
+    cJSON_AddItemToArray(pts, pj);
+  }
+
+  cv::Mat strip;
+  cv::hconcat(tiles, strip);
+  std::vector<unsigned char> buf;
+  std::vector<int> params;
+  params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+  params.push_back(9);
+  // LOSSLESS, and it has to be. The refiner fits an edge to sub-pixel; a lossy
+  // codec moves the intensities it fits to, and the answer moves with them.
+  if (!cv::imencode(".png", strip, buf, params)) { cJSON_Delete(o); return NULL; }
+  std::string b64 = base64_encode(NULL, buf.data(), buf.size());
+  cJSON_AddStringToObject(o, "png", b64.c_str());
+  return o;
+}
+
+// Rebuild the FeatureSet's picture from the windows: a full-size image with the
+// tiles painted back where they came from. Every reader indexes templ_image by
+// absolute template coordinates and only ever touches the stored windows, so
+// nothing downstream has to know the rest of it was never there.
+static bool roi_tiles_load(cJSON *roi, sbm::FeatureSet &fs, int tw, int th)
+{
+  if (roi == NULL || tw <= 0 || th <= 0) return false;
+  cJSON *jh = cJSON_GetObjectItem(roi, "half");
+  cJSON *at = cJSON_GetObjectItem(roi, "at");
+  cJSON *pt = cJSON_GetObjectItem(roi, "pts");
+  cJSON *pg = cJSON_GetObjectItem(roi, "png");
+  if (!cJSON_IsNumber(jh) || !cJSON_IsArray(at) || !cJSON_IsArray(pt) ||
+      !cJSON_IsString(pg)) return false;
+  const int H = (int)jh->valuedouble, S = 2 * H;
+  const int n = cJSON_GetArraySize(at);
+  if (H <= 0 || n <= 0 || cJSON_GetArraySize(pt) != n) return false;
+
+  std::vector<unsigned char> raw;
+  if (!b64_decode(pg->valuestring, raw)) return false;
+  cv::Mat strip = cv::imdecode(raw, cv::IMREAD_GRAYSCALE);
+  if (strip.empty() || strip.rows != S || strip.cols != S * n) return false;
+
+  fs.templ_width = tw; fs.templ_height = th;
+  fs.templ_image = cv::Mat::zeros(th, tw, CV_8U);
+  fs.refine_points.clear();
+  fs.user_opt_points.clear();
+
+  for (int i = 0; i < n; i++)
+  {
+    cJSON *a = cJSON_GetArrayItem(at, i);
+    if (!cJSON_IsArray(a) || cJSON_GetArraySize(a) != 2) return false;
+    int tx = (int)cJSON_GetArrayItem(a, 0)->valuedouble;
+    int ty = (int)cJSON_GetArrayItem(a, 1)->valuedouble;
+    if (tx < 0 || ty < 0 || tx + S > tw || ty + S > th) return false;
+    strip(cv::Rect(i * S, 0, S, S)).copyTo(fs.templ_image(cv::Rect(tx, ty, S, S)));
+
+    cJSON *pj = cJSON_GetArrayItem(pt, i);
+    if (!cJSON_IsArray(pj) || cJSON_GetArraySize(pj) != 6) return false;
+    sbm::FeatureSet::RefinePt rp;
+    rp.px = (float)cJSON_GetArrayItem(pj, 0)->valuedouble;
+    rp.py = (float)cJSON_GetArrayItem(pj, 1)->valuedouble;
+    rp.nx = (float)cJSON_GetArrayItem(pj, 2)->valuedouble;
+    rp.ny = (float)cJSON_GetArrayItem(pj, 3)->valuedouble;
+    rp.cornerness = (float)cJSON_GetArrayItem(pj, 4)->valuedouble;
+    rp.type = (cJSON_GetArrayItem(pj, 5)->valuedouble >= 0.5)
+              ? sbm::FeatureSet::RefinePt::CORNER
+              : sbm::FeatureSet::RefinePt::EDGE;
+    fs.refine_points.push_back(rp);
+    fs.user_opt_points.push_back(cv::Point2f(rp.px, rp.py));
+  }
+  fs.user_opt_points_set = true;
+  return true;
+}
+
+static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
                                     const cv::Point2f &origin_in_crop,
                                     const std::string &fingerprint)
 {
@@ -7326,6 +7504,12 @@ static cJSON *shape_cache_serialise(const sbm::FeatureSet &fs, const cv::Rect &c
     }
     cJSON_AddItemToArray(lv, e);
   }
+
+  // The pixels, so this def stops needing the picture it was made from.
+  // Absent for a feature set with no template image (nothing to cut windows
+  // out of), and then the def behaves exactly as it did before.
+  cJSON *roi = roi_tiles_serialise(fs);
+  if (roi != NULL) cJSON_AddItemToObject(o, "roi", roi);
   return o;
 }
 
@@ -7364,7 +7548,13 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
   cJSON *v = cJSON_GetObjectItem(cache, "ver");
   if (!v || v->valuedouble != 1) { LOGW("[shape] cache ver mismatch; re-extracting"); return false; }
   cJSON *fp = cJSON_GetObjectItem(cache, "fp");
-  if (!fp || !cJSON_IsString(fp) || fingerprint != fp->valuestring)
+  // An EMPTY fingerprint means the caller had nothing to compare with, not that
+  // the comparison failed. The self-contained path passes one: computing a
+  // fingerprint needs the reference image, and that path exists precisely so
+  // the image is not needed. Reporting "stamped with different extraction
+  // parameters || now: " on every such load would be a warning about a
+  // comparison that never happened.
+  if (!fingerprint.empty() && (!fp || !cJSON_IsString(fp) || fingerprint != fp->valuestring))
   {
     // Print BOTH, because "stale" alone does not say whether a parameter moved
     // by design or the reference picture was replaced -- and the answer decides
@@ -7505,6 +7695,59 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   shape_ready = false;
   shapeMatcher.reset();
   shapeFeatureSet.reset();
+
+  // A DEF THAT CARRIES ITS OWN PIXELS NEEDS NOTHING FROM DISK.
+  //
+  // Before any path is resolved, because the point is that there is no path:
+  // the windows ROI refine reads are in the def, and so is the selection they
+  // belong to. Everything below this -- imread, Otsu, connected components,
+  // extraction -- exists to rebuild what such a def already contains.
+  //
+  // Regeneration still goes the long way round: re-extracting means looking at
+  // the picture again, and stored windows are the old picture by definition.
+  if (!shape_force_extract() && shape_cache_in != NULL && has_reg &&
+      cJSON_GetObjectItem(shape_cache_in, "roi") != NULL)
+  {
+    sbm::FeatureSet fsc;
+    cv::Rect ccrop; cv::Point2f corg;
+    // No fingerprint: computing one needs the image, and this path exists so
+    // that the image is not needed. Nothing is being validated against inputs
+    // here because nothing is being DERIVED from inputs -- the def is the
+    // artifact, not a recipe for rebuilding it, so there is nothing to go
+    // stale against.
+    if (shape_cache_load(shape_cache_in, std::string(), fsc, ccrop, corg) &&
+        roi_tiles_load(cJSON_GetObjectItem(shape_cache_in, "roi"), fsc,
+                       fsc.templ_width, fsc.templ_height))
+    {
+      fsc.setOrigin(corg.x, corg.y);
+      // Same offset the disk path derives, from the same def field. The other
+      // two origin sources down there (sig360 centre, Otsu blob) both need the
+      // picture, so a def without def_image_reg cannot be self-contained --
+      // which is why the guard above requires it.
+      fsc.setAngleOffset(has_reg ? reg_angle_rad * 180.0f / (float)M_PI : 0.0f);
+      shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fsc);
+      shape_crop = ccrop;
+      shape_origin_in_crop = corg;
+      int nv = buildShapeMatcher(1.0f);
+      if (nv <= 0) { LOGE("[shape] addModel from a self-contained def failed (%d)", nv); return -1; }
+      shape_ready = true;
+      // No liftForUI here, deliberately. That fills the studio's preview of the
+      // feature and ROI points, and it reads level-0 features against the whole
+      // template -- which this path does not have and does not need. Curation
+      // happens in the studio, where the reference picture is open anyway; a
+      // machine running parts is not previewing anything.
+      LOGI("[shape] self-contained def: %d ROI window(s), crop [%d,%d %dx%d] "
+           "origin(%.1f,%.1f) variants=%d -- no template file was read",
+           (int)shapeFeatureSet->user_opt_points.size(), ccrop.x, ccrop.y,
+           ccrop.width, ccrop.height, corg.x, corg.y, nv);
+      return 0;
+    }
+    // Say so rather than quietly taking the long way: a def that MEANT to be
+    // self-contained and is not has a broken payload, and the sidecar it falls
+    // back to may not be the picture those windows came from.
+    LOGE("[shape] this def carries ROI windows but they did not load -- "
+         "falling back to the template file on disk");
+  }
 
   // Resolve the template image path, in priority order:
   //   1. "_ref_image_path": a FULL path supplied at runtime (e.g. the WebUI stamps it
