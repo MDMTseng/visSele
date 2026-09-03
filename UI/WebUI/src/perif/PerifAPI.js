@@ -511,12 +511,25 @@ export class Perif_API_Base {
       });
   }
 
+  // RETURNS A PROMISE that settles when the reply has been APPLIED, not when
+  // the question was asked.
+  //
+  // It used to return undefined, so `.then(...)` after it ran immediately. A
+  // caller that had just changed the board's config, asked for a resync and
+  // then rebuilt its editing buffer got the buffer rebuilt from the values it
+  // already had -- and the fresh ones landed a moment later with nobody left
+  // to adopt them. Pressing the button twice worked, because the second press
+  // rebuilt from what the first one had eventually fetched.
+  //
+  // Existing callers ignore the return value and are unaffected.
   machineSetupReSync() {
     log.debug('[machine-setup] resync request');
+    return new Promise((resolve) => {
     this.send({ type: 'get_setup' },
       (ret) => {
         if (this.resyncRequiresAck() && ret['ack'] != true) {
           log.warn('[machine-setup] get_setup nak', ret);
+          resolve(null);
           return;
         }
         delete ret['type'];
@@ -528,7 +541,9 @@ export class Perif_API_Base {
         // entire configuration was filed as read-only device state.
         this.machineSetup = uinspFlatten(ret);
         this.machineSetupUpdate(this.machineSetup, true);
-      }, (e) => console.log(e));
+        resolve(this.machineSetup);
+      }, (e) => { console.log(e); resolve(null); });
+    });
   }
 
   getMachineSetup() { return this.machineSetup; }
@@ -972,6 +987,22 @@ export class uInspESP32_API extends Perif_API_Base {
   machineSetupReSync() {
     this._resyncTries = 0;
     this._resyncKick();
+  }
+
+  // A get_setup that always goes out, whatever the panel already holds.
+  //
+  // machineSetupReSync above is a "keep asking until we have one" loop and its
+  // first act is to stop when cfg is non-empty -- correct for its job, useless
+  // for a REFRESH. A caller that had just made the board change its own config
+  // (restore_setup) asked for a resync, got that early return, and redrew the
+  // table from the values it already had: the board was right, the screen was
+  // stale, and only a page reload showed it.
+  //
+  // Straight to the base's send, so there is one implementation of "ask and
+  // apply" and this is only about whether the question is asked.
+  refreshSetup() {
+    log.debug('[machine-setup] forced refresh');
+    return super.machineSetupReSync();
   }
 
   _resyncKick() {

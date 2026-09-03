@@ -754,6 +754,9 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // from the device once, then owned by the editor -- rebinding on every poll
   // would overwrite a half-typed number on the next tick.
   const [spoEdit, setSpoEdit] = useState({});
+  // Focus lives on the jog target: the fine-adjust bar acts on it instead of on
+  // the table field `sel` still names. See nudge().
+  const [jogFocused, setJogFocused] = useState(false);
   // Which field the fine-adjust bar acts on: {key,label,which:'pos'|'w'}.
   const [sel, setSel] = useState(null);
   // Station timing is read far more often than it is changed, and every field
@@ -998,14 +1001,25 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       setSpeed(plate_freq > 0 ? plate_freq : (recallSpeed() || REF_FREQ));
   }, [plate_freq, speed]);
 
+  // RETURNS A PROMISE that settles when the action is over.
+  //
+  // Callers that ignore it behave exactly as before. The one that does not is
+  // a Modal.confirm: antd keeps its OK button spinning and the dialog open
+  // while onOk's promise is pending, so a dialog that closed the instant it was
+  // clicked -- while the board was still working -- now waits for the answer.
+  //
+  // It RESOLVES on a handled failure rather than rejecting: the failure is
+  // already logged and surfaced by the panel, and a dialog that refuses to
+  // close is a worse way to say so than the panel's own error line.
   const run = (label, fn) => {
     setBusy(label);
-    withApi((api) => {
-      let p;
-      try { p = fn(api); } catch (e) { log.warn('[uinsp2]', label, e); }
-      Promise.resolve(p).catch((e) => log.warn('[uinsp2]', label, 'failed', e))
-        .finally(() => { if (mounted.current) setBusy(''); });
-    });
+    const api = getPerifAPI(API_ID);
+    if (!api) { setBusy(''); return Promise.resolve(); }
+    let p;
+    try { p = fn(api); } catch (e) { log.warn('[uinsp2]', label, e); }
+    return Promise.resolve(p)
+      .catch((e) => log.warn('[uinsp2]', label, 'failed', e))
+      .finally(() => { if (mounted.current) setBusy(''); });
   };
 
   // RUN does the whole thing -- driver on, speed applied, inspection entered --
@@ -1089,6 +1103,20 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // the resolution that matters); width steps in microseconds, where 1us is
   // meaningless and 10us is not.
   const nudge = (d) => {
+    // THE BAR FOLLOWS FOCUS; `sel` FOLLOWS THE STATION. Two different questions
+    // that used to share one answer.
+    //
+    // In jog mode the number being tuned is the target, not the station's
+    // stored offset -- but `sel` must keep naming the station, because that is
+    // what 設為 writes back to and what re-seeds this field. So the jog target
+    // gets its own focus flag instead of joining `sel`, and only the bar reads
+    // it. Nothing else on the panel changes meaning when the target is focused.
+    if (jogFocused) {
+      const cur = Number(jogGo);
+      if (!isFinite(cur)) return;
+      setJogGo(Math.max(0, cur + d));
+      return;
+    }
     if (!sel) return;
     const st = STATIONS.find((x) => x.key === sel.key);
     const field = sel.which === 'pos' ? st.on : '_w_' + st.key;
@@ -1453,6 +1481,58 @@ build ${fw.build}`}>
             >存入 NVS</Button>
           </span>
         </Tooltip>
+
+        {/* THE WAY BACK, and it is the board that provides it.
+            The station table commits on every nudge, so a value tuned into
+            nonsense is already live. get_setup answers from RAM, so nothing
+            here can read the saved values back -- only the chip has them. This
+            asks the board to reload its own NVS document, which is the same
+            path it takes at boot.
+            The RE-READ afterwards is the point of the ordering: the panel shows
+            what the board reports, not what this button hoped for, so a restore
+            that was partly refused cannot look like one that worked. Clearing
+            spoEdit lets the table rebuild from the values that came back. */}
+        <Tooltip title="要求板子重新載入自己 NVS 裡的設定,然後重讀一次。改壞了用這個。">
+          <span>
+            <Button size="small" danger loading={busy === 'nvsrestore'}
+              data-testid="uinsp-restore-nvs"
+              onClick={() => Modal.confirm({
+                title: '從板子的 NVS 還原設定',
+                width: 520,
+                content: (<div style={{ lineHeight: 1.9 }}>
+                  <div>板子會重新載入<b>自己 NVS 裡存的那一份</b>,和它開機時做的事
+                    一樣。目前 RAM 裡未存檔的修改<b>全部丟掉</b>。</div>
+                  <div style={{ marginTop: 8 }}>還原的是設定值,<b>不會重新初始化腳位</b>,
+                    也不會重開機。</div>
+                  <div style={{ marginTop: 8, color: '#a8071a' }}>
+                    盤上已經在跑的料會有一部分用舊值、一部分用新值 —— 跟改站點位置同樣的
+                    情況,調機時做,不要在生產中做。</div>
+                  <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                    還原後會重新讀一次板子,表格顯示的是板子回報的值。</div>
+                </div>),
+                okText: '還原', cancelText: '取消', okButtonProps: { danger: true },
+                // refreshSetup, NOT machineSetupReSync: the latter is a
+                // retry loop that stops the moment cfg is non-empty, so it
+                // asked nothing and the table redrew from the values it
+                // already had. The board had restored; the screen had not.
+                // ORDER MATTERS: restore, re-read, THEN clear the buffer.
+                //
+                // Clearing first looked right and was not. The effect that
+                // adopts the station table fires the moment the buffer is
+                // empty, so it refilled from the values still in the store --
+                // the pre-restore ones -- and by the time the fresh reply
+                // landed the buffer was no longer empty, so nothing adopted
+                // them. That is why it took two presses.
+                onOk: () => run('nvsrestore', (api) =>
+                  Promise.resolve(api.sendP({ type: 'restore_setup' }))
+                    .then(() => (typeof api.refreshSetup === 'function')
+                                ? api.refreshSetup() : undefined)
+                    .then(() => { if (mounted.current) setSpoEdit({}); })),
+              })}
+            >從 NVS 還原</Button>
+          </span>
+        </Tooltip>
+
         {persistDeny && (
           <span style={{ alignSelf: 'center', fontSize: 11, color: '#c60' }}>
             {persistDeny === 'must be in IDLE or INSPECTION_MODE_READY' ? '要先停下檢測才能存檔'
@@ -2115,20 +2195,47 @@ build ${fw.build}`}>
             </span>
 
             <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>前往</span>
+            {/* IN JOG MODE THIS IS THE NUMBER BEING TUNED, so the fine-adjust
+                bar has to act on it. It joins the same `sel` mechanism the
+                table's fields use rather than getting a second bar: one bar,
+                one commit path, and the caption keeps saying what it is
+                pointing at. Focusing a station's position still re-seeds this
+                field from that station (the effect below), so the sequence
+                "pick the station, nudge the target, 前往, look, 設為" reads the
+                same as it did. */}
+            {/* NOT disabled while the plate is moving. Same mistake as the
+                manual blow button, in the one field where it costs the most:
+                pressing 前往 disabled this input, the browser took focus off a
+                disabled element, and by the time the move finished the fine
+                adjust had silently reverted to the table field. The whole
+                point of the sequence is to stay on this number.
+                Editing it mid-move is harmless -- it is read when 前往 is
+                pressed, not while the plate runs -- so the guard belongs on the
+                ACTION, and that is where it now is. */}
             <InputNumber size="small" style={{ width: 92 }} controls={false}
-              value={jogGo} step={10} disabled={jogMoving}
+              value={jogGo} step={1}
+              onFocus={() => setJogFocused(true)}
+              onBlur={() => setJogFocused(false)}
               onChange={(v) => setJogGo(Number(v))}
-              onPressEnter={() => run('jog', (api) => api.jogGoto(jogGo, jogGoFreq))} />
+              onPressEnter={() => { if (!jogMoving && isFinite(jogGo))
+                run('jog', (api) => api.jogGoto(jogGo, jogGoFreq)); }} />
             <InputNumber size="small" style={{ width: 68 }} controls={false}
               value={jogGoFreq} min={60} max={15000} step={100} disabled={jogMoving}
               onChange={(v) => setJogGoFreq(Number(v) || 600)} />
             <span style={{ fontSize: 11, color: '#aaa' }}>速度</span>
+            {/* preventDefault on mousedown: a click focuses the button, and
+                that is one more way to lose the field the operator is tuning.
+                The fine-adjust bar has done this since it was written; the two
+                buttons beside the field had not, so a mouse press cost the
+                focus that the enable/disable fix had just preserved. */}
             <Button size="small" type="primary" disabled={jogMoving || !isFinite(jogGo)}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => run('jog', (api) => api.jogGoto(jogGo, jogGoFreq))}>前往</Button>
 
             {/* The payoff: the measured position becomes the station's offset.
                 Same units, same origin (the gate edge), so no conversion. */}
             <Button size="small" type="primary" ghost
+              onMouseDown={(e) => e.preventDefault()}
               disabled={jogMoving || !spoUnlock || !sel || sel.which !== 'pos'}
               title={sel && sel.which === 'pos'
                 ? `把 ${jogDisp} 寫進 ${sel.label} 的觸發位置` : '先點一個站點的「觸發位置」欄位'}
@@ -2150,16 +2257,25 @@ build ${fw.build}`}>
             buttons would be 48 buttons. */}
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 8,
           padding: '4px 6px', borderRadius: 4,
-          background: sel ? '#f0f6ff' : '#fafafa',
-          border: sel ? '1px solid #91caff' : '1px solid #eee' }}>
+          background: (sel || jogFocused) ? '#f0f6ff' : '#fafafa',
+          border: (sel || jogFocused) ? '1px solid #91caff' : '1px solid #eee' }}>
           {[-100, -10, -1, 1, 10, 100].map((d) => (
-            <Button key={d} size="small" disabled={!sel || !spoUnlock} style={{ padding: '0 7px' }}
+            <Button key={d} size="small" style={{ padding: '0 7px' }}
+              /* The def lock guards the def's fields. The jog target is not one
+                 of them -- it only says where to drive the plate -- so locking
+                 the table must not take the fine adjust away from it. */
+              /* And not while it moves either: the number is only read when
+                 前往 is pressed, so nudging during a move is just getting the
+                 next target ready. */
+              disabled={jogFocused ? false : (!sel || !spoUnlock)}
               onMouseDown={(e) => e.preventDefault()}   /* keep focus on the field */
               onClick={() => nudge(d)}
             >{d > 0 ? `+${d}` : d}</Button>
           ))}
-          <span style={{ fontSize: 11, marginLeft: 6, color: sel ? '#1677ff' : '#aaa' }}>
-            {!spoUnlock ? '唯讀 — 右上角切換才能編輯'
+          <span style={{ fontSize: 11, marginLeft: 6,
+                         color: (sel || jogFocused) ? '#1677ff' : '#aaa' }}>
+            {(!spoUnlock && !jogFocused) ? '唯讀 — 右上角切換才能編輯'
+              : jogFocused ? '對位目標 · 前往位置 (tick)'
               : sel ? `${sel.label} · ${sel.which === 'pos' ? '位置 (tick)' : '寬度 (µs, 每格 ×10)'}`
               : '點一個欄位再用快速鈕'}
           </span>
@@ -2331,9 +2447,26 @@ build ${fw.build}`}>
               料排得越密越容易踩到,而踩到的時候畫面上不會有任何提示 ——
               機器數的「第幾顆」就不是你排的第幾顆了。這個功能什麼都不數。<br/><br/>
               盤子停著、乾跑模式、或有故障抑制時會拒絕 —— 那是分選路徑自己的
-              條件,手動吹氣沒有理由是機器上唯一無視它們的致動。</Why></span>
+              條件,手動吹氣沒有理由是機器上唯一無視它們的致動。<br/><br/>
+              <b>用鍵盤按</b>:滑鼠點一次把焦點留在按鈕上,之後就可以盯著盤面、
+              用 <b>Enter</b> 連續觸發,不用再回頭找滑鼠。</Why></span>
+          {/* NOT disabled while the request is in flight, unlike every other
+              control on this panel.
+              The operator's hands are on the plate, not on the screen: focus
+              the button once with the mouse, then watch the parts and press
+              Enter when the one you want is where you want it. A button
+              disables the moment it is pressed, and the browser takes focus off
+              a disabled element -- so the first press worked, focus landed on
+              <body>, and every Enter after it did nothing. The one control that
+              is meant to be fired repeatedly by keyboard was the one that could
+              not be.
+              Repeated presses are safe: each is a task pair into the ACT ring,
+              the push is dropped if the ring is full, and the plate-stopped /
+              dry-run / fault guard is checked on the board for every one of
+              them. The round trip is a few ms, so `busy` was never a throttle
+              here anyway -- it only ever cost the focus. */}
           {[1, 2, 3].map((n) => (
-            <Button key={n} size="small" disabled={busy === 'blow'}
+            <Button key={n} size="small"
               onClick={() => run('blow', (api) => api.sendP({ type: 'blow', sel: n }))}>
               吹 SEL{n}
             </Button>
