@@ -131,3 +131,13 @@ samples/bringup/run/
 # and frames/ with nothing to run them on.
 !samples/bringup/data/
 !samples/bringup/data/**
+
+# One-off probes written while chasing something on the bench. They are named
+# for the hunt, not for what they check, and they assume whatever the machine
+# happened to be doing that afternoon -- so they are scratch, and a `git add -A`
+# over tools/webctl swept seven of them in (e44497ea) before this line existed.
+UI/WebUI/tools/webctl/_*.mjs
+UI/WebUI/tools/webctl/blow_probe.mjs
+UI/WebUI/tools/webctl/mid_probe.mjs
+UI/WebUI/tools/webctl/shot_oldver.mjs
+UI/WebUI/tools/webctl/crashtest.mjs
