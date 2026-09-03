@@ -6998,6 +6998,46 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       rspAck=false;
     }
   }
+  else if(strcmp(type,"restore_setup")==0)
+  {
+    // NVS -> RAM. The inverse of save_setup, and it has to live here.
+    //
+    // get_setup answers from RAM, so a host has nothing to read the saved
+    // values out of: the only copy of "what was last saved" is on this chip. A
+    // UI can keep a snapshot of what it last SAW saved, but the moment that
+    // button is wanted is the moment somebody has been editing, which is
+    // exactly when a snapshot taken on connect records the mess as the good
+    // values and restores it looking like it worked.
+    //
+    // begin() is the boot path: it re-reads the NVS document and applies it
+    // through setMachineSetup, whose last act is STAGE_PULSE_WIDTH_apply -- so
+    // the derived offsets come back too, not just the stored ones. apply_hw is
+    // false in there, so pins and IO arming are untouched; this restores
+    // settings, it does not re-initialise hardware.
+    //
+    // Not gated by cfgPersistDeny: that guards NVS WRITES, which disable the
+    // instruction cache while the timer ISR calls into flash. Reading does not.
+    //
+    // It does change timing for parts already on the plate, exactly as
+    // set_setup does at runtime -- same caveat, same reason it is acceptable:
+    // this is a machine-setup action, not something done mid-production.
+    retdoc["type"]="restore_setup";
+    MachineConfig::begin();
+    const bool from_nvs = MachineConfig::isLoadedFromNVS();
+    retdoc["from_nvs"]=from_nvs;
+    if(!from_nvs)
+    {
+      // begin() leaves the running values alone when there is nothing usable to
+      // load, so nothing was restored and nothing was lost. Say both.
+      retdoc["err"]="NVS holds no usable config -- nothing was changed";
+    }
+    else
+    {
+      djrl.dbg_printf("restore_setup: reloaded the saved config from NVS");
+    }
+    doRsp=true;
+    rspAck=from_nvs;
+  }
   else if(strcmp(type,"clear_saved_setup")==0)
   {
     // Wipes NVS only. The running values stay put, so this cannot disturb a
@@ -8824,27 +8864,59 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       else
       {
         volatile stagePulseOffset* spo = SPO_active;
-        const uint32_t now = SYS_STEP_COUNT;
-        uint32_t width = 0;
+        // THE SAME TWO OFFSETS THE VERDICT PATH PUSHES, on a BACK-DATED anchor.
+        //
+        // The first version pushed ON at offset 0 and OFF at a width it worked
+        // out itself (SEL*_off - SEL*_on). The width was right and the blow was
+        // not: ACT_TRY_RUN_TASK takes the OFF task's deadline from
+        // `spo->SEL*_off`, NOT from the offset the task carries --
+        //
+        //     task->info ? task->offset : spo->SEL1_off
+        //
+        // -- so the puff closed at anchor+24531 instead of anchor+159 and ran
+        // about 150x too long. The offset that was computed so carefully was
+        // never read. A second expression of a timing that already exists is
+        // worth nothing when the machinery only ever consults the first.
+        //
+        // So push what the verdict path pushes, and move the ANCHOR instead:
+        // set it to where the gate pulse would have been for a puff that lands
+        // now. Then the standard deadlines do the arithmetic --
+        //
+        //     ON  fires at anchor + SEL*_on  == now            (no delay)
+        //     OFF fires at anchor + SEL*_off == now + width     (real width)
+        //
+        // -- and the width has ONE source, the same one the machine uses.
+        // Everything downstream (the grow/cap clamp, the suppression guards,
+        // the counters) sees an ordinary task, because it is one.
+        //
+        // The subtraction is modular and so is the comparison
+        // ((uint32_t)(cur_pulse - task->gate_pulse) >= task_off), so an anchor
+        // that wraps below zero shortly after boot still compares correctly.
+        uint32_t on = 0, off = 0;
         switch(sel)
         {
-          case 1: width = spo->SEL1_off - spo->SEL1_on; break;
-          case 2: width = spo->SEL2_off - spo->SEL2_on; break;
-          default:width = spo->SEL3_off - spo->SEL3_on; break;
+          case 1: on = spo->SEL1_on; off = spo->SEL1_off; break;
+          case 2: on = spo->SEL2_on; off = spo->SEL2_off; break;
+          default:on = spo->SEL3_on; off = spo->SEL3_off; break;
         }
+        const uint32_t anchor = SYS_STEP_COUNT - on;
         switch(sel)
         {
-          case 1: ACT_PUSH_TASK_AT(act_S.ACT_SEL1, now, 0, 1);
-                  ACT_PUSH_TASK_AT(act_S.ACT_SEL1, now, width, 0); break;
-          case 2: ACT_PUSH_TASK_AT(act_S.ACT_SEL2, now, 0, 1);
-                  ACT_PUSH_TASK_AT(act_S.ACT_SEL2, now, width, 0); break;
-          default:ACT_PUSH_TASK_AT(act_S.ACT_SEL3, now, 0, 1);
-                  ACT_PUSH_TASK_AT(act_S.ACT_SEL3, now, width, 0); break;
+          case 1: ACT_PUSH_TASK_AT(act_S.ACT_SEL1, anchor, on,  1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL1, anchor, off, 0); break;
+          case 2: ACT_PUSH_TASK_AT(act_S.ACT_SEL2, anchor, on,  1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL2, anchor, off, 0); break;
+          default:ACT_PUSH_TASK_AT(act_S.ACT_SEL3, anchor, on,  1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL3, anchor, off, 0); break;
         }
+        const uint32_t width = off - on;
         retdoc["sel"]   = sel;
         retdoc["width"] = width;
-        djrl.dbg_printf("MANUAL BLOW: SEL%d for %lu pulses -- no verdict, no object",
-                        sel, (unsigned long)width);
+        retdoc["on"]    = on;
+        retdoc["off"]   = off;
+        djrl.dbg_printf("MANUAL BLOW: SEL%d now, %lu pulses wide (on=%lu off=%lu) "
+                        "-- no verdict, no object", sel, (unsigned long)width,
+                        (unsigned long)on, (unsigned long)off);
       }
     }
     doRsp=true; rspAck=ok;
