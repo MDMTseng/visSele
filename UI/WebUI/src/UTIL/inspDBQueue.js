@@ -36,6 +36,47 @@ const MAX_RECORDS = Number(
 let droppedTotal = 0;
 export function droppedCount() { return droppedTotal; }
 
+// Records an OPERATOR deliberately deleted, kept apart from droppedTotal.
+//
+// Both destroy evidence, and that is where the resemblance ends: the cap drops
+// the oldest record because it ran out of room, and nobody chose it. This is
+// someone standing at the machine deciding that a backlog is not worth sending.
+// Folding them into one number would put the cap's explanation ("暫存滿了")
+// underneath a deletion nobody's buffer overflowed for, so they count separately
+// and the panel says which is which.
+let purgedTotal = 0;
+export function purgedCount() { return purgedTotal; }
+
+// Delete every not-yet-confirmed record for one source (all sources when the
+// argument is omitted). Returns how many went.
+//
+// A cursor rather than getAll+delete: the cap is 100k records at ~3.5 kB, and
+// materialising 350 MB into an array to throw it away is a way to take the tab
+// down while clearing a queue that was only ever a nuisance.
+export async function deletePendingBySource(source) {
+  const db = await openDB();
+  const src = (source === undefined) ? undefined : String(source);
+  let n = 0;
+  await new Promise((resolve, reject) => {
+    const cur = store(db, "readwrite").openCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (!c) { resolve(); return; }
+      if (src === undefined || c.value.source === src) { c.delete(); n++; }
+      c.continue();
+    };
+    cur.onerror = () => reject(cur.error);
+  });
+  purgedTotal += n;
+  if (n > 0) {
+    try {
+      console.warn("[inspDBQueue] operator DELETED " + n + " unsent record(s) for "
+        + (src === undefined ? "ALL sources" : src) + " -- these are gone, not queued");
+    } catch { /* a logger must never take the queue with it */ }
+  }
+  return n;
+}
+
 let dbPromise = null;
 
 function openDB() {

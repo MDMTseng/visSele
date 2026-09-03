@@ -15,8 +15,9 @@ import Button from 'antd/lib/button';
 import Alert from 'antd/lib/alert';
 import Tag from 'antd/lib/tag';
 import Tooltip from 'antd/lib/tooltip';
-import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { pendingInsertCount, droppedCount } from 'UTIL/inspDBQueue';
+import Modal from 'antd/lib/modal';
+import { ReloadOutlined, ThunderboltOutlined, DeleteOutlined } from '@ant-design/icons';
+import { pendingInsertCount, droppedCount, purgedCount } from 'UTIL/inspDBQueue';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.dbpanel');
@@ -39,7 +40,9 @@ export function DBStatusPanel({ id, connInfo, getObj, title }) {
   const [live, setLive] = useState(undefined);   // from the DB_WS instance
   const [pend, setPend] = useState(undefined);   // durable, from IndexedDB
   const [dropped, setDropped] = useState(0);
+  const [purged, setPurged] = useState(0);
   const [kicked, setKicked] = useState('');
+  const [purging, setPurging] = useState(false);
 
   // One sampler for both sources. DB_WS pushes its brief_info to Redux only
   // every 5 s, which is fine for a sidebar badge and too slow for a panel
@@ -60,7 +63,7 @@ export function DBStatusPanel({ id, connInfo, getObj, title }) {
 
     pendingInsertCount(id).then(setPend).catch((e) => {
       log.warn('[dbpanel] pendingInsertCount failed', e); setPend(null); });
-    try { setDropped(droppedCount()); } catch (e) { /* counter is best-effort */ }
+    try { setDropped(droppedCount()); setPurged(purgedCount()); } catch (e) { /* counters are best-effort */ }
   };
 
   useEffect(() => {
@@ -84,6 +87,44 @@ export function DBStatusPanel({ id, connInfo, getObj, title }) {
       setKicked('已要求重送');
       setTimeout(() => setKicked(''), 3000);
     } catch (e) { log.warn('[dbpanel] kick failed', e); setKicked('重送失敗:' + String(e)); }
+  });
+
+  // DELETE THE BACKLOG. Asks first, with the numbers in the question.
+  //
+  // The confirmation is not ceremony. Every other button on this panel makes the
+  // queue smaller by SENDING it; this one is the only way an operator can make a
+  // record cease to exist on purpose, and the panel's whole argument is that a
+  // hole in the traceability record is a hole nobody can reconstruct later. So
+  // the modal states the count it is about to destroy, says what cannot be
+  // undone, and waits -- onOk returns the promise so it stays open until the
+  // deletion actually finished rather than until the click was registered.
+  const purge = () => getObj((obj) => {
+    if (!obj || typeof obj.purgePending !== 'function') return;
+    const total = (pend || 0);
+    const inFlight = (live && live.queued) || 0;
+    Modal.confirm({
+      title: '刪除未上傳的資料',
+      okText: '刪除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      content: <div style={{ lineHeight: 1.9 }}>
+        <div>本地還沒送出去的 <b>{total}</b> 筆會被刪掉{inFlight > 0
+          ? <>(其中 {inFlight} 筆在記憶體佇列裡)</> : null}。</div>
+        <div style={{ color: '#cf1322' }}>刪掉就沒有了,不能復原,之後查這段時間的資料會少掉這些筆。</div>
+        <div style={{ fontSize: 12, color: '#888' }}>
+          已經送出去的不受影響。正在線上傳送中的那一筆有可能仍然會被對方寫入。
+        </div>
+      </div>,
+      onOk: () => {
+        setPurging(true);
+        return Promise.resolve(obj.purgePending())
+          .then((r) => { setKicked(`已刪除 ${r ? r.fromDisk : 0} 筆`);
+                         setTimeout(() => setKicked(''), 5000); })
+          .catch((e) => { log.warn('[dbpanel] purge failed', e);
+                          setKicked('刪除失敗:' + String(e)); })
+          .finally(() => { setPurging(false); sample(); });
+      },
+    });
   });
 
   const reconnect = () => getObj((obj) => {
@@ -125,13 +166,23 @@ export function DBStatusPanel({ id, connInfo, getObj, title }) {
       hint="本次開啟 app 以來" />
 
     <Row label="已丟棄" value={dropped} danger={dropped > 0}
-      hint={dropped > 0 ? '證據已經被刪除,不是延遲' : '暫存尚未滿過'} />
+      hint={dropped > 0 ? '暫存滿了自動刪掉最舊的,不是延遲' : '暫存尚未滿過'} />
+
+    {purged > 0 ? (
+      <Row label="已手動刪除" value={purged} danger
+        hint="本次開啟 app 以來,由操作人員刪除的未上傳資料" />
+    ) : null}
 
     <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
       <Tooltip title="立刻把待送的資料再送一次,不等佇列自己的下一次嘗試">
         <Button icon={<ThunderboltOutlined />} onClick={kick}>立即重送</Button>
       </Tooltip>
       <Button icon={<ReloadOutlined />} onClick={reconnect}>重新連線</Button>
+      <Tooltip title="把還沒送出去的資料刪掉。刪掉就沒有了,不能復原">
+        <Button danger icon={<DeleteOutlined />} loading={purging}
+          disabled={!((pend && pend > 0) || (live && live.queued > 0))}
+          onClick={purge}>刪除未上傳</Button>
+      </Tooltip>
       {kicked ? <span style={{ color: '#389e0d' }}>{kicked}</span> : null}
     </div>
 

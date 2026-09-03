@@ -81,7 +81,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue,PostfixExpCalc,Exp2PostfixExp,round,dictLookUp,CircularCounter} from 'UTIL/MISC_Util';
+import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue,PostfixExpCalc,Exp2PostfixExp,round,dictLookUp,CircularCounter,defFileGeneration} from 'UTIL/MISC_Util';
 import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -94,7 +94,7 @@ import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
-import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
+import { persistPending, deletePending, getPendingBySource, pendingInsertCount, deletePendingBySource, purgedCount } from 'UTIL/inspDBQueue';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
@@ -184,10 +184,10 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   });
   // Test hooks for the diagnostics ring buffer + local failed-insert queue.
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
-  window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount };
+  window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount, deletePendingBySource, purgedCount };
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
-  window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
+  window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue, defFileGeneration }; // pure utils for QA
   // Live view of the perif link store (a function, so it's always current).
   //
   // getPerifAPI comes with it: the peripheral is the half of the machine a
@@ -987,6 +987,47 @@ class APPMasterX extends React.Component {
         armed();
       }
 
+      // THROW THE BACKLOG AWAY, both copies of it.
+      //
+      // Two stores hold unsent records and clearing one of them is worse than
+      // clearing neither: leave cQ and the records upload anyway (the button
+      // lied); leave IndexedDB and the next reconnect replays what was just
+      // deleted (the button lied slower). So drain the live queue FIRST -- while
+      // it holds entries the socket can still be sending them -- then delete the
+      // durable copies, then let replays run again.
+      //
+      // A record already on the wire may still be inserted at the far end. There
+      // is no take-backs on a send that left; the count returned is what was
+      // removed here, not a promise about what the remote DB now holds.
+      purgePending()
+      {
+        this._purgeEpoch = (this._purgeEpoch || 0) + 1;
+        const wasReplaying = this._replaying;
+        this._replaying = true;          // block a new replay across the gap
+        let fromQueue = 0;
+        try {
+          while (true) {
+            const item = this.cQ.deQ();
+            if (item === undefined) break;
+            fromQueue++;
+            try { if (item.reject) item.reject("已由操作人員刪除"); }
+            catch (e) { /* a waiter that throws must not stop the purge */ }
+          }
+        } catch (e) { log.error("purge: draining the live queue failed", e); }
+
+        return deletePendingBySource(this.id)
+          .then((fromDisk) => {
+            log.warn("DB_WS[" + this.id + "] operator purged " + fromQueue
+              + " queued + " + fromDisk + " buffered record(s)");
+            return { fromQueue, fromDisk };
+          })
+          .catch((e) => {
+            log.error("purge: deleting the local buffer failed", e);
+            throw e;
+          })
+          .finally(() => { this._replaying = wasReplaying ? true : false; });
+      }
+
       _doReplay()
       {
         // Replay in CHUNKS, yielding between them.
@@ -1006,7 +1047,18 @@ class APPMasterX extends React.Component {
             log.info("DB_WS[" + this.id + "] replaying " + items.length + " buffered inserts");
             const CHUNK = 200;
             let i = 0;
+            // `items` outlives the task that read it. If an operator purges the
+            // queue between two chunks, the rest of this list is records that no
+            // longer exist -- and re-queuing them would undo the deletion one
+            // chunk at a time, which looks exactly like the delete button not
+            // working. Stamp the epoch and stop when it moves.
+            const epoch = this._purgeEpoch || 0;
             const pump = () => {
+              if ((this._purgeEpoch || 0) !== epoch) {
+                log.info("DB_WS[" + this.id + "] replay abandoned at " + i
+                  + "/" + items.length + " -- the queue was purged");
+                return;
+              }
               const end = Math.min(i + CHUNK, items.length);
               for (; i < end; i++) {
                 const it = items[i];
