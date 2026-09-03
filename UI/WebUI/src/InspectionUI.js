@@ -3914,7 +3914,10 @@ class APP_INSP_MODE extends React.Component {
         sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)}
         savePath={GetObjElement(this.props,["machine_custom_setting","InspSampleSavePath"])}
         defInfoFor={()=>{ try { return defFileGeneration(this.props.edit_info); }
-                          catch(e){ log.warn("[samples] defFileGeneration failed", e); return undefined; } }} />
+                          catch(e){ log.warn("[samples] defFileGeneration failed", e); return undefined; } }}
+        measures={(GetObjElement(this.props,
+          ["edit_info","reportStatisticState","statisticValue","measureList"])||[])
+          .map((m)=>({ id:m.id, name:m.name }))} />
 
       <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
         <RedoOutlined/>
