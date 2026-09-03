@@ -21,6 +21,7 @@ import {
   sampleStoreCap, setSampleStoreCap,
 } from 'UTIL/inspSampleStore';
 import { INSPECTION_STATUS } from 'UTIL/InspectionStatus';
+import { RepDisplay } from '../RepDisplayUI.js';
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.samplepanel');
 
@@ -74,7 +75,7 @@ function judgeRows(entry) {
   return js.slice().sort((a, b) => rank(a.status) - rank(b.status));
 }
 
-function Detail({ entry, url, onSave, saving, onRemove }) {
+function Detail({ entry, onSave, saving, onRemove, defCopy }) {
   if (!entry) return <div style={{ color: '#888', padding: 20 }}>左邊選一筆</div>;
   const img = entry.img || {};
   const ratio = (img.full_width > 0 && img.width > 0) ? (img.full_width / img.width) : 1;
@@ -91,8 +92,18 @@ function Detail({ entry, url, onSave, saving, onRemove }) {
       <Button size="small" danger icon={<DeleteOutlined />}
         onClick={() => onRemove(entry)}>刪除這筆</Button>
     </div>
-    {url ? <img src={url} alt="" style={{ maxWidth: '100%', maxHeight: 340,
-      background: '#111', display: 'block' }} /> : <div style={{ color: '#888' }}>無影像</div>}
+    {/* THE OVERLAY, not a flat picture.
+        Same component the report-playback screen uses: it takes the def, the
+        camera param and the report and draws the search points, the fitted
+        lines and circles and the caliper hits over the frame. A picture plus a
+        table of numbers says WHICH measurement failed; this says where on the
+        part it went wrong, which is the question someone opened this panel with.
+        The def is passed as a fresh copy every time because rootDefInfoLoading
+        deletes featureSet_sha1 off whatever it is handed. */}
+    <div style={{ height: 340, background: '#111' }}>
+      <RepDisplay def={defCopy} camera_param={entry.camParam}
+        reports={[entry.report]} image={entry.img} IGNORE_IMAGE_FIT_TO_SCREEN />
+    </div>
     <div style={{ marginTop: 10, maxHeight: 200, overflow: 'auto' }}>
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <tbody>
@@ -130,6 +141,16 @@ export function InspSamplePanel({ visible, onClose, sendBPG, savePath, defInfoFo
     ? SAMPLE_BUCKETS.map((b) => snap[b].find((e) => e.id === sel))
         .find((e) => e !== undefined)
     : undefined;
+
+  // A FRESH copy per selection. RepDisplay's rootDefInfoLoading deletes
+  // featureSet_sha1 off the object it is given, and handing it the live def
+  // would strip the digest the editor hard-blocks on. Keyed on the entry so
+  // switching samples re-loads rather than reusing a def already consumed.
+  const defCopy = useMemo(() => {
+    if (!entry || typeof defInfoFor !== 'function') return undefined;
+    try { return JSON.parse(JSON.stringify(defInfoFor())); }
+    catch (e) { log.warn('[samples] def for the overlay failed', e); return undefined; }
+  }, [entry && entry.id]);
 
   // SAVE WHAT IS ACTUALLY HERE, and label it as that.
   //
@@ -256,7 +277,7 @@ export function InspSamplePanel({ visible, onClose, sendBPG, savePath, defInfoFo
           </div>))}
       </div>
       <div style={{ flex: 1, minWidth: 0, borderLeft: '1px solid #333', paddingLeft: 12 }}>
-        <Detail entry={entry} url={entry ? urlFor(entry.img) : undefined}
+        <Detail entry={entry} defCopy={defCopy}
           onSave={saveXrep} saving={saving}
           onRemove={(e) => { removeSampleEntry(e.id); setSel(undefined); }} />
       </div>

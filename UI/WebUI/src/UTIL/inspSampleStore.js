@@ -19,11 +19,18 @@
 // part with no picture is not worth a slot here, so only paired ones are kept,
 // and nothing downstream should read a count off this buffer.
 //
-// WHAT IS KEPT, and why so little: this repo has already paid for the other
-// answer. historyReport used to hold whole reports and was measured at 22.6 kB
-// per object, 97.6% of it point clouds, which came to ~1.2 GB of live heap at
-// 1000 deep. So an entry is the verdict, the judge rows, and the ENCODED frame
-// -- never a decoded bitmap, and never the geometry.
+// WHAT IS KEPT: the whole report, including the point clouds, plus the ENCODED
+// frame -- never a decoded bitmap.
+//
+// historyReport learned to drop the geometry after whole reports at 1000 deep
+// measured ~1.2 GB of live heap, and that lesson was applied here first. It does
+// not transfer, and the reason is fill-and-stop: this buffer holds at most
+// cap x 3 entries and then stops allocating, where historyReport was 1000 deep
+// churning continuously at 30/s. Measured on a real record from this machine, an
+// object is 19.8 kB of which the geometry is 19.4 kB (97.6%) -- so three buckets
+// of 20 is about 1.2 MB serialised, a few MB in heap. That is affordable, and
+// without it the panel can show the picture and the numbers but not WHERE on the
+// part the measurement went wrong, which is the question it exists to answer.
 //
 // The frame is a Uint8Array rather than a Blob, deliberately and for the same
 // reason BPG_Protocol copies it into one: a Blob's payload lives outside the JS
@@ -121,6 +128,11 @@ export function sampleStoreBytes() {
   const seen = new Set();
   let n = 0;
   SAMPLE_BUCKETS.forEach((b) => store[b].forEach((e) => {
+    // The report's own bytes are per ENTRY -- each part has its own geometry,
+    // and at ~19 kB an object it is no longer a rounding error beside the frame.
+    // Measured once at insert rather than re-stringified on every snapshot: the
+    // panel reads this on each render.
+    n += e.bytesReport || 0;
     const buf = e.img && e.img.jpegBytes;
     if (!buf || seen.has(buf)) return;
     seen.add(buf);
@@ -190,14 +202,27 @@ function verdictOf(judgeReports) {
 export function noteFinalisedReports(reports, inspMode) {
   if (inspMode !== 'FI') { pending = null; return; }
   if (!Array.isArray(reports) || reports.length === 0) { pending = null; return; }
-  pending = reports.map((r) => ({
-    time_ms: r && r.time_ms,
-    // The judge rows only -- see the note at the top about what the geometry
-    // costs. They are copied so a later mutation of the live report cannot
-    // rewrite history that has already been shown to someone.
-    judgeReports: JSON.parse(JSON.stringify((r && r.judgeReports) || [])),
-    cx: r && r.cx, cy: r && r.cy, rotate: r && r.rotate, isFlipped: r && r.isFlipped,
-  }));
+  pending = [];
+  reports.forEach((r) => {
+    // A DETACHED copy, through JSON: the live report is still referenced by the
+    // tracking window and the DB upload, and a stored sample that changes when
+    // they mutate it is history rewriting itself after someone has read it.
+    // The round trip also drops any function or live object reference, so an
+    // entry retains its own bytes and nothing else.
+    let copy;
+    try { copy = JSON.parse(JSON.stringify(r)); }
+    catch (e) { log.warn('[samples] a report would not serialise -- skipped', e); return; }
+    // The playback canvas draws trackingWindow.filter(x => x.isCurObj), and by
+    // the time a report is FINALISED that flag is false -- it means "matched in
+    // the frame being processed", and finalising happens when the object has
+    // left. Stored, it means "the object this sample is of", which is exactly
+    // what the panel is showing, so it is stamped true rather than left to a
+    // flag whose meaning belongs to the live path. Without it the overlay
+    // renders nothing at all and the panel looks like it lost the geometry.
+    copy.isCurObj = true;
+    pending.push(copy);
+  });
+  if (pending.length === 0) pending = null;
 }
 
 // Pair the frame that just arrived with the reports that arrived just before
@@ -234,8 +259,21 @@ export function attachImage(img, camParam, defName) {
       skipped[v]++;
       return;
     }
-    store[v].push({ id: ++seq, verdict: v, at: Date.now(), img: frame,
-                    camParam: camParam, defName: defName, ...r });
+    let bytesReport = 0;
+    try { bytesReport = JSON.stringify(r).length; } catch (e) { /* counted as 0 */ }
+    store[v].push({
+      id: ++seq, verdict: v, at: Date.now(), img: frame,
+      camParam: camParam, defName: defName,
+      // The whole report, for the overlay. RepDisplay puts it straight into
+      // trackingWindow and the canvas draws its lines, circles and search
+      // points -- which is why the geometry is kept at all.
+      report: r,
+      bytesReport: bytesReport,
+      // Lifted for the panel's own table and caption. Same objects, not copies.
+      judgeReports: r.judgeReports || [],
+      time_ms: r.time_ms, cx: r.cx, cy: r.cy,
+      rotate: r.rotate, isFlipped: r.isFlipped,
+    });
     added = true;
   });
   // Notify on a refusal too: the panel's "full, N turned away" counter is the

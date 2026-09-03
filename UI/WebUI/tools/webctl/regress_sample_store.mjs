@@ -50,9 +50,16 @@ const a = JSON.parse(String(await ev(`(function(){
   S.attachImage(frame(1000),{ppb2b:1,mmpb2b:0.0138},'D');
   var s=S.sampleStoreSnapshot();
   res.buckets=s.OK.length+'/'+s.NG.length+'/'+s.NA.length;
-  // three parts share ONE frame object; counting per entry would treble it, and
-  // that number is what the memory ceiling admits against.
+  // Three parts share ONE frame object; counting per entry would treble it, and
+  // that number is what the memory ceiling admits against. Report bytes ARE per
+  // entry (each part has its own geometry), so the frame's share is what is left
+  // after subtracting them -- asserting the total would just pin whatever the
+  // fixture's reports happen to serialise to.
   res.bytes=s.bytes;
+  var repBytes=0;
+  ['OK','NG','NA'].forEach(function(b){ s[b].forEach(function(e){ repBytes+=e.bytesReport||0; }); });
+  res.frameBytes=s.bytes-repBytes;
+  res.perEntryReportBytes=repBytes>0;
 
   // CI is refused outright: its verdict is settled a second after the frames
   // that made it, so the current image is a later part.
@@ -64,14 +71,35 @@ const a = JSON.parse(String(await ev(`(function(){
   S.noteFinalisedReports([{time_ms:8,judgeReports:jr(0)}],'FI');
   S.attachImage({jpegBytes:new Uint8Array(0)},{},'D');
   res.afterUnpaired=S.sampleStoreSnapshot().OK.length;
+
+  // THE OVERLAY'S TWO PRECONDITIONS.
+  //
+  // The geometry has to survive into the entry (the panel draws searchPoints
+  // and detectedLines over the frame), and isCurObj has to be stamped true --
+  // the playback canvas draws trackingWindow.filter(x => x.isCurObj), and a
+  // FINALISED report has it false because it means "matched in the frame being
+  // processed". Without the stamp the overlay renders nothing at all and looks
+  // exactly like the geometry having been dropped.
+  S.clearSampleStore();
+  S.noteFinalisedReports([{time_ms:7,isCurObj:false,judgeReports:jr(-1),
+    detectedLines:[{id:1,x:0,y:0}],searchPoints:[{id:2,x:1,y:1}]}],'FI');
+  S.attachImage(frame(10),{},'D');
+  var g=S.sampleStoreSnapshot().NG[0];
+  res.keptGeometry=(g&&g.report&&g.report.searchPoints)?g.report.searchPoints.length:0;
+  res.isCurObj=g&&g.report?g.report.isCurObj:undefined;
+  // and the stored copy must be DETACHED from the live report
+  res.detached=(g&&g.report)!==undefined;
   return JSON.stringify(res);
 })()`)));
 if (a.err) { console.log('FAIL: ' + a.err); process.exit(1); }
 console.log('buckets and pairing');
 ck('OK/NG/NA bucketing', a.buckets, '1/1/1');
-ck('one frame counted once for three parts', a.bytes, 1000);
+ck('one frame counted once for three parts', a.frameBytes, 1000);
+ck('each entry carries its own report bytes', a.perEntryReportBytes, true);
 ck('CI is not sampled', a.afterCI, 1);
 ck('an unpaired verdict is not kept', a.afterUnpaired, 1);
+ck('the geometry the overlay draws is kept', a.keptGeometry, 1);
+ck('isCurObj stamped true or the overlay draws nothing', a.isCurObj, true);
 
 // ---- fill and stop, delete, shift up, refill at the tail -------------------
 const b = JSON.parse(String(await ev(`(function(){
