@@ -1078,11 +1078,24 @@ export class InspectionEditorLogic {
       "ver": "0.0.1.0",
       "unit": "px",
       "mmpp": (sig && sig.mmpp) || this.getEditorMmpp(),
-      // Merged, not replaced: the file's fields first, then whatever the
-      // editor/camera actually knows. Anything the editor has an opinion about
-      // (mmpb2b, ppb2b) still wins; anything only the file carries survives.
-      cam_param: { ...(this.defCamParam || {}),
-                   ...((sig && sig.cam_param) || this.cameraParam || {}) },
+      // THE FILE WINS. The live camera only fills in what the def does not have.
+      //
+      // The order used to be the other way round, so the editor's copy overwrote
+      // the file's. Every sig360_circle_line inspection report calls
+      // SetCameraParamInfo(report.cam_param) (UICtrlReducer), which meant a def
+      // absorbed the camera's current numbers just by being open while the
+      // machine ran -- and then every exit warned "設定已更動" on a recipe
+      // nobody had touched. Two things wrong with that, and the warning was the
+      // lesser one: a measurement recipe was quietly re-scaling itself to
+      // whatever the camera last reported.
+      //
+      // A def with no cam_param at all (a new one) still gets the live values,
+      // which is the case the merge existed for. Changing a def's calibration is
+      // now something someone has to do on purpose rather than a side effect of
+      // running parts. Note the legacy "camera_calibration" WS report the other
+      // direction relied on is no longer emitted by the core.
+      cam_param: { ...((sig && sig.cam_param) || this.cameraParam || {}),
+                   ...(this.defCamParam || {}) },
       features: this.shapeList,
       inherentfeatures: this.inherentShapeList
     };
