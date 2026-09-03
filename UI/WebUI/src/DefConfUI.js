@@ -16,7 +16,7 @@ let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
-import { DEF_EXTENSION, defFileFilter, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION, defFileFilter, makeExtensionFilter, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -2412,8 +2412,13 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   }, [machine_custom_setting]);
 
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
-  
-  
+  // Where that browser opens and what it will show. The def picker is the
+  // default because it was the only caller; 載入 xrep points it at the snapshot
+  // folder with an .xreps filter instead. Both go through ONE browser -- two
+  // would be two states that can both be open.
+  const [fileSelectCfg,setFileSelectCfg]=useState(undefined);
+
+
   const [modal_view,setModal_view]=useState(undefined);
 
   const [cacheDef,setCacheDef]=useState(undefined);
@@ -2556,6 +2561,156 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     // which is worse than leaving them visible and removable.
     ]);
       
+
+  // VERIFY AGAINST A SAVED RECORD, with the calibration it was taken under.
+  //
+  // The image switcher already loads a sibling .png into the core's cache, and
+  // that is enough to LOOK at a def on another sample. It is not enough to
+  // measure one: a bare image carries no mm-per-pixel, so the frame gets
+  // interpreted with whatever calibration the editor happens to be holding --
+  // which, for a picture taken on another machine or before a re-calibration,
+  // is the wrong ruler and produces numbers that look entirely ordinary.
+  //
+  // A .xreps record is the pair: the report AND the camera_param of the frame
+  // it was taken from. So this is the same LD the playback screen sends
+  // (filename + imgsrc), and the camera_param that comes back goes into the
+  // editor through SetCameraParamInfo -- the same entry point an inspection
+  // report uses.
+  //
+  // It does NOT touch the def: since cam_param generation takes the file's
+  // values first, looking at a record cannot rewrite the recipe's calibration.
+  // That mattered enough to be a separate fix; without it, opening a record
+  // here would quietly re-scale the def to the record's camera.
+  function loadXrepForVerify(xrepPath, fileInfo)
+  {
+    const stem = String(xrepPath).replace(/\.xreps$/i, "");
+    const slash = Math.max(stem.lastIndexOf('/'), stem.lastIndexOf('\\'));
+    const dir = slash >= 0 ? stem.substring(0, slash) : '.';
+    const base = slash >= 0 ? stem.substring(slash + 1) : stem;
+
+    // The picture's EXTENSION has to be looked up, not guessed: the core's
+    // automatic NG snapshots write .jpg and the manual 檢測快照 writes .png,
+    // and the core hands imgsrc straight to cv::imread without appending
+    // anything -- so a guess that is wrong loads the report with no image and
+    // the overlay draws over a blank canvas.
+    const IMG_EXTS = ["png", "jpg", "jpeg", "bmp"];
+    ACT_WS_SEND_BPG(CORE_ID, 'FB', 0, { path: dir, depth: 1 }, undefined, {
+      resolve: (darr) => {
+        const fsInfo = darr && darr[0] && darr[0].data;
+        const files = (fsInfo && fsInfo.files) || [];
+        const fdir = (fsInfo && fsInfo.path) || dir;
+        const hit = files.find((f) => f && f.type === 'REG' && typeof f.name === 'string'
+          && IMG_EXTS.some((e) => f.name.toLowerCase() === (base + '.' + e).toLowerCase()));
+        const imgPath = hit ? (hit.path || (fdir + '/' + hit.name)) : undefined;
+        if (!imgPath) log.warn('[xrep] no image beside ' + stem + ' -- report only');
+        sendXrepLD(stem, imgPath);
+      },
+      reject: (e) => { log.warn('[xrep] folder listing failed', e); sendXrepLD(stem, undefined); }
+    });
+  }
+
+  function sendXrepLD(stem, imgPath)
+  {
+    ACT_WS_SEND_BPG(CORE_ID, 'LD', 0,
+      { filename: stem + '.xreps',
+        ...(imgPath ? { imgsrc: imgPath } : {}),
+        down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
+      undefined,
+      { resolve: (pkts) => {
+          const FL = (pkts || []).find((p) => p.type === 'FL');
+          const IM = (pkts || []).find((p) => p.type === 'IM');
+
+          // The image first, so the canvas is showing the frame the numbers
+          // will be about. IGNORE_DEFCONF_LOCK because the post-load display
+          // lock drops image actions and this one is a deliberate operator act.
+          if (IM !== undefined) {
+            const a = BPG_Protocol.map_BPG_Packet2Act(IM);
+            if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+            else log.error('[xrep] an IM packet produced no action');
+          } else {
+            log.warn('[xrep] LD returned no IM; the canvas keeps the previous image');
+          }
+
+          const camParam = FL && FL.data && FL.data.camera_param;
+          if (camParam !== undefined && edit_info && edit_info._obj) {
+            edit_info._obj.SetCameraParamInfo(camParam);
+            log.info('[xrep] camera_param adopted from the record', camParam);
+          } else {
+            // Worth saying out loud rather than silently measuring with the
+            // editor's current ruler: an old record may predate the field.
+            log.warn('[xrep] the record carries no camera_param -- '
+                   + 'the frame will be measured with the calibration already loaded');
+          }
+
+          setNowInspdata(undefined);   // any previous result was another frame
+          setTimeout(() => runXrepVerify(camParam), 60);
+        },
+        reject: (e) => { log.warn('[xrep] load failed', e); }
+      });
+  }
+
+  // Measure the loaded frame with the CURRENT def and the FRAME's ruler.
+  //
+  // This does not reuse the shared 'defconf-orient-now' event, and the reason is
+  // the whole feature: that path sends calibInfo.mmpp from the DEF, so the
+  // camera_param just adopted from the record would be carried around and never
+  // actually used -- the frame would be measured with the def's scale, which is
+  // the thing loading a record was supposed to avoid. mm-per-pixel is a property
+  // of how a frame was captured, so it comes from the record.
+  //
+  // What comes from the def is everything else: the features, the tolerances,
+  // the regions. That is the point -- this verifies the def you have open
+  // against a saved frame, and it deliberately ignores the defInfo stored in the
+  // record (FL.data.defInfo), which describes the def as it was back then.
+  function runXrepVerify(camParam)
+  {
+    if (!edit_info || !edit_info._obj) return;
+    let deffile = defFileGeneration(edit_info);
+    stampRefImagePath(deffile, edit_info);
+    const defMmpp = deffile.featureSet[0].mmpp;
+    // mmpb2b/ppb2b is how the rest of the code turns a cam_param into a scale
+    // (see the sig360 report path). Guarded: a zero or missing ppb2b would make
+    // this Infinity or NaN and measure the part to a nonsense scale rather than
+    // failing, so fall back to the def and say which one was used.
+    // The SOURCE is tracked, not inferred from the value. A bench whose record
+    // was taken under the same calibration as the def produces two identical
+    // numbers, and a label derived by comparing them then reports "def" for a
+    // scale that came from the record -- which is exactly the question this
+    // line exists to answer.
+    let mmpp = defMmpp, mmppFrom = 'def';
+    if (camParam && camParam.mmpb2b > 0 && camParam.ppb2b > 0) {
+      mmpp = camParam.mmpb2b / camParam.ppb2b;
+      mmppFrom = 'record';
+    } else {
+      log.warn('[xrep] no usable mmpb2b/ppb2b in the record -- measuring with the def mmpp', defMmpp);
+    }
+    log.info('[xrep] verifying with mmpp=' + mmpp + ' (' + mmppFrom + ')');
+
+    ACT_WS_SEND_BPG(CORE_ID, 'II', 0,
+      { definfo: deffile, imgsrc: '__CACHE_IMG__',
+        img_property: { calibInfo: { type: 'disable', mmpp: mmpp } } },
+      undefined,
+      { resolve: (darr) => {
+          const RP = (darr || []).find((p) => p.type === 'RP');
+          if (RP !== undefined) {
+            const a = BPG_Protocol.map_BPG_Packet2Act(RP);
+            if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+          }
+          const IM = (darr || []).find((p) => p.type === 'IM');
+          if (IM !== undefined) {
+            const a = BPG_Protocol.map_BPG_Packet2Act(IM);
+            if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+          }
+          // AFTER the dispatch, deliberately. Handling a sig360_circle_line
+          // report calls SetCameraParamInfo with the REPORT's cam_param
+          // (UICtrlReducer), which is the def's -- so dispatching the result of
+          // this verification silently undoes the adoption that made it
+          // meaningful. Measured: exposure_time:50 went in and came back gone.
+          if (camParam !== undefined) edit_info._obj.SetCameraParamInfo(camParam);
+        },
+        reject: (e) => { log.warn('[xrep] verify failed', e); }
+      });
+  }
 
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
   {//FI/CI
@@ -3233,6 +3388,27 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             <Button key="FI_MODE" data-testid="quick-verify-fi" onClick={_ => startQuickInsp("FI")}>
               全檢{machine_custom_setting.InspectionMode=="FI"?<StarOutlined />:null}
             </Button>
+            <div style={{ marginTop: 12, borderTop: '1px solid #333', paddingTop: 10 }}>
+              <Button key="XREP" data-testid="quick-verify-xrep"
+                onClick={_ => {
+                  setModal_view(undefined);
+                  setFileSelectCfg({
+                    filter: makeExtensionFilter('xreps'),
+                    path: machine_custom_setting.InspSampleSavePath || 'data/',
+                  });
+                  setFileSelectedCallBack(() => (filePath, fileInfo) => {
+                    setFileSelectedCallBack(undefined);
+                    setFileSelectCfg(undefined);
+                    loadXrepForVerify(filePath, fileInfo);
+                  });
+                }}>
+                載入 xrep
+              </Button>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
+                用存下來的檢驗記錄當輸入:載入它的影像,並改用<b>那張影像的相機參數</b>來量。
+                不會動到這份設定檔的校正值。
+              </div>
+            </div>
           </>
         })
 
@@ -3251,7 +3427,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       <BPG_FileBrowser key="BPG_FileBrowser"
         searchDepth={4}
         className="width8 modal-sizing"
-        path={DefFileFolder} visible={fileSelectedCallBack !== undefined}
+        path={(fileSelectCfg && fileSelectCfg.path) || DefFileFolder}
+        visible={fileSelectedCallBack !== undefined}
         BPG_Channel={(...args) => ACT_WS_SEND_BPG(CORE_ID, ...args)}
         onFileSelected={(filePath, fileInfo) => {
           fileSelectedCallBack(filePath, fileInfo);
@@ -3259,9 +3436,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         onOk={(folderPath) => {
         }}
         onCancel={() => {
-          setFileSelectedCallBack(undefined)
+          setFileSelectedCallBack(undefined);
+          setFileSelectCfg(undefined);
         }}
-        fileFilter={defFileFilter}
+        fileFilter={(fileSelectCfg && fileSelectCfg.filter) || defFileFilter}
       />);
 
   }
