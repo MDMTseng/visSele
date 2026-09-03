@@ -51,6 +51,15 @@ function useFrameUrls() {
   };
 }
 
+// Same precision on both sides of the comparison. A value at 4 dp beside a
+// limit at whatever precision it happened to be typed with makes the reader do
+// the alignment, and that alignment is the entire content of the row.
+const num = (v) => (typeof v === 'number' && isFinite(v)) ? v.toFixed(4) : String(v);
+
+const humanBytes = (n) => (n >= 1048576) ? (n / 1048576).toFixed(1) + ' MB'
+                        : (n >= 1024) ? Math.round(n / 1024) + ' kB'
+                        : n + ' B';
+
 const hhmmss = (ms) => {
   try { const d = new Date(ms); return d.toTimeString().slice(0, 8) + '.'
     + String(d.getMilliseconds()).padStart(3, '0'); } catch (e) { return '?'; }
@@ -95,10 +104,10 @@ function Detail({ entry, url, onSave, saving, onRemove }) {
               <td style={{ padding: '3px 6px', textAlign: 'right',
                            fontVariantNumeric: 'tabular-nums',
                            color: bad ? COLOUR.NG : na ? COLOUR.NA : undefined }}>
-                {typeof j.value === 'number' ? j.value.toFixed(4) : String(j.value)}
+                {num(j.value)}
               </td>
               <td style={{ padding: '3px 6px', fontSize: 11, color: '#888' }}>
-                {j.lim ? `[${j.lim.LSL}, ${j.lim.USL}]` : ''}
+                {j.lim ? `[${num(j.lim.LSL)}, ${num(j.lim.USL)}]` : ''}
               </td>
             </tr>;
           })}
@@ -190,13 +199,13 @@ export function InspSamplePanel({ visible, onClose, sendBPG, savePath, defInfoFo
   const total = SAMPLE_BUCKETS.reduce((n, b) => n + snap[b].length, 0);
 
   return <Modal open={visible} visible={visible} onCancel={onClose} footer={null}
-    width={1000} title="檢驗樣本(最近的幾筆)" destroyOnClose>
+    width={1000} title="檢驗樣本(保留中,填滿即停止)" destroyOnClose>
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
       <span style={{ fontSize: 12, color: '#888' }}>每類保留</span>
       <InputNumber size="small" min={1} max={500} value={sampleStoreCap()}
         onChange={(v) => { setSampleStoreCap(v); setTick((t) => t + 1); }} style={{ width: 80 }} />
       <span style={{ fontSize: 12, color: '#888' }}>
-        共 {total} 筆,{(snap.bytes / 1048576).toFixed(1)} MB
+        共 {total} 筆,{humanBytes(snap.bytes)}
       </span>
       <Button size="small" icon={<DeleteOutlined />}
         onClick={() => { clearSampleStore(); setSel(undefined); }}>全部清空</Button>
