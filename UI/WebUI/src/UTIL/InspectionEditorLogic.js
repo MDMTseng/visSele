@@ -383,8 +383,21 @@ export class InspectionEditorLogic {
                 edit_info.def_image_reg = root_defFile.def_image_reg;
               // Optional user-overridden ROI-refine points (object-frame mm). Absent =>
               // the core auto-selects; an empty array here keeps "auto".
-              if (Array.isArray(report.roi_refine_points))
-                edit_info.roi_refine_points = report.roi_refine_points;
+              //
+              // Read from @__SBM_INFO__ first, the featureSet root second. They
+              // moved to sit beside localization_include/exclude, which is what
+              // they are: an input to the NEXT extraction, not something the
+              // machine reads while it runs -- a def carrying its own ROI
+              // windows locates identically with this key deleted. The root
+              // placement is still accepted so a def written before the move
+              // still opens.
+              {
+                const _sbm = Array.isArray(report.inherentfeatures)
+                  ? report.inherentfeatures.find((x) => x && x.name === '@__SBM_INFO__')
+                  : undefined;
+                const _rp = (_sbm && _sbm.roi_refine_points) || report.roi_refine_points;
+                if (Array.isArray(_rp)) edit_info.roi_refine_points = _rp;
+              }
               // The localizer's extraction regions. NOT measurement features, so
               // they never go into shapeList.
               //

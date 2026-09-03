@@ -213,6 +213,16 @@ ws.on('message', (d) => {
   if (sbm.__shape_cache) delete sbm.__shape_cache;
   sbm.shape_cache = fresh;
 
+  // Move roi_refine_points in beside localization_include/exclude. Placement
+  // only -- the same points, read the same way, edited the same way in the
+  // studio. They are an input to the next extraction, like the regions they now
+  // sit with, and nothing reads them while the machine runs. Moved rather than
+  // mirrored: two copies of one value is how they come to disagree.
+  if (out.featureSet[0].roi_refine_points !== undefined) {
+    sbm.roi_refine_points = out.featureSet[0].roi_refine_points;
+    delete out.featureSet[0].roi_refine_points;
+  }
+
   // RE-STAMP featureSet_sha1, or the def becomes unopenable.
   //
   // The editor hashes the featureSet on load and HARD BLOCKS a mismatch -- "a

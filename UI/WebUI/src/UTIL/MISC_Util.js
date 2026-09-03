@@ -574,18 +574,26 @@ export function defFileGeneration(edit_info)
     const _fs = report.featureSet[0];
     const _incl = _fs.localization_include;
     const _excl = _fs.localization_exclude;
-    if (edit_info.__shape_cache || _incl || _excl) {
+    // ROI refine points join them. All three are inputs to the next extraction
+    // and none of them is read while the machine runs -- a def carrying its own
+    // ROI windows locates identically with roi_refine_points deleted, measured
+    // to the last digit. Grouping them says which half of the def they belong
+    // to; the cache beside them is the OUTPUT of the extraction they configure.
+    const _roi = _fs.roi_refine_points;
+    if (edit_info.__shape_cache || _incl || _excl || _roi) {
       const _inh = Array.isArray(_fs.inherentfeatures) ? _fs.inherentfeatures : [];
       const _entry = { id: SBM_INFO_ID, type: 'sbm_info', name: SBM_INFO_NAME };
       if (edit_info.__shape_cache) _entry.shape_cache = edit_info.__shape_cache;
       if (_incl) _entry.localization_include = _incl;
       if (_excl) _entry.localization_exclude = _excl;
+      if (_roi) _entry.roi_refine_points = _roi;
       _fs.inherentfeatures = _inh
         .filter((e) => !(e && e.name === SBM_INFO_NAME))
         .concat([_entry]);
     }
     delete _fs.localization_include;
     delete _fs.localization_exclude;
+    delete _fs.roi_refine_points;
   }
   // The legacy placement is removed rather than mirrored: two copies of one
   // value is how they come to disagree, and the core prefers the new one

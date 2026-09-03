@@ -2665,6 +2665,31 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       // vocabulary and a def an older core cannot parse does not lose a field,
       // it fails entirely -- which is the loc_include incident recorded at the
       // legacy __shape_cache read above. Accepting both costs one branch.
+      // ROI refine points belong with them, for the same reason and by the
+      // same test: nothing reads them at RUN time. A def that carries its own
+      // ROI windows locates without ever looking at this list -- measured, the
+      // report came back identical to the last digit with the key deleted. What
+      // they are is the operator's answer to "which points should the refiner
+      // use", kept so that pressing 生成特徵點 freezes the same choice again
+      // instead of falling back to auto-selection. That is an input to the next
+      // extraction, exactly like the regions below, and it was the only one of
+      // the three still sitting at the featureSet root.
+      cJSON *rp = cJSON_GetObjectItem(feature, "roi_refine_points");
+      if (rp != NULL && cJSON_IsArray(rp))
+      {
+        this->roi_pts_mm.clear();
+        cJSON *pt = NULL;
+        cJSON_ArrayForEach(pt, rp)
+        {
+          cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
+          if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
+            this->roi_pts_mm.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
+        }
+        this->roi_pts_set = true;
+        LOGI("[shape] roi_refine_points read from @__SBM_INFO__ (%d pts)",
+             (int)this->roi_pts_mm.size());
+      }
+
       cJSON *li = cJSON_GetObjectItem(feature, "localization_include");
       cJSON *le = cJSON_GetObjectItem(feature, "localization_exclude");
       if (li != NULL && cJSON_IsArray(li))
