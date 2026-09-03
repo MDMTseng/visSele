@@ -7719,6 +7719,39 @@ ShapeExtractWindow::ShapeExtractWindow(bool force)
 }
 ShapeExtractWindow::~ShapeExtractWindow() { g_shape_extract_allowed = prev; g_shape_force_extract = prevForce; }
 
+void FeatureManager_sig360_circle_line::liftShapeForUI(
+    const sbm::FeatureSet &fs, const cv::Rect &crop,
+    float reg_sin, float reg_cos, float reg_flip_f, const cv::Point2f &originPx)
+{
+  shape_feat_mm.clear();
+  shape_roi_mm.clear();
+  if (!(def_mmpp > 0)) return;
+  auto px_to_obj = [&](float fx, float fy) {
+    acv_XY full = { fx + (float)crop.x, fy + (float)crop.y };
+    return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
+                                       acv_XY(originPx.x, originPx.y), def_mmpp);
+  };
+  if (!fs.levels.empty())
+  {
+    const auto &lv = fs.levels[0];
+    shape_feat_mm.reserve(lv.features.size());
+    for (const auto &f : lv.features)
+      shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
+  }
+  const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
+  // THE SAME COUNT THE MATCHER ASKS FOR, not 16.
+  //
+  // selectOptimizedPoints caches by max_points and the first call wins: a
+  // cached 16 satisfies a later request for 8, so this preview used to decide
+  // what the localizer ran with. Opening the studio changed the machine's
+  // behaviour, and the points on screen were never the points in use.
+  std::vector<cv::Point2f> rpts =
+      const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(sbm::kDefaultOptPointsPublic);
+  shape_roi_mm.reserve(rpts.size());
+  for (const auto &rp : rpts)
+    shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
+}
+
 int FeatureManager_sig360_circle_line::trainShapeMatcher()
 {
   shape_ready = false;
@@ -7734,7 +7767,9 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   //
   // Regeneration still goes the long way round: re-extracting means looking at
   // the picture again, and stored windows are the old picture by definition.
-  if (!shape_force_extract() && shape_cache_in != NULL && has_reg &&
+  // def_mmpp is in the guard because both the registration origin and the UI
+  // lift divide by it; without it there is no object frame to lift into.
+  if (!shape_force_extract() && shape_cache_in != NULL && has_reg && def_mmpp > 0 &&
       cJSON_GetObjectItem(shape_cache_in, "roi") != NULL)
   {
     sbm::FeatureSet fsc;
@@ -7760,11 +7795,40 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       int nv = buildShapeMatcher(1.0f);
       if (nv <= 0) { LOGE("[shape] addModel from a self-contained def failed (%d)", nv); return -1; }
       shape_ready = true;
-      // No liftForUI here, deliberately. That fills the studio's preview of the
-      // feature and ROI points, and it reads level-0 features against the whole
-      // template -- which this path does not have and does not need. Curation
-      // happens in the studio, where the reference picture is open anyway; a
-      // machine running parts is not previewing anything.
+
+      // THE STUDIO ASKS THE CORE FOR THESE. It does not compute them itself.
+      //
+      // This was skipped, reasoning that a machine running parts previews
+      // nothing and curation happens in the studio where the picture is open
+      // anyway. Both halves are true and the conclusion was still wrong:
+      // opening the SBM studio sends an SF to ask what the def already locates
+      // with, and an empty answer is indistinguishable, at that end, from an
+      // extraction that produced nothing. A def loaded this way -- working,
+      // accurate, verified against the truth -- greeted the operator with
+      // "生成特徵失敗".
+      //
+      // Both lists are already in the FeatureSet; lifting them into object-frame
+      // mm is one pass over data in memory and needs no picture.
+      {
+        const float rs = -sinf(reg_angle_rad), rc = cosf(reg_angle_rad);
+        const float rf = reg_flipped ? -1.0f : 1.0f;
+        const cv::Point2f org((float)(reg_center_mm.x / def_mmpp),
+                              (float)(reg_center_mm.y / def_mmpp));
+        liftShapeForUI(*shapeFeatureSet, ccrop, rs, rc, rf, org);
+      }
+
+      // The fingerprint the def already carries, handed back unchanged.
+      //
+      // getShapeFeaturePointsJson only emits shape_cache when this is set, so
+      // leaving it empty meant an SF reply with no cache in it -- and the studio
+      // patches edit_info.__shape_cache from that reply. Recomputing one here
+      // would need the reference image, which is the whole point of not needing
+      // it; carrying the def's own forward says exactly what it is.
+      {
+        cJSON *fpj = cJSON_GetObjectItem(shape_cache_in, "fp");
+        shape_cache_fp = (fpj != NULL && cJSON_IsString(fpj) && fpj->valuestring != NULL)
+                         ? std::string(fpj->valuestring) : std::string("self-contained");
+      }
       LOGI("[shape] self-contained def: %d ROI window(s), crop [%d,%d %dx%d] "
            "origin(%.1f,%.1f) variants=%d -- no template file was read",
            (int)shapeFeatureSet->user_opt_points.size(), ccrop.x, ccrop.y,
@@ -8113,34 +8177,11 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   // "line2Dup features: 0" while the localizer was working perfectly. That was
   // invisible until defs started carrying caches, at which point pressing the
   // button made the existing overlay vanish and nothing replace it.
+  // Thin wrapper so the two call sites below read as they always did; the
+  // implementation is a member because the self-contained load path needs it
+  // too and never reaches this point in the function.
   auto liftForUI = [&](const sbm::FeatureSet &fs, const cv::Rect &crop) {
-    shape_feat_mm.clear();
-    shape_roi_mm.clear();
-    if (!(def_mmpp > 0)) return;
-    auto px_to_obj = [&](float fx, float fy) {
-      acv_XY full = { fx + (float)crop.x, fy + (float)crop.y };
-      return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
-                                         acv_XY(originPx.x, originPx.y), def_mmpp);
-    };
-    if (!fs.levels.empty())
-    {
-      const auto &lv = fs.levels[0];
-      shape_feat_mm.reserve(lv.features.size());
-      for (const auto &f : lv.features)
-        shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
-    }
-    const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
-    // THE SAME COUNT THE MATCHER ASKS FOR, not 16.
-    //
-    // selectOptimizedPoints caches by max_points and the first call wins: a
-    // cached 16 satisfies a later request for 8, so this preview used to decide
-    // what the localizer ran with. Opening the studio changed the machine's
-    // behaviour, and the points on screen were never the points in use.
-    std::vector<cv::Point2f> rpts =
-        const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(sbm::kDefaultOptPointsPublic);
-    shape_roi_mm.reserve(rpts.size());
-    for (const auto &rp : rpts)
-      shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
+    liftShapeForUI(fs, crop, reg_sin, reg_cos, reg_flip_f, originPx);
   };
 
   // THERE IS ONE WAY TO LOAD A TRAINED LOCALISER, and it is above: a def that

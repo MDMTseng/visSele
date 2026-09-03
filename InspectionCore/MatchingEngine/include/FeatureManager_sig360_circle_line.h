@@ -527,6 +527,17 @@ protected:
   }
   // cJSON variant for the WS "SF" round-trip (see FeatureManager base). NULL if the
   // shape localizer has not trained.
+  // The studio's preview of what this def locates with: level-0 features and
+  // the ROI sample points, in OBJECT-FRAME mm. A member rather than a lambda
+  // inside trainShapeMatcher because BOTH ways of arriving at a trained feature
+  // set have to fill it -- extraction, and loading a self-contained def. The
+  // second one did not, and the studio, which asks the CORE for these rather
+  // than computing them itself, reported "no features extracted" for a def that
+  // was working perfectly.
+  void liftShapeForUI(const sbm::FeatureSet &fs, const cv::Rect &crop,
+                      float reg_sin, float reg_cos, float reg_flip_f,
+                      const cv::Point2f &originPx);
+
   cJSON *getShapeFeaturePointsJson() override;
   // Ensure the shape matcher's template variants are scaled for the live mmpp so a
   // def is portable across camera magnifications. Rebuilds shapeMatcher at
