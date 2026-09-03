@@ -9,7 +9,7 @@ import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
 import { mkLog } from 'UTIL/logger';
-import { noteFinalisedReports, attachImage } from 'UTIL/inspSampleRing';
+import { noteFinalisedReports, attachImage } from 'UTIL/inspSampleStore';
 import dclone from 'clone';
 import JSum from 'jsum'
 
