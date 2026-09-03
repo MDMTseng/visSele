@@ -9,6 +9,7 @@ import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
 import { mkLog } from 'UTIL/logger';
+import { noteFinalisedReports, attachImage } from 'UTIL/inspSampleRing';
 import dclone from 'clone';
 import JSum from 'jsum'
 
@@ -271,6 +272,11 @@ function StateReducer(newState, action) {
                   }
 
                   reportStatisticState.newAddedReport = [];
+                  // Collected here rather than read off newAddedReport at the
+                  // end: that array is consumed and emptied by the DB upload and
+                  // the readout, so by the time this handler finishes there is no
+                  // guarantee anything is still in it.
+                  const _ringFinalised = [];
 
                   //Reset the current object property, then we will check if there's a new similar report object as it.
                   reportStatisticState.trackingWindow.forEach((srep_inWindow) => {
@@ -349,6 +355,10 @@ function StateReducer(newState, action) {
                         }
 
                         reportStatisticState.newAddedReport.push(srep_inWindow);
+                      // Offer it to the sample ring. FI only, and the ring is
+                      // what decides that -- see its note on why CI cannot be
+                      // paired with the frame that happens to be current.
+                      _ringFinalised.push(srep_inWindow);
                       }
                       else {
                         log.error("the current data only gets few samples, ignore",
@@ -358,6 +368,11 @@ function StateReducer(newState, action) {
                       }
                       return false;
                     });
+
+                  // The frame that arrives NEXT is the one these belong to: the
+                  // core sends RP then IM inside one group.
+                  noteFinalisedReports(_ringFinalised,
+                    GetObjElement(newState,["machine_custom_setting","InspectionMode"]));
 
                   if(action.data.__surpress_display==true)
                   {
@@ -864,6 +879,11 @@ function StateReducer(newState, action) {
             
           case UISEV.Image_Update:
             newState.edit_info = { ...newState.edit_info, img: action.data };
+            // Pair it with the reports that landed just before it. Does nothing
+            // unless a frame and a verdict actually met.
+            attachImage(action.data,
+              newState.edit_info._obj ? newState.edit_info._obj.cameraParam : undefined,
+              newState.edit_info.DefFileName);
             break;
 
 
