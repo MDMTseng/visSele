@@ -7,7 +7,7 @@
 // the real part and reports "no candidate near the expected position", which
 // reads exactly like a locator that stopped working. So the arithmetic gets a
 // test rather than a careful read.
-import { imageCentreInObjectFrame, expectedPosition, pickByPosition, nearestDistance }
+import { imageCentre, expectedPosition, pickByPosition, nearestDistance }
   from '../../src/sbmExpectPose.mjs';
 
 let fails = 0;
@@ -16,29 +16,59 @@ const near = (a, b, tol, w) => check(Math.abs(a - b) <= tol, `${w}: ${a} vs ${b}
 
 const MMPP = 0.0125, W = 2448, H = 2048;
 
-console.log('image centre in the object frame:');
+console.log('the pivot is the image centre, in image mm:');
 {
-  // Origin at the image centre, no rotation -> the pivot is the origin.
-  const p = imageCentreInObjectFrame(W, H, MMPP, { cx: W / 2 * MMPP, cy: H / 2 * MMPP, angle: 0 });
-  near(p.x, 0, 1e-9, 'centred origin gives pivot x 0');
-  near(p.y, 0, 1e-9, 'centred origin gives pivot y 0');
-  // Origin at the image corner -> the pivot is half the frame away.
-  const q = imageCentreInObjectFrame(W, H, MMPP, { cx: 0, cy: 0, angle: 0 });
-  near(q.x, W / 2 * MMPP, 1e-9, 'corner origin, pivot x');
-  near(q.y, H / 2 * MMPP, 1e-9, 'corner origin, pivot y');
-  // A rotated object frame rotates the pivot INTO it. 90 degrees swaps the axes.
-  const r = imageCentreInObjectFrame(W, H, MMPP, { cx: 0, cy: 0, angle: Math.PI / 2 });
-  near(r.x, H / 2 * MMPP, 1e-9, 'rotated frame, pivot x');
-  near(r.y, -(W / 2 * MMPP), 1e-9, 'rotated frame, pivot y');
-  console.log('  3 registrations');
+  const p = imageCentre(W, H, MMPP);
+  near(p.x, W / 2 * MMPP, 1e-9, 'pivot x');
+  near(p.y, H / 2 * MMPP, 1e-9, 'pivot y');
+  console.log('  no registration in it -- see the note in sbmExpectPose');
+}
+
+// THE ONE THAT IS NOT SELF-CONSISTENCY.
+//
+// Everything else here checks the model against itself, and the model used to
+// be internally perfect and wrong: it worked in the object frame while the
+// poses it compared against were in image mm, and it rotated the wrong way. The
+// suite passed throughout, and the studio's sweep reported "usable range
+// 0.00deg ~ 0.00deg" for a locator that was fine.
+//
+// So: real output from the core, for a real def, at five perturbations. Numbers
+// from --insp on data/test1 with {"rot_deg": N} (2448x2048, mmpp 0.0138859432,
+// def_image_reg 15.0252/9.3055). If the prediction stops matching these, the
+// prediction is wrong -- not the fixture.
+console.log('against the core, not against itself:');
+{
+  const M = 0.0138859432190657, IW = 2448, IH = 2048;
+  const pivot = imageCentre(IW, IH, M);
+  const base = { cx: 15.0250, cy: 9.3044 };          // rot_deg 0
+  const measured = [
+    [   4, 14.6871, 9.4536],
+    [  -4, 15.3731, 9.1780],
+    [  10, 14.2011, 9.7227],
+    [ -10, 15.9090, 9.0372],
+  ];
+  const TOL_PX = 0.5;                                 // the sweep works to 20
+  for (const [deg, mx, my] of measured) {
+    const e = expectedPosition(base, pivot, { rot_deg: deg });
+    const dpx = Math.hypot(e.x - mx, e.y - my) / M;
+    check(dpx <= TOL_PX,
+          `rot_deg ${deg}: predicted (${e.x.toFixed(4)}, ${e.y.toFixed(4)}), ` +
+          `core said (${mx}, ${my}) -- ${dpx.toFixed(2)} px apart`);
+  }
+  // And rot_deg 0 must be the identity, which is the case that hid the bug.
+  const z = expectedPosition(base, pivot, { rot_deg: 0 });
+  near(z.x, base.cx, 1e-9, 'rot 0 x'); near(z.y, base.cy, 1e-9, 'rot 0 y');
+  console.log('  4 perturbations measured on the bench, within ' + TOL_PX + ' px');
 }
 
 console.log('rotation moves the part around the pivot:');
 {
   const pivot = { x: 0, y: 0 };
   const from = { cx: 10, cy: 0 };
+  // +90 moves it to -y: a positive rot_deg turns the SCENE counter-clockwise in
+  // a y-up sense, so a point in y-down image coordinates goes the other way.
   const a = expectedPosition(from, pivot, { rot_deg: 90 });
-  near(a.x, 0, 1e-9, '90deg x'); near(a.y, 10, 1e-9, '90deg y');
+  near(a.x, 0, 1e-9, '90deg x'); near(a.y, -10, 1e-9, '90deg y');
   const b = expectedPosition(from, pivot, { rot_deg: 180 });
   near(b.x, -10, 1e-9, '180deg x'); near(b.y, 0, 1e-9, '180deg y');
   // A part AT the pivot does not move however far it is rotated.

@@ -27,7 +27,7 @@ import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
 import { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
 import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
-import { imageCentreInObjectFrame, expectedPosition } from './sbmExpectPose.mjs';
+import { imageCentre, expectedPosition } from './sbmExpectPose.mjs';
 import { HookCanvasComponent } from './SBMStudio';
 
 // THE APP IS LIGHT, AND THIS PANEL HAD BEEN WRITTEN FOR A DARK ONE.
@@ -497,7 +497,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     ? edit_info._obj.getEditorMmpp() : 1;
   const imgW = (edit_info.img && (edit_info.img.width || edit_info.img.w)) || 2448;
   const imgH = (edit_info.img && (edit_info.img.height || edit_info.img.h)) || 2048;
-  const pivot = imageCentreInObjectFrame(imgW, imgH, def_mmpp, reg);
+  // The perturbation pivots on the image centre, and the poses come back in
+  // image mm, so the pivot is the image centre in image mm. It used to be
+  // translated by the registration into an object frame the poses were not in.
+  const pivot = imageCentre(imgW, imgH, def_mmpp);
   const obj = edit_info._obj;
   const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
   // NO component-level shapeList. Nothing in this studio reads it any more:

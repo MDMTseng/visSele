@@ -18,25 +18,30 @@
 // whatever it scored.
 //
 // TestPerturb.h applies geometry about the IMAGE CENTRE, in this order:
-// rotate, then scale, then skew. This mirrors it. Everything here is in
-// object-frame mm, which is the frame the reported poses use.
-
-// The image centre expressed in the object frame.
+// rotate, then scale, then skew. This mirrors it.
 //
-// def_image_reg gives the object frame's origin in image-mm and its rotation,
-// so the centre has to be translated and then rotated INTO that frame. Getting
-// this backwards puts the pivot on the wrong side of the part, which produces a
-// prediction that is wrong by twice the offset -- a difference big enough to
-// reject every candidate rather than a subtle one, which is the good case.
-export function imageCentreInObjectFrame(widthPx, heightPx, mmpp, reg) {
-  const r = reg || {};
-  const cx = Number.isFinite(r.cx) ? r.cx : 0;
-  const cy = Number.isFinite(r.cy) ? r.cy : 0;
-  const ang = Number.isFinite(r.angle) ? r.angle : 0;
-  const dx = (widthPx / 2) * mmpp - cx;
-  const dy = (heightPx / 2) * mmpp - cy;
-  const c = Math.cos(-ang), s = Math.sin(-ang);
-  return { x: dx * c - dy * s, y: dx * s + dy * c };
+// EVERYTHING HERE IS IN IMAGE MM -- the frame the reported poses are actually
+// in. That sentence used to say "object-frame mm", and it was wrong: an
+// unperturbed test1 reports cx/cy = (15.0250, 9.3044), which is its
+// def_image_reg, not the (0,0) an object-frame pose would be. The pivot was
+// therefore translated into a frame the poses were never in, and every
+// prediction came out about one def_image_reg away -- 128 px on this bench,
+// against a 20 px tolerance, so every candidate was rejected as interference.
+//
+// Only rot_deg = 0 survived, because with no rotation the prediction is the
+// starting point whatever the pivot is. A sweep that reports "usable range
+// 0.00deg ~ 0.00deg" is that bug, not a fragile locator.
+
+// The image centre, in the same frame the poses use. No registration in it:
+// translating by def_image_reg is what moved the pivot into the wrong frame.
+export function imageCentre(widthPx, heightPx, mmpp) {
+  return { x: (widthPx / 2) * mmpp, y: (heightPx / 2) * mmpp };
+}
+
+// Kept so an older caller still resolves; the registration argument is ignored
+// on purpose and the name is the mistake it is named after.
+export function imageCentreInObjectFrame(widthPx, heightPx, mmpp) {
+  return imageCentre(widthPx, heightPx, mmpp);
 }
 
 // Where `from` ends up when the SCENE is perturbed. `from` and the result are
@@ -49,7 +54,12 @@ export function expectedPosition(from, pivot, perturb) {
   let x = from.cx - pivot.x;
   let y = from.cy - pivot.y;
 
-  const deg = Number.isFinite(p.rot_deg) ? p.rot_deg : 0;
+  // NEGATED. getRotationMatrix2D's positive angle is counter-clockwise in a
+  // y-up sense, and an image's y points down, so a +rot_deg perturbation moves
+  // a point by -rot_deg in these coordinates. Measured against the core on five
+  // angles; with the sign the other way the prediction lands on the far side of
+  // the pivot and nothing is ever picked.
+  const deg = Number.isFinite(p.rot_deg) ? -p.rot_deg : 0;
   if (deg) {
     const t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
     const nx = x * c - y * s;
