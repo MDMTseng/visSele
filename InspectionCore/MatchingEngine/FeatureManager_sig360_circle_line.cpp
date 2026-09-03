@@ -7480,8 +7480,10 @@ static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
   cJSON *og = cJSON_AddArrayToObject(o, "origin");
   cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.x));
   cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.y));
-  cJSON_AddNumberToObject(o, "tw", fs.templ_width);
-  cJSON_AddNumberToObject(o, "th", fs.templ_height);
+  // tw/th are NOT written. They were always crop.width/height -- checked across
+  // every def on this machine, 11 of 11 identical -- because the template IS the
+  // crop. Two names for one number is two things that can disagree, and the one
+  // that would win is whichever the reader happened to use.
 
   cJSON *lv = cJSON_AddArrayToObject(o, "levels");
   for (const auto &L : fs.levels)
@@ -7589,8 +7591,10 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
   origin_in_crop = cv::Point2f((float)cJSON_GetArrayItem(og,0)->valuedouble,
                                (float)cJSON_GetArrayItem(og,1)->valuedouble);
   fs.levels.clear();
-  fs.templ_width  = (int)JFetch_NUMBER_ex(cache, "tw", 0);
-  fs.templ_height = (int)JFetch_NUMBER_ex(cache, "th", 0);
+  // The template's size is the crop's size, by construction: templ_use is
+  // templ(cropRect). Read from the one field that says it.
+  fs.templ_width  = crop.width;
+  fs.templ_height = crop.height;
   int nf_total = 0;
   cJSON *e = NULL;
   cJSON_ArrayForEach(e, lv)

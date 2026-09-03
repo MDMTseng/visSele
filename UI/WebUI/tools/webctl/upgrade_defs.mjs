@@ -35,12 +35,22 @@ import JSum from 'jsum';
 
 const args = process.argv.slice(2);
 const targets = [];
-let URL = 'ws://127.0.0.1:4090', dry = false, force = false;
+// TWO SWITCHES, because they are two decisions and one flag for both is how a
+// def whose features no longer reproduce got rewritten anyway: --force was
+// reached for to re-do already-converted defs after a format change, and it
+// silently took the safety check with it.
+let URL = 'ws://127.0.0.1:4090', dry = false, redo = false, acceptChanged = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--ws') URL = args[++i];
   else if (args[i] === '--dry-run') dry = true;
-  else if (args[i] === '--force') force = true;
-  else targets.push(args[i]);
+  else if (args[i] === '--redo') redo = true;            // re-convert one already converted
+  else if (args[i] === '--accept-changed-features') acceptChanged = true;
+  else if (args[i] === '--force') {
+    console.error('--force is gone: say --redo to re-convert an already converted def, '
+      + 'or --accept-changed-features to overrule the reproducibility check. '
+      + 'They used to be the same flag, and that rewrote a def it should have refused.');
+    process.exit(2);
+  } else targets.push(args[i]);
 }
 if (targets.length === 0) {
   console.error('usage: node upgrade_defs.mjs <dir|def.hydef> [...] [--ws URL] [--dry-run] [--force]');
@@ -117,7 +127,7 @@ function next() {
   const sbm = sbmOf(fs0);
   const cache = sbm && (sbm.shape_cache || sbm.__shape_cache);
   if (!fs0 || !sbm || !cache) { report.skipped.push([p, 'no shape localiser']); return next(); }
-  if (cache.roi && !force) { report.skipped.push([p, 'already self-contained']); return next(); }
+  if (cache.roi && !redo) { report.skipped.push([p, 'already self-contained']); return next(); }
 
   const png = p.replace(/\.hydef$/, '.png');
   if (!fs.existsSync(png)) {
@@ -189,11 +199,12 @@ ws.on('message', (d) => {
   // that is a decision for a person, not for a batch script.
   const before = JSON.stringify(cur.cache.levels);
   const after = JSON.stringify(fresh.levels);
-  if (before !== after && !force) {
+  if (before !== after && !acceptChanged) {
     console.log('FAIL');
     report.failed.push([cur.p,
       'RE-EXTRACTION DID NOT REPRODUCE the stored coarse features -- refusing to '
-      + 'rewrite it. Open this one in the SBM studio and look at it. (--force overrides)']);
+      + 'rewrite it. Open this one in the SBM studio and look at it. '
+      + '(--accept-changed-features overrules, deliberately verbose)']);
     return next();
   }
 
