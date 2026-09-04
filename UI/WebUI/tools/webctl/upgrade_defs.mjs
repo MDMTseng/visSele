@@ -92,6 +92,17 @@ ws.binaryType = 'arraybuffer';
 let pg = 1;
 const bail = (why, code = 1) => { console.error(why); try { ws.close(); } catch {} process.exit(code); };
 ws.on('error', (e) => bail('ws: ' + e.message));
+// The core admits ONE websocket client unless started with
+// INSP_ALLOW_MULTI_CLIENT=1 (wiringPanel.cpp, HAND_SHAKING_FINISHED). A refused
+// connection is closed at the door, and this script used to sit on it until
+// the timeout and then say the core was slow. Say what happened.
+ws.on('close', (code) => {
+  if (pending || idx < defs.length) {
+    bail('the core closed the connection (code ' + code + ') before answering. '
+      + 'Most likely another client (the WebUI) is connected and the core admits one at a time -- '
+      + 'close the browser, or start the core with INSP_ALLOW_MULTI_CLIENT=1.');
+  }
+});
 
 // The digest the editor will recompute on load. Must match
 // InspectionEditorLogic.rootDefInfoLoading exactly.
@@ -110,7 +121,7 @@ function defSha1(featureSet) {
 function sbmOf(fsEntry) {
   const ihs = fsEntry && fsEntry.inherentfeatures;
   if (!Array.isArray(ihs)) return null;
-  return ihs.find((e) => e && (e.name === '@__SBM_INFO__' || e.shape_cache || e.__shape_cache)) || null;
+  return ihs.find((e) => e && (e.name === '@__SBM_INFO__' || e.shape_cache)) || null;
 }
 
 let idx = 0, pending = null;
@@ -139,6 +150,19 @@ function next() {
 
   const sent = JSON.parse(JSON.stringify(def));
   sent.featureSet[0]._ref_image_path = path.resolve(png).replace(/\\/g, '/');
+  // An EMPTY roi_refine_points means "explicitly none" to the core, and "none"
+  // is exactly what produces a cache with no ROI windows -- the format this
+  // script exists to upgrade away from. Every def the WebUI saved before
+  // 2026-09-04 carries one. Drop it (root and @__SBM_INFO__) so the core
+  // auto-selects; a NON-empty list is the operator's choice and stays.
+  {
+    const _fs0 = sent.featureSet[0];
+    if (Array.isArray(_fs0.roi_refine_points) && _fs0.roi_refine_points.length === 0)
+      delete _fs0.roi_refine_points;
+    const _sbm = sbmOf(_fs0);
+    if (_sbm && Array.isArray(_sbm.roi_refine_points) && _sbm.roi_refine_points.length === 0)
+      delete _sbm.roi_refine_points;
+  }
   pending = { p, def, cache, png };
   process.stdout.write(`  ${path.basename(p)} ... `);
   ws.send(frame('SF', 0, pg++, { definfo: sent, regenerate: true }));
@@ -178,7 +202,9 @@ ws.on('message', (d) => {
   }
   if (!fresh.roi) {
     console.log('FAIL');
-    report.failed.push([cur.p, 'the core produced a cache with no ROI windows (old core?)']);
+    report.failed.push([cur.p, 'the core produced a cache with no ROI windows. Either the '
+      + 'core predates ROI windows (2.0.0-rc2 has them), or the def names ROI points that '
+      + 'all fall outside the template.']);
     return next();
   }
 
@@ -210,8 +236,14 @@ ws.on('message', (d) => {
 
   const out = cur.def;
   const sbm = sbmOf(out.featureSet[0]);
-  if (sbm.__shape_cache) delete sbm.__shape_cache;
+  // The legacy placement was the featureSet ROOT, never inside the entry.
+  delete out.featureSet[0].__shape_cache;
   sbm.shape_cache = fresh;
+  // Same rule as the def sent: an empty list is not a choice worth keeping.
+  if (Array.isArray(out.featureSet[0].roi_refine_points) && out.featureSet[0].roi_refine_points.length === 0)
+    delete out.featureSet[0].roi_refine_points;
+  if (Array.isArray(sbm.roi_refine_points) && sbm.roi_refine_points.length === 0)
+    delete sbm.roi_refine_points;
 
   // Move roi_refine_points in beside localization_include/exclude. Placement
   // only -- the same points, read the same way, edited the same way in the

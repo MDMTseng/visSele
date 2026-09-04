@@ -21,7 +21,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { Button, InputNumber, Select, Modal } from 'antd';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import { defFileGeneration, stampRefImagePath } from 'UTIL/MISC_Util';
+import { defFileGeneration, stampRefImagePath, SBM_INFO_NAME } from 'UTIL/MISC_Util';
 import { refPngPathOf } from 'UTIL/defNaming.mjs';
 import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
@@ -702,28 +702,57 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     let deffile;
     try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
     catch (e) { return; }
-    if (deffile.featureSet && deffile.featureSet[0]) delete deffile.featureSet[0].roi_refine_points;
+    // Strip any placed points so the core auto-selects. defFileGeneration no
+    // longer writes the key when the list is empty, but the studio may hold a
+    // placed list right now, and this button means "replace it with yours".
+    {
+      const _fs0 = deffile.featureSet && deffile.featureSet[0];
+      if (_fs0) {
+        delete _fs0.roi_refine_points;
+        const _sbm = Array.isArray(_fs0.inherentfeatures)
+          ? _fs0.inherentfeatures.find((x) => x && x.name === SBM_INFO_NAME) : undefined;
+        if (_sbm) delete _sbm.roi_refine_points;
+      }
+    }
     setGenBusy(true);
-    // NO `regenerate` HERE, and not just because the identifier does not exist in
-    // this closure -- it was copied from genFeatures along with its comment, and
-    // reading an undeclared name in an ES module throws ReferenceError while the
-    // ARGUMENT is being built, before sendBPG is ever called. The Promise
-    // constructor turned that into a rejection, `.catch(() => {})` swallowed it,
-    // and `.finally` cleared the spinner: the button did nothing, silently, and
-    // looked like a core that had returned no points.
+    // `regenerate: true`, and it is not optional. Auto-selection scores
+    // candidates by reading the image around each one; the candidates
+    // (refine_points) exist only as a by-product of extraction and are not in
+    // the cache. Without regenerate the core may not extract, and a cache with
+    // no roi cannot be loaded self-contained either -- so shape_ready stayed
+    // false and the reply was {features:[],roi:[]}. Measured 2026-09-04 on a
+    // freshly migrated test2: the button did nothing, silently, every time.
     //
-    // Omitting it is also the right behaviour. This asks the core which points
-    // IT would choose for the features the def already has; re-extracting first
-    // would answer for a different feature set than the one being set up.
+    // The reply's cache is committed too, exactly as 生成特徵點 does: the
+    // points returned are the ones frozen INTO that cache's ROI windows, and a
+    // def whose points and windows came from different extractions is the
+    // disagreement this whole format exists to prevent.
     new Promise((resolve, reject) => sendBPG('SF', 0,
-      { definfo: deffile },
+      { definfo: deffile, regenerate: true },
       undefined, { resolve, reject }))
       .then((pkts) => {
         const sf = (pkts || []).find((p) => p.type === 'SF');
         const roi = (sf && sf.data && sf.data.roi) || [];
-        dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: roi.map((p) => ({ x: p.x, y: p.y })) }));
+        if (!roi.length) {
+          Modal.error({
+            title: '自動產生 ROI 點失敗',
+            content: '核心沒有回傳任何 ROI 點。最常見的原因是還沒有生成特徵(第 3 步),'
+              + '或參考影像讀不到。先按「生成特徵點」確認有藍點,再回來按這裡。',
+          });
+          return;
+        }
+        const patch = { roi_refine_points: roi.map((p) => ({ x: p.x, y: p.y })) };
+        if (sf.data.shape_cache) {
+          patch.__shape_cache = sf.data.shape_cache;
+          patch.__shape_stale = undefined;
+          patch.__shape_lastGood = undefined;
+        }
+        setFeatPts(sf.data);
+        dispatch(DefConfAct.EditInfo_Patch(patch));
       })
-      .catch(() => {})
+      .catch((e) => {
+        Modal.error({ title: '自動產生 ROI 點失敗', content: String((e && e.message) || e || '核心沒有回應') });
+      })
       .finally(() => setGenBusy(false));
   }, [sendBPG, edit_info, dispatch]);
 
@@ -1313,9 +1342,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           <Button block style={{ height: H }} type={tool === 'roi' ? 'primary' : 'default'}
             data-testid="sbm2-roi-edit"
             onClick={() => pick('roi')}>◻ 編輯 ROI 點</Button>
-          <Hint>core 只用這些點做定位微調。全部清除＝只做粗定位。
-            <b style={{ color: P.ink }}>改這裡不會讓特徵失效</b>,不需要重新生成 ——
-            這些點是掛在特徵上的,不是抽特徵的輸入。</Hint>
+          <Hint>core 用這些點做定位微調(sub-pixel)。沒放點＝存檔時由 core 自動選;
+            「清除」就是回到自動。
+            <b style={{ color: '#b26a00' }}>改了點要再按一次「生成特徵點」</b>——
+            微調用的像素窗口是在生成時一起存進 def 的,點變了窗口才會跟著變。</Hint>
         </Block>
 
         <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,

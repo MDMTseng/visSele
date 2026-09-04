@@ -151,8 +151,22 @@ function LocateNoteBanner() {
   // is not at the station -- and it is normal on an empty conveyor, so it is
   // not shouted about. Only the two fallback codes take the banner.
   const isFallback = note.code === 'untrained' || note.code === 'train_failed';
-  if (!isFallback) return null;
-  return <div style={{
+  // Coarse-only is the third: the def IS on SBM, but its features carry no ROI
+  // windows, so the refine stage never runs. Decided 2026-09-04: run it, say
+  // so. Amber, not red -- it locates, just not to the accuracy the def was
+  // designed for.
+  const isCoarse = note.code === 'coarse_only';
+  if (!isFallback && !isCoarse) return null;
+  if (isCoarse) return <div data-testid="locate-note-coarse" style={{
+      background: '#ad6800', color: '#fff', padding: '4px 10px',
+      fontSize: 13, fontWeight: 600, display: 'flex', gap: 10, alignItems: 'center' }}>
+    <span>⚠ 這個 def 只有粗定位</span>
+    <span style={{ fontWeight: 400, fontSize: 12, opacity: 0.9 }}>
+      特徵沒有 ROI 精修窗口(舊格式),定位誤差是幾個像素而不是 sub-pixel。
+      進 Shape-based 定位設定按「生成特徵點」再存檔,就會補上。
+    </span>
+  </div>;
+  return <div data-testid="locate-note-fallback" style={{
       background: '#a8071a', color: '#fff', padding: '4px 10px',
       fontSize: 13, fontWeight: 600, display: 'flex', gap: 10, alignItems: 'center' }}>
     <span>⚠ 這個 def 沒有在用 SBM 定位</span>

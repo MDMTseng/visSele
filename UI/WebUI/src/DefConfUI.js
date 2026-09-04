@@ -1369,19 +1369,35 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
   // through the studio has one that was authored deliberately.
   const ei = edit_info || {};
   if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
-    const rep = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
+    // THE ANGLE COMES FROM AN INSPECTION OF THE REFERENCE IMAGE, NOT FROM THE
+    // SIGNATURE.
+    //
+    // This used to read sig360info.reports[0] -- the EXTRACTOR report, i.e. the
+    // def's own signature. Its `orientation` is 0 by definition (the signature
+    // IS the frame), which EverCheckCanvasComponent already notes, so every
+    // migrated def got angle 0. On test2 the part sits at -0.0233 rad in its
+    // reference image; the object frame came out turned by 1.33 deg relative
+    // to the one every caliper was authored in, and the extracted features'
+    // fingerprint went from "ao-1.3334" to "ao0.0000". Measured 2026-09-04.
+    //
+    // DefConf runs an orientation inspect on entry (sendOrientationInspect) and
+    // the TAKE seed already reads its report -- cx, cy, `rotate`, isFlipped.
+    // Same source here. The extractor report stays as the fallback for cx/cy
+    // only, with the honest angle 0 it always had.
+    const insp = ei.inspReport && ei.inspReport.reports && ei.inspReport.reports[0];
+    const sig = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
                 && ei._obj.sig360info.reports[0];
-    if (rep && Number.isFinite(rep.cx) && Number.isFinite(rep.cy)) {
-      dispatch(DefConfAct.EditInfo_Patch({
-        def_image_reg: {
-          cx: rep.cx, cy: rep.cy,
-          angle: Number.isFinite(rep.orientation) ? rep.orientation : 0,
-          // The reference image is the frame's own definition, so it is not
-          // flipped with respect to itself.
-          isFlipped: false,
-        },
-      }));
+    let seed = null;
+    if (insp && Number.isFinite(insp.cx) && Number.isFinite(insp.cy)) {
+      seed = { cx: insp.cx, cy: insp.cy,
+               angle: Number.isFinite(insp.rotate) ? insp.rotate : 0,
+               isFlipped: !!insp.isFlipped };
+    } else if (sig && Number.isFinite(sig.cx) && Number.isFinite(sig.cy)) {
+      seed = { cx: sig.cx, cy: sig.cy, angle: 0, isFlipped: false };
+      log.warn('[migrate] no inspection report yet; def_image_reg seeded from the '
+               + 'signature with angle 0 -- redraw 定位 in the studio if the part is not level');
     }
+    if (seed) dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: seed }));
   }
 
   // Straight into the studio afterwards. Converting is only half of it: the def
@@ -4526,7 +4542,7 @@ class APP_DEFCONF_MODE extends React.Component {
                  background: '#a8071a', color: '#fff', borderRadius: 4,
                  padding: '6px 12px', fontSize: 13,
                  boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>
-            <span>這個 def 是舊格式,機器不會載入</span>
+            <span>這個 def 只有粗定位特徵(舊格式),機台會跑但精度只有幾個像素</span>
             {this.props.defConf_lock_level != 0
               ? <span style={{ opacity: 0.85 }}>（解鎖後可重新產生）</span>
               : <Button size="small" danger type="primary" data-testid="oldfmt-def"
@@ -4537,9 +4553,9 @@ class APP_DEFCONF_MODE extends React.Component {
                 content: (<div style={{ lineHeight: 1.9 }}>
                   <div>這個 def 存的是<b>舊格式的特徵</b>:只有粗比對用的特徵層,
                     沒有 ROI 精修要用的視窗和選點。</div>
-                  <div style={{ marginTop: 8 }}>舊版核心會載入它,但<b>只做粗比對</b> ——
-                    分數一樣高、報告看起來一樣正常,少掉的只有精度。新版核心
-                    <b>直接拒絕載入</b>,所以這台機器不會用這個 def 跑。</div>
+                  <div style={{ marginTop: 8 }}>機台會載入它,但<b>只做粗定位</b>(誤差幾個像素,
+                    不是 sub-pixel)。檢驗畫面會一直顯示「只有粗定位」的提示,報告裡
+                    <code>locate.code</code> 是 <code>coarse_only</code>。</div>
                   <div style={{ marginTop: 8 }}>接著會打開「SBM定位設定」,在裡面按
                     <b>生成特徵點</b>,然後<b>重新存檔</b>。存好之後 def 會自己帶著需要的
                     像素,連參考影像都不用放在旁邊。</div>

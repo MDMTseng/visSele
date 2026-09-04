@@ -489,11 +489,19 @@ export function defFileGeneration(edit_info)
       report.featureSet[0].localization_include = inclPolys;
     }
     if (exclPolys.length) report.featureSet[0].localization_exclude = exclPolys;
-    // ROI-refine sample points (object-frame mm). ALWAYS emitted for shape_based (even
-    // []) so the core treats the def as explicit: it uses exactly these, and an empty
-    // list means NO ROI refine (coarse only). "自動產生 ROI 點" fills it from the core.
-    report.featureSet[0].roi_refine_points =
-      Array.isArray(edit_info.roi_refine_points) ? edit_info.roi_refine_points : [];
+    // ROI-refine sample points (object-frame mm). Emitted ONLY when the operator
+    // placed some. The core reads an ABSENT key as "auto-select" and an EMPTY
+    // ARRAY as "explicitly none" -- and "none" means the extraction bakes no ROI
+    // windows into the cache, which is the old, coarse-only format.
+    //
+    // This used to write [] unconditionally, so a def migrated and generated
+    // by the book came out coarse-only, and the banner then called it an old
+    // format. Measured 2026-09-04 on test2: 升級 -> 生成特徵點 -> 存檔 gave a
+    // cache with levels and no roi, fp "...|ao0.0000", and the core ran it on
+    // the sig360 fallback. There is no "explicitly none" any more: 清除 in the
+    // studio means back to auto.
+    if (Array.isArray(edit_info.roi_refine_points) && edit_info.roi_refine_points.length)
+      report.featureSet[0].roi_refine_points = edit_info.roi_refine_points;
   }
   // def_image_reg LIVES IN featureSet[0] as of 2026-08-26. It used to sit at the
   // def top level, and that cost two things.

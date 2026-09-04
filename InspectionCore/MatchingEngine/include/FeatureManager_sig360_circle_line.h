@@ -399,6 +399,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // it. Empty when training succeeded or the def is not shape_based.
   char shape_untrained_reason[128] = {0};
   char shape_untrained_code[16] = {0};
+  // The live feature set came from a cache that stores feature levels but no
+  // ROI windows, so the matcher runs the coarse stage only (2-3 px instead of
+  // sub-pixel). Set at load, reported on EVERY frame as locate.code
+  // "coarse_only" -- an accuracy the operator did not ask for must not look
+  // like the one they did.
+  bool shape_coarse_only = false;
   vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
   vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
   // Explicit user ROI refine points (object-frame mm). When the def carries the

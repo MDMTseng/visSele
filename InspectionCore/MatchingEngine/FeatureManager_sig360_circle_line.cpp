@@ -7755,6 +7755,7 @@ void FeatureManager_sig360_circle_line::liftShapeForUI(
 int FeatureManager_sig360_circle_line::trainShapeMatcher()
 {
   shape_ready = false;
+  shape_coarse_only = false;
   shapeMatcher.reset();
   shapeFeatureSet.reset();
 
@@ -7840,6 +7841,62 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     // back to may not be the picture those windows came from.
     LOGE("[shape] this def carries ROI windows but they did not load -- "
          "falling back to the template file on disk");
+  }
+
+  // A CACHE WITH LEVELS BUT NO WINDOWS LOCATES COARSELY, AND SAYS SO.
+  //
+  // This is the format every def written before the windows existed is in, and
+  // -- until the WebUI stopped emitting roi_refine_points:[] -- the format a
+  // freshly migrated def came out in too. It used to be refused outside the
+  // studio (rc -2, "untrained", sig360 fallback), which meant a def that asked
+  // for shape_based ran on a different localizer with a green verdict panel and
+  // one string in the report envelope to say so. Decided 2026-09-04: ROI refine
+  // is the bonus, not the entry ticket. Load the levels, run the coarse stage,
+  // and report coarse_only on every frame.
+  //
+  // Only when extraction is NOT allowed: the studio's 生成特徵點 must still go
+  // the long way and produce the windows, or nothing ever gets better.
+  // has_reg and def_mmpp for the same reason as the self-contained path: the
+  // origin and the UI lift need them, and the other origin sources need the
+  // picture this path exists to do without.
+  if (!shape_extract_allowed() && shape_cache_in != NULL && has_reg && def_mmpp > 0 &&
+      cJSON_GetObjectItem(shape_cache_in, "roi") == NULL)
+  {
+    sbm::FeatureSet fsc;
+    cv::Rect ccrop; cv::Point2f corg;
+    if (shape_cache_load(shape_cache_in, std::string(), fsc, ccrop, corg))
+    {
+      fsc.setOrigin(corg.x, corg.y);
+      fsc.setAngleOffset(reg_angle_rad * 180.0f / (float)M_PI);
+      shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fsc);
+      shape_crop = ccrop;
+      shape_origin_in_crop = corg;
+      int nv = buildShapeMatcher(1.0f);
+      if (nv <= 0) { LOGE("[shape] addModel from a coarse-only cache failed (%d)", nv); return -1; }
+      shape_ready = true;
+      shape_coarse_only = true;
+      {
+        const float rs = -sinf(reg_angle_rad), rc = cosf(reg_angle_rad);
+        const float rf = reg_flipped ? -1.0f : 1.0f;
+        const cv::Point2f org((float)(reg_center_mm.x / def_mmpp),
+                              (float)(reg_center_mm.y / def_mmpp));
+        liftShapeForUI(*shapeFeatureSet, ccrop, rs, rc, rf, org);
+      }
+      {
+        cJSON *fpj = cJSON_GetObjectItem(shape_cache_in, "fp");
+        shape_cache_fp = (fpj != NULL && cJSON_IsString(fpj) && fpj->valuestring != NULL)
+                         ? std::string(fpj->valuestring) : std::string("coarse-only");
+      }
+      // The matcher's ROI stage is gated on templ_image, which this FeatureSet
+      // does not have, so the refine is skipped by construction -- not by a
+      // flag that could drift out of step with the data.
+      LOGW("[shape] COARSE-ONLY: this def's features carry no ROI windows, so "
+           "it locates at coarse accuracy (a few px, not sub-pixel). Reported as "
+           "locate.code=coarse_only on every frame. Open the SBM studio and press "
+           "生成特徵點, then save, to get the windows.");
+      return 0;
+    }
+    LOGW("[shape] coarse-only cache did not load; falling back to the template file on disk");
   }
 
   // Resolve the template image path, in priority order:
@@ -8224,12 +8281,11 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     const bool legacy = (shape_cache_in != NULL &&
                          cJSON_GetObjectItem(shape_cache_in, "roi") == NULL);
     if (legacy)
-      LOGE("[shape] this def stores its features in the OLD format (no ROI "
-           "windows), which this core no longer loads -- it kept the feature "
-           "levels but not the points ROI refine needs, so it could only ever "
-           "locate coarsely. Open it in the SBM studio and press 生成特徵點, "
-           "then save; the def will then carry everything it needs and stop "
-           "depending on the reference image on disk.");
+      // Reached only when the coarse-only load above was skipped, i.e. the def
+      // has a cache but no def_image_reg (or no mmpp) to place it with.
+      LOGE("[shape] this def stores feature levels but no ROI windows AND no "
+           "def_image_reg, so the cache cannot be placed without the picture. "
+           "Open it in the SBM studio, set 定位, press 生成特徵點, then save.");
     else
       LOGE("[shape] this def has no features and implicit extraction is off -- "
            "open the SBM studio and press 生成特徵點, then save. "
@@ -8909,6 +8965,22 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   {
     auto &L = report.data.sig360_circle_line.locate;
     L.reason[0] = 0; L.code[0] = 0;
+  }
+  // COARSE-ONLY IS NOT A COMPLAINT ABOUT THIS FRAME, IT IS A FACT ABOUT THE DEF,
+  // and it has to be on every report, found or not. Stamped AFTER the clear
+  // above, and only into an empty slot: a real locate failure (no_candidate,
+  // below_thres) answers a more urgent question and keeps its place.
+  if (shape_coarse_only)
+  {
+    auto &L = report.data.sig360_circle_line.locate;
+    if (L.code[0] == 0)
+    {
+      snprintf(L.code, sizeof(L.code), "coarse_only");
+      snprintf(L.reason, sizeof(L.reason),
+               "SBM coarse locating only: the def's features carry no ROI windows "
+               "(accuracy a few px, not sub-pixel). Open the SBM studio, press "
+               "generate, and save.");
+    }
   }
   return 0;
 }
