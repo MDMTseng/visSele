@@ -17,8 +17,10 @@ ws.on('message',(d)=>{const b=new Uint8Array(d);const ty=String.fromCharCode(b[0
  const w=waiters[id]; if(!w)return; if(ty==='RP'){try{w.rp=JSON.parse(txt);}catch(e){w.rp=null;}} if(ty==='SS'){try{const j=JSON.parse(txt); if(j.cmd==='II'){delete waiters[id]; w.res(w.rp);}}catch(e){}}});
 const ii=(def,img,perturb)=>new Promise((res,rej)=>{const id=pg++;waiters[id]={res};const body={definfo:def,imgsrc:img,img_property:{calibInfo:{type:'disable',mmpp:def.featureSet[0].mmpp}}};if(perturb)body.img_property.perturb=perturb;ws.send(frame('II',0,id,body));setTimeout(()=>{if(waiters[id]){delete waiters[id];res(null);}},20000);});
 await new Promise(r=>ws.on('open',()=>setTimeout(r,400)));
-const ROT=[-10,-8,-6,-4,-2,2,4,6,8,10];
-const SHIFT=[[20,0],[-20,0],[0,20],[0,-20],[50,0],[-50,0],[0,50],[0,-50],[35,35],[-35,-35]];
+// STAB_QUICK=1: 4 rotations + 4 shifts (9 inspections per def) for fleet-wide runs.
+const QUICK = !!process.env.STAB_QUICK;
+const ROT = QUICK ? [-10,-5,5,10] : [-10,-8,-6,-4,-2,2,4,6,8,10];
+const SHIFT = QUICK ? [[30,0],[-30,0],[0,30],[0,-30]] : [[20,0],[-20,0],[0,20],[0,-20],[50,0],[-50,0],[0,50],[0,-50],[35,35],[-35,-35]];
 const tolOf=(n)=>{const m=n.match(/\+\s*([\d.]+)\s*\/\s*-?\s*([\d.]+)/);return m?(+m[1]+ +m[2]):null;};
 const out={};
 for (const name of names) {
