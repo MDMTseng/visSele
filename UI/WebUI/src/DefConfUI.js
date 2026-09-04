@@ -1356,36 +1356,28 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
   // with seeded parameters, and which arcs are too flat to convert and stay
   // contour -- those measure NOTHING under shape_based and need re-teaching, so
   // they are the one thing here somebody must act on.
+  const conv = [], left = [];
   {
     const _obj = edit_info && edit_info._obj;
     const list = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
     const mmpp = (_obj && _obj.getEditorMmpp) ? _obj.getEditorMmpp() : 1;
-    const conv = [], left = [];
     list.forEach((s) => {
       const r = convertShapeForShapeBased(s, mmpp);
       const label = (s && (s.name || ('id ' + s.id))) || '?';
       if (r.action === 'converted') conv.push(label);
       else if (r.action === 'left_contour_arc') left.push(label + ' (sagitta ' + r.sagittaPx.toFixed(1) + 'px)');
     });
-    if (conv.length || left.length) {
-      Modal.info({
-        title: '量測 primitive 已改成 caliper 定位',
-        width: 560,
-        content: (<div style={{ lineHeight: 1.8 }}>
-          <div>shape_based 沒有 contour 可以沿著走,所以線、弧、搜尋點都改用 <b>caliper</b>,
-            參數用預設值種下(caliper 10 段、edge 門檻 30 / 搜尋點 60)。每一個都可以在屬性面板改。</div>
-          {conv.length > 0 && <div style={{ marginTop: 8, color: '#555', fontSize: 12 }}>
-            已轉換 {conv.length} 個:{conv.join(', ')}</div>}
-          {left.length > 0 && <div style={{ marginTop: 8, color: '#a8071a' }}>
-            <b>{left.length} 個弧太平,沒有轉</b>(三點近乎共線,caliper 會量出一個過關但錯的半徑):
-            {' ' + left.join(', ')}。它們在 shape_based 下<b>量不到東西</b>,要重新教。</div>}
-          <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
-            原本 contour 的參數沒有刪,把 primitive 的定位改回 contour 就是還原。存檔前都還沒寫到磁碟。</div>
-        </div>),
-        okText: '知道了',
-      });
-    }
   }
+  // Shown inside the final summary, not as a modal of its own: one upgrade,
+  // one report.
+  const primNote = (conv.length || left.length) ? (<div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #eee' }}>
+      <div>線、弧、搜尋點改用 <b>caliper</b> 定位(shape_based 沒有 contour 可沿),參數用預設值種下,每一個都可在屬性面板改。</div>
+      {conv.length > 0 && <div style={{ marginTop: 4, color: '#555', fontSize: 12 }}>
+        已轉換 {conv.length} 個:{conv.join(', ')}</div>}
+      {left.length > 0 && <div style={{ marginTop: 4, color: '#a8071a' }}>
+        <b>{left.length} 個弧太平,沒有轉</b>(三點近乎共線,caliper 會量出一個過關但錯的半徑):
+        {' ' + left.join(', ')}。它們在 shape_based 下<b>量不到東西</b>,要重新教。</div>}
+    </div>) : null;
   dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
   dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
 
@@ -1407,6 +1399,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
   // Only when the def has no registration of its own -- a def that has been
   // through the studio has one that was authored deliberately.
   const ei = edit_info || {};
+  let seedReg = null;   // what this migration decided the frame is; read by the thunk below
   if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
     // THE ANGLE COMES FROM AN INSPECTION OF THE REFERENCE IMAGE, NOT FROM THE
     // SIGNATURE.
@@ -1436,18 +1429,128 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
       log.warn('[migrate] no inspection report yet; def_image_reg seeded from the '
                + 'signature with angle 0 -- redraw 定位 in the studio if the part is not level');
     }
+    seedReg = seed;
     if (seed) dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: seed }));
   }
 
-  // Straight into the studio afterwards. Converting is only half of it: the def
-  // now uses a locator with no trained features, and until 生成特徵點 has been
-  // pressed and the def re-saved it falls back to sig360. This is also the only
-  // way the SBM surfaces appear at all, so leaving the operator to find them
-  // would be leaving them nothing to find.
+  // FULLY AUTOMATIC FROM HERE. Decided 2026-09-04: the studio is for people who
+  // want to adjust something, not a step everyone has to walk through.
   //
-  // Ordered after the seeding, not before it: the studio reads def_image_reg
-  // when it opens.
-  setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
+  // Everything the studio did on the way to a working def has a no-hands
+  // version now: the frame is seeded above, the primitives converted in the
+  // reducer, the include region defaults to the sig360 silhouette inside the
+  // core, and ROI windows are baked at extraction when no points are placed.
+  // What remains is one SF (extract, with the def's own <name>.png as the
+  // template) and one II (the same check 快速驗證 runs) so the summary can
+  // say whether the result locates and measures -- because the one thing an
+  // automatic path must not do is finish silently on a def that will not
+  // work. Nothing is written to disk; the operator still saves.
+  //
+  // A thunk, because the dispatches above changed edit_info and the def sent
+  // to the core has to be generated from the CURRENT state, not the argument.
+  dispatch((d, getState) => {
+    // NOT TRUSTED TO BE CURRENT YET. The store runs an ActionThrottle
+    // middleware (100 ms, posEdge), so the EditInfo_Patch that seeded
+    // def_image_reg a few lines up can still be in flight when this thunk
+    // runs -- measured: state reg undefined at SF time, present 100 ms later,
+    // and the extracted features stamped "ao0.0000" against a def whose reg
+    // says -0.0233 rad. The values this migration decided are applied on top
+    // of the state explicitly, so the def the core extracts from is the one
+    // the operator will save.
+    const fresh = () => {
+      const ei = getState().UIData.edit_info;
+      const o = { ...ei, locating_engine: 'shape_based', shape_match_scale: 0.3 };
+      if (seedReg && (!o.def_image_reg || typeof o.def_image_reg.cx !== 'number')) o.def_image_reg = seedReg;
+      return o;
+    };
+    const send = (tl, data) => new Promise((resolve, reject) => {
+      const coreId = getState().ConnInfo.CORE_ID;
+      if (!coreId) return reject(new Error('核心沒有連線'));
+      d(UIAct.EV_WS_SEND_BPG(coreId, tl, 0, data, undefined, { resolve, reject }));
+    });
+    const openStudio = () => setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
+    const wait = Modal.info({ title: '升級中', content: '抽特徵、烘 ROI 窗口、對參考影像驗證…',
+                              okButtonProps: { style: { display: 'none' } } });
+
+    let deffile;
+    try { const ei0 = fresh(); deffile = defFileGeneration(ei0); stampRefImagePath(deffile, ei0); }
+    catch (e) {
+      wait.destroy();
+      Modal.error({ title: '升級失敗', content: String((e && e.message) || e) });
+      return;
+    }
+    const templ = (deffile.featureSet[0] && deffile.featureSet[0]._ref_image_path) || '<def>.png';
+    log.info('[migrate] SF def', { reg: deffile.featureSet[0] && deffile.featureSet[0].def_image_reg, templ });
+
+    send('SF', { definfo: deffile, regenerate: true })
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        const cache = sf && sf.data && sf.data.shape_cache;
+        const nFeat = ((sf && sf.data && sf.data.features) || []).length;
+        if (!cache || !nFeat) throw Object.assign(new Error('nofeat'), { nofeat: true });
+        d(DefConfAct.EditInfo_Patch({ __shape_cache: cache, __shape_stale: undefined, __shape_lastGood: undefined }));
+        const nWin = (cache.roi && Array.isArray(cache.roi.at)) ? cache.roi.at.length : 0;
+        const ei1 = fresh();
+        const df2 = defFileGeneration(ei1); stampRefImagePath(df2, ei1);
+        return send('II', { definfo: df2, imgsrc: '__CACHE_IMG__',
+                            img_property: { calibInfo: { type: 'disable', mmpp: df2.featureSet[0].mmpp } } })
+          .then((pk) => ({ nFeat, nWin, pk }));
+      })
+      .then(({ nFeat, nWin, pk }) => {
+        wait.destroy();
+        // Put the result on the canvas, exactly as 快速驗證 does.
+        const RP = (pk || []).find((p) => p.type === 'RP');
+        const IM = (pk || []).find((p) => p.type === 'IM');
+        [RP, IM].forEach((p) => {
+          if (!p) return;
+          const a = BPG_Protocol.map_BPG_Packet2Act(p);
+          if (a) { a.IGNORE_DEFCONF_LOCK = true; d(a); }
+        });
+        const g = RP && RP.data && RP.data.reports && RP.data.reports[0];
+        const obj = g && g.reports && g.reports[0];
+        const judges = (obj && obj.judgeReports) || [];
+        const S = BPG_Protocol.INSPECTION_STATUS;
+        const nOK = judges.filter((j) => j.status === S.SUCCESS).length;
+        const nNG = judges.filter((j) => j.status === S.FAILURE).length;
+        const nNA = judges.length - nOK - nNG;
+        const locator = g && g.locator;
+        const note = g && g.locate;
+        const bad = !obj || locator !== 'shape_based' || !!(note && note.code) || nNA > 0 || left.length > 0;
+        log.info('[migrate] auto result', { nFeat, nWin, locator, note, nOK, nNG, nNA, left });
+        Modal.confirm({
+          title: bad ? '已升級,但驗證有狀況 —— 還沒存檔' : '升級完成 —— 還沒存檔',
+          icon: null, width: 600,
+          content: (<div style={{ lineHeight: 1.8 }}>
+            <div>特徵 <b>{nFeat}</b> 點,ROI 精修窗口 <b>{nWin}</b> 個(自動選點)。</div>
+            <div>對參考影像驗證:定位 <b>{locator || '?'}</b>
+              {obj && Number.isFinite(obj.similarity) && <span>,相似度 <b>{obj.similarity.toFixed(3)}</b></span>}
+              {!obj && <b style={{ color: '#a8071a' }}>,沒有找到零件</b>}
+              ;判定 <b style={{ color: '#237804' }}>{nOK} OK</b> / <b style={{ color: '#a8071a' }}>{nNG} NG</b> / <b style={{ color: nNA ? '#a8071a' : undefined }}>{nNA} NA</b></div>
+            {note && note.code && <div style={{ color: '#a8071a' }}>定位註記 {note.code}:{note.reason}</div>}
+            {primNote}
+            <div style={{ marginTop: 10, color: '#888', fontSize: 12 }}>
+              特徵範圍用的是 sig360 輪廓;有晃動的鄰件或反光要排除、或想自己挑 ROI 點,再進 studio。
+              存檔前都還沒寫到磁碟。</div>
+          </div>),
+          okText: '知道了,去存檔', cancelText: '開 studio 微調', onCancel: openStudio,
+        });
+      })
+      .catch((e) => {
+        wait.destroy();
+        if (e && e.nofeat) {
+          Modal.confirm({
+            title: '升級了,但抽不到特徵', width: 560,
+            content: (<div style={{ lineHeight: 1.8 }}>
+              <div>核心從 <code>{templ}</code> 抽不到任何特徵。最常見的是這張參考影像不在磁碟上,其次是邊緣門檻太高。</div>
+              <div style={{ marginTop: 8 }}>def 已經是 shape_based,但沒有特徵,存了也只會退回 sig360 跑。到 studio 裡看一下影像和門檻。</div>
+            </div>),
+            okText: '開 studio 處理', cancelText: '先不要', onOk: openStudio,
+          });
+        } else {
+          Modal.error({ title: '升級過程出錯', content: String((e && e.message) || e || '核心沒有回應') });
+        }
+      });
+  });
 }
 
 function SettingUI({})
@@ -4540,14 +4643,16 @@ class APP_DEFCONF_MODE extends React.Component {
                 width: 520,
                 content: (<div style={{ lineHeight: 1.9 }}>
                   <div>定位引擎換成 shape_based,量測設定、anchor_corner 等其他設定<b>原封不動</b>。</div>
-                  <div style={{ marginTop: 8 }}>升級後<b>還沒有特徵點</b> —— 接著會直接打開
-                    「SBM定位設定」,在裡面按<b>生成特徵點</b>,然後<b>重新存檔</b>。</div>
+                  <div style={{ marginTop: 8 }}>接著<b>自動</b>:從 &lt;配方名&gt;.png 抽特徵、烘 ROI 精修窗口、
+                    把線/弧/搜尋點改成 caliper、對參考影像驗證一次,然後給你一份結果摘要。</div>
+                  <div style={{ marginTop: 8 }}>特徵範圍用 sig360 輪廓;要排除鄰件/反光或自己挑 ROI 點,
+                    摘要上有「開 studio 微調」。</div>
                   <div style={{ marginTop: 8, color: '#a8071a' }}>
-                    這兩步沒做完,這個 def 會退回用 sig360 檢驗,而畫面上看不出差別。</div>
+                    做完要<b>重新存檔</b>才算數;不存,這個 def 還是原來的 sig360。</div>
                   <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
                     存檔前都還沒有寫到磁碟,不想要的話直接離開不要存就好。</div>
                 </div>),
-                okText: '升級並開始設定', cancelText: '先不要',
+                okText: '升級', cancelText: '先不要',
                 onOk: () => this.props.ACT_Migrate_To_Shape(this.props.edit_info),
               })}>升級</Button>
           </div>}
