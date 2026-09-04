@@ -18,7 +18,7 @@ and translation ±20 / ±50 px on each axis plus two diagonals (10). `shift_x` /
 | NIP-LT22TW2601-01 | 20/20 / 0.33° / 0.00 px | 20/20 / 0.142° / 0.17 px |
 | CG2050038P | 20/20 / 0.50° / 0.00 px | 20/20 / 0.043° / 0.06 px |
 | MODEL3131 | 20/20 / 0.00° / 0.12 px | 20/20 / 0.023° / 0.00 px |
-| CON-LT14BH2051-01 | 20/20 / 0.00° / 0.08 px | 20/20 / **14.9°** / **7.1 px** |
+| CON-LT14BH2051-01 | 20/20 / 0.00° / 0.08 px | 20/20 / **14.9°** / **7.1 px** → after face arbitration 0.077° / 0.00 px |
 | 8G2570072B | 20/20 / 0.00° / 0.08 px | 20/20 / 0.021° / 0.00 px |
 | BOS-LT12BH4211 M18 | **0/20 — sig360 does not find the part on its own png** | 20/20 / 0.014° / 0.00 px |
 
@@ -44,12 +44,17 @@ dump (`SHAPE_DBG=1`, angle-aware NMS so nothing is suppressed):
   by its own signature error and picks by that, not by a shared coarse score.
 
 So the failure needs both: a part that is nearly its own mirror image, and a
-recipe that accepts both faces. Not fixed in this commit. Two possible fixes:
-have the operator set the face when the process guarantees it (a recipe
-setting, already honoured); or, for face=both, break a coarse tie between a
-flipped and an unflipped candidate at full resolution -- the ROI refine
-already computes a residual (`refine_residual`, exposed on branch
-ct/sbm_residual_rc2) that nothing reads.
+recipe that accepts both faces.
+
+**Fixed in the matcher (submodule):** the two faces no longer suppress each
+other in NMS -- each keeps its own best at a location -- both are ROI-refined,
+and a pair at the same place with opposite `flipped` is settled by the refine
+residual (mean point-to-line fit at full resolution), which a mirrored pose
+cannot fake. Measured with both faces enabled at match_scale 0.3: 20/20
+correct, rotation residual ≤ 0.077°, 26 ms (was 22 ms with one refine). The
+same image mirrored top-bottom locates as `isFlipped=true` at 0°, mirrored
+left-right as `isFlipped=true` at 180°, both with the same 14/15 judges as the
+unmirrored frame. Seven other recipes unchanged.
 
 Separately, the SBM matcher always searched 0…360° (`modc.angle` in
 `buildShapeMatcher`) -- it never read `matching_angle_margin_deg`, and these
@@ -82,7 +87,7 @@ Per judge, the range (max−min) of the reported value over the 20 perturbed run
 | NIP | 19 | 5 (all R0.5 radii, 0.016–0.031 vs 0.003–0.008) | 0 | |
 | CG | 6 | 1 ([5], 0.0065 vs 0.0011) | 1 | |
 | MODEL3131 | 8 | 5 ([1][5][6][7][8]; [7] 0.097 vs 0.007, NA at +8°/+10°) | 0 | see below |
-| CON | 15 | 11 | 0 | dominated by the 6 wrong-pose runs |
+| CON | 15 | 11 → 2 after face arbitration ([A1] [A2] angle judges, 0.2° vs 0.03°, tol 4°) | 0 | was dominated by the 6 wrong-pose runs |
 | 8G | 7 | 0 | 0 | "1" NG on both |
 
 **MODEL3131 [7] drifts linearly with rotation and not at all with translation**:
