@@ -982,6 +982,19 @@ struct SlowFrame {
 TSQueue<SlowFrame> slowFrameQueue(4);
 static std::atomic<int> g_slowSaved{0};
 static std::atomic<int> g_slowDropped{0};
+// OFF BY DEFAULT, SET LIVE, NOT PERSISTED.
+//
+// This is a diagnostic, and it was on by default at 50 ms / 40 frames per
+// process start. On this bench that came to 961 five-megapixel PNGs -- 1.0 GB
+// in data/slowframes -- because every restart of the core opened a fresh
+// 40-frame budget, and 50 ms is inside this machine's normal jitter, not
+// outside it. Decided 2026-09-04: the threshold starts at 0 (nothing is
+// saved), and the 運算核心 panel sets it over ST {INSP_SLOW_FRAME:{ms,max}}
+// for the life of the process. The env vars still seed the initial values so
+// a headless run can turn it on from the command line.
+static std::atomic<int> g_slowMs{[]{ const char *e = getenv("INSP_SLOW_FRAME_MS"); return e ? atoi(e) : 0; }()};
+static std::atomic<int> g_slowCap{[]{ const char *e = getenv("INSP_SLOW_FRAME_MAX"); return e ? atoi(e) : 40; }()};
+static std::atomic<int> g_ctrlEvery{[]{ const char *e = getenv("INSP_CTRL_FRAME_EVERY"); return e ? atoi(e) : 0; }()};
 static uint64_t g_lastMatchProcCpuUs = 0;
 // Page faults across the stage. After the announcement wait, the engine lock,
 // preemption and the allocator were each ruled out by measurement, faulting is
@@ -4873,6 +4886,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             cJSON_AddNumberToObject(retArr,itemType,saveInspQFullSkipCount.load());
           }
+          else if (strcmp(itemType, "slow_frame") == 0)
+          {
+            // Settings AND counters, so the panel shows the core's state rather
+            // than what one browser last sent.
+            cJSON *o = cJSON_CreateObject();
+            cJSON_AddNumberToObject(o, "ms", g_slowMs.load());
+            cJSON_AddNumberToObject(o, "max", g_slowCap.load());
+            cJSON_AddNumberToObject(o, "ctrl_every", g_ctrlEvery.load());
+            cJSON_AddNumberToObject(o, "saved", g_slowSaved.load());
+            cJSON_AddNumberToObject(o, "dropped", g_slowDropped.load());
+            cJSON_AddItemToObject(retArr, itemType, o);
+          }
           else if (strcmp(itemType, "save_snap_folder_full_delete_count") == 0)
           {
             cJSON_AddNumberToObject(retArr,itemType,save_snap_folder_full_delete_count);
@@ -7218,6 +7243,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         if(num)
         {
           InspSampleSaveMaxCount=(int)*num;
+        }
+      }
+
+      // Slow-frame evidence: ST {"INSP_SLOW_FRAME": {"ms": 80, "max": 40, "reset": true}}
+      // ms <= 0 turns it off. Absent members are left alone, like INSP_SNAP_POLICY.
+      // `reset` zeroes the saved/dropped counters, which also reopens the cap.
+      // Read back through GS "slow_frame" -- the one core knob that does.
+      {
+        cJSON *sfj = JFetch_OBJECT(json, "INSP_SLOW_FRAME");
+        if (sfj)
+        {
+          cJSON *jm = cJSON_GetObjectItem(sfj, "ms");
+          cJSON *jx = cJSON_GetObjectItem(sfj, "max");
+          cJSON *jc = cJSON_GetObjectItem(sfj, "ctrl_every");
+          cJSON *jr = cJSON_GetObjectItem(sfj, "reset");
+          if (jm && cJSON_IsNumber(jm)) g_slowMs.store(jm->valuedouble > 0 ? (int)jm->valuedouble : 0);
+          if (jx && cJSON_IsNumber(jx)) g_slowCap.store(jx->valuedouble > 0 ? (int)jx->valuedouble : 0);
+          if (jc && cJSON_IsNumber(jc)) g_ctrlEvery.store(jc->valuedouble > 0 ? (int)jc->valuedouble : 0);
+          if (jr && cJSON_IsTrue(jr)) { g_slowSaved.store(0); g_slowDropped.store(0); }
+          LOGI("INSP_SLOW_FRAME: ms=%d max=%d ctrl_every=%d saved=%d dropped=%d",
+               g_slowMs.load(), g_slowCap.load(), g_ctrlEvery.load(),
+               g_slowSaved.load(), g_slowDropped.load());
         }
       }
 
@@ -11778,24 +11825,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // Threshold, cap and queue depth are all bounded so a bad run cannot
       // fill the disk or stall inspection: over the cap it simply stops, and a
       // full queue drops rather than waits.
-      static const double _slowMs = []{
-        const char *e = getenv("INSP_SLOW_FRAME_MS");
-        return e ? atof(e) : 50.0;
-      }();
-      static const int _slowCap = []{
-        const char *e = getenv("INSP_SLOW_FRAME_MAX");
-        return e ? atoi(e) : 40;
-      }();
+      // Live values (see g_slowMs): the panel changes them mid-run.
+      const double _slowMs = (double)g_slowMs.load();
+      const int _slowCap = g_slowCap.load();
       const double _mms = g_lastMatchUs / 1000.0;
       // A CONTROL frame, every INSP_CTRL_FRAME_EVERY-th frame regardless of
       // timing. Without one, "the slow frames are black" says nothing -- if
       // every frame is black then black is this run's normal, not the cause.
       // Same paired-baseline rule the burst ladder was built around, and the
       // one nearly skipped here.
-      static const int _ctrlEvery = []{
-        const char *e = getenv("INSP_CTRL_FRAME_EVERY");
-        return e ? atoi(e) : 0;
-      }();
+      const int _ctrlEvery = g_ctrlEvery.load();
       static uint64_t _frameN = 0;
       static int _ctrlSaved = 0;
       _frameN++;

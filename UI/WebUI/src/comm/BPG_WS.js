@@ -51,7 +51,7 @@ function urlConcat(base, add) {
           // "machine stopped keeping NG evidence because the disk filled" was
           // invisible in the UI. The Core modal shows all three together.
           this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "GS", 0,
-          { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","save_snap_disk_low_skip_count","binary_path","data_path"] },
+          { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","save_snap_disk_low_skip_count","slow_frame","binary_path","data_path"] },
           undefined, 
           {
             resolve: (stacked_pkts,P) => {

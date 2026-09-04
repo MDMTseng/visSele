@@ -135,6 +135,60 @@ export function CoreStatusPanel({ info, send }) {
         </div>
       </Card>
 
+      {/* SLOW-FRAME EVIDENCE. A diagnostic, off by default since 2026-09-04:
+          left on at 50 ms / 40 per start it filled data/slowframes with 1.0 GB
+          of 5 MP PNGs on this bench, because every core restart reopened the
+          budget and 50 ms is inside this machine's normal jitter. Lives here,
+          set over ST, not persisted -- you turn it on to look at something,
+          and a restart turns it off again. Unlike the other knobs on this
+          panel it READS BACK: GS "slow_frame" carries the core's own values and
+          counters, so the numbers below are the core's, not this browser's. */}
+      <Card size="small" title="慢幀取證（本次連線,不儲存）" style={{ marginTop: 10 }}>
+        {(() => {
+          const sf = info && info.slow_frame;
+          const ms = sf ? Number(sf.ms) : 0, max = sf ? Number(sf.max) : 40;
+          const on = ms > 0;
+          const pushSF = (patch) => { send('ST', 0, { INSP_SLOW_FRAME: patch }); log.info('[core-cfg] INSP_SLOW_FRAME', patch); };
+          return (
+            <>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label>
+                  <Switch size="small" checked={on} disabled={!sf}
+                    onChange={(c) => pushSF({ ms: c ? 80 : 0, reset: true })} />
+                  <span style={{ marginLeft: 8 }}>{on ? '開' : '關'}</span>
+                </label>
+                <label>門檻:
+                  <Tooltip title="一幀的匹配時間超過這個值就把原始影像存成 PNG。這台機器的正常抖動在 50-100 ms,設太低會把正常幀當異常。">
+                    <InputNumber value={on ? ms : 80} min={1} max={5000} step={10} disabled={!on}
+                      style={{ marginLeft: 6, width: 90 }}
+                      onChange={(v) => pushSF({ ms: Math.max(1, v || 1) })} />
+                  </Tooltip> ms
+                </label>
+                <label>最多:
+                  <Tooltip title="這次開機最多存幾張。到了就停,不會滾動;按「重新計數」重開額度。每張約 1 MB。">
+                    <InputNumber value={max} min={1} max={500} step={10} disabled={!sf}
+                      style={{ marginLeft: 6, width: 80 }}
+                      onChange={(v) => pushSF({ max: Math.max(1, v || 1) })} />
+                  </Tooltip> 張
+                </label>
+                <Button size="small" disabled={!sf} onClick={() => pushSF({ reset: true })}>重新計數</Button>
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.9, marginTop: 6 }}>
+                <Counter label="已存" value={sf && sf.saved}
+                  hint="這次開機已寫到 data/slowframes 的張數。" />
+                <Counter label="佇列滿而丟掉" value={sf && sf.dropped} warnAbove={0}
+                  hint="寫檔跟不上,這張慢幀沒留下來。" />
+                {!sf && <span style={{ color: '#888' }}>（核心尚未回報;舊版核心沒有這個項目）</span>}
+              </div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
+                存到 <code>data/slowframes/</code>,檔名帶匹配耗時。重開核心即回到關閉。
+                檔案要自己清,核心不會刪。
+              </div>
+            </>
+          );
+        })()}
+      </Card>
+
       <Card size="small" title="影像串流（本次連線,重開核心即回預設）" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <label>最高 FPS:
