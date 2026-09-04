@@ -152,3 +152,26 @@ separate objects, which a counter would take as two parts. For a part that is
 genuinely symmetric the recipe's angle margin is the right tool (as 8G's own
 recipe already has it); `shape_nms_angle` < 360 is for cases where a later
 judge is meant to reject the wrong pose, and that judge has to exist.
+
+## Orientation-essential retry on the SBM path (2026-09-05)
+
+sig360 has always retried the next candidate when an `orientation_essential`
+judge fails. The SBM path checked the same flag and then dropped the object
+(`return -2`); with the default `shape_nms_angle` 360 there was no other pose
+to try -- measured on 8G with a failing essential judge: one pose, zero
+objects, `locate.code = orient_judge`.
+
+Now the matcher keeps alternate poses of a location past NMS (up to 3, ≥10°
+apart, within 10 points of the primary) tagged with one `group`, and the core
+measures a group in order: the first pose whose essential judges pass is the
+object, later members are skipped. Grouping compares template centres, so it
+is independent of where the recipe's origin sits and of how it rotates.
+`shape_nms_angle` < 360 keeps its old meaning (separate objects).
+
+| 8G, full-circle search | kept | reported |
+|---|---|---|
+| no essential judge | 0° 99.0 and 180° 98.1, one group | 1 object (0°), alternate skipped |
+| essential judge that fails both poses | same | 0 objects, both tried (`ret=-2` twice), candidates 2 |
+| recipe's own 90° margin | 0° only | 1 object |
+
+Eight-recipe sweep: results identical to the previous core, 11–57 ms.

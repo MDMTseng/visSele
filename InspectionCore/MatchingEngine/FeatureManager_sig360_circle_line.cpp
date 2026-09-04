@@ -1,3 +1,4 @@
+#include <set>
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
 #include "JudgeCALC.h"
@@ -8886,10 +8887,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   // Calipers measure on the full-res original (same source sig360's eT uses).
   p_cropImg_cv = originalImage_cv;
   cropOffset.x = 0; cropOffset.y = 0;
-
+  // ONE OBJECT, SEVERAL POSES, THE FIRST THAT PASSES ITS ORIENTATION TEST.
+  //
+  // The matcher tags alternate poses of one location with the same `group`
+  // (best coarse score first). The sig360 path has always retried the next
+  // candidate when an orientation-essential judge fails; this path dropped the
+  // object instead -- measured 2026-09-05 on a 180-deg-symmetric spring: one
+  // pose, one failed judge, zero objects. Now a group is measured in order and
+  // the first pose that passes is the object; later members of a group that
+  // already produced one are skipped, so a part is never reported twice.
+  std::set<int> group_done;
   for (int mi = 0; mi < (int)ms.size(); mi++)
   {
     sbm::MatchResult &m = ms[mi];
+    if (m.group >= 0 && group_done.count(m.group)) continue;
 
     // Inspection region (the station). No longer the mechanism, and since the
     // crop has no pad, no longer doing much either: the scene IS the region, so
@@ -8966,8 +8977,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
               singleReport.Center.x, singleReport.Center.y, m.angle, corr_deg, (int)m.flipped);
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
     if (dbg)
-      fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
-    if (ret == 0) reports.push_back(singleReport);
+      fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f group=%d\n", ret, singleReport.rotate, m.group);
+    if (ret == 0)
+    {
+      reports.push_back(singleReport);
+      if (m.group >= 0) group_done.insert(m.group);
+    }
+    // ret == -2: an orientation-essential judge rejected THIS pose; the next
+    // member of the group, if any, gets its turn when the loop reaches it.
   }
 
   // A REJECTED CANDIDATE IS NOT A FAILED LOCATE.
