@@ -25,10 +25,22 @@ and translation ±20 / ±50 px on each axis plus two diagonals (10). `shift_x` /
 Rotation and translation signs agree between the two engines (checked; not
 assumed).
 
-**CON on SBM: 6 of 20 runs return a pose +15° off, similarity still 0.99.** The
-part has a near-symmetric coarse silhouette at 15°, and the SBM matcher always
-searches 0…360° (`modc.angle` in `buildShapeMatcher`) -- it never reads
-`matching_angle_margin_deg`, and these recipes all declare 180 anyway. The
+**CON on SBM: 6 of 20 runs return a pose +15° off, similarity still 0.99.**
+NOT a symmetry of the part -- it is an S-shaped wire spring with none. Measured
+with ROI refine disabled (`SHAPE_REFINE=none`): the COARSE stage itself returns
++10/+11/+17/+15° on those frames at `shape_match_scale` 0.3, one miss at 0.5,
+none at 1.0; with refine back on, 1.0 is 20/20 correct at 64 ms (0.3: 22 ms)
+and every judge range is equal to or tighter than sig360's. Mechanism: the
+~10 px wire is ~3 px at 0.3×, features are sparse, and line2Dup quantises
+gradient orientation to 8 bins of 45°, so a template turned 15° scores the
+same on the long diagonal stroke and pixel phase breaks the tie (hence pure
+vertical shifts trigger it and horizontal ones do not). The ROI refine's ±25 px
+window cannot recover a 15° start. The migration seeds match_scale 0.3 for
+every recipe; for thin-wire parts that is too coarse.
+
+Separately, the SBM matcher always searched 0…360° (`modc.angle` in
+`buildShapeMatcher`) -- it never read `matching_angle_margin_deg`, and these
+recipes all declare 180 anyway. The
 judges on those runs still came out within tolerance because the anchor morph
 (10 search points) re-registers the measurements; the pose in the report is
 nonetheless wrong.
@@ -42,8 +54,8 @@ full circle. With a ±10° window the unperturbed image came back at +15.6° wit
 every judge NA. Fixed (template k is exactly `start + k·step`; full-circle
 order unchanged). Re-measured CON with a 10° margin: every translation and
 8 of 10 rotations correct, all judges OK; the two misses (−10°, −6°) are the
-true angle +15° still inside the window. The part's symmetry is 15°, so its
-recipe needs a margin under ~5° -- a recipe setting, now honoured.
+same coarse false peak (+15°) still inside the window. A margin under ~5°
+would exclude it, but the real fix for this part is the match scale above.
 
 ## Measurement values
 
