@@ -175,3 +175,15 @@ is independent of where the recipe's origin sits and of how it rotates.
 | recipe's own 90° margin | 0° only | 1 object |
 
 Eight-recipe sweep: results identical to the previous core, 11–57 ms.
+
+### Faces are ordered, not eliminated (2026-09-05)
+
+The face that loses the residual comparison is no longer dropped: its group
+merges into the winner's, ranked after it. So for one location with, say,
+three front poses and one back pose, the order tried is: preferred face
+(by residual) in coarse-score order, then the other face in coarse-score
+order; the first pose whose orientation-essential judges pass is the object.
+Measured on CON: front first, one object; judge failing both faces → both
+tried, none reported; mirrored image → back face first, one flipped object.
+ROI refine is not made lazy: alternates that actually survive are 0–1 per
+frame on these recipes and cost 2–5 ms each; the sweep timings did not move.
