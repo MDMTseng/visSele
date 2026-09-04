@@ -26,17 +26,30 @@ Rotation and translation signs agree between the two engines (checked; not
 assumed).
 
 **CON on SBM: 6 of 20 runs return a pose +15° off, similarity still 0.99.**
-NOT a symmetry of the part -- it is an S-shaped wire spring with none. Measured
-with ROI refine disabled (`SHAPE_REFINE=none`): the COARSE stage itself returns
-+10/+11/+17/+15° on those frames at `shape_match_scale` 0.3, one miss at 0.5,
-none at 1.0; with refine back on, 1.0 is 20/20 correct at 64 ms (0.3: 22 ms)
-and every judge range is equal to or tighter than sig360's. Mechanism: the
-~10 px wire is ~3 px at 0.3×, features are sparse, and line2Dup quantises
-gradient orientation to 8 bins of 45°, so a template turned 15° scores the
-same on the long diagonal stroke and pixel phase breaks the tie (hence pure
-vertical shifts trigger it and horizontal ones do not). The ROI refine's ±25 px
-window cannot recover a 15° start. The migration seeds match_scale 0.3 for
-every recipe; for thin-wire parts that is too coarse.
+Traced with ROI refine disabled (`SHAPE_REFINE=none`) and the coarse candidate
+dump (`SHAPE_DBG=1`, angle-aware NMS so nothing is suppressed):
+
+* The coarse stage itself picks the wrong pose. Every one of the 21 frames has
+  two candidates within 0.4 points of each other at the top: the true one
+  (flip=0, ~0°) and a **mirrored** one (flip=1, ~15°) -- e.g. base 99.6 vs 99.4,
+  s0,20 99.2 vs 99.4. The S-shaped spring, mirrored and turned ~15°, nearly
+  coincides with itself, and at 0.3× the ~10 px wire is ~3 px with 8 orientation
+  bins of 45°, so the two tie and pixel phase decides. The threshold (50) is
+  nowhere near either.
+* The recipe declares `matching_face = 0` (both faces), so the mirrored template
+  is in the race. With `matching_face = 1` the coarse stage at 0.3× is 20/20
+  correct (within its 1° step). With `shape_match_scale` 1.0 it is also 20/20
+  (finer features break the tie), at 64 ms vs 22 ms.
+* sig360 on the same recipe never missed: it scores front and back candidates
+  by its own signature error and picks by that, not by a shared coarse score.
+
+So the failure needs both: a part that is nearly its own mirror image, and a
+recipe that accepts both faces. Not fixed in this commit. Two possible fixes:
+have the operator set the face when the process guarantees it (a recipe
+setting, already honoured); or, for face=both, break a coarse tie between a
+flipped and an unflipped candidate at full resolution -- the ROI refine
+already computes a residual (`refine_residual`, exposed on branch
+ct/sbm_residual_rc2) that nothing reads.
 
 Separately, the SBM matcher always searched 0…360° (`modc.angle` in
 `buildShapeMatcher`) -- it never read `matching_angle_margin_deg`, and these
