@@ -132,3 +132,23 @@ on the same picture -- the arc-conversion caveat in `_caliperSeed.js`, in number
 * NG on both engines, on the reference image itself: CTA [3] [8], BSG [Par],
   CON "1", 8G "1". Either the reference part is out of spec or the limits are;
   the migration changes nothing about them.
+
+## `shape_nms_angle` on a 180°-symmetric part (2026-09-05)
+
+10609 8G2570072B is a Z-shaped spring, nearly its own image under 180°. Its
+recipe declares `matching_angle_margin_deg = 90`, so with the margin now
+honoured the SBM search is −90…+90° and a 180° pose is never a candidate --
+39 raw candidates, all within ±3°. With the margin widened to 180 in a copy:
+
+| `shape_nms_angle` | matcher output | core report |
+|---|---|---|
+| 360 (default) | 1: 0° score 99.0 | 1 object |
+| 180 | 2: 0° 99.0 and 180° 98.1 | **2 objects at the same place**, both 6/7 judges |
+| 160 | same as 180 | same |
+
+So the angle-aware NMS does what it says. Note what it does NOT do: nothing
+downstream arbitrates between the two poses -- the core reports both as
+separate objects, which a counter would take as two parts. For a part that is
+genuinely symmetric the recipe's angle margin is the right tool (as 8G's own
+recipe already has it); `shape_nms_angle` < 360 is for cases where a later
+judge is meant to reject the wrong pose, and that judge has to exist.
