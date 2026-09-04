@@ -187,3 +187,61 @@ Measured on CON: front first, one object; judge failing both faces → both
 tried, none reported; mirrored image → back face first, one flipped object.
 ROI refine is not made lazy: alternates that actually survive are 0–1 per
 frame on these recipes and cost 2–5 ms each; the sweep timings did not move.
+
+## The whole OK folder (2026-09-05)
+
+All 247 `hy_sync/OK` recipes that have a picture, copied to `data/ok*`, each
+pressed through the real 升級 button (`migrate_dump.mjs`) and measured once
+on its own picture (`fleet_count.mjs`). Judges OK, summed over the fleet;
+sig360 on the same pictures: 1555 (240 recipes locate their own picture --
+the other 7 recipes and pictures disagree, on both engines).
+
+| step | located | judges OK |
+|---|---|---|
+| as migrated, core before this day | 236 | 1393 |
+| + upgrade flow: NA-only min_strength floor (old) | 236 | 1429 |
+| + core: SearchPointCV window-edge maximum removed | 236 | 1425 (same files, +1) |
+| + core: `search_far` inverts caliper polarity | **240** | **1475** |
+| + upgrade flow: polarity by the taught edge, NA-only floor | 240 | **1504** |
+
+No recipe is worse at any step. The rest of the gap to sig360 is mostly
+caliper-vs-contour semantics on the same picture (arc radii, `[Par]`,
+"0.1 MAX"), plus a few recipes whose reference part is NG on both engines.
+
+**`search_far` was a polarity, and the caliper path only took it as a side.**
+11 recipes lost their part to an orientation-essential judge reading 0.000
+on a thin-wire pair. On 93007 8G2570062B the pair is two search points
+0.19 mm apart, one `angleDeg +90`, one `-90, search_far`. The legacy contour
+search flips the bar for `search_far` AND flips the contour-orientation test
+against that flipped bar, so net it keeps the same absolute edge orientation
+and starts from the other side. The caliper path had inherited the bar flip
+only: window reversed, gradient axis reversed, "falling" now naming the
+opposite absolute edge -- both points landed on the same outer edge. Fixed in
+`FeatureManager_sig360_circle_line.cpp` (search_far ⇒ RISING↔FALLING for the
+caliper scan); the pair reads 0.149 (sig360 0.147), stable from margin 0.1 to
+0.45. Fleet: 236→240 located, 1425→1475, 10 recipes better, 3 lost one judge --
+two of those because their `_sbm` files carried a `rising` the old flow had
+found by trial to compensate the bug (re-migrated: recovered), one (10803
+SO65093042N `[9]`) an arc going NA under the moved anchor, not yet explained.
+
+**Search points on a soft edge.** Chasing the above, the same point's value
+tracked its own margin exactly (value + margin = 0.217 at every margin from
+0.06 to 0.2). The local-maximum search compared the window's first column
+against a zero standing in for the pixel outside, so any window starting on
+a slope reported an edge at its own boundary. `SearchPointCV.cpp` now gathers
+one guard column each side and never proposes the window's edge columns.
+That was NOT the cause of the drift (the fix moved the fleet by +1); the drift
+was `search_far` above: with the wrong polarity the only "edge" left in the
+window was the ramp at its start. Kept because it is wrong on its own terms.
+
+**The upgrade flow, as shipped.** After feature extraction and ROI baking,
+`migrateDefToShapeBased` now (a) probes every converted primitive twice on
+the reference image, `falling` and `rising`, with the search band narrowed to
+0.06 mm around the taught position and the essential judges switched off, and
+keeps the polarity that measures there (the nearer one if both) -- the hit
+records carry no sign, so it is measured, not read; (b) for primitives still
+NA, lowers `min_strength` to half the weakest hit the picture actually has
+(≥5; search points follow the weakest line/arc). Each pass is kept only if
+the reference image is not worse than before it. Narrowing search-point
+margins to the taught edge would add 9 more judges fleet-wide (1513) at the
+price of field tolerance; not done.

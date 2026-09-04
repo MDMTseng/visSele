@@ -62,6 +62,27 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (!(width >= 3.0f) || !(margin > 0.0f)) return false;
   int nS = (int)lroundf(width);          if (nS < 3) return false; // search-depth (rows)
   int nP = (int)lroundf(2.0f * margin);  if (nP < 3) nP = 3;       // perp/lateral (cols)
+  // A LOCAL MAXIMUM NEEDS BOTH NEIGHBOURS, AND THE WINDOW EDGE HAS ONLY ONE.
+  //
+  // The maxima search below compared the first in-window column against a
+  // zero standing in for the column outside. Any window that STARTS on a
+  // slope -- the gradient at column 0 above min_strength and not smaller than
+  // column 1 -- therefore reported an edge at its own boundary. Measured on
+  // 93007 8G2570062B, search point @search_point_2_copy_copy_copy_copy[1]:
+  // margin 0.2 / 0.15 / 0.1 / 0.06 mm read 0.020 / 0.068 / 0.117 / 0.157 mm
+  // for the same wire -- value + margin = 0.217 in every case, i.e. the hit
+  // was pinned to the window's near edge, and the "measurement" was the
+  // margin the operator typed. sig360 read 0.147 on the same picture.
+  //
+  // So the band is gathered one guard column wider on each side. The guard
+  // columns supply real neighbours for the window's edge columns and are
+  // never candidates themselves; every interior column's gradient is
+  // bit-identical to before (same rows, same +-1 columns). Column 0 and
+  // nP-1 of the def's window are no longer candidates either -- a peak
+  // there still has a made-up neighbour on one side. The guard columns are
+  // also not part of the clipped test: the window the def asked for is the
+  // one that has to be in-image, not the pixel beyond it.
+  const int nPg = nP + 2;                                            // gathered cols
   // The failure Caliper.cpp guards with CELL_LIMIT, and the same realistic
   // trigger: not a hostile def, but a pixel figure typed into a field that
   // wants millimetres. Measured before this guard: margin=width=3e4 allocated
@@ -100,8 +121,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
 
   const bool dbg = (getenv("SPCV_DUMP") != nullptr);
   int gW = gray.cols, gH = gray.rows;
-  cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
-  cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
+  cv::Mat g(nS, nPg, CV_8U);                    // rows = search dir, cols = perp (+guards)
+  cv::Mat valid(nS, nPg, CV_8U, cv::Scalar(1)); // 1 = sampled in-image
   // GATHER vs SCAN, because they answer different questions.
   //
   // An early exit along the perp axis only saves the part of the work that is
@@ -116,16 +137,16 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   {
     float searchCoord = cs - i;
     unsigned char *d = g.ptr<unsigned char>(i), *vv = valid.ptr<unsigned char>(i);
-    for (int j = 0; j < nP; j++)
+    for (int j = 0; j < nPg; j++)
     {
-      acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
+      acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, (j - 1) - cp)));
       if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1)
       {
         // Not just an unusable sample -- evidence that the WINDOW is not the
         // one the def specified. Reported up so the caller can refuse the
         // measurement rather than average what is left.
         d[j] = 0; vv[j] = 0;
-        if (outClipped) *outClipped = true;
+        if (outClipped && j >= 1 && j <= nP) *outClipped = true;
         continue;
       }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
@@ -171,9 +192,9 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // unsuppressed gradient. Strictly extra work, and only when the payload is
   // asked for; the measurement below still runs on `cand` and is untouched.
   std::vector<SPEdgePt> candRaw;
-  cv::Mat sobViz; if (dbg) sobViz = cv::Mat::zeros(nS, nP, CV_16S);
-  std::vector<float> eline(nP);
-  std::vector<float> eraw(outPeaks ? nP : 0);
+  cv::Mat sobViz; if (dbg) sobViz = cv::Mat::zeros(nS, nPg, CV_16S);
+  std::vector<float> eline(nPg);
+  std::vector<float> eraw(outPeaks ? nPg : 0);
   float maxPeak = 0;
   mephase::Timer _sc("sp_scan");
   for (int i = 1; i < nS - 1; i++)
@@ -202,8 +223,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     const unsigned char *vr = valid.ptr<unsigned char>(i);
     const unsigned char *v2 = valid.ptr<unsigned char>(i+1);
     int16_t *sv = dbg ? sobViz.ptr<int16_t>(i) : nullptr;
-    eline[0] = eline[nP-1] = 0.f;
-    for (int j = 1; j < nP - 1; j++)
+    eline[0] = eline[nPg-1] = 0.f;
+    for (int j = 1; j < nPg - 1; j++)            // gradient at every def column, guards as neighbours
     {
       int gx = (r0[j+1] + 2*r1[j+1] + r2[j+1]) - (r0[j-1] + 2*r1[j-1] + r2[j-1]); // perp gradient
       if (sv) sv[j] = (int16_t)gx;
@@ -216,25 +237,25 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     }
     if (outPeaks)
     {
-      eraw[0] = eraw[nP-1] = 0.f;
-      for (int j = 1; j < nP - 1; j++)
+      eraw[0] = eraw[nPg-1] = 0.f;
+      for (int j = 2; j < nPg - 2; j++)            // candidates: def columns 1..nP-2, real neighbours both sides
       {
         float e = eraw[j];
         if (e <= 0 || e < eraw[j-1] || e < eraw[j+1]) continue;
         float den = eraw[j-1] - 2.f*e + eraw[j+1];
         float sub = (den != 0.f) ? 0.5f * (eraw[j-1] - eraw[j+1]) / den : 0.f;
         if (sub > 1) sub = 1; if (sub < -1) sub = -1;
-        candRaw.push_back({cs - i, (j + sub) - cp, e});
+        candRaw.push_back({cs - i, (j - 1 + sub) - cp, e});
       }
     }
-    for (int j = 1; j < nP - 1; j++)               // local maxima along the contiguous perp line
+    for (int j = 2; j < nPg - 2; j++)              // local maxima, def columns 1..nP-2 only
     {
       float e = eline[j];
       if (e <= 0 || e < eline[j-1] || e < eline[j+1]) continue;
       float denom = eline[j-1] - 2.f*e + eline[j+1];
       float sub = (denom != 0.f) ? 0.5f * (eline[j-1] - eline[j+1]) / denom : 0.f;
       if (sub > 1) sub = 1; if (sub < -1) sub = -1;
-      cand.push_back({cs - i, (j + sub) - cp, e});  // {searchCoord, perpCoord, peak}
+      cand.push_back({cs - i, (j - 1 + sub) - cp, e});  // {searchCoord, perpCoord, peak} in def-window coords
       if (e > maxPeak) maxPeak = e;
     }
   }
@@ -320,11 +341,11 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (dbg) // debug: save rectified gray | edge marker
   {
     // buffer pos of a centered coord: col = perpCoord + cp, row = cs - searchCoord
-    auto bx = [&](float perpCoord){ return (int)lroundf(perpCoord + cp); };
+    auto bx = [&](float perpCoord){ return (int)lroundf(perpCoord + cp + 1); };  // +1: guard column
     auto by = [&](float searchCoord){ return (int)lroundf(cs - searchCoord); };
     cv::Mat vis; std::vector<cv::Mat> ch = {g, g, g}; cv::merge(ch, vis);
-    for (auto &e: eps){ int xx=bx(e.perpCoord), yy=by(e.searchCoord); if(yy>=0&&yy<nS&&xx>=0&&xx<nP) cv::circle(vis,cv::Point(xx,yy),2,cv::Scalar(0,255,0),-1); }
-    { int xx=bx(eP), yy=by(eS); if(yy>=0&&yy<nS&&xx>=0&&xx<nP){ cv::circle(vis,cv::Point(xx,yy),5,cv::Scalar(255,0,0),2); cv::drawMarker(vis,cv::Point(xx,yy),cv::Scalar(255,0,0),cv::MARKER_CROSS,11,1);} } // final blue
+    for (auto &e: eps){ int xx=bx(e.perpCoord), yy=by(e.searchCoord); if(yy>=0&&yy<nS&&xx>=0&&xx<nPg) cv::circle(vis,cv::Point(xx,yy),2,cv::Scalar(0,255,0),-1); }
+    { int xx=bx(eP), yy=by(eS); if(yy>=0&&yy<nS&&xx>=0&&xx<nPg){ cv::circle(vis,cv::Point(xx,yy),5,cv::Scalar(255,0,0),2); cv::drawMarker(vis,cv::Point(xx,yy),cv::Scalar(255,0,0),cv::MARKER_CROSS,11,1);} } // final blue
     int sc = (std::max(nS, nP) < 400) ? 3 : 1;  // uniform upscale for small remaps (keep aspect ratio)
     cv::Mat visBig; cv::resize(vis, visBig, cv::Size(), sc, sc, cv::INTER_NEAREST);
     char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.x,(int)pt.y,nP,nS); cv::imwrite(fn,visBig);

@@ -1215,6 +1215,31 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGI_EVERY_N(200, "search_point: edge polarity 'any' -> bidirectional scan "
                           "(was silently 'falling' before 2026-08-25)");
       }
+      // search_far IS A POLARITY, NOT ONLY A SIDE.
+      //
+      // The legacy contour search above (locating==0) does two things for
+      // search_far: it flips `vec` -- so the scan starts from the other side
+      // -- and it passes searchDir=-1 into getContourPointsWithInLineContour,
+      // where it flips the contour-orientation test (dotP*flip_f > cosSim).
+      // The orientation test is taken against the bar vector that was just
+      // flipped, so the two cancel: legacy search_far keeps the SAME absolute
+      // edge orientation and only starts from the far side. This path
+      // inherited the vec flip alone. A flipped window reverses the gradient
+      // axis, so "falling" then names the edge of the OPPOSITE absolute
+      // orientation -- one flip where the legacy had two.
+      //
+      // Measured on 93007 8G2570062B: @search_point_2_copy_copy_copy_copy
+      // (angle +90) and ...[1] (angle -90, search_far) are a 0.15 mm wire-
+      // width pair. sig360 reads 0.147. Here both landed on the same outer
+      // edge, 0.000, and the orientation-essential judge on that pair threw
+      // the whole part away. With the polarity inverted for the search_far
+      // point: 0.149, stable from margin 0.1 to 0.45, all eight judges OK.
+      // `any` has no side and is left alone.
+      if (def.data.anglefollow.search_far)
+      {
+        if      (sp_et == SP_LIGHT_TO_DARK) sp_et = SP_DARK_TO_LIGHT;
+        else if (sp_et == SP_DARK_TO_LIGHT) sp_et = SP_LIGHT_TO_DARK;
+      }
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.
       const uint32_t said = def.edge_set;

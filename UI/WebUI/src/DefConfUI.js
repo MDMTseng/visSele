@@ -1469,7 +1469,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
       d(UIAct.EV_WS_SEND_BPG(coreId, tl, 0, data, undefined, { resolve, reject }));
     });
     const openStudio = () => setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
-    const wait = Modal.info({ title: '升級中', content: '抽特徵、烘 ROI 窗口、對參考影像驗證…',
+    const wait = Modal.info({ title: '升級中', content: '抽特徵、烘 ROI 窗口、對參考影像實測邊緣極性與門檻、驗證…',
                               okButtonProps: { style: { display: 'none' } } });
 
     let deffile;
@@ -1500,51 +1500,122 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
           const g = RP && RP.data && RP.data.reports && RP.data.reports[0];
           return g && g.reports && g.reports[0];
         };
-        // EDGE POLARITY IS MEASURED, NOT GUESSED.
+        // EDGE POLARITY IS DECIDED BY THE TAUGHT EDGE, NOT GUESSED.
         //
-        // The caliper seed picks a polarity per shape type (falling for lines,
-        // rising for arcs) from what a reference corpus preferred. On
-        // 10514 MODEL3131 every arc is the other way round: all three NA with
-        // rising, all three measured with falling -- and the sig360 recipe
-        // had them all OK. A guess that is right on one corpus and wrong on
-        // the next is not a rule, and this path already runs the inspection
-        // that can tell. So: any converted primitive that comes back NA gets
-        // its polarity flipped and the picture asked again; the ones that
-        // then measure keep the flip, in the editor's own shapes, and the
-        // summary names them. min_strength is NOT relaxed here -- a weak edge
-        // is a real finding, not a setting to tune away.
-        return runII(fresh()).then((pk1) => {
-          const obj1 = objOf(pk1);
-          const naIds = new Set();
-          if (obj1) ['detectedLines', 'detectedCircles', 'searchPoints'].forEach((k) =>
-            (obj1[k] || []).forEach((x) => { if (x.status === BPG_Protocol.INSPECTION_STATUS.NA && x.id !== undefined) naIds.add(x.id); }));
-          const _obj = fresh()._obj;
-          const list = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
-          const candidates = list.filter((s) => s && naIds.has(s.id) && s.locating === 'caliper' && s.edge && s.edge.polarity
-                                           && conv.indexOf(s.name || ('id ' + s.id)) >= 0);
-          if (!candidates.length) return { nFeat, nWin, pk: pk1, flipped: [] };
-          const flip = (p) => (p === 'rising' ? 'falling' : 'rising');
-          const flippedList = list.map((s) => (candidates.includes(s) ? { ...s, edge: { ...s.edge, polarity: flip(s.edge.polarity) } } : s));
-          _obj.SetShapeList(flippedList);
-          d(DefConfAct.Shape_List_Update(flippedList));
-          return runII(fresh()).then((pk2) => {
-            const obj2 = objOf(pk2);
-            const okIds = new Set();
-            if (obj2) ['detectedLines', 'detectedCircles', 'searchPoints'].forEach((k) =>
-              (obj2[k] || []).forEach((x) => { if (x.status === BPG_Protocol.INSPECTION_STATUS.SUCCESS) okIds.add(x.id); }));
-            const kept = candidates.filter((s) => okIds.has(s.id));
-            if (kept.length === candidates.length) return { nFeat, nWin, pk: pk2, flipped: kept.map((s) => s.name || ('id ' + s.id)) };
-            // Keep only the flips that helped; put the rest back and measure once more
-            // so the summary describes the def as it now stands.
-            const finalList = flippedList.map((s) => (candidates.includes(list.find((o) => o.id === s.id)) && !okIds.has(s.id)
-              ? list.find((o) => o.id === s.id) : s));
-            _obj.SetShapeList(finalList);
-            d(DefConfAct.Shape_List_Update(finalList));
-            return runII(fresh()).then((pk3) => ({ nFeat, nWin, pk: pk3, flipped: kept.map((s) => s.name || ('id ' + s.id)) }));
+        // The caliper seed picks a polarity per shape type. The first version
+        // of this path flipped whatever came back NA and kept the flips that
+        // measured. That is blind to the case that actually leaks: a pair of
+        // 0.15 mm search points, both seeded `falling`, both landing on the
+        // SAME edge and reporting 0.000 -- each measures fine, so nothing is
+        // NA, and an orientation-essential judge then drops the whole part
+        // (11 of 247 field recipes, 2026-09-05). The hit records carry no edge
+        // sign, so the answer is measured, not read: every converted
+        // primitive is asked twice on the reference image, `falling` and
+        // `rising`, with its search band narrowed to NARROW_MM around the
+        // taught position (essential judges switched off for the probe so the
+        // object survives). The one that finds an edge there -- the closer one
+        // if both do -- is the taught edge. Band and judges are restored
+        // before the real verification. Fleet-measured on 247 recipes:
+        // 250 polarities changed, judges OK 1393 -> 1442, no recipe worse.
+        //
+        // Then the gradient floor, only where it is still needed: a primitive
+        // that is still NA gets min_strength lowered to half its weakest
+        // measured hit (>= 5), never below what the taught image supports.
+        // Search points, which report no hit strength, follow the weakest
+        // line/arc. +36 judges on the fleet, none worse. A primitive that
+        // measures at the seed keeps the seed -- a weak edge on a part that
+        // was OK before is a finding, not a setting to tune away.
+        const NARROW_MM = 0.06;
+        const S = BPG_Protocol.INSPECTION_STATUS;
+        const nameOf = (s) => s.name || ('id ' + s.id);
+        const isConv = (s) => s && s.locating === 'caliper' && s.edge && s.edge.polarity && conv.indexOf(nameOf(s)) >= 0;
+        const primsOf = (obj) => {
+          const m = {};
+          if (!obj) return m;
+          (obj.detectedLines || []).forEach((x) => { m[x.id] = { st: x.status, x: x.cx, y: x.cy, hits: x.extra && x.extra.cal_hits }; });
+          (obj.detectedCircles || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y, hits: x.extra && x.extra.cal_hits }; });
+          (obj.searchPoints || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y }; });
+          return m;
+        };
+        const taughtPt = (s) => {
+          if (s.type === 'search_point') return s.pt1;
+          if (s.type === 'line' && s.pt1 && s.pt2) return { x: (s.pt1.x + s.pt2.x) / 2, y: (s.pt1.y + s.pt2.y) / 2 };
+          return null;
+        };
+        const _obj = fresh()._obj;
+        const base = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
+        // Run II on a shape list without committing it to the editor.
+        const runWith = (list) => { _obj.SetShapeList(list); return runII(fresh()).then((pk) => primsOf(objOf(pk))); };
+        const probe = (pol) => base.map((s) => {
+          if (s && s.orientation_essential) return { ...s, orientation_essential: false };
+          if (!isConv(s)) return s;
+          const t = { ...s, edge: { ...s.edge, polarity: pol } };
+          if (s.type === 'search_point') t.margin = NARROW_MM; else t.caliper = { ...(s.caliper || {}), length: NARROW_MM };
+          return t;
+        });
+        const judgesOK = (pk) => { const o = objOf(pk); return o ? (o.judgeReports || []).filter((j) => j.status === S.SUCCESS).length : -1; };
+        if (!base.some(isConv)) return runII(fresh()).then((pk) => ({ nFeat, nWin, pk, flipped: [], lowered: [] }));
+        return runWith(probe('falling')).then((pf) => runWith(probe('rising')).then((pr) => {
+          const flipped = [];
+          const polList = base.map((s) => {
+            if (!isConv(s)) return s;
+            const f = pf[s.id], r = pr[s.id], t = taughtPt(s);
+            const okf = !!f && f.st === S.SUCCESS, okr = !!r && r.st === S.SUCCESS;
+            let pick = null;
+            if (okf && !okr) pick = 'falling';
+            else if (okr && !okf) pick = 'rising';
+            else if (okf && okr && t && Number.isFinite(f.x) && Number.isFinite(r.x))
+              pick = (Math.hypot(r.x - t.x, r.y - t.y) < Math.hypot(f.x - t.x, f.y - t.y) - 1e-6) ? 'rising' : 'falling';
+            if (!pick || pick === s.edge.polarity) return s;
+            flipped.push(nameOf(s));
+            return { ...s, edge: { ...s.edge, polarity: pick } };
           });
+          // Accept the polarity pass only if it is not worse than the seed on the reference image.
+          _obj.SetShapeList(base);
+          return runII(fresh()).then((pk0) => {
+            if (!flipped.length) return { list: base, pk: pk0, flipped: [] };
+            _obj.SetShapeList(polList);
+            return runII(fresh()).then((pk1) => (judgesOK(pk1) >= judgesOK(pk0)
+              ? { list: polList, pk: pk1, flipped } : { list: base, pk: pk0, flipped: [] }));
+          });
+        })).then(({ list, pk, flipped }) => {
+          const p = primsOf(objOf(pk));
+          const na = list.filter((s) => s && s.locating === 'caliper' && s.edge && (!p[s.id] || p[s.id].st !== S.SUCCESS));
+          if (!na.length) return { nFeat, nWin, pk, flipped, lowered: [], list };
+          const naIds = new Set(na.map((s) => s.id));
+          const zero = list.map((s) => (naIds.has(s.id) ? { ...s, edge: { ...s.edge, min_strength: 0 } } : s));
+          return runWith(zero).then((pz) => {
+            let gmin = Infinity; const lowered = [];
+            const floorOf = (m, cur) => Math.max(5, Math.min(cur, Math.floor(m * 0.5)));
+            let low = list.map((s) => {
+              if (!naIds.has(s.id) || s.type === 'search_point') return s;
+              const hs = ((pz[s.id] && pz[s.id].hits) || []).map((h) => h.s).filter(Number.isFinite);
+              if (!hs.length) return s;
+              const m = Math.min(...hs), f = floorOf(m, s.edge.min_strength);
+              if (f >= s.edge.min_strength) return s;
+              gmin = Math.min(gmin, m); lowered.push(nameOf(s) + ' ' + s.edge.min_strength + '→' + f);
+              return { ...s, edge: { ...s.edge, min_strength: f } };
+            });
+            if (gmin < Infinity) low = low.map((s) => {
+              if (!naIds.has(s.id) || s.type !== 'search_point') return s;
+              const f = floorOf(gmin, s.edge.min_strength);
+              if (f >= s.edge.min_strength) return s;
+              lowered.push(nameOf(s) + ' ' + s.edge.min_strength + '→' + f);
+              return { ...s, edge: { ...s.edge, min_strength: f } };
+            });
+            if (!lowered.length) return { nFeat, nWin, pk, flipped, lowered: [], list };
+            _obj.SetShapeList(low);
+            return runII(fresh()).then((pk2) => (judgesOK(pk2) >= judgesOK(pk)
+              ? { nFeat, nWin, pk: pk2, flipped, lowered, list: low } : { nFeat, nWin, pk, flipped, lowered: [], list }));
+          });
+        }).then((r) => {
+          // Commit exactly the list the reported verification ran on.
+          _obj.SetShapeList(r.list);
+          d(DefConfAct.Shape_List_Update(r.list));
+          return r;
         });
       })
-      .then(({ nFeat, nWin, pk, flipped }) => {
+      .then(({ nFeat, nWin, pk, flipped, lowered }) => {
         wait.destroy();
         // Put the result on the canvas, exactly as 快速驗證 does.
         const RP = (pk || []).find((p) => p.type === 'RP');
@@ -1576,7 +1647,9 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
               ;判定 <b style={{ color: '#237804' }}>{nOK} OK</b> / <b style={{ color: '#a8071a' }}>{nNG} NG</b> / <b style={{ color: nNA ? '#a8071a' : undefined }}>{nNA} NA</b></div>
             {note && note.code && <div style={{ color: '#a8071a' }}>定位註記 {note.code}:{note.reason}</div>}
             {flipped && flipped.length > 0 && <div style={{ color: '#ad6800' }}>
-              邊緣極性用預設值量不到,已對參考影像實測後改成另一邊 {flipped.length} 個:{flipped.join(', ')}</div>}
+              邊緣極性依教學位置上的邊實測決定,改成另一邊 {flipped.length} 個:{flipped.join(', ')}</div>}
+            {lowered && lowered.length > 0 && <div style={{ color: '#ad6800' }}>
+              預設邊緣門檻量不到,依參考影像實測降低 {lowered.length} 個:{lowered.join(', ')}</div>}
             {primNote}
             <div style={{ marginTop: 10, color: '#888', fontSize: 12 }}>
               特徵範圍用的是 sig360 輪廓;有晃動的鄰件或反光要排除、或想自己挑 ROI 點,再進 studio。
