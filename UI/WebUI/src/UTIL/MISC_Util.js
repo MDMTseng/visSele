@@ -1,6 +1,5 @@
 import JSum from 'jsum';
-import { seedCaliper, seedEdge, arcSagittaPx, ARC_MIN_SAGITTA_PX,
-         SEARCH_POINT_EDGE_SEED } from '../shapes/_caliperSeed';
+import { convertShapeForShapeBased } from '../shapes/_caliperSeed';
 
 
 
@@ -409,46 +408,19 @@ export function defFileGeneration(edit_info)
         // lines SUCCESS with 10 hits each and confidence 86.5, and all 8 search
         // points NA, taking 4 of the 7 judgements down with them. The def trains,
         // loads, locates, and measures nothing that depends on a point.
-        if (s && s.type === 'search_point' && s.locating !== 'caliper') {
-          const c = { ...s, locating: 'caliper' };
-          if (!c.edge) c.edge = { ...SEARCH_POINT_EDGE_SEED };
-          // min_strength is required in caliper mode; a def carrying an edge
-          // block without it is NA'd by name. Fill only that.
-          else if (typeof c.edge.min_strength !== 'number')
-            c.edge = { ...c.edge, min_strength: SEARCH_POINT_EDGE_SEED.min_strength };
-          return c;
-        }
-        if (!s || (s.type !== 'line' && s.type !== 'arc') || s.locating === 'caliper') return s;
-        // An arc taught nearly collinear does not get converted, it gets LEFT in
-        // contour mode -- which the core then refuses under shape_based, by name.
-        // That refusal is the point. Converting it produces a number rather than
-        // an error: measured on BCG-20X40X53 [13][1], caliper returns r=0.49mm
-        // against contour's 0.20mm, and its neighbour returns SUCCESS with a
-        // radius half again too big. A wrong radius that passes is worse than a
-        // def that will not train, because only one of the two gets noticed.
-        // Small sagitta <=> distant circumcentre <=> the search rays run nearly
-        // parallel instead of fanning around the bend; see _caliperSeed.
-        if (s.type === 'arc') {
-          const sag = arcSagittaPx(s, report.featureSet[0].mmpp);
-          if (sag !== null && sag < ARC_MIN_SAGITTA_PX) {
-            console.warn('[def] arc id=' + s.id + ' (' + (s.name || '') + ') taught sagitta ' +
-              sag.toFixed(1) + 'px -- left in contour mode; it needs re-teaching, not converting');
-            return s;
-          }
-        }
-        const c = { ...s, locating: 'caliper' };
-        // seedCaliper/seedEdge, never a local copy: this path and the offline
-        // converter must produce the same def, and this is the path a migration
-        // actually takes -- saving under shape_based converts every primitive
-        // without the user opening one. The copy that used to sit here measured
-        // an ARC's caliper width from the CHORD (arcSweep understates by more
-        // the tighter the bend) and searched every shape `falling` (an arc
-        // usually measures an inner radius, where falling takes the wrong side
-        // of the wire: -0.11mm on every R1.0 in the corpus). Both were fixed in
-        // _caliperSeed and measured there; this call site never followed.
-        if (!c.caliper) c.caliper = seedCaliper(s);
-        if (!c.edge) c.edge = seedEdge(s);
-        return c;
+        // ONE function, shared with the migration (which converts the editor's
+        // own shapes so the canvas and property sheet show what will be saved)
+        // and with the offline converter. An arc taught nearly collinear is LEFT
+        // in contour mode -- the core then refuses it by name, and that refusal
+        // is the point: converting it produces a wrong radius that passes
+        // (measured on BCG-20X40X53 [13][1]: 0.49mm against contour's 0.20mm).
+        // This site is now the safety net for a def edited after migration;
+        // normally everything is already converted and this is a no-op.
+        const r = convertShapeForShapeBased(s, report.featureSet[0].mmpp);
+        if (r.action === 'left_contour_arc')
+          console.warn('[def] arc id=' + s.id + ' (' + (s.name || '') + ') taught sagitta ' +
+            r.sagittaPx.toFixed(1) + 'px -- left in contour mode; it needs re-teaching, not converting');
+        return r.shape;
       });
     }
     // Pure-SBM feature-extraction region (object-frame mm polygons). The user authors

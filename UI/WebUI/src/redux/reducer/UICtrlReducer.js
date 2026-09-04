@@ -5,6 +5,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString, shapeDefFingerprint } from 'UTIL/MISC_Util';
 import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,DEF_LOCALIZER_SCOPED_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
 import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
+import { convertShapeForShapeBased } from '../../shapes/_caliperSeed';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
@@ -1171,6 +1172,48 @@ function StateReducer(newState, action) {
               // ROI refine). The shape locator trains from the def's <base>.png sidecar.
               if (action.data === 'sig360' || action.data === 'shape_based') {
                 newState.edit_info = { ...newState.edit_info, locating_engine: action.data };
+              }
+              // THE PRIMITIVES FOLLOW THE ENGINE, HERE, IN THE EDITOR'S OWN SHAPES.
+              //
+              // shape_based has no contour grid, so every line/arc/search point
+              // must locate by caliper. That conversion used to live only in
+              // defFileGeneration, on the OUTPUT: what the core got and what the
+              // file said were converted, what the canvas and the property sheet
+              // showed were not. Right after 升級 some primitives drew as caliper
+              // (the ones the core's reply had attached hits to), the rest as
+              // contour, and the caliper fields were empty boxes -- until a save
+              // and a reload made the file the truth. Reported 2026-09-04.
+              //
+              // Here, because this is the one place the engine changes: the
+              // migration button, the settings radio, TAKE and the studio opener
+              // all dispatch this. Same function as the save path, so the two
+              // cannot disagree; the save path stays as the safety net for a
+              // primitive drawn after the flip. Flat arcs are LEFT contour and
+              // listed in __primitive_migration for the UI to name -- they need
+              // re-teaching, and converting them measures a wrong radius that
+              // passes (see _caliperSeed).
+              if (action.data === 'shape_based' && newState.edit_info._obj
+                  && Array.isArray(newState.edit_info._obj.shapeList)) {
+                const _obj = newState.edit_info._obj;
+                const mmpp = _obj.getEditorMmpp ? _obj.getEditorMmpp() : 1;
+                const converted = [], left = [];
+                let changed = false;
+                const next = _obj.shapeList.map((s) => {
+                  const r = convertShapeForShapeBased(s, mmpp);
+                  const label = (s && (s.name || ('id ' + s.id))) || '?';
+                  if (r.action === 'converted') { converted.push(label); changed = true; }
+                  else if (r.action === 'left_contour_arc') left.push(label);
+                  return r.shape;
+                });
+                if (changed) {
+                  _obj.SetShapeList(next);
+                  newState.edit_info.edit_tar_info = null;
+                  newState.edit_info.__decorator.list_id_order =
+                    UpdateListIDOrder(newState.edit_info.__decorator.list_id_order, _obj.shapeList);
+                  newState.edit_info.inherentShapeList = _obj.UpdateInherentShapeList();
+                }
+                if (changed || left.length)
+                  newState.edit_info.__primitive_migration = { converted, leftContourArcs: left, at: Date.now() };
               }
               break;
             }

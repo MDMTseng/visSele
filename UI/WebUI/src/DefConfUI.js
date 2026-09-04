@@ -62,6 +62,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
 import { nextFreeName, takenNamesFrom } from 'UTIL/defNaming.mjs';
 import { mmppFromLensCalib } from 'UTIL/mmppRule.mjs';
+import { convertShapeForShapeBased } from './shapes/_caliperSeed';
 import { 
   VerticalAlignTopOutlined,
   ThunderboltOutlined,
@@ -1347,6 +1348,44 @@ export function openShapeStudio() {
 }
 
 export function migrateDefToShapeBased(dispatch, edit_info) {
+  // SAY WHAT THE PRIMITIVES BECOME, BEFORE THEY BECOME IT.
+  //
+  // The reducer converts the editor's shapes when the engine flips (see
+  // Locating_Engine_Update there). This computes the same answer with the same
+  // pure function, to put names on the screen: which primitives turn caliper
+  // with seeded parameters, and which arcs are too flat to convert and stay
+  // contour -- those measure NOTHING under shape_based and need re-teaching, so
+  // they are the one thing here somebody must act on.
+  {
+    const _obj = edit_info && edit_info._obj;
+    const list = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
+    const mmpp = (_obj && _obj.getEditorMmpp) ? _obj.getEditorMmpp() : 1;
+    const conv = [], left = [];
+    list.forEach((s) => {
+      const r = convertShapeForShapeBased(s, mmpp);
+      const label = (s && (s.name || ('id ' + s.id))) || '?';
+      if (r.action === 'converted') conv.push(label);
+      else if (r.action === 'left_contour_arc') left.push(label + ' (sagitta ' + r.sagittaPx.toFixed(1) + 'px)');
+    });
+    if (conv.length || left.length) {
+      Modal.info({
+        title: '量測 primitive 已改成 caliper 定位',
+        width: 560,
+        content: (<div style={{ lineHeight: 1.8 }}>
+          <div>shape_based 沒有 contour 可以沿著走,所以線、弧、搜尋點都改用 <b>caliper</b>,
+            參數用預設值種下(caliper 10 段、edge 門檻 30 / 搜尋點 60)。每一個都可以在屬性面板改。</div>
+          {conv.length > 0 && <div style={{ marginTop: 8, color: '#555', fontSize: 12 }}>
+            已轉換 {conv.length} 個:{conv.join(', ')}</div>}
+          {left.length > 0 && <div style={{ marginTop: 8, color: '#a8071a' }}>
+            <b>{left.length} 個弧太平,沒有轉</b>(三點近乎共線,caliper 會量出一個過關但錯的半徑):
+            {' ' + left.join(', ')}。它們在 shape_based 下<b>量不到東西</b>,要重新教。</div>}
+          <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+            原本 contour 的參數沒有刪,把 primitive 的定位改回 contour 就是還原。存檔前都還沒寫到磁碟。</div>
+        </div>),
+        okText: '知道了',
+      });
+    }
+  }
   dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
   dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
 

@@ -185,6 +185,50 @@ export const SEARCH_POINT_EDGE_SEED = {
 // 8.6-51px and convert to within ~0.01mm; the two that do not measure 1.2 and 1.7.
 export const ARC_MIN_SAGITTA_PX = 3;
 
+// THE CONVERSION, AS ONE FUNCTION, so that the editor and the save path agree.
+//
+// The save path (MISC_Util.defFileGeneration) used to be the only place this
+// happened, on the OUTPUT. The editor's own shapes stayed contour until the def
+// was saved and reloaded -- so right after 升級 the canvas drew some primitives
+// as caliper (the ones the core's reply had attached hits to) and the rest as
+// contour, and the property sheet, already switched to caliper fields, showed
+// empty boxes for shapes that had no `caliper`/`edge` yet. Reported 2026-09-04.
+// Migration now converts the editor's shapes THROUGH THIS, and saving converts
+// through it again (idempotent), so the two cannot disagree.
+//
+// Returns { shape, action }:
+//   'kept'             already caliper, or not a locating primitive
+//   'converted'        locating set to caliper, caliper/edge seeded where absent
+//   'left_contour_arc' arc too flat to convert (see ARC_MIN_SAGITTA_PX); it
+//                      stays contour and the core will refuse to measure it
+//                      under shape_based -- it needs RE-TEACHING by a person
+// Contour-era fields (initMatchingMargin, ...) are NOT removed: setting
+// `locating` back is the whole of a revert.
+export function convertShapeForShapeBased(s, mmpp) {
+  if (!s) return { shape: s, action: 'kept' };
+  if (s.type === 'search_point') {
+    if (s.locating === 'caliper' && s.edge && typeof s.edge.min_strength === 'number')
+      return { shape: s, action: 'kept' };
+    const c = { ...s, locating: 'caliper' };
+    if (!c.edge) c.edge = { ...SEARCH_POINT_EDGE_SEED };
+    // min_strength is required in caliper mode; a def carrying an edge block
+    // without it is NA'd by name. Fill only that.
+    else if (typeof c.edge.min_strength !== 'number')
+      c.edge = { ...c.edge, min_strength: SEARCH_POINT_EDGE_SEED.min_strength };
+    return { shape: c, action: 'converted' };
+  }
+  if (s.type !== 'line' && s.type !== 'arc') return { shape: s, action: 'kept' };
+  if (s.locating === 'caliper') return { shape: s, action: 'kept' };
+  if (s.type === 'arc') {
+    const sag = arcSagittaPx(s, mmpp);
+    if (sag !== null && sag < ARC_MIN_SAGITTA_PX) return { shape: s, action: 'left_contour_arc', sagittaPx: sag };
+  }
+  const c = { ...s, locating: 'caliper' };
+  if (!c.caliper) c.caliper = seedCaliper(s);
+  if (!c.edge) c.edge = seedEdge(s);
+  return { shape: c, action: 'converted' };
+}
+
 export function arcSagittaPx(shape, mmpp) {
   if (!shape || !shape.pt1 || !shape.pt2 || !shape.pt3 || !mmpp) return null;
   const a = arcSweep(shape.pt1, shape.pt2, shape.pt3);
