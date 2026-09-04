@@ -71,6 +71,20 @@ before publishing recipes.
 | II on a roi-less def | `locator: shape_based`, `locate.code: coarse_only`, object found (sim 0.998) |
 | `upgrade_defs.mjs --dry-run` on a WebUI-saved def | `ok (8 windows, levels identical)` |
 
+## Field recipes through the one-click upgrade (2026-09-04, copies of hy_sync/OK)
+
+Rotation sweep is −10°…+10° in 11 steps on the reference image; "judges" is
+sig360 before vs shape_based after, on the same picture.
+
+| Recipe | Judges before → after | Sweep | Note |
+|---|---|---|---|
+| 10302 CTA_PMT_FINGER | 8 OK 2 NG → 8 OK 2 NG | all 11 locate, sim ≥ 0.975, residual ≤ 0.023° | same two NG on sig360 |
+| 10342 BSG-25X65X080 | 13 OK 1 NG → 13 OK 1 NG | all 11, sim ≥ 0.996, residual ≤ 0.040° | |
+| 10413 NIP-LT22TW2601-01 | 19 OK → 19 OK | all 11, sim ≥ 0.994, residual ≤ 0.142° | seed angle −0.0058 rad carried |
+| 10501 CG2050038P | 6 OK → 6 OK | all 11, sim ≥ 0.988, residual ≤ 0.043° | seed angle −0.0233 rad carried |
+| 10514 MODEL3131 | 8 OK → **4 OK 4 NA** → 8 OK after polarity retry | ±8° locate, ±10° fail | all three arcs NA with the seeded `rising`; all measure with `falling`. The upgrade now flips a converted primitive that comes back NA and keeps the flip if it measures. Two arcs are too flat to convert (sagitta 1.0 / 2.2 px) and stay contour. |
+| 10221 BOS-LT12BH4211 M18 | **sig360 finds no object on its own png** | all 11 locate on shape_based | recipe and picture do not agree; not a migration result, not used to tune anything |
+
 ## Still open
 
 * `upgrade_defs.mjs` upgrades shape_based defs only. A sig360 def still needs

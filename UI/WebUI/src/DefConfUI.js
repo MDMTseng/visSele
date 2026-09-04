@@ -1490,13 +1490,61 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
         if (!cache || !nFeat) throw Object.assign(new Error('nofeat'), { nofeat: true });
         d(DefConfAct.EditInfo_Patch({ __shape_cache: cache, __shape_stale: undefined, __shape_lastGood: undefined }));
         const nWin = (cache.roi && Array.isArray(cache.roi.at)) ? cache.roi.at.length : 0;
-        const ei1 = fresh();
-        const df2 = defFileGeneration(ei1); stampRefImagePath(df2, ei1);
-        return send('II', { definfo: df2, imgsrc: '__CACHE_IMG__',
-                            img_property: { calibInfo: { type: 'disable', mmpp: df2.featureSet[0].mmpp } } })
-          .then((pk) => ({ nFeat, nWin, pk }));
+        const runII = (ei) => {
+          const df = defFileGeneration(ei); stampRefImagePath(df, ei);
+          return send('II', { definfo: df, imgsrc: '__CACHE_IMG__',
+                              img_property: { calibInfo: { type: 'disable', mmpp: df.featureSet[0].mmpp } } });
+        };
+        const objOf = (pk) => {
+          const RP = (pk || []).find((p) => p.type === 'RP');
+          const g = RP && RP.data && RP.data.reports && RP.data.reports[0];
+          return g && g.reports && g.reports[0];
+        };
+        // EDGE POLARITY IS MEASURED, NOT GUESSED.
+        //
+        // The caliper seed picks a polarity per shape type (falling for lines,
+        // rising for arcs) from what a reference corpus preferred. On
+        // 10514 MODEL3131 every arc is the other way round: all three NA with
+        // rising, all three measured with falling -- and the sig360 recipe
+        // had them all OK. A guess that is right on one corpus and wrong on
+        // the next is not a rule, and this path already runs the inspection
+        // that can tell. So: any converted primitive that comes back NA gets
+        // its polarity flipped and the picture asked again; the ones that
+        // then measure keep the flip, in the editor's own shapes, and the
+        // summary names them. min_strength is NOT relaxed here -- a weak edge
+        // is a real finding, not a setting to tune away.
+        return runII(fresh()).then((pk1) => {
+          const obj1 = objOf(pk1);
+          const naIds = new Set();
+          if (obj1) ['detectedLines', 'detectedCircles', 'searchPoints'].forEach((k) =>
+            (obj1[k] || []).forEach((x) => { if (x.status === BPG_Protocol.INSPECTION_STATUS.NA && x.id !== undefined) naIds.add(x.id); }));
+          const _obj = fresh()._obj;
+          const list = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
+          const candidates = list.filter((s) => s && naIds.has(s.id) && s.locating === 'caliper' && s.edge && s.edge.polarity
+                                           && conv.indexOf(s.name || ('id ' + s.id)) >= 0);
+          if (!candidates.length) return { nFeat, nWin, pk: pk1, flipped: [] };
+          const flip = (p) => (p === 'rising' ? 'falling' : 'rising');
+          const flippedList = list.map((s) => (candidates.includes(s) ? { ...s, edge: { ...s.edge, polarity: flip(s.edge.polarity) } } : s));
+          _obj.SetShapeList(flippedList);
+          d(DefConfAct.Shape_List_Update(flippedList));
+          return runII(fresh()).then((pk2) => {
+            const obj2 = objOf(pk2);
+            const okIds = new Set();
+            if (obj2) ['detectedLines', 'detectedCircles', 'searchPoints'].forEach((k) =>
+              (obj2[k] || []).forEach((x) => { if (x.status === BPG_Protocol.INSPECTION_STATUS.SUCCESS) okIds.add(x.id); }));
+            const kept = candidates.filter((s) => okIds.has(s.id));
+            if (kept.length === candidates.length) return { nFeat, nWin, pk: pk2, flipped: kept.map((s) => s.name || ('id ' + s.id)) };
+            // Keep only the flips that helped; put the rest back and measure once more
+            // so the summary describes the def as it now stands.
+            const finalList = flippedList.map((s) => (candidates.includes(list.find((o) => o.id === s.id)) && !okIds.has(s.id)
+              ? list.find((o) => o.id === s.id) : s));
+            _obj.SetShapeList(finalList);
+            d(DefConfAct.Shape_List_Update(finalList));
+            return runII(fresh()).then((pk3) => ({ nFeat, nWin, pk: pk3, flipped: kept.map((s) => s.name || ('id ' + s.id)) }));
+          });
+        });
       })
-      .then(({ nFeat, nWin, pk }) => {
+      .then(({ nFeat, nWin, pk, flipped }) => {
         wait.destroy();
         // Put the result on the canvas, exactly as 快速驗證 does.
         const RP = (pk || []).find((p) => p.type === 'RP');
@@ -1527,6 +1575,8 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
               {!obj && <b style={{ color: '#a8071a' }}>,沒有找到零件</b>}
               ;判定 <b style={{ color: '#237804' }}>{nOK} OK</b> / <b style={{ color: '#a8071a' }}>{nNG} NG</b> / <b style={{ color: nNA ? '#a8071a' : undefined }}>{nNA} NA</b></div>
             {note && note.code && <div style={{ color: '#a8071a' }}>定位註記 {note.code}:{note.reason}</div>}
+            {flipped && flipped.length > 0 && <div style={{ color: '#ad6800' }}>
+              邊緣極性用預設值量不到,已對參考影像實測後改成另一邊 {flipped.length} 個:{flipped.join(', ')}</div>}
             {primNote}
             <div style={{ marginTop: 10, color: '#888', fontSize: 12 }}>
               特徵範圍用的是 sig360 輪廓;有晃動的鄰件或反光要排除、或想自己挑 ROI 點,再進 studio。
