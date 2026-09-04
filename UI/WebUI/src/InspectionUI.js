@@ -18,7 +18,6 @@ import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,defFileGeneration,stampRefImagePath,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
-import InspSamplePanel from './component/InspSamplePanel.jsx';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { usePerifConn, getPerifAPI } from './perif/PerifAPI';
@@ -57,7 +56,6 @@ import {
   LinkOutlined,
   ExclamationCircleOutlined,
   RedoOutlined,
-  PictureOutlined,
   ExpandOutlined,
   ArrowLeftOutlined,
   FullscreenOutlined,
@@ -3901,23 +3899,6 @@ class APP_INSP_MODE extends React.Component {
         insert_skip={InspectionReportPullSkip}/>
 
 
-
-      {/* The last few parts per verdict, with their pictures. Opens over the
-          running screen; the ring behind it fills itself whether or not this
-          is ever opened, so the button is only a way in. */}
-      <Button size={"large"} data-testid="insp-samples"
-        onClick={()=>this.setState({samplePanel:true})}>
-        <PictureOutlined/>樣本
-      </Button>
-      <InspSamplePanel visible={this.state.samplePanel===true}
-        onClose={()=>this.setState({samplePanel:false})}
-        sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)}
-        savePath={GetObjElement(this.props,["machine_custom_setting","InspSampleSavePath"])}
-        defInfoFor={()=>{ try { return defFileGeneration(this.props.edit_info); }
-                          catch(e){ log.warn("[samples] defFileGeneration failed", e); return undefined; } }}
-        measures={(GetObjElement(this.props,
-          ["edit_info","reportStatisticState","statisticValue","measureList"])||[])
-          .map((m)=>({ id:m.id, name:m.name }))} />
 
       <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
         <RedoOutlined/>

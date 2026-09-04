@@ -95,7 +95,6 @@ import APPMain_rdx from './MAINUI';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
 import { persistPending, deletePending, getPendingBySource, pendingInsertCount, deletePendingBySource, purgedCount } from 'UTIL/inspDBQueue';
-import * as SampleStore from 'UTIL/inspSampleStore';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
@@ -186,7 +185,6 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   // Test hooks for the diagnostics ring buffer + local failed-insert queue.
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
   window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount, deletePendingBySource, purgedCount };
-  window.__GP_SAMPLE_STORE__ = SampleStore;   // the insp sample buffer, for QA
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
   window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue, defFileGeneration }; // pure utils for QA
