@@ -476,6 +476,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   const featRef = useRef(undefined);                   // mirror — drawScene reads this so the
   featRef.current = featPts;                            // overlay never goes stale across redraws
   const [genBusy, setGenBusy] = useState(false);
+  const [roiBusy, setRoiBusy] = useState(false);   // ROI windows being re-cut after a point edit
   const [insp, setInsp] = useState(undefined);         // inspectSummary() of the last test run
   const [inspBusy, setInspBusy] = useState(false);
   const [sweep, setSweep] = useState(undefined);       // {axis, from, to, steps, rows, verdict}
@@ -540,9 +541,71 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     retakeRef.current = edit_info.__img_fresh_capture;
   }, [edit_info.__img_fresh_capture]);
 
+  // ROI POINTS AND FEATURES ARE INDEPENDENT. THE WINDOWS DEPEND ON THE PICTURE.
+  //
+  // The refine stage reads a 56x56 pixel window around each point, and those
+  // windows travel inside the def (shape_cache.roi) so the machine needs no
+  // picture. Cutting them needs the reference image, and the only core path
+  // that reads it is extraction -- which is how "change a point" came to mean
+  // "press 生成特徵點 again". That is an implementation accident, not a rule:
+  // the feature levels do not depend on the points and the points do not
+  // depend on the levels. So when the points change, the studio asks the core
+  // for the windows itself, and nobody presses anything.
+  //
+  // It goes through the same SF the generate button sends, with the SAVED
+  // thresholds, so the levels come back identical (extraction is deterministic
+  // -- measured bit for bit) and only `roi` differs. Debounced, because a
+  // point is often nudged several times in a second.
+  const roiRefreshTimer = useRef(null);
+  const refreshRoiWindows = useCallback((pts) => {
+    // Nothing to refresh until features exist; generation bakes the windows
+    // for whatever points are set when it runs.
+    if (!sendBPG || !edit_info.__shape_cache) return;
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return; }
+    const _fs0 = deffile.featureSet && deffile.featureSet[0];
+    if (!_fs0) return;
+    const _sbm = Array.isArray(_fs0.inherentfeatures)
+      ? _fs0.inherentfeatures.find((x) => x && x.name === SBM_INFO_NAME) : undefined;
+    // The list as it is NOW, not as the closure remembers it.
+    delete _fs0.roi_refine_points;
+    if (_sbm) {
+      if (pts && pts.length) _sbm.roi_refine_points = pts.map((p) => ({ x: p.x, y: p.y }));
+      else delete _sbm.roi_refine_points;
+    } else if (pts && pts.length) {
+      _fs0.roi_refine_points = pts.map((p) => ({ x: p.x, y: p.y }));
+    }
+    setRoiBusy(true);
+    new Promise((resolve, reject) => sendBPG('SF', 0,
+      { definfo: deffile, regenerate: true },
+      undefined, { resolve, reject }))
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        const cache = sf && sf.data && sf.data.shape_cache;
+        if (!cache) {
+          // No picture, no windows. Say which file, because that is the fix.
+          const templ = _fs0._ref_image_path || refPngPathOf(edit_info.defModelPath || '');
+          Modal.error({
+            title: 'ROI 窗口沒有更新',
+            content: '點已經改了,但核心沒法裁出精修窗口:讀不到參考影像 ' + templ
+              + '。特徵沒有被動到。把影像放回去,或再按一次「生成特徵點」。',
+          });
+          return;
+        }
+        setFeatPts(sf.data);
+        dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: cache }));
+      })
+      .catch(() => {})
+      .finally(() => setRoiBusy(false));
+  }, [sendBPG, edit_info, dispatch]);
+
   const onRoi = useCallback((pts) => {
     dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: pts }));
-  }, [dispatch]);
+    if (roiRefreshTimer.current) clearTimeout(roiRefreshTimer.current);
+    roiRefreshTimer.current = setTimeout(() => { roiRefreshTimer.current = null; refreshRoiWindows(pts); }, 600);
+  }, [dispatch, refreshRoiWindows]);
+  useEffect(() => () => { if (roiRefreshTimer.current) clearTimeout(roiRefreshTimer.current); }, []);
 
   // Regions are the localizer's, not the measurement list's.
   //
@@ -1334,18 +1397,17 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         </Block>
 
         <Block n="4" idx={3} title="ROI 取樣點"
-          summary={roiPts.length ? roiPts.length + ' 點' : '自動'}>
+          summary={(roiBusy ? '更新窗口中… ' : '') + (roiPts.length ? roiPts.length + ' 點' : '自動')}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-            <Button style={{ flex: 1, height: H }} loading={genBusy} onClick={autoFillRoi}>⚙ 自動產生</Button>
-            <Button style={{ height: H }} onClick={() => onRoi([])}>清除</Button>
+            <Button style={{ flex: 1, height: H }} loading={genBusy || roiBusy} onClick={autoFillRoi}>⚙ 自動產生</Button>
+            <Button style={{ height: H }} loading={roiBusy} onClick={() => onRoi([])}>清除</Button>
           </div>
           <Button block style={{ height: H }} type={tool === 'roi' ? 'primary' : 'default'}
             data-testid="sbm2-roi-edit"
             onClick={() => pick('roi')}>◻ 編輯 ROI 點</Button>
-          <Hint>core 用這些點做定位微調(sub-pixel)。沒放點＝存檔時由 core 自動選;
-            「清除」就是回到自動。
-            <b style={{ color: '#b26a00' }}>改了點要再按一次「生成特徵點」</b>——
-            微調用的像素窗口是在生成時一起存進 def 的,點變了窗口才會跟著變。</Hint>
+          <Hint>core 用這些點做定位微調(sub-pixel)。沒放點＝由 core 自動選;「清除」就是回到自動。
+            <b style={{ color: P.ink }}>改點不影響特徵,也不用重新生成</b>——
+            點一改,精修用的像素窗口就自動從參考影像重裁進 def(所以參考影像要在磁碟上)。</Hint>
         </Block>
 
         <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,
