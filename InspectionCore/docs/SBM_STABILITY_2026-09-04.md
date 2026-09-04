@@ -31,8 +31,19 @@ searches 0…360° (`modc.angle` in `buildShapeMatcher`) -- it never reads
 `matching_angle_margin_deg`, and these recipes all declare 180 anyway. The
 judges on those runs still came out within tolerance because the anchor morph
 (10 search points) re-registers the measurements; the pose in the report is
-nonetheless wrong. Two possible fixes, both cheap, neither done: honour the
-def's angle margin in the SBM search, or add an SBM-specific one.
+nonetheless wrong.
+
+Done the same day: `buildShapeMatcher` now bounds the raw template rotation by
+the def's `matching_angle_margin_deg` / `matching_angle_offset_deg` when the
+margin is under 180°. Doing so exposed a second bug in the matcher: `addModel`
+pushed the unrotated base as template 0 and rotated from `start+step`, while
+the decoder assumes template k = `start + k·step` -- only consistent for the
+full circle. With a ±10° window the unperturbed image came back at +15.6° with
+every judge NA. Fixed (template k is exactly `start + k·step`; full-circle
+order unchanged). Re-measured CON with a 10° margin: every translation and
+8 of 10 rotations correct, all judges OK; the two misses (−10°, −6°) are the
+true angle +15° still inside the window. The part's symmetry is 15°, so its
+recipe needs a margin under ~5° -- a recipe setting, now honoured.
 
 ## Measurement values
 
@@ -51,13 +62,26 @@ Per judge, the range (max−min) of the reported value over the 20 perturbed run
 
 **MODEL3131 [7] drifts linearly with rotation and not at all with translation**:
 5.03 mm at −10°, 4.99 at 0°, 4.84 at +6°, NA beyond; under ±50 px shift it holds
-to 0.0001 mm. Linear in angle, blind to shift, is a rotation about the wrong
-pivot: 0.19 mm over 16° is a pivot ~0.7 mm from where it should be. This recipe
-has only 2 search points, so the anchor morph cannot correct it the way it does
-on CON (10 anchors) or NIP (15). Hypothesis, not proven: the SBM path measures
-about a centre that is not the one the primitives were authored against
-(`def_image_reg` centre vs the template origin), and sig360 does not. Worth one
-experiment with a def whose primitives are far from its centre.
+to 0.0001 mm.
+
+Found, the same day. Three steps:
+
+1. A hybrid def -- sig360 locator with the migrated caliper primitives -- is
+   stable across ±10° (4.990–4.992). So the calipers are fine; the SBM **pose**
+   is what moves.
+2. Per perturbation, the SBM-reported centre minus the sig360-reported centre:
+   zero at 0° and under any shift, and 2.30 px per degree of rotation on
+   MODEL3131, 0.53 px/° on NIP, ~0 on the other five.
+3. The recipe's template origin sits 66.3 px from the template centre on
+   MODEL3131, 15.1 px on NIP, under 1.2 px on the rest. 2·|d|·π/180 predicts
+   2.32 and 0.53 px/° -- the observed slopes to two digits. That is the signature
+   of rotating the centre→origin offset by −θ instead of +θ.
+
+`shape_matcher.cpp` did exactly that (`rad = -raw_angle`) in three places --
+coarse, after ICP, after ROI refine. Fixed to `+raw_angle`. The calipers on
+MODEL3131 were half-missing their edges by 14 px at 6°, which is where the
+0.15 mm and the NA came from. Recipes whose origin happens to sit on the template
+centre never showed it, which is why the earlier sweeps on test2 looked clean.
 
 ## Baseline value shift, same picture, sig360 → SBM
 

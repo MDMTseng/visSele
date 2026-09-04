@@ -8551,6 +8551,26 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
 
   sbm::ModelConfig modc;
   modc.angle.start = 0; modc.angle.end = 360; modc.angle.step = shape_angle_step_deg;
+  // THE DEF'S ANGLE MARGIN APPLIES HERE TOO. It used to be sig360-only, and the
+  // shape search was always the full circle. On 10333 CON-LT14BH2051-01 the
+  // coarse silhouette repeats every 15 deg, and 6 of 20 perturbed frames came
+  // back +15 deg off at similarity 0.99 (2026-09-04). A machine knows how its
+  // parts arrive; a margin under 180 deg is that knowledge, and it now bounds
+  // the raw template rotation the same way it bounds the signature search.
+  // The raw angle is what the matcher reports before angle_offset is added
+  // back (user_angle = raw + angle_offset), so the window is shifted by it.
+  if (matching_angle_margin > 0 && matching_angle_margin < (float)M_PI - 1e-4f)
+  {
+    const float reg_off = shapeFeatureSet ? shapeFeatureSet->angle_offset : 0.0f;
+    const float off_deg = matching_angle_offset * 180.0f / (float)M_PI - reg_off;
+    const float mg_deg  = matching_angle_margin * 180.0f / (float)M_PI;
+    modc.angle.start = off_deg - mg_deg;
+    modc.angle.end   = off_deg + mg_deg;
+    LOGI("[shape] angle search bounded by def margin: raw %.1f..%.1f deg "
+         "(offset %.1f, margin %.1f, reg offset %.2f)",
+         modc.angle.start, modc.angle.end,
+         matching_angle_offset * 180.0f / (float)M_PI, mg_deg, reg_off);
+  }
   // Diagnostic override: SHAPE_ANG_RANGE="start,end" (raw template-rotation deg) to
   // test a constrained angle search before wiring it to the def margin.
   if (const char *ar = getenv("SHAPE_ANG_RANGE")) {

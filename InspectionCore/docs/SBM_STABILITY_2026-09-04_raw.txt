@@ -12,16 +12,16 @@
   [20]90+2/-2                base=91.5369  OK/NG/NA=17/3/0  range=0.8715 sd=0.2561 tol=4
 
 === mig_CTA_sbm  locator=shape_based  base located sim=0.992  perturbed located 20/20  rotRes≤0.023°  shiftRes≤0.00px  12ms
-  [1]0.32+0.2/-0.2           base=0.3584  OK/NG/NA=20/0/0  range=0.0098 sd=0.0031 tol=0.4
-  [2]1.25+0.1/-0.1           base=1.1529  OK/NG/NA=20/0/0  range=0.0015 sd=0.0003 tol=0.2
+  [1]0.32+0.2/-0.2           base=0.3584  OK/NG/NA=20/0/0  range=0.0092 sd=0.0030 tol=0.4
+  [2]1.25+0.1/-0.1           base=1.1529  OK/NG/NA=20/0/0  range=0.0014 sd=0.0004 tol=0.2
   [3]1.25+0.1/-0.1           base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=0.2  <== base NG
-  [6]1.00+0.2/-0.2           base=0.9581  OK/NG/NA=20/0/0  range=0.0075 sd=0.0017 tol=0.4
-  [5]0.4+0.2/-0.2            base=0.3075  OK/NG/NA=20/0/0  range=0.0024 sd=0.0007 tol=0.4
+  [6]1.00+0.2/-0.2           base=0.9581  OK/NG/NA=20/0/0  range=0.0060 sd=0.0017 tol=0.4
+  [5]0.4+0.2/-0.2            base=0.3075  OK/NG/NA=20/0/0  range=0.0018 sd=0.0004 tol=0.4
   [8]0.8+0.1/-0.1            base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=0.2  <== base NG
-  [9]2.7+0.2/-0.2            base=2.7954  OK/NG/NA=20/0/0  range=0.0037 sd=0.0011 tol=0.4
-  [10]6.88+0.2/-0.2          base=6.8583  OK/NG/NA=20/0/0  range=0.0042 sd=0.0015 tol=0.4
-  [19]90+2/-2                base=90.6270  OK/NG/NA=20/0/0  range=0.3551 sd=0.0808 tol=4
-  [20]90+2/-2                base=91.3857  OK/NG/NA=20/0/0  range=0.3703 sd=0.0905 tol=4
+  [9]2.7+0.2/-0.2            base=2.7954  OK/NG/NA=20/0/0  range=0.0040 sd=0.0012 tol=0.4
+  [10]6.88+0.2/-0.2          base=6.8583  OK/NG/NA=20/0/0  range=0.0040 sd=0.0013 tol=0.4
+  [19]90+2/-2                base=90.6270  OK/NG/NA=20/0/0  range=0.3905 sd=0.0818 tol=4
+  [20]90+2/-2                base=91.3857  OK/NG/NA=20/0/0  range=0.3669 sd=0.0897 tol=4
 
 === mig_BSG  locator=sig360  base located sim=0.993  perturbed located 20/20  rotRes≤0.000°  shiftRes≤0.00px  24ms
   1                          base=86.5536  OK/NG/NA=20/0/0  range=0.0164 sd=0.0043 tol=-
@@ -39,21 +39,21 @@
   [t1] 0.15                  base=0.1411  OK/NG/NA=20/0/0  range=0.0003 sd=0.0001 tol=-
   [t2] 0.15                  base=0.1432  OK/NG/NA=20/0/0  range=0.0007 sd=0.0002 tol=-
 
-=== mig_BSG_sbm  locator=shape_based  base located sim=0.996  perturbed located 20/20  rotRes≤0.040°  shiftRes≤0.05px  26ms
-  1                          base=86.5000  OK/NG/NA=20/0/0  range=0.0461 sd=0.0094 tol=-
-  [1]8.00+0.2/-0.2           base=8.1174  OK/NG/NA=20/0/0  range=0.0004 sd=0.0001 tol=0.4
+=== mig_BSG_sbm  locator=shape_based  base located sim=0.996  perturbed located 20/20  rotRes≤0.021°  shiftRes≤0.00px  25ms
+  1                          base=86.5000  OK/NG/NA=20/0/0  range=0.0075 sd=0.0017 tol=-
+  [1]8.00+0.2/-0.2           base=8.1174  OK/NG/NA=20/0/0  range=0.0003 sd=0.0001 tol=0.4
   [2]6.50+0.3/-0.3           base=6.6010  OK/NG/NA=20/0/0  range=0.0013 sd=0.0003 tol=0.6
-  [3]3.15+0.2/0.2            base=3.0652  OK/NG/NA=20/0/0  range=0.0003 sd=0.0001 tol=0.4
-  [4]2.00+0.1/0.3            base=1.8000  OK/NG/NA=20/0/0  range=0.0016 sd=0.0003 tol=0.4
-  [8] R0.5                   base=0.2795  OK/NG/NA=20/0/0  range=0.0030 sd=0.0008 tol=-
-  [11] R0.5                  base=0.5085  OK/NG/NA=20/0/0  range=0.0025 sd=0.0008 tol=-
-  [9] R1.5                   base=1.3842  OK/NG/NA=20/0/0  range=0.0006 sd=0.0001 tol=-
-  [10] R1.5                  base=1.5094  OK/NG/NA=20/0/0  range=0.0006 sd=0.0001 tol=-
-  [12] 5.50                  base=5.6334  OK/NG/NA=20/0/0  range=0.0029 sd=0.0006 tol=-
-  [6]6.50+0.2/-0.2           base=6.4317  OK/NG/NA=20/0/0  range=0.0006 sd=0.0002 tol=0.4
+  [3]3.15+0.2/0.2            base=3.0652  OK/NG/NA=20/0/0  range=0.0002 sd=0.0001 tol=0.4
+  [4]2.00+0.1/0.3            base=1.8000  OK/NG/NA=20/0/0  range=0.0004 sd=0.0001 tol=0.4
+  [8] R0.5                   base=0.2795  OK/NG/NA=20/0/0  range=0.0031 sd=0.0006 tol=-
+  [11] R0.5                  base=0.5085  OK/NG/NA=20/0/0  range=0.0022 sd=0.0008 tol=-
+  [9] R1.5                   base=1.3842  OK/NG/NA=20/0/0  range=0.0005 sd=0.0001 tol=-
+  [10] R1.5                  base=1.5094  OK/NG/NA=20/0/0  range=0.0005 sd=0.0001 tol=-
+  [12] 5.50                  base=5.6334  OK/NG/NA=20/0/0  range=0.0022 sd=0.0005 tol=-
+  [6]6.50+0.2/-0.2           base=6.4317  OK/NG/NA=20/0/0  range=0.0005 sd=0.0002 tol=0.4
   [Par]0+2/-2                base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=4  <== base NG
-  [t1] 0.15                  base=0.1446  OK/NG/NA=20/0/0  range=0.0008 sd=0.0003 tol=-
-  [t2] 0.15                  base=0.1455  OK/NG/NA=20/0/0  range=0.0006 sd=0.0002 tol=-
+  [t1] 0.15                  base=0.1446  OK/NG/NA=20/0/0  range=0.0006 sd=0.0002 tol=-
+  [t2] 0.15                  base=0.1455  OK/NG/NA=20/0/0  range=0.0007 sd=0.0002 tol=-
 
 === mig_NIP  locator=sig360  base located sim=0.990  perturbed located 20/20  rotRes≤0.333°  shiftRes≤0.00px  28ms
   1                          base=88.3924  OK/NG/NA=20/0/0  range=0.0259 sd=0.0067 tol=-
@@ -76,26 +76,26 @@
   [11] Par0+2/-2             base=-1.6076  OK/NG/NA=20/0/0  range=0.0259 sd=0.0067 tol=4
   [t1] 0.15                  base=0.1396  OK/NG/NA=20/0/0  range=0.0006 sd=0.0001 tol=-
 
-=== mig_NIP_sbm  locator=shape_based  base located sim=0.998  perturbed located 20/20  rotRes≤0.142°  shiftRes≤0.17px  57ms
-  1                          base=88.4223  OK/NG/NA=20/0/0  range=0.0221 sd=0.0057 tol=-
-  [1]12.0+0.2/-0.2           base=12.0131  OK/NG/NA=20/0/0  range=0.0010 sd=0.0003 tol=0.4
-  [3] (4.95)                 base=4.9105  OK/NG/NA=20/0/0  range=0.0013 sd=0.0004 tol=-
-  [2]7.0+0.2/-0.2            base=6.8606  OK/NG/NA=20/0/0  range=0.0019 sd=0.0004 tol=0.4
-  [9]7.0+0.3/-0.3            base=7.0550  OK/NG/NA=20/0/0  range=0.0026 sd=0.0006 tol=0.6
-  [5] (6.0)                  base=5.8535  OK/NG/NA=20/0/0  range=0.0157 sd=0.0037 tol=-
-  [4] (2.5)                  base=2.4966  OK/NG/NA=20/0/0  range=0.0020 sd=0.0005 tol=-
-  [12]0.08 MAX               base=0.0029  OK/NG/NA=20/0/0  range=0.0015 sd=0.0003 tol=-
+=== mig_NIP_sbm  locator=shape_based  base located sim=0.998  perturbed located 20/20  rotRes≤0.142°  shiftRes≤0.17px  56ms
+  1                          base=88.4223  OK/NG/NA=20/0/0  range=0.0246 sd=0.0060 tol=-
+  [1]12.0+0.2/-0.2           base=12.0131  OK/NG/NA=20/0/0  range=0.0005 sd=0.0002 tol=0.4
+  [3] (4.95)                 base=4.9105  OK/NG/NA=20/0/0  range=0.0006 sd=0.0002 tol=-
+  [2]7.0+0.2/-0.2            base=6.8606  OK/NG/NA=20/0/0  range=0.0018 sd=0.0004 tol=0.4
+  [9]7.0+0.3/-0.3            base=7.0550  OK/NG/NA=20/0/0  range=0.0017 sd=0.0003 tol=0.6
+  [5] (6.0)                  base=5.8535  OK/NG/NA=20/0/0  range=0.0037 sd=0.0009 tol=-
+  [4] (2.5)                  base=2.4966  OK/NG/NA=20/0/0  range=0.0013 sd=0.0003 tol=-
+  [12]0.08 MAX               base=0.0029  OK/NG/NA=20/0/0  range=0.0003 sd=0.0001 tol=-
   [14]7.0+0.2/-0.2           base=6.8681  OK/NG/NA=20/0/0  range=0.0009 sd=0.0003 tol=0.4
-  [15] R0.5+0.2/-0.2         base=0.5684  OK/NG/NA=20/0/0  range=0.0267 sd=0.0061 tol=0.4
-  [16] R2+0.2/-0.2           base=2.0356  OK/NG/NA=20/0/0  range=0.0037 sd=0.0009 tol=0.4
-  [17] R2+0.2/-0.2           base=2.0148  OK/NG/NA=20/0/0  range=0.0018 sd=0.0005 tol=0.4
-  [18-1]R0.5+0.2/-0.2        base=0.4341  OK/NG/NA=20/0/0  range=0.0105 sd=0.0028 tol=0.4
-  [18-2]R0.5+0.2/-0.2        base=0.5327  OK/NG/NA=20/0/0  range=0.0278 sd=0.0070 tol=0.4
-  [18-3]R0.5+0.2/-0.2        base=0.4683  OK/NG/NA=20/0/0  range=0.0163 sd=0.0038 tol=0.4
-  [18-4]R0.5+0.2/-0.2        base=0.5312  OK/NG/NA=20/0/0  range=0.0306 sd=0.0081 tol=0.4
-  [20] (5.00)                base=4.8275  OK/NG/NA=20/0/0  range=0.0032 sd=0.0008 tol=-
-  [11] Par0+2/-2             base=-1.5777  OK/NG/NA=20/0/0  range=0.0221 sd=0.0057 tol=4
-  [t1] 0.15                  base=0.1394  OK/NG/NA=20/0/0  range=0.0010 sd=0.0004 tol=-
+  [15] R0.5+0.2/-0.2         base=0.5684  OK/NG/NA=20/0/0  range=0.0020 sd=0.0005 tol=0.4
+  [16] R2+0.2/-0.2           base=2.0356  OK/NG/NA=20/0/0  range=0.0008 sd=0.0002 tol=0.4
+  [17] R2+0.2/-0.2           base=2.0148  OK/NG/NA=20/0/0  range=0.0009 sd=0.0003 tol=0.4
+  [18-1]R0.5+0.2/-0.2        base=0.4341  OK/NG/NA=20/0/0  range=0.0022 sd=0.0006 tol=0.4
+  [18-2]R0.5+0.2/-0.2        base=0.5327  OK/NG/NA=20/0/0  range=0.0049 sd=0.0010 tol=0.4
+  [18-3]R0.5+0.2/-0.2        base=0.4683  OK/NG/NA=20/0/0  range=0.0030 sd=0.0007 tol=0.4
+  [18-4]R0.5+0.2/-0.2        base=0.5312  OK/NG/NA=20/0/0  range=0.0057 sd=0.0012 tol=0.4
+  [20] (5.00)                base=4.8275  OK/NG/NA=20/0/0  range=0.0012 sd=0.0003 tol=-
+  [11] Par0+2/-2             base=-1.5777  OK/NG/NA=20/0/0  range=0.0246 sd=0.0060 tol=4
+  [t1] 0.15                  base=0.1394  OK/NG/NA=20/0/0  range=0.0012 sd=0.0003 tol=-
 
 === mig_CG  locator=sig360  base located sim=0.961  perturbed located 20/20  rotRes≤0.500°  shiftRes≤0.00px  18ms
   [2]3.8+0.2/-0.2            base=3.8553  OK/NG/NA=20/0/0  range=0.0039 sd=0.0009 tol=0.4
@@ -107,11 +107,11 @@
 
 === mig_CG_sbm  locator=shape_based  base located sim=0.988  perturbed located 20/20  rotRes≤0.043°  shiftRes≤0.06px  18ms
   [2]3.8+0.2/-0.2            base=3.8639  OK/NG/NA=20/0/0  range=0.0009 sd=0.0002 tol=0.4
-  [4]5.0+0.1/-0.1            base=5.0708  OK/NG/NA=20/0/0  range=0.0012 sd=0.0004 tol=0.2
-  HAIR 0.05MAX               base=0.0137  OK/NG/NA=20/0/0  range=0.0033 sd=0.0008 tol=-
-  [3]3.6+0.2/-0.2            base=3.6854  OK/NG/NA=20/0/0  range=0.0008 sd=0.0002 tol=0.4
-  [1]0.6+0.05/-0.05          base=0.6435  OK/NG/NA=20/0/0  range=0.0004 sd=0.0001 tol=0.1
-  [5]2.54+0.2/-.2            base=2.5458  OK/NG/NA=20/0/0  range=0.0065 sd=0.0014 tol=0.4
+  [4]5.0+0.1/-0.1            base=5.0708  OK/NG/NA=20/0/0  range=0.0012 sd=0.0003 tol=0.2
+  HAIR 0.05MAX               base=0.0137  OK/NG/NA=20/0/0  range=0.0022 sd=0.0006 tol=-
+  [3]3.6+0.2/-0.2            base=3.6854  OK/NG/NA=20/0/0  range=0.0007 sd=0.0002 tol=0.4
+  [1]0.6+0.05/-0.05          base=0.6435  OK/NG/NA=20/0/0  range=0.0005 sd=0.0001 tol=0.1
+  [5]2.54+0.2/-.2            base=2.5458  OK/NG/NA=20/0/0  range=0.0042 sd=0.0011 tol=0.4
 
 === mig_M3131  locator=sig360  base located sim=0.994  perturbed located 20/20  rotRes≤0.000°  shiftRes≤0.12px  27ms
   [1] 2+0/-0.1               base=1.9431  OK/NG/NA=20/0/0  range=0.0034 sd=0.0009 tol=0.1
@@ -123,38 +123,38 @@
   [7]5+0.1/-0.1              base=4.9837  OK/NG/NA=20/0/0  range=0.0065 sd=0.0017 tol=0.2
   [8]21.7+0.1/-0.1           base=21.7179  OK/NG/NA=20/0/0  range=0.0351 sd=0.0095 tol=0.2
 
-=== mig_M3131_sbm  locator=shape_based  base located sim=0.990  perturbed located 20/20  rotRes≤0.023°  shiftRes≤0.00px  11ms
-  [1] 2+0/-0.1               base=1.9492  OK/NG/NA=20/0/0  range=0.0123 sd=0.0023 tol=0.1
-  [2]0.9+0.1/-0              base=0.9442  OK/NG/NA=20/0/0  range=0.0008 sd=0.0002 tol=0.1
-  [4]4.3+0.1/-0              base=4.3437  OK/NG/NA=20/0/0  range=0.0004 sd=0.0001 tol=0.1
-  [3]2.5+0/-0.1              base=2.4629  OK/NG/NA=20/0/0  range=0.0020 sd=0.0008 tol=0.1
-  [5]1.6+0.1/-0              base=1.6406  OK/NG/NA=20/0/0  range=0.0106 sd=0.0037 tol=0.1
-  [6] 3+0/-0.1               base=2.9736  OK/NG/NA=20/0/0  range=0.0280 sd=0.0069 tol=0.1  <== range>25% tol
-  [7]5+0.1/-0.1              base=4.9922  OK/NG/NA=17/1/2  range=0.0974 sd=0.0252 tol=0.2  <== range>25% tol
-  [8]21.7+0.1/-0.1           base=21.7441  OK/NG/NA=18/2/0  range=0.0858 sd=0.0188 tol=0.2  <== range>25% tol
+=== mig_M3131_sbm  locator=shape_based  base located sim=0.992  perturbed located 20/20  rotRes≤0.023°  shiftRes≤0.00px  11ms
+  [1] 2+0/-0.1               base=1.9492  OK/NG/NA=20/0/0  range=0.0011 sd=0.0003 tol=0.1
+  [2]0.9+0.1/-0              base=0.9442  OK/NG/NA=20/0/0  range=0.0005 sd=0.0001 tol=0.1
+  [4]4.3+0.1/-0              base=4.3437  OK/NG/NA=20/0/0  range=0.0005 sd=0.0001 tol=0.1
+  [3]2.5+0/-0.1              base=2.4629  OK/NG/NA=20/0/0  range=0.0016 sd=0.0006 tol=0.1
+  [5]1.6+0.1/-0              base=1.6406  OK/NG/NA=20/0/0  range=0.0004 sd=0.0001 tol=0.1
+  [6] 3+0/-0.1               base=2.9738  OK/NG/NA=20/0/0  range=0.0069 sd=0.0018 tol=0.1
+  [7]5+0.1/-0.1              base=4.9922  OK/NG/NA=20/0/0  range=0.0095 sd=0.0018 tol=0.2
+  [8]21.7+0.1/-0.1           base=21.7441  OK/NG/NA=20/0/0  range=0.0120 sd=0.0037 tol=0.2
 
 === mig_BOS  locator=sig360  base NOT LOCATED  perturbed located 0/20  rotRes≤-°  shiftRes≤-px  22ms
 
-=== mig_BOS_sbm  locator=shape_based  base located sim=1.000  perturbed located 20/20  rotRes≤0.014°  shiftRes≤0.00px  50ms
-  1                          base=0.0004  OK/NG/NA=20/0/0  range=0.0004 sd=0.0001 tol=-
+=== mig_BOS_sbm  locator=shape_based  base located sim=1.000  perturbed located 20/20  rotRes≤0.014°  shiftRes≤0.00px  48ms
+  1                          base=0.0004  OK/NG/NA=20/0/0  range=0.0003 sd=0.0001 tol=-
   2                          base=NA  OK/NG/NA=0/0/20  range=- sd=- tol=-  <== base NA
   3                          base=NA  OK/NG/NA=0/0/20  range=- sd=- tol=-  <== base NA
-  4                          base=0.1010  OK/NG/NA=20/0/0  range=0.0012 sd=0.0004 tol=-
+  4                          base=0.1010  OK/NG/NA=20/0/0  range=0.0012 sd=0.0003 tol=-
   (2)8.5+0.2/0.2             base=8.6092  OK/NG/NA=20/0/0  range=0.0008 sd=0.0002 tol=0.4
-  (7)8.5+0.2/-0.2            base=8.4814  OK/NG/NA=20/0/0  range=0.0013 sd=0.0003 tol=0.4
-  (3)8.5+0.3/-0.3            base=8.6089  OK/NG/NA=15/0/5  range=0.0007 sd=0.0002 tol=0.6  <== NA under perturb
-  [Par]0+2/-2                base=2.6554  OK/NG/NA=20/0/0  range=0.0102 sd=0.0030 tol=4
-  (1-1)9.8+0.2/-0.2          base=9.8440  OK/NG/NA=20/0/0  range=0.0262 sd=0.0075 tol=0.4
+  (7)8.5+0.2/-0.2            base=8.4814  OK/NG/NA=20/0/0  range=0.0011 sd=0.0004 tol=0.4
+  (3)8.5+0.3/-0.3            base=8.6089  OK/NG/NA=15/0/5  range=0.0008 sd=0.0002 tol=0.6  <== NA under perturb
+  [Par]0+2/-2                base=2.6554  OK/NG/NA=20/0/0  range=0.0167 sd=0.0043 tol=4
+  (1-1)9.8+0.2/-0.2          base=9.8440  OK/NG/NA=20/0/0  range=0.0176 sd=0.0064 tol=0.4
   (1-2)9.8+0.2/-0.2          base=NA  OK/NG/NA=0/0/20  range=- sd=- tol=0.4  <== base NA
   H                          base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=-  <== base NG
-  [19]0.08max                base=0.0351  OK/NG/NA=20/0/0  range=0.0021 sd=0.0006 tol=-
-  [8] (R0.65)                base=NG  OK/NG/NA=0/19/1  range=- sd=- tol=-  <== base NG
-  [10] (R1)                  base=1.2153  OK/NG/NA=20/0/0  range=0.0101 sd=0.0028 tol=-
-  [13] (A153')               base=155.1191  OK/NG/NA=20/0/0  range=0.0222 sd=0.0051 tol=-
+  [19]0.08max                base=0.0351  OK/NG/NA=20/0/0  range=0.0022 sd=0.0007 tol=-
+  [8] (R0.65)                base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=-  <== base NG
+  [10] (R1)                  base=1.2153  OK/NG/NA=20/0/0  range=0.0046 sd=0.0015 tol=-
+  [13] (A153')               base=155.1191  OK/NG/NA=20/0/0  range=0.0148 sd=0.0034 tol=-
   [9] (D3.57)                base=NA  OK/NG/NA=0/0/20  range=- sd=- tol=-  <== base NA
   [12] (D3.21)               base=NA  OK/NG/NA=0/0/20  range=- sd=- tol=-  <== base NA
 
-=== mig_CON  locator=sig360  base located sim=0.991  perturbed located 20/20  rotRes≤0.000°  shiftRes≤0.08px  23ms
+=== mig_CON  locator=sig360  base located sim=0.991  perturbed located 20/20  rotRes≤0.000°  shiftRes≤0.08px  24ms
   1                          base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=-  <== base NG
   [1]5.5+0.2/-0.2            base=5.5752  OK/NG/NA=20/0/0  range=0.0015 sd=0.0004 tol=0.4
   [2]6.5+0.2/-0.2            base=6.5165  OK/NG/NA=20/0/0  range=0.0013 sd=0.0004 tol=0.4
@@ -171,22 +171,22 @@
   [R3] (R0.75)               base=0.8087  OK/NG/NA=20/0/0  range=0.0018 sd=0.0004 tol=-
   [Par]0+2/-2                base=0.7030  OK/NG/NA=20/0/0  range=0.0426 sd=0.0115 tol=4
 
-=== mig_CON_sbm  locator=shape_based  base located sim=0.996  perturbed located 20/20  rotRes≤14.938°  shiftRes≤7.10px  22ms
+=== mig_CON_sbm  locator=shape_based  base located sim=0.996  perturbed located 20/20  rotRes≤14.938°  shiftRes≤7.17px  21ms
   1                          base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=-  <== base NG
-  [1]5.5+0.2/-0.2            base=5.5763  OK/NG/NA=20/0/0  range=0.0238 sd=0.0101 tol=0.4
-  [2]6.5+0.2/-0.2            base=6.5184  OK/NG/NA=20/0/0  range=0.0018 sd=0.0006 tol=0.4
-  [3]5.5+0.2/-0.2            base=5.6175  OK/NG/NA=20/0/0  range=0.0368 sd=0.0161 tol=0.4
-  [4]6.85+0.45/-0.45         base=6.9064  OK/NG/NA=20/0/0  range=0.0699 sd=0.0316 tol=0.9
-  [5] 0.4 MAX                base=0.0692  OK/NG/NA=20/0/0  range=0.0041 sd=0.0012 tol=-
-  [D1] (0.95)                base=0.8938  OK/NG/NA=20/0/0  range=0.0173 sd=0.0069 tol=-
-  [D3] (2.23)                base=2.4624  OK/NG/NA=20/0/0  range=0.0890 sd=0.0403 tol=-
-  [R2] (R0.35)               base=0.4446  OK/NG/NA=20/0/0  range=0.0177 sd=0.0073 tol=-
-  [D2] (3.39)                base=3.3238  OK/NG/NA=20/0/0  range=0.0482 sd=0.0205 tol=-
-  [R1] (R0.87)               base=0.9657  OK/NG/NA=20/0/0  range=0.0034 sd=0.0009 tol=-
-  [A1] (170')                base=169.9480  OK/NG/NA=20/0/0  range=0.3094 sd=0.1138 tol=-
-  [A2] (160')                base=159.6533  OK/NG/NA=20/0/0  range=0.3355 sd=0.0635 tol=-
-  [R3] (R0.75)               base=0.8124  OK/NG/NA=20/0/0  range=0.0278 sd=0.0118 tol=-
-  [Par]0+2/-2                base=0.7823  OK/NG/NA=20/0/0  range=0.0491 sd=0.0136 tol=4
+  [1]5.5+0.2/-0.2            base=5.5763  OK/NG/NA=20/0/0  range=0.0233 sd=0.0102 tol=0.4
+  [2]6.5+0.2/-0.2            base=6.5184  OK/NG/NA=20/0/0  range=0.0020 sd=0.0007 tol=0.4
+  [3]5.5+0.2/-0.2            base=5.6175  OK/NG/NA=20/0/0  range=0.0365 sd=0.0161 tol=0.4
+  [4]6.85+0.45/-0.45         base=6.9064  OK/NG/NA=20/0/0  range=0.0702 sd=0.0317 tol=0.9
+  [5] 0.4 MAX                base=0.0692  OK/NG/NA=20/0/0  range=0.0045 sd=0.0012 tol=-
+  [D1] (0.95)                base=0.8938  OK/NG/NA=20/0/0  range=0.0175 sd=0.0071 tol=-
+  [D3] (2.23)                base=2.4624  OK/NG/NA=20/0/0  range=0.0891 sd=0.0405 tol=-
+  [R2] (R0.35)               base=0.4446  OK/NG/NA=20/0/0  range=0.0174 sd=0.0074 tol=-
+  [D2] (3.39)                base=3.3238  OK/NG/NA=20/0/0  range=0.0488 sd=0.0207 tol=-
+  [R1] (R0.87)               base=0.9657  OK/NG/NA=20/0/0  range=0.0027 sd=0.0008 tol=-
+  [A1] (170')                base=169.9480  OK/NG/NA=20/0/0  range=0.3139 sd=0.1152 tol=-
+  [A2] (160')                base=159.6533  OK/NG/NA=20/0/0  range=0.3155 sd=0.0616 tol=-
+  [R3] (R0.75)               base=0.8124  OK/NG/NA=20/0/0  range=0.0280 sd=0.0119 tol=-
+  [Par]0+2/-2                base=0.7823  OK/NG/NA=20/0/0  range=0.0491 sd=0.0150 tol=4
 
 === mig_8G  locator=sig360  base located sim=0.982  perturbed located 20/20  rotRes≤0.000°  shiftRes≤0.08px  22ms
   1                          base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=-  <== base NG
@@ -197,11 +197,11 @@
   [8]0.3-0.5                 base=0.3859  OK/NG/NA=20/0/0  range=0.0020 sd=0.0006 tol=-
   [9]0.3-0.5                 base=0.3799  OK/NG/NA=20/0/0  range=0.0023 sd=0.0005 tol=-
 
-=== mig_8G_sbm  locator=shape_based  base located sim=0.990  perturbed located 20/20  rotRes≤0.021°  shiftRes≤0.00px  29ms
+=== mig_8G_sbm  locator=shape_based  base located sim=0.990  perturbed located 20/20  rotRes≤0.021°  shiftRes≤0.00px  28ms
   1                          base=NG  OK/NG/NA=0/20/0  range=- sd=- tol=-  <== base NG
-  [1]7.2+0.2/-0.2            base=7.2658  OK/NG/NA=20/0/0  range=0.0008 sd=0.0002 tol=0.4
-  [2]7+0.2/-0.2              base=7.0167  OK/NG/NA=20/0/0  range=0.0026 sd=0.0005 tol=0.4
-  [3]7+0.2/-0.2              base=7.0171  OK/NG/NA=20/0/0  range=0.0030 sd=0.0006 tol=0.4
-  [Par]0+2/-2                base=0.2985  OK/NG/NA=20/0/0  range=0.0170 sd=0.0035 tol=4
-  [8]0.3-0.5                 base=0.3788  OK/NG/NA=20/0/0  range=0.0012 sd=0.0004 tol=-
-  [9]0.3-0.5                 base=0.3797  OK/NG/NA=20/0/0  range=0.0019 sd=0.0006 tol=-
+  [1]7.2+0.2/-0.2            base=7.2658  OK/NG/NA=20/0/0  range=0.0005 sd=0.0001 tol=0.4
+  [2]7+0.2/-0.2              base=7.0167  OK/NG/NA=20/0/0  range=0.0023 sd=0.0006 tol=0.4
+  [3]7+0.2/-0.2              base=7.0171  OK/NG/NA=20/0/0  range=0.0024 sd=0.0006 tol=0.4
+  [Par]0+2/-2                base=0.2984  OK/NG/NA=20/0/0  range=0.0175 sd=0.0035 tol=4
+  [8]0.3-0.5                 base=0.3789  OK/NG/NA=20/0/0  range=0.0010 sd=0.0004 tol=-
+  [9]0.3-0.5                 base=0.3797  OK/NG/NA=20/0/0  range=0.0014 sd=0.0004 tol=-
