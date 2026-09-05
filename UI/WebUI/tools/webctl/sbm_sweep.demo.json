@@ -1,0 +1,21 @@
+{
+  "recipes": [
+    { "name": "test1",     "def": "test1.hydef", "images": ["test1.png", "test1_*.png"], "max_images": 3 },
+    { "name": "MODEL3131", "def": "ok25_10514_MODEL3131_sbm.hydef" },
+    { "name": "ok00",      "def": "ok00_10206_2200300052_RHC-CP-18T07_sbm.hydef" }
+  ],
+  "params": {
+    "shape_angle_step_deg": [1, 2, 3, 4, 6],
+    "shape_match_scale": [0.5, 0.3, 0.25, 0.2],
+    "roi": [ {}, { "shape_roi_search": 30 }, { "shape_roi_prescale": 0.5 } ],
+    "shape_num_features": [128, 64]
+  },
+  "aug": [
+    { "rot_deg": 0.5 }, { "rot_deg": -1 }, { "rot_deg": 2 }, { "rot_deg": 3 },
+    { "shift_x": 0.5, "shift_y": 0 }, { "shift_x": 0, "shift_y": 0.5 }, { "shift_x": 1.5, "shift_y": 1.5 },
+    { "gain": 0.8 }, { "gain": 1.2 }, { "bias": -20 }, { "bias": 20 },
+    { "noise": 5 }, { "noise": 10 },
+    { "scale": 0.98 }, { "scale": 1.02 }
+  ],
+  "seeds": [7]
+}
