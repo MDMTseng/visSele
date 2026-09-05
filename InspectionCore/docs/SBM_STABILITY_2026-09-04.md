@@ -292,3 +292,29 @@ reports every row maximum over the floor -- tens of thousands of hits -- and
 list from the head every call. Minutes per frame; the core looked hung
 (sampled RIP: `add_item_to_array`, six samples). Hits are now capped at 600
 (all used ones first) and appended with a tail pointer.
+
+### The same rules on real field frames (test1, 2026-09-05)
+
+`data/test1_2026*.png`: 21 frames from the machine, several parts each, a
+pile in the middle of some, vignetting -- 85 located parts in all. The def is
+the hand-tuned `test1.hydef`; each variant changes only the edge thresholds
+and runs every frame (`_field_test1.mjs`, scratch):
+
+| variant | judges OK / NG / NA | OK-value std per judge (mm) |
+|---|---|---|
+| as tuned | 261 / 55 / 24 | 0.053 0.054 0.054 0.048 |
+| seed thresholds (30 / 60) | 262 / 56 / 22 | 0.049 0.053 0.056 0.048 |
+| profile floor where clean | 260 / 56 / 24 | 0.053 0.054 0.054 0.047 |
+| + `rel_strength` 0 | **231 / 66 / 43** | 0.054 0.061 0.056 0.049 |
+| + sigma | 261 / 55 / 24 | 0.053 0.054 0.054 0.049 |
+| measured polarity | 260 / 56 / 24 | (no polarity changed) |
+
+Same picture as the fleet: on this recipe the floor's exact value is nearly
+irrelevant within a wide band, sigma is neutral, and dropping the relative
+rule costs 30 judges -- in the field the strongest peak in the window moves
+with the clutter, and the relative rule is what keeps a nearer weak candidate
+from being "first". It stays. One more limit surfaced: `edgeAutoSearchPoint`
+models a first-hit scan, and this def's `method: last` search points (the far
+side of the wire) read as "no edge at the taught position" -- the auto rule
+declines them, correctly, but a `last`-aware version would be needed before it
+can serve them.
