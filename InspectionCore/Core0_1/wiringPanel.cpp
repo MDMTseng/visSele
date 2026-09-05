@@ -9062,9 +9062,34 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         // DL:1 -> downScale is a no-op, so skip the per-pixel calib sampling AND
         // the downscale buffer copy entirely; hand the working image straight to
         // the encoder. (No calibration is applied to the live full-res view.)
-        iminfo.offsetX = 0;
-        iminfo.offsetY = 0;
-        iminfo.img = &capImg;
+        //
+        // THE CROP APPLIES HERE TOO. It used to be honoured only on the DL>=2
+        // branch, so a full-res view encoded the whole 5 MB frame whatever
+        // ImageTransferSetup.crop said -- and the encode is the largest single
+        // cost on the view path (9 ms here, several times that on a 2-core
+        // target). A cv::Mat header over the crop rectangle costs no copy:
+        // imencode walks a non-continuous ROI row by row. The WebUI already
+        // places the tile by offsetX/offsetY at every scale, and fullWidth /
+        // fullHeight still describe the frame. IGNORE_DYNAMIC_VIEW leaves the
+        // crop at its full-frame default, so that path is unchanged.
+        static thread_local cv::Mat dl1_roi;
+        int cx = std::max(0, std::min(ImageCropX, capImg.cols - 1));
+        int cy = std::max(0, std::min(ImageCropY, capImg.rows - 1));
+        int cw = std::min(ImageCropW, capImg.cols - cx);
+        int ch = std::min(ImageCropH, capImg.rows - cy);
+        if (cw >= 8 && ch >= 8 && (cx > 0 || cy > 0 || cw < capImg.cols || ch < capImg.rows))
+        {
+          dl1_roi = capImg(cv::Rect(cx, cy, cw, ch));
+          iminfo.offsetX = cx;
+          iminfo.offsetY = cy;
+          iminfo.img = &dl1_roi;
+        }
+        else
+        {
+          iminfo.offsetX = 0;
+          iminfo.offsetY = 0;
+          iminfo.img = &capImg;
+        }
       }
       else
       {
