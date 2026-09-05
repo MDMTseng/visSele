@@ -82,7 +82,7 @@ for (const R of CFG.recipes) {
   // The def's own parameter set, named once so the report compares against the same run's measurement of it.
   const ownP = {}; for (const k of Object.keys(sets[0])) if (!k.startsWith('shape_roi_')) ownP[k] = getk(def0, k, REGEN_DFLT[k] ?? { shape_angle_step_deg: 1, shape_match_scale: 1, shape_min_score: 50 }[k]);
   const base_pi = sets.findIndex(s => Object.keys(s).every(k => k.startsWith('shape_roi_') ? false : s[k] === ownP[k]) );
-  emit({ recipe: R.name, meta: true, base_pi, base_params: sets[base_pi], images, n_sets: sets.length });
+  emit({ recipe: R.name, meta: true, base_pi, base_params: sets[base_pi], images, n_sets: sets.length, min_score: getk(def0, 'shape_min_score', 50) / 100 });
   // Regenerated feature caches, one per distinct extraction-knob tuple that differs from the def's own.
   const regenCache = {}; const ownRegen = regenKey(def0);
   const defFor = async (p) => {
@@ -118,7 +118,8 @@ for (const R of CFG.recipes) {
         for (const o of found) {
           const fx = o.cx / mmppEff, fy = o.cy / mmppEff; let bi = -1, bd = 40;
           exp.forEach(([ex, ey], i) => { if (used.has(i)) return; const dd = Math.hypot(fx - ex, fy - ey); if (dd < bd) { bd = dd; bi = i; } });
-          if (bi < 0) continue; used.add(bi); nMatched++;
+          if (bi < 0) { rows.push({ idx: -1, sim: o.similarity, px: [+fx.toFixed(1), +fy.toFixed(1)] }); continue; }   // an EXTRA: keep its similarity so the report can tell clutter at the threshold from a real second find
+          used.add(bi); nMatched++;
           const dr = (o.rotate - base[bi].rotate) * 180 / Math.PI; const rot = a.rot_deg || 0;
           const rotErr = Math.min(Math.abs(((dr - rot + 540) % 360) - 180), Math.abs(((dr + rot + 540) % 360) - 180));
           const js = judgeRows(o, lim); const ms_ = js.map(j => j.m).filter(m => m != null);

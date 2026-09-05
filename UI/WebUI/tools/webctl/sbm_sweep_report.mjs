@@ -7,6 +7,9 @@
 // Per parameter set the aggregate is:
 //   fail      any (image, aug) with fewer objects than the same def found unperturbed, or an extra one, or an object
 //             whose count of passing judges is below its own unperturbed count           -- HARD, both profiles
+//             EXCEPT borderline objects: one whose unperturbed similarity sits within BAND of shape_min_score (or an
+//             extra whose similarity does) is the min_score threshold flickering, not the locator knobs. Those are
+//             counted separately as "unstable count" and reported per recipe, never as a parameter-set failure.
 //   pos_p95   p95 of position repeatability error (px) over all objects and aug points
 //   rot_p95   p95 of rotation repeatability error (deg)
 //   m_ratio   min over aug of (normalised judge margin / the same object's unperturbed margin); 1 = margins untouched
@@ -23,6 +26,7 @@ const PROFILES = {
 if (process.argv[3]) Object.assign(PROFILES, JSON.parse(fs.readFileSync(process.argv[3], 'utf8')));
 const q = (arr, p) => { if (!arr.length) return null; const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
 const isOwn = (a) => Object.keys(a).length === 0;
+const BAND = +(process.env.BAND || 0.08);   // similarity band above shape_min_score that counts as borderline
 const pkey = (p) => JSON.stringify(p);
 const fmt = (p) => Object.entries(p).map(([k, v]) => k.replace('shape_', '').replace('angle_step_deg', 'step').replace('match_scale', 'scale').replace('num_features', 'nf').replace('roi_search', 'search').replace('roi_prescale', 'pre') + '=' + v).join(' ');
 
@@ -30,25 +34,37 @@ for (const recipe of [...new Set(rows.map(r => r.recipe))]) {
   const R = rows.filter(r => r.recipe === recipe);
   const byP = new Map();
   for (const r of R) { if (r.meta) continue; if (!byP.has(r.pi)) byP.set(r.pi, { params: r.params, heads: [], objs: [], error: r.error }); const g = byP.get(r.pi); if (r.obj) g.objs.push(r); else if (!r.error) g.heads.push(r); }
+  const meta0 = R.find(r => r.meta); const minScore = (meta0 && meta0.min_score) || 0.5;
   const agg = [];
   for (const [pi, g] of byP) {
     if (g.error) { agg.push({ pi, params: g.params, error: g.error }); continue; }
     const ownByImg = {}; for (const h of g.heads) if (isOwn(h.aug)) ownByImg[h.image] = h.n_base;
-    const ownObj = {}; for (const o of g.objs) if (isOwn(o.aug)) ownObj[o.image + '#' + o.obj.idx] = o.obj;
-    let fail = [], pos = [], rot = [], mr = [], sd = [], ms = [];
-    for (const h of g.heads) { if (isOwn(h.aug)) continue; if (h.n_found < h.n_base) fail.push(`${h.image} ${JSON.stringify(h.aug)}: found ${h.n_found}/${h.n_base}`); if (h.n_extra > 0) fail.push(`${h.image} ${JSON.stringify(h.aug)}: +${h.n_extra} extra`); if (h.ms) ms.push(h.ms); }
-    for (const o of g.objs) { if (isOwn(o.aug)) continue; const own = ownObj[o.image + '#' + o.obj.idx]; if (!own) continue;
+    const ownObj = {}; for (const o of g.objs) if (isOwn(o.aug) && o.obj.idx >= 0) ownObj[o.image + '#' + o.obj.idx] = o.obj;
+    const solid = (img) => Object.entries(ownObj).filter(([k, v]) => k.startsWith(img + '#') && v.sim >= minScore + BAND).map(([k]) => +k.split('#')[1]);
+    let fail = [], flicker = [], pos = [], rot = [], mr = [], sd = [], ms = [];
+    for (const h of g.heads) { if (isOwn(h.aug)) continue; if (h.ms) ms.push(h.ms);
+      const key = JSON.stringify(h.aug); const here = g.objs.filter(o => o.image === h.image && JSON.stringify(o.aug) === key);
+      const seen = new Set(here.filter(o => o.obj.idx >= 0).map(o => o.obj.idx));
+      const missSolid = solid(h.image).filter(i => !seen.has(i)); const missAny = h.n_base - seen.size;
+      if (missSolid.length) fail.push(`${h.image} ${key}: missed ${missSolid.length} solid object(s)`); else if (missAny > 0) flicker.push(`${h.image} ${key}: -${missAny}`);
+      const extras = here.filter(o => o.obj.idx < 0); const solidExtra = extras.filter(o => o.obj.sim >= minScore + BAND).length;
+      if (solidExtra) fail.push(`${h.image} ${key}: +${solidExtra} extra at sim >= ${(minScore + BAND).toFixed(2)}`); else if (h.n_extra > 0) flicker.push(`${h.image} ${key}: +${h.n_extra}`); }
+    for (const o of g.objs) { if (isOwn(o.aug) || o.obj.idx < 0) continue; const own = ownObj[o.image + '#' + o.obj.idx]; if (!own) continue;
+      if (own.sim < minScore + BAND) continue;   // borderline object: its judges are not evidence about the knobs either
       pos.push(o.obj.pos_err_px); rot.push(o.obj.rot_err_deg); sd.push(own.sim - o.obj.sim);
       if (o.obj.n_ok < own.n_ok) fail.push(`${o.image}#${o.obj.idx} ${JSON.stringify(o.aug)}: judges ${o.obj.n_ok}/${own.n_ok}`);
       if (own.min_m != null && own.min_m > 0 && o.obj.min_m != null) mr.push(o.obj.min_m / own.min_m); }
     const nOwn = Object.values(ownByImg).reduce((a, b) => a + b, 0);
-    agg.push({ pi, params: g.params, fail, nOwn, pos_p95: q(pos, 0.95), rot_p95: q(rot, 0.95), m_ratio: mr.length ? Math.min(...mr) : null, sim_drop: sd.length ? Math.max(...sd) : 0, ms: q(ms, 0.5), ms_p95: q(ms, 0.95) });
+    agg.push({ pi, params: g.params, fail, flicker, nOwn, pos_p95: q(pos, 0.95), rot_p95: q(rot, 0.95), m_ratio: mr.length ? Math.min(...mr) : null, sim_drop: sd.length ? Math.max(...sd) : 0, ms: q(ms, 0.5), ms_p95: q(ms, 0.95) });
   }
   const meta = R.find(r => r.meta); const base = agg.find(a => a.pi === (meta ? meta.base_pi : 0));
   if (!base || base.error) { console.log(`
 == ${recipe}: base parameter set missing or failed; cannot compare`); continue; }
   console.log(`\n== ${recipe}: ${agg.length} parameter sets, ${nObjs(R)} object rows; base = [${fmt(base.params)}] ms ${base.ms?.toFixed(1)} pos_p95 ${base.pos_p95} rot_p95 ${base.rot_p95} m_ratio ${base.m_ratio?.toFixed(2)} fail ${base.fail.length}`);
   if (base.fail.length) console.log('   base fails its own augmentation set:\n     ' + base.fail.slice(0, 6).join('\n     ') + (base.fail.length > 6 ? `\n     ... ${base.fail.length} total` : ''));
+  { const ownB = R.filter(r => r.obj && r.pi === base.pi && isOwn(r.aug) && r.obj.idx >= 0); const border = ownB.filter(r => r.obj.sim < minScore + BAND);
+    const setsFlk = agg.filter(a => !a.error && a.flicker && a.flicker.length).length;
+    if (border.length || base.flicker.length || setsFlk) console.log(`   min_score ${minScore.toFixed(2)} band +${BAND}: ${border.length}/${ownB.length} base objects borderline (${border.map(r => `${r.image.slice(0, 22)}#${r.obj.idx} sim ${r.obj.sim.toFixed(3)}`).join(', ')}); count flickers in ${base.flicker.length} aug points of the base, ${setsFlk}/${agg.length} sets overall -- a threshold problem, not a knob problem; not counted as failure`); }
   // sensitivity of the base: which augmentation points hurt it most (by judge-margin ratio)
   const sens = {}; for (const o of R.filter(r => r.obj && r.pi === base.pi && !isOwn(r.aug))) { const own = R.find(x => x.obj && x.pi === base.pi && isOwn(x.aug) && x.image === o.image && x.obj.idx === o.obj.idx); if (!own || own.obj.min_m == null || own.obj.min_m <= 0 || o.obj.min_m == null) continue; const k = JSON.stringify(o.aug); sens[k] = Math.min(sens[k] ?? Infinity, o.obj.min_m / own.obj.min_m); }
   const sensArr = Object.entries(sens).sort((a, b) => a[1] - b[1]).slice(0, 5); if (sensArr.length) console.log('   thinnest margins under: ' + sensArr.map(([k, v]) => `${k} x${v.toFixed(2)}`).join(', '));
