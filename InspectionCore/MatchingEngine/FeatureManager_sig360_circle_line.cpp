@@ -265,6 +265,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   cir.fit_mode = 0;  // 0=ls, 1=outer, 2=inner (LS-center envelope variants)
   // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
   cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::FALLING;
+  cir.edge_rel_strength = 0.15f; cir.edge_sigma = 0;
   cir.edge_nth = 0; cir.edge_min_strength = 0;
   {
     char *loc = (char *)JFetch(circle_obj, "locating", cJSON_String);
@@ -290,6 +291,8 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
       cir.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       cir.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
       cir.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+      cir.edge_rel_strength = JFetch_NUMBER_ex(edgeo, "rel_strength", 0.15f);
+      cir.edge_sigma        = JFetch_NUMBER_ex(edgeo, "sigma", 0);
     }
     // Envelope fit mode — top-level on the arc def. "ls" (default) | "outer" | "inner".
     char *fm = (char *)JFetch(circle_obj, "fit_mode", cJSON_String);
@@ -1867,6 +1870,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   // default caliper edge: dominant FALLING edge (white->dark), matching the backlit
   // dark-object-on-bright silhouette. Explicit def "edge.polarity" overrides.
   line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
+  line.edge_rel_strength = 0.15f; line.edge_sigma = 0;
   line.edge_nth = 0; line.edge_min_strength = 0;
   {
     char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
@@ -1898,6 +1902,8 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
       line.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       line.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
       line.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+      line.edge_rel_strength = JFetch_NUMBER_ex(edgeo, "rel_strength", 0.15f);
+      line.edge_sigma        = JFetch_NUMBER_ex(edgeo, "sigma", 0);
     }
   }
 
@@ -4865,6 +4871,8 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cal.edge.polarity     = cdef.edge_polarity;
     cal.edge.nth          = cdef.edge_nth;
     cal.edge.min_strength = cdef.edge_min_strength;
+    cal.edge.rel_strength = cdef.edge_rel_strength;
+    cal.edge.sigma        = cdef.edge_sigma;
     acv_XY off = eT.getImgOffset();
     acv_XY cc = acvVecSub(center, off);
     CaliperCircleResult rr;
@@ -5222,6 +5230,8 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   cal.edge.polarity     = lineDef.edge_polarity;
   cal.edge.nth          = lineDef.edge_nth;
   cal.edge.min_strength = lineDef.edge_min_strength;
+  cal.edge.rel_strength = lineDef.edge_rel_strength;
+  cal.edge.sigma        = lineDef.edge_sigma;
 
   acv_XY off = eT.getImgOffset();
   acv_XY p0 = acvVecSub(lineDef.p0, off);

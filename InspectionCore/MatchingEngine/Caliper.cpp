@@ -139,7 +139,32 @@ static bool profile_to_edge(const float *profile, int nAcross, float step, float
                             std::vector<float> *outGrad = nullptr)
 {
   std::vector<float> grad(nAcross, 0);
-  for (int i = 1; i < nAcross - 1; i++) grad[i] = profile[i + 1] - profile[i - 1];
+  // Optional across-edge smoothing, sigma in px -> samples. Off-image
+  // samples (valid==0) are left out of the kernel sum rather than read as 0,
+  // for the same reason the gradient guard below exists.
+  std::vector<float> sm;
+  const float *prof = profile;
+  if (edge.sigma > 0 && step > 0)
+  {
+    const float sg = edge.sigma / step;
+    const int R = std::max(1, (int)ceilf(3.0f * sg));
+    std::vector<float> k(2 * R + 1);
+    for (int d = -R; d <= R; d++) k[d + R] = expf(-0.5f * (float)(d * d) / (sg * sg));
+    sm.assign(nAcross, 0.f);
+    for (int i = 0; i < nAcross; i++)
+    {
+      double acc = 0, wsum = 0;
+      for (int d = -R; d <= R; d++)
+      {
+        int j = i + d; if (j < 0 || j >= nAcross) continue;
+        if (valid && !valid[j]) continue;
+        acc += (double)k[d + R] * profile[j]; wsum += k[d + R];
+      }
+      sm[i] = (wsum > 0) ? (float)(acc / wsum) : profile[i];
+    }
+    prof = sm.data();
+  }
+  for (int i = 1; i < nAcross - 1; i++) grad[i] = prof[i + 1] - prof[i - 1];
   grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
   // Kill the gradient wherever the central difference reads a sample that is
   // not image. The taps for i are i-1 and i+1, so those are what is checked --
@@ -406,7 +431,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     bool ok = caliper_measure(gray, c, perp, cal, bacpac, &pt, &str, &info,
                               dbg ? &profile : nullptr, &pos,
                               wantProf ? &grad : nullptr);
-    if (wantProf) r.prof.grad.push_back(std::move(grad));
+    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); }
     // Lens-undistort BEFORE the fit so a distortion-curved edge fits the true
     // straight line, not a biased one. We also undistort the nominal anchor
     // `c` so the missed-caliper visualization (stored as a CaliperHit with
@@ -562,7 +587,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     bool ok = caliper_measure(gray, c, dir, cal, bacpac, &pt, &str, &info,
                               dbg ? &prof : nullptr, &pos,
                               wantProf ? &grad : nullptr);
-    if (wantProf) r.prof.grad.push_back(std::move(grad));
+    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); }
     // Undistort the inlier hit (used for the Kasa fit) and the nominal radial
     // anchor (used as the missed-caliper marker at status=0) -- see
     // caliper_locate_line for the rationale and the NaN demote-on-divergence.

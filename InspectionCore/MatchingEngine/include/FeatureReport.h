@@ -56,6 +56,7 @@ struct CaliperHit
 struct CaliperProfiles
 {
   std::vector<std::vector<float>> grad;   // one per caliper, nAcross entries
+  std::vector<float> sel;                 // one per caliper: the sample index the selector chose, -1 = none
   float step = 0;                         // px between samples across the edge
   float L    = 0;                         // half-span; i=0 sits at -L
 };
@@ -172,6 +173,8 @@ typedef struct featureDef_circle{
   int edge_polarity;
   int edge_nth;
   float edge_min_strength;
+  float edge_rel_strength;
+  float edge_sigma;
   vector <ContourFetch::ptInfo> tmp_pt;
   Roughness_INFO ri;
 }featureDef_circle;
@@ -219,6 +222,8 @@ typedef struct featureDef_line{
   int edge_polarity;       // EdgeSelectParams::Polarity
   int edge_nth;
   float edge_min_strength;
+  float edge_rel_strength; // floor = max(min_strength, rel_strength * strongest); 0 = absolute floor
+  float edge_sigma;        // across-edge Gaussian, px; 0 = none
   /*
 
   We will rotate the picture to let image line contour pixel lie on horizontal position

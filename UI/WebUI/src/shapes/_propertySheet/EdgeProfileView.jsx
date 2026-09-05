@@ -29,6 +29,7 @@
 // sentence underneath it.
 import React, { useMemo, useRef, useState } from 'react';
 import { INPUT_STYLE, STEP_BTN_STYLE } from './primitives.jsx';
+import { edgeAuto, edgeAutoPatch } from '../_edgeAuto.js';
 
 // A peak is a local maximum of the signed gradient on the side the polarity
 // selects -- the same rule edge_select applies, so what is counted here is what
@@ -122,7 +123,22 @@ function fitParabola(x, y, w) {
 
 export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
                                   onChange, onProbe, onOffset, manualOffset,
-                                  busy, note }) {
+                                  busy, note, shape, mmpp = 0, onApply }) {
+  // ONE RULE FOR THE BUTTON AND FOR 升級. The suggestion below, the polarity
+  // it reads off the picture, sigma and the window shrink all come from
+  // _edgeAuto.js, which the upgrade flow calls on the same payload. The
+  // plots keep their own bookkeeping for colouring; the numbers that get
+  // WRITTEN come from there.
+  const auto = useMemo(() => (profile && shape) ? edgeAuto(profile, shape.edge || {}) : null,
+                       [profile, shape]);
+  const autoOk = !!(auto && auto.ok);
+  const applyAuto = (fallbackV) => {
+    if (autoOk && onApply && shape) {
+      const patch = edgeAutoPatch(shape, auto, mmpp);
+      if (patch) { onApply(patch); if (onProbe) setTimeout(onProbe, 0); return; }
+    }
+    latest.current = fallbackV; setPending(fallbackV); dirty.current = true; dragEnd();
+  };
   const [hover, setHover] = useState(null);
   // The dragged value lives here as well as on the shape.
   //
@@ -288,11 +304,11 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
     </div>
     {footer}
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-      <button type="button" data-testid="edge-profile-auto" data-suggest={suggestV}
-        onClick={() => { latest.current = suggestV; setPending(suggestV);
-                         dirty.current = true; dragEnd(); }}
+      <button type="button" data-testid="edge-profile-auto"
+        data-suggest={autoOk ? auto.min_strength : suggestV}
+        onClick={() => applyAuto(autoOk ? auto.min_strength : suggestV)}
         style={BTN}>
-        自動 {suggestV}
+        自動 {autoOk ? auto.min_strength : suggestV}
       </button>
       <button type="button" onClick={onProbe} disabled={busy}
         data-testid="edge-profile-recheck"
@@ -300,6 +316,19 @@ export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
         {busy ? '檢查中…' : '重新檢查'}
       </button>
     </div>
+    {autoOk && <div style={HINT} data-testid="edge-profile-auto-note">
+      教學位置的邊 {auto.signal}／最強競爭 {auto.noise}
+      {Number.isFinite(auto.ratio) ? <>（餘裕 <b>{auto.ratio.toFixed(1)}×</b>）</> : '（沒有競爭峰）'}
+      {auto.kind === 'caliper' && auto.polarityChanged &&
+        <span style={{ color: WARN }}>　圖上的邊是 <b>{auto.polarity}</b>，不是目前的 {polarity}</span>}
+      {auto.kind === 'caliper' && auto.sigma > 0 && <span>　軟邊，σ {auto.sigma}px</span>}
+      {auto.lengthPx != null && <span style={{ color: WARN }}>　同強度的鄰邊在窗內，建議縮窗到 ±{auto.lengthPx.toFixed(0)}px</span>}
+      {auto.marginPx != null && <span style={{ color: WARN }}>　更近處有同強度的邊，建議縮 margin 到 {auto.marginPx.toFixed(0)}px</span>}
+      {!auto.clean && <span style={{ color: WARN }}>　邊和雜訊分不開，門檻只能保住邊</span>}
+    </div>}
+    {auto && !auto.ok && <div style={{ ...HINT, color: WARN }}>
+      教學位置附近沒有邊（{auto.reason}）；自動只能沿用舊規則。
+    </div>}
     {note && <div style={{ ...HINT, color: WARN }}>{note}</div>}
   </>;
 

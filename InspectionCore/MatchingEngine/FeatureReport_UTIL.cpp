@@ -243,13 +243,20 @@ static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, 
   if (!DbgEmit("cal_hits")) return;
   if (hits.empty()) return;
   cJSON *arr = cJSON_CreateArray();
+  // Appended with a tail pointer, not cJSON_AddItemToArray: that one walks
+  // the list from the head on every call, so N hits cost N^2/2 pointer
+  // chases. At the ~600 hits a search point may now report that is nothing;
+  // at the tens of thousands it reported before the cap in SearchPointCV it
+  // was the whole frame time.
+  cJSON *tail = NULL;
   for (const CaliperHit &h : hits) {
     cJSON *o = cJSON_CreateObject();
     cJSON_AddNumberToObject(o, "x", h.pt.x - center_offset.x);
     cJSON_AddNumberToObject(o, "y", h.pt.y - center_offset.y);
     cJSON_AddNumberToObject(o, "st", h.status);
     cJSON_AddNumberToObject(o, "s",  h.strength);
-    cJSON_AddItemToArray(arr, o);
+    if (!tail) arr->child = o; else { tail->next = o; o->prev = tail; }
+    tail = o;
   }
   // UNDER "extra", not beside the measurement. The archive strips that one key
   // (see UTIL/dbRecord.js in the WebUI), so nothing here is ever written to the
@@ -292,6 +299,11 @@ static void AddCalProfile2JSON(cJSON *parent, const CaliperProfiles &prof)
   for (const std::vector<float> &one : prof.grad)
     cJSON_AddItemToArray(g, cJSON_CreateFloatArray(one.data(), (int)one.size()));
   cJSON_AddItemToObject(o, "g", g);
+  // Which sample the selector chose per caliper (-1 = none). The panel used
+  // to guess this as "the strongest peak of the polarity", which is wrong
+  // for first/last/nth and for a stronger neighbouring edge.
+  if (prof.sel.size() == prof.grad.size())
+    cJSON_AddItemToObject(o, "sel", cJSON_CreateFloatArray(prof.sel.data(), (int)prof.sel.size()));
   cJSON *extra = cJSON_GetObjectItem(parent, "extra");
   if (!extra)
   {

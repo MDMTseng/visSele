@@ -85,6 +85,12 @@ export function edgeField({ method = 'strongest', polarity = 'falling', min_stre
       // which edges exist at all. The core answers a missing one with NA and
       // says so, rather than guessing and thereby deciding the verdict.
       min_strength: 'input-number',
+      // floor = max(min_strength, rel_strength x strongest peak in the window);
+      // the core's hidden 0.15 (caliper) / 0.40 (search point) until 2026-09-05.
+      // 自動 writes 0 so a measured min_strength is absolute.
+      rel_strength: 'input-number',
+      // across-edge Gaussian before differencing, px; 0 = none (line/arc only)
+      sigma:        'input-number',
     } : undefined,
     derive: (shape) => (shape.locating === 'caliper') ? {
       method, polarity, nth: 0, min_strength,

@@ -32,7 +32,7 @@ function defaultCaliperWidth(shape, count) {
   return len > 0 ? len / count : 0.1;
 }
 
-export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', lockCaliper = false, onProbeEdges}) {
+export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', lockCaliper = false, onProbeEdges, mmpp = 0}) {
   // Single-key updater: spreads a partial patch onto the shape and pushes
   // through onUpdate. Sub-object updates use updateSub('caliper', patch).
   const update = (patch) => onUpdate({ ...shape, ...patch });
@@ -153,6 +153,7 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
           tweak ={defaultTweak}/>
         {onProbeEdges && <EdgeProfileView
           profile={edgeProfile} busy={probeBusy} note={probeNote}
+          shape={shape} mmpp={mmpp} onApply={(patch) => onUpdate({ ...shape, ...patch })}
           minStrength={shape.edge?.min_strength}
           polarity={shape.edge?.polarity}
           onChange={(min_strength) => updateSub('edge', { min_strength })}

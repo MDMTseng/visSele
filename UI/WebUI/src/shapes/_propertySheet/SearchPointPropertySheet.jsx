@@ -27,7 +27,7 @@ const wrap360 = (v) => ((Number(v) % 360) + 360) % 360;
 
 export function SearchPointPropertySheet({
   shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'search_point',
-  lockCaliper = false, onProbeEdges,
+  lockCaliper = false, onProbeEdges, mmpp = 0,
 }) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
@@ -140,6 +140,7 @@ export function SearchPointPropertySheet({
         tweak={defaultTweak} />
       {onProbeEdges && <EdgeProfileView
         profile={edgeProfile} busy={probeBusy} note={probeNote}
+        shape={shape} mmpp={mmpp} onApply={(patch) => onUpdate({ ...shape, ...patch })}
         minStrength={shape.edge?.min_strength}
         manualOffset={shape.edge?.manual_offset}
         onChange={(min_strength) => updateSub('edge', { min_strength })}

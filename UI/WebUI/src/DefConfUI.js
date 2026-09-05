@@ -63,6 +63,7 @@ import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
 import { nextFreeName, takenNamesFrom } from 'UTIL/defNaming.mjs';
 import { mmppFromLensCalib } from 'UTIL/mmppRule.mjs';
 import { convertShapeForShapeBased } from './shapes/_caliperSeed';
+import { edgeAutoCaliper, edgeAutoSearchPoint } from './shapes/_edgeAuto.js';
 import { 
   VerticalAlignTopOutlined,
   ThunderboltOutlined,
@@ -1500,31 +1501,33 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
           const g = RP && RP.data && RP.data.reports && RP.data.reports[0];
           return g && g.reports && g.reports[0];
         };
-        // EDGE POLARITY IS DECIDED BY THE TAUGHT EDGE, NOT GUESSED.
+        // POLARITY IS MEASURED. THE FLOOR IS READ OFF THE PICTURE. EACH ONLY
+        // WHERE THE FLEET SAID IT HELPS.
         //
-        // The caliper seed picks a polarity per shape type. The first version
-        // of this path flipped whatever came back NA and kept the flips that
-        // measured. That is blind to the case that actually leaks: a pair of
-        // 0.15 mm search points, both seeded `falling`, both landing on the
-        // SAME edge and reporting 0.000 -- each measures fine, so nothing is
-        // NA, and an orientation-essential judge then drops the whole part
-        // (11 of 247 field recipes, 2026-09-05). The hit records carry no edge
-        // sign, so the answer is measured, not read: every converted
-        // primitive is asked twice on the reference image, `falling` and
-        // `rising`, with its search band narrowed to NARROW_MM around the
-        // taught position (essential judges switched off for the probe so the
-        // object survives). The one that finds an edge there -- the closer one
-        // if both do -- is the taught edge. Band and judges are restored
-        // before the real verification. Fleet-measured on 247 recipes:
-        // 250 polarities changed, judges OK 1393 -> 1442, no recipe worse.
+        // 247 field recipes, judges OK summed, the same seed for every rule
+        // (2026-09-05, fleet_count / _fleet_hyb):
+        //   seed 1412 | polarity by narrow-band probe 1445 | + profile floor
+        //   where the edge is clean 1472 | + NA floor 1492 (sig360 1555).
+        // Deciding polarity from the profile instead (sign of the peak at the
+        // taught position) came out 14 judges WORSE than measuring it, and
+        // zeroing rel_strength, smoothing (sigma) or shrinking windows to the
+        // taught edge added nothing on the reference image -- the last two
+        // only cost field tolerance -- so none of those is applied here. The
+        // panel still shows them as suggestions (EdgeProfileView).
         //
-        // Then the gradient floor, only where it is still needed: a primitive
-        // that is still NA gets min_strength lowered to half its weakest
-        // measured hit (>= 5), never below what the taught image supports.
-        // Search points, which report no hit strength, follow the weakest
-        // line/arc. +36 judges on the fleet, none worse. A primitive that
-        // measures at the seed keeps the seed -- a weak edge on a part that
-        // was OK before is a finding, not a setting to tune away.
+        // 1. Every converted primitive is asked twice on the reference image,
+        //    `falling` and `rising`, with its search band narrowed to 0.06 mm
+        //    around the taught position and the essential judges off. The
+        //    polarity that measures there (the nearer one if both) is the
+        //    taught edge. The hit records carry no sign; this is how it is read.
+        // 2. With those polarities, one more inspection with edge_profile on.
+        //    Where the taught peak is clean (> 1.25x the strongest competitor
+        //    of its polarity) min_strength becomes the geometric mean of the
+        //    two -- the same number the panel's 自動 offers. Elsewhere the seed
+        //    stays. rel_strength is left alone.
+        // 3. The pass is kept only if the reference image is not worse than
+        //    the seed. Then, for what is still NA, min_strength drops to half
+        //    the weakest hit the picture has (>= 5).
         const NARROW_MM = 0.06;
         const S = BPG_Protocol.INSPECTION_STATUS;
         const nameOf = (s) => s.name || ('id ' + s.id);
@@ -1532,9 +1535,9 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
         const primsOf = (obj) => {
           const m = {};
           if (!obj) return m;
-          (obj.detectedLines || []).forEach((x) => { m[x.id] = { st: x.status, x: x.cx, y: x.cy, hits: x.extra && x.extra.cal_hits }; });
-          (obj.detectedCircles || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y, hits: x.extra && x.extra.cal_hits }; });
-          (obj.searchPoints || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y }; });
+          (obj.detectedLines || []).forEach((x) => { m[x.id] = { st: x.status, x: x.cx, y: x.cy, prof: x.extra && x.extra.edge_profile, hits: x.extra && x.extra.cal_hits }; });
+          (obj.detectedCircles || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y, prof: x.extra && x.extra.edge_profile, hits: x.extra && x.extra.cal_hits }; });
+          (obj.searchPoints || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y, prof: x.extra && x.extra.edge_profile }; });
           return m;
         };
         const taughtPt = (s) => {
@@ -1546,15 +1549,16 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
         const base = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
         // Run II on a shape list without committing it to the editor.
         const runWith = (list) => { _obj.SetShapeList(list); return runII(fresh()).then((pk) => primsOf(objOf(pk))); };
-        const probe = (pol) => base.map((s) => {
-          if (s && s.orientation_essential) return { ...s, orientation_essential: false };
+        const noEss = (list) => list.map((s) => (s && s.orientation_essential ? { ...s, orientation_essential: false } : s));
+        const probe = (pol) => noEss(base).map((s) => {
           if (!isConv(s)) return s;
           const t = { ...s, edge: { ...s.edge, polarity: pol } };
           if (s.type === 'search_point') t.margin = NARROW_MM; else t.caliper = { ...(s.caliper || {}), length: NARROW_MM };
           return t;
         });
         const judgesOK = (pk) => { const o = objOf(pk); return o ? (o.judgeReports || []).filter((j) => j.status === S.SUCCESS).length : -1; };
-        if (!base.some(isConv)) return runII(fresh()).then((pk) => ({ nFeat, nWin, pk, flipped: [], lowered: [] }));
+        const emit = (on) => { const coreId = getState().ConnInfo.CORE_ID; if (coreId) d(UIAct.EV_WS_SEND_BPG(coreId, 'ST', 0, { DEBUG_EMIT: { edge_profile: on } })); };
+        if (!base.some(isConv)) return runII(fresh()).then((pk) => ({ nFeat, nWin, pk, flipped: [], lowered: [], autoSet: 0 }));
         return runWith(probe('falling')).then((pf) => runWith(probe('rising')).then((pr) => {
           const flipped = [];
           const polList = base.map((s) => {
@@ -1570,18 +1574,40 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
             flipped.push(nameOf(s));
             return { ...s, edge: { ...s.edge, polarity: pick } };
           });
-          // Accept the polarity pass only if it is not worse than the seed on the reference image.
-          _obj.SetShapeList(base);
-          return runII(fresh()).then((pk0) => {
-            if (!flipped.length) return { list: base, pk: pk0, flipped: [] };
-            _obj.SetShapeList(polList);
-            return runII(fresh()).then((pk1) => (judgesOK(pk1) >= judgesOK(pk0)
-              ? { list: polList, pk: pk1, flipped } : { list: base, pk: pk0, flipped: [] }));
-          });
-        })).then(({ list, pk, flipped }) => {
+          // 2. the floor, from the profile of each primitive at its own polarity
+          emit(true);
+          return runWith(noEss(polList)).then((pp) => {
+            emit(false);
+            let autoSet = 0;
+            const floorList = polList.map((s) => {
+              if (!isConv(s)) return s;
+              const p = pp[s.id];
+              if (!p || !p.prof) return s;
+              const res = s.type === 'search_point' ? edgeAutoSearchPoint(p.prof, s.edge) : edgeAutoCaliper(p.prof, s.edge);
+              if (!res || !res.ok || !res.clean) return s;
+              if (res.kind === 'caliper' && res.polarity !== s.edge.polarity) return s;   // picture and measurement disagree: leave it
+              if (res.min_strength === s.edge.min_strength) return s;
+              autoSet++;
+              return { ...s, edge: { ...s.edge, min_strength: res.min_strength } };
+            });
+            log.info('[migrate] polarity+floor', { flipped, autoSet });
+            // 3. keep what is not worse than the seed on the reference image
+            _obj.SetShapeList(base);
+            return runII(fresh()).then((pk0) => {
+              const k0 = judgesOK(pk0);
+              const tryList = (list) => { _obj.SetShapeList(list); return runII(fresh()).then((pk) => ({ list, pk, k: judgesOK(pk) })); };
+              return tryList(floorList).then((r1) => {
+                if (r1.k >= k0) return { list: floorList, pk: r1.pk, flipped, autoSet };
+                if (!autoSet) return { list: base, pk: pk0, flipped: [], autoSet: 0 };
+                return tryList(polList).then((r2) => (r2.k >= k0
+                  ? { list: polList, pk: r2.pk, flipped, autoSet: 0 } : { list: base, pk: pk0, flipped: [], autoSet: 0 }));
+              });
+            });
+          }, (e) => { emit(false); throw e; });
+        })).then(({ list, pk, flipped, autoSet }) => {
           const p = primsOf(objOf(pk));
           const na = list.filter((s) => s && s.locating === 'caliper' && s.edge && (!p[s.id] || p[s.id].st !== S.SUCCESS));
-          if (!na.length) return { nFeat, nWin, pk, flipped, lowered: [], list };
+          if (!na.length) return { nFeat, nWin, pk, flipped, lowered: [], list, autoSet };
           const naIds = new Set(na.map((s) => s.id));
           const zero = list.map((s) => (naIds.has(s.id) ? { ...s, edge: { ...s.edge, min_strength: 0 } } : s));
           return runWith(zero).then((pz) => {
@@ -1603,10 +1629,10 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
               lowered.push(nameOf(s) + ' ' + s.edge.min_strength + '→' + f);
               return { ...s, edge: { ...s.edge, min_strength: f } };
             });
-            if (!lowered.length) return { nFeat, nWin, pk, flipped, lowered: [], list };
+            if (!lowered.length) return { nFeat, nWin, pk, flipped, lowered: [], list, autoSet };
             _obj.SetShapeList(low);
             return runII(fresh()).then((pk2) => (judgesOK(pk2) >= judgesOK(pk)
-              ? { nFeat, nWin, pk: pk2, flipped, lowered, list: low } : { nFeat, nWin, pk, flipped, lowered: [], list }));
+              ? { nFeat, nWin, pk: pk2, flipped, lowered, list: low, autoSet } : { nFeat, nWin, pk, flipped, lowered: [], list, autoSet }));
           });
         }).then((r) => {
           // Commit exactly the list the reported verification ran on.
@@ -1615,7 +1641,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
           return r;
         });
       })
-      .then(({ nFeat, nWin, pk, flipped, lowered }) => {
+      .then(({ nFeat, nWin, pk, flipped, lowered, autoSet }) => {
         wait.destroy();
         // Put the result on the canvas, exactly as 快速驗證 does.
         const RP = (pk || []).find((p) => p.type === 'RP');
@@ -1648,6 +1674,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
             {note && note.code && <div style={{ color: '#a8071a' }}>定位註記 {note.code}:{note.reason}</div>}
             {flipped && flipped.length > 0 && <div style={{ color: '#ad6800' }}>
               邊緣極性依教學位置上的邊實測決定,改成另一邊 {flipped.length} 個:{flipped.join(', ')}</div>}
+            {autoSet > 0 && <div>邊緣門檻依參考影像的梯度剖面設定 <b>{autoSet}</b> 個(邊和競爭峰的幾何平均,同屬性面板的「自動」);其餘沿用種子。</div>}
             {lowered && lowered.length > 0 && <div style={{ color: '#ad6800' }}>
               預設邊緣門檻量不到,依參考影像實測降低 {lowered.length} 個:{lowered.join(', ')}</div>}
             {primNote}
@@ -3980,6 +4007,7 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
           dict={DICT}
           dictTheme={edit_tar.type}
           lockCaliper={lockCaliper}
+          mmpp={(edit_info._obj && edit_info._obj.getEditorMmpp) ? edit_info._obj.getEditorMmpp() : 0}
           onProbeEdges={probeEdgeProfile}
           onUpdate={(next) => ec_canvas.SetShape(next, next.id)}
           onTracePick={(keyTrace) => ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace)}

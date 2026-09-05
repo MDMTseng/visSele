@@ -4,6 +4,7 @@
 #include "CvBridge.h"                // cvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
 #include <vector>
+#include <algorithm>
 #include <cmath>
 
 // One edge candidate: centered region coords (searchCoord along s, perpCoord along
@@ -381,14 +382,28 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // edge becomes one CaliperHit; status=2 if within considerRange of pMin
   // (contributed to the final average), 1 otherwise.
   if (outHits) {
+    // BOUNDED. With rel_strength 0 (an absolute floor) `eps` is every row
+    // maximum over min_strength -- on a 700-row window in noise that is tens
+    // of thousands, and the report writer appended them one cJSON item at a
+    // time. Measured 2026-09-05: minutes per frame, the core looking hung.
+    // The overlay needs the hits that made the answer (st=2) and a picture of
+    // the rest; it does not need every one of the rest. Keep all st=2, then
+    // the strongest others up to HITS_MAX in total.
+    const size_t HITS_MAX = 600;
     outHits->clear();
-    outHits->reserve(eps.size());
-    for (auto &e : eps) {
-      acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e.searchCoord),
-                                          acvVecMult(perp, e.perpCoord)));
-      int st = (e.perpCoord - pMin <= considerRange) ? 2 : 1;
-      outHits->push_back(CaliperHit{ep, st, e.peak});
+    std::vector<const SPEdgePt *> used, rest;
+    for (auto &e : eps) ((e.perpCoord - pMin <= considerRange) ? used : rest).push_back(&e);
+    if (used.size() + rest.size() > HITS_MAX) {
+      std::sort(rest.begin(), rest.end(), [](const SPEdgePt *a, const SPEdgePt *b) { return a->peak > b->peak; });
+      rest.resize(used.size() >= HITS_MAX ? 0 : HITS_MAX - used.size());
     }
+    outHits->reserve(used.size() + rest.size());
+    for (int pass = 0; pass < 2; pass++)
+      for (const SPEdgePt *e : (pass == 0 ? used : rest)) {
+        acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e->searchCoord),
+                                            acvVecMult(perp, e->perpCoord)));
+        outHits->push_back(CaliperHit{ep, pass == 0 ? 2 : 1, e->peak});
+      }
   }
   return true;
 }

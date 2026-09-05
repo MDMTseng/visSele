@@ -245,3 +245,50 @@ NA, lowers `min_strength` to half the weakest hit the picture actually has
 the reference image is not worse than before it. Narrowing search-point
 margins to the taught edge would add 9 more judges fleet-wide (1513) at the
 price of field tolerance; not done.
+
+## Edge parameters from the picture: what the fleet accepted (2026-09-05)
+
+Question asked: can the caliper hyper-parameters be decided automatically? The
+core now emits, on request (`DEBUG_EMIT edge_profile`), the ungated gradient
+profile of every caliper with the sample the selector chose (`sel`), and the
+candidate cloud of every search point. `_edgeAuto.js` turns that into a
+suggestion per primitive: polarity (sign of the peak at the taught position),
+`min_strength` (geometric mean of the taught peak and the strongest competitor
+of its polarity), `rel_strength` 0, `sigma` (a third of a soft edge's width),
+and a window shrink when a competitor as strong as the edge sits inside it.
+New def knobs: `edge.rel_strength` (was a hidden 0.15 caliper / 0.40 search
+point) and `edge.sigma` (across-edge Gaussian, px; default 0).
+
+Every rule was run on the 247 recipes from the same seed (lines `falling` 30,
+arcs `rising` 30, search points `falling` 60), each recipe keeping a change
+only if its reference image was not worse:
+
+| rule | judges OK |
+|---|---|
+| seed | 1412 |
+| polarity from the profile + geometric-mean floor + rel 0 | 1470 |
+| + sigma | 1469 |
+| + window shrink to the taught edge | 1494 |
+| polarity **measured** (narrow-band probe both ways) | 1445 |
+| measured polarity + NA floor (the flow shipped that morning) | 1489 |
+| measured polarity + profile floor where clean (> 1.25×) | 1472 |
+| the same with rel 0 | 1472 |
+| best of those per recipe + NA floor | **1492** |
+
+So: polarity is better measured than read (the profile vote loses on weak
+edges -- 57B8G20045045 `[22][1]`, taught peak 3 against a competitor of 28,
+still voted). Zeroing `rel_strength` is neutral when polarity is right and
+harmful when it is not (PS7884003S: four ±0.05 judges went NG because nearer
+weak candidates became first hits). Sigma is neutral on the reference image.
+Shrinking windows buys 24 judges on the reference image with field tolerance.
+The upgrade flow therefore does: measured polarity → profile floor where the
+edge is clean → keep if not worse → NA floor. The panel's 自動 writes the same
+two things (polarity, min_strength) and states the rest as sentences: the
+signal/noise ratio, sigma, and the window it would shrink to.
+
+Found on the way: with `rel_strength` 0 a 700-row search-point window
+reports every row maximum over the floor -- tens of thousands of hits -- and
+`AddCalHits2JSON` appended them with `cJSON_AddItemToArray`, which walks the
+list from the head every call. Minutes per frame; the core looked hung
+(sampled RIP: `add_item_to_array`, six samples). Hits are now capped at 600
+(all used ones first) and appended with a tail pointer.

@@ -33,7 +33,7 @@ function defaultCaliperWidth(shape, count) {
   return (L > 0 && count > 0) ? L / count : 0.1;
 }
 
-export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', lockCaliper = false, onProbeEdges}) {
+export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', lockCaliper = false, onProbeEdges, mmpp = 0}) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
     ...shape,
@@ -142,6 +142,7 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
           tweak={defaultTweak} />
         {onProbeEdges && <EdgeProfileView
           profile={edgeProfile} busy={probeBusy} note={probeNote}
+          shape={shape} mmpp={mmpp} onApply={(patch) => onUpdate({ ...shape, ...patch })}
           minStrength={shape.edge?.min_strength}
           polarity={shape.edge?.polarity}
           onChange={(min_strength) => updateSub('edge', { min_strength })}

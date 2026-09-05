@@ -22,6 +22,16 @@ struct EdgeSelectParams
   int polarity = ANY;
   int nth = 0;            // index for NTH (0-based, clamped)
   float min_strength = 0; // ignore peaks weaker than this (|grad|)
+  // The floor is the LARGER of min_strength and rel_strength * (strongest
+  // |grad| in the profile). 0.15 is what the selector always did, silently;
+  // it moves with whatever enters the window, so a measured min_strength
+  // sets this to 0 to make the floor absolute. See EdgeProfileView.jsx.
+  float rel_strength = 0.15f;
+  // Across-edge Gaussian on the intensity profile before differencing, in
+  // px. 0 = none (the historical behaviour). A wide soft edge splits into
+  // several adjacent gradient maxima without it, and first/nth then pick an
+  // edge of the hump rather than its centre.
+  float sigma = 0;
 };
 
 // Extra characteristics of the chosen edge, for quality/abnormality checks
