@@ -184,13 +184,24 @@ void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_
   // memory the SDK cannot overwrite -- this is what eliminates the
   // buffer-reuse race that the old double-checksum was (lossily) papering
   // over by dropping every mismatched frame.
-  std::vector<uint8_t> &slot = cl->_frameBufPool[cl->_frameBufIdx];
-  cl->_frameBufIdx = (cl->_frameBufIdx + 1) % FRAME_POOL_SIZE;
-  if (slot.size() < datLength) slot.resize(datLength);
-  memcpy(slot.data(), pData, datLength);
+  //
+  // If the core lent us its own buffer for this frame (frame sink), copy
+  // straight into that and skip the ring: the core then reads the frame in
+  // place instead of copying it a second time. NULL -> ring, as before.
+  uint8_t *dst = NULL;
+  if (cl->frameSink)
+    dst = cl->frameSink(cl->frameSinkCtx, datLength, pFrameInfo->nWidth, pFrameInfo->nHeight, chNum);
+  if (dst == NULL)
+  {
+    std::vector<uint8_t> &slot = cl->_frameBufPool[cl->_frameBufIdx];
+    cl->_frameBufIdx = (cl->_frameBufIdx + 1) % FRAME_POOL_SIZE;
+    if (slot.size() < datLength) slot.resize(datLength);
+    dst = slot.data();
+  }
+  memcpy(dst, pData, datLength);
 
   hikFrameInfo info = {
-    .pData = slot.data(),
+    .pData = dst,
     .pDataL = datLength,
     .frameInfo = *pFrameInfo,
     .context = context

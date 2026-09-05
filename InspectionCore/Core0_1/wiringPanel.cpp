@@ -60,6 +60,7 @@
 #include "BackLightFieldCalib.h"
 #include <dirent.h>
 #include <algorithm>
+#include <unordered_map>
 
 // After the system headers on purpose: sp.hpp pulls in the platform's own
 // socket/windows headers, and putting it above <sys/stat.h> left `struct stat`
@@ -8252,6 +8253,32 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down = NULL);
 
+// Pool slots lent to the camera layer through CameraLayer::FrameSink and not
+// yet delivered: SDK-thread borrow -> frame thread claim, matched by the
+// buffer pointer the layer hands back in CurrentFramePtr(). A slot that is
+// borrowed but never delivered (driver drops the frame after the copy) would
+// leak here; the layer's queue does not drop, so the only such path is
+// shutdown, and 30 slots at shutdown do not matter.
+static std::mutex g_sinkPendingLock;
+static std::unordered_map<const uint8_t*, image_pipe_info*> g_sinkPending;
+
+static uint8_t* frameSinkBorrow(void *ctx, size_t bytes, int width, int height, int channels)
+{
+  (void)ctx;
+  static std::atomic<int> calls{0}, nulls{0};
+  int c_ = ++calls;
+  image_pipe_info *p = bpg_pi.resPool.fetchResrc();
+  if (p == NULL) { int z = ++nulls; if (z == 1 || (z % 500) == 0) fprintf(stderr, "[frame-sink] pool empty at borrow (%d of %d calls)\n", z, c_); return NULL; }
+  try {
+    p->img.create(height, width, channels == 1 ? CV_8UC1 : CV_8UC3);
+  } catch (...) { bpg_pi.resPool.retResrc(p); return NULL; }
+  if ((size_t)p->img.total() * p->img.elemSize() < bytes || !p->img.isContinuous())
+  { bpg_pi.resPool.retResrc(p); return NULL; }
+  std::lock_guard<std::mutex> _g(g_sinkPendingLock);
+  g_sinkPending[p->img.data] = p;
+  return p->img.data;
+}
+
 CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
   if (type != CameraLayer::EV_IMG)
@@ -8325,7 +8352,21 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   // Take a buffer if one is free, otherwise drop THIS frame and come back for
   // the next one; the pipeline stays current instead of falling behind by
   // however long the slowest consumer took.
-  image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc();
+  // Did this frame arrive already inside one of our slots (frame sink)?
+  image_pipe_info *headImgPipe = NULL;
+  bool inPlace = false;
+  {
+    const uint8_t *cur = cl_obj.CurrentFramePtr();
+    std::lock_guard<std::mutex> _g(g_sinkPendingLock);
+    if (cur) { auto it = g_sinkPending.find(cur);
+      if (it != g_sinkPending.end()) { headImgPipe = it->second; g_sinkPending.erase(it); inPlace = true; } }
+  }
+  // Install the sink on first contact, so from the next frame on the SDK copy
+  // lands in the pool directly. Self-installing here rather than at the three
+  // connect sites: one place, and only for a layer that actually delivers.
+  static const bool sinkOff = (getenv("INSP_NO_FRAME_SINK") != NULL);   // A/B switch for the two-copy path
+  if (!sinkOff && cl_obj.frameSink == NULL) { cl_obj.SetFrameSink(frameSinkBorrow, NULL); LOGI("frame sink installed: SDK copy lands in the pool slot"); fprintf(stderr, "[frame-sink] installed\n"); }
+  if (headImgPipe == NULL) headImgPipe = bpg_pi.resPool.fetchResrc();
   if (headImgPipe == NULL)
   {
     int n = ++poolEmptyDropCount;
@@ -8362,8 +8403,21 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   // create() reuses the pooled buffer when size/type is unchanged (skippable
   // after the first frame), so the camera writes directly into the pool slot.
   int _ch = (finfo.channelCount == 1) ? 1 : 3;
-  tmp_img->create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
-  auto ret=cl_obj.ExtractFrame(tmp_img->data, _ch, finfo.width*finfo.height);
+  CameraLayer::status ret;
+  if (inPlace)
+  {
+    // The SDK copy already wrote the frame into this slot's Mat (frameSinkBorrow
+    // created it with the frame's own geometry). Nothing to extract.
+    ret = (tmp_img->rows == finfo.height && tmp_img->cols == finfo.width && tmp_img->channels() == _ch)
+          ? CameraLayer::ACK : CameraLayer::NAK;
+    static std::atomic<int> inPlaceN{0};
+    int n_ = ++inPlaceN; if (n_ == 1 || (n_ % 1000) == 0) { LOGI("frame in place (no ExtractFrame copy): %d frames", n_); fprintf(stderr, "[frame-sink] in place: %d frames\n", n_); }
+  }
+  else
+  {
+    tmp_img->create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
+    ret=cl_obj.ExtractFrame(tmp_img->data, _ch, finfo.width*finfo.height);
+  }
 
   // A refused frame is not a frame. ExtractFrame's status was ignored here, so
   // an unfilled -- or zero-sized -- buffer went straight on to be converted

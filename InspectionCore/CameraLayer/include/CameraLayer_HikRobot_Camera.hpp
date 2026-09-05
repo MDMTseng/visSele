@@ -77,6 +77,9 @@ protected:
   void refreshExposureFloor();
 
   static constexpr int FRAME_POOL_SIZE = 16;
+  public:
+  const uint8_t* CurrentFramePtr() const override { return _cached_pData; }
+  private:
   static constexpr int IMG_QUEUE_DEPTH = 10;
   // The pool's whole correctness argument is that a slot cannot be recycled
   // while a frame still sitting in the queue points at it. That holds only

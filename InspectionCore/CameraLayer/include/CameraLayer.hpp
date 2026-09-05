@@ -139,6 +139,25 @@ class CameraLayer{
     typedef CameraLayer::status (*CameraLayer_Callback)(
         CameraLayer &cl_obj, int type, void* context);
 
+    // ONE COPY, NOT TWO. A push-mode SDK recycles its buffer the moment the
+    // callback returns, so the layer must copy the frame somewhere stable
+    // before queueing it; the core then copied it AGAIN into its own pool
+    // slot (ExtractFrame). Two 5 MB passes per frame, the second of them
+    // purely to change owners -- and every pass evicts the working set the
+    // matcher is about to need. A frame sink lets the core lend the layer
+    // the destination up front: the SDK copy lands in the pool slot and the
+    // core recognises the frame by pointer (CurrentFramePtr) and skips
+    // ExtractFrame. NULL from the sink means "no slot right now": the layer
+    // falls back to its own ring and nothing downstream changes.
+    // Drivers that do not support it simply never call it.
+    typedef uint8_t* (*FrameSink)(void *ctx, size_t bytes, int width, int height, int channels);
+    FrameSink frameSink = NULL;
+    void *frameSinkCtx = NULL;
+    void SetFrameSink(FrameSink f, void *ctx) { frameSink = f; frameSinkCtx = ctx; }
+    // The buffer the frame being delivered lives in, or NULL if the driver
+    // does not expose it. Valid only inside the frame callback.
+    virtual const uint8_t* CurrentFramePtr() const { return NULL; }
+
     int triggerMode;
     protected:
 
