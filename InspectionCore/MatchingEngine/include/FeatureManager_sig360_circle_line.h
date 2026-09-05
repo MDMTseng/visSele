@@ -330,6 +330,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // (_ref_image_path's single underscore was the bug this avoids.)
   cJSON *shape_cache_in = NULL;        // borrowed from `root`, valid while root is
   std::string shape_cache_fp;          // fingerprint of what produced the live set
+  bool        shape_cache_stale = false; // def's extraction knobs != the cache's stamp
   cv::Rect    shape_crop;              // crop of the sidecar that IS the template
   cv::Point2f shape_origin_in_crop{0, 0};
   std::string reference_image_name;   // optional explicit sidecar PNG (relative)
@@ -358,6 +359,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
   float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
                                       // match (ROI refine restores full-res accuracy)
+  // Refine capture range. Both widen how much coarse pose error the ROI refine
+  // absorbs (so a coarser angle step / scale stays safe on big parts) and both
+  // can lock the wrong edge or the mirror pose on a symmetric part -- per-recipe
+  // knobs the tuner verifies, never raised by default. 0 = library defaults.
+  int   shape_roi_search   = 0;       // 1-D search half-range, full-res px (default 15)
+  float shape_roi_prescale = 0.0f;    // coarse-to-fine pre-pass factor in (0,1); 0 = off
   // line2Dup feature/pyramid tuning (def-overridable). Applied to BOTH the
   // template extraction and the scene matcher so their edges stay consistent.
   int   shape_num_features = 128;     // max gradient features per template

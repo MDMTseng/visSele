@@ -2431,6 +2431,15 @@ int FeatureManager_sig360_circle_line::parse_jobj()
              "the coarse downscale off.", *smscale, this->shape_match_scale);
     }
 
+    // Refine capture knobs (see the header). Bounds: a search under 5 px is
+    // below the coarse quantisation and over 100 px is a different algorithm.
+    double *srs = JFetch_NUMBER(root, "shape_roi_search");
+    if (srs != NULL && *srs >= 5 && *srs <= 100) this->shape_roi_search = (int)*srs;
+    else if (srs != NULL && *srs != 0) LOGE("shape_roi_search %.1f outside [5,100]; ignored", *srs);
+    double *srp = JFetch_NUMBER(root, "shape_roi_prescale");
+    if (srp != NULL && *srp > 0.1 && *srp < 1.0) this->shape_roi_prescale = (float)*srp;
+    else if (srp != NULL && *srp != 0) LOGE("shape_roi_prescale %.3f outside (0.1,1); ignored", *srp);
+
     // line2Dup feature/pyramid tuning (all optional; defaults preserve behavior).
     double *snf = JFetch_NUMBER(root, "shape_num_features");
     if (snf != NULL && *snf >= 8) this->shape_num_features = (int)*snf;
@@ -7603,6 +7612,31 @@ static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
 // real information -- somebody changed an extraction parameter, or swapped the
 // picture -- and the answer to it is to press regenerate, not to have the
 // machine quietly change localizer underneath the operator.
+// The stored fingerprint's PARAMETER fields, checked without the picture.
+//
+// A self-contained def never recomputes its fingerprint (that needs the image),
+// so the extraction knobs it carries -- shape_num_features, shape_pyramid_T,
+// shape_weak_thres, shape_strong_thres -- were compared with nothing. Edit one
+// and save: the def says 32 features and runs 128, forever, silently. The
+// tuner's first run "accepted" exactly that on 148 recipes. The number fields
+// are | separated in a fixed order, so the def's current values can be matched
+// against the stamp as a substring; the image sum is left alone. Returns the
+// stamp's parameter segment when it differs, empty when it matches or the stamp
+// is not in the v1 format.
+static std::string shape_cache_fp_param_mismatch(const std::string &fp, int num_features,
+                                                 const std::vector<int> &pyrT,
+                                                 float weak, float strong)
+{
+  if (fp.compare(0, 3, "v1|") != 0) return std::string();
+  std::string pyr;
+  for (size_t i = 0; i < pyrT.size(); i++) pyr += std::to_string(pyrT[i]) + ",";
+  char buf[160];
+  snprintf(buf, sizeof(buf), "|nf%d|T%s|w%.2f|s%.2f|", num_features, pyr.c_str(), weak, strong);
+  if (fp.find(buf) != std::string::npos) return std::string();
+  size_t a = fp.find("|nf"); size_t b = (a == std::string::npos) ? a : fp.find("|ao", a);
+  return (a == std::string::npos) ? fp : fp.substr(a, b == std::string::npos ? std::string::npos : b - a + 1);
+}
+
 static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
                              sbm::FeatureSet &fs, cv::Rect &crop,
                              cv::Point2f &origin_in_crop)
@@ -7865,6 +7899,15 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         cJSON *fpj = cJSON_GetObjectItem(shape_cache_in, "fp");
         shape_cache_fp = (fpj != NULL && cJSON_IsString(fpj) && fpj->valuestring != NULL)
                          ? std::string(fpj->valuestring) : std::string("self-contained");
+        std::string was = shape_cache_fp_param_mismatch(shape_cache_fp, shape_num_features,
+                                                        shape_pyramid_T, shape_weak_thres, shape_strong_thres);
+        if (!was.empty())
+          LOGW("[shape] def sets extraction knobs (nf%d T%s w%.2f s%.2f) that differ from the "
+               "features it carries (%s). The CACHE runs; the knobs do nothing until "
+               "生成特徵點 regenerates. Reported as locate.code=cache_stale.",
+               shape_num_features, [&]{ std::string p; for (int t : shape_pyramid_T) p += std::to_string(t) + ","; return p; }().c_str(),
+               shape_weak_thres, shape_strong_thres, was.c_str());
+        shape_cache_stale = !was.empty();
       }
       LOGI("[shape] self-contained def: %d ROI window(s), crop [%d,%d %dx%d] "
            "origin(%.1f,%.1f) variants=%d -- no template file was read",
@@ -7922,6 +7965,8 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         cJSON *fpj = cJSON_GetObjectItem(shape_cache_in, "fp");
         shape_cache_fp = (fpj != NULL && cJSON_IsString(fpj) && fpj->valuestring != NULL)
                          ? std::string(fpj->valuestring) : std::string("coarse-only");
+        shape_cache_stale = !shape_cache_fp_param_mismatch(shape_cache_fp, shape_num_features,
+                              shape_pyramid_T, shape_weak_thres, shape_strong_thres).empty();
       }
       // The matcher's ROI stage is gated on templ_image, which this FeatureSet
       // does not have, so the refine is skipped by construction -- not by a
@@ -8547,6 +8592,11 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   mc.weak_threshold   = shape_weak_thres;
   mc.strong_threshold = shape_strong_thres;
   mc.blur_kernel_size = shape_blur;
+  mc.roi_search_half  = shape_roi_search;
+  mc.roi_prescale     = shape_roi_prescale;
+  if (getenv("SHAPE_DBG"))
+    fprintf(stderr, "[SHAPE_DBG] matcher knobs: step %.2f scale %.3f roi_search %d roi_prescale %.2f nf %d\n",
+            shape_angle_step_deg, shape_match_scale, shape_roi_search, shape_roi_prescale, shape_num_features);
 
   // Coarse downscale, carried across magnifications instead of written per def.
   //
@@ -9052,6 +9102,19 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
                "SBM coarse locating only: the def's features carry no ROI windows "
                "(accuracy a few px, not sub-pixel). Open the SBM studio, press "
                "generate, and save.");
+    }
+  }
+  // Same shape of fact: the def's extraction knobs are not what its cache was
+  // built with. Only into an empty slot -- it changes nothing about this frame.
+  if (shape_cache_stale)
+  {
+    auto &L = report.data.sig360_circle_line.locate;
+    if (L.code[0] == 0)
+    {
+      snprintf(L.code, sizeof(L.code), "cache_stale");
+      snprintf(L.reason, sizeof(L.reason),
+               "the def's shape_num_features / thresholds differ from the features it "
+               "carries; the cache runs, the knobs do nothing until regenerated.");
     }
   }
   return 0;
