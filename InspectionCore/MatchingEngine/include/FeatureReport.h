@@ -30,6 +30,11 @@ struct CaliperHit
   acv_XY pt;
   int status;
   float strength;
+  // Signed distance, in px along this caliper's search direction, from the
+  // hit to the fitted line/arc: where the consensus says the edge is,
+  // relative to where this caliper put it. 0 for a miss or an unfitted
+  // primitive. Positive = the fit lies further along +searchDir.
+  float resid = 0;
 };
 
 // THE EVIDENCE A THRESHOLD IS SET AGAINST.
@@ -57,6 +62,7 @@ struct CaliperProfiles
 {
   std::vector<std::vector<float>> grad;   // one per caliper, nAcross entries
   std::vector<float> sel;                 // one per caliper: the sample index the selector chose, -1 = none
+  std::vector<std::vector<float>> raw;    // one per caliper: the along-averaged intensity profile the gradient came from
   float step = 0;                         // px between samples across the edge
   float L    = 0;                         // half-span; i=0 sits at -L
 };

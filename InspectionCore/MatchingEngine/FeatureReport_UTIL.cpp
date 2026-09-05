@@ -255,6 +255,7 @@ static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, 
     cJSON_AddNumberToObject(o, "y", h.pt.y - center_offset.y);
     cJSON_AddNumberToObject(o, "st", h.status);
     cJSON_AddNumberToObject(o, "s",  h.strength);
+    if (h.resid != 0) cJSON_AddNumberToObject(o, "r", h.resid);   // px along the search dir to the fit
     if (!tail) arr->child = o; else { tail->next = o; o->prev = tail; }
     tail = o;
   }
@@ -304,6 +305,20 @@ static void AddCalProfile2JSON(cJSON *parent, const CaliperProfiles &prof)
   // for first/last/nth and for a stronger neighbouring edge.
   if (prof.sel.size() == prof.grad.size())
     cJSON_AddItemToObject(o, "sel", cJSON_CreateFloatArray(prof.sel.data(), (int)prof.sel.size()));
+  // The intensity profile itself, same indexing as g. The gradient throws
+  // away the level; a rule (or a model) that wants to weigh a small step on
+  // a bright field differently from the same step next to dark needs it.
+  if (prof.raw.size() == prof.grad.size())
+  {
+    cJSON *rw = cJSON_CreateArray(); cJSON *tail = NULL;
+    for (const std::vector<float> &one : prof.raw)
+    {
+      cJSON *arr = cJSON_CreateFloatArray(one.data(), (int)one.size());
+      if (!tail) rw->child = arr; else { tail->next = arr; arr->prev = tail; }
+      tail = arr;
+    }
+    cJSON_AddItemToObject(o, "raw", rw);
+  }
   cJSON *extra = cJSON_GetObjectItem(parent, "extra");
   if (!extra)
   {

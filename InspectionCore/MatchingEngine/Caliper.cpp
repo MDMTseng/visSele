@@ -429,9 +429,9 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
     std::vector<float> grad;
     bool ok = caliper_measure(gray, c, perp, cal, bacpac, &pt, &str, &info,
-                              dbg ? &profile : nullptr, &pos,
+                              (dbg || wantProf) ? &profile : nullptr, &pos,
                               wantProf ? &grad : nullptr);
-    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); }
+    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); r.prof.raw.push_back(profile); }
     // Lens-undistort BEFORE the fit so a distortion-curved edge fits the true
     // straight line, not a biased one. We also undistort the nominal anchor
     // `c` so the missed-caliper visualization (stored as a CaliperHit with
@@ -502,6 +502,12 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   // Demote MAD-rejected hits from inlier (2) to outlier (1). Missed (0) stays 0.
   for (size_t k = 0; k < pts.size(); k++)
     if (!use[k]) r.hits[ ptCaliper[k] ].status = 1;
+  // Where the fit says the edge is, per caliper, along its own ray: the hit's
+  // normal residual projected onto the search direction (n is parallel to
+  // `perp` up to sign, so this is +-res). Consumed by the training dump.
+  if (fitOk) { const float ns = n.x * perp.x + n.y * perp.y;
+    for (size_t k = 0; k < pts.size(); k++)
+    { float d = (pts[k].x-anchor.x)*n.x + (pts[k].y-anchor.y)*n.y; r.hits[ ptCaliper[k] ].resid = -d * ns; } }
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.confidence = (ni > 0) ? (float)(sumw / ni) : 0;
@@ -585,9 +591,9 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
     std::vector<float> prof, grad;
     bool ok = caliper_measure(gray, c, dir, cal, bacpac, &pt, &str, &info,
-                              dbg ? &prof : nullptr, &pos,
+                              (dbg || wantProf) ? &prof : nullptr, &pos,
                               wantProf ? &grad : nullptr);
-    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); }
+    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); r.prof.raw.push_back(prof); }
     // Undistort the inlier hit (used for the Kasa fit) and the nominal radial
     // anchor (used as the missed-caliper marker at status=0) -- see
     // caliper_locate_line for the rationale and the NaN demote-on-divergence.
@@ -641,6 +647,9 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   { float d = hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad; sq += d*d; sumw += w[i]; ni++; }
   for (size_t k = 0; k < pts.size(); k++)
     if (!use[k]) r.hits[ ptCaliper[k] ].status = 1;
+  // Radial residual = along the caliper's own search direction (outward).
+  if (fitOk) for (size_t k = 0; k < pts.size(); k++)
+    r.hits[ ptCaliper[k] ].resid = -(hypotf(pts[k].x-cen.x, pts[k].y-cen.y) - rad);
   r.center = cen; r.radius = rad; r.nInlier = ni;
   r.rms = (ni>0)?sqrtf(sq/ni):0;
   r.confidence = (ni>0)?(float)(sumw/ni):0;
