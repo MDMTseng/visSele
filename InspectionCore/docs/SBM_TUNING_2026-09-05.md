@@ -497,3 +497,15 @@ the chosen subset) yes, and switching D->G/c-optimal is not worth it (section, e
 But the subset architecture itself is the compromise; the mature answer is all-points
 weighted robust refine, which also subsumes the overlap and distinctiveness questions
 (no subset -> no overlap to fix, robust sigma -> no gross-error point to screen).
+
+## 11. 2026-09-06: ROI de-overlap effect on existing defs -- speed only, not robustness
+
+Ran the fleet with SBM_ROI_SPACING=-1 (de-overlap on frozen defs at load, no re-migrate)
+vs off, noise A/B. Pose drift is unchanged; judge loss under noise is slightly WORSE with
+de-overlap on (sigma 5: 3 vs 2; sigma 15: 7 vs 5). De-overlap removes redundant points,
+which is faster (the 5-22% the sweep found) but also removes the point-count redundancy
+the 2x-median outlier gate relies on -- so it is a speed optimisation, NOT a robustness
+one, and marginally reduces noise resilience. Under uInsp (never-miss > speed) adopt only
+where speed matters and robustness is verified to hold. Corrects the earlier expectation
+that better conditioning would improve robustness: conditioning improves, but noise
+resilience comes from redundancy, not conditioning.
