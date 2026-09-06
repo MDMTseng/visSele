@@ -139,3 +139,17 @@ SCENE noise edges Canny fires on everywhere. A clean part does not help when the
 noise adds its own edges around it. That is exactly why a patch-correlation refine (ROI)
 is the right family for a noisy sensor even on high-contrast parts: it averages a patch,
 it does not chase individual edges.
+
+## Follow-up (2026-09-06): does Sobel-first make the ROI refine more noise-robust? No.
+
+Matched the ROI patch on gradient magnitude instead of raw intensity (roi_refine.cpp,
+SBM_ROI_SOBEL=1 plain Sobel, =2 Gaussian(3)+Sobel/DoG), same noise A/B. p95 pose drift
+(px) vs raw-intensity ROI: raw 1.06/4.53/4.85/4.95 at sigma 5/10/15/20; DoG
+4.33/4.12/12.72/16.0 (rot diverged 172deg at 20); plain Sobel 9.89/15.16/17.14/15.87.
+Plain Sobel much worse everywhere; DoG marginally better only at sigma 10, then loses /
+diverges. Sobel is a differentiator -- it multiplies high-frequency noise power, and a
+3x3 Gaussian pre-blur cannot tame it at high sigma. Raw-intensity patch NCC averages the
+zero-mean noise and stays the robust choice. Same lesson as edge-ICP: gradient/edge
+domain is noise-fragile, patch-intensity correlation is noise-robust. Knob left
+env-gated, default off, for a low-noise high-precision case where DoG's sharper peak
+might pay.
