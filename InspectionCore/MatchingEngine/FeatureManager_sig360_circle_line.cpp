@@ -8667,6 +8667,7 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   if (const char *rm = getenv("SHAPE_REFINE")) {   // diagnostic override
     if (strcmp(rm, "none") == 0) mc.refine = sbm::RefineMode::None;
     else if (strcmp(rm, "icp") == 0) mc.refine = sbm::RefineMode::ICP;
+    else if (strcmp(rm, "icp_ls") == 0) mc.refine = sbm::RefineMode::ICP_Subpixel;  // all-points; pair with SBM_ICP_ROBUST=1 SBM_ICP_WEIGHT_DIR=1
   }
   mc.T_levels         = shape_pyramid_T;
   mc.weak_threshold   = shape_weak_thres;
