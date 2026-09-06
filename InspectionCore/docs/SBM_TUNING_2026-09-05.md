@@ -419,7 +419,10 @@ the FAIL->PASS / PASS->FAIL summary for exactly this gate.
 
 Landed and safe this round (match path, all verified result-neutral): T8 local-maxima
 promotion, T4 idiv->shift + cache-order refine, template PCA cache, total-order NMS.
-Frame ~26 -> ~21 ms at 2 threads. Not adopted (change measurements or poor return):
-ROI de-overlap (default off, needs per-recipe sweep), similarityLocal register
-accumulator (1-2 ms, memory-bound, not worth the SIMD risk), angle coarse-to-fine
+Frame ~26 -> ~21 ms at 2 threads. Then similarityLocal was batched into a uint8
+accumulator (widen once per 63 features instead of per feature) -- estimated 1-2 ms
+but actually ~11% (fleet sum 6967 -> 6198, median 25.1 -> 22.4), bit-exact; the
+per-feature widen cost more than the memory-bound model predicted. SBM_NO_LOCALACC=1
+to A/B. Not adopted (change measurements or poor return):
+ROI de-overlap (default off, needs per-recipe sweep), angle coarse-to-fine
 (breaks ok97/CON). Configure-only, per recipe: angle margin (181 recipes still at 180).
