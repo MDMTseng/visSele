@@ -343,13 +343,25 @@ worst case before trusting it default-on beyond the fleet snapshot.
 
 ### The rest of round 2, ranked, NOT yet done
 
-Bit-exact, match path, worth doing next:
+Landed after the local-maxima commit (both verified result-neutral, fleet median
+25.6 -> 21.2 ms, ~13% more): accessLinearMemory uses mask/shift not idiv (T is a
+power of two, f>=0), and the refine visits candidates in (template, location) order
+so neighbours reuse L2. The 7 fleet recipes that "differ" are the run-to-run set --
+proven inherent by running one binary with the sort off on both ports (ok42/ok195
+still wiggle 1e-5 with no code change); the source is OMP completion order feeding
+the NMS stable-sort tie-break, a separate reproducibility item.
+
+Still worth doing (bit-exact, match path):
 * similarityLocal (the T4 kernel, the 78%): kill the 4 runtime idiv/feature in
   accessLinearMemory (T is 4/8 -> shift/mask), register-resident uint8 accumulator
   like similarity(), and sort candidates by (template,location) before the refine loop
   so neighbours reuse L2. Kernel agent: ~5-9 ms wall combined, all bit-exact.
 * thread_local scratch for the per-template / per-candidate Mats (~0.5 ms).
-* Build: pin -march=skylake -mavx2 -mfma (or x86-64-v3), NOT -march=native --
+* (Correctness, already safe in the shipped core.) The core builds the shape lib with
+  -mavx2 -mfma, not -march=native (InspectionCore/CMakeLists.txt:291), so no AVX-512
+  leaks into the Amber-Lake target; only the submodule's standalone test CMake uses
+  -march=native, which is dev-only. No change needed for the shipped binary.
+* Build: was -- pin -march=skylake -mavx2 -mfma (or x86-64-v3), NOT -march=native --
   native on an AVX-512 dev box emits zmm and SIGILLs the Amber-Lake target. Correctness.
 
 Auto-ROI overlap (the quality concern, also speed): production uses the grid selector
