@@ -172,3 +172,90 @@ What this says:
   hung. Fixed on `ct/2.0rc2` (`41b58f24`): hits capped at 600, tail-pointer append.
 * The core's log WS server binds 4091 unconditionally; a second core on port 4091
   beside the launcher's does not get its main port. Bench cores use 4093+.
+
+## 6. 2026-09-06: where the matcher's time goes, and what the agents found
+
+Measured on the continuous-inspection path (carousel of three `test1` field frames,
+2448x2048, `INSP_AREA_BYPASS=1` so the station gate does not drop the parts; the II
+path re-trains the matcher per request and is not representative). Stage split from
+`SBM_PROFILE=<N>` (new, env-gated, `shape_matcher.cpp` StageProf + line2Dup's
+accumulators, whose two accounting bugs -- quantize included Sobel, refine never
+counted -- are fixed):
+
+| per frame, ms | 8 thr | 2 thr |
+|---|---|---|
+| prep (resize 0.5 + pad) | 0.7 | 0.8 |
+| coarse (line2Dup) | 11.2 | 17.9 |
+| ROI refine (~2 candidates) | 4.1 | 4.4 |
+| total | 16.0 | 23.1 |
+
+Inside coarse at 2 threads, by thread-time share: **T4 local refinement 78-80%**,
+T8 full-image similarity 15%, threshold scan 6%. The reason: 360 templates x 6.5
+candidates over `min_score` 50 = ~2340 local 16x16 refinements per frame for ~2
+real objects. "Pyramid refinement 0.0 ms" in the old profiler was a dead counter.
+Preprocessing (blur, Sobel, quantize, voting, spread/linearize) is ~4.5-5 ms and does
+not scale with threads (memory-bound; 17 MB working set against a 4 MB L3 on the
+target). `OMP_WAIT_POLICY` active vs passive made no difference on the 4-core bench.
+
+Four read-only reviews (preprocessing, coarse similarity, ROI refine, system) --
+ranked by ms saved on the 2-core target per unit of accuracy risk:
+
+1. Station `insp_region`: the coarse match already runs on the crop when set
+   (FeatureManager 8812-8899); check production machine_setting. 10-14 ms.
+2. Thread config on the target: nothing sets OMP threads; libgomp opens 4, TBB 4,
+   Sobel nests OMP sections over TBB. `OMP_NUM_THREADS=2 INSP_CV_THREADS=2
+   OMP_WAIT_POLICY=passive OMP_PROC_BIND=true`; the 6500Y throttles under 4-thread
+   load. 3-8 ms plus thermal headroom.
+3. Global top-K before the T4 refinement (implemented, below). 8-9 ms.
+4. Duplicate features in the scaled detector: `addModel` (FeatureManager 8669) uses
+   the image-less overload, so the 0.5 detector gets coordinate-halved full-res
+   features; at T8 many collapse onto the same cell. Re-extract at scale (the image
+   overload, shape_matcher 2109-2139). 4-6 ms, and probably better coarse scores.
+5. `skip_voting` fused Sobel+quantize path exists (AVX2) but is off (`MatchConfig`
+   default false, FM never sets it); the default path runs a scalar quantize loop.
+   Needs `-DSBM_GRADIENT_KERNEL=1` so the operator matches extraction. 1.5 ms.
+6. ROI refine: `roiPCA` recomputed per candidate although `cached_lock_info` exists;
+   `cv::matchTemplate` 60x60 through DFT where a direct 31x31 NCC is 3x cheaper;
+   template window re-rotated per candidate. ~1 ms per candidate.
+7. Threshold scan vectorisation (0.8-1.5), level-0 spread only in candidate windows
+   (1.2), band-tiling the preprocess (2-3, seam risk), `-mavx2` on MatchingEngine.
+
+Not recommended: cross-frame pipelining (both cores are busy in coarse; breaks
+one-trigger-one-result ordering), rewriting the AVX2 kernel, the 1-D edge refine
+path (wrong-edge locks), a previous-frame angle window as a default.
+
+### Global top-K (`SBM_GLOBAL_TOPK`, default off)
+
+`matchClass` was restructured into coarse-for-all-templates -> global cap -> refine
+per candidate (`line2Dup.cpp`). Kept: global rank < K, or coarse score within
+`SBM_GLOBAL_MARGIN` (20) of the best, or among the best `SBM_GLOBAL_PER_TEMPLATE` (1)
+of its template. Results: test1 2-thread SBM 23.1 -> 14.4 ms with bit-identical poses;
+fleet (247 recipes, own picture, K=64): 229 identical, 11 differ. Of the 11, most are
+clutter at similarity 0.50-0.56 that the capped path no longer reports; ok70/72 report
+different clutter; **ok97/ok98 lose the true pose** (refined 0.992) to a 160-deg alias
+(0.872).
+
+`SBM_TOPK_DEBUG=1` shows why: the true pose's coarse T8 score is **51.5** (min_score
+50) while its refined score is 98.9 -- global rank 355, second within its template.
+On this recipe the coarse level is nearly uninformative, and the object survives
+today only because everything above 50 gets refined. Any candidate cap is unsafe
+for such a recipe, so top-K stays off by default and must be a per-recipe knob
+verified by `sbm_sweep`; the real fix is the coarse score itself (item 4 above --
+duplicate features at T8 are the prime suspect), after which a cap becomes safe.
+
+### Also fixed / found
+
+* Greedy NMS consumed `raw_matches` in OpenMP completion order, so which pose
+  claimed a location depended on thread timing (ok39: 0.617 reported where 0.991
+  stands; ok68: 5-10 objects across runs of the same picture). `raw_matches` is now
+  sorted by similarity before NMS. ok68 still varies between runs -- a second
+  order-dependence remains downstream (candidate loop / dedup), not yet located.
+* `shape_blur` is not part of the cache fingerprint; changing it silently mismatches
+  cached features.
+* Colour-camera path: `cvtColor GRAY2BGR` on 15 MB per frame only for byte-identical
+  transport (3-5 ms on the target); mono cameras unaffected.
+
+Tools: `tools/webctl/fleet_eq.mjs <portA> <portB>` inspects every recipe's own picture
+on two cores and diffs objects (count, pose, similarity, judge values); `_ci_prof.mjs`
+drives CI on the carousel and reports `insp_wall_ms`; `_ii_loop.mjs` (DUMP=1) prints
+poses for a quick A/B.
