@@ -582,6 +582,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   // not trustworthy; -1 / 0 when there was no ROI refine (coarse-only). See
   // docs/SBM_TRUST_SCORE_DESIGN.md. trust_code names a tripped gate (empty = ok).
   float trust_residual = -1.0f;
+  float trust_alt_residual = -1.0f;  ///< best OTHER-pose residual at this location (ambiguity)
   int   trust_npts = 0;
   int   trust_ninliers = 0;
   char  trust_code[16] = {0};

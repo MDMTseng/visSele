@@ -9165,13 +9165,36 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     singleReport.trust_npts     = m.refine_npts;
     singleReport.trust_ninliers = m.refine_ninliers;
     singleReport.trust_code[0]  = 0;
+    // Ambiguity: the best OTHER pose residual at this location (the alternates NMS kept
+    // in the same group -- mirror / alias, already refined this frame). If an alternate
+    // fits about as well as the chosen pose, the pick is a coin flip (the mirror-lock
+    // case coarse similarity cannot see). alt_residual = min refine_residual over other
+    // same-group members.
+    float altRes = -1.0f;
+    if (m.group >= 0) {
+      for (size_t _j = 0; _j < ms.size(); ++_j) {
+        if ((int)_j == mi) continue;
+        if (ms[_j].group != m.group) continue;
+        if (ms[_j].refine_residual < 0.0f) continue;
+        // A genuinely different pose, not a near-duplicate in the same basin.
+        float _da = std::fabs(ms[_j].angle - m.angle); if (_da > 180.f) _da = 360.f - _da;
+        if (_da < 5.0f) continue;
+        if (altRes < 0.0f || ms[_j].refine_residual < altRes) altRes = ms[_j].refine_residual;
+      }
+    }
+    singleReport.trust_alt_residual = altRes;
     {
       static const float kResMax = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 1.0f;
       static const float kInlFrac = getenv("SBM_TRUST_INL_FRAC") ? (float)atof(getenv("SBM_TRUST_INL_FRAC")) : 0.75f;
+      static const float kAmbPx  = getenv("SBM_TRUST_AMB_PX")  ? (float)atof(getenv("SBM_TRUST_AMB_PX"))  : 0.3f;
+      static const float kAmbRat = getenv("SBM_TRUST_AMB_RATIO") ? (float)atof(getenv("SBM_TRUST_AMB_RATIO")) : 1.5f;
       if (m.refine_residual >= 0.0f && m.refine_residual > kResMax)
         snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "poor_fit");
       else if (m.refine_npts > 0 && m.refine_ninliers < (int)std::ceil(kInlFrac * m.refine_npts))
         snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "low_inliers");
+      else if (altRes >= 0.0f && m.refine_residual >= 0.0f &&
+               (altRes - m.refine_residual < kAmbPx || altRes < kAmbRat * m.refine_residual))
+        snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "ambiguous_pose");
     }
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
     if (dbg)

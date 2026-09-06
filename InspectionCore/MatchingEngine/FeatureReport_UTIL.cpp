@@ -560,6 +560,7 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   {
     cJSON *tr = cJSON_CreateObject();
     cJSON_AddNumberToObject(tr, "residual", report.trust_residual);
+    if (report.trust_alt_residual >= 0.0f) cJSON_AddNumberToObject(tr, "alt_residual", report.trust_alt_residual);
     cJSON_AddNumberToObject(tr, "npts", report.trust_npts);
     cJSON_AddNumberToObject(tr, "inliers", report.trust_ninliers);
     if (report.trust_code[0]) cJSON_AddStringToObject(tr, "code", report.trust_code);

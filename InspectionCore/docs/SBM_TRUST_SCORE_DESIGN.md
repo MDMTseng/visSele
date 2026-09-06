@@ -127,3 +127,25 @@ primaries stay < 0.13 px while clutter/wrong detections read 3-5.6 px (ok68).
 Next: step 2 (ambiguity margin for the mirror cases -- ok97/98 already flag via residual,
 but ambiguity is the general catch), then wire the gates to force judges NA behind a
 per-recipe enable once the budget is accepted.
+
+## Step 2 landed (2026-09-06): ambiguity gate from the free alternates
+
+Added trust_alt_residual = the best OTHER-pose residual at the same location (the
+alternates NMS already kept in the same group and refined this frame, angle-different by
+>5deg so a near-duplicate is not its own alternate). ambiguous_pose fires when an
+alternate fits about as well as the chosen pose (alt-primary < 0.3 px OR alt < 1.5x
+primary) -- the mirror/alias case coarse similarity (0.99 at the wrong pose) cannot see.
+Env: SBM_TRUST_AMB_PX / SBM_TRUST_AMB_RATIO. Still emit-only.
+
+Fleet (239 recipes, global thresholds): 9 primary flags -- 4 poor_fit (ok39/42/97/98,
+the gross-error recipes) + 5 ambiguous_pose (ok37/ok38/ok56/ok221 -- exactly the
+documented near-symmetric / 180deg-flip parts, §3's list -- and ok67, the repetitive
+sibling of ok68). All defensible true positives; no near-duplicate false alarms after
+the 5deg guard. The ambiguity gate only sees alternates NMS kept (shape_nms_angle < 360);
+recipes that do not keep alternates need mirror synthesis (step 2b, one extra refineROI)
+to assess the mirror -- deferred, since the residual gate already catches ok97/98.
+
+When the gates are wired to force judges NA (next), ambiguous_pose must DEFER to an
+orientation-essential judge if one is present and passes -- that judge is how a symmetric
+part is legitimately resolved, so blanket-NA on ambiguous_pose would false-reject good
+symmetric parts. poor_fit / low_inliers have no such escape.
