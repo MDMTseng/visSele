@@ -8675,6 +8675,13 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   mc.roi_search_half  = shape_roi_search;
   mc.roi_prescale     = shape_roi_prescale;
   if (shape_roi_spacing != 0.0f) mc.roi_min_spacing = shape_roi_spacing;   // def opt-in; else the (off) default
+  // Refine robustness (noise reject), match-time so they work on frozen defs with no
+  // re-migration: weight each constraint by its point's self-match distinctiveness
+  // (lock_major/minor), and drop a match scoring far below the point's score_floor
+  // (a gross wrong-edge/mirror lock). Env for evaluation now; def fields once swept.
+  if (getenv("SBM_WEIGHT_BY_LOCK"))  mc.roi_weight_by_distinct = atoi(getenv("SBM_WEIGHT_BY_LOCK")) != 0;
+  if (getenv("SBM_REJECT_LOW_SCORE")) mc.roi_reject_low_score  = atoi(getenv("SBM_REJECT_LOW_SCORE")) != 0;
+  if (getenv("SBM_REJECT_PCT"))       mc.roi_reject_pct        = (float)atof(getenv("SBM_REJECT_PCT"));
   if (getenv("SHAPE_DBG"))
     fprintf(stderr, "[SHAPE_DBG] matcher knobs: step %.2f scale %.3f roi_search %d roi_prescale %.2f nf %d roi_spacing %.2f\n",
             shape_angle_step_deg, shape_match_scale, shape_roi_search, shape_roi_prescale, shape_num_features, mc.roi_min_spacing);

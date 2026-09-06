@@ -449,3 +449,51 @@ Harness note that cost an hour: env-gated behaviour and the def field appeared n
 work because seven orphaned cores from earlier launches were all LISTENING on port
 4093 (SO_REUSEADDR), and the client hit stale ones. Kill by PID from
 `netstat -ano | grep :4093`, not by image name, before trusting a bench result.
+
+## 10. 2026-09-06: how mature metrology locators do it, and what it means for the ROI question
+
+A survey of HALCON shape-based matching (Steger 2001/2002), Cognex PatMax (US7088862),
+Matrox GMF, Euresys EasyFind vs the line2Dup approach here. Verdict: the FAMILY is
+right -- every metrology-grade vendor converged on edge-gradient shape matching (score
+= mean normalised dot product of gradient DIRECTIONS, illumination-invariant, occlusion-
+tolerant) + a rigid least-squares refine on point-to-normal-line distances, 3-4 iters,
+robust-gated. line2Dup is a coarser re-implementation (8-bin quantised, spread response
+maps) of exactly HALCON's score, which is why it NEEDS the separate refine that HALCON's
+least_squares and PatMax's force-field attraction are the industrial versions of.
+
+The reframe for our ROI question: **mature systems do NOT select a handful of ROI
+points.** HALCON refines on ALL model edge points (optionally uniformly decimated),
+weighted, rejecting correspondences beyond a robust sigma. PatMax uses all edge dipoles
+with continuous weights (force distance x direction agreement x gradient magnitude) plus
+painted eval regions. The per-point matchTemplate over a chosen 8-point subset is a
+line2Dup-community compromise (per-point matchTemplate is too dear to run on all points),
+not something the industrial tools do. So "a better ROI-subset selector" is polishing a
+compromise; the near-optimal move is to stop selecting a subset.
+
+What to borrow, ranked (each needs the sweep + verdict-flip gate, all change measurements):
+1. Refine on ALL edge points, weighted + robust-sigma, point-to-normal-line LSQ (the
+   Steger/PatMax step). Replaces the per-point matchTemplate; the pose solve stays a
+   cheap 3x3 per iteration. Biggest change, biggest upside, needs a roi_refine rewrite.
+2. Sub-pixel edge extraction (Steger facet/parabola along the gradient) on template and
+   image before the LSQ -- nearest-integer correspondences leave ~0.25 px radial error.
+3. Re-score fine-level candidates with the CONTINUOUS unit-vector dot product + a
+   MinContrast noise floor (line2Dup's spread blurs the peak; HALCON keeps it sharp) --
+   this is what makes an occluded hit land in the SAME pose (repeatability).
+4. Two scores: coverage (fraction of model found) AND clutter (extra edges near the
+   model). A low clutter score is the never-miss alarm that the locator latched onto a
+   burr / foreign object -- directly serves uInsp 不可檢錯.
+5. Greediness=0-style safe search (never prune the true pose); cheap given the known
+   angle band.
+
+Evaluation hooks added (default off, match-time, work on frozen defs): SBM_WEIGHT_BY_LOCK
+(weight the solve by per-point lock distinctiveness), SBM_REJECT_LOW_SCORE / SBM_REJECT_PCT
+(drop a match below score_floor*pct -- a gross wrong-edge/mirror lock). Quick A/B: lock
+weighting moves measurements on 237/247 recipes (small, no verdict flip on the own image),
+so it is NOT a free win -- same per-recipe ground-truth gating as roi_spacing. These are
+band-aids on the subset design; item 1 is the real answer.
+
+Conclusion on "is the current auto-ROI near-optimal": on its own axis (pose covariance of
+the chosen subset) yes, and switching D->G/c-optimal is not worth it (section, earlier).
+But the subset architecture itself is the compromise; the mature answer is all-points
+weighted robust refine, which also subsumes the overlap and distinctiveness questions
+(no subset -> no overlap to fix, robust sigma -> no gross-error point to screen).
