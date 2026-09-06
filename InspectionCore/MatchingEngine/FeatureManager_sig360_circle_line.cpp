@@ -7535,27 +7535,9 @@ static bool roi_tiles_load(cJSON *roi, sbm::FeatureSet &fs, int tw, int th)
   return true;
 }
 
-static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
-                                    const cv::Point2f &origin_in_crop,
-                                    const std::string &fingerprint)
+static cJSON *shape_levels_serialise(const sbm::FeatureSet &fs)
 {
-  cJSON *o = cJSON_CreateObject();
-  cJSON_AddNumberToObject(o, "ver", 1);
-  cJSON_AddStringToObject(o, "fp", fingerprint.c_str());
-  cJSON *c = cJSON_AddArrayToObject(o, "crop");
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.x));
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.y));
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.width));
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.height));
-  cJSON *og = cJSON_AddArrayToObject(o, "origin");
-  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.x));
-  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.y));
-  // tw/th are NOT written. They were always crop.width/height -- checked across
-  // every def on this machine, 11 of 11 identical -- because the template IS the
-  // crop. Two names for one number is two things that can disagree, and the one
-  // that would win is whichever the reader happened to use.
-
-  cJSON *lv = cJSON_AddArrayToObject(o, "levels");
+  cJSON *lv = cJSON_CreateArray();
   for (const auto &L : fs.levels)
   {
     cJSON *e = cJSON_CreateObject();
@@ -7576,6 +7558,92 @@ static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
     }
     cJSON_AddItemToArray(lv, e);
   }
+  return lv;
+}
+
+// Returns the feature total, or -1 when malformed.
+static int shape_levels_load(cJSON *lv, sbm::FeatureSet &fs)
+{
+  if (!cJSON_IsArray(lv) || cJSON_GetArraySize(lv) == 0) return -1;
+  fs.levels.clear();
+  int nf_total = 0;
+  cJSON *e = NULL;
+  cJSON_ArrayForEach(e, lv)
+  {
+    sbm::FeatureSet::PyramidLevel L;
+    L.level = (int)JFetch_NUMBER_ex(e, "level", 0);
+    L.tl_x  = (int)JFetch_NUMBER_ex(e, "tl_x", 0);
+    L.tl_y  = (int)JFetch_NUMBER_ex(e, "tl_y", 0);
+    L.width = (int)JFetch_NUMBER_ex(e, "w", 0);
+    L.height= (int)JFetch_NUMBER_ex(e, "h", 0);
+    cJSON *f = cJSON_GetObjectItem(e, "f");
+    if (!cJSON_IsArray(f) || (cJSON_GetArraySize(f) % 5) != 0) return -1;
+    int n = cJSON_GetArraySize(f) / 5;
+    L.features.reserve(n);
+    for (int i = 0; i < n; i++)
+    {
+      sbm::FeatureSet::Feature ft;
+      ft.x          = (int)  cJSON_GetArrayItem(f, i*5+0)->valuedouble;
+      ft.y          = (int)  cJSON_GetArrayItem(f, i*5+1)->valuedouble;
+      ft.label      = (int)  cJSON_GetArrayItem(f, i*5+2)->valuedouble;
+      ft.theta      = (float)cJSON_GetArrayItem(f, i*5+3)->valuedouble;
+      ft.cornerness = (float)cJSON_GetArrayItem(f, i*5+4)->valuedouble;
+      L.features.push_back(ft);
+    }
+    nf_total += n;
+    fs.levels.push_back(std::move(L));
+  }
+  return nf_total;
+}
+
+// The optional "scaled" block: features re-extracted from the template resized by
+// shape_match_scale, so the down-scaled detector matches features selected and
+// oriented at ITS resolution instead of the full-res set with halved coordinates.
+// {scale, w, h, levels}. Absent -> the matcher coordinate-scales (as before).
+static cJSON *shape_scaled_serialise(const sbm::FeatureSet &fs, float scale)
+{
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "scale", scale);
+  cJSON_AddNumberToObject(o, "w", fs.templ_width);
+  cJSON_AddNumberToObject(o, "h", fs.templ_height);
+  cJSON_AddItemToObject(o, "levels", shape_levels_serialise(fs));
+  return o;
+}
+static bool shape_scaled_load(cJSON *cache, sbm::FeatureSet &fs, float &scale)
+{
+  cJSON *o = cache ? cJSON_GetObjectItem(cache, "scaled") : NULL;
+  if (!o || !cJSON_IsObject(o)) return false;
+  scale = (float)JFetch_NUMBER_ex(o, "scale", 0);
+  fs.templ_width  = (int)JFetch_NUMBER_ex(o, "w", 0);
+  fs.templ_height = (int)JFetch_NUMBER_ex(o, "h", 0);
+  if (!(scale > 0.1f && scale < 1.0f) || fs.templ_width <= 0) return false;
+  return shape_levels_load(cJSON_GetObjectItem(o, "levels"), fs) >= 16;
+}
+
+static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
+                                    const cv::Point2f &origin_in_crop,
+                                    const std::string &fingerprint,
+                                    const sbm::FeatureSet *scaled = NULL, float scaled_at = 0.0f)
+{
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "ver", 1);
+  cJSON_AddStringToObject(o, "fp", fingerprint.c_str());
+  cJSON *c = cJSON_AddArrayToObject(o, "crop");
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.x));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.y));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.width));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.height));
+  cJSON *og = cJSON_AddArrayToObject(o, "origin");
+  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.x));
+  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.y));
+  // tw/th are NOT written. They were always crop.width/height -- checked across
+  // every def on this machine, 11 of 11 identical -- because the template IS the
+  // crop. Two names for one number is two things that can disagree, and the one
+  // that would win is whichever the reader happened to use.
+
+  cJSON_AddItemToObject(o, "levels", shape_levels_serialise(fs));
+  if (scaled != NULL && !scaled->levels.empty() && scaled_at > 0.1f && scaled_at < 1.0f)
+    cJSON_AddItemToObject(o, "scaled", shape_scaled_serialise(*scaled, scaled_at));
 
   // The pixels, so this def stops needing the picture it was made from.
   // Absent for a feature set with no template image (nothing to cut windows
@@ -7685,39 +7753,12 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
                   (int)cJSON_GetArrayItem(c,2)->valuedouble, (int)cJSON_GetArrayItem(c,3)->valuedouble);
   origin_in_crop = cv::Point2f((float)cJSON_GetArrayItem(og,0)->valuedouble,
                                (float)cJSON_GetArrayItem(og,1)->valuedouble);
-  fs.levels.clear();
   // The template's size is the crop's size, by construction: templ_use is
   // templ(cropRect). Read from the one field that says it.
   fs.templ_width  = crop.width;
   fs.templ_height = crop.height;
-  int nf_total = 0;
-  cJSON *e = NULL;
-  cJSON_ArrayForEach(e, lv)
-  {
-    sbm::FeatureSet::PyramidLevel L;
-    L.level = (int)JFetch_NUMBER_ex(e, "level", 0);
-    L.tl_x  = (int)JFetch_NUMBER_ex(e, "tl_x", 0);
-    L.tl_y  = (int)JFetch_NUMBER_ex(e, "tl_y", 0);
-    L.width = (int)JFetch_NUMBER_ex(e, "w", 0);
-    L.height= (int)JFetch_NUMBER_ex(e, "h", 0);
-    cJSON *f = cJSON_GetObjectItem(e, "f");
-    if (!cJSON_IsArray(f) || (cJSON_GetArraySize(f) % 5) != 0)
-    { LOGW("[shape] cache level malformed; re-extracting"); return false; }
-    int n = cJSON_GetArraySize(f) / 5;
-    L.features.reserve(n);
-    for (int i = 0; i < n; i++)
-    {
-      sbm::FeatureSet::Feature ft;
-      ft.x          = (int)  cJSON_GetArrayItem(f, i*5+0)->valuedouble;
-      ft.y          = (int)  cJSON_GetArrayItem(f, i*5+1)->valuedouble;
-      ft.label      = (int)  cJSON_GetArrayItem(f, i*5+2)->valuedouble;
-      ft.theta      = (float)cJSON_GetArrayItem(f, i*5+3)->valuedouble;
-      ft.cornerness = (float)cJSON_GetArrayItem(f, i*5+4)->valuedouble;
-      L.features.push_back(ft);
-    }
-    nf_total += n;
-    fs.levels.push_back(std::move(L));
-  }
+  int nf_total = shape_levels_load(lv, fs);
+  if (nf_total < 0) { LOGW("[shape] cache level malformed; re-extracting"); return false; }
   if (nf_total < 16) { LOGW("[shape] cache has only %d features; re-extracting", nf_total); return false; }
   LOGI("[shape] loaded %d features from def cache (no re-extraction)", nf_total);
   // The cache-HIT counterpart of the "cache stale" line above. Without it
@@ -7854,6 +7895,8 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
         roi_tiles_load(cJSON_GetObjectItem(shape_cache_in, "roi"), fsc,
                        fsc.templ_width, fsc.templ_height))
     {
+      { sbm::FeatureSet sc; float at = 0; shapeScaledSet.reset(); shape_scaled_at = 0;
+        if (shape_scaled_load(shape_cache_in, sc, at)) { shapeScaledSet = std::make_shared<sbm::FeatureSet>(sc); shape_scaled_at = at; } }
       fsc.setOrigin(corg.x, corg.y);
       // Same offset the disk path derives, from the same def field. The other
       // two origin sources down there (sig360 centre, Otsu blob) both need the
@@ -7944,6 +7987,9 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     sbm::FeatureSet fsc;
     cv::Rect ccrop; cv::Point2f corg;
     if (shape_cache_load(shape_cache_in, std::string(), fsc, ccrop, corg))
+    { sbm::FeatureSet sc; float at = 0; shapeScaledSet.reset(); shape_scaled_at = 0;
+      if (shape_scaled_load(shape_cache_in, sc, at)) { shapeScaledSet = std::make_shared<sbm::FeatureSet>(sc); shape_scaled_at = at; } }
+    if (!fsc.levels.empty())
     {
       fsc.setOrigin(corg.x, corg.y);
       fsc.setAngleOffset(reg_angle_rad * 180.0f / (float)M_PI);
@@ -8480,6 +8526,38 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     }
 
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
+    // The down-scaled detector's own features: extract from the template resized
+    // by shape_match_scale (INTER_AREA, the same resize the scene gets), so its
+    // features are selected and oriented at match resolution. Stored in the cache
+    // as "scaled" and used when the live match scale equals this one.
+    // EXPERIMENTAL, off unless SBM_STORE_SCALED=1. Measured 2026-09-06 on six
+    // regenerated recipes: a small part resized by 0.3 keeps 9-23 features at the
+    // coarse level (ok68: 9), every match saturates to 100 and clutter climbs to
+    // 0.88; the true pose's coarse rank got WORSE (ok97: 772nd). Only the big
+    // parts (MODEL3131 131/66) came out well-populated. Needs a feature floor and
+    // probably scale-adjusted thresholds before it can be the default.
+    shapeScaledSet.reset(); shape_scaled_at = 0.0f;
+    if (getenv("SBM_STORE_SCALED") && shape_match_scale > 0.1f && shape_match_scale < 1.0f)
+    {
+      cv::Mat t_small, m_small;
+      cv::resize(templ_use, t_small, cv::Size(), shape_match_scale, shape_match_scale, cv::INTER_AREA);
+      if (!mask_use.empty()) cv::resize(mask_use, m_small, t_small.size(), 0, 0, cv::INTER_NEAREST);
+      sbm::FeatureSet sc = sbm::extractFeatures(t_small, m_small, shape_num_features,
+                                                shape_pyramid_T, shape_weak_thres, shape_strong_thres);
+      if (sc.numFeatures() < 16 && !m_small.empty())
+        sc = sbm::extractFeatures(t_small, cv::Mat(), shape_num_features,
+                                  shape_pyramid_T, shape_weak_thres, shape_strong_thres);
+      if (sc.numFeatures() >= 16)
+      {
+        shapeScaledSet = std::make_shared<sbm::FeatureSet>(sc);
+        shape_scaled_at = shape_match_scale;
+        LOGI("[shape] scaled feature set at %.3f: %d / %d features (full-res %d / %d)", shape_match_scale,
+             sc.levels.size() > 0 ? (int)sc.levels[0].features.size() : 0,
+             sc.levels.size() > 1 ? (int)sc.levels[1].features.size() : 0,
+             fset.levels.size() > 0 ? (int)fset.levels[0].features.size() : 0,
+             fset.levels.size() > 1 ? (int)fset.levels[1].features.size() : 0);
+      }
+    }
     // Remember what produced this set so it can be written into the def.
     shape_crop = cropRect;
     shape_origin_in_crop = origin_use;
@@ -8666,7 +8744,15 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   // Pre-scale the model variants (magnification portability). 1.0 = teach scale.
   modc.scale.min = scale; modc.scale.max = scale; modc.scale.step = 1.0f;
 
-  int nv = m->addModel("def", *shapeFeatureSet, modc);
+  // SBM_NO_SCALED_SET=1: ignore a stored scaled set (A/B against coordinate scaling).
+  const sbm::FeatureSet *scaledUse = NULL;
+  if (shapeScaledSet && !getenv("SBM_NO_SCALED_SET"))
+  {
+    if (fabsf(shape_scaled_at - ms_eff) < 1e-3f) scaledUse = shapeScaledSet.get();
+    else LOGW("[shape] stored scaled features are at %.3f but the live match scale is %.3f; "
+              "coordinate-scaling the full-res set instead (regenerate to refresh)", shape_scaled_at, ms_eff);
+  }
+  int nv = m->addModel("def", *shapeFeatureSet, modc, scaledUse);
   if (nv <= 0) return nv;
   shapeMatcher      = m;
   shape_built_scale = scale;
@@ -8717,7 +8803,8 @@ cJSON *FeatureManager_sig360_circle_line::getShapeFeaturePointsJson()
   // set, so what gets saved is exactly what just ran.
   if (shapeFeatureSet && !shape_cache_fp.empty())
     cJSON_AddItemToObject(root, "shape_cache",
-      shape_cache_serialise(*shapeFeatureSet, shape_crop, shape_origin_in_crop, shape_cache_fp));
+      shape_cache_serialise(*shapeFeatureSet, shape_crop, shape_origin_in_crop, shape_cache_fp,
+                            shapeScaledSet.get(), shape_scaled_at));
 
   cJSON *rois = cJSON_AddArrayToObject(root, "roi");
   for (const acv_XY &p : shape_roi_mm)

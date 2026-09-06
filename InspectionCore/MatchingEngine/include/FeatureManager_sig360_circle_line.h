@@ -330,6 +330,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // (_ref_image_path's single underscore was the bug this avoids.)
   cJSON *shape_cache_in = NULL;        // borrowed from `root`, valid while root is
   std::string shape_cache_fp;          // fingerprint of what produced the live set
+  // Features re-extracted from the template resized by shape_match_scale, for
+  // the down-scaled coarse detector (levels only). Absent on defs generated
+  // before 2026-09-06; then the matcher coordinate-scales the full-res set.
+  std::shared_ptr<sbm::FeatureSet> shapeScaledSet;
+  float shape_scaled_at = 0.0f;        // the match_scale the scaled set was extracted at
   bool        shape_cache_stale = false; // def's extraction knobs != the cache's stamp
   cv::Rect    shape_crop;              // crop of the sidecar that IS the template
   cv::Point2f shape_origin_in_crop{0, 0};

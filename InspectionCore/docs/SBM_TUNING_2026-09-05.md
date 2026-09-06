@@ -259,3 +259,35 @@ Tools: `tools/webctl/fleet_eq.mjs <portA> <portB>` inspects every recipe's own p
 on two cores and diffs objects (count, pose, similarity, judge values); `_ci_prof.mjs`
 drives CI on the carousel and reports `insp_wall_ms`; `_ii_loop.mjs` (DUMP=1) prints
 poses for a quick A/B.
+
+### Re-extracting the down-scaled detector's features (experimental, `SBM_STORE_SCALED=1`)
+
+The cache can now carry a `scaled` block: features extracted from the template
+resized by `shape_match_scale`, used by the 0.x detector instead of the full-res set
+with halved coordinates (`FeatureManager` stores it at SF, `ShapeMatcher::addModel`
+takes it as a fourth argument; `SBM_NO_SCALED_SET=1` ignores it for A/B). Six
+recipes regenerated and compared against coordinate scaling on their own picture:
+
+| recipe | full-res levels | scaled (0.3) levels | effect |
+|---|---|---|---|
+| MODEL3131 (2194 px) | 129 / 65 | 131 / 66 | same pose, similarity 0.992 -> 1.000 |
+| ok39 (1344 px) | 132 / 77 | 131 / 51 | true pose found (1.000); clutter up to 0.744 |
+| ok97 (1628 px, thin) | 90 / 65 | 43 / 23 | pose 1.000 but coarse rank of the true pose 772nd |
+| ok68 (398 px) | 108 / 58 | 34 / **9** | every object 0.882-1.000: nine features saturate |
+
+So the scaled set is right in principle and wrong in practice for small parts at
+0.3: the blur + INTER_AREA resize leaves too few gradients above the thresholds,
+the coarse score saturates, and the coarse rank of the true pose gets worse, not
+better. It stays off by default. To become the default it needs a feature floor at
+the coarse level (fall back to coordinate scaling below it) and probably thresholds
+scaled with the resize.
+
+Two things the experiment exposed on the way:
+* **Regenerating a def today produces ~128 / 65 features; the fleet caches carry
+  645-705 / 325-385 with the same fingerprint parameters.** The selector changed
+  semantics at some point (128 is now a floor on spacing, not a cap). A def that is
+  regenerated changes its coarse behaviour and time without any parameter moving.
+* The coarse T8 level is a weak discriminator for small parts at scale 0.3 whatever
+  the features: the "refine everything above min_score" policy is what makes those
+  recipes work, and it is also the 78% of matcher time. Speed and safety here are
+  the same knob; the sweep has to see both.
