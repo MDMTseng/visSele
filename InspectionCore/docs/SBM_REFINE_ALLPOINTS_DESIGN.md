@@ -153,3 +153,19 @@ zero-mean noise and stays the robust choice. Same lesson as edge-ICP: gradient/e
 domain is noise-fragile, patch-intensity correlation is noise-robust. Knob left
 env-gated, default off, for a low-noise high-precision case where DoG's sharper peak
 might pay.
+
+## Follow-up 2 (2026-09-06): Gaussian pre-blur before the ROI NCC? Neutral, slight risk.
+
+SBM_ROI_BLUR=<k> low-passes both patch and window before the raw-intensity NCC (pure
+denoise, not a differentiator). p95 pose drift vs raw: ~unchanged at sigma 5-15 (raw
+4.53/4.85 vs blur3 4.43/4.44 at sigma 10/15), but at sigma 20 blur3 DIVERGED on a
+fragile recipe (178deg / 17.5px) that raw did not; blur5 12px. Not a win.
+Reason: the ROI NCC already correlates ~900 px of the 30x30 patch -- that averaging IS
+the noise suppression, so a 3-5px Gaussian adds almost nothing and can soften/shift the
+peak enough to tip a marginal part into a wrong lock.
+
+Conclusion of the refine-preprocessing line (Sobel, DoG, Gaussian): the raw-intensity
+patch NCC is already near its noise-robustness ceiling; no patch-domain preprocessing
+improves it. The remaining high-noise failures are on geometrically fragile parts, which
+no refine-input transform fixes -- those need coarse-stage / geometry work. Both knobs
+(SBM_ROI_SOBEL, SBM_ROI_BLUR) stay env-gated, default off.
