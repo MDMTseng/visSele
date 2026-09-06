@@ -312,5 +312,8 @@ either the known run-to-run NMS-order clutter (ok68/70/72/213, which differ A-vs
 too) or a 1e-5 last-digit float change from the rebuild (ok42/ok195: same pose to
 5 dp, same judge status). insp_wall_ms fleet median 26.9 -> 25.7, sum 7494 -> 7218
 (~4%). Small, because the refine is ~4 ms of a ~26 ms frame and PCA is ~20% of it;
-zero accuracy cost. The larger refine item (direct 31x31 NCC instead of
-`cv::matchTemplate`'s DFT) is still open.
+zero accuracy cost. A direct 31x31 NCC was then tried in place of `cv::matchTemplate`, on the review's
+claim that these small sizes route through a DFT. On this OpenCV 4.13 build that is
+false: `matchTemplate` already does a tuned spatial correlation, and the hand-written
+NCC (integral image for window energy, double accumulation) ran the frame at 50 ms vs
+25 and shifted 91 recipes at the 1e-4 judge level. Reverted -- `matchTemplate` stays.
