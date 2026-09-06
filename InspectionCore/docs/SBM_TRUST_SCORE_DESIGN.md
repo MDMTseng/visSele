@@ -149,3 +149,46 @@ When the gates are wired to force judges NA (next), ambiguous_pose must DEFER to
 orientation-essential judge if one is present and passes -- that judge is how a symmetric
 part is legitimately resolved, so blanket-NA on ambiguous_pose would false-reject good
 symmetric parts. poor_fit / low_inliers have no such escape.
+
+## Deformation caveat (2026-09-06): shear/scale are required robustness axes; poor_fit must carry a deformation budget
+
+Real parts deform -- parallelism, height, skew -- so robustness testing must include SHEAR
+(skew) and SCALE, not just rot/shift/gain/noise. Fleet run (239 recipes, _deform.mjs,
+own image + skew 0..0.06 and scale 0.97..1.03):
+
+| deform | found | res_med px | res_p95 | poor_fit flags/239 |
+|---|---|---|---|---|
+| none | 239/239 | 0.013 | 0.14 | 9 |
+| skew 0.01 | 239 | 0.53 | 1.50 | 48 |
+| skew 0.02 | 238 | 1.01 | 2.75 | 132 |
+| skew 0.04 | 237 | 2.09 | 5.15 | 208 |
+| scale 1% | 238 | 1.38 | 3.43 | 179 |
+| scale 2% | 238 | 2.67 | 6.68 | 232 |
+| scale 3% | 237 | 3.90 | 8.29 | 234 |
+
+Two findings:
+1. The LOCATOR is deformation-robust: found-rate stays ~100% through all shear/scale --
+   coarse+refine keep the lock, the object is not lost.
+2. The rigid-model refine RESIDUAL is a deformation meter -- it rises smoothly and
+   monotonically with shear/scale. So a fixed poor_fit threshold (1.0 px) false-flags
+   most recipes under even 1-2% scale / 0.02 shear (9 -> 179 at 1% scale). A part that is
+   allowed +-1% height would trip poor_fit on ~75% of recipes.
+
+Consequences for the trust design:
+- poor_fit CANNOT be a global px threshold. It must be per-recipe AND sit above (noise
+  floor + the recipe's in-spec deformation envelope). This deformation sweep measures
+  that envelope directly; the per-recipe calibration sets the gate above it.
+- Equivalently, residual is usable as a deformation MEASURE (parallelism/skew), not only
+  a binary gate -- gate "deformed beyond spec" rather than "wrong pose" once calibrated.
+- localization_include (already feeds extractFeatures, so it already restricts ROI point
+  selection) is the primary deformation lever: points confined to a small stable/datum
+  region (e.g. the bottom) see far less residual from a global shear/scale, keeping both
+  the pose and the trust gate meaningful. The correct ROI objective is therefore
+  include-region (operator, by deformation knowledge) INTERSECT high-leverage
+  (rotation conditioning) INTERSECT distinctiveness (noise/wrong-lock) INTERSECT spacing.
+- Solving scale/affine in the refine is the alternative, but it absorbs real
+  size/skew defects -- only acceptable for dimensions explicitly not under inspection.
+
+Action: add skew+scale as standard axes to sbm_roi_sweep's acceptance set so every
+per-recipe threshold (poor_fit especially) is calibrated against the part's deformation,
+not just rigid perturbation.
