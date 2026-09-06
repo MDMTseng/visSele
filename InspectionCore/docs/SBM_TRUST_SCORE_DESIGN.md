@@ -104,3 +104,26 @@ values are run-stable.
 
 Steps 1-3 are the minimal viable score: under a millisecond, catch every listed failure
 except wrong-edge lock (which needs 5). Start there.
+
+## Step 1 landed + validated (2026-09-06): residual + inlier trust, emit-only
+
+Plumbed refine_residual and an inlier count (points agreeing within 2x median residual,
+counted WITHOUT dropping them so measurements are unchanged) from refineROI through
+MatchResult to a "trust":{residual,npts,inliers,code} object on every located object
+(FeatureReport_UTIL). Gates poor_fit (residual > SBM_TRUST_RES_MAX, default 1.0 px) and
+low_inliers (inliers < SBM_TRUST_INL_FRAC*npts, default 0.75). EMIT-ONLY: it reports the
+code but does not yet force judges NA -- so this cut is a pure output addition, zero risk
+to measurements, to measure the false-flag budget first.
+
+Fleet validation (239 recipes, own image, global 1.0 px): only 4 primary-object flags,
+and all 4 are the known-questionable recipes -- ok42 (documented 8px-unstable, res 3.0),
+ok97/ok98 (the 160deg mirror alias, res 5.2), ok39 (the NMS-order mislocation, res 3.65).
+Residual distribution on the other 235: p50 0.013, p90 0.055, p95 0.144, max (of the
+non-flagged) well under 1.0 -- a ~7x margin. So the residual gate alone, at a GLOBAL
+threshold, separates trustworthy from questionable with ~1.7% flag and effectively zero
+false positives; per-recipe calibration is barely needed. Under noise15 the good
+primaries stay < 0.13 px while clutter/wrong detections read 3-5.6 px (ok68).
+
+Next: step 2 (ambiguity margin for the mirror cases -- ok97/98 already flag via residual,
+but ambiguity is the general catch), then wire the gates to force judges NA behind a
+per-recipe enable once the budget is accepted.

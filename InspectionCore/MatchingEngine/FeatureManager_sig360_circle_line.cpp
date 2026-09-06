@@ -9158,6 +9158,21 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     if (dbg)
       fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
               singleReport.Center.x, singleReport.Center.y, m.angle, corr_deg, (int)m.flipped);
+    // Localization trust (emit-only first cut: report residual/inliers and the tripped
+    // gate; does NOT yet force judges NA -- that lands after the fleet false-flag budget
+    // is measured). See docs/SBM_TRUST_SCORE_DESIGN.md.
+    singleReport.trust_residual = m.refine_residual;
+    singleReport.trust_npts     = m.refine_npts;
+    singleReport.trust_ninliers = m.refine_ninliers;
+    singleReport.trust_code[0]  = 0;
+    {
+      static const float kResMax = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 1.0f;
+      static const float kInlFrac = getenv("SBM_TRUST_INL_FRAC") ? (float)atof(getenv("SBM_TRUST_INL_FRAC")) : 0.75f;
+      if (m.refine_residual >= 0.0f && m.refine_residual > kResMax)
+        snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "poor_fit");
+      else if (m.refine_npts > 0 && m.refine_ninliers < (int)std::ceil(kInlFrac * m.refine_npts))
+        snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "low_inliers");
+    }
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
     if (dbg)
       fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f group=%d\n", ret, singleReport.rotate, m.group);

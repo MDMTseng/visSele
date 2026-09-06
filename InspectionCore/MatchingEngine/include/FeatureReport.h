@@ -577,6 +577,14 @@ typedef struct FeatureReport_sig360_circle_line_single{
   bool  isFlipped;
   float scale;
   char *targetName;
+  // Localization trust (SBM refine): fit residual and how many refine points agreed.
+  // Emitted as "trust" on every located object so the operator sees why a pose is or is
+  // not trustworthy; -1 / 0 when there was no ROI refine (coarse-only). See
+  // docs/SBM_TRUST_SCORE_DESIGN.md. trust_code names a tripped gate (empty = ok).
+  float trust_residual = -1.0f;
+  int   trust_npts = 0;
+  int   trust_ninliers = 0;
+  char  trust_code[16] = {0};
   
   enum FeatureReport_FeatureStatus{
       STATUS_UNSET=-100,
