@@ -294,3 +294,23 @@ Two things the experiment exposed on the way:
   the features: the "refine everything above min_score" policy is what makes those
   recipes work, and it is also the 78% of matcher time. Speed and safety here are
   the same knob; the sweep has to see both.
+
+### ROI refine: template PCA cached at addModel (2026-09-06)
+
+`refineROI` recomputed `roiPCA` (two `cv::Sobel` + magnitude + eigen) on the
+UNROTATED template patch of every sample point, every candidate, every re-match --
+although the answer is a function of the template alone. It is now computed once in
+`precomputeFeatureCaches` (via `roi_refine::templatePCA`, the same patch `refineROI`
+would cut: same rounding, same border shrink) and carried on `SamplePoint`. The
+runtime path uses the cache only when its patch half matches; a border-shrunk point
+falls back to a fresh compute. `SBM_NO_PCA_CACHE=1` disables it; `SBM_PCA_CHECK=1`
+recomputes and prints any cached-vs-fresh mismatch.
+
+Verified with `fleet_eq.mjs` old-exe vs new-exe, 2 threads: `SBM_PCA_CHECK` printed
+zero mismatches over the fleet; 232/247 identical, and every differing recipe is
+either the known run-to-run NMS-order clutter (ok68/70/72/213, which differ A-vs-A
+too) or a 1e-5 last-digit float change from the rebuild (ok42/ok195: same pose to
+5 dp, same judge status). insp_wall_ms fleet median 26.9 -> 25.7, sum 7494 -> 7218
+(~4%). Small, because the refine is ~4 ms of a ~26 ms frame and PCA is ~20% of it;
+zero accuracy cost. The larger refine item (direct 31x31 NCC instead of
+`cv::matchTemplate`'s DFT) is still open.
