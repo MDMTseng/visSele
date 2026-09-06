@@ -71,3 +71,14 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
   ceiling). Env-gated, off. (SBM_REFINE_ALLPOINTS_DESIGN.md follow-ups)
 - **QSV JPEG encode** not worth it for the ROI-crop hot path (CPU offload only, gray is
   the weak spot). Parked. (separate JPEG investigation)
+- **Non-default pyramids return zero objects (2026-09-06, test1).** Any `shape_pyramid_T`
+  other than `{4,8}` -- `{8,16}`, `{2,4,8}`, `{4,8,16}` at 0.5 or 1.0 -- regenerates fine
+  (SF returns 3 levels) but the match never runs: SHAPE_DBG shows cache HIT, then no
+  `[SBM_RAW]` line, 0 objects, group error 0 (silent). Not chased to the line; addModel /
+  buildShapeMatcher LOGE goes to the ring, not stderr. Nobody in the fleet overrides
+  pyramid_T, so it is latent; fix before ever offering the knob. Measured meanwhile:
+  `shape_match_scale=1.0` with `{4,8}` works and costs 48 ms vs 20.5 (preprocessing is
+  per-pixel), so a 1x three-level pyramid cannot beat the 0.5x two-level default here.
+- **SBM_PROFILE inflates wall time ~19 ms/frame** (it flips sbm log to Debug). Ratios are
+  fine, absolute totals are not; quote `insp_wall_ms` with the env unset. Fix: print the
+  stage line without raising the log level.
