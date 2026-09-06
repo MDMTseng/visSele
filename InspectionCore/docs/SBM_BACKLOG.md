@@ -58,6 +58,25 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
 10. **Per-frame angle prior.** Biggest coarse lever (~10-12 ms) but per-recipe opt-in,
     needs an alias-period guard + periodic full sweep. (SBM round-2 template agent)
 
+## 2026-09-07: deformed-part findings (test1 sheared/scaled in the object frame, rotated 0..345)
+- **ROI outlier gate flips the pose on deformed parts.** 2x-median cuts through the broad but
+  CONSISTENT residual distribution of a sheared part (+-2 px), so which half survives depends
+  on the pose: 2.2 deg pose flips at 118/120 deg, residual 0.5..2.15 for the same part. Coarse
+  init error (3 deg at 120) and fixed correspondences were red herrings (re-matching does not
+  help). `SBM_ROI_OUTLIER_K=4` (or no gate): max angle error 2.19 -> 0.47 deg, residual max
+  2.15 -> 1.07, undeformed part identical; fleet_eq K2 vs K4 on all own images: 204 identical,
+  36 differ at 1e-4 mm, 0 count / 0 verdict changes; fleet _deform2: scale angle drift median
+  -35%, shear same; true positives (ok39/42/97/232) still poor_fit with a MORE honest residual.
+  **Pending: make 4.0 the default (one constant in roi_refine.cpp).**
+- ROI residual vs ICP residual as a deformation meter: ROI std 0.13 (after K=4; 0.34 before),
+  ICP std 0.01 over 24 rotations of the same sheared part. ICP is the angle-invariant
+  deformation readout; ROI keeps the pose (noise). Cost: icp_ls +2 ms/frame, plain icp +0.3.
+  Candidate item: ROI pose + one ICP residual pass as the deformation meter (near item 4).
+- ROI under isotropic scale shows a 0.3-1 deg rotation bias that ICP does not (asymmetric point
+  set trades scale for rotation). Selection with radial balance (item 6) is the fix.
+- Diagnostics landed: SBM_ROI_VERBOSE (per-point src/dst/residual), SBM_ROI_REMATCH[_DEG],
+  SBM_ROI_OUTLIER_K, INSP_LOG_KEEP_STDERR to see core LOGE on the bench.
+
 ## Open findings (not features, worth remembering)
 - **Run-to-run process-level nondeterminism** on near-min_score clutter: two single-
   threaded runs of the same image differ on 0.50-0.75 clutter (ok68 count). Real objects
