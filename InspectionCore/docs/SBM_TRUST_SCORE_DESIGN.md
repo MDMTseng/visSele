@@ -192,3 +192,41 @@ Consequences for the trust design:
 Action: add skew+scale as standard axes to sbm_roi_sweep's acceptance set so every
 per-recipe threshold (poor_fit especially) is calibrated against the part's deformation,
 not just rigid perturbation.
+
+## Step 3 landed (2026-09-06): trust -> judges NA, per-recipe opt-in, with a deformation budget
+
+Def fields (FeatureManager, `@__SBM_INFO__` / featureSet level, like the other shape_*):
+
+| field | default | meaning |
+|---|---|---|
+| `shape_trust_na` | false | when a trust gate trips, every judge of that detection is forced NA (then the judge's own NAasNG applies, exactly as if it had not measured). Report carries `trust.forced_na:true`. |
+| `shape_trust_res_max` | 0 (= 1.0 px) | poor_fit threshold on the mean normal residual, px. Set per recipe from the budget below. |
+| `shape_trust_inl_frac` | 0 (= 0.75) | low_inliers threshold. |
+
+Rules:
+- Off by default. `trust{}` keeps being emitted for every recipe; nothing changes in the
+  field until a recipe opts in. This is the 不可檢錯 payoff: a pose the locator does not
+  trust must not hand out PASS.
+- **ambiguous_pose is exempt when the recipe has an orientation-essential judge** that
+  accepted this pose (`ret == 0`). That judge is how a symmetric part is legitimately
+  resolved; a blanket NA would reject every good symmetric part. A recipe with NO such
+  judge and an ambiguous pose goes NA on every frame (ok37): the operator's fix is to add
+  the orientation judge, not to raise the threshold.
+- The threshold is the budget, not a global. `tools/webctl/sbm_trust_budget.mjs` runs
+  each recipe's own image through an in-spec set (rot +-1, shift 0.5, gain 0.85, shear
+  +-BUDGET_SHEAR, scale 1+-BUDGET_SCALE, two combos) and derives
+  `res_max = max(0.3, 1.5 * max in-spec residual, 3 * unperturbed residual)`, rounded up
+  to 0.05. The shear/scale levels are the operator's statement about the part (env,
+  defaults 0.02 / 0.01).
+- **A recipe whose own reference already fits worse than 1 px is not budgeted, it is
+  REVIEWed.** Deriving a threshold from a bad baseline would only switch the gate off --
+  ok39 (2.8 px) and ok97 (4.8 px) are exactly the validated true positives.
+- Adoption = migrate `shape_trust_res_max` + `shape_trust_na` per recipe from
+  `trust_budget.json`, then fleet_eq with the two fields on vs off: the only allowed
+  change is judges going NA on frames the gate flags; 0 FAIL->PASS by construction
+  (NA never passes), and every PASS->NA must be explained by the flag.
+
+Verified on the bench (`_trust_na_check.mjs`): ok00 (good, res 0.009) never forced, also
+not under 1% scale (res 0.98 < its budget 1.5); ok39 / ok97 poor_fit -> all judges -128
+(NA), forced_na true; ok37 ambiguous_pose, no orientation judge -> NA. Off = identical to
+before.

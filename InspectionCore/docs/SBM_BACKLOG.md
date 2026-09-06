@@ -20,15 +20,14 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
 
 ## Backlog, ranked by value
 
-1. **Wire trust gates to force judges NA (per-recipe).** Today emit-only. poor_fit /
-   low_inliers -> NA is straightforward. ambiguous_pose -> NA MUST defer to a passing
-   orientation-essential judge (that judge is how a symmetric part is legitimately
-   resolved; blanket NA false-rejects good symmetric parts). Gate: per-recipe enable +
-   fleet_eq 0 FAIL->PASS. This is the payoff of the trust work (不可檢錯).
-2. **poor_fit threshold per-recipe with a DEFORMATION budget.** A global 1.0px false-flags
-   most recipes under 1-2% scale / 0.02 shear (SBM_TRUST_SCORE_DESIGN.md deformation
-   caveat: 9 -> 179/239 at 1% scale). Add shear+scale to sbm_roi_sweep's acceptance axes
-   so each recipe's poor_fit sits above (noise floor + in-spec deformation). Prereq for #1.
+1. **Trust gates -> judges NA -- LANDED (f30de44e, 2026-09-06), per-recipe opt-in.**
+   `shape_trust_na` + `shape_trust_res_max` + `shape_trust_inl_frac`; ambiguous_pose
+   defers to an orientation-essential judge; report `trust.forced_na`. Off by default.
+   (SBM_TRUST_SCORE_DESIGN.md step 3)
+2. **poor_fit deformation budget -- TOOL LANDED (sbm_trust_budget.mjs), adoption open.**
+   Derives res_max per recipe from an in-spec shear/scale/rot/shift/gain set; recipes
+   whose own reference fits > 1 px go to REVIEW (they are the true positives). Remaining:
+   run over the fleet, migrate the two fields into the recipes that pass, fleet_eq on/off.
 3. **ROI de-overlap adoption (shape_roi_spacing).** Sweep found 97 recipes verdict-safe;
    list in `tools/webctl/roi_spacing_adopt.json`, ok11 needs ground-truth review. Speed
    only (not robustness -- SBM_TUNING §11), so adopt where speed matters. Needs def
