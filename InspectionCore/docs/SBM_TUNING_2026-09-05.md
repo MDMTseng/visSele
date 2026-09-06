@@ -283,10 +283,13 @@ the coarse level (fall back to coordinate scaling below it) and probably thresho
 scaled with the resize.
 
 Two things the experiment exposed on the way:
-* **Regenerating a def today produces ~128 / 65 features; the fleet caches carry
-  645-705 / 325-385 with the same fingerprint parameters.** The selector changed
-  semantics at some point (128 is now a floor on spacing, not a cap). A def that is
-  regenerated changes its coarse behaviour and time without any parameter moving.
+* **Correction to section 6's premise.** The "705 / 385 features per level" quoted
+  there was the LENGTH OF THE FLAT ARRAY (5 numbers per feature): the caches hold
+  141 / 77 (test1) and 129 / 65 (MODEL3131), and across the fleet level 0 holds 129-299
+  features on 208 recipes and <=128 on 36. There is no selector drift; a regenerate
+  today gives the same order of count (129 / 65 vs 141 / 77). The "duplicate
+  features at T8" argument is correspondingly weaker: 65-77 coarse features on a
+  half-res template, not 385.
 * The coarse T8 level is a weak discriminator for small parts at scale 0.3 whatever
   the features: the "refine everything above min_score" policy is what makes those
   recipes work, and it is also the 78% of matcher time. Speed and safety here are
