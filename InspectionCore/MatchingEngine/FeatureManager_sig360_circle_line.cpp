@@ -2439,6 +2439,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     double *srp = JFetch_NUMBER(root, "shape_roi_prescale");
     if (srp != NULL && *srp > 0.1 && *srp < 1.0) this->shape_roi_prescale = (float)*srp;
     else if (srp != NULL && *srp != 0) LOGE("shape_roi_prescale %.3f outside (0.1,1); ignored", *srp);
+    double *rsp = JFetch_NUMBER(root, "shape_roi_spacing");
+    if (rsp != NULL) this->shape_roi_spacing = (float)*rsp;   // 0 off, <0 auto, >0 px
 
     // line2Dup feature/pyramid tuning (all optional; defaults preserve behavior).
     double *snf = JFetch_NUMBER(root, "shape_num_features");
@@ -8672,9 +8674,10 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   mc.blur_kernel_size = shape_blur;
   mc.roi_search_half  = shape_roi_search;
   mc.roi_prescale     = shape_roi_prescale;
+  if (shape_roi_spacing != 0.0f) mc.roi_min_spacing = shape_roi_spacing;   // def opt-in; else the (off) default
   if (getenv("SHAPE_DBG"))
-    fprintf(stderr, "[SHAPE_DBG] matcher knobs: step %.2f scale %.3f roi_search %d roi_prescale %.2f nf %d\n",
-            shape_angle_step_deg, shape_match_scale, shape_roi_search, shape_roi_prescale, shape_num_features);
+    fprintf(stderr, "[SHAPE_DBG] matcher knobs: step %.2f scale %.3f roi_search %d roi_prescale %.2f nf %d roi_spacing %.2f\n",
+            shape_angle_step_deg, shape_match_scale, shape_roi_search, shape_roi_prescale, shape_num_features, mc.roi_min_spacing);
 
   // Coarse downscale, carried across magnifications instead of written per def.
   //

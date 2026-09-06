@@ -370,6 +370,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // knobs the tuner verifies, never raised by default. 0 = library defaults.
   int   shape_roi_search   = 0;       // 1-D search half-range, full-res px (default 15)
   float shape_roi_prescale = 0.0f;    // coarse-to-fine pre-pass factor in (0,1); 0 = off
+  float shape_roi_spacing  = 0.0f;    // ROI point min spacing: 0 off, <0 auto(ROI half), >0 px. De-overlaps ROI windows; changes measurements, per-recipe.
   // line2Dup feature/pyramid tuning (def-overridable). Applied to BOTH the
   // template extraction and the scene matcher so their edges stay consistent.
   int   shape_num_features = 128;     // max gradient features per template

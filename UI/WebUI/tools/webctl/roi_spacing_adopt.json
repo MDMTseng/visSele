@@ -1,0 +1,403 @@
+{
+ "note": "shape_roi_spacing=-1 recipes where de-overlap is verdict-preserving AND faster (sbm_roi_sweep, 2026-09-06). Apply via the def migrate flow; not auto-deployed. hy_sync is read-only.",
+ "adopt": {
+  "ok04_10324_CTA_AMP_FINGER-1": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok06_10328_2200300656": {
+   "shape_roi_spacing": -1,
+   "gain": "9% faster"
+  },
+  "ok09_10333_CON-LT14BH2051-01": {
+   "shape_roi_spacing": -1,
+   "gain": "17% faster"
+  },
+  "ok10_10337_2200300196_25T07": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok12_10341_22003250_RHC-CP-47T01": {
+   "shape_roi_spacing": -1,
+   "gain": "22% faster"
+  },
+  "ok15_10342_SG2565080B": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok16_10351_ERC-LT14BH2813-1": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok23_10501_CG2050038P": {
+   "shape_roi_spacing": -1,
+   "gain": "17% faster"
+  },
+  "ok28_10609_8G2570072B": {
+   "shape_roi_spacing": -1,
+   "gain": "17% faster"
+  },
+  "ok30_10624_2200300362": {
+   "shape_roi_spacing": -1,
+   "gain": "20% faster"
+  },
+  "ok31_10625_2200300361": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok32_10627_92-050-3": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok33_10705_CG1555030B1": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok34_10705_CX1555030B1": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok37_10719_4AH-168002-A1-1": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok40_10803_SO65093042N_Sorting": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok52_10910_CG2050035S": {
+   "shape_roi_spacing": -1,
+   "gain": "13% faster"
+  },
+  "ok56_11": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok57_11002_1BD1-0000-0013": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok60_11009_PS8095003S_50-P-BTM-1": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok61_11010_PS7884003S_50-P-TOP-1": {
+   "shape_roi_spacing": -1,
+   "gain": "13% faster"
+  },
+  "ok62_11011_BDG-25X34X27": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok64_11013_3S2030062S": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok66_11106_CS2074033B": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok69_11110_3S2030062S1": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok73_11116_CG1260033B": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok74_11201_SMT-22065-3A_R4": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok80_11207_SG3070137B-V2": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok83_11213_3S2030062S": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok84_11213_CG2025025B": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok85_11214_AK-00324": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok86_11301_8G2570062B1": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok88_11302_2200300066": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok93_11402_LS3553064S": {
+   "shape_roi_spacing": -1,
+   "gain": "9% faster"
+  },
+  "ok99_77-110-120104-006_LILI": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok100_91001_B3G-20X38X055": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok102_91001_SME-0055-2-H": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok103_91005_3G2035042B": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok104_91005_3G2035042Bsorting": {
+   "shape_roi_spacing": -1,
+   "gain": "5% faster"
+  },
+  "ok105_91006_3S2030035B": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok108_91011_2200300514": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok109_91011_SME-0100-2-H": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok110_91011_SME-0100-2A-H": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok112_92010_3G2030030B": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok113_92010_SME-30315-3A-H": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok117_92011_SME-0062-3A-H": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok119_92023_2200300572_RHC-CP-55L01": {
+   "shape_roi_spacing": -1,
+   "gain": "20% faster"
+  },
+  "ok120_92023_BCG-25X40X55": {
+   "shape_roi_spacing": -1,
+   "gain": "5% faster"
+  },
+  "ok121_92027_BCG2504002108N00": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok123_92027_CS2040021B": {
+   "shape_roi_spacing": -1,
+   "gain": "21% faster"
+  },
+  "ok124_92027_CS2040021S": {
+   "shape_roi_spacing": -1,
+   "gain": "15% faster"
+  },
+  "ok125_92027_RH-PR-CP-L00021-01": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok130_92034_XS2535040T": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok131_92036_58B8G3004005108N00": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok136_92041_SMZ-0020-3A-HZ": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok137_92044_SME-0048-1A-H": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok144_93013_B5G-25X45X60": {
+   "shape_roi_spacing": -1,
+   "gain": "9% faster"
+  },
+  "ok146_93016_SME-0020-1A-H": {
+   "shape_roi_spacing": -1,
+   "gain": "9% faster"
+  },
+  "ok149_93021_BDG-20X35X027_sorting": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok150_93021_BDG-20X35X027": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok151_93021_BDS-20X35X027": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok153_93023_CG1525020B_2-4u": {
+   "shape_roi_spacing": -1,
+   "gain": "20% faster"
+  },
+  "ok154_93028_BCS-20X38X20": {
+   "shape_roi_spacing": -1,
+   "gain": "21% faster"
+  },
+  "ok155_93028_CG2038020B": {
+   "shape_roi_spacing": -1,
+   "gain": "13% faster"
+  },
+  "ok156_93028_CS203820B": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok157_93030_6G2075030B": {
+   "shape_roi_spacing": -1,
+   "gain": "5% faster"
+  },
+  "ok158_93030_6S2075030B": {
+   "shape_roi_spacing": -1,
+   "gain": "9% faster"
+  },
+  "ok161_93030_SMD-068": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok169_94004_2200300136": {
+   "shape_roi_spacing": -1,
+   "gain": "18% faster"
+  },
+  "ok170_94004_8G2040037B-24": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok171_94004_CIS-51-102961-01-01": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok173_94004_RHC-CP-37802": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok174_94006_CG2540060B": {
+   "shape_roi_spacing": -1,
+   "gain": "25% faster"
+  },
+  "ok177_94008_SG2030037B": {
+   "shape_roi_spacing": -1,
+   "gain": "21% faster"
+  },
+  "ok182_94014_8S2570075B2": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok183_94014_RHC-CP-75803": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok184_94016_RHC-CP-31B01": {
+   "shape_roi_spacing": -1,
+   "gain": "13% faster"
+  },
+  "ok186_94020_CG2065040_B1": {
+   "shape_roi_spacing": -1,
+   "gain": "21% faster"
+  },
+  "ok187_94020_CG2065040B2": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok194_95027_M026311A": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok195_95029_CG2035035B": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok197_95033_BOS-LT12BH4431-01": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok200_95034_CG2040055B": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok201_95040_CG2028028S": {
+   "shape_roi_spacing": -1,
+   "gain": "8% faster"
+  },
+  "ok206_959075N_SG2570130B": {
+   "shape_roi_spacing": -1,
+   "gain": "9% faster"
+  },
+  "ok209_96018_2200300216": {
+   "shape_roi_spacing": -1,
+   "gain": "15% faster"
+  },
+  "ok211_96020_CG1555020B": {
+   "shape_roi_spacing": -1,
+   "gain": "12% faster"
+  },
+  "ok212_96021_CS2035025B": {
+   "shape_roi_spacing": -1,
+   "gain": "13% faster"
+  },
+  "ok214_97009_CG0820013B": {
+   "shape_roi_spacing": -1,
+   "gain": "11% faster"
+  },
+  "ok218_98015_RHC-CP-62A01": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok219_98023_2200300041_RHC-CP-15C01": {
+   "shape_roi_spacing": -1,
+   "gain": "5% faster"
+  },
+  "ok229_99003_B8G-25X70X090": {
+   "shape_roi_spacing": -1,
+   "gain": "7% faster"
+  },
+  "ok231_99018_3G3060100": {
+   "shape_roi_spacing": -1,
+   "gain": "5% faster"
+  },
+  "ok238_99031_ZG1328019B": {
+   "shape_roi_spacing": -1,
+   "gain": "10% faster"
+  },
+  "ok242_99035_TSC704": {
+   "shape_roi_spacing": -1,
+   "gain": "14% faster"
+  },
+  "ok243_99044_58BCG1502702010NOO": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  },
+  "ok244_A10704_BOS-LT17DR2221": {
+   "shape_roi_spacing": -1,
+   "gain": "6% faster"
+  }
+ },
+ "review": {
+  "ok11_10338_CON14BH2351": [
+   {
+    "sp": "-1",
+    "flips": [
+     "obj0j38 -1->0(FAIL->PASS!)"
+    ]
+   }
+  ]
+ }
+}

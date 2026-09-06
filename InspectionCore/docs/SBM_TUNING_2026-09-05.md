@@ -426,3 +426,26 @@ per-feature widen cost more than the memory-bound model predicted. SBM_NO_LOCALA
 to A/B. Not adopted (change measurements or poor return):
 ROI de-overlap (default off, needs per-recipe sweep), angle coarse-to-fine
 (breaks ok97/CON). Configure-only, per recipe: angle margin (181 recipes still at 180).
+
+## 9. 2026-09-06: ROI de-overlap routed through a per-recipe acceptance sweep
+
+`shape_roi_spacing` is now a def field (0 off / <0 auto = ROI half / >0 px) ->
+MatchConfig.roi_min_spacing, so each recipe can carry its own spacing instead of the
+global env. `tools/webctl/sbm_roi_sweep.mjs` decides per recipe with a strict rule fit
+for a metrology machine: ADOPT only where de-overlapping changes NO judge verdict on
+the unperturbed part AND is faster AND keeps every judge under a small augmentation
+set; any verdict flip (either direction) goes to REVIEW for ground truth, never
+auto-adopted.
+
+Fleet result (spacing auto, single clean core): 97 adopt (5-22% faster each,
+verdict-preserving), 1 REVIEW (ok11 judge38 2.3032 FAIL -> 2.2937 PASS), 141 no safe
+gain, 7 no object. The adopt/review lists are in `tools/webctl/roi_spacing_adopt.json`.
+Applying the 97 is a def-migrate step (set shape_roi_spacing=-1 on those recipes),
+NOT auto-deployed here -- hy_sync is read-only and deployment is the operator's flow.
+ok11 needs a human to say whether the part is good (then PASS is the fix for a false
+reject) or the old FAIL was right (then keep spacing off for it).
+
+Harness note that cost an hour: env-gated behaviour and the def field appeared not to
+work because seven orphaned cores from earlier launches were all LISTENING on port
+4093 (SO_REUSEADDR), and the client hit stale ones. Kill by PID from
+`netstat -ano | grep :4093`, not by image name, before trusting a bench result.
