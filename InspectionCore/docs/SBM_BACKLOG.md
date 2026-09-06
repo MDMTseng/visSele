@@ -71,14 +71,18 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
   ceiling). Env-gated, off. (SBM_REFINE_ALLPOINTS_DESIGN.md follow-ups)
 - **QSV JPEG encode** not worth it for the ROI-crop hot path (CPU offload only, gray is
   the weak spot). Parked. (separate JPEG investigation)
-- **Non-default pyramids return zero objects (2026-09-06, test1).** Any `shape_pyramid_T`
-  other than `{4,8}` -- `{8,16}`, `{2,4,8}`, `{4,8,16}` at 0.5 or 1.0 -- regenerates fine
-  (SF returns 3 levels) but the match never runs: SHAPE_DBG shows cache HIT, then no
-  `[SBM_RAW]` line, 0 objects, group error 0 (silent). Not chased to the line; addModel /
-  buildShapeMatcher LOGE goes to the ring, not stderr. Nobody in the fleet overrides
-  pyramid_T, so it is latent; fix before ever offering the knob. Measured meanwhile:
-  `shape_match_scale=1.0` with `{4,8}` works and costs 48 ms vs 20.5 (preprocessing is
-  per-pixel), so a 1x three-level pyramid cannot beat the 0.5x two-level default here.
+- **Non-{4,8} pyramids matched nothing -- FIXED (sbm f138ac0, 2026-09-06).** The scene
+  was padded to a hard-coded 16; line2Dup asserts cols % T at every level, the throw was
+  caught in FeatureManager and the def silently located nothing (error 0). Padding is
+  now lcm(T_l << l). (`INSP_LOG_KEEP_STDERR=1` is how to see such LOGEs on the bench.)
+  **Three levels do not pay, even on big parts**: test1 0.5/{4,8,16} 23.6 vs 21.8 ms;
+  ok39 (1344 px) 0.3/{4,8,16} 25.8 vs 22.4 ms and 1.8x the candidates. The extra top
+  level's spread (T16 at 1/16 scale = +-100 px in scene px) makes its gate BLUNTER, so it
+  passes more, not fewer, and the T8 hop then repeats the work the T8 gate did before.
+  `shape_match_scale=1.0` with {4,8}: 48 ms (preprocessing is per-pixel). Smaller scale
+  (0.25) is the only lever that moved the fixed cost (ok39 22.4 -> 18.8) but at 1.7x the
+  low-score candidates -- same trade as 0.3 on test1. Keep {4,8}; the knob now works
+  but nothing measured wants it.
 - **SBM_PROFILE inflates wall time ~19 ms/frame** (it flips sbm log to Debug). Ratios are
   fine, absolute totals are not; quote `insp_wall_ms` with the env unset. Fix: print the
   stage line without raising the log level.
