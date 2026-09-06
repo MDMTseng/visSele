@@ -97,3 +97,45 @@ Add the MAD robust gate + direction-agreement weight to `refineInverse(EdgeScene
 behind ICPConfig flags and a `SHAPE_REFINE=icp_ls` selector, then run fleet_eq ROI vs
 icp_ls with the verdict-flip summary on the 247 fleet copies -- that one A/B says whether
 the all-points path is worth carrying to Phases B-D.
+
+## Phase A result (2026-09-06): robust all-points ICP does NOT beat ROI under noise
+
+Implemented the MAD residual gate + normal-direction weighting on the inverse-ICP path
+(icp_refine.cpp, ICPConfig robust_mad / robust_k / weight_by_dir; SHAPE_REFINE=icp_ls +
+SBM_ICP_ROBUST=1 SBM_ICP_WEIGHT_DIR=1). Noise A/B vs the ROI default (_noise_ab.mjs,
+sigma 0-20, 3 seeds, pose vs each core's own unperturbed):
+
+- Aggregate p95 pose drift at sigma 10: ROI 4.5 px vs icp_ls 24 px -- icp_ls worse.
+- Per recipe it is MIXED, not uniformly worse: comparable/better on several (ok11 sig10
+  0.030 vs 0.074 px, ok68 0.028 vs 0.052), but CATASTROPHIC on big/fragile parts (ok42
+  0.51deg/24px, ok00 6px, ok09 11px at sig20). Those dominate the p95.
+
+Root cause: the refine is scene-driven inverse ICP over Canny edges of the SCENE. At
+sigma 10+ the noisy scene grows spurious Canny edges everywhere, so the correspondence
+population is majority-noise; the MAD threshold is then computed FROM the noise and
+cannot separate it, and the direction gate lets ~half of random-normal noise edges
+through. ROI wins because matchTemplate correlates the whole template PATCH against the
+scene (a patch average is inherently robust to zero-mean noise), not single nearest
+edges. This confirms the pre-existing result ("ICP not faster, less stable under noise").
+
+The gap is NOT the LSQ robustness (that is what was added and it did not fix it); it is
+the SCENE edge extraction keeping noise edges. To make all-points competitive would
+need a noise-suppressing sub-pixel edge extraction on the scene (HALCON's MinContrast
+threshold suppresses noise vectors BEFORE the fit; our EdgeScene Canny at fixed 20/60
+does not). That is a larger change with ROI already ahead in this regime.
+
+Verdict: keep RefineMode::ROI as the default and the general choice. The all-points
+path stays env-gated and documented; it is a per-recipe option at best (mixed results),
+never a blanket replacement, and the catastrophic big-part divergences (ok42 24px) are
+uInsp-fatal, so any adoption needs the drift + verdict-flip gate per recipe. Phases B-D
+are not worth pursuing unless the scene edge extraction is reworked first.
+The empirical answer to "is ROI near-optimal": for THIS noisy, patch-correlatable
+regime, the patch-correlation ROI refine is the better-suited family, and the industrial
+all-points edge LSQ (great when edges are clean) is not a free upgrade here.
+
+Note (high-contrast parts): the fleet parts are clean, black-and-white edges, yet
+edge-ICP still loses under noise -- because the weakness is not the part's edges but the
+SCENE noise edges Canny fires on everywhere. A clean part does not help when the image
+noise adds its own edges around it. That is exactly why a patch-correlation refine (ROI)
+is the right family for a noisy sensor even on high-contrast parts: it averages a patch,
+it does not chase individual edges.
