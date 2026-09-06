@@ -11,7 +11,7 @@ const [pa, pb, ...names0] = process.argv.slice(2);
 const A = client(pa), B = client(pb); await A.ready; await B.ready;
 const names = names0.length ? names0 : fs.readFileSync('_ok_names.txt','utf8').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
 const objs=(rp)=>{const g=rp&&rp.reports&&rp.reports[0];return ((g&&g.reports)||[]).map(o=>({cx:o.cx,cy:o.cy,rot:o.rotate,sim:o.similarity,j:(o.judgeReports||[]).map(j=>[j.id,+(+j.value).toFixed(5),j.status])})).sort((p,q)=>p.cx-q.cx);};
-let same=0, diff=0, none=0; const msA=[], msB=[];
+let same=0, diff=0, none=0; const msA=[], msB=[]; const cntChg=[], f2p=[], p2f=[];
 for (const name of names) {
   const f = D + name + '_sbm.hydef'; if (!fs.existsSync(f)) continue;
   const def = JSON.parse(fs.readFileSync(f,'utf8')); const img = 'data/' + name + '.png';
@@ -20,8 +20,15 @@ for (const name of names) {
   const oa = objs(ra), ob = objs(rb);
   if (!oa.length && !ob.length) { none++; continue; }
   const eq = oa.length===ob.length && oa.every((o,i)=>{const p=ob[i];return Math.abs(o.cx-p.cx)<1e-6&&Math.abs(o.cy-p.cy)<1e-6&&Math.abs(o.rot-p.rot)<1e-7&&Math.abs(o.sim-p.sim)<1e-6&&JSON.stringify(o.j)===JSON.stringify(p.j);});
-  if (eq) same++; else { diff++; console.log(name.padEnd(40)+` DIFF  A ${oa.length} obj ${oa.map(o=>o.sim.toFixed(3)).join(',')}  B ${ob.length} obj ${ob.map(o=>o.sim.toFixed(3)).join(',')}` + (oa.length===ob.length ? '  dpos ' + oa.map((o,i)=>Math.hypot(o.cx-ob[i].cx,o.cy-ob[i].cy).toFixed(5)).join(',') + ' drot ' + oa.map((o,i)=>((o.rot-ob[i].rot)*180/Math.PI).toFixed(4)).join(',') : '')); }
+  if (oa.length !== ob.length) cntChg.push(`${name} ${oa.length}->${ob.length}`);
+  else for (let i=0;i<oa.length;i++) for (let k=0;k<oa[i].j.length;k++){ const ja=oa[i].j[k], jb=(ob[i].j||[])[k]; if(!jb)continue; if(ja[2]!==jb[2]){ const tag=`${name}#${i}j${ja[0]}`; if(ja[2]!==0&&jb[2]===0)f2p.push(tag); else if(ja[2]===0&&jb[2]!==0)p2f.push(tag); } }
+  if (eq) same++; else { diff++; let jd = '';
+    if (oa.length===ob.length) for (let i=0;i<oa.length;i++) for (let k=0;k<oa[i].j.length;k++) { const ja=oa[i].j[k], jb=(ob[i].j||[])[k]; if (!jb || ja[1]!==jb[1] || ja[2]!==jb[2]) jd += ` obj${i} judge${ja[0]} ${ja[1]}/${ja[2]} vs ${jb?jb[1]+'/'+jb[2]:'-'}`; }
+    console.log(name.padEnd(40)+` DIFF  A ${oa.length} obj ${oa.map(o=>o.sim.toFixed(3)).join(',')}  B ${ob.length} obj ${ob.map(o=>o.sim.toFixed(3)).join(',')}` + (oa.length===ob.length ? '  dpos ' + oa.map((o,i)=>Math.hypot(o.cx-ob[i].cx,o.cy-ob[i].cy).toFixed(5)).join(',') + ' drot ' + oa.map((o,i)=>((o.rot-ob[i].rot)*180/Math.PI).toFixed(4)).join(',') + jd : '')); }
 }
+console.log(`[accept] object-count changes: ${cntChg.length?cntChg.join(', '):'none'}`);
+console.log(`[accept] judge FAIL->PASS (masks a defect): ${f2p.length?f2p.join(', '):'none'}`);
+console.log(`[accept] judge PASS->FAIL (false reject): ${p2f.length?p2f.join(', '):'none'}`);
 const med=(a)=>{a=[...a].sort((x,y)=>x-y);return a[a.length>>1];};
 console.log(`\n${same} identical, ${diff} differ, ${none} located nothing on either.  insp_wall_ms median A ${med(msA)?.toFixed(1)}  B ${med(msB)?.toFixed(1)}  (sum A ${msA.reduce((a,b)=>a+b,0).toFixed(0)}  B ${msB.reduce((a,b)=>a+b,0).toFixed(0)})`);
 A.close(); B.close(); process.exit(0);

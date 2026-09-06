@@ -381,3 +381,45 @@ recipe (already wired, configure-only), 30 cuts it ~11 ms. Per-frame angle prior
 an in-frame full-sweep fallback is the biggest single lever (~10-12 ms) but is a
 per-recipe opt-in gated by the alias period. Angle coarse-to-fine breaks the ok97/CON
 class per the existing 3-4 deg sweep data; not until the coarse scores are fixed.
+
+## 8. 2026-09-06: NMS determinism, and why ROI de-overlap is not a blanket default
+
+Two task-list items from the second agent round, both delivered with the caveat the
+verification turned up.
+
+**NMS input is now a total order** (shape_matcher.cpp): raw_matches were stable-sorted
+by (similarity, template_id) only, so equal-score same-template matches at different
+places kept OpenMP push order and the greedy NMS kept whichever it saw first -- the
+reported pose and the grouped object count drifted run to run. Total order by
+(similarity, template_id, x, y) makes NMS a function of the match set. This removed the
+thread-order source but NOT all variation: two SINGLE-THREADED runs of the same image
+still differ on near-min_score clutter (ok68 9 vs 6 objects at 0.75), so there is a
+residual PROCESS-level source (an uninitialized read that flips detections sitting on
+the threshold; real objects at 0.98+ never move). The fully-fused linear-memory writer
+covers every cell, so it is elsewhere; left as an open reproducibility item because it
+only ever touches sub-threshold clutter.
+
+**ROI point de-overlap: built, default OFF.** The production selector left
+roi_min_spacing at 0, and the frozen fleet defs carry 8 points selected with spacing
+off -- 231/244 templates have overlapping 30 px windows, 433 pairs over 50%, ~6 of the
+8 points distinct. selectOptimizedPoints now applies the greedy spacing filter to the
+frozen user_opt_points as well (they bypassed it), so a spacing can de-overlap the
+deployed fleet at load with no re-migration; with it on the fleet runs ~18% faster
+(median 25 -> 20 ms) and ok232 goes 0 -> 1 (a part the overlapped set missed).
+
+It is default OFF because it MOVES MEASUREMENTS. fleet_eq's new acceptance summary
+(object-count changes, and the uInsp-critical judge FAIL->PASS / PASS->FAIL flips)
+found ok11 judge38 going 2.3032 (FAIL) -> 2.2937 (PASS) -- stable in each config, so a
+real change, not run-to-run noise. On a metrology system a measured-value change on a
+real part is a per-recipe decision against ground truth, exactly what sbm_sweep's
+acceptance profiles are for; it is not something to flip on for 247 recipes at once.
+Path to adopt: make roi_min_spacing a def field, sweep each recipe with
+SBM_ROI_SPACING, adopt only where every judge margin holds. fleet_eq.mjs now prints
+the FAIL->PASS / PASS->FAIL summary for exactly this gate.
+
+Landed and safe this round (match path, all verified result-neutral): T8 local-maxima
+promotion, T4 idiv->shift + cache-order refine, template PCA cache, total-order NMS.
+Frame ~26 -> ~21 ms at 2 threads. Not adopted (change measurements or poor return):
+ROI de-overlap (default off, needs per-recipe sweep), similarityLocal register
+accumulator (1-2 ms, memory-bound, not worth the SIMD risk), angle coarse-to-fine
+(breaks ok97/CON). Configure-only, per recipe: angle margin (181 recipes still at 180).
