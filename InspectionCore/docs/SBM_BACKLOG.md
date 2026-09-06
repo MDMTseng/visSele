@@ -52,9 +52,10 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
 8. **Coarse global top-K (SBM_GLOBAL_TOPK).** -38% coarse but unsafe until the coarse
    score is trustworthy (ok97 true pose scores 51). Revisit after any coarse-score work.
    (SBM_TUNING §7)
-9. **Angle margin tightening.** 181/246 recipes still at 180deg though orientation is
-   often known; 90 halves coarse. Operational per-recipe (operator's statement about the
-   machine). (SBM_TUNING)
+9. **Angle margin tightening -- NOT an engineering item (decided 2026-09-06).** The def
+   field exists (`matching_angle_margin_deg`); it is the operator's statement about the
+   machine, so it stays in the recipe UI and nobody bulk-edits it. For the record: test1
+   at +-45 deg is 21 -> 12 ms with no result change, so it is the cheapest lever there is.
 10. **Per-frame angle prior.** Biggest coarse lever (~10-12 ms) but per-recipe opt-in,
     needs an alias-period guard + periodic full sweep. (SBM round-2 template agent)
 
