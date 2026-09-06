@@ -371,6 +371,15 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int   shape_roi_search   = 0;       // 1-D search half-range, full-res px (default 15)
   float shape_roi_prescale = 0.0f;    // coarse-to-fine pre-pass factor in (0,1); 0 = off
   float shape_roi_spacing  = 0.0f;    // ROI point min spacing: 0 off, <0 auto(ROI half), >0 px. De-overlaps ROI windows; changes measurements, per-recipe.
+  // Localization trust -> judges. Off by default: the gates are emitted in every
+  // report (trust{}) but only force the judges NA when the recipe opts in, because
+  // the poor_fit threshold must sit above that recipe's in-spec deformation
+  // (docs/SBM_TRUST_SCORE_DESIGN.md, deformation caveat; sbm_trust_budget.mjs
+  // derives it). ambiguous_pose defers to an orientation-essential judge when the
+  // recipe has one -- that judge IS how a symmetric part is legitimately resolved.
+  bool  shape_trust_na       = false;  // force judges NA on a tripped trust gate
+  float shape_trust_res_max  = 0.0f;   // poor_fit: mean normal residual, px; 0 = default 1.0
+  float shape_trust_inl_frac = 0.0f;   // low_inliers: min inlier fraction; 0 = default 0.75
   // line2Dup feature/pyramid tuning (def-overridable). Applied to BOTH the
   // template extraction and the scene matcher so their edges stay consistent.
   int   shape_num_features = 128;     // max gradient features per template

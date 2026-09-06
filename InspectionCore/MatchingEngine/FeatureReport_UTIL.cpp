@@ -564,6 +564,7 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
     cJSON_AddNumberToObject(tr, "npts", report.trust_npts);
     cJSON_AddNumberToObject(tr, "inliers", report.trust_ninliers);
     if (report.trust_code[0]) cJSON_AddStringToObject(tr, "code", report.trust_code);
+    if (report.trust_forced_na) cJSON_AddTrueToObject(tr, "forced_na");
     cJSON_AddItemToObject(report_jobj, "trust", tr);
   }
 

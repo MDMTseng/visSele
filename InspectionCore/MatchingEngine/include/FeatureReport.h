@@ -586,6 +586,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   int   trust_npts = 0;
   int   trust_ninliers = 0;
   char  trust_code[16] = {0};
+  bool  trust_forced_na = false;     ///< recipe opted in (shape_trust_na) and this gate forced every judge NA
   
   enum FeatureReport_FeatureStatus{
       STATUS_UNSET=-100,

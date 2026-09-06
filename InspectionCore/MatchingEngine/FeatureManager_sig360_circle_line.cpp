@@ -2441,6 +2441,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     else if (srp != NULL && *srp != 0) LOGE("shape_roi_prescale %.3f outside (0.1,1); ignored", *srp);
     double *rsp = JFetch_NUMBER(root, "shape_roi_spacing");
     if (rsp != NULL) this->shape_roi_spacing = (float)*rsp;   // 0 off, <0 auto, >0 px
+    // Trust -> judges (per-recipe opt-in; see the header).
+    this->shape_trust_na = JFetch_TRUE(root, "shape_trust_na");
+    double *trm = JFetch_NUMBER(root, "shape_trust_res_max");
+    if (trm != NULL && *trm > 0) this->shape_trust_res_max = (float)*trm;
+    double *tif = JFetch_NUMBER(root, "shape_trust_inl_frac");
+    if (tif != NULL && *tif > 0 && *tif <= 1.0) this->shape_trust_inl_frac = (float)*tif;
 
     // line2Dup feature/pyramid tuning (all optional; defaults preserve behavior).
     double *snf = JFetch_NUMBER(root, "shape_num_features");
@@ -9184,8 +9190,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     }
     singleReport.trust_alt_residual = altRes;
     {
-      static const float kResMax = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 1.0f;
-      static const float kInlFrac = getenv("SBM_TRUST_INL_FRAC") ? (float)atof(getenv("SBM_TRUST_INL_FRAC")) : 0.75f;
+      // Def first (per-recipe, set from the deformation budget), env as the bench
+      // override, then the global default.
+      static const float kResMaxEnv = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 1.0f;
+      static const float kInlFracEnv = getenv("SBM_TRUST_INL_FRAC") ? (float)atof(getenv("SBM_TRUST_INL_FRAC")) : 0.75f;
+      const float kResMax  = shape_trust_res_max  > 0.0f ? shape_trust_res_max  : kResMaxEnv;
+      const float kInlFrac = shape_trust_inl_frac > 0.0f ? shape_trust_inl_frac : kInlFracEnv;
       static const float kAmbPx  = getenv("SBM_TRUST_AMB_PX")  ? (float)atof(getenv("SBM_TRUST_AMB_PX"))  : 0.3f;
       static const float kAmbRat = getenv("SBM_TRUST_AMB_RATIO") ? (float)atof(getenv("SBM_TRUST_AMB_RATIO")) : 1.5f;
       if (m.refine_residual >= 0.0f && m.refine_residual > kResMax)
@@ -9201,6 +9211,33 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f group=%d\n", ret, singleReport.rotate, m.group);
     if (ret == 0)
     {
+      // Trust -> judges. A pose that failed a trust gate must not hand out PASS
+      // verdicts (uInsp 不可檢錯): every judge of this detection goes NA, then the
+      // judge's own NAasNG applies, exactly as if the judge had not measured.
+      // ambiguous_pose is exempt when the recipe carries an orientation-essential
+      // judge: that judge already accepted THIS pose (ret==0), which is the
+      // legitimate way a symmetric part is resolved; forcing NA there would reject
+      // every good symmetric part.
+      if (shape_trust_na && singleReport.trust_code[0])
+      {
+        bool orient_judge = false;
+        for (auto &jd : judgeList) if (jd.orientation_essential) { orient_judge = true; break; }
+        const bool ambiguous = strcmp(singleReport.trust_code, "ambiguous_pose") == 0;
+        if (!(ambiguous && orient_judge))
+        {
+          for (auto &jr : *singleReport.judgeReports)
+          {
+            jr.status = (jr.def && jr.def->NAasNG)
+                          ? FeatureReport_sig360_circle_line_single::STATUS_FAILURE
+                          : FeatureReport_sig360_circle_line_single::STATUS_NA;
+            jr.measured_val = NAN;
+          }
+          singleReport.trust_forced_na = true;
+          LOGI("[shape] trust gate '%s' (res %.3f alt %.3f inl %d/%d) forced %d judge(s) NA",
+               singleReport.trust_code, singleReport.trust_residual, singleReport.trust_alt_residual,
+               singleReport.trust_ninliers, singleReport.trust_npts, (int)singleReport.judgeReports->size());
+        }
+      }
       reports.push_back(singleReport);
       if (m.group >= 0) group_done.insert(m.group);
     }
