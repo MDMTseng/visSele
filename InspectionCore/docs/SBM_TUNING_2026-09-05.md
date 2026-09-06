@@ -317,3 +317,55 @@ claim that these small sizes route through a DFT. On this OpenCV 4.13 build that
 false: `matchTemplate` already does a tuned spatial correlation, and the hand-written
 NCC (integral image for window energy, double accumulation) ran the frame at 50 ms vs
 25 and shifted 91 recipes at the 1e-4 judge level. Reverted -- `matchTemplate` stays.
+
+## 7. 2026-09-06: second agent round on the match path, and the local-maxima promotion
+
+Four deeper reviews (coarse candidate generation, auto-ROI selection, template/angle
+count, runtime kernels). Landed and verified so far: promote only 3x3 LOCAL MAXIMA of
+the T8 response to the T4 refine, instead of every cell above min_score.
+
+The 78% of the matcher that is T4 local refinement is driven by ~6.5 candidates per
+template over min_score for ~2 real objects: a true pose lights a 2-3 cell plateau at
+T8 and every cell of it was being refined. Keeping only the plateau's local max (tie
+rule: >= toward already-scanned neighbours, > toward not-yet, so a flat plateau keeps
+one) is the LINE-MOD standard; the T4 refine window (+-32 px at level 0) already
+contains the suppressed neighbours, so the kept candidate's refine reaches at least
+their score. `line2Dup.cpp` threshold scan; `SBM_NO_LOCALMAX=1` restores the old scan.
+
+Verified with fleet_eq, same binary, localmax off vs on (isolates the algorithm from
+rebuild float noise): 232/247 identical, 7 differ, and the 7 are all benign -- no real
+object gained or lost, every judge status unchanged; ok42/ok195 shift one judge value
+by 1e-5 (a dropped near-duplicate lets another candidate win the refine by an epsilon),
+ok68/70/72/213 are the clutter recipes that already vary run-to-run. insp_wall_ms
+fleet median 32.6 -> 28.0, sum 9090 -> 7972 (~13%). Result-neutral in the meaningful
+sense (no detection or judge-status change), not literally bit-exact; run sbm_sweep's
+worst case before trusting it default-on beyond the fleet snapshot.
+
+### The rest of round 2, ranked, NOT yet done
+
+Bit-exact, match path, worth doing next:
+* similarityLocal (the T4 kernel, the 78%): kill the 4 runtime idiv/feature in
+  accessLinearMemory (T is 4/8 -> shift/mask), register-resident uint8 accumulator
+  like similarity(), and sort candidates by (template,location) before the refine loop
+  so neighbours reuse L2. Kernel agent: ~5-9 ms wall combined, all bit-exact.
+* thread_local scratch for the per-template / per-candidate Mats (~0.5 ms).
+* Build: pin -march=skylake -mavx2 -mfma (or x86-64-v3), NOT -march=native --
+  native on an AVX-512 dev box emits zmm and SIGILLs the Amber-Lake target. Correctness.
+
+Auto-ROI overlap (the quality concern, also speed): production uses the grid selector
+with roi_min_spacing=0, so 598 point-pairs across 231/244 fleet templates have
+overlapping 30 px windows (433 pairs >50% overlap); the frozen 8 points average only
+~6 distinct. Overlapping windows are redundant refine work AND correlated Jacobian rows
+(fake outlier-gate redundancy). Deployed defs carry the points frozen, so a selector
+change reaches them only by re-migration OR a de-dup of user_opt_points at load. Plan:
+default roi_min_spacing to auto (15 px, or max(15, 0.06*min(W,H)) so big parts spread),
+consider max_points 8->6, add a det(JtJ) rank guard that raises the count back or marks
+the recipe coarse-only for a one-edge part. ~1.5-2 ms and better conditioning; needs
+re-migration to reach the fleet.
+
+Angle/template count: 181 of 246 recipes still sit at matching_angle_margin_deg 180
+though the machine's orientation is often known; a 90 margin halves coarse for that
+recipe (already wired, configure-only), 30 cuts it ~11 ms. Per-frame angle prior with
+an in-frame full-sweep fallback is the biggest single lever (~10-12 ms) but is a
+per-recipe opt-in gated by the alias period. Angle coarse-to-fine breaks the ok97/CON
+class per the existing 3-4 deg sweep data; not until the coarse scores are fixed.
