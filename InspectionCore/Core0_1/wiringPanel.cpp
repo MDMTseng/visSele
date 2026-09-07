@@ -122,6 +122,19 @@ int DATA_VIEW_MAX_FPS=20;
 // JPEG; only a fresh core going straight into InspectionUI got raw. The
 // receiver has handled format=1 since a7cd253d. 0 remains valid to request.
 int DataView_JPEG_quality = 85;
+// Adaptive preview pacing. The fps cap (IMG_STREAMING_MAX_FPS) is a number the
+// operator picks once; the cost of one frame is not -- 5 MP gray JPEG is ~12 ms
+// on the target and grows with the picture. When the measured encode+push cost
+// of a frame cannot sustain the cap at a sane duty cycle, the effective cap is
+// lowered to what it CAN sustain and frames are skipped, rather than letting
+// datViewQueue back up and evict (a preview running seconds behind looks like a
+// stall). Judging is untouched: this only decides which frames get a picture.
+// IMG_STREAMING_ADAPTIVE (ST) turns it off; the numbers ride in the GS reply.
+std::atomic<int>  g_streamAdaptive{1};
+static float      g_imgXferMsEma = 0.0f;     // EMA of one image encode+push, ms
+float             g_streamEffFps = 0.0f;     // the cap actually applied last frame
+std::atomic<long> g_imgAdaptiveSkips{0};     // frames skipped by the adaptive limit
+static const float kStreamDuty = 0.6f;       // spend at most this share of the interval encoding
 bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
 
 float OK_MAX_FPS=6;
@@ -4888,6 +4901,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               // but a preview silently running ten frames behind is, and only
               // this number tells them apart.
               cJSON_AddNumberToObject(info,"dropped",(double)datViewDropCount.load());
+              // Adaptive preview pacing: what one frame costs, what cap is
+              // being applied because of it, and how many frames it skipped.
+              cJSON_AddNumberToObject(info,"img_xfer_ms",(double)g_imgXferMsEma);
+              cJSON_AddNumberToObject(info,"eff_fps",(double)g_streamEffFps);
+              cJSON_AddNumberToObject(info,"adaptive_skips",(double)g_imgAdaptiveSkips.load());
+              cJSON_AddBoolToObject(info,"adaptive",g_streamAdaptive.load() != 0);
             }
             {
               cJSON *info = cJSON_CreateObject();
@@ -7383,6 +7402,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       // raw-RGBA wire format; 1-100 switches to JPEG with that quality.  The
       // format chosen is signalled in the first byte of the metadata sub-frame
       // (0 = raw, 1 = JPEG); the WebUI must check this byte and decode either.
+      // IMG_STREAMING_ADAPTIVE: 1 (default) lowers the effective fps cap to what
+      // the measured frame cost can sustain; 0 = the cap is the cap.
+      {
+        cJSON *ad = cJSON_GetObjectItem(json, "IMG_STREAMING_ADAPTIVE");
+        if (ad && (cJSON_IsBool(ad) || cJSON_IsNumber(ad)))
+        {
+          g_streamAdaptive.store(cJSON_IsTrue(ad) || (cJSON_IsNumber(ad) && ad->valuedouble != 0) ? 1 : 0);
+          LOGI("IMG_STREAMING_ADAPTIVE=%d", g_streamAdaptive.load());
+        }
+      }
       double *jpegQ = JFetch_NUMBER(json, "IMG_STREAMING_JPEG_QUALITY");
       if (jpegQ)
       {
@@ -9245,7 +9274,20 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
 
   float cur_avgInterval=avgInterval+(cur_Interval-avgInterval)*0.5;
   float cur_FPS=1000.0/cur_avgInterval;
-  bool withinMinInterval=(cur_FPS)<datViewMaxFPS;
+  // The cap the operator set, lowered to what the measured frame cost can
+  // sustain at kStreamDuty. 12 ms/frame at 60% duty sustains 50 fps -- no
+  // effect on a 20 fps cap; a 40 ms frame (big picture, slow machine) sustains
+  // 15 and the cap follows it down instead of the queue filling.
+  float effMaxFPS = datViewMaxFPS;
+  bool adaptiveLimited = false;
+  if (g_streamAdaptive.load() && g_imgXferMsEma > 0.0f)
+  {
+    const float sustainable = 1000.0f * kStreamDuty / g_imgXferMsEma;
+    if (sustainable < effMaxFPS) { effMaxFPS = sustainable < 1.0f ? 1.0f : sustainable; adaptiveLimited = true; }
+  }
+  g_streamEffFps = effMaxFPS;
+  bool withinMinInterval=(cur_FPS)<effMaxFPS;
+  if (!withinMinInterval && adaptiveLimited) g_imgAdaptiveSkips++;
 
   // LOGI("cur_avgInterval:%0.2f cur_FPS:%0.2f datViewMaxFPS:%0.2f",cur_avgInterval,cur_FPS,datViewMaxFPS);
   
@@ -9382,6 +9424,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }
 
     clock_t img_t = clock();
+    const uint64_t _imgWall0 = perif_now_us();   // wall, for the adaptive pacing (clock() is not wall on every libc)
     // thread_local, not static: this function runs on the ActionThread (live
     // preview) AND on the WS thread (LAST_FRAME_RESEND), and a shared buffer
     // meant one thread's ImageDownSampling could reallocate the Mat while the
@@ -9499,9 +9542,13 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       // subscribers is the number this packet was actually delivered to.
       // pushToSubscribers is a fan-out to a list, so "sent" with an empty list
       // is indistinguishable from "not sent" unless the count is printed.
-      LOG_EVERY(50, "img transfer(DL:%d) %fms pgID:%d subscribers:%zu", _downSampLevel,
-           ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000,
-           bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
+      {
+        const float ms = (float)(perif_now_us() - _imgWall0) / 1000.0f;
+        g_imgXferMsEma = (g_imgXferMsEma <= 0.0f) ? ms : (g_imgXferMsEma * 0.8f + ms * 0.2f);
+      }
+      LOG_EVERY(50, "img transfer(DL:%d) %fms (ema %.1f ms, eff cap %.1f fps, adaptive skips %ld) pgID:%d subscribers:%zu", _downSampLevel,
+           ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000, g_imgXferMsEma, g_streamEffFps,
+           g_imgAdaptiveSkips.load(), bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
       
       lastImgSendTime=cur_ms;
       avgInterval=cur_avgInterval;

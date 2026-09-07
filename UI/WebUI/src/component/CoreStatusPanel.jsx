@@ -39,6 +39,7 @@ const log = mkLog('ui.core');
 const DEFAULTS = {
   IMG_STREAMING_MAX_FPS: 20,
   IMG_STREAMING_JPEG_QUALITY: 85,
+  IMG_STREAMING_ADAPTIVE: true,
   IMG_STREAMING_SKIP_NA: false,
 };
 
@@ -119,6 +120,15 @@ export function CoreStatusPanel({ info, send }) {
           hint="等待檢驗的影格。長期貼滿＝檢驗跟不上相機。" />
         <QueueBar name="datViewQueue"  q={GetObjElement(q, ['datViewQueue'])}
           hint="等待送到 WebUI 的影像。貼滿代表編碼/網路跟不上,不影響判定。" />
+        {(() => {
+          const dv = GetObjElement(q, ['datViewQueue']) || {};
+          if (dv.img_xfer_ms === undefined) return null;
+          const limited = dv.eff_fps !== undefined && cfg.IMG_STREAMING_MAX_FPS > dv.eff_fps + 0.5;
+          return <div style={{ fontSize: 12, color: limited ? '#d48806' : '#888', margin: '0 0 6px 128px', fontFamily: 'monospace' }}>
+            一幀影像 {Number(dv.img_xfer_ms).toFixed(1)} ms · 實際上限 {Number(dv.eff_fps).toFixed(1)} fps
+            {limited ? `(動態降速中,已跳 ${dv.adaptive_skips} 幀)` : ''}
+          </div>;
+        })()}
         <QueueBar name="inspSnapQueue" q={GetObjElement(q, ['inspSnapQueue'])}
           hint="等待寫檔的 NG/NA 快照。貼滿時新快照會被丟掉(下方計數)。" />
         {q === undefined && <span style={{ color: '#888' }}>（尚未取得狀態）</span>}
@@ -197,6 +207,12 @@ export function CoreStatusPanel({ info, send }) {
                 style={{ marginLeft: 6, width: 80 }}
                 onChange={(v) => push('IMG_STREAMING_MAX_FPS', Math.max(1, v || 1))} />
             </Tooltip>
+          </label>
+          <label>
+            <Tooltip title="開:一幀影像的編碼+傳送成本撐不住上限時,自動把上限降到撐得住的值並跳幀,不讓預覽排隊落後。關:上限就是上限。判定不受影響。">
+              <Switch size="small" checked={cfg.IMG_STREAMING_ADAPTIVE !== false}
+                onChange={(c) => push('IMG_STREAMING_ADAPTIVE', c)} />
+            </Tooltip> 動態跳幀
           </label>
           <label>JPEG 品質:
             <Tooltip title="0 = 不壓縮(原始 RGBA,最貴)。1-100 為 JPEG 品質。注意:進入量測設定會被無條件改回 85。">

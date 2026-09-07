@@ -192,3 +192,18 @@ e2e p95 248 ms,重跑兩次都是 23/28 ms,那是單一尖峰污染了 p95,不�
 
 **`webContents.send` 傳像素**:75 MB/s,只有 WebSocket 的 350 MB/s 的五分之
 一,尾端也更差。像素不要走 IPC。
+
+
+## 8. 2026-09-07:動態跳幀(核心端)
+
+決定:**preview 維持全解析度**;省的是更新率,不是像素。`IMG_STREAMING_MAX_FPS` 本來就有
+(CoreStatusPanel 可調,預設 20),新增的是**自動的那一半**:
+
+- 核心量每一幀影像的「編碼 + 推送」wall 時間(EMA),若在 60% duty 下撐不住目前上限,
+  就把**有效上限**降到撐得住的值並跳幀(`IMG_STREAMING_ADAPTIVE`,預設開,ST 可關)。
+  例:12 ms/幀 → 可撐 50 fps,對 20 fps 的上限無影響;40 ms/幀(大圖、慢機)→ 15 fps,
+  上限跟著下來,而不是 datViewQueue 排滿再逐出。判定完全不受影響。
+- 數字進 `GS` 回覆的 `datViewQueue`:`img_xfer_ms`、`eff_fps`、`adaptive_skips`、`adaptive`;
+  CoreStatusPanel 在 datViewQueue 條下面顯示,降速中會標黃。
+- 實測(bench,2 執行緒,test1 2448x2048):一幀 12–14 ms,eff cap 跟 emphasis 的 6 fps 走,
+  adaptive 未介入(正確:這台撐得住)。
