@@ -5446,6 +5446,31 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                  " -- keeping the previous scale", _ppb, _mmpb);
           }
         }
+
+        // img_property.calibInfo.mmpp -- the FRAME's ruler, when the caller has
+        // one that is not the def's. Every editor CHECK sends the def's own mmpp
+        // here (no change for them); 載入 xrep sends the mmpp of the record the
+        // frame came from, so a picture taken at another magnification is
+        // measured to its own scale and the shape locator rescales its model
+        // (ensureShapeScale: def_mmpp/current_mmpp). Until 2026-09-07 this key
+        // was documented, sent, and never read: the def's cam_param above was
+        // the last word, so a 0.8x frame measured 0.8x short and read as
+        // poor_fit. Convention matches the def block: ppb 1, mmpb = mm per px.
+        {
+          cJSON *_ip = JFetch_OBJECT(json, "img_property");
+          cJSON *_ci = _ip ? JFetch_OBJECT(_ip, "calibInfo") : NULL;
+          double *_fm = _ci ? JFetch_NUMBER(_ci, "mmpp") : NULL;
+          if (_fm && std::isfinite(*_fm) && *_fm > 0)
+          {
+            auto *_cm = neutral_bacpac.sampler->getCalibMap();
+            const double _defm = (_cm->calibPpB > 0) ? _cm->calibmmpB / _cm->calibPpB : NAN;
+            _cm->calibPpB = 1.0;
+            _cm->calibmmpB = *_fm;
+            if (!(fabs(*_fm - _defm) < 1e-9))
+              LOGI("II calibInfo.mmpp=%.9f overrides the def's %.9f -- frame at another magnification",
+                   *_fm, _defm);
+          }
+        }
         
 
 
