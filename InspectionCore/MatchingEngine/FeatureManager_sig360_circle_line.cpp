@@ -1290,7 +1290,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // move with it. A def in that state is one edge-profile session away from
       // not being.
       if (relMoved > 0)
-        LOGW_EVERY_N(100, "search_point id=%d: the answer came from "
+        LOGW_EVERY_N(500, "search_point id=%d: the answer came from "
                           "edge.rel_strength (%.2f), not from min_strength "
                           "(%.0f) -- %d nearer candidate(s) cleared the floor "
                           "and were dropped by the relative rule. Set the floor "
@@ -2854,7 +2854,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     for (size_t i = 0; i < featureCircleList.size(); i++)
       if (featureCircleList[i].locating != 1) note(featureCircleList[i].name, featureCircleList[i].id);
     if (nBad > 0)
-      LOGE("[shape] %d feature(s) use CONTOUR locating and cannot be measured by "
+      LOGE_EVERY_N(100, "[shape] %d feature(s) use CONTOUR locating and cannot be measured by "
            "the shape locator -- they will report nothing, silently: %s%s. "
            "Contour needs the labeled-contour grid, which only the sig360 path "
            "builds. Set locating=1 (caliper) on them, or run this def on "
@@ -2876,7 +2876,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
                "SBM features not trained (sig360 fallback in use) -- open the "
                "SBM studio, press generate, and save");
-      LOGW("[shape] %s", shape_untrained_reason);
+      LOGW_EVERY_N(50, "[shape] %s (1 line in 50)", shape_untrained_reason);
     }
     else if (rc != 0)
     {
@@ -3940,7 +3940,7 @@ int ConstrainMap::solve()
     // Throttled because the interesting part is that it is happening at all,
     // and at what rate; one line per frame would just move the spam.
     if (valid < (int)anchorPairs.size())
-      LOGW_EVERY_N(20, "locating degraded: only %d/%d valid anchors (need %d)"
+      LOGW_EVERY_N(200, "locating degraded: only %d/%d valid anchors (need %d)"
                        " -> identity morph, object measured unaligned",
                    valid, (int)anchorPairs.size(), need);
     return valid;
@@ -4787,7 +4787,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   if (m_sections.size() == 0 && cdef.locating != 1)
   {
 
-    LOGE("Circle matching failed: resultR:%f defR:%f",
+    LOGE_EVERY_N(100, "Circle matching failed: resultR:%f defR:%f (1 line in 100)",
           cf.circle.radius, arcD.circleTar.radius);
     cr.def = plineDef;
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
@@ -4881,6 +4881,23 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     // caliper params. Sentinels (cal_length=-1, cal_step=-1) pass through.
     cal.length = (cdef.cal_length > 0) ? (cdef.cal_length * ppmm) : initMatchingMargin; // px radial search half-length
     cal.width  = cdef.cal_width * ppmm;
+    // The parse-time clamp is in def-mm and bounds nothing in px (CAVEATS §N: 64 mm
+    // is 7,000 px here). A caliper wider or longer than the picture is a typo
+    // (0.5 -> 500), and the cost it buys is minutes per frame with no error. Say so
+    // and cap at the image edge, which is the most it could ever see anyway.
+    {
+      const cv::Mat &_img = eT.getImageCv();
+      const float _lim = (float)std::max(_img.cols, _img.rows);
+      if (_img.cols > 0 && (cal.width > _lim || cal.length > _lim))
+      {
+        LOGE_EVERY_N(50, "circle id=%d: caliper width %.0f px / length %.0f px exceeds the image "
+                     "(%dx%d) -- def caliper.width/length are in mm (%.2f / %.2f); typo? capped to "
+                     "the image edge (1 line in 50)", cdef.id, cal.width, cal.length, _img.cols,
+                     _img.rows, cdef.cal_width, cdef.cal_length);
+        if (cal.width  > _lim) cal.width  = _lim;
+        if (cal.length > _lim) cal.length = _lim;
+      }
+    }
     cal.step   = (cdef.cal_step > 0) ? (cdef.cal_step * ppmm) : 1.0f;
     cal.min_inliers = cdef.cal_min_inliers;
     cal.max_error   = (cdef.cal_max_error > 0) ? (cdef.cal_max_error * ppmm) : 0;
@@ -5467,10 +5484,24 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   // and px-after-conversion). Sentinels (cal_length=-1 "use margin",
   // cal_step=-1 "use 1px") are left alone.
   if (lineDef.locating == 1) {
+    const float _w_mm = lineDef.cal_width, _l_mm = lineDef.cal_length;
     lineDef.cal_width /= mmpp;
     if (lineDef.cal_length > 0) lineDef.cal_length /= mmpp;
     if (lineDef.cal_step   > 0) lineDef.cal_step   /= mmpp;
     if (lineDef.cal_max_error > 0) lineDef.cal_max_error /= mmpp;
+    // Same guard as the circle path: a caliper larger than the picture is a
+    // units typo, not a setting (CAVEATS §N). Loud, then capped at the image edge.
+    const cv::Mat &_img = eT.getImageCv();
+    const float _lim = (float)std::max(_img.cols, _img.rows);
+    if (_img.cols > 0 && (lineDef.cal_width > _lim || lineDef.cal_length > _lim))
+    {
+      LOGE_EVERY_N(50, "line id=%d: caliper width %.0f px / length %.0f px exceeds the image (%dx%d) "
+                   "-- def caliper.width/length are in mm (%.2f / %.2f); typo? capped to the image "
+                   "edge (1 line in 50)", lineDef.id, lineDef.cal_width, lineDef.cal_length,
+                   _img.cols, _img.rows, _w_mm, _l_mm);
+      if (lineDef.cal_width  > _lim) lineDef.cal_width  = _lim;
+      if (lineDef.cal_length > _lim) lineDef.cal_length = _lim;
+    }
   }
 
   // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);

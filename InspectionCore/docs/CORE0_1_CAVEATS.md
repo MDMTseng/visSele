@@ -768,7 +768,9 @@ Four separate problems (status inline):
    -> **Default is now WARN** (rotating 10 MB x 5 in the core's cwd). `INSP_LOG_PERSIST_LEVEL=off`
    restores the old behaviour, `=info` for development. Caveat: WARN is chatty on some
    recipes (per-frame search_point warnings, per-frame camera gamma errors): 1.2 MB in 30 s
-   on the bench, so the 50 MB rotation holds ~20 min. Quieting those repeaters is the next step.
+   on the bench. -> The repeaters are throttled (LOG*_EVERY_N: PHYLayer 1/3000, CONTOUR-locating
+   1/100, circle-fit failed 1/100, degraded morph 1/200, search_point rel_strength 1/500, SBM
+   train failed 1/50, CameraSetup 1/20).
 2. **The `inspd_log` drainer can die silently.** Observed: it started, bound
    4091, and vanished; port closed, WebUI "Core Logs" empty, and nothing
    anywhere said so. The core never notices its own drainer is gone.
@@ -994,6 +996,12 @@ stream after its one frame (same `takeCount` path). Pre-existing, and now
 self-healing on the next snap, but the two should not be used together.
 
 ## N. The caliper clamp is in def-mm; the cost it bounds is in px (2026-08-07)
+
+**Guarded 2026-09-07** (the clamp itself is unchanged): at measurement time, where the mm
+value has become px and the image is in hand, a caliper wider or longer than the image is
+logged at ERROR ("typo? capped", 1 line in 50, with the mm values) and capped at the image
+edge. Verified: width/length 500 mm on a 2592x1936 frame -> 7241/28963 px, warned, capped,
+`--insp` finished in 5 s instead of minutes. Original write-up follows.
 
 **Deferred, not fixed.** Written up because it is invisible from the outside and
 the ten QA cases it fails are now marked KNOWN, which is how a deferred defect

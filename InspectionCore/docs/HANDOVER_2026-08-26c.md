@@ -269,7 +269,7 @@ was loaded. It puts you back on the image you were looking at.
 `test1_ms1.hydef` and `test1_x0.5.hydef` have no `__shape_cache`, so under the
 armed gate they refuse. Open each, press 生成特徵點, save. **A headless
 regenerator (`--sbm-train`) would fix this for a fleet in one command and is
-deliberately NOT built yet** — it would be a second place that extracts
+deliberately NOT built yet** (built 2026-09-07 as a DEBUG tool that refuses to overwrite its input; see RUNNING_CORE0_1.md) — it would be a second place that extracts
 features, which is the thing the gate exists to prevent. Worth deciding
 alongside D2 rather than on its own.
 

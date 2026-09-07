@@ -2986,7 +2986,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     {
       if (!g_camSetupFailed.empty()) g_camSetupFailed += ",";
       g_camSetupFailed += name;
-      LOGE("CameraSetup: %s NOT applied (driver returned %d)", name, (int)st);
+      LOGE_EVERY_N(20, "CameraSetup: %s NOT applied (driver returned %d) (1 line in 20)", name, (int)st);
     }
   };
   downSampSetup(camera, settingJson);
@@ -7685,7 +7685,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             session_ACK = false;
 
-            LOGE("PHYLayer is not able to eatablish");
+            LOGE_EVERY_N(3000, "PHYLayer is not able to eatablish (1 line in 3000; every poll retries)");
             sprintf(err_str, "PHYLayer is not able to eatablish");
           }
 
@@ -13840,6 +13840,70 @@ int cp_main(int argc, char **argv)
     else LOGE("--insp: cannot write %s", outPath);
     cJSON_Delete(jobj);
     free(jstr);
+    return 0;
+  }
+
+  // Headless SBM feature regeneration -- a DEBUG / bench tool, the command-line
+  // twin of the studio's 生成特徵點 (the SF handler above):
+  //   visSele --sbm-train <def.hydef> <out.hydef>
+  // Reads the def, extracts line2Dup features from its reference image inside
+  // the same ShapeExtractWindow the SF handler opens, and writes the def back
+  // with the fresh shape_cache in @__SBM_INFO__. It refuses to overwrite its
+  // input unless INSP_SBM_TRAIN_INPLACE=1: the fleet's defs are published from
+  // one place (HANDOVER D2), and this must not become a second extraction path
+  // that quietly runs on every machine.
+  for (int ai = 1; ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--sbm-train") != 0) continue;
+    if (ai + 2 >= argc) { LOGE("--sbm-train needs <def.hydef> <out.hydef>"); return 2; }
+    const char *defPath = argv[ai + 1], *outPath = argv[ai + 2];
+    if (strcmp(defPath, outPath) == 0 && !std::getenv("INSP_SBM_TRAIN_INPLACE"))
+    { LOGE("--sbm-train: refusing to overwrite the input def; give a different <out> or INSP_SBM_TRAIN_INPLACE=1"); return 2; }
+    char *jsonStr = ReadText(defPath);
+    if (!jsonStr) { LOGE("--sbm-train: cannot read %s", defPath); return 3; }
+    cJSON *fp = NULL;
+    try
+    {
+      std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+      matchingEng.ResetFeature();
+      ShapeExtractWindow _extract_ok(true);   // force: ignore the def's cache, extract fresh
+      MallocHold injected_ctx(def_stamp_context(jsonStr, defPath));
+      matchingEng.AddMatchingFeature(injected_ctx.get() ? injected_ctx.str() : jsonStr);
+      fp = matchingEng.GetShapeFeaturePoints();
+    }
+    catch (const std::exception &ex)
+    {
+      LOGE("--sbm-train: def parse / extraction failed: %s", ex.what());
+      free(jsonStr); return 4;
+    }
+    cJSON *cache = fp ? cJSON_DetachItemFromObject(fp, "shape_cache") : NULL;
+    if (fp) cJSON_Delete(fp);
+    if (!cache)
+    {
+      LOGE("--sbm-train: no shape_cache came back -- is the def shape_based, and is its reference "
+           "image (<def>.png / reference_image) readable?");
+      free(jsonStr); return 4;
+    }
+    cJSON *def = cJSON_Parse(jsonStr);
+    free(jsonStr);
+    if (!def) { LOGE("--sbm-train: def is not JSON"); cJSON_Delete(cache); return 4; }
+    cJSON *fs0 = cJSON_GetArrayItem(cJSON_GetObjectItem(def, "featureSet"), 0);
+    cJSON *inh = fs0 ? cJSON_GetObjectItem(fs0, "inherentfeatures") : NULL;
+    cJSON *sbm = NULL, *e = NULL;
+    if (inh) cJSON_ArrayForEach(e, inh)
+    {
+      cJSON *nm = cJSON_GetObjectItem(e, "name");
+      if (cJSON_IsString(nm) && strcmp(nm->valuestring, "@__SBM_INFO__") == 0) { sbm = e; break; }
+    }
+    if (!sbm) { LOGE("--sbm-train: def has no @__SBM_INFO__ feature to carry the cache"); cJSON_Delete(def); cJSON_Delete(cache); return 4; }
+    if (cJSON_GetObjectItem(sbm, "shape_cache")) cJSON_ReplaceItemInObject(sbm, "shape_cache", cache);
+    else cJSON_AddItemToObject(sbm, "shape_cache", cache);
+    char *out = cJSON_Print(def);
+    cJSON_Delete(def);
+    FILE *fo = fopen(outPath, "wb");
+    if (!fo) { LOGE("--sbm-train: cannot write %s", outPath); free(out); return 4; }
+    fwrite(out, 1, strlen(out), fo); fclose(fo); free(out);
+    LOGE("--sbm-train: wrote %s (fresh shape_cache from %s)", outPath, defPath);
     return 0;
   }
 
