@@ -619,8 +619,10 @@ Both call `forget_pending_triggers()`, which drops queued triggers *and* the
 results computed for them. In-flight frames then report `tid=-1` and are logged
 and dropped — no fault.
 
-**Related, still open: the deadline is in pulses, the latency is in
-milliseconds.** `pressure = gate_pulse + SWITCH - SYS_STEP_COUNT` is a pulse
+**Related -- decided 2026-09-07: NOT a code item. The deadline is in pulses, the latency is in
+milliseconds.** Whoever sets the plate speed owns the budget: a speed at which the report cannot
+arrive in time is the machine's limit, not a bug; drain before changing speed to avoid the
+transition fault. Kept here as the explanation. `pressure = gate_pulse + SWITCH - SYS_STEP_COUNT` is a pulse
 budget, so raising `plate_freq` shrinks the wall-clock time to answer
 proportionally, while the host's report latency does not change at all. A run
 that is comfortable at 3000 can fault on the objects already in flight the
