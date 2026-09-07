@@ -2731,6 +2731,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   const [cacheDef,setCacheDef]=useState(undefined);
   const [nowInspdata,setNowInspdata]=useState(undefined);
+  // Where the last .xreps record came from, so 載入下一個 xrep opens the same
+  // folder instead of the root: a session of checks is one folder of records.
+  const lastXrepDirRef = useRef(undefined);
   // 快速驗證 only: is the machine's station filter (inspection_region +
   // clean_regions) being enforced for this session? Default ENFORCED, so the
   // quick check shows what production shows unless somebody says otherwise.
@@ -2886,12 +2889,27 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   // camera_param are not touched (2026-09-07: the first cut loaded the frame
   // into the editor and adopted its calibration there; the owner wanted the
   // 檢驗 / 全檢 behaviour instead -- a check, shown in the modal).
+  function openXrepBrowser()
+  {
+    setModal_view(undefined);
+    setFileSelectCfg({
+      filter: makeExtensionFilter('xreps'),
+      path: lastXrepDirRef.current || machine_custom_setting.InspSampleSavePath || 'data/',
+    });
+    setFileSelectedCallBack(() => (filePath, fileInfo) => {
+      setFileSelectedCallBack(undefined);
+      setFileSelectCfg(undefined);
+      loadXrepForVerify(filePath, fileInfo);
+    });
+  }
+
   function loadXrepForVerify(xrepPath, fileInfo)
   {
     const stem = String(xrepPath).replace(/\.xreps$/i, "");
     const slash = Math.max(stem.lastIndexOf('/'), stem.lastIndexOf('\\'));
     const dir = slash >= 0 ? stem.substring(0, slash) : '.';
     const base = slash >= 0 ? stem.substring(slash + 1) : stem;
+    lastXrepDirRef.current = dir;
 
     // The picture's EXTENSION has to be looked up, not guessed: the core's
     // automatic NG snapshots write .jpg and the manual 檢測快照 writes .png,
@@ -3013,6 +3031,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           <span style={{ float: 'left', fontSize: 12, color: '#8b929c', display: 'flex', alignItems: 'center', height: 32 }}>
             紀錄:{imgPath}{mmppFrom === 'record' ? `,以紀錄的 ${mmpp.toFixed(6)} mm/px 量測` : ',紀錄沒有相機參數,用 def 的 mmpp'}
           </span>
+          <Button key="next" type="primary" onClick={() => openXrepBrowser()}>載入下一個 xrep</Button>
           <Button key="close" onClick={() => setModal_view(undefined)}>關閉</Button>
         </>,
       title: null,
@@ -3698,18 +3717,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             </Button>
             <div style={{ marginTop: 12, borderTop: '1px solid #333', paddingTop: 10 }}>
               <Button key="XREP" data-testid="quick-verify-xrep"
-                onClick={_ => {
-                  setModal_view(undefined);
-                  setFileSelectCfg({
-                    filter: makeExtensionFilter('xreps'),
-                    path: machine_custom_setting.InspSampleSavePath || 'data/',
-                  });
-                  setFileSelectedCallBack(() => (filePath, fileInfo) => {
-                    setFileSelectedCallBack(undefined);
-                    setFileSelectCfg(undefined);
-                    loadXrepForVerify(filePath, fileInfo);
-                  });
-                }}>
+                onClick={_ => openXrepBrowser()}>
                 載入 xrep
               </Button>
               <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
