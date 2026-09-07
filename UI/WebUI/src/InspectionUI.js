@@ -3,6 +3,7 @@
 
 import { connect } from 'react-redux';
 import InspSamplePanel from './component/InspSamplePanel.jsx';
+import { loadSampleGroups, pushSampleGroups } from './UTIL/inspSampleGroups';
 import React, { useState, useEffect,useRef } from 'react';
 import { useSelector,useDispatch } from 'react-redux';
 
@@ -3020,6 +3021,11 @@ class APP_INSP_MODE extends React.Component {
       }
       stampRefImagePath(wireDef, this.props.edit_info);
 
+      // Kept-sample groups for THIS def (browser localStorage, per def name).
+      // Pushed on every start, empty included: the core keeps whatever list
+      // it was last given, and the previous def's rules must not keep
+      // filing frames of this one.
+      pushSampleGroups(this.props.ACT_WS_SEND_CORE_BPG, loadSampleGroups(this.props.defModelName));
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
@@ -3058,7 +3064,6 @@ class APP_INSP_MODE extends React.Component {
         applyInspFrameRate(this.CameraCtrl, 'FI');
       }
       else if (this.props.machine_custom_setting.InspectionMode == "CI") {
-
 
         // The rate and the reasoning both live in inspRatePolicy.mjs now.
         applyInspFrameRate(this.CameraCtrl, 'CI');
@@ -3921,7 +3926,9 @@ class APP_INSP_MODE extends React.Component {
       </Button>
       <InspSamplePanel visible={this.state.samplePanel===true}
         onClose={()=>this.setState({samplePanel:false})}
-        sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)} />
+        sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)}
+        defName={this.props.defModelName}
+        measures={(this.props.shape_list||[]).filter(sh=>sh.type==='measure').map(sh=>({id:sh.id,name:sh.name}))} />
       <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
         <RedoOutlined/>
         {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
