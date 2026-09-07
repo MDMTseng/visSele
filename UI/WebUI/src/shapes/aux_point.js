@@ -15,7 +15,7 @@ import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 // drawing that dash (intersection dot still renders).
 function refFoot(refShape, fromPoint) {
   if (!refShape) return null;
-  if (refShape.type === 'line' && refShape.pt1 && refShape.pt2) {
+  if ((refShape.type === 'line' || refShape.type === 'aux_line') && refShape.pt1 && refShape.pt2) {
     return closestPointOnPoints(fromPoint, [refShape.pt1, refShape.pt2]);
   }
   if (refShape.type === 'search_point' && refShape.pt1) {
@@ -44,7 +44,7 @@ export function buildWhiteListKey(ctx) {
 
 // canvasCtrl: aux_point refs lines or search_points (their intersection).
 export function availableRefShapes(shapeList /*, subtype */) {
-  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'aux_line' || s.type === 'search_point');
 }
 
 // canvasCtrl: aux_point's center is its RESOLVED intersection point (computed

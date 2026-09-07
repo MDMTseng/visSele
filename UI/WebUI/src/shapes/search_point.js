@@ -53,9 +53,10 @@ export function buildWhiteListKey(ctx) {
   return buildWhiteListKeyFromFields(fields, ctx);
 }
 
-// canvasCtrl: search_point refs only a line (ref[0]).
+// canvasCtrl: search_point refs a line (ref[0]) -- a fitted one or an
+// aux_line through two points; the core follows either by id.
 export function availableRefShapes(shapeList /*, subtype */) {
-  return shapeList.filter((s) => s.type === 'line');
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'aux_line');
 }
 
 // canvasCtrl: search_point's pt1 is the search target — center on it.

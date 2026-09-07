@@ -552,6 +552,19 @@ export class InspectionEditorLogic {
             let obj = GetObjElement(edit_info.edit_tar_info, keyTrace, keyTrace.length - 2);
             let cand = edit_info.edit_tar_ele_cand;
 
+            // An aux_line is the line through two POINTS: a search point, a
+            // crossing, or an arc's centre -- what the core can locate as a
+            // point. A line has no single point to go through.
+            const isAuxLine = edit_info.edit_tar_info.type == SHAPE_TYPE.aux_line;
+            const pointLike = cand.shape && (cand.shape.type == SHAPE_TYPE.search_point
+              || cand.shape.type == SHAPE_TYPE.aux_point || cand.shape.type == SHAPE_TYPE.arc);
+            if (isAuxLine && !pointLike) {
+              log.info("aux_line only accepts search_point / aux_point / arc(centre), not " + (cand.shape && cand.shape.type));
+              edit_info.edit_tar_ele_trace = null;
+              edit_info.edit_tar_ele_cand = null;
+              break;
+            }
+
             log.info("GetObjElement", obj, keyTrace[keyTrace.length - 1]);
             obj[keyTrace[keyTrace.length - 1]] = {
               id: cand.shape.id,
@@ -598,7 +611,7 @@ export class InspectionEditorLogic {
                     cand.shape.type == SHAPE_TYPE.arc) {
                     //We allow these three
                   }
-                  else if (cand.shape.type == SHAPE_TYPE.line) {//Might need to check the angle if both are lines
+                  else if (cand.shape.type == SHAPE_TYPE.line || cand.shape.type == SHAPE_TYPE.aux_line) {//Might need to check the angle if both are lines
 
                   }
                   else {
@@ -616,9 +629,10 @@ export class InspectionEditorLogic {
                   }
                   break;
                 case SHAPE_TYPE.measure_subtype.angle://Has to be an line to measure
-                  if (cand.shape.type != SHAPE_TYPE.line&&cand.shape.type != SHAPE_TYPE.search_point) {
+                  if (cand.shape.type != SHAPE_TYPE.line && cand.shape.type != SHAPE_TYPE.aux_line
+                      && cand.shape.type != SHAPE_TYPE.search_point) {
                     log.info("Error: " + subtype +
-                      " Only accepts line & spoint");
+                      " Only accepts line, aux_line & spoint");
                     acceptData = false;
                   }
                   break;
@@ -849,6 +863,7 @@ export class InspectionEditorLogic {
       }
     });
     this.shapeCount = maxId;
+    this.refreshAuxLines(this.shapeList);
   }
 
   SetDefInfo(defInfo) {
@@ -1249,6 +1264,8 @@ export class InspectionEditorLogic {
     if (this.editShape !== null && this.editShape.id == id) {
       this.editShape = shape;
     }
+    // A moved point moves every aux_line through it.
+    this.refreshAuxLines(this.shapeList);
     //UpdateInherentShapeList();
     return shape;
 
@@ -1414,9 +1431,11 @@ export class InspectionEditorLogic {
     });
 
     switch (eObject.type) {
+      case SHAPE_TYPE.aux_line:   // reported as a line: pt1/pt2 are the two located points
       case SHAPE_TYPE.line:
         {
           ["pt1", "pt2"].forEach((key) => {
+            if (eObject[key] === undefined) return;
             eObject["_"+key] = closestPointOnLine(inspAdjObj, eObject[key]);
           });
 
@@ -1758,6 +1777,49 @@ export class InspectionEditorLogic {
 
     return point;
   }
+  // AUX LINE: the line through two located points. ref[0] / ref[1] name the
+  // points -- a search_point, an aux_point (crossing), or an arc (its centre),
+  // the same set the core's ParseLocatePosition turns into a point. Returns
+  // { pt1, pt2 } in def frame, or undefined while a ref is missing.
+  auxLineParse(aux_line, shapelist = this.shapeList) {
+    if (!aux_line || aux_line.type != SHAPE_TYPE.aux_line) return undefined;
+    const refs = aux_line.ref || [];
+    if (refs.length < 2) return undefined;
+    const pointOf = (ref) => {
+      if (!ref || ref.id === undefined) return undefined;
+      const sh = this.FindShapeObject("id", ref.id, shapelist);
+      if (sh === undefined) return undefined;
+      switch (sh.type) {
+        case SHAPE_TYPE.search_point: return this.searchPointParse(sh, shapelist);
+        case SHAPE_TYPE.aux_point:    return this.auxPointParse(sh, shapelist);
+        case SHAPE_TYPE.arc: {
+          if (!(sh.pt1 && sh.pt2 && sh.pt3)) return undefined;
+          const c = threePointToArc(sh.pt1, sh.pt2, sh.pt3);
+          return c ? { x: c.x, y: c.y } : undefined;
+        }
+        default: return undefined;
+      }
+    };
+    const a = pointOf(refs[0]), b = pointOf(refs[1]);
+    if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(b.x)) return undefined;
+    return { pt1: { x: a.x, y: a.y }, pt2: { x: b.x, y: b.y } };
+  }
+
+  // Materialise pt1/pt2 on every aux_line so everything that reads a line's
+  // endpoints (measure drawing, middle point, vector, the report merge) reads
+  // an aux_line exactly like a line. Derived, never saved: the def carries
+  // only the refs, the core recomputes from the located points. Called after
+  // every list change; refs can point forward in the list, so it runs once
+  // the whole list is in place.
+  refreshAuxLines(shapelist = this.shapeList) {
+    (shapelist || []).forEach((sh) => {
+      if (!sh || sh.type != SHAPE_TYPE.aux_line) return;
+      const g = this.auxLineParse(sh, shapelist);
+      if (g) { sh.pt1 = g.pt1; sh.pt2 = g.pt2; }
+      else { delete sh.pt1; delete sh.pt2; }
+    });
+  }
+
   searchPointParse(search_point, shapelist = this.shapeList) {
     let point = undefined;
     if (search_point.type != SHAPE_TYPE.search_point) return undefined;
@@ -1771,6 +1833,7 @@ export class InspectionEditorLogic {
       if (ref0_shape === undefined) return undefined;
       switch (ref0_shape.type) {
         case SHAPE_TYPE.line:
+        case SHAPE_TYPE.aux_line:
           {
             point = search_point.pt1;
           }
@@ -1786,6 +1849,9 @@ export class InspectionEditorLogic {
   shapeMiddlePointParse(shape, shapelist = this.shapeList) {
     switch (shape.type) {
 
+      case SHAPE_TYPE.aux_line:
+        if (!(shape.pt1 && shape.pt2)) return undefined;
+        // fall through: an aux_line with its endpoints materialised IS a line
       case SHAPE_TYPE.line:
         return { x: (shape.pt1.x + shape.pt2.x) / 2, y: (shape.pt1.y + shape.pt2.y) / 2 };
       case SHAPE_TYPE.arc:
@@ -1801,6 +1867,9 @@ export class InspectionEditorLogic {
   shapeVectorParse(shape, shapelist = this.shapeList) {
     switch (shape.type) {
 
+      case SHAPE_TYPE.aux_line:
+        if (!(shape.pt1 && shape.pt2)) return undefined;
+        // fall through, same reason as shapeMiddlePointParse
       case SHAPE_TYPE.line:
         return { x: (shape.pt2.x - shape.pt1.x), y: (shape.pt2.y - shape.pt1.y) };
       case SHAPE_TYPE.search_point:
@@ -1809,7 +1878,7 @@ export class InspectionEditorLogic {
 
           let refObj = this.FindShapeObject("id", shape.ref[0].id, shapelist);
 
-          if (refObj === undefined || refObj.type !== SHAPE_TYPE.line) return undefined;
+          if (refObj === undefined || (refObj.type !== SHAPE_TYPE.line && refObj.type !== SHAPE_TYPE.aux_line)) return undefined;
           let lineVec = this.shapeVectorParse(refObj, shapelist);
 
           if (lineVec === undefined) return undefined;

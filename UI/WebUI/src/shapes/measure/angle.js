@@ -12,7 +12,7 @@ const log = mkLog("editor.shapes");
 
 // canvasCtrl: angle refs two lines or search_points (intersection).
 export function availableRefShapes(shapeList) {
-  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'aux_line' || s.type === 'search_point');
 }
 
 export function draw(ctx, shape, subObjs, renderer, sctx) {

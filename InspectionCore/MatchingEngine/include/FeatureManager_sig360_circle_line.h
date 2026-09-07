@@ -456,6 +456,7 @@ protected:
   int parse_arcData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_auxPointData(cJSON * auxPoint_obj);
+  int parse_auxLineData(cJSON * auxLine_obj);   // 0 ok, 1 skipped (not a two-point line), -1 error
   int parse_searchPointData(cJSON * searchPoint_obj);
   int parse_objDetectData(cJSON * objDetect_obj);
   int parse_sign360(cJSON * signature_obj);

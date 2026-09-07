@@ -2260,6 +2260,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Arc_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create)) };
   const ACT_Search_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create)) };
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
+  const ACT_Aux_Line_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
 
@@ -2839,6 +2840,12 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_point]}}
       key="APOINT"
       text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
+    <BASE_COM.IconButton
+      dict={DICT}
+      addClass="layout palatte-blue-8 vbox  btn-swipe"
+      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_line]}}
+      key="ALINE"
+      text="aline" onClick={() =>  ACT_Aux_Line_Add_Mode()} />,
 
     <BASE_COM.IconButton
       dict={DICT}
@@ -4366,13 +4373,15 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
         {
+          const isALine = substate == UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE;
           MenuSet = [
             <BASE_COM.IconButton
               addClass="layout black vbox"
               key="<" 
             iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
-            <div key="AUX_POINT" className="s lred vbox">APOINT</div>,
+            <div key="AUX_POINT" className="s lred vbox">{isALine ? "ALINE" : "APOINT"}</div>,
           ];
 
 

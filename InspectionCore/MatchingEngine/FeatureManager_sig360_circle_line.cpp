@@ -1795,6 +1795,53 @@ int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON *jobj)
   return 0;
 }
 
+// aux_line: { type:"aux_line", id, name, ref:[{id:A},{id:B}] } -- the line
+// through points A and B. Anything else that calls itself aux_line (the
+// editor's inherent "@__SIGNATURE__.orientation", one ref by name+keyTrace)
+// is not a two-point line and is skipped, not rejected: that entry has been
+// in every sig360 def for years and the core never read it.
+int FeatureManager_sig360_circle_line::parse_auxLineData(cJSON *jobj)
+{
+  // JFetch, not JFetEx: the Ex form THROWS on a missing path, and the
+  // inherent one-ref entry has no ref[1] at all.
+  if (JFetch_OBJECT(jobj, "ref[1]") == NULL) return 1;
+  double *a = JFetch_NUMBER(jobj, "ref[0].id");
+  double *b = JFetch_NUMBER(jobj, "ref[1].id");
+  if (a == NULL || b == NULL) return 1;
+
+  featureDef_line line;
+  line.name[0] = '\0';
+  if (char *tmpstr = json_find_name(jobj)) copyFeatureName(line.name, tmpstr);
+  double *pnum;
+  if ((pnum = JSON_GET_NUM(jobj, "id")) == NULL) return -1;
+  line.id = (int)*pnum;
+  if (line.name[0] == '\0') sprintf(line.name, "@AUXLINE_%d", line.id);
+
+  // Nothing about this line is searched for, so every search knob is inert;
+  // set them to the parser's neutral values rather than leaving them to
+  // whatever the stack held.
+  line.MatchingMarginX = 0; line.initMatchingMargin = 0;
+  line.p0 = acv_XY{0.f, 0.f}; line.p1 = acv_XY{0.f, 0.f};
+  line.cache_r0 = line.cache_r1 = 0;
+  line.lineTar = acv_Line{}; line.searchVec = acv_XY{0.f, 0.f}; line.searchEstAnchor = acv_XY{0.f, 0.f};
+  line.vertex_touch_searching = false;
+  line.locating = 0; line.fit_mode = 0;
+  line.cal_count = CALIPER_PARSE_DEFAULT_COUNT; line.cal_width = CALIPER_PARSE_DEFAULT_WIDTH;
+  line.cal_length = -1; line.cal_step = -1; line.cal_min_inliers = 0; line.cal_max_error = 0;
+  line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
+  line.edge_rel_strength = 0.15f; line.edge_sigma = 0; line.edge_nth = 0; line.edge_min_strength = 0;
+  line.aux_pt1_id = (int)*a;
+  line.aux_pt2_id = (int)*b;
+  if (line.aux_pt1_id == line.aux_pt2_id)
+  {
+    LOGE("aux_line id=%d: both refs are feature %d -- a line needs two different points", line.id, line.aux_pt1_id);
+    return -1;
+  }
+  LOGV("feature is an aux_line:%s %d through %d and %d", line.name, line.id, line.aux_pt1_id, line.aux_pt2_id);
+  featureLineList.push_back(line);
+  return 0;
+}
+
 featureDef_line lineDefDataPrep(featureDef_line pre) //,int id, float margin, acv_XY p0, acv_XY p1)
 {
   featureDef_line &line = pre;
@@ -2617,8 +2664,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     else if (strcmp(feature_type, "aux_line") == 0)
     {
-      LOGE("TODO: feature[%d] feature[%d] ", i, feature_type);
-      return -1;
+      if (parse_auxLineData(feature) < 0)
+      {
+        LOGE("feature[%d] has error %s format", i, feature_type);
+        return -1;
+      }
     }
     else if (strcmp(feature_type, "measure_calc") == 0)
     {
@@ -2630,6 +2680,49 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       LOGE("feature[%d] has unknown type:[%s]", i, feature_type);
       return -1;
     }
+  }
+
+  // AUX LINES: give each one a DEF-FRAME p0/p1 from the def positions of the
+  // two points it goes through. The located line is built at run time from the
+  // located points (TreeExecution); this static copy exists for the one
+  // consumer that reads a line's def geometry rather than its report --
+  // ParseMainVector(def_sp), which turns a search point's angleDeg into a
+  // search direction before anything is located. Without it a search point
+  // following an aux line would get a NaN direction. Best effort: a ref that
+  // has no def position (an aux_point crossing two lines is resolved from the
+  // def lines; anything else is left at 0,0 and the search point reports NA).
+  {
+    auto defPointOf = [&](int fid, acv_XY *out) -> bool {
+      for (auto &sp : searchPointList)
+        if (sp.id == fid) { *out = sp.data.anglefollow.position; return true; }
+      for (auto &c : featureCircleList)
+        if (c.id == fid) { *out = acvCircumcenter(c.pt1, c.pt2, c.pt3); return std::isfinite(out->x) && std::isfinite(out->y); }
+      for (auto &ap : auxPointList)
+        if (ap.id == fid)
+        {
+          if (ap.subtype == featureDef_auxPoint::centre)
+          {
+            for (auto &c : featureCircleList)
+              if (c.id == ap.data.centre.obj1_id) { *out = acvCircumcenter(c.pt1, c.pt2, c.pt3); return std::isfinite(out->x) && std::isfinite(out->y); }
+            return false;
+          }
+          const featureDef_line *l1 = NULL, *l2 = NULL;
+          for (auto &l : featureLineList) { if (l.id == ap.data.lineCross.line1_id) l1 = &l; if (l.id == ap.data.lineCross.line2_id) l2 = &l; }
+          if (!l1 || !l2) return false;
+          *out = acvIntersectPoint(l1->p0, l1->p1, l2->p0, l2->p1);
+          return std::isfinite(out->x) && std::isfinite(out->y);
+        }
+      return false;
+    };
+    // Two passes, so an aux line through an aux_point that crosses another
+    // aux line still resolves (the first pass fills the inner one's p0/p1).
+    for (int pass = 0; pass < 2; pass++)
+      for (auto &l : featureLineList)
+      {
+        if (l.aux_pt1_id < 0 || l.aux_pt2_id < 0) continue;
+        acv_XY a, b;
+        if (defPointOf(l.aux_pt1_id, &a) && defPointOf(l.aux_pt2_id, &b)) { l.p0 = a; l.p1 = b; }
+      }
   }
 
   for (int j = 0; j < searchPointList.size(); j++)
@@ -2679,7 +2772,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     else if (strcmp(feature_type, "aux_line") == 0)
     {
-      //return -1;
+      // Two-point lines parse; the inherent orientation entry is skipped (1).
+      if (parse_auxLineData(feature) < 0)
+      {
+        LOGE("feature[%d] has error %s format", i, feature_type);
+        return -1;
+      }
     }
     else if (strcmp(feature_type, "sbm_info") == 0)
     {
@@ -2850,7 +2948,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       strncat(names, one, sizeof(names) - strlen(names) - 1);
     };
     for (size_t i = 0; i < featureLineList.size(); i++)
-      if (featureLineList[i].locating != 1) note(featureLineList[i].name, featureLineList[i].id);
+      if (featureLineList[i].locating != 1 && featureLineList[i].aux_pt1_id < 0) note(featureLineList[i].name, featureLineList[i].id);
     for (size_t i = 0; i < featureCircleList.size(); i++)
       if (featureCircleList[i].locating != 1) note(featureCircleList[i].name, featureCircleList[i].id);
     if (nBad > 0)
@@ -5735,6 +5833,41 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       return rep.status;
     }
     rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
+
+    if (rep.def->aux_pt1_id >= 0 && rep.def->aux_pt2_id >= 0)
+    {
+      // The line through two located points. The points come first (they may
+      // be search points, crossings, or arc centres that have not run yet),
+      // then the line is built, never searched. NA when either point is NA or
+      // the two coincide -- a line through one point is not a line.
+      featureDef_line *def = rep.def;
+      TreeExecution(def->aux_pt1_id, singleReport, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
+      TreeExecution(def->aux_pt2_id, singleReport, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
+      acv_XY pa, pb;
+      const int ra = ParseLocatePosition(singleReport, def->aux_pt1_id, &pa);
+      const int rb = ParseLocatePosition(singleReport, def->aux_pt2_id, &pb);
+      rep.cal_hits.clear();
+      rep.line = acv_LineFit{};
+      if (ra == 0 && rb == 0 && std::isfinite(pa.x) && std::isfinite(pa.y) &&
+          std::isfinite(pb.x) && std::isfinite(pb.y) && std::hypot(pb.x - pa.x, pb.y - pa.y) > 1e-6f)
+      {
+        const float L = std::hypot(pb.x - pa.x, pb.y - pa.y);
+        rep.line.line.line_anchor = pa;
+        rep.line.line.line_vec = acv_XY((pb.x - pa.x) / L, (pb.y - pa.y) / L);
+        rep.line.end_pt1 = pa;
+        rep.line.end_pt2 = pb;
+        rep.line.matching_pts = 2;
+        rep.line.s = 0; rep.line.confidence = 0;
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+      }
+      else
+      {
+        LOGI_EVERY_N(100, "aux_line id=%d: point %d (%s) / point %d (%s) -- NA", def->id,
+                     def->aux_pt1_id, ra == 0 ? "ok" : "NA", def->aux_pt2_id, rb == 0 ? "ok" : "NA");
+      }
+      if(doPrintDBG)LOGI("AL:%d:%d",id,rep.status);
+      return rep.status;
+    }
 
     rep= LineMatching_ReportGen(
       rep.def,eT,

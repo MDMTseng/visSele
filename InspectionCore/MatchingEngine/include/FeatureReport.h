@@ -224,6 +224,15 @@ typedef struct featureDef_line{
   float edge_min_strength;
   float edge_rel_strength; // floor = max(min_strength, rel_strength * strongest); 0 = absolute floor
   float edge_sigma;        // across-edge Gaussian, px; 0 = none
+  // AUX LINE: a line THROUGH TWO POINTS instead of a fitted edge. When both ids
+  // are >= 0 the line is not searched for at all -- TreeExecution resolves the
+  // two referenced points (search_point / aux_point / arc centre, whatever
+  // ParseLocatePosition can turn into a point) and the report is the line
+  // through them, pt1 -> pt2. It lives in featureLineList so every consumer
+  // that takes a line by id (angle, distance, aux_point crossing) takes it
+  // without knowing. -1 = an ordinary fitted line.
+  int aux_pt1_id = -1;
+  int aux_pt2_id = -1;
   /*
 
   We will rotate the picture to let image line contour pixel lie on horizontal position

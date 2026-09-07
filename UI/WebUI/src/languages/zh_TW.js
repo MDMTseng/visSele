@@ -83,6 +83,8 @@ export default {
         
         apoint:"交點/APOINT",
         aux_point:"交點",
+        aline:"兩點線/ALINE",
+        aux_line:"兩點線",
         '<':"返回",
         measure:"測量/MEASURE",
         edit:"編輯測量/Edit",
