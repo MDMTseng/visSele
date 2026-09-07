@@ -75,6 +75,17 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
 
   const t = (key) => translate(dict, dictTheme, key);
   const defaultTweak = { mul: [1.5], add: [0.1] };
+  // 填滿: width = the spacing between neighbouring calipers, so the boxes
+  // touch and the whole edge is covered. Anchors run from one end to the
+  // other (i/(count-1), same as the core), so the spacing is L/(count-1);
+  // one caliper gets the whole length.
+  const fillWidth = () => {
+    const L = arcLengthOf(shape);
+    const n = Number(shape.caliper?.count) || 1;
+    if (!(L > 0)) return NaN;
+    return parseFloat((n > 1 ? L / (n - 1) : L).toFixed(4));
+  };
+  const widthTweak = { ...defaultTweak, extra: [{ label: t('fill'), title: t('fill_hint'), value: fillWidth }] };
 
   // shape_based defs are caliper-only: force caliper on open, hide the selector.
   useEffect(() => {
@@ -108,7 +119,7 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
           tweak={{ add: [1] }} />
         <NumberField {...B.cal_width} label={t('width')} value={shape.caliper?.width}
           onCommit={(width) => updateSub('caliper', { width })}
-          tweak={defaultTweak} />
+          tweak={widthTweak} />
         <NumberField {...B.min_inliers} max={shape.caliper?.count}
           label={t('min_inliers')} value={shape.caliper?.min_inliers}
           onCommit={(min_inliers) => updateSub('caliper', { min_inliers })}

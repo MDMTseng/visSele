@@ -175,6 +175,7 @@ export function NumberField({ label, value, onCommit, step = 0.0001,
             value={value} onCommit={onCommit}
             mul={typeof tweak === 'object' ? tweak.mul : undefined}
             add={typeof tweak === 'object' ? tweak.add : undefined}
+            extra={typeof tweak === 'object' ? tweak.extra : undefined}
           />
         : undefined);
 
@@ -271,7 +272,10 @@ export function StepButton({ onClick, title, children }) {
 // Default pattern (`tweak: true` shorthand) covers the common "double/halve
 // + nudge by 0.1 / 0.01" use case for size-like fields.
 const DEFAULT_TWEAK = { mul: [], add: [] };
-export function NumberTweakActions({ value, onCommit, mul, add }) {
+// `extra`: [{ label, title, value: () => number }] -- named presets beside
+// the arithmetic ones (the caliper width's 填滿, which needs the shape's
+// geometry the popover does not have, so the caller computes it).
+export function NumberTweakActions({ value, onCommit, mul, add, extra }) {
   const v = Number(value);
   const cleanV = Number.isFinite(v) ? v : 0;
   const m = mul ?? DEFAULT_TWEAK.mul;
@@ -285,6 +289,9 @@ export function NumberTweakActions({ value, onCommit, mul, add }) {
       onClick={() => onCommit(cleanV + d)} title={`+ ${d}`}>+{d}</StepButton>)}
     {a.map((d) => <StepButton key={`-${d}`}
       onClick={() => onCommit(cleanV - d)} title={`− ${d}`}>−{d}</StepButton>)}
+    {(extra || []).map((x, i) => <StepButton key={`x_${i}`}
+      onClick={() => { const n = Number(x.value()); if (Number.isFinite(n) && n > 0) onCommit(n); }}
+      title={x.title || x.label}>{x.label}</StepButton>)}
   </>;
 }
 

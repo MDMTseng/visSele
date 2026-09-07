@@ -26,6 +26,8 @@ export default {
         edge:"邊緣",
         count:"卡尺數",
         min_inliers:"最少有效點",
+        fill:"填滿",
+        fill_hint:"寬度 = 相鄰卡尺的間距,讓卡尺相連、蓋滿整條邊",
         max_error:"容許殘差",
         method:"選邊規則",
         polarity:"邊緣明暗",
