@@ -41,8 +41,8 @@ const cases = [
   ['C:' + B + 'X2.0' + B + 'data' + B + 'testNew2.hydef', 'C:' + B + 'X2.0' + B + 'data' + B + 'testNew2.png'],
   ['/opt/X2.0/data/testNew2.hydef', '/opt/X2.0/data/testNew2.png'],
   // ordinary cases
-  ['data/testNew2', 'data/testNew2.png'],
-  ['data/testNew2.hydef', 'data/testNew2.png'],
+  ['data/_test/testNew2', 'data/_test/testNew2.png'],
+  ['data/_test/testNew2.hydef', 'data/_test/testNew2.png'],
   ['testNew2', 'testNew2.png'],
   ['testNew2.hydef', 'testNew2.png'],
   // no directory, dotted name

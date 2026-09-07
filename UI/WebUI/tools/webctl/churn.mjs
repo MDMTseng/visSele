@@ -40,7 +40,7 @@ A.on('message', d => {
 A.on('error', e => { console.error('observer error:', e.message); process.exit(2); });
 await new Promise(r => A.on('open', () => setTimeout(r, 400)));
 A.send(frame('ST', 0, pgA++, { IMG_STREAMING_JPEG_QUALITY: 85 }));
-A.send(frame('CI', 0, pgA++, { deffile: 'data/test1.hydef', frame_count: -1, trigger_mode: 0 }));
+A.send(frame('CI', 0, pgA++, { deffile: 'data/_test/test1.hydef', frame_count: -1, trigger_mode: 0 }));
 A.send(frame('SB', 0, pgA++, { stream: true }));
 await new Promise(r => setTimeout(r, 2500));
 const rp0 = rp;

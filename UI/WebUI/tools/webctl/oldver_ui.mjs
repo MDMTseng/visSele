@@ -22,7 +22,7 @@ const banner = () => ev(`(function(){
 const engine = () => ev(`(window.__GP_STORE__.getState().UIData.edit_info.locating_engine||'sig360')`);
 
 async function enterDef(name) {
-  console.log('recipe:', await loadRecipe(ctl, 'data/' + name));
+  console.log('recipe:', await loadRecipe(ctl, 'data/_test/' + name));
   await ev(`window.__GP_STORE__.dispatch({ type: 'Edit_Mode' })`);
   for (let i = 0; i < 60; i++) {
     const s = await ev(`JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value)`);

@@ -15,7 +15,7 @@ import { makeProbe, makeTally, sleep } from './_rf_lib.mjs';
 const ctl = makeCtl('http://127.0.0.1:8765'); const { api, ev } = ctl;
 const P = makeProbe(ev); const T = makeTally(); const { ok } = T;
 const SM = 'window.__GP_STORE__.getState().UIData.c_state.value';
-const model = process.argv[2] || 'data/_dragcheck';
+const model = process.argv[2] || 'data/_test/_dragcheck';
 
 await freshPage(ctl, 'http://127.0.0.1:8081/');
 await P.waitFor('app', async () => (await ev(`typeof window.__GP_STORE__`)) === 'object', { timeout: 40000 });

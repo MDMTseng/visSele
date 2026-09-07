@@ -32,7 +32,7 @@ import path from 'node:path';
 import net from 'node:net';
 import fs from 'node:fs';
 // Default to the test1 fixture IN THIS REPOSITORY -- the def these probes were
-// /Users/mdm -- and at data/test1.hydef, which is gitignored -- so the probe
+// /Users/mdm -- and at data/_test/test1.hydef, which is gitignored -- so the probe
 // died with ENOENT on every machine but one. WEBCTL_DEF overrides it.
 const DEF=(process.env.WEBCTL_DEF || path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'test1.hydef'));
 const BPG_HDR=9; const enc=new TextEncoder();

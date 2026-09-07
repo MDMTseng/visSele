@@ -23,7 +23,7 @@
 //   min(USL-v, v-LSL) / ((USL-LSL)/2), 1 = dead centre, 0 = on the limit, <0 = out.
 import fs from 'node:fs'; import path from 'node:path'; import WebSocket from 'ws';
 const PORT = process.env.CORE_PORT || '4093'; const clone=(d)=>JSON.parse(JSON.stringify(d));
-const D = '../../../../InspectionCore/Core0_1/data/'; const DATA_ABS = path.resolve(D) + path.sep; const HDR = 9, enc = new TextEncoder();
+const D = '../../../../InspectionCore/Core0_1/data/_test/'; const DATA_ABS = path.resolve(D) + path.sep; const HDR = 9, enc = new TextEncoder();
 function frame(type,prop,pg,obj){const b=enc.encode(JSON.stringify(obj));const u=new Uint8Array(HDR+b.length+1);u[0]=type.charCodeAt(0);u[1]=type.charCodeAt(1);u[2]=prop;new DataView(u.buffer).setUint16(3,pg,false);new DataView(u.buffer).setUint32(5,b.length+1,false);u.set(b,HDR);return u;}
 const ws = new WebSocket('ws://127.0.0.1:' + PORT); ws.binaryType = 'arraybuffer'; let pg = 12000; const W = {};
 ws.on('message',(d)=>{const b=new Uint8Array(d);const ty=String.fromCharCode(b[0],b[1]);const id=new DataView(b.buffer,b.byteOffset).getUint16(3,false);if(ty==='HR'){ws.send(frame('HR',0,1,{a:['d']}));return;}const txt=new TextDecoder().decode(b.subarray(HDR)).replace(/\0+$/,'');const w=W[id];if(!w)return;if(ty==='SF'){delete W[id];try{w.res(JSON.parse(txt));}catch(e){w.res(null);}return;}if(ty==='RP'){try{w.rp=JSON.parse(txt);}catch(e){}}if(ty==='SS'){try{if(JSON.parse(txt).cmd==='II'){delete W[id];w.res(w.rp);}}catch(e){}}});
@@ -102,7 +102,7 @@ for (const R of CFG.recipes) {
     for (const image of images) {
       const [Wd, Ht] = pngSize(image);
       // the same def's own, unperturbed result on this image is the reference for pose repeatability
-      const base = objs(await ii(d, 'data/' + image)); nII++;
+      const base = objs(await ii(d, 'data/_test/' + image)); nII++;
       const basePx = base.map(o => [o.cx / mmpp, o.cy / mmpp]);
       for (const a of augs) for (const seed of seeds) {
         const pert = Object.keys(a).length ? { ...a, seed } : null;
@@ -110,7 +110,7 @@ for (const R of CFG.recipes) {
         // distance judge shifts by the scale factor and reads as a locator failure. (This also exercises the matcher's
         // magnification portability: the def keeps its taught mmpp, the frame comes with another.)
         const mmppEff = mmpp / (a.scale || 1);
-        const rp = pert ? await ii(d, 'data/' + image, pert, a.scale) : null; nII++;
+        const rp = pert ? await ii(d, 'data/_test/' + image, pert, a.scale) : null; nII++;
         const found = pert ? objs(rp) : base; const ms = pert ? (rp && rp.insp_wall_ms) : null;
         // match found objects to base objects through the expected transform (greedy nearest, 40 px gate)
         const exp = basePx.map(([x, y]) => expectPx(x, y, Wd, Ht, a)); const used = new Set(); let nMatched = 0;

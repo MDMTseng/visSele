@@ -6,7 +6,7 @@
 // once per file. This edits LOCAL copies only: hy_sync is read-only and data/ never ships; the
 // production step is the def migrate flow with these same fields.
 import fs from 'node:fs';
-const D='../../../../InspectionCore/Core0_1/data/';
+const D='../../../../InspectionCore/Core0_1/data/_test/';
 const args=process.argv.slice(2); const dry=args.includes('--dry'); const doTrust=args.includes('--trust'); const doSp=args.includes('--spacing');
 const names=args.filter(a=>!a.startsWith('--'));
 if(!doTrust&&!doSp){console.error('nothing to do: pass --trust and/or --spacing');process.exit(2);}

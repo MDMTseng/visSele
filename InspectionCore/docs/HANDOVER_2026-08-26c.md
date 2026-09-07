@@ -73,7 +73,7 @@ leaves, 0 differ" should not be quoted.
 
 ### The bench def stopped using SBM, and nothing looked wrong
 
-`data/test1.hydef` was rewritten at 19:18 with **`def_image_reg.angle` set to
+`data/_test/test1.hydef` was rewritten at 19:18 with **`def_image_reg.angle` set to
 exactly 0** (it was -0.00221875). `angle_offset_deg` is in the cache
 fingerprint, so that invalidated the features generated eight minutes earlier:
 
@@ -338,7 +338,7 @@ if (edit_info.def_image_reg) report.def_image_reg = edit_info.def_image_reg;  //
 
 So an ordinary overwrite passes the value through untouched. The `!existed`
 branch bakes **whatever the last inspection said** into the recipe — and the
-values now in `data/test1.hydef` (cx 15.02516, cy 9.30547, angle exactly 0)
+values now in `data/_test/test1.hydef` (cx 15.02516, cy 9.30547, angle exactly 0)
 match that path, not a hand edit.
 
 The problem with it: if that inspection ran on the **sig360 fallback** — which
@@ -531,8 +531,8 @@ anything.** This may be finished work that nobody connected.
 
 ## Found today, NOT fixed
 
-- **`--insp` does not locate a shape_based def.** `data/test1.hydef` against its
-  own `data/test1.png` reports zero objects even with
+- **`--insp` does not locate a shape_based def.** `data/_test/test1.hydef` against its
+  own `data/_test/test1.png` reports zero objects even with
   `SBM_ALLOW_IMPLICIT_EXTRACT=1`, so the gate is not the cause. The live path
   works, so something differs — probably calibration or scale, since `--insp`
   uses `neutral_bacpac`. **`--insp` is therefore not trustworthy for SBM defs**,

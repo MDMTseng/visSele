@@ -21,7 +21,7 @@ await P.waitFor('app', async () => (await ev(`typeof window.__GP_STORE__`)) === 
 await toMain(ctl); await dismissCamModal(ctl);
 let fails = 0;
 for (const m of (process.argv.slice(2).length ? process.argv.slice(2)
-                 : ['data/test1', 'data/_dragcheck'])) {
+                 : ['data/_test/test1', 'data/_test/_dragcheck'])) {
   await loadRecipe(ctl, m);
   // Wait for the def to be IN the editor rather than for a clock: loadRecipe
   // returns when the load promise settles, and the editor state follows.

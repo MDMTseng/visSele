@@ -1,7 +1,7 @@
 // node _fleet_eq.mjs <portA> <portB> [names...]  -- inspect every recipe's own picture on two cores, compare objects
 // (count, pose, similarity, judge values). Used to prove a matcher change is result-neutral across the fleet.
 import fs from 'node:fs'; import WebSocket from 'ws';
-const D = '../../../../InspectionCore/Core0_1/data/'; const HDR = 9, enc = new TextEncoder();
+const D = '../../../../InspectionCore/Core0_1/data/_test/'; const HDR = 9, enc = new TextEncoder();
 function frame(type,prop,pg,obj){const b=enc.encode(JSON.stringify(obj));const u=new Uint8Array(HDR+b.length+1);u[0]=type.charCodeAt(0);u[1]=type.charCodeAt(1);u[2]=prop;new DataView(u.buffer).setUint16(3,pg,false);new DataView(u.buffer).setUint32(5,b.length+1,false);u.set(b,HDR);return u;}
 function client(port){const ws=new WebSocket('ws://127.0.0.1:'+port);ws.binaryType='arraybuffer';let pg=15000;const W={};
   ws.on('message',(d)=>{const b=new Uint8Array(d);const ty=String.fromCharCode(b[0],b[1]);const id=new DataView(b.buffer,b.byteOffset).getUint16(3,false);if(ty==='HR'){ws.send(frame('HR',0,1,{a:['d']}));return;}const txt=new TextDecoder().decode(b.subarray(HDR)).replace(/\0+$/,'');const w=W[id];if(!w)return;if(ty==='RP'){try{w.rp=JSON.parse(txt);}catch(e){}}if(ty==='SS'){try{if(JSON.parse(txt).cmd==='II'){delete W[id];w.res(w.rp);}}catch(e){}}});
@@ -14,7 +14,7 @@ const objs=(rp)=>{const g=rp&&rp.reports&&rp.reports[0];return ((g&&g.reports)||
 let same=0, diff=0, none=0; const msA=[], msB=[]; const cntChg=[], f2p=[], p2f=[];
 for (const name of names) {
   const f = D + name + '_sbm.hydef'; if (!fs.existsSync(f)) continue;
-  const def = JSON.parse(fs.readFileSync(f,'utf8')); const img = 'data/' + name + '.png';
+  const def = JSON.parse(fs.readFileSync(f,'utf8')); const img = 'data/_test/' + name + '.png';
   const [ra, rb] = await Promise.all([A.ii(def,img), B.ii(def,img)]);
   if (ra) msA.push(ra.insp_wall_ms); if (rb) msB.push(rb.insp_wall_ms);
   const oa = objs(ra), ob = objs(rb);

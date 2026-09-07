@@ -15,7 +15,7 @@ import { makeCtl, toMain, dismissCamModal, loadRecipe, freshPage, sleep } from '
 
 const ctl = makeCtl('http://127.0.0.1:8765');
 const { ev } = ctl;
-const MODEL = process.argv[2] || 'data/test1';
+const MODEL = process.argv[2] || 'data/_test/test1';
 
 const gs = (items) => ev(`(function(){
   window.__GSR__ = null;

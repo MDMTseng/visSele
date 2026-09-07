@@ -15,7 +15,7 @@
 // Output: trust_budget.json {name: {base, inspec_max, res_max, misses, flags_at_1px}} and a
 // summary. It NEVER edits a def; adoption = migrate shape_trust_res_max + shape_trust_na.
 import fs from 'node:fs'; import WebSocket from 'ws';
-const PORT=process.argv[2]||'4093'; const D='../../../../InspectionCore/Core0_1/data/'; const HDR=9,enc=new TextEncoder();
+const PORT=process.argv[2]||'4093'; const D='../../../../InspectionCore/Core0_1/data/_test/'; const HDR=9,enc=new TextEncoder();
 function frame(t,pr,pg,o){const b=enc.encode(JSON.stringify(o));const u=new Uint8Array(HDR+b.length+1);u[0]=t.charCodeAt(0);u[1]=t.charCodeAt(1);u[2]=pr;new DataView(u.buffer).setUint16(3,pg,false);new DataView(u.buffer).setUint32(5,b.length+1,false);u.set(b,HDR);return u;}
 const ws=new WebSocket('ws://127.0.0.1:'+PORT);ws.binaryType='arraybuffer';let pg=25000;const W={};
 ws.on('message',d=>{const b=new Uint8Array(d);const ty=String.fromCharCode(b[0],b[1]);const id=new DataView(b.buffer,b.byteOffset).getUint16(3,false);if(ty==='HR'){ws.send(frame('HR',0,1,{a:['d']}));return;}const tx=new TextDecoder().decode(b.subarray(HDR)).replace(/\0+$/,'');const w=W[id];if(!w)return;if(ty==='RP'){try{w.rp=JSON.parse(tx);}catch(e){}}if(ty==='SS'){try{if(JSON.parse(tx).cmd==='II'){delete W[id];w.res(w.rp);}}catch(e){}}});
@@ -37,7 +37,7 @@ const out={}; let n=0, nMiss=0, nFlag1=0, nReview=0;
 console.log(`budget: shear ${SHEAR} scale ${SCALE} | floor ${FLOOR} margin ${MARGIN} noise_k ${NOISE_K}`);
 console.log('name                                     base   inspec_max  res_max  miss  flags@1px');
 for(const name of list){const f=D+name+'_sbm.hydef'; if(!fs.existsSync(f))continue;
-  const def=JSON.parse(fs.readFileSync(f,'utf8')); const img='data/'+name+'.png';
+  const def=JSON.parse(fs.readFileSync(f,'utf8')); const img='data/_test/'+name+'.png';
   const bres=[]; for(let k=0;k<3;k++){const o=prim(objs(await ii(def,img))); if(o&&o.trust)bres.push(o.trust.residual);}
   if(!bres.length){console.log(name.padEnd(40),'no primary'); continue;}
   const base=bres.sort((a,b)=>a-b)[bres.length>>1];

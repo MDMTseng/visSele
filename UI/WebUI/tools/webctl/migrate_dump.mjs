@@ -1,14 +1,14 @@
-// Usage: node migrate_dump.mjs <name>...  -- webctld + core running; for each data/<name>.hydef presses the
-// real 升級 button and writes data/<name>_sbm.hydef (+png) with exactly what SAVE would write.
-// Migrate each def through the real 升級 button and write what SAVE would write to data/<name>_sbm.hydef (+png).
+// Usage: node migrate_dump.mjs <name>...  -- webctld + core running; for each data/_test/<name>.hydef presses the
+// real 升級 button and writes data/_test/<name>_sbm.hydef (+png) with exactly what SAVE would write.
+// Migrate each def through the real 升級 button and write what SAVE would write to data/_test/<name>_sbm.hydef (+png).
 import fs from 'node:fs';
 import { makeCtl, toMain, dismissCamModal, loadRecipe, freshPage, sleep } from './lib_enter.mjs';
 const ctl = makeCtl(); const { ev } = ctl;
-const D = '../../../../InspectionCore/Core0_1/data/';
+const D = '../../../../InspectionCore/Core0_1/data/_test/';
 const clickText = (sel, txt) => ev(`(function(){var bs=[...document.querySelectorAll('${sel}')];var b=bs.find(x=>x.textContent.split(' ').join('').indexOf('${txt}')>=0);if(!b)return 'nobtn';b.click();return 'ok'})()`);
 for (const name of process.argv.slice(2)) {
   await freshPage(ctl, 'http://127.0.0.1:8083/'); await toMain(ctl); await dismissCamModal(ctl);
-  await loadRecipe(ctl, 'data/' + name);
+  await loadRecipe(ctl, 'data/_test/' + name);
   await ev(`window.__GP_STORE__.dispatch({ type: 'Edit_Mode' })`);
   for (let i=0;i<60;i++){ const s=await ev(`JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value)`); if(String(s).indexOf('DEFCONF')>=0) break; await sleep(400); }
   await ev(`window.__GP_STORE__.dispatch({ type: 'DefConf_Lock_Level_Update', data: 0 })`); await sleep(3000);

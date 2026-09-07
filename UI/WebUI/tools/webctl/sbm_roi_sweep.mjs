@@ -9,7 +9,7 @@
 // direction) is put on a REVIEW list for human eyes, never auto-adopted. Robustness margin under a small augmentation
 // set is reported so a reviewer can see whether the conditioning actually improved.
 import fs from 'node:fs'; import WebSocket from 'ws';
-const PORT = process.env.CORE_PORT || '4093'; const D = '../../../../InspectionCore/Core0_1/data/'; const HDR = 9, enc = new TextEncoder();
+const PORT = process.env.CORE_PORT || '4093'; const D = '../../../../InspectionCore/Core0_1/data/_test/'; const HDR = 9, enc = new TextEncoder();
 function frame(t,pr,pg,o){const b=enc.encode(JSON.stringify(o));const u=new Uint8Array(HDR+b.length+1);u[0]=t.charCodeAt(0);u[1]=t.charCodeAt(1);u[2]=pr;new DataView(u.buffer).setUint16(3,pg,false);new DataView(u.buffer).setUint32(5,b.length+1,false);u.set(b,HDR);return u;}
 const ws = new WebSocket('ws://127.0.0.1:' + PORT); ws.binaryType = 'arraybuffer'; let pg = 17000; const W = {};
 ws.on('message',(d)=>{const b=new Uint8Array(d);const ty=String.fromCharCode(b[0],b[1]);const id=new DataView(b.buffer,b.byteOffset).getUint16(3,false);if(ty==='HR'){ws.send(frame('HR',0,1,{a:['d']}));return;}const txt=new TextDecoder().decode(b.subarray(HDR)).replace(/\0+$/,'');const w=W[id];if(!w)return;if(ty==='RP'){try{w.rp=JSON.parse(txt);}catch(e){}}if(ty==='SS'){try{if(JSON.parse(txt).cmd==='II'){delete W[id];w.res(w.rp);}}catch(e){}}});
@@ -32,7 +32,7 @@ const mmppOf=(d)=>d.featureSet[0].mmpp;
 const out={}; let nAdopt=0,nReview=0,nNoGain=0,nSkip=0;
 for (const name of names) {
   const f = D + name + '_sbm.hydef'; if (!fs.existsSync(f)) continue;
-  const def0 = JSON.parse(fs.readFileSync(f,'utf8')); const mmpp = mmppOf(def0); const img='data/'+name+'.png';
+  const def0 = JSON.parse(fs.readFileSync(f,'utf8')); const mmpp = mmppOf(def0); const img='data/_test/'+name+'.png';
   const base = objs(await ii(def0, img)); if (!base.length) { console.log(name.padEnd(40)+' skip: no object'); nSkip++; continue; }
   const baseJ = base.map(judges); const baseNok = base.map(nok);
   // baseline time (median of a few unperturbed runs; the machine is noisy)

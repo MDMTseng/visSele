@@ -41,7 +41,7 @@ import net from 'node:net';
 
 const ctl = makeCtl('http://127.0.0.1:8765');
 const T = makeTally(); const { ok, section } = T;
-const MODEL = process.argv[2] || 'data/testNew2';
+const MODEL = process.argv[2] || 'data/_test/testNew2';
 // Their production speed. A faster plate would shorten the deadline and make
 // the sweep quicker, but the plate speed is a hardware decision and not this
 // test's to take.

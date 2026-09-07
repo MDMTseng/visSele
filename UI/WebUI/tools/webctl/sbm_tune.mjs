@@ -1,6 +1,6 @@
 // Usage: PROFILE=normal|aggressive node sbm_tune.mjs [name ...]
 //   -- core with INSP_ALLOW_MULTI_CLIENT=1 on $CORE_PORT (default 4093), cwd InspectionCore/Core0_1.
-// Per recipe (data/<name>_sbm.hydef + data/<name>.png): predict the coarse-locate knobs from the refine's capture
+// Per recipe (data/_test/<name>_sbm.hydef + data/_test/<name>.png): predict the coarse-locate knobs from the refine's capture
 // budget, verify with worst-case perturbations, report time saved. Two profiles, one mechanism:
 //   normal      angle step + match scale; largest passing step then ONE GRID STEP BACK; pose no worse than the base
 //               by 0.05 deg / 0.1 px; similarity within 0.05; adopt only when >= 15% faster.
@@ -28,7 +28,7 @@
 // more than 0.05 deg / 0.1 px" is the question a tuned setting can be held to.
 import fs from 'node:fs'; import path from 'node:path'; import WebSocket from 'ws';
 const PORT = process.env.CORE_PORT || '4093';
-const D = '../../../../InspectionCore/Core0_1/data/'; const HDR = 9, enc = new TextEncoder();
+const D = '../../../../InspectionCore/Core0_1/data/_test/'; const HDR = 9, enc = new TextEncoder();
 function frame(type,prop,pg,obj){const b=enc.encode(JSON.stringify(obj));const u=new Uint8Array(HDR+b.length+1);u[0]=type.charCodeAt(0);u[1]=type.charCodeAt(1);u[2]=prop;new DataView(u.buffer).setUint16(3,pg,false);new DataView(u.buffer).setUint32(5,b.length+1,false);u.set(b,HDR);return u;}
 const ws = new WebSocket('ws://127.0.0.1:' + PORT); ws.binaryType = 'arraybuffer'; let pg = 11000; const W = {};
 ws.on('message',(d)=>{const b=new Uint8Array(d);const ty=String.fromCharCode(b[0],b[1]);const id=new DataView(b.buffer,b.byteOffset).getUint16(3,false);if(ty==='HR'){ws.send(frame('HR',0,1,{a:['d']}));return;}const txt=new TextDecoder().decode(b.subarray(HDR)).replace(/\0+$/,'');const w=W[id];if(!w)return;if(ty==='SF'){delete W[id];try{w.res(JSON.parse(txt));}catch(e){w.res(null);}return;}if(ty==='RP'){try{w.rp=JSON.parse(txt);}catch(e){}}if(ty==='SS'){try{if(JSON.parse(txt).cmd==='II'){delete W[id];w.res(w.rp);}}catch(e){}}});
@@ -89,7 +89,7 @@ const names = process.argv.slice(2).length ? process.argv.slice(2)
   : fs.readFileSync('_ok_names.txt','utf8').split(String.fromCharCode(10)).map(s=>s.trim()).filter(Boolean);
 const out = {}; let sumBase = 0, sumTuned = 0, nTuned = 0, nSkip = 0;
 for (const name of names) {
-  let def0 = JSON.parse(fs.readFileSync(D + name + '_sbm.hydef', 'utf8')); const fs0 = def0.featureSet[0]; const mmpp = fs0.mmpp; const img = 'data/' + name + '.png';
+  let def0 = JSON.parse(fs.readFileSync(D + name + '_sbm.hydef', 'utf8')); const fs0 = def0.featureSet[0]; const mmpp = fs0.mmpp; const img = 'data/_test/' + name + '.png';
   const sbm = (fs0.inherentfeatures || []).find(e => e && e.name === '@__SBM_INFO__'); const pts = sbm && sbm.shape_cache && sbm.shape_cache.roi && sbm.shape_cache.roi.pts;
   const base = objs(await ii(def0, img))[0];
   if (!base || !pts || !pts.length) { console.log(name.padEnd(40) + ' skip: ' + (!base ? 'no object on its own picture' : 'no ROI points (coarse-only def)')); nSkip++; continue; }

@@ -1,12 +1,12 @@
 // Localisation + measurement stability under rotation and translation, sig360 vs the
 // migrated SBM def of the same recipe. Usage (core with INSP_ALLOW_MULTI_CLIENT=1):
-//   node stability_sweep.mjs mig_CTA mig_BSG ...      # expects data/<name>.hydef, <name>.png, <name>_sbm.hydef
+//   node stability_sweep.mjs mig_CTA mig_BSG ...      # expects data/_test/<name>.hydef, <name>.png, <name>_sbm.hydef
 // Writes $STAB_OUT (default _stability_out.json) with every run. See
 // InspectionCore/docs/SBM_STABILITY_2026-09-04.md for what it found the first time.
 // Localisation + measurement stability under rotation and translation, sig360 vs migrated SBM.
 // Raw websocket to the core (needs INSP_ALLOW_MULTI_CLIENT=1 if a browser is connected).
 import fs from 'node:fs'; import WebSocket from 'ws';
-const D = '../../../../InspectionCore/Core0_1/data/';
+const D = '../../../../InspectionCore/Core0_1/data/_test/';
 const names = process.argv.slice(2);
 const HDR=9, enc=new TextEncoder();
 function frame(type,prop,pg,obj){const b=enc.encode(JSON.stringify(obj));const u=new Uint8Array(HDR+b.length+1);u[0]=type.charCodeAt(0);u[1]=type.charCodeAt(1);u[2]=prop;new DataView(u.buffer).setUint16(3,pg,false);new DataView(u.buffer).setUint32(5,b.length+1,false);u.set(b,HDR);return u;}
@@ -26,7 +26,7 @@ const out={};
 for (const name of names) {
   for (const variant of [name, name+'_sbm']) {
     if (!fs.existsSync(D+variant+'.hydef')) { console.log('skip', variant); continue; }
-    const def=JSON.parse(fs.readFileSync(D+variant+'.hydef','utf8')); const mmpp=def.featureSet[0].mmpp; const img='data/'+name+'.png';
+    const def=JSON.parse(fs.readFileSync(D+variant+'.hydef','utf8')); const mmpp=def.featureSet[0].mmpp; const img='data/_test/'+name+'.png';
     const runs=[]; const one=async(label,p)=>{const rp=await ii(def,img,p);const g=rp&&rp.reports&&rp.reports[0];const o=g&&g.reports&&g.reports[0];runs.push({label,p,located:!!o,locator:g&&g.locator,note:g&&g.locate&&g.locate.code,ms:rp&&rp.insp_wall_ms,pose:o&&{cx:o.cx,cy:o.cy,rot:o.rotate,sim:o.similarity},judges:o?Object.fromEntries((o.judgeReports||[]).map(j=>[j.name||String(j.id),{st:j.status,v:j.value}])):{}});};
     await one('base',null);
     for(const r of ROT) await one('rot'+r,{rot_deg:r,seed:7});

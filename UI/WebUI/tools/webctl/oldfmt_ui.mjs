@@ -22,7 +22,7 @@ const ctl = makeCtl('http://127.0.0.1:8765');
 const { ev } = ctl;
 const APP = process.argv[2] || 'http://127.0.0.1:8083/';
 const DATA = process.argv[3]
-  || path.resolve('../../../../InspectionCore/Core0_1/data');
+  || path.resolve('../../../../InspectionCore/Core0_1/data/_test');
 
 // THE FIXTURE IS MADE HERE, not picked from the folder.
 //
@@ -83,7 +83,7 @@ const state = () => ev(`(function(){
   return (ei.locating_engine||'sig360') + '/' + (sc ? (sc.roi?'roi':'no-roi') : 'no-cache');})()`);
 
 async function enterDef(name) {
-  const loaded = await loadRecipe(ctl, 'data/' + name);
+  const loaded = await loadRecipe(ctl, 'data/_test/' + name);
   if (loaded === null) throw new Error(
     `'${name}' did not load (loadRecipe returned no def name). The fixtures for `
     + 'this check must be defs this UI actually opens -- see the note at the top.');

@@ -13,7 +13,7 @@ INSP_LOG_RING_NAME=ff_$TAG$$ INSP_CAM_TRIGMODE_ONCE=1 INSP_PERIF_CONSOLE=4099 \
   DYLD_LIBRARY_PATH=../build/mac-arm64 ../build/mac-arm64/visSele > /tmp/core_$TAG.log 2>&1 &
 sleep 24
 cd /Users/mdm/workspace/visSele/UI/WebUI/tools/webctl
-node fi_hold.mjs /Users/mdm/workspace/visSele/InspectionCore/Core0_1/data/test1.hydef > /tmp/fi_$TAG.log 2>&1 &
+node fi_hold.mjs /Users/mdm/workspace/visSele/InspectionCore/Core0_1/data/_test/test1.hydef > /tmp/fi_$TAG.log 2>&1 &
 sleep 8
 node fi_watch.mjs 70 > /tmp/sub2_$TAG.log 2>&1 &
 sleep 2

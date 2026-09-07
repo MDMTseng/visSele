@@ -33,7 +33,7 @@ console.log('the pivot is the image centre, in image mm:');
 // 0.00deg ~ 0.00deg" for a locator that was fine.
 //
 // So: real output from the core, for a real def, at five perturbations. Numbers
-// from --insp on data/test1 with {"rot_deg": N} (2448x2048, mmpp 0.0138859432,
+// from --insp on data/_test/test1 with {"rot_deg": N} (2448x2048, mmpp 0.0138859432,
 // def_image_reg 15.0252/9.3055). If the prediction stops matching these, the
 // prediction is wrong -- not the fixture.
 console.log('against the core, not against itself:');

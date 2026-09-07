@@ -10,7 +10,7 @@ import { makeProbe, makeTally, sleep } from './_rf_lib.mjs';
 const ctl = makeCtl('http://127.0.0.1:8765'); const { api, ev } = ctl;
 const P = makeProbe(ev); const T = makeTally(); const { ok, section } = T;
 const SM = 'window.__GP_STORE__.getState().UIData.c_state.value';
-const MODEL = process.argv[2] || 'data/testNew2';
+const MODEL = process.argv[2] || 'data/_test/testNew2';
 
 section('the app reaches MAIN with the real core');
 await freshPage(ctl, 'http://127.0.0.1:8081/');
