@@ -24,7 +24,7 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
    `shape_trust_na` + `shape_trust_res_max` + `shape_trust_inl_frac`; ambiguous_pose
    defers to an orientation-essential judge; report `trust.forced_na`. Off by default.
    (SBM_TRUST_SCORE_DESIGN.md step 3)
-2. **poor_fit deformation budget -- TOOL LANDED, adoption DEFERRED by the user (2026-09-07).** Trust stays emit-only in the field; the inspection process will decide whether to wire it. Budgets in `trust_budget.json` (K=4 build), `sbm_adopt.mjs --trust` applies them when wanted.
+2. **trust NA is an OPERATOR KNOB (4255ac3d, 2026-09-07).** SBM studio 「定位信任」開/關 + 「殘差上限」(default off; 3 px when on). No fleet migration; budgets in `trust_budget.json` are a suggestion per recipe if someone asks. ambiguous_pose never forces.
    Derives res_max per recipe from an in-spec shear/scale/rot/shift/gain set; recipes
    whose own reference fits > 1 px go to REVIEW (they are the true positives). Remaining:
    run over the fleet, migrate the two fields into the recipes that pass, fleet_eq on/off.
