@@ -242,7 +242,7 @@ machine may tolerate before stopping — not a call a test should make in
 passing.
 
 
-**`--insp` never loads `clean_regions`** — VERIFIED
+**`--insp` never loads `clean_regions`** — VERIFIED, **FIXED 2026-09-07** (loads both, applies the clean gate after DefRead like live; `INSP_CLEAN_REGIONS=0` / `INSP_AREA_BYPASS=1` opt-outs; loud logs. See RUNNING_CORE0_1.md.)
 `InspectionCore/Core0_1/wiringPanel.cpp:10614` vs `:2528-2529`
 The live path loads both region kinds; the offline path loads only
 `inspection_region`. So the entire clean-space feature has no offline gate,

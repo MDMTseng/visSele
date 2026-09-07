@@ -13606,9 +13606,20 @@ int cp_main(int argc, char **argv)
     // deliberately exempt (it publishes the region as zero-size); CHECK was
     // exempt from nothing, purely because a startup line reached further than
     // its comment claimed.
+    // Both region kinds, like the live path (:3681). Until 2026-09-07 this loaded
+    // only inspection_region, so a def measured offline and live could disagree
+    // with no warning (AUDIT_BACKLOG P2).
+    //
+    // INSP_CLEAN_REGIONS=0 skips ONLY the clean-area gate (the station rectangle
+    // still applies); INSP_AREA_BYPASS=1 skips both. Whatever is active is said
+    // out loud below, because the failure mode of a station gate is an EMPTY
+    // REPORT that looks exactly like a locate miss and costs an afternoon.
+    const bool insp_clean_gate =
+      !(std::getenv("INSP_CLEAN_REGIONS") && std::getenv("INSP_CLEAN_REGIONS")[0] == '0');
     if (cJSON *ms_json = ReadJson("data/machine_setting.json"))
     {
       load_insp_region(ms_json);
+      if (insp_clean_gate) load_clean_regions(ms_json);
       cJSON_Delete(ms_json);
     }
     // INSP_AREA_BYPASS=1 reaches this path too. There is no wire here to flip
@@ -13716,6 +13727,39 @@ int cp_main(int argc, char **argv)
     // that is std::terminate: measured exit 134 (SIGABRT) on a def with a judge
     // missing "subtype". --insp is what the QA harness drives, so a bad def
     // aborted the run instead of returning the documented "bad def" code.
+    // The clean-area gate, exactly as the live frame path runs it (:11808): a
+    // dirty region does not skip the inspection, it makes the engine inspect
+    // with NO candidate objects (FeatureManager::no_candidate_frame), so the
+    // report keeps its shape and simply has zero located objects.
+    cJSON *insp_station_clean = NULL;
+    bool insp_clean_blocked = false;
+    {
+      bool have_clean;
+      { std::lock_guard<std::mutex> _g(g_station_cfg_lock); have_clean = !g_clean_regions.empty(); }
+      if (g_area_gates_bypass)
+        LOGE("--insp: station: INSP_AREA_BYPASS -- no region, no clean gate");
+      else
+        LOGE("--insp: station: inspection_region %.0fx%.0f at (%.0f,%.0f) fit=%d, %d clean region(s)%s",
+             g_insp_region.w, g_insp_region.h, g_insp_region.x, g_insp_region.y, g_insp_region.fit,
+             have_clean ? (int)g_clean_regions.size() : 0,
+             insp_clean_gate ? "" : " (INSP_CLEAN_REGIONS=0: clean gate skipped)");
+      if (have_clean && insp_clean_gate && !g_area_gates_bypass)
+      {
+        cv::Mat gray;
+        if (cvSrc.channels() == 1) gray = cvSrc; else cv::cvtColor(cvSrc, gray, cv::COLOR_BGR2GRAY);
+        float cr_mmpp = neutral_bacpac.sampler ? neutral_bacpac.sampler->mmpP_ideal() : 0.0f;
+        acv_XY cr_off = neutral_bacpac.sampler ? neutral_bacpac.sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+        insp_station_clean = cJSON_CreateArray();
+        int cs = eval_clean_regions(gray, cr_mmpp, cr_off, insp_station_clean);
+        typedef FeatureReport_sig360_circle_line_single FR;
+        insp_clean_blocked = (cs == FR::STATUS_NA || cs == FR::STATUS_FAILURE || cs == FR::STATUS_BAD);
+        if (insp_clean_blocked)
+          LOGE("--insp: a clean region is DIRTY (stat %d): the frame is inspected with no candidate "
+               "objects, so the report will have ZERO objects. This is the station gate, not a "
+               "locate failure. INSP_CLEAN_REGIONS=0 skips the gate, INSP_AREA_BYPASS=1 skips the "
+               "station entirely.", cs);
+      }
+    }
     try
     {
      for (int li = 0; li < loopN; ++li) {
@@ -13726,6 +13770,16 @@ int cp_main(int argc, char **argv)
     {
       LOGE("--insp: def parse failed: %s", ex.what());
       return 4;   // documented: 4 = bad def
+    }
+    // The gate is applied AFTER DefRead: DefRead builds the FeatureManager from
+    // the def, and no_candidate_frame lives on that manager, so a flag set before
+    // it is gone by the time the frame is matched. Same order as live (train,
+    // then flag, then FeatureMatching), at the cost of one extra inspection.
+    if (insp_clean_blocked)
+    {
+      matchingEng.setBacPac(&neutral_bacpac);
+      matchingEng.setNoCandidateFrame(true);
+      matchingEng.FeatureMatching(cvSrc);
     }
     // Speed profile: INSP_PROF=N times the per-frame INSPECTION only (FeatureMatching:
     // localize + morph + measure), with the def already trained -- the recurring
@@ -13747,8 +13801,33 @@ int cp_main(int argc, char **argv)
     const FeatureReport *report = skip_inspection() ? NULL
                                 : matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
+    matchingEng.setNoCandidateFrame(false);
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
     AttachStaticInfo(jobj, &bpg_pi);
+    // Same `station` block the live report carries (:12511), so a consumer can
+    // tell "gate refused the frame" from "nothing was there".
+    if (insp_station_clean)
+    {
+      cJSON *st = cJSON_CreateObject();
+      if (insp_clean_blocked)
+        cJSON_AddNumberToObject(st, "clean_err", (int)FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT);
+      cJSON_AddItemToObject(st, "clean", insp_station_clean);
+      cJSON_AddItemToObject(jobj, "station", st);
+    }
+    {
+      // The hint that would have saved the afternoon: an empty report while any
+      // station config was active.
+      cJSON *reps = cJSON_GetObjectItem(jobj, "reports");
+      int nobj = 0;
+      if (reps && cJSON_IsArray(reps))
+        for (cJSON *g = reps->child; g; g = g->next)
+        { cJSON *r = cJSON_GetObjectItem(g, "reports"); if (r && cJSON_IsArray(r)) nobj += cJSON_GetArraySize(r); }
+      if (nobj == 0 && !g_area_gates_bypass)
+        LOGE("--insp: report has 0 objects while the station config was applied (%s). If the part is "
+             "in the picture, try INSP_AREA_BYPASS=1 (no station) or INSP_CLEAN_REGIONS=0 (no clean "
+             "gate) to tell the gate from a locate miss.",
+             insp_clean_blocked ? "clean region dirty" : "inspection_region only");
+    }
     char *jstr = cJSON_Print(jobj);
     FILE *fp = fopen(outPath, "wb");
     if (fp) {

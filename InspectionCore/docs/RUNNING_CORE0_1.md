@@ -107,6 +107,25 @@ echo "exit=$?"      # 0 = OK, 3 = bad image, 4 = bad def
 A clean exit 0 with a populated `/tmp/insp_out.json` means the build + calib
 chain is healthy.
 
+### `--insp` applies the station, like the live path (since 2026-09-07)
+
+`data/machine_setting.json`'s `inspection_region` AND `clean_regions` are loaded and
+applied, exactly as a live frame sees them -- before this, `--insp` ignored
+`clean_regions`, so the same def could pass offline and be refused live.
+
+The failure mode of a station gate is an **empty report that looks like a locate
+miss**. So the run says what it applied, at ERROR level, and how to turn it off:
+
+| env | effect |
+|---|---|
+| (none) | station rectangle + clean-area gate, as live. A dirty clean region makes the engine inspect with no candidate objects: `reports[].reports` is empty and `station.clean_err = 3`, `station.clean[]` says which region and its dark ratio. |
+| `INSP_CLEAN_REGIONS=0` | skip only the clean-area gate; the station rectangle still applies. |
+| `INSP_AREA_BYPASS=1` | no station at all (rectangle or clean gate). Use this when the picture never stood in the station -- most saved fixtures. |
+
+If a report comes back with 0 objects while any station config was active, the
+log says so (`--insp: report has 0 objects while the station config was applied
+...`) and names the two switches. Read that line before debugging the locator.
+
 ## If something goes wrong
 
 - **"Try to open websocket... port:4090" then it retries every 5s** — port 4090
