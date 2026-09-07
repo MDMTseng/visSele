@@ -85,6 +85,8 @@ export default {
         aux_point:"交點",
         aline:"兩點線/ALINE",
         aux_line:"兩點線",
+        // short labels for the two-column primitive grid
+        line_s:"線段", arc_s:"弧", apoint_s:"交點", aline_s:"兩點線", spoint_s:"搜尋點", measure_s:"測量",
         '<':"返回",
         measure:"測量/MEASURE",
         edit:"編輯測量/Edit",

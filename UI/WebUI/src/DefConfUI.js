@@ -85,6 +85,19 @@ import {
 } from '@ant-design/icons';
 import {RepDisplay} from './RepDisplayUI.js';
 
+// Primitive-button glyphs: 20-px line art in currentColor, one per shape type.
+// Inline so they follow the button's text colour (the swipe hover flips it).
+const _svg = (children) => <svg viewBox="0 0 20 20" width="20" height="20" fill="none"
+  stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+const PRIM_ICON = {
+  line:    _svg(<><line x1="3" y1="16" x2="17" y2="4" /><circle cx="3" cy="16" r="1.4" fill="currentColor" /><circle cx="17" cy="4" r="1.4" fill="currentColor" /></>),
+  arc:     _svg(<><path d="M3 16 A 9 9 0 0 1 17 16" /><circle cx="3" cy="16" r="1.4" fill="currentColor" /><circle cx="17" cy="16" r="1.4" fill="currentColor" /></>),
+  apoint:  _svg(<><line x1="3" y1="4" x2="17" y2="16" /><line x1="3" y1="16" x2="17" y2="4" /><circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none" /></>),
+  aline:   _svg(<><line x1="2" y1="14" x2="18" y2="6" strokeDasharray="2.5 2" /><circle cx="6" cy="12" r="1.8" fill="currentColor" stroke="none" /><circle cx="14" cy="8" r="1.8" fill="currentColor" stroke="none" /></>),
+  spoint:  _svg(<><line x1="3" y1="15" x2="17" y2="15" /><line x1="10" y1="15" x2="10" y2="5" /><path d="M7 8 L10 4 L13 8" /></>),
+  measure: _svg(<><line x1="3" y1="10" x2="17" y2="10" /><line x1="3" y1="6" x2="3" y2="14" /><line x1="17" y1="6" x2="17" y2="14" /><line x1="7" y1="8.5" x2="7" y2="11.5" /><line x1="10" y1="8.5" x2="10" y2="11.5" /><line x1="13" y1="8.5" x2="13" y2="11.5" /></>),
+};
+
 
 
 const IMG_LOAD_DOWNSAMP_LEVEL=1;
@@ -2822,46 +2835,25 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   if(defConf_lock_level==0)
   MenuSet=MenuSet.concat(
     [
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.line]}}
-      key="LINE"
-      text="line" onClick={() => ACT_Line_Add_Mode()} />,
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.arc]}}
-      key="ARC"
-      text="arc" onClick={() => ACT_Arc_Add_Mode()} />,
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_point]}}
-      key="APOINT"
-      text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_line]}}
-      key="ALINE"
-      text="aline" onClick={() =>  ACT_Aux_Line_Add_Mode()} />,
-
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.search_point]}}
-      key="SPOINT"
-      text="spoint" onClick={() => ACT_Search_Point_Add_Mode()} />,
-    <BASE_COM.IconButton
-      //iconType={<FormOutlined/>}
-      addClass="layout palatte-blue-8  btn-swipe"
-      key="MEASURE"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure]}}
-      dict={DICT}
-      text="measure"
-      onClick={() => ACT_Measure_Add_Mode()}>
-    </BASE_COM.IconButton>,
+    // The six primitives as a two-column grid of half-width icon buttons: six
+    // full-height rows was most of the panel on a 768-px-tall bench screen.
+    <div key="PRIM_GRID" className="s prim-grid">
+      {[
+        { key: 'LINE',    type: UIAct.SHAPE_TYPE.line,         text: 'line_s',    icon: PRIM_ICON.line,    onClick: ACT_Line_Add_Mode },
+        { key: 'ARC',     type: UIAct.SHAPE_TYPE.arc,          text: 'arc_s',     icon: PRIM_ICON.arc,     onClick: ACT_Arc_Add_Mode },
+        { key: 'APOINT',  type: UIAct.SHAPE_TYPE.aux_point,    text: 'apoint_s',  icon: PRIM_ICON.apoint,  onClick: ACT_Aux_Point_Add_Mode },
+        { key: 'ALINE',   type: UIAct.SHAPE_TYPE.aux_line,     text: 'aline_s',   icon: PRIM_ICON.aline,   onClick: ACT_Aux_Line_Add_Mode },
+        { key: 'SPOINT',  type: UIAct.SHAPE_TYPE.search_point, text: 'spoint_s',  icon: PRIM_ICON.spoint,  onClick: ACT_Search_Point_Add_Mode },
+        { key: 'MEASURE', type: UIAct.SHAPE_TYPE.measure,      text: 'measure_s', icon: PRIM_ICON.measure, onClick: ACT_Measure_Add_Mode },
+      ].map((b) => (
+        <BASE_COM.IconButton
+          key={b.key} dict={DICT}
+          addClass="layout btn-swipe prim-btn"
+          style={{ backgroundColor: EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[b.type] }}
+          iconType={b.icon}
+          text={b.text} onClick={() => b.onClick()} />
+      ))}
+    </div>,
     // 物件偵測 (obj_detect) is no longer offered.
     //
     // The check it was for -- "this space must be clean" -- is done at MACHINE

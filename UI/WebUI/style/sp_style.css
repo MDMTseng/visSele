@@ -739,3 +739,14 @@ body.sp_Style.blockS  {
      page sideways. Stated because the width prop and this line are one
      decision: raise the width, this is what keeps it from breaking small. */
 }
+
+/* Def editor: primitive buttons as a two-column grid (DefConfUI PRIM_GRID). */
+.prim-grid { display: flex; flex-wrap: wrap; width: 100%; height: auto !important; min-height: 0 !important; overflow: visible; }
+.prim-grid .prim-btn {
+  float: left; box-sizing: border-box;
+  width: 50%; height: 44px; margin: 0; padding: 0 6px;
+  display: flex; align-items: center; justify-content: flex-start;
+  font-size: 14px;
+}
+.prim-grid .prim-btn > svg { flex: 0 0 auto; margin-right: 6px; }
+.prim-grid .prim-btn > p { margin: 0; padding: 0; white-space: nowrap; }
