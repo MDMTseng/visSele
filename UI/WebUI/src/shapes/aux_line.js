@@ -75,4 +75,11 @@ export function draw(ctx, shape, renderer, {
   ctx.fillStyle = ctx.strokeStyle;
   renderer.drawpoint(ctx, a);
   renderer.drawpoint(ctx, b);
+  // The line's own handle: what a measure / crossing / search point picks to
+  // reference it (FindClosestCtrlPointInfo). Endpoints belong to other shapes.
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const r = renderer.getPrimitiveSize() * 1.2;
+  ctx.beginPath();
+  ctx.rect(mid.x - r, mid.y - r, 2 * r, 2 * r);
+  ctx.stroke();
 }

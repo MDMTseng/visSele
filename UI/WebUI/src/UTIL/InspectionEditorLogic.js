@@ -1663,6 +1663,24 @@ export class InspectionEditorLogic {
           });
           break;
 
+        case SHAPE_TYPE.aux_line:
+          {
+            // Its endpoints ARE other shapes' points, so offering them would
+            // never win a pick over the point they sit on. The line's own
+            // handle is its midpoint (drawn as a marker in aux_line.draw).
+            const g = (shape.pt1 && shape.pt2) ? shape : this.auxLineParse(shape, shapeList);
+            if (!g || !g.pt1 || !g.pt2) break;
+            const mid = { x: (g.pt1.x + g.pt2.x) / 2, y: (g.pt1.y + g.pt2.y) / 2 };
+            tmpDist = distance_point_point(mid, location);
+            if (pt_info.dist > tmpDist) {
+              pt_info.shape = shape;
+              pt_info.key = undefined;
+              pt_info.pt = mid;
+              pt_info.dist = tmpDist;
+            }
+          }
+          break;
+
         case SHAPE_TYPE.aux_point:
           {
             let point = this.auxPointParse(shape);
