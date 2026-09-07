@@ -16,7 +16,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 
 const ctl = makeCtl('http://127.0.0.1:8765');
-const MODEL = process.argv[3] || 'data/_test/testNew2';
+const MODEL = process.argv[3] || 'data/testNew2';
 const STEPS = Number(process.argv[2] || 12);
 const PLATE_FREQ = 10000;
 const PERIOD_TICKS = 1000;              // 20 objects/s

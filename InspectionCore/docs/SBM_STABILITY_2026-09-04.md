@@ -295,7 +295,7 @@ list from the head every call. Minutes per frame; the core looked hung
 
 ### The same rules on real field frames (test1, 2026-09-05)
 
-`data/_test/test1_2026*.png`: 21 frames from the machine, several parts each, a
+`data/test1_2026*.png`: 21 frames from the machine, several parts each, a
 pile in the middle of some, vignetting -- 85 located parts in all. The def is
 the hand-tuned `test1.hydef`; each variant changes only the edge thresholds
 and runs every frame (`_field_test1.mjs`, scratch):

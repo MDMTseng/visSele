@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { makeCtl, toMain, dismissCamModal, loadRecipe, freshPage } from './lib_enter.mjs';
 import { makeProbe, makeTally, sleep } from './_rf_lib.mjs';
 
-const MODEL = process.argv[2] || process.env.WEBCTL_MODEL || 'data/_test/test1';
+const MODEL = process.argv[2] || process.env.WEBCTL_MODEL || 'data/test1';
 const APP = process.env.WEBCTL_APP || 'http://127.0.0.1:8081/';
 const NAME = process.env.JOURNEY_NAME || 'JOURNEY-PART';
 // JOURNEY_BENCH=<folder under fixtures/benches>: the instrument setup the CORE

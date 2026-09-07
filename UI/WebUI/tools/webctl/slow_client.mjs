@@ -13,7 +13,7 @@ function frame(t,p,g,o){const b=enc.encode(o==null?'':JSON.stringify(o));const u
 u[0]=t.charCodeAt(0);u[1]=t.charCodeAt(1);u[2]=p;u[3]=g>>8;u[4]=g&255;const l=u.length-BPG_HDR;
 u[5]=l>>>24;u[6]=(l>>16)&255;u[7]=(l>>8)&255;u[8]=l&255;u.set(b,BPG_HDR);return u;}
 // Default to the test1 fixture IN THIS REPOSITORY -- the def these probes were
-// /Users/mdm -- and at data/_test/test1.hydef, which is gitignored -- so the probe
+// /Users/mdm -- and at data/test1.hydef, which is gitignored -- so the probe
 // died with ENOENT on every machine but one. WEBCTL_DEF overrides it.
 const def=JSON.parse(fs.readFileSync((process.env.WEBCTL_DEF || path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'test1.hydef')),'utf8'));
 

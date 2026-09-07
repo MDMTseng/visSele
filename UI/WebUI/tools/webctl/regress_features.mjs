@@ -31,7 +31,7 @@
 import { makeCtl, toMain, dismissCamModal, loadRecipe, freshPage } from './lib_enter.mjs';
 import { makeProbe, makeTally } from './_rf_lib.mjs';
 
-const MODEL = process.argv[2] || process.env.WEBCTL_MODEL || 'data/_test/test1';
+const MODEL = process.argv[2] || process.env.WEBCTL_MODEL || 'data/test1';
 const APP = process.env.WEBCTL_APP || 'http://127.0.0.1:8081/';
 const ctl = makeCtl(`http://127.0.0.1:${process.env.WEBCTL_PORT || 8765}`);
 const { api, ev } = ctl;

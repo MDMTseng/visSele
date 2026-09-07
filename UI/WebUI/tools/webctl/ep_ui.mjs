@@ -12,7 +12,7 @@ const { ev } = ctl;
 // comment says so), which strands the app at SPLASH with a closed socket.
 await freshPage(ctl, 'http://127.0.0.1:8081/');
 await toMain(ctl); await dismissCamModal(ctl);
-console.log('recipe:', await loadRecipe(ctl, 'data/_test/test1'));
+console.log('recipe:', await loadRecipe(ctl, 'data/test1'));
 await ev(`window.__GP_STORE__.dispatch({ type: 'Edit_Mode' })`);
 for (let i = 0; i < 60; i++) {
   const s = await ev(`JSON.stringify(window.__GP_STORE__.getState().UIData.c_state.value)`);

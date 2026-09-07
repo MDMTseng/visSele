@@ -32,7 +32,7 @@ const URL_  = arg('url', 'http://localhost:8081/');
 // load, and it surfaced three steps later as a disabled play button with
 // data-reason="no-def". Bitten twice: the patch script that fixed it hit the
 // identical trap in Python.
-const DEF   = arg('def', 'C:/Users/w2110/Documents/workspace/visSele/InspectionCore/Core0_1/data/_test/test1');
+const DEF   = arg('def', 'C:/Users/w2110/Documents/workspace/visSele/InspectionCore/Core0_1/data/test1');
 const MODE  = arg('mode', '測試');
 const MINRP = Number(arg('min-rp', 5));
 const SECS  = Number(arg('secs', 10));

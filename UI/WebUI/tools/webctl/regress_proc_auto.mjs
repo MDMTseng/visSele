@@ -26,7 +26,7 @@ import net from 'node:net';
 
 const ctl = makeCtl('http://127.0.0.1:8765');
 const T = makeTally(); const { ok, section } = T;
-const MODEL = process.argv[2] || 'data/_test/testNew2';
+const MODEL = process.argv[2] || 'data/testNew2';
 const PLATE_FREQ = 10000;          // tick rate 20k/s
 const PERIOD_TICKS = 1000;         // 20 objects/s
 const ARRIVAL_HZ = (2 * PLATE_FREQ) / PERIOD_TICKS;

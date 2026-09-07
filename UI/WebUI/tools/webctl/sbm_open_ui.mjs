@@ -11,7 +11,7 @@
 import { makeCtl, toMain, dismissCamModal, loadRecipe, freshPage, sleep } from './lib_enter.mjs';
 const ctl = makeCtl('http://127.0.0.1:8765'); const { ev, api } = ctl;
 const APP = process.argv[2] || 'http://127.0.0.1:8083/';
-const DEF = process.argv[3] || 'data/_test/test1';
+const DEF = process.argv[3] || 'data/test1';
 const has = (s) => ev(`!!document.querySelector(${JSON.stringify(s)})`);
 
 process.env.WEBCTL_COLD = '1';

@@ -180,7 +180,7 @@ def sbm_half(exe, tmp):
     print("")
     print("=== the SBM chain (machine-local data) ===")
     if not (os.path.exists(SBM_DEF) and os.path.exists(SBM_IMG)):
-        skip("the whole SBM half", "no Core0_1/data/_test/test1.hydef + .png here")
+        skip("the whole SBM half", "no Core0_1/data/test1.hydef + .png here")
         return
     d = load(SBM_DEF)
     if d["featureSet"][0].get("locating_engine") != "shape_based":

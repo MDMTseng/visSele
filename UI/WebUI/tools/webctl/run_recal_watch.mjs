@@ -18,7 +18,7 @@ import { sleep } from './_rf_lib.mjs';
 import net from 'node:net';
 
 const ctl = makeCtl('http://127.0.0.1:8765');
-const MODEL = process.argv[2] || 'data/_test/testNew2';
+const MODEL = process.argv[2] || 'data/testNew2';
 
 function perif(cmd, want, waitMs = 3000) {
   return new Promise((res) => {

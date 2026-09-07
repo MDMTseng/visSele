@@ -23,7 +23,7 @@ import { makeCtl, sleep, toMain, dismissCamModal, loadRecipe, enterInspection }
 
 const MODEL = process.argv[2]
   || process.env.WEBCTL_MODEL
-  || 'data/_test/test1';
+  || 'data/test1';
 const SETTLE_MS = 4000;      // let the stream reach steady state before counting
 const COUNT_MS = 15000;      // long enough that a 6 fps cap resolves cleanly
 const BASE = `http://127.0.0.1:${process.env.WEBCTL_PORT || 8765}`;

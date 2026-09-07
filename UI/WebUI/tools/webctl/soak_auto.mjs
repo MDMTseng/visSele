@@ -18,7 +18,7 @@ const MODE = process.argv[2] || 'run';
 const MINUTES = Number(process.argv[3] || 60);
 const OUT = 'soak_auto.jsonl';
 const PLATE_FREQ = 10000;
-const MODEL = 'data/_test/testNew2';
+const MODEL = 'data/testNew2';
 
 function perif(cmd, want, ms = 6000) {
   return new Promise((r) => {
