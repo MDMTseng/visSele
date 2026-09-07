@@ -207,11 +207,13 @@ Rules:
 - Off by default. `trust{}` keeps being emitted for every recipe; nothing changes in the
   field until a recipe opts in. This is the 不可檢錯 payoff: a pose the locator does not
   trust must not hand out PASS.
-- **ambiguous_pose is exempt when the recipe has an orientation-essential judge** that
-  accepted this pose (`ret == 0`). That judge is how a symmetric part is legitimately
-  resolved; a blanket NA would reject every good symmetric part. A recipe with NO such
-  judge and an ambiguous pose goes NA on every frame (ok37): the operator's fix is to add
-  the orientation judge, not to raise the threshold.
+- **ambiguous_pose NEVER forces NA (changed 2026-09-07).** First cut exempted it only when an
+  orientation-essential judge had accepted the pose; the bench adoption then showed the
+  other case: ok37/38/67/221 have NO such judge (operator declared orientation irrelevant,
+  symmetric part) and every good frame went NA. Either the orientation judge resolves the
+  pose (pass -> keep, fail -> already rejected with ret -2) or orientation does not matter
+  and the alias pose measures the same thing. So ambiguous_pose stays emit-only; poor_fit /
+  low_inliers force.
 - The threshold is the budget, not a global. `tools/webctl/sbm_trust_budget.mjs` runs
   each recipe's own image through an in-spec set (rot +-1, shift 0.5, gain 0.85, shear
   +-BUDGET_SHEAR, scale 1+-BUDGET_SCALE, two combos) and derives
@@ -230,3 +232,10 @@ Verified on the bench (`_trust_na_check.mjs`): ok00 (good, res 0.009) never forc
 not under 1% scale (res 0.98 < its budget 1.5); ok39 / ok97 poor_fit -> all judges -128
 (NA), forced_na true; ok37 ambiguous_pose, no orientation judge -> NA. Off = identical to
 before.
+
+Adoption (2026-09-07, K=4 build): budget re-derived (235 budgeted, median res_max 2.15 px, 5
+REVIEW, 2 without a refine residual), `sbm_adopt.mjs --trust --spacing` on the local defs,
+`_adopt_check.mjs` before/after on one core: 223/233 identical; every poor_fit-forced object
+was a 0.5-0.75 clutter candidate whose judges were already NA; the 7 pose moves are the
+roi_spacing recipes (as the sweep predicted). Migrate list: `tools/webctl/sbm_migrate_list.json`.
+Actual run times: budget 240 x 13 II ~10 min, adopt_check 233 x 2 II ~8 min (2 threads).

@@ -9224,16 +9224,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       // Trust -> judges. A pose that failed a trust gate must not hand out PASS
       // verdicts (uInsp 不可檢錯): every judge of this detection goes NA, then the
       // judge's own NAasNG applies, exactly as if the judge had not measured.
-      // ambiguous_pose is exempt when the recipe carries an orientation-essential
-      // judge: that judge already accepted THIS pose (ret==0), which is the
-      // legitimate way a symmetric part is resolved; forcing NA there would reject
-      // every good symmetric part.
+      // ambiguous_pose NEVER forces: if the recipe has an orientation-essential
+      // judge, that judge already accepted THIS pose (ret==0) or rejected it (-2);
+      // if it has none, the operator declared orientation irrelevant (symmetric
+      // part) and the alias pose measures the same thing. Forcing it NA rejected
+      // every good frame of ok37/38/67/221 on the bench. It stays emit-only.
       if (shape_trust_na && singleReport.trust_code[0])
       {
-        bool orient_judge = false;
-        for (auto &jd : judgeList) if (jd.orientation_essential) { orient_judge = true; break; }
         const bool ambiguous = strcmp(singleReport.trust_code, "ambiguous_pose") == 0;
-        if (!(ambiguous && orient_judge))
+        if (!ambiguous)
         {
           for (auto &jr : *singleReport.judgeReports)
           {
