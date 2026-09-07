@@ -9020,7 +9020,17 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   {
     ME_PHASE("sbm");
     try { ms = shapeMatcher->match(scene); }
-    catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+    catch (const std::exception &e)
+    {
+      // Surface it: a thrown match used to come back as "0 objects, error 0", which hid a
+      // padding bug for every non-{4,8} pyramid. locate.code is the field for "why there is
+      // no object", so the UI and the tools can tell a crash from an empty scene.
+      LOGE("[shape] match exception: %s", e.what());
+      auto &L = report.data.sig360_circle_line.locate;
+      snprintf(L.code, sizeof(L.code), "match_except");
+      snprintf(L.reason, sizeof(L.reason), "shape matcher threw: %.200s", e.what());
+      return -1;
+    }
   }
 
   // Lift crop-local poses back to scene px immediately, so every consumer below
