@@ -24,7 +24,7 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
    `shape_trust_na` + `shape_trust_res_max` + `shape_trust_inl_frac`; ambiguous_pose
    defers to an orientation-essential judge; report `trust.forced_na`. Off by default.
    (SBM_TRUST_SCORE_DESIGN.md step 3)
-2. **poor_fit deformation budget -- LANDED + ADOPTED LOCALLY (2026-09-07).** 233 defs carry shape_trust_na + res_max; `sbm_migrate_list.json` is the production migrate input.
+2. **poor_fit deformation budget -- TOOL LANDED, adoption DEFERRED by the user (2026-09-07).** Trust stays emit-only in the field; the inspection process will decide whether to wire it. Budgets in `trust_budget.json` (K=4 build), `sbm_adopt.mjs --trust` applies them when wanted.
    Derives res_max per recipe from an in-spec shear/scale/rot/shift/gain set; recipes
    whose own reference fits > 1 px go to REVIEW (they are the true positives). Remaining:
    run over the fleet, migrate the two fields into the recipes that pass, fleet_eq on/off.
