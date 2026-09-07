@@ -16,7 +16,7 @@ const all=new Set([...Object.keys(budget),...Object.keys(spacing)]); const list=
 const ts=new Date().toISOString().replace(/[-:T]/g,'').slice(0,12); let nT=0,nS=0,nSkip=0,nW=0;
 for(const name of list){const f=D+name+'_sbm.hydef'; if(!fs.existsSync(f)){nSkip++;continue;}
   const d=JSON.parse(fs.readFileSync(f,'utf8')); const fs0=d.featureSet[0]; const ch=[];
-  if(doTrust&&budget[name]){const b=budget[name]; if(b.res_max!=null){fs0.shape_trust_na=true; fs0.shape_trust_res_max=b.res_max; ch.push(`trust_na res_max=${b.res_max}`); nT++;} else ch.push('trust: REVIEW, skipped');}
+  if(doTrust&&budget[name]){const b=budget[name]; if(b.base!=null&&b.base<0){ch.push('trust: no residual (refine not run), skipped');} else if(b.res_max!=null){fs0.shape_trust_na=true; fs0.shape_trust_res_max=b.res_max; ch.push(`trust_na res_max=${b.res_max}`); nT++;} else ch.push('trust: REVIEW, skipped');}
   if(doSp&&spacing[name]){fs0.shape_roi_spacing=spacing[name].shape_roi_spacing; ch.push(`roi_spacing=${spacing[name].shape_roi_spacing}`); nS++;}
   if(!ch.some(c=>!c.includes('skipped')))continue;
   console.log(name.padEnd(42),ch.join('  '));

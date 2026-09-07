@@ -77,6 +77,21 @@ with augmentation), `_noise_ab.mjs`, `_deform.mjs` (shear/scale), `_trust_fleet.
 - Diagnostics landed: SBM_ROI_VERBOSE (per-point src/dst/residual), SBM_ROI_REMATCH[_DEG],
   SBM_ROI_OUTLIER_K, INSP_LOG_KEEP_STDERR to see core LOGE on the bench.
 
+## 2026-09-07: items 6-10 status
+- **(7) SBM_PROFILE fixed** (85fde5d3): prints via fprintf, no log-level change; totals are honest now.
+- **(8) match exception -> locate.code `match_except`** + reason (85fde5d3). A thrown match no
+  longer looks like an empty scene.
+- **(9) MODEL3131 "0 objects on CI" -- not a matcher bug.** The CI path crops the scene to the
+  def's inspection_region (2328x1035 here) and the 2194 px part's rotation sweep does not fit;
+  II does not crop, so it finds the part. The code already logs this (1 line in 100). For a
+  bench run use `INSP_SHAPE_NOCROP=1`; for the machine it is the recipe's region to fix.
+- **(10) ok01 / ok18 "misses" under deformation -- not locate misses.** The part IS found; an
+  orientation-essential judge could not be measured on the 1% scaled / 0.02 sheared frame and
+  rejected the detection (locate.code orient_judge, candidates 1..3). Designed behaviour: the
+  judge that resolves orientation must measure, or the pose is not trusted.
+- **(6) feature count 32-64**: aggressive tuner step 5 already does it per recipe with the
+  augmentation gate; run `PROFILE=aggressive sbm_tune.mjs` when a recipe needs the 15-20%.
+
 ## Open findings (not features, worth remembering)
 - **Run-to-run process-level nondeterminism** on near-min_score clutter: two single-
   threaded runs of the same image differ on 0.50-0.75 clutter (ok68 count). Real objects
