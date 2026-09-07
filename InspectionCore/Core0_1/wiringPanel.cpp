@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "common_lib.h"   // base64_encode for the kept-sample image reply
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
@@ -187,6 +188,18 @@ static SnapVerdict snap_verdict_of(int finspStatus)
   return SNAPV_NA;
 }
 static bool snap_wants_anything(SnapVerdict v) { return g_snap_policy[v].img || g_snap_policy[v].rep; }
+
+// Kept inspection samples (in-memory evidence buffer), implemented below next
+// to the JPEG encoder it uses. Declared here because setup_machine_setting()
+// and the ST handler sit above the implementation. See
+// docs/INSP_SAMPLE_BUFFER_2026-09-04.md for the design and the decisions.
+struct image_pipe_info;
+static void  insp_sample_set_groups(cJSON *arr);       // replace the group list (NULL/empty = off)
+static bool  insp_sample_wants_any();                  // any group still has room?
+static void  insp_sample_consider(image_pipe_info *p); // match + keep, on the snapshot thread
+static cJSON *insp_sample_list_json();                 // SL reply
+static cJSON *insp_sample_get_json(uint64_t id);       // SG reply (NULL = no such id)
+static int   insp_sample_clear(const char *group_or_null);
 static bool frame_ring_active();
 
 // ---------------------------------------------------------------------------
@@ -3691,6 +3704,9 @@ void setup_machine_setting(cJSON *json_mac_setting)
            def_share_writable ? "YES (this machine publishes)" : "no");
   }
 
+  // Kept-sample groups follow the machine, not a browser (design decision).
+  insp_sample_set_groups(cJSON_GetObjectItem(json_mac_setting, "INSP_SAMPLE_GROUPS"));
+
   char *path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
 
   LOGE("setup_machine_setting::machine_setting.json path:%s", path);
@@ -5555,6 +5571,29 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
       calib_bacpac.sampler->ignoreCalib(false);
     }
+    else if (checkTL("SL", dat)) //[S]ample [L]ist: what the kept-sample buffer holds (groups, counts, ids)
+    {
+      cJSON *out = insp_sample_list_json();
+      char *txt = cJSON_PrintUnformatted(out);
+      cJSON_Delete(out);
+      bpg_dat = GenStrBPGData("SL", txt);
+      bpg_dat.pgID = dat->pgID;
+      fromUpperLayer(bpg_dat, peer);
+      free(txt);
+    }
+    else if (checkTL("SG", dat)) //[S]ample [G]et: one kept record -- report + def + JPEG (base64)
+    {
+      uint64_t id = 0;
+      if (json) { double *jid = JFetch_NUMBER(json, "id"); if (jid) id = (uint64_t)*jid; }
+      cJSON *out = insp_sample_get_json(id);
+      if (!out) { out = cJSON_CreateObject(); cJSON_AddNumberToObject(out, "id", (double)id); cJSON_AddStringToObject(out, "error", "no such sample (buffer cleared or id unknown)"); }
+      char *txt = cJSON_PrintUnformatted(out);
+      cJSON_Delete(out);
+      bpg_dat = GenStrBPGData("SG", txt);
+      bpg_dat.pgID = dat->pgID;
+      fromUpperLayer(bpg_dat, peer);
+      free(txt);
+    }
     else if (checkTL("SF", dat)) //[S]hape [F]eatures: train the shape localizer from the
     {                            //  pushed def and return its feature/ROI points (object-frame mm)
       do                         //  for the SBM setup studio's "生成特徵點" visualization.
@@ -7235,6 +7274,21 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                  (int)g_snap_policy[v].img, (int)g_snap_policy[v].rep);
           }
         }
+      }
+
+      // Kept samples, live:
+      //   ST { "INSP_SAMPLE_GROUPS": [ {name, cap, rotate, verdict, measures:{"<judge id>":"OK|NG|NA|*"}} ] }
+      //   ST { "INSP_SAMPLE_CLEAR": true | "<group name>" }
+      // A whole-list replace (the groups are the question; a partial edit of a
+      // question is not a question), and it empties the buffer.
+      if (cJSON *sg = cJSON_GetObjectItem(json, "INSP_SAMPLE_GROUPS"))
+        if (cJSON_IsArray(sg)) insp_sample_set_groups(sg);
+      if (cJSON *sc = cJSON_GetObjectItem(json, "INSP_SAMPLE_CLEAR"))
+      {
+        int n = 0;
+        if (cJSON_IsString(sc)) n = insp_sample_clear(sc->valuestring);
+        else if (cJSON_IsTrue(sc)) n = insp_sample_clear(NULL);
+        LOGI("INSP_SAMPLE_CLEAR: %d record(s) dropped", n);
       }
 
 
@@ -8920,6 +8974,245 @@ int perif_status_to_cat(const PerifChannel *pc, int uInspStatus)
 
 float avgInterval=0;
 uint64_t lastImgSendTime=0;
+
+// ============================================================================
+// Kept inspection samples -- "show me the ones where measure 10 failed but
+// measure 3 passed", asked on the inspection screen without stopping the line.
+//
+// Design (docs/INSP_SAMPLE_BUFFER_2026-09-04.md): groups of per-measurement
+// conditions plus one on the frame verdict; FIRST MATCH WINS like a firewall
+// chain; no match = dropped; fill-and-stop by default (a ring loses the part
+// you just saw), per-group opt-in to rotate; lives in core memory as JPEG
+// (full-res frames raw would be 145-300 MB); matching is per FRAME (any object
+// in it), config comes from machine_setting.json and is pushable live via ST.
+// ============================================================================
+struct InspSampleCond { int judge_id; int want; };   // want: 0 OK, 1 NG, 2 NA, 3 any
+struct InspSampleGroup
+{
+  std::string name;
+  int  cap = 20;
+  bool rotate = false;
+  int  verdict = 3;                 // 0 OK, 1 NG, 2 NA (SnapVerdict order), 3 any
+  std::vector<InspSampleCond> conds;
+};
+struct InspSampleRec
+{
+  uint64_t id, ts_ms;
+  int group, verdict;
+  std::string report, def;          // the frame's report + the def it was judged with
+  std::vector<uint8_t> jpg; uint8_t jpg_fmt = 0;
+  int w = 0, h = 0;
+};
+static std::mutex g_sample_lock;
+static std::vector<InspSampleGroup> g_sample_groups;
+static std::vector<std::vector<InspSampleRec>> g_sample_store;
+static uint64_t g_sample_next_id = 1;
+static std::atomic<long> g_sample_kept{0}, g_sample_dropped_full{0};
+
+static int sample_want_of(const char *w)
+{
+  if (!w) return 3;
+  if (strcmp(w, "OK") == 0) return 0;
+  if (strcmp(w, "NG") == 0) return 1;
+  if (strcmp(w, "NA") == 0) return 2;
+  return 3;
+}
+static int sample_class_of_status(int st)
+{
+  typedef FeatureReport_sig360_circle_line_single FR;
+  if (st == FR::STATUS_SUCCESS) return 0;
+  if (st == FR::STATUS_NA) return 2;
+  return 1;
+}
+
+static void insp_sample_set_groups(cJSON *arr)
+{
+  std::vector<InspSampleGroup> gs;
+  if (arr && cJSON_IsArray(arr))
+  {
+    cJSON *g = NULL;
+    cJSON_ArrayForEach(g, arr)
+    {
+      if (!cJSON_IsObject(g)) continue;
+      InspSampleGroup G;
+      char *nm = JFetch_STRING(g, "name");
+      G.name = nm ? nm : ("group" + std::to_string(gs.size() + 1));
+      G.cap = (int)JFetch_NUMBER_ex(g, "cap", 20);
+      if (G.cap < 1) G.cap = 1; if (G.cap > 200) G.cap = 200;
+      G.rotate = JFetch_TRUE(g, "rotate");
+      G.verdict = sample_want_of(JFetch_STRING(g, "verdict"));
+      cJSON *ms = cJSON_GetObjectItem(g, "measures");
+      if (ms && cJSON_IsObject(ms))
+      {
+        cJSON *m = NULL;
+        cJSON_ArrayForEach(m, ms)
+          if (m->string && cJSON_IsString(m))
+            G.conds.push_back({ atoi(m->string), sample_want_of(m->valuestring) });
+      }
+      gs.push_back(G);
+    }
+  }
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  // A changed group list starts over: the records were filed by rules that no
+  // longer exist, and "which group did that one go to" must have one answer.
+  g_sample_groups = gs;
+  g_sample_store.assign(gs.size(), {});
+  LOGI("INSP_SAMPLE_GROUPS: %d group(s)%s", (int)gs.size(), gs.empty() ? " (kept samples OFF)" : "");
+  for (size_t i = 0; i < gs.size(); i++)
+    LOGI("  [%zu] %s cap=%d rotate=%d verdict=%d conds=%zu", i, gs[i].name.c_str(), gs[i].cap,
+         (int)gs[i].rotate, gs[i].verdict, gs[i].conds.size());
+}
+
+static bool insp_sample_wants_any()
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  for (size_t i = 0; i < g_sample_groups.size(); i++)
+    if (g_sample_groups[i].rotate || (int)g_sample_store[i].size() < g_sample_groups[i].cap) return true;
+  return false;
+}
+
+// First group whose rule the frame satisfies, or -1. A frame satisfies a group
+// when its verdict matches and SOME object in it satisfies every measurement
+// condition (per object, not across objects).
+static int insp_sample_match(cJSON *report_json, int frame_verdict)
+{
+  cJSON *objs = JFetch_ARRAY(report_json, "reports[0].reports");
+  for (size_t gi = 0; gi < g_sample_groups.size(); gi++)
+  {
+    const InspSampleGroup &G = g_sample_groups[gi];
+    if (G.verdict != 3 && G.verdict != frame_verdict) continue;
+    if (G.conds.empty()) return (int)gi;
+    if (!objs) continue;
+    cJSON *o = NULL;
+    cJSON_ArrayForEach(o, objs)
+    {
+      cJSON *js = cJSON_GetObjectItem(o, "judgeReports");
+      bool all = true;
+      for (const InspSampleCond &c : G.conds)
+      {
+        bool found = false; int cls = -1;
+        cJSON *j = NULL;
+        if (js) cJSON_ArrayForEach(j, js)
+        {
+          cJSON *jid = cJSON_GetObjectItem(j, "id");
+          if (jid && (int)jid->valuedouble == c.judge_id)
+          { found = true; cJSON *st = cJSON_GetObjectItem(j, "status"); cls = st ? sample_class_of_status((int)st->valuedouble) : 2; break; }
+        }
+        if (!found) cls = 2;                     // a judge that never ran is NA
+        if (c.want != 3 && c.want != cls) { all = false; break; }
+      }
+      if (all) return (int)gi;
+    }
+  }
+  return -1;
+}
+
+static void insp_sample_consider(image_pipe_info *p)
+{
+  if (!p || !p->datViewInfo.report_json) return;
+  int gi; bool room;
+  {
+    std::lock_guard<std::mutex> lk(g_sample_lock);
+    if (g_sample_groups.empty()) return;
+    gi = insp_sample_match(p->datViewInfo.report_json, (int)snap_verdict_of(p->datViewInfo.finspStatus));
+    if (gi < 0) return;
+    room = g_sample_groups[gi].rotate || (int)g_sample_store[gi].size() < g_sample_groups[gi].cap;
+  }
+  if (!room) { g_sample_dropped_full++; return; }
+  if (p->img.empty()) return;
+  // Encode outside the lock: the one cost of a kept sample, paid once.
+  InspSampleRec r;
+  encode_acvImage_jpeg(p->img, DataView_JPEG_quality > 0 ? DataView_JPEG_quality : 85, r.jpg, r.jpg_fmt);
+  r.w = p->img.cols; r.h = p->img.rows;
+  r.ts_ms = (uint64_t)current_time_ms();
+  r.verdict = (int)snap_verdict_of(p->datViewInfo.finspStatus);
+  r.group = gi;
+  { char *t = cJSON_PrintUnformatted(p->datViewInfo.report_json); if (t) { r.report = t; free(t); } }
+  {
+    std::lock_guard<std::mutex> _cfg(snap_cfg_lock);
+    if (cache_deffile_JSON) { char *t = cJSON_PrintUnformatted(cache_deffile_JSON); if (t) { r.def = t; free(t); } }
+  }
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  if (gi >= (int)g_sample_store.size()) return;            // groups replaced meanwhile
+  auto &bucket = g_sample_store[gi];
+  if ((int)bucket.size() >= g_sample_groups[gi].cap)
+  {
+    if (!g_sample_groups[gi].rotate) { g_sample_dropped_full++; return; }
+    bucket.erase(bucket.begin());
+  }
+  r.id = g_sample_next_id++;
+  bucket.push_back(std::move(r));
+  g_sample_kept++;
+}
+
+static cJSON *insp_sample_list_json()
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  cJSON *root = cJSON_CreateObject();
+  cJSON *gs = cJSON_AddArrayToObject(root, "groups");
+  static const char *_vn[4] = { "OK", "NG", "NA", "*" };
+  for (size_t i = 0; i < g_sample_groups.size(); i++)
+  {
+    cJSON *g = cJSON_CreateObject();
+    cJSON_AddStringToObject(g, "name", g_sample_groups[i].name.c_str());
+    cJSON_AddNumberToObject(g, "cap", g_sample_groups[i].cap);
+    cJSON_AddBoolToObject(g, "rotate", g_sample_groups[i].rotate);
+    cJSON_AddStringToObject(g, "verdict", _vn[g_sample_groups[i].verdict & 3]);
+    cJSON_AddNumberToObject(g, "count", (double)g_sample_store[i].size());
+    cJSON *items = cJSON_AddArrayToObject(g, "items");
+    for (const InspSampleRec &r : g_sample_store[i])
+    {
+      cJSON *it = cJSON_CreateObject();
+      cJSON_AddNumberToObject(it, "id", (double)r.id);
+      cJSON_AddNumberToObject(it, "ts_ms", (double)r.ts_ms);
+      cJSON_AddStringToObject(it, "verdict", _vn[r.verdict & 3]);
+      cJSON_AddNumberToObject(it, "jpg_bytes", (double)r.jpg.size());
+      cJSON_AddItemToArray(items, it);
+    }
+    cJSON_AddItemToArray(gs, g);
+  }
+  cJSON_AddNumberToObject(root, "kept_total", (double)g_sample_kept.load());
+  cJSON_AddNumberToObject(root, "dropped_full", (double)g_sample_dropped_full.load());
+  return root;
+}
+
+static cJSON *insp_sample_get_json(uint64_t id)
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  for (size_t i = 0; i < g_sample_store.size(); i++)
+    for (const InspSampleRec &r : g_sample_store[i])
+      if (r.id == id)
+      {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddNumberToObject(o, "id", (double)r.id);
+        cJSON_AddNumberToObject(o, "ts_ms", (double)r.ts_ms);
+        cJSON_AddStringToObject(o, "group", g_sample_groups[i].name.c_str());
+        cJSON_AddNumberToObject(o, "w", r.w); cJSON_AddNumberToObject(o, "h", r.h);
+        // Raw JSON, not re-parsed: the report and the def go back out exactly
+        // as they were kept.
+        cJSON_AddRawToObject(o, "report", r.report.empty() ? "null" : r.report.c_str());
+        cJSON_AddRawToObject(o, "def", r.def.empty() ? "null" : r.def.c_str());
+        cJSON_AddNumberToObject(o, "jpg_fmt", r.jpg_fmt);
+        std::string b64 = base64_encode(NULL, r.jpg.data(), r.jpg.size());
+        cJSON_AddStringToObject(o, "jpg_b64", b64.c_str());
+        return o;
+      }
+  return NULL;
+}
+
+static int insp_sample_clear(const char *group_or_null)
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  int n = 0;
+  for (size_t i = 0; i < g_sample_store.size(); i++)
+  {
+    if (group_or_null && g_sample_groups[i].name != group_or_null) continue;
+    n += (int)g_sample_store[i].size();
+    g_sample_store[i].clear();
+  }
+  return n;
+}
+
 void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS,bool pureSendImg)
 {
   static int frameActionID = 0;
@@ -11219,6 +11512,9 @@ void InspSnapSaveThread(bool *terminationflag)
       frame_ring_push(headImgPipe->img,
                       headImgPipe->datViewInfo.report_json,
                       headImgPipe->datViewInfo.finspStatus);
+      // Kept samples: match the frame against the groups and keep it (JPEG) if
+      // a group wants it. Same thread as the disk snapshot: off the hot path.
+      insp_sample_consider(headImgPipe);
       // LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->datViewInfo.report_json);
       //report save
       //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
@@ -11498,7 +11794,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // travel on the same queue; what differs is what the snapshot thread
       // does with them.
       if (snap_wants_anything(snap_verdict_of(headImgPipe->datViewInfo.finspStatus))
-          || frame_ring_active())
+          || frame_ring_active() || insp_sample_wants_any())
         saveToSnap = true;
 
       // LOGI("ONNGNA:%f %f %f",OK_MAX_FPS,NG_MAX_FPS,NA_MAX_FPS);

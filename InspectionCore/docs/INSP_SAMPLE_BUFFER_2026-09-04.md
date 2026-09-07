@@ -1,6 +1,6 @@
 # Kept inspection samples — why the WebUI version was removed, and what to build instead
 
-**Status: NOT IMPLEMENTED. Design + measurements only.**
+**Status: CORE SIDE IMPLEMENTED 2026-09-07 (wiringPanel.cpp, `insp_sample_*`); WebUI viewer pending.** Design + measurements below are what it implements.
 The WebUI implementation was built, run on a real machine, and removed the same
 day. This records what it got right, the two things that killed it, and the
 decisions already made so the core-side version does not re-derive them.
@@ -129,3 +129,34 @@ window — `keepInTrackingTime_ms`, one second on this bench — so the current 
 is a later one, quite possibly of a different part. For a tool whose only job is
 explaining a verdict, a confidently wrong picture is worse than none. FI only
 until a frame can be carried on the tracking entry itself.
+
+---
+
+## Core implementation (2026-09-07)
+
+Config, in `machine_setting.json` and pushable live:
+
+```json
+"INSP_SAMPLE_GROUPS": [
+  { "name": "m10 NG, m3 OK", "cap": 20, "rotate": false, "verdict": "*",
+    "measures": { "10": "NG", "3": "OK" } },
+  { "name": "any NG", "cap": 20, "verdict": "NG" }
+]
+```
+
+`verdict` = frame verdict `OK|NG|NA|*`; `measures` keys are judge ids (`judgeReports[].id`),
+values `OK|NG|NA|*`; all conditions must hold on the SAME object, any object in the frame
+qualifies the frame. First matching group wins; no match = dropped. `cap` 1..200 (default
+20), `rotate` false = fill-and-stop. Replacing the list empties the buffer.
+
+* `ST { "INSP_SAMPLE_GROUPS": [...] }` replace live; `ST { "INSP_SAMPLE_CLEAR": true | "<name>" }`.
+* `SL {}` -> `{groups:[{name,cap,rotate,verdict,count,items:[{id,ts_ms,verdict,jpg_bytes}]}], kept_total, dropped_full}`
+* `SG {id}` -> `{id, ts_ms, group, w, h, report, def, jpg_fmt, jpg_b64}` -- report and def are the
+  frame's own (raw JSON as kept), image is the full-res frame as JPEG (`DataView_JPEG_quality`),
+  base64 so the viewer needs no second transport. Unknown id -> `{id, error}`.
+
+Where it runs: the snapshot thread (`InspSnapSaveThread`), right after the frame ring push, so
+the match + encode are off the inspection hot path; the datView gate feeds the queue whenever a
+group still has room. Verified on the bench (`_samples_test.mjs`): 63 frames -> NG-only 3/3
+(fill-and-stop), OK-rotate holds the latest 4, catch-all 5/5, dropped_full counted, SG returns a
+decodable 2328x1035 JPEG (650 KB) with the report and def, clear empties all.
