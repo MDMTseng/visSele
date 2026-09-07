@@ -2880,15 +2880,12 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   // is the wrong ruler and produces numbers that look entirely ordinary.
   //
   // A .xreps record is the pair: the report AND the camera_param of the frame
-  // it was taken from. So this is the same LD the playback screen sends
-  // (filename + imgsrc), and the camera_param that comes back goes into the
-  // editor through SetCameraParamInfo -- the same entry point an inspection
-  // report uses.
-  //
-  // It does NOT touch the def: since cam_param generation takes the file's
-  // values first, looking at a record cannot rewrite the recipe's calibration.
-  // That mattered enough to be a separate fix; without it, opening a record
-  // here would quietly re-scale the def to the record's camera.
+  // it was taken from. The record is read for its camera_param, its image is
+  // inspected with the def that is open at the record's mm-per-px, and the
+  // result is shown in the quick-verify modal -- the editor's own image and
+  // camera_param are not touched (2026-09-07: the first cut loaded the frame
+  // into the editor and adopted its calibration there; the owner wanted the
+  // 檢驗 / 全檢 behaviour instead -- a check, shown in the modal).
   function loadXrepForVerify(xrepPath, fileInfo)
   {
     const stem = String(xrepPath).replace(/\.xreps$/i, "");
@@ -2917,74 +2914,53 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     });
   }
 
+  // Read the record for its camera_param (LD with filename only: no imgsrc, so
+  // the core's __CACHE_IMG__ and the editor's canvas are left alone), then
+  // measure the record's IMAGE with the CURRENT def at the RECORD's mm-per-px
+  // and show the result in the same modal 檢驗 / 全檢 use.
+  //
+  // This is deliberately not "load the picture into the editor": the operator
+  // asked for a check of the recipe against a saved frame, the way the other
+  // two quick-verify modes check it against a live one. The editor keeps its
+  // own image and its own camera_param; the record's calibration lives only in
+  // this modal (RepDisplay's camera_param) and in the II request.
   function sendXrepLD(stem, imgPath)
   {
-    ACT_WS_SEND_BPG(CORE_ID, 'LD', 0,
-      { filename: stem + '.xreps',
-        ...(imgPath ? { imgsrc: imgPath } : {}),
-        down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
-      undefined,
+    ACT_WS_SEND_BPG(CORE_ID, 'LD', 0, { filename: stem + '.xreps' }, undefined,
       { resolve: (pkts) => {
           const FL = (pkts || []).find((p) => p.type === 'FL');
-          const IM = (pkts || []).find((p) => p.type === 'IM');
-
-          // The image first, so the canvas is showing the frame the numbers
-          // will be about. IGNORE_DEFCONF_LOCK because the post-load display
-          // lock drops image actions and this one is a deliberate operator act.
-          if (IM !== undefined) {
-            const a = BPG_Protocol.map_BPG_Packet2Act(IM);
-            if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
-            else log.error('[xrep] an IM packet produced no action');
-          } else {
-            log.warn('[xrep] LD returned no IM; the canvas keeps the previous image');
-          }
-
           const camParam = FL && FL.data && FL.data.camera_param;
-          if (camParam !== undefined && edit_info && edit_info._obj) {
-            edit_info._obj.SetCameraParamInfo(camParam);
-            log.info('[xrep] camera_param adopted from the record', camParam);
-          } else {
-            // Worth saying out loud rather than silently measuring with the
-            // editor's current ruler: an old record may predate the field.
+          if (camParam === undefined)
             log.warn('[xrep] the record carries no camera_param -- '
-                   + 'the frame will be measured with the calibration already loaded');
+                   + 'the frame will be measured with the def mmpp');
+          if (!imgPath) {
+            log.warn('[xrep] no image beside ' + stem + ' -- nothing to verify against');
+            return;
           }
-
-          setNowInspdata(undefined);   // any previous result was another frame
-          setTimeout(() => runXrepVerify(camParam), 60);
+          runXrepVerify(camParam, imgPath);
         },
         reject: (e) => { log.warn('[xrep] load failed', e); }
       });
   }
 
-  // Measure the loaded frame with the CURRENT def and the FRAME's ruler.
+  // Measure the record's frame with the CURRENT def and the FRAME's ruler.
   //
-  // This does not reuse the shared 'defconf-orient-now' event, and the reason is
-  // the whole feature: that path sends calibInfo.mmpp from the DEF, so the
-  // camera_param just adopted from the record would be carried around and never
-  // actually used -- the frame would be measured with the def's scale, which is
-  // the thing loading a record was supposed to avoid. mm-per-pixel is a property
-  // of how a frame was captured, so it comes from the record.
-  //
-  // What comes from the def is everything else: the features, the tolerances,
-  // the regions. That is the point -- this verifies the def you have open
-  // against a saved frame, and it deliberately ignores the defInfo stored in the
-  // record (FL.data.defInfo), which describes the def as it was back then.
-  function runXrepVerify(camParam)
+  // mm-per-pixel is a property of how a frame was captured, so it comes from
+  // the record (calibInfo.mmpp, which the core applies to its sampler and the
+  // shape locator rescales its model by). Everything else -- features,
+  // tolerances, regions -- comes from the def that is open, and the record's
+  // own defInfo is ignored: it describes the def as it was back then.
+  function runXrepVerify(camParam, imgPath)
   {
     if (!edit_info || !edit_info._obj) return;
     let deffile = defFileGeneration(edit_info);
     stampRefImagePath(deffile, edit_info);
+    setCacheDef(deffile);
     const defMmpp = deffile.featureSet[0].mmpp;
-    // mmpb2b/ppb2b is how the rest of the code turns a cam_param into a scale
-    // (see the sig360 report path). Guarded: a zero or missing ppb2b would make
-    // this Infinity or NaN and measure the part to a nonsense scale rather than
-    // failing, so fall back to the def and say which one was used.
-    // The SOURCE is tracked, not inferred from the value. A bench whose record
-    // was taken under the same calibration as the def produces two identical
-    // numbers, and a label derived by comparing them then reports "def" for a
-    // scale that came from the record -- which is exactly the question this
-    // line exists to answer.
+    // The SOURCE is tracked, not inferred from the value: on a bench whose
+    // record was taken under the def's own calibration the two numbers are
+    // identical, and a label derived by comparing them would say "def" for a
+    // scale that came from the record.
     let mmpp = defMmpp, mmppFrom = 'def';
     if (camParam && camParam.mmpb2b > 0 && camParam.ppb2b > 0) {
       mmpp = camParam.mmpb2b / camParam.ppb2b;
@@ -2992,32 +2968,56 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     } else {
       log.warn('[xrep] no usable mmpb2b/ppb2b in the record -- measuring with the def mmpp', defMmpp);
     }
-    log.info('[xrep] verifying with mmpp=' + mmpp + ' (' + mmppFrom + ')');
+    log.info('[xrep] verifying ' + imgPath + ' with mmpp=' + mmpp + ' (' + mmppFrom + ')');
 
+    setNowInspdata(undefined);
     ACT_WS_SEND_BPG(CORE_ID, 'II', 0,
-      { definfo: deffile, imgsrc: '__CACHE_IMG__',
-        img_property: { calibInfo: { type: 'disable', mmpp: mmpp } } },
+      // down_samp_level is what makes the core send the picture back with the
+      // report (wiringPanel II: no level, no IM); 1 = full resolution, so the
+      // overlay sits on the pixels that were measured.
+      { definfo: deffile, imgsrc: imgPath,
+        img_property: { calibInfo: { type: 'disable', mmpp: mmpp }, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL } },
       undefined,
       { resolve: (darr) => {
           const RP = (darr || []).find((p) => p.type === 'RP');
-          if (RP !== undefined) {
-            const a = BPG_Protocol.map_BPG_Packet2Act(RP);
-            if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
-          }
           const IM = (darr || []).find((p) => p.type === 'IM');
+          const reports = GetObjElement(RP, ["data", "reports", 0, "reports"]);
+          let image = undefined;
           if (IM !== undefined) {
             const a = BPG_Protocol.map_BPG_Packet2Act(IM);
-            if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+            if (a !== undefined) image = a.data;
           }
-          // AFTER the dispatch, deliberately. Handling a sig360_circle_line
-          // report calls SetCameraParamInfo with the REPORT's cam_param
-          // (UICtrlReducer), which is the def's -- so dispatching the result of
-          // this verification silently undoes the adoption that made it
-          // meaningful. Measured: exposure_time:50 went in and came back gone.
-          if (camParam !== undefined) edit_info._obj.SetCameraParamInfo(camParam);
+          if (reports === undefined) log.warn('[xrep] verify returned no report', RP && RP.data);
+          // The record's ruler for the overlay too, so mm drawn over the picture
+          // agree with mm measured on it. Falls back to the editor's.
+          setNowInspdata({
+            cam_param: (camParam && camParam.mmpb2b > 0 && camParam.ppb2b > 0)
+                         ? camParam : edit_info._obj.cameraParam,
+            reports: reports,
+            image: image,
+            source: imgPath,
+            mmppFrom: mmppFrom,
+          });
         },
         reject: (e) => { log.warn('[xrep] verify failed', e); }
       });
+
+    setModal_view({
+      onOk: () => setModal_view(undefined),
+      onCancel: () => setModal_view(undefined),
+      height: "80%",
+      width: "95%",
+      style: { top: "30px" },
+      className: "modal-sizing size95",
+      footer: <>
+          <span style={{ float: 'left', fontSize: 12, color: '#8b929c', display: 'flex', alignItems: 'center', height: 32 }}>
+            紀錄:{imgPath}{mmppFrom === 'record' ? `,以紀錄的 ${mmpp.toFixed(6)} mm/px 量測` : ',紀錄沒有相機參數,用 def 的 mmpp'}
+          </span>
+          <Button key="close" onClick={() => setModal_view(undefined)}>關閉</Button>
+        </>,
+      title: null,
+      ext_sec: "INST_Inspection"
+    });
   }
 
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
@@ -3713,8 +3713,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                 載入 xrep
               </Button>
               <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
-                用存下來的檢驗記錄當輸入:載入它的影像,並改用<b>那張影像的相機參數</b>來量。
-                不會動到這份設定檔的校正值。
+                用存下來的檢驗記錄當輸入:以目前開的設定檢驗它的影像,尺度用<b>那張影像的相機參數</b>(mm/px),結果顯示在這個視窗,不動編輯器的影像。
               </div>
             </div>
           </>
