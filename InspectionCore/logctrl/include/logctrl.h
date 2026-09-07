@@ -133,6 +133,22 @@ void log_close_shm_ring(void);
  * or -1 on failure.  Cross-platform: posix_spawnp / CreateProcessA. */
 int log_spawn_drainer(const char *exe_path);
 
+/* Is the drainer spawned by log_spawn_drainer() still running?  1 yes, 0 no
+ * (exited / crashed / never spawned).  Cheap: a non-blocking wait on the child. */
+int log_drainer_alive(void);
+
+/* Forget the dead drainer and spawn a fresh one (attaches to the same ring, so
+ * nothing already in the ring is lost).  Returns the new pid or -1. */
+int log_respawn_drainer(const char *exe_path);
+
+/* Start a detached watcher thread: every period_s seconds it checks
+ * log_drainer_alive(); when the drainer is gone it (a) says so on stderr,
+ * (b) re-enables the stderr sink so the log has SOMEWHERE to go, (c) respawns,
+ * and (d) restores the stderr sink to its previous state on success.  A dead
+ * drainer used to be invisible: 4091 closed, "Core Logs" empty, nothing said so
+ * (CORE0_1_CAVEATS J13.2).  keep_stderr: leave stderr on even after respawn. */
+void log_start_drainer_watch(const char *exe_path, int period_s, int keep_stderr);
+
 /* On-demand "flight recorder" dump.  Asks the drainer (if running) to write a
  * crash_<utc>.dump containing the ENTIRE current ring history (incl. verbose
  * lines that never hit disk) -- without crashing or exiting.  Use it to grab a

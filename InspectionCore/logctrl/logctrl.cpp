@@ -21,6 +21,7 @@
 #include <sp.hpp>
 
 #include <atomic>
+#include <thread>
 #include <chrono>
 #include <ctime>     // struct timespec / clock_gettime -- mingw needs it explicit
 #include <cstdarg>
@@ -382,6 +383,7 @@ static void log_request_dump_marker(uint32_t marker) {
     g_shm_ring.hdr->crash_marker.store(marker, std::memory_order_release);
 }
 
+
 void log_request_dump(void) {
     log_request_dump_marker(LOG_CRASH_DUMP_REQUEST);
 }
@@ -421,9 +423,13 @@ static void shm_ring_sink(int lv, const char *file, int line,
      * room for NUL.  We don't need to copy file -- it's in line_text. */
     (void)file;
     size_t n = std::strlen(line_text);
-    if (n > LOG_SLOT_TEXT - 1) n = LOG_SLOT_TEXT - 1;
+    bool cut = n > LOG_SLOT_TEXT - 1;
+    if (cut) n = LOG_SLOT_TEXT - 1;
     std::memcpy(slot->text, line_text, n);
     slot->text[n] = '\0';
+    /* A cut line used to end mid-word with nothing to say so (J13.4: "loses its
+     * tail"). Mark it, so a reader knows the rest exists and was not written. */
+    if (cut && n >= 4) std::memcpy(slot->text + n - 3, "...", 3);
 
     /* Commit (even seq).  Drainer reads acquire here. */
     slot->seq.store(target_seq, std::memory_order_release);
@@ -624,6 +630,8 @@ void *log_get_shm_ring_mapping(void) {
 /* ---------- drainer spawn (Phase F.1) ---------- */
 
 static std::atomic<long> g_drainer_pid{0};   /* nonzero once spawned */
+static void *g_drainer_handle = nullptr;      /* Windows: process HANDLE of the child */
+static std::string g_drainer_exe;             /* what we spawned, for the respawn */
 
 int log_spawn_drainer(const char *exe_path) {
     if (g_drainer_pid.load() != 0) {
@@ -632,6 +640,7 @@ int log_spawn_drainer(const char *exe_path) {
     const char *path = exe_path;
     if (!path || !*path) path = std::getenv("INSP_LOG_DRAINER");
     if (!path || !*path) path = "inspd_log";
+    g_drainer_exe = path;
 
 #ifdef _WIN32
     /* Pass our PID so the drainer can OpenProcess + poll the real parent handle
@@ -668,8 +677,9 @@ int log_spawn_drainer(const char *exe_path) {
     }
     long pid = (long)pi.dwProcessId;
     CloseHandle(pi.hThread);
-    /* Keep the process handle alive (leak intentionally so the OS keeps
-     * the child reapable; main process exit handles cleanup). */
+    /* Keep the process handle: log_drainer_alive() waits on it (0 ms). */
+    if (g_drainer_handle) CloseHandle((HANDLE)g_drainer_handle);
+    g_drainer_handle = (void *)pi.hProcess;
     g_drainer_pid.store(pid);
     return (int)pid;
 #else
@@ -687,6 +697,58 @@ int log_spawn_drainer(const char *exe_path) {
         "[logctrl] drainer spawned pid=%d (exe='%s')\n", (int)pid, path);
     return (int)pid;
 #endif
+}
+
+int log_drainer_alive(void) {
+    long pid = g_drainer_pid.load();
+    if (pid == 0) return 0;
+#ifdef _WIN32
+    if (!g_drainer_handle) return 0;
+    return WaitForSingleObject((HANDLE)g_drainer_handle, 0) == WAIT_TIMEOUT ? 1 : 0;
+#else
+    int st = 0;
+    pid_t r = waitpid((pid_t)pid, &st, WNOHANG);
+    if (r == (pid_t)pid) return 0;            /* reaped: it exited */
+    if (r == -1) return kill((pid_t)pid, 0) == 0 ? 1 : 0;
+    return 1;
+#endif
+}
+
+int log_respawn_drainer(const char *exe_path) {
+#ifdef _WIN32
+    if (g_drainer_handle) { CloseHandle((HANDLE)g_drainer_handle); g_drainer_handle = nullptr; }
+#endif
+    g_drainer_pid.store(0);
+    std::string exe = (exe_path && *exe_path) ? std::string(exe_path) : g_drainer_exe;
+    return log_spawn_drainer(exe.c_str());
+}
+
+void log_start_drainer_watch(const char *exe_path, int period_s, int keep_stderr) {
+    std::string exe = (exe_path && *exe_path) ? std::string(exe_path) : g_drainer_exe;
+    if (period_s < 1) period_s = 5;
+    std::thread([exe, period_s, keep_stderr]() {
+        int deaths = 0;
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::seconds(period_s));
+            if (g_drainer_pid.load() == 0 || log_drainer_alive()) continue;
+            deaths++;
+            /* Say it where it cannot be lost: the ring has no reader right now. */
+            log_set_stderr_enabled(1);
+            std::fprintf(stderr,
+                "[logctrl] LOG DRAINER DIED (pid %ld, death #%d): log WS 4091 is down and nothing "
+                "is draining the ring; stderr re-enabled, respawning '%s'\n",
+                g_drainer_pid.load(), deaths, exe.c_str());
+            int pid = log_respawn_drainer(exe.c_str());
+            if (pid > 0) {
+                std::fprintf(stderr, "[logctrl] drainer respawned pid=%d\n", pid);
+                log_emit(LOG_LV_ERROR, __FILE__, __LINE__, __func__,
+                         "log drainer died and was respawned (death #%d, new pid %d)", deaths, pid);
+                if (!keep_stderr) log_set_stderr_enabled(0);
+            } else {
+                std::fprintf(stderr, "[logctrl] drainer respawn FAILED; stderr stays on\n");
+            }
+        }
+    }).detach();
 }
 
 void log_close_shm_ring(void) {

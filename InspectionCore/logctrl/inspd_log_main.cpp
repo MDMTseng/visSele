@@ -103,7 +103,12 @@ struct Config {
      * disables it). The name here said INSP_LOG_PERSIST, which is not the
      * variable the parser reads -- setting it looked like it worked and
      * changed nothing. */
-    int         persist_min_lv = LOG_LV_OFF;
+    /* 2026-09-07: default is WARN, not OFF. OFF meant a restart erased every
+     * warning and error the machine ever logged unless someone was watching
+     * live (CORE0_1_CAVEATS J13.1). WARN+ is a trickle -- bounded anyway by
+     * rotate_bytes x rotate_keep (10 MB x 5). INSP_LOG_PERSIST_LEVEL=off restores
+     * the old behaviour; =info for a machine under development. */
+    int         persist_min_lv = LOG_LV_WARN;
     /* WS log-stream server for the WebUI "Core Logs" panel
      * (CoreLogClient -> ws://127.0.0.1:4091/log). On by default now that the
      * daemon is; set INSP_LOG_WS_PORT=0 to disable. */
