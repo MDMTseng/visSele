@@ -1,6 +1,6 @@
 # Kept inspection samples — why the WebUI version was removed, and what to build instead
 
-**Status: CORE SIDE IMPLEMENTED 2026-09-07 (wiringPanel.cpp, `insp_sample_*`); WebUI viewer pending.** Design + measurements below are what it implements.
+**Status: IMPLEMENTED 2026-09-07 -- core (`insp_sample_*` in wiringPanel.cpp) + WebUI viewer (`component/InspSamplePanel.jsx`, 樣本 button on the inspection screen).** Design + measurements below are what it implements.
 The WebUI implementation was built, run on a real machine, and removed the same
 day. This records what it got right, the two things that killed it, and the
 decisions already made so the core-side version does not re-derive them.
@@ -160,3 +160,15 @@ the match + encode are off the inspection hot path; the datView gate feeds the q
 group still has room. Verified on the bench (`_samples_test.mjs`): 63 frames -> NG-only 3/3
 (fill-and-stop), OK-rotate holds the latest 4, catch-all 5/5, dropped_full counted, SG returns a
 decodable 2328x1035 JPEG (650 KB) with the report and def, clear empties all.
+
+## WebUI viewer (2026-09-07)
+
+`component/InspSamplePanel.jsx`, opened from the 樣本 button beside 旋轉標的 on the
+inspection screen. Pure viewer: `SL` on open / 重新整理, `SG` on click, `ST INSP_SAMPLE_CLEAR`
+for the clear buttons. Renders each record with `RepDisplay` (the playback component): the
+record's own def (fresh copy), `reports[0].cam_param`, the report, and the full-res JPEG turned
+into the IM-shaped image object (`jpegBytes`, scale 1) the canvas already decodes -- so the
+overlay lands on the pixels the measurement was taken from, which is the whole point. Under the
+picture: per object, the judges worst-first with id/name/value/OK-NG-NA, and the trust code if
+one tripped. Group configuration stays in `machine_setting.json`; the panel says so.
+Not exercised in a browser in this session -- parse-checked only; run it once on the bench.

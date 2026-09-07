@@ -2,6 +2,7 @@
 
 
 import { connect } from 'react-redux';
+import InspSamplePanel from './component/InspSamplePanel.jsx';
 import React, { useState, useEffect,useRef } from 'react';
 import { useSelector,useDispatch } from 'react-redux';
 
@@ -56,6 +57,7 @@ import {
   LinkOutlined,
   ExclamationCircleOutlined,
   RedoOutlined,
+  PictureOutlined,
   ExpandOutlined,
   ArrowLeftOutlined,
   FullscreenOutlined,
@@ -3914,6 +3916,12 @@ class APP_INSP_MODE extends React.Component {
 
 
 
+      <Button size={"large"} type="dashed" onClick={()=>this.setState({samplePanel:true})}>
+        <PictureOutlined/>樣本
+      </Button>
+      <InspSamplePanel visible={this.state.samplePanel===true}
+        onClose={()=>this.setState({samplePanel:false})}
+        sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)} />
       <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
         <RedoOutlined/>
         {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
