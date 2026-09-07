@@ -355,6 +355,13 @@ export function defFileGeneration(edit_info)
   // does not care keeps hashing and diffing exactly as before.
   if (typeof edit_info.shape_nms_angle === 'number' && edit_info.shape_nms_angle !== 360)
     report.featureSet[0].shape_nms_angle = edit_info.shape_nms_angle;
+  // Trust -> judges NA: written only when ON, so every def that never touched it
+  // keeps hashing exactly as before. The threshold rides along only when it is set.
+  if (edit_info.shape_trust_na === true) {
+    report.featureSet[0].shape_trust_na = true;
+    if (typeof edit_info.shape_trust_res_max === 'number' && edit_info.shape_trust_res_max > 0)
+      report.featureSet[0].shape_trust_res_max = edit_info.shape_trust_res_max;
+  }
   // Acceptance gate for the shape locator, 0-100. The core takes it only when
   // > 0 (JFetch guard), so 0 means "keep the default", not "accept anything".
   if (typeof edit_info.shape_min_score === 'number' && edit_info.shape_min_score > 0)

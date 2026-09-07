@@ -378,7 +378,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // derives it). ambiguous_pose defers to an orientation-essential judge when the
   // recipe has one -- that judge IS how a symmetric part is legitimately resolved.
   bool  shape_trust_na       = false;  // force judges NA on a tripped trust gate
-  float shape_trust_res_max  = 0.0f;   // poor_fit: mean normal residual, px; 0 = default 1.0
+  float shape_trust_res_max  = 0.0f;   // poor_fit: mean normal residual, px; 0 = default 3.0 (loose)
   float shape_trust_inl_frac = 0.0f;   // low_inliers: min inlier fraction; 0 = default 0.75
   // line2Dup feature/pyramid tuning (def-overridable). Applied to BOTH the
   // template extraction and the scene matcher so their edges stay consistent.

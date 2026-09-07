@@ -9202,7 +9202,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     {
       // Def first (per-recipe, set from the deformation budget), env as the bench
       // override, then the global default.
-      static const float kResMaxEnv = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 1.0f;
+      static const float kResMaxEnv = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 3.0f;   // loose by design: a recipe tightens it
       static const float kInlFracEnv = getenv("SBM_TRUST_INL_FRAC") ? (float)atof(getenv("SBM_TRUST_INL_FRAC")) : 0.75f;
       const float kResMax  = shape_trust_res_max  > 0.0f ? shape_trust_res_max  : kResMaxEnv;
       const float kInlFrac = shape_trust_inl_frac > 0.0f ? shape_trust_inl_frac : kInlFracEnv;

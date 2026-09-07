@@ -1496,6 +1496,21 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
               value={edit_info.shape_nms_angle ?? 360}
               onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_nms_angle: v }))} />
           </Row>
+          <Row label="定位信任" unit="">
+            <Select style={{ width: 92 }} value={edit_info.shape_trust_na === true ? 1 : 0}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_trust_na: v === 1 }))}
+              options={[{ value: 0, label: '關' }, { value: 1, label: '開' }]} />
+          </Row>
+          {edit_info.shape_trust_na === true && (
+            <Row label="殘差上限" unit="px">
+              <InputNumber min={0.3} max={20} step={0.5} style={{ width: 92 }}
+                value={edit_info.shape_trust_res_max ?? 3}
+                onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_trust_res_max: v }))} />
+            </Row>
+          )}
+          <Hint>開了以後,定位器對姿態沒信心(擬合殘差超過上限、或對上的點太少)時,
+            這顆物件的判定全部改成 <b style={{ color: P.ink }}>NA</b>,不會 PASS。預設關;
+            上限預設 3 px 很寬鬆,只抓明顯鎖錯邊的情況。零件本身會變形的,上限要留餘裕。</Hint>
           <Row label="face" unit="">
             <Select style={{ width: 92 }} value={edit_info.matching_face ?? 1}
               onChange={(v) => dispatch(DefConfAct.Matching_Face_Update(v))}

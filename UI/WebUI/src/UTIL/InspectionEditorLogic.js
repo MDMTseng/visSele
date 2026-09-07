@@ -366,6 +366,10 @@ export class InspectionEditorLogic {
                 edit_info.shape_match_scale = report.shape_match_scale;
               if (typeof report.shape_nms_angle === 'number')
                 edit_info.shape_nms_angle = report.shape_nms_angle;
+              if (typeof report.shape_trust_na === 'boolean')
+                edit_info.shape_trust_na = report.shape_trust_na;
+              if (typeof report.shape_trust_res_max === 'number')
+                edit_info.shape_trust_res_max = report.shape_trust_res_max;
               if (typeof report.shape_min_score === 'number')
                 edit_info.shape_min_score = report.shape_min_score;
               if (typeof report.shape_weak_thres === 'number')
@@ -1863,7 +1867,7 @@ export const DEF_SCOPED_EDIT_INFO_KEYS = [
   'matching_version', 'inspection_downsample', 'sig_match_sim_thres',
   'morph_mode', 'morph_tps_lambda', 'morph_max_iter', 'morph_alpha',
   'shape_match_scale', 'shape_weak_thres', 'shape_strong_thres', 'shape_nms_angle',
-  'shape_min_score',
+  'shape_min_score', 'shape_trust_na', 'shape_trust_res_max',
   'locating_engine', 'def_image_reg', 'roi_refine_points',
   // The trained line2Dup set and its staleness flags: another def's features
   // are worse than none, because they train a matcher that then looks right.
@@ -1941,6 +1945,10 @@ export function Edit_info_Empty() {
     // per location. Listed in DEF_SCOPED_EDIT_INFO_KEYS so it resets on a def
     // switch like every other recipe setting.
     shape_nms_angle: undefined,
+    // Localization trust -> judges NA. Off unless the recipe turns it on; the
+    // threshold (px of mean normal residual) is the operator's, default loose.
+    shape_trust_na: undefined,
+    shape_trust_res_max: undefined,
     locating_engine: "sig360",      // "sig360" | "shape_based" (shape = line2Dup+ROI refine)
     img: null,
     // True once TAKE has replaced the picture with a fresh capture: the saved
