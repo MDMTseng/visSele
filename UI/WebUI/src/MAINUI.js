@@ -3,7 +3,7 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupViolations, tagGroupsPreset } from './component/rdxComponent.jsx';
 import { CustomDisplayPicker } from './component/CustomDisplayPicker.jsx';
 import { DEF_EXTENSION, defFileFilter } from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
@@ -668,22 +668,38 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
     let isFileOK=(DefFileHash!==undefined&&isSystemReadyForInsp) ;
     
-    isOK=isFileOK && isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
+    // Readiness is judged against the list the picker RENDERS
+    // (new_tagGroupsPreset), not the static preset. Until 2026-09-07 it was the
+    // static one, so the recipe's 已設定範圍 group (maxCount 1) drew its warning
+    // triangle while play stayed enabled, and two selected margin tags were
+    // then resolved by selection order (AUDIT_BACKLOG P1). Now: a violated
+    // group -- two mutually exclusive tags, or a required group left empty --
+    // keeps play from starting, and pressing it says which group and why.
+    const tagViolations = tagGroupViolations(inspOptionalTag, new_tagGroupsPreset);
+    isOK=isFileOK && tagViolations.length===0;
     // Why play is refusing, for the probes. data-ready=0 alone cannot tell a
     // correct refusal from a wrong one -- "no recipe loaded" and "a tag group
-    // is unsatisfied" look identical, and so does "ready when it should not
-    // be". Deliberately reported against BOTH lists: readiness is computed
-    // from tagGroupsPreset while the picker renders new_tagGroupsPreset (the
-    // margin group is in the second and not the first), so `tags_shown`
-    // disagreeing with `tags_checked` is exactly the gap, and now it is
-    // visible rather than inferred. Reporting only; nothing here changes what
-    // the button does.
+    // is unsatisfied" look identical. 'tags-shown-only' is kept as a value so
+    // older probes still parse, but it can no longer occur.
     const playReason =
       !isSystemReadyForInsp ? 'system-not-ready'
       : DefFileHash === undefined ? 'no-def'
-      : !isTagFulFillRequrement(inspOptionalTag, tagGroupsPreset) ? 'tags'
-      : !isTagFulFillRequrement(inspOptionalTag, new_tagGroupsPreset) ? 'tags-shown-only'
+      : tagViolations.length ? 'tags'
       : 'ok';
+    // The refusal, in the operator's words.
+    const explainTags = () => {
+      const lines = tagViolations.map((v) => v.kind === 'max'
+        ? `「${v.name}」只能選 ${v.maxCount} 個,目前選了 ${v.matched.length} 個:${v.matched.join('、')}`
+        : `「${v.name}」至少要選 ${v.minCount} 個,目前沒有選`);
+      setInfoPopUp({
+        title: "標籤設定有衝突,無法開始檢驗",
+        onOK: undefined, onCancel: undefined,
+        content: <div style={{ width: "100%", padding: "12px 20px" }}>
+          {lines.map((l, i) => <div key={i} style={{ fontSize: 18, margin: "6px 0" }}>⚠ {l}</div>)}
+          <div style={{ marginTop: 12, opacity: 0.75 }}>互斥的標籤只能留一個;必要的群組要選一個。改好後再按開始。</div>
+        </div>
+      });
+    };
     let twoPanelClass1="s height12 width4";
     let twoPanelClass2="s height12 width8";
     if(isVertical)
@@ -987,8 +1003,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
             data-testid="main-play" data-ready={isOK ? '1' : '0'} data-reason={playReason}
             style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text"
-            disabled={!isOK}
-            onClick={onPrepareOK}/>
+            disabled={!isOK && playReason !== 'tags'}
+            onClick={playReason === 'tags' ? explainTags : onPrepareOK}/>
 
 
 

@@ -576,6 +576,23 @@ export function isTagFulFillRequrement(tags,tagGroupsInfo)
     return true
   },true)
 }
+// The same rule as isTagFulFillRequrement, but it says WHICH groups fail and
+// how, so the operator can be told instead of staring at a grey play button.
+// One entry per violated group: over max (mutually exclusive tags both picked)
+// or under min (a required group left empty), with the tags that matched.
+export function tagGroupViolations(tags,tagGroupsInfo)
+{
+  const list=Array.isArray(tags)?tags:[];
+  const out=[];
+  for(const group of tagGroupsInfo){
+    const matched=list.filter((t)=>group.tags.indexOf(t)>-1);
+    if(group.maxCount!==undefined && matched.length>group.maxCount)
+      out.push({name:group.name,kind:'max',matched,maxCount:group.maxCount});
+    else if(group.minCount!==undefined && matched.length<group.minCount)
+      out.push({name:group.name,kind:'min',matched,minCount:group.minCount});
+  }
+  return out;
+}
 export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,size="large"}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
   const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
