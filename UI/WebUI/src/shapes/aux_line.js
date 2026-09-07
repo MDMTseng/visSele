@@ -83,3 +83,24 @@ export function draw(ctx, shape, renderer, {
   ctx.rect(mid.x - r, mid.y - r, 2 * r, 2 * r);
   ctx.stroke();
 }
+
+// Inspection overlay (the quick-verify modal, the live screen): the overlay
+// dispatches drawInspection, not draw, and until this existed an aux_line was
+// measured -- its distance and angle labels appeared -- while the line itself
+// was invisible. pt1/pt2 here are the core's located endpoints (the report
+// merge puts them there for every line), drawn the way a fitted line is.
+export function drawInspection(ctx, shape, renderer) {
+  const a = shape.pt1, b = shape.pt2;
+  if (!(a && b)) return;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const L = Math.hypot(dx, dy);
+  if (!(L > 0)) return;
+  const ext = 0.25 * L, ux = dx / L, uy = dy / L;
+  ctx.lineWidth = renderer.getIndicationLineSize();
+  ctx.setLineDash([renderer.getPrimitiveSize() * 2, renderer.getPrimitiveSize()]);
+  renderer.drawReportLine(ctx, {
+    x0: a.x - ux * ext, y0: a.y - uy * ext,
+    x1: b.x + ux * ext, y1: b.y + uy * ext,
+  });
+  ctx.setLineDash([]);
+}
