@@ -16,14 +16,19 @@
 // that turned <root>/X2.0/data/testNew2 into <root>/X2.png: the core could not
 // read the template, SBM training failed, and the def silently ran on sig360
 // while the studio reported "no features extracted". A dot in a FOLDER name did it.
+// Only the DEF extension is stripped, never "whatever follows the last dot":
+// a recipe called `10155  3G2570090BSORTING.OK` (a dot inside the stem, which
+// operators do write) lost its `.OK` and the studio looked for
+// `...SORTING.png` beside a `...SORTING.OK.png` -- "cannot extract features",
+// 2026-09-08. The stem is the file name minus `.hydef`, nothing else.
 export function refPngPathOf(defModelPath) {
   const p = String(defModelPath);
   const cut = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   const dir = p.slice(0, cut + 1);          // '' when there is no separator
-  const base = p.slice(cut + 1);
-  const dot = base.lastIndexOf('.');
-  // dot > 0 so a dotfile keeps its name; the segment must have an ext to lose one.
-  return dir + (dot > 0 ? base.slice(0, dot) : base) + '.png';
+  let base = p.slice(cut + 1);
+  const m = /\.hydef$/i.exec(base);
+  if (m && m.index > 0) base = base.slice(0, m.index);
+  return dir + base + '.png';
 }
 
 // Characters a file name may not carry on Windows, plus the separators.

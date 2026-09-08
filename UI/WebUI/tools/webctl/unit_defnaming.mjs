@@ -45,8 +45,11 @@ const cases = [
   ['data/testNew2.hydef', 'data/testNew2.png'],
   ['testNew2', 'testNew2.png'],
   ['testNew2.hydef', 'testNew2.png'],
-  // no directory, dotted name
-  ['v1.2.3', 'v1.2.png'],
+  // a dot INSIDE the stem is part of the name; only .hydef comes off
+  ['v1.2.3', 'v1.2.3.png'],
+  ['data/10155  3G2570090BSORTING.OK', 'data/10155  3G2570090BSORTING.OK.png'],
+  ['data/10155  3G2570090BSORTING.OK.hydef', 'data/10155  3G2570090BSORTING.OK.png'],
+  ['data/x.HYDEF', 'data/x.png'],
   // a dotfile keeps its name (dot at index 0 is not an extension)
   ['data/.hidden', 'data/.hidden.png'],
   ['/a/.hidden', '/a/.hidden.png'],
