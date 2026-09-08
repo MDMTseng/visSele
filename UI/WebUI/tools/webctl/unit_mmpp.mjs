@@ -34,6 +34,12 @@ eq(pickMmpp({ instrumentMmpp: INST, camParam: CP }), INST,
    'no sig360 at all -> the instrument');
 eq(pickMmpp({ sigMmpp: 1, camParam: CP }), 0.04,
    'no instrument -> cam_param');
+// the def's own taught scale beats cam_param, loses to a report and to TAKE
+eq(pickMmpp({ sigMmpp: 1, defMmpp: 0.0138838, camParam: CP }), 0.0138838,
+   'pure-SBM def: its own mmpp, not the cam_param somebody else left behind');
+eq(pickMmpp({ sigMmpp: 1, instrumentMmpp: INST, defMmpp: 0.0138838, camParam: CP }), INST,
+   'a TAKE outranks the taught scale');
+eq(pickMmpp({ sigMmpp: SIG, defMmpp: 0.0138838 }), SIG, 'a report outranks the taught scale');
 eq(pickMmpp({ sigMmpp: 1 }), 1, 'nothing at all -> 1');
 eq(pickMmpp({}), 1, 'empty input -> 1');
 eq(pickMmpp(), 1, 'no input at all -> 1');

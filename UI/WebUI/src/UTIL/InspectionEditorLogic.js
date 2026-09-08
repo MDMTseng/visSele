@@ -829,6 +829,7 @@ export class InspectionEditorLogic {
     return pickMmpp({
       sigMmpp: this.getsig360info_mmpp(),
       instrumentMmpp: this.instrumentMmpp,
+      defMmpp: this.defMmpp,
       camParam: this.cameraParam,
     });
   }
@@ -868,6 +869,12 @@ export class InspectionEditorLogic {
 
   SetDefInfo(defInfo) {
     this.SetShapeList(defInfo.features);
+    // The scale this recipe was taught at (mmppRule step 3). Per LOAD, so a
+    // def that follows another does not inherit its predecessor's number.
+    this.defMmpp = (Number.isFinite(defInfo.mmpp) && defInfo.mmpp > 0) ? defInfo.mmpp : undefined;
+    // A TAKE's instrument scale describes the frame captured then; a freshly
+    // loaded def shows its own picture, so that scale is stale here.
+    this.instrumentMmpp = undefined;
 
     // Rebuild the shape-based localizer's feature-extraction regions
     // (localization_include / localization_exclude — object-frame mm polygon arrays)

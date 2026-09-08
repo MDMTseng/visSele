@@ -13,17 +13,25 @@
 //                           the camera, and deliberately NOT set when the def's
 //                           own image is reused (that picture really does belong
 //                           to the def's scale).
-//   3. cam_param            mmpb2b/ppb2b carried in the def; better than nothing
-//   4. 1                    last resort, and it means "unscaled pixels"
+//   3. the def's own mmpp   the scale the recipe was TAUGHT at. A pure-SBM def
+//                           has no signature report, so without this it fell
+//                           through to whatever cam_param the editor happened
+//                           to be holding -- which the previous def's report
+//                           had overwritten. Loading A (SBM), then B (sig360),
+//                           then A again drew A's overlay at B's scale
+//                           (2026-09-08).
+//   4. cam_param            mmpb2b/ppb2b carried in the def; better than nothing
+//   5. 1                    last resort, and it means "unscaled pixels"
 //
 // The sig360 value arrives as 1 when there is no report (getsig360info_mmpp
 // returns 1 from its catch), so 1 has to be read as "absent" rather than as a
 // scale -- a real machine is never 1 mm per pixel.
-export function pickMmpp({ sigMmpp, instrumentMmpp, camParam } = {}) {
+export function pickMmpp({ sigMmpp, instrumentMmpp, defMmpp, camParam } = {}) {
   const ok = (v) => Number.isFinite(v) && v > 0;
 
   if (ok(sigMmpp) && sigMmpp !== 1) return sigMmpp;
   if (ok(instrumentMmpp)) return instrumentMmpp;
+  if (ok(defMmpp) && defMmpp !== 1) return defMmpp;
 
   const cp = camParam;
   if (cp && Number.isFinite(cp.mmpb2b) && Number.isFinite(cp.ppb2b) && cp.ppb2b > 0)
