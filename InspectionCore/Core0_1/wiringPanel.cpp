@@ -7724,23 +7724,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               // is no valid wiring with cat_ng >= cat_ok, so nothing legitimate
               // is being turned away.
               else if (perifCH->machine_type == PERIF_UINSP_ESP32 &&
-                       (perifCH->cat_ng >= perifCH->cat_ok ||
+                       (perifCH->cat_ng == perifCH->cat_ok ||
                         perifCH->cat_ok < 1 || perifCH->cat_ok > 3 ||
                         perifCH->cat_ng < 1 || perifCH->cat_ng > 3))
               {
-                LOGE("perif conn_info REFUSED: cat_ng=%d cat_ok=%d -- cat_ng "
-                     "must be the LOWER selector and both must be 1..3. The "
-                     "device breaks a duplicated verdict by keeping the smaller "
-                     "cat, so this wiring would promote an NG to OK. Sorting "
-                     "stays OFF.",
+                LOGE("perif conn_info REFUSED: cat_ng=%d cat_ok=%d -- both must "
+                     "be 1..3 and DIFFERENT (the same selector cannot tell an "
+                     "NG from an OK). Sorting stays OFF.",
                      perifCH->cat_ng, perifCH->cat_ok);
                 perifCH->cat_ok = 0;
                 perifCH->cat_ng = 0;
               }
               else if (perifCH->machine_type == PERIF_UINSP_ESP32)
               {
-                LOGI("perif sorting: OK->SEL%d  NG->SEL%d",
-                     perifCH->cat_ok, perifCH->cat_ng);
+                // Any order. The firmware breaks a duplicated verdict for one
+                // object by keeping the SMALLER cat, which used to force
+                // cat_ng < cat_ok; the send thread now refuses to follow an NG
+                // with an OK for the same tid (perif_tid_guard), so the wiring
+                // may put OK on SEL1 and NG on SEL3 (2026-09-08).
+                LOGI("perif sorting: OK->SEL%d  NG->SEL%d%s",
+                     perifCH->cat_ok, perifCH->cat_ng,
+                     perifCH->cat_ng > perifCH->cat_ok
+                       ? "  (NG is the higher selector: the core, not the device, keeps NG over a later OK)" : "");
               }
             }
 
@@ -10771,6 +10776,33 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
                      (unsigned long long)f_seen, (long long)msg.tid,
                      tx_skip ? "drop " : "", tx_twice ? "dup " : "",
                      (long long)f_ts);
+              }
+
+              // perif_tid_guard: never let an OK follow an NG for the same
+              // object. The device resolves a duplicate by keeping the smaller
+              // cat, which is only "keep the NG" when NG is wired to the lower
+              // selector. Doing it here makes the wiring free. A second verdict
+              // for one tid is rare (two frames inside one pairing window) but
+              // it is exactly the case that lets a defective part through.
+              {
+                static long long _g_tid[64];
+                static int       _g_cat[64];
+                static bool      _g_init = false;
+                if (!_g_init) { for (int i = 0; i < 64; i++) { _g_tid[i] = -1; _g_cat[i] = 0; } _g_init = true; }
+                const int slot = (int)(((unsigned long long)msg.tid) % 64u);
+                if (msg.tid >= 0 && pc->cat_ng != 0 && pc->cat_ok != 0)
+                {
+                  if (_g_tid[slot] == msg.tid && _g_cat[slot] == pc->cat_ng && cat == pc->cat_ok)
+                  {
+                    LOGE("perif: tid=%lld already told NG (SEL%d); a later OK (SEL%d) is NOT sent",
+                         (long long)msg.tid, pc->cat_ng, pc->cat_ok);
+                    tx_skip = true;
+                  }
+                  else if (_g_tid[slot] != msg.tid || cat == pc->cat_ng)
+                  {
+                    _g_tid[slot] = msg.tid; _g_cat[slot] = cat;
+                  }
+                }
               }
 
               if (tx_skip)
