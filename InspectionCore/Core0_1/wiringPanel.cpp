@@ -10792,8 +10792,14 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
               // needed to tell a report that was never sent from one that was
               // sent too late -- the two causes of err=2, which look identical
               // from the device end.
-              if (getenv("INSP_PERIF_LOG"))
-                LOGI("[perif TX] report tid=%lld cat=%d", (long long)msg.tid, cat);
+              // Always on, one line per part: the line to read when "the
+              // screen says OK and the machine does nothing". status is the
+              // frame verdict (0 OK, -1 NG, -128 NA), cat the selector the
+              // device was told (cat_ok / cat_ng from conn_info, 0 = NA), ret
+              // the UART write (<0 = not delivered).
+              LOGI("[perif TX] tid=%lld status=%d -> cat=%d (%s) ret=%d",
+                   (long long)msg.tid, msg.uInspStatus, cat,
+                   msg.uInspStatus == 0 ? "OK" : msg.uInspStatus == -1 ? "NG" : "NA", ret);
             }
             else
             {
@@ -12546,6 +12552,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // does not honour the flag -- it is a walk over one or two JSON arrays.
       if (clean_blocked)
         blank_located_objects(imgPipe->datViewInfo.report_json);
+      // One line per inspected frame, always on: the verdict the device will
+      // get and WHY. objs = located objects in the report; clean = the
+      // clean_regions status (0 = clean); the flags name the rejection.
+      {
+        int nobj = -1;
+        cJSON *_r0 = JFetch_OBJECT(imgPipe->datViewInfo.report_json, "reports[0]");
+        cJSON *_ol = _r0 ? cJSON_GetObjectItem(_r0, "reports") : NULL;
+        if (_ol && cJSON_IsArray(_ol)) nobj = cJSON_GetArraySize(_ol);
+        LOGI("[verdict] frame status=%d (%s) objs=%d clean=%d%s%s",
+             stat, stat == 0 ? "OK" : stat == -1 ? "NG" : "NA", nobj, clean_stat,
+             clean_blocked ? " CLEAN_REGION_DIRTY->rejected" : "",
+             (nobj == 0 && !clean_blocked) ? " NO_OBJECT_AT_STATION" : "");
+      }
       g_lastRepJsonUs = perif_now_us() - _jT0;
       g_histRepJson.add(g_lastRepJsonUs / 1000.0);
     }
