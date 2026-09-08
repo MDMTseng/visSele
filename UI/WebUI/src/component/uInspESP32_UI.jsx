@@ -1787,6 +1787,27 @@ build ${fw.build}`}>
             <span style={{ color: '#c33' }}>← 平均就來不及,料會一顆顆變 NA</span>
           )}
         </div>
+        {/* Where the object's zero sits inside the gate pulse. Every station
+            offset (stage_pulse_offset) is measured from this point, so
+            switching it moves every station by about half a part -- say so. */}
+        <div style={{ marginBottom: 4 }}>閘門零點
+          <Why>每顆料經過光纖閘門時,韌體要選一個點當它的「位置零點」,所有工位的
+            offset(CAM、SEL 的 on/off)都是從這個點算起。<br/><br/>
+            <b>中心</b>:遮光脈衝的前後緣中點。感測器有固定約 3.5 ms 的時間延遲,會把脈衝
+            撐寬,撐寬的量落在邊緣,中點把它抵銷掉;零件長短、擺向的影響也少一半。<br/>
+            <b>後緣</b>:料尾離開光纖的那一刻;2026-09-08 之前的機器都是用這個對的。<br/><br/>
+            切換後所有工位 offset 會移約半顆料,要重新 jog 對位。舊韌體(2026-08-12 前)
+            不認得這個設定,會直接拒絕並提示更新韌體。</Why></div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <Radio.Group size="small" value={cfg.gate_ref || 'trailing'} disabled={busy === 'gateref'}
+            onChange={(e) => run('gateref', (api) => api.machineSetupUpdate(
+              { gate_ref: e.target.value }, false, true))}>
+            <Radio.Button value="center">中心</Radio.Button>
+            <Radio.Button value="trailing">後緣</Radio.Button>
+          </Radio.Group>
+          <span style={dim}>{cfg.gate_ref ? '' : '板子沒有回報這個設定(韌體可能較舊),顯示的是預設'}</span>
+        </div>
+
         {/* Layer one, in the same three-state shape as layer two below. The two
             are one idea asked twice -- what limits the feed -- and an operator
             should not have to learn two vocabularies for it. */}

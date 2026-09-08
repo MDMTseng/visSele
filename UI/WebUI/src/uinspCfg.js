@@ -33,6 +33,7 @@ export const CFG_GROUP = {
   gate_debounce_rise:    ["gate", "debounce_rise"],
   gate_debounce_fall:    ["gate", "debounce_fall"],
   min_detect_dist_um:    ["gate", "min_detect_dist_um"],
+  gate_ref:              ["gate", "gate_ref"],      // 'center' | 'trailing' -- the object's zero in the gate pulse
   gate_cam_mode:         ["gate", "cam_mode"],
   gate_cam_margin_pct:   ["gate", "cam_margin_pct"],
   gate_proc_capacity_pct:["gate", "proc_capacity_pct"],
