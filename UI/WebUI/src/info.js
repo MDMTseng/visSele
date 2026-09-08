@@ -17,6 +17,10 @@ const default_FLAG={
   // Toggleable at runtime from the inspection UI; mirrored on the renderer
   // via EverCheckCanvasComponent before each draw.
   SHOW_CALIPER_HITS_INSP:true,
+  // Whether the CORE sends per-caliper hits with every report. Off by default
+  // on the inspection screen (switchable there); the def editor forces it on
+  // while it is open.
+  EMIT_CALIPER_HITS:false,
 
   FI_MODE_UPLOAD_SKIP:10,
   CI_MODE_UPLOAD_SKIP:1,

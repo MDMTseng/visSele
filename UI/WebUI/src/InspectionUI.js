@@ -2634,7 +2634,9 @@ function RestrictiveCircleREdit ({initR,onRChanged}){
 // only record of intent -- it is re-sent on mount to make the core agree.
 const CaliperHitsSwitch = (props) => {
   const { CORE_ID, System_Setting, SEND_ST, ACT_System_Setting_Update } = props;
-  const on = System_Setting?.EMIT_CALIPER_HITS !== false;
+  // Default OFF on the inspection screen (a per-caliper payload on every frame
+  // is bench material, not line material); the editor forces it on for itself.
+  const on = System_Setting?.EMIT_CALIPER_HITS === true;
 
   useEffect(() => {
     if (CORE_ID === undefined) return;
@@ -3020,6 +3022,12 @@ class APP_INSP_MODE extends React.Component {
                  + ' loc_include/loc_exclude shape(s) that would have failed the whole def');
       }
       stampRefImagePath(wireDef, this.props.edit_info);
+
+      // Caliper hits: the remembered switch (default off) -- the editor turns
+      // them on for itself and hands back whatever this says on exit, but a
+      // core restart forgets, so say it again at every inspection start.
+      this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+        { DEBUG_EMIT: { cal_hits: (this.props.System_Setting || {}).EMIT_CALIPER_HITS === true } });
 
       // Kept-sample groups for THIS def (browser localStorage, per def name).
       // Pushed on every start, empty included: the core keeps whatever list

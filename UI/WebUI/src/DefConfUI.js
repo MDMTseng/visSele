@@ -243,9 +243,9 @@ class CanvasComponent extends React.Component {
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
         this.ec_canvas.SetState(ec_state);
-        // Mirrored before the draw, exactly as the inspection view does it:
-        // per-shape drawInspection reads renderer.show_caliper_hits.
-        this.ec_canvas.rUtil.show_caliper_hits = props.showCaliperHits !== false;
+        // Always on in the editor: the hits are what a setup is judged by.
+        // The inspection view mirrors its own switch; this one does not.
+        this.ec_canvas.rUtil.show_caliper_hits = true;
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
       }
@@ -4171,6 +4171,11 @@ class APP_DEFCONF_MODE extends React.Component {
     {
       CameraSetting: { ROI:[0,0,99999,99999] },
       IMG_STREAMING_JPEG_QUALITY: 85,
+      // The editor ALWAYS wants the per-caliper hits: they are how a setup is
+      // judged. The inspection screen's switch (EMIT_CALIPER_HITS, default
+      // off) is restored on the way out, so a bench with hits off does not
+      // stay off here just because somebody turned them off on the line.
+      DEBUG_EMIT: { cal_hits: true },
     });
   }
 
@@ -4178,6 +4183,9 @@ class APP_DEFCONF_MODE extends React.Component {
     this.props.ACT_ClearImage();
 
     this.props.ACT_DefConf_Lock_Level_Update(0);
+    if (this.props.CORE_ID !== undefined)
+      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+        { DEBUG_EMIT: { cal_hits: (this.props.System_Setting || {}).EMIT_CALIPER_HITS === true } });
   }
   constructor(props) {
     super(props);
