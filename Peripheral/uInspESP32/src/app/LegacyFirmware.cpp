@@ -4340,14 +4340,21 @@ bool _senseInv_=true;
 
 // Written by set_setup (main loop), read by GateSensing (ISR). Aligned int so
 // the access is atomic; volatile so the ISR does not cache a stale threshold.
-// Where the object's zero sits inside the gate pulse: trailing edge (false,
-// historical and what every shipped stage_pulse_offset was calibrated against)
-// or the pulse centre (true, immune to the sensor's fixed time response and
-// half as sensitive to part length/orientation -- see gate_ref_pulse).
+// Where the object's zero sits inside the gate pulse: the pulse centre (true,
+// immune to the sensor's fixed time response and half as sensitive to part
+// length/orientation -- see gate_ref_pulse) or the trailing edge (false, the
+// historical zero every stage_pulse_offset before 2026-09-08 was calibrated
+// against).
+//
+// DEFAULT IS CENTRE since 2026-09-08 (owner's call: the jog capture landed on
+// the part's tail, and the tail moves with plate speed). A board whose saved
+// config carries "gate_ref":"trailing" keeps it -- set_setup applies the saved
+// value -- so an existing machine does not move its stations by half a part on
+// a firmware update; only a fresh NVS gets the new default.
 //
 // Runtime and persisted, so it can be A/B'd on the machine instead of being a
 // one-way build-time decision. Changing it moves every station by half a part.
-volatile bool GATE_REF_CENTER = false;
+volatile bool GATE_REF_CENTER = true;
 volatile int  minWidth = 0;
 volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 
@@ -4481,7 +4488,7 @@ void IRAM_ATTR GateSensing()
       }
       else
       {
-        // gate_ref_pulse above: trailing by default, centre when gate_ref says
+        // gate_ref_pulse above: centre by default, trailing when gate_ref says
         // so. Everything downstream -- the object's gate_pulse, the minimum
         // distance test, the jog origin -- reads that one value, so the two
         // references cannot drift apart within a run.
