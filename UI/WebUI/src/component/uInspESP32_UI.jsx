@@ -2808,7 +2808,10 @@ export function UINSP_ESP32_MINI() {
       // including NA/SKIP/UNANSWERED. This is throughput, not yield; a part
       // that went round again still cost the machine a slot.
       i: n(c.SEL1) + n(c.SEL2) + n(c.SEL3) + n(c.NA) + n(c.SKIP) + n(c.UNANSWERED),
-      o: n(c.SEL3),
+      // Good parts = whatever selector conn_info calls OK. This was n(c.SEL3),
+      // a hardcoded "OK is the last selector" that the counters below stopped
+      // assuming long ago; with OK on SEL1 the good rate read 0 (2026-09-08).
+      o: n(c[outletsRef.current && outletsRef.current.cat_ok ? `SEL${outletsRef.current.cat_ok}` : 'SEL3']),
     };
     const p = rateRef.current;
     const dt = p ? (smp.t - p.t) / 1000 : 0;
