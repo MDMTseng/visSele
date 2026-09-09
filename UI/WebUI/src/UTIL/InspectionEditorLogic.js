@@ -366,6 +366,8 @@ export class InspectionEditorLogic {
                 edit_info.shape_match_scale = report.shape_match_scale;
               if (typeof report.shape_nms_angle === 'number')
                 edit_info.shape_nms_angle = report.shape_nms_angle;
+              if (typeof report.shape_roi_spacing === 'number')
+                edit_info.shape_roi_spacing = report.shape_roi_spacing;
               if (typeof report.shape_trust_na === 'boolean')
                 edit_info.shape_trust_na = report.shape_trust_na;
               if (typeof report.shape_trust_res_max === 'number')
@@ -1961,7 +1963,7 @@ export const DEF_SCOPED_EDIT_INFO_KEYS = [
   'matching_version', 'inspection_downsample', 'sig_match_sim_thres',
   'morph_mode', 'morph_tps_lambda', 'morph_max_iter', 'morph_alpha',
   'shape_match_scale', 'shape_weak_thres', 'shape_strong_thres', 'shape_nms_angle',
-  'shape_min_score', 'shape_trust_na', 'shape_trust_res_max',
+  'shape_min_score', 'shape_trust_na', 'shape_trust_res_max', 'shape_roi_spacing',
   'locating_engine', 'def_image_reg', 'roi_refine_points',
   // The trained line2Dup set and its staleness flags: another def's features
   // are worse than none, because they train a matcher that then looks right.
@@ -2039,6 +2041,12 @@ export function Edit_info_Empty() {
     // per location. Listed in DEF_SCOPED_EDIT_INFO_KEYS so it resets on a def
     // switch like every other recipe setting.
     shape_nms_angle: undefined,
+    // ROI auto-pick minimum spacing (px): -1 = auto (ROI half, 15 px, windows
+    // overlap at most ~50%), 0 = off (grid cap only), >0 = px. undefined
+    // means "never set" and is WRITTEN AS -1 for a shape_based def (MISC_Util):
+    // the core's own default is off, but every recipe saved from here gets
+    // de-overlapped points unless the operator turns it off (CT 2026-09-09).
+    shape_roi_spacing: undefined,
     // Localization trust -> judges NA. Off unless the recipe turns it on; the
     // threshold (px of mean normal residual) is the operator's, default loose.
     shape_trust_na: undefined,

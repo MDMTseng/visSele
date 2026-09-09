@@ -355,6 +355,13 @@ export function defFileGeneration(edit_info)
   // does not care keeps hashing and diffing exactly as before.
   if (typeof edit_info.shape_nms_angle === 'number' && edit_info.shape_nms_angle !== 360)
     report.featureSet[0].shape_nms_angle = edit_info.shape_nms_angle;
+  // ROI auto-pick minimum spacing. The core's default is OFF (0) because
+  // de-overlapping moves the refined pose on frozen recipes; here every
+  // shape_based def is saved with -1 (auto) unless the operator chose a value,
+  // so a def that never set it gets de-overlapped points from its next save on.
+  if (edit_info.locating_engine === 'shape_based')
+    report.featureSet[0].shape_roi_spacing =
+      (typeof edit_info.shape_roi_spacing === 'number') ? edit_info.shape_roi_spacing : -1;
   // Trust -> judges NA: written only when ON, so every def that never touched it
   // keeps hashing exactly as before. The threshold rides along only when it is set.
   if (edit_info.shape_trust_na === true) {

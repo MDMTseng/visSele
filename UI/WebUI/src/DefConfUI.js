@@ -1540,6 +1540,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
     const fresh = () => {
       const ei = getState().UIData.edit_info;
       const o = { ...ei, locating_engine: 'shape_based', shape_match_scale: 0.3 };
+      if (typeof o.shape_roi_spacing !== 'number') o.shape_roi_spacing = -1;   // auto de-overlap of ROI points
       if (seedReg && (!o.def_image_reg || typeof o.def_image_reg.cx !== 'number')) o.def_image_reg = seedReg;
       if (seedInclude && !(Array.isArray(o.__loc_include) && o.__loc_include.length)) o.__loc_include = seedInclude;
       return o;
