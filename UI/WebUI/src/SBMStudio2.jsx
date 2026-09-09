@@ -412,6 +412,9 @@ function SweepGrid({ sweep, big = false }) {
       <td style={{ ...cell, background: SEV_BG[sev], color: SEV_INK[sev], padding: big ? '4px 6px' : '2px 1px' }}>
         {r.located ? <>
           {big && <span style={{ ...line, color: P.accent, marginBottom: 2 }}>{fmtVal(r)}</span>}
+          {/* The coarse score first: it is what the acceptance threshold is
+              set against, so this column of numbers IS the threshold decision. */}
+          <span style={{ ...line, fontWeight: 600 }}>{Number.isFinite(r.sim) ? r.sim.toFixed(3) : '·'}</span>
           <span style={line}>{Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(big ? 2 : 1) + (big ? ' px' : '') : '·'}</span>
           <span style={{ ...line, color: r.signSuspect ? '#ffab00' : undefined }}>
             {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(2) + '°' : '·'}</span>
@@ -440,7 +443,8 @@ function SweepGrid({ sweep, big = false }) {
       </tbody>
     </table>
     <div style={{ fontSize: 11, color: P.dim, marginTop: 3 }}>
-      每格三行:位置誤差 px / 角度誤差 ° / 正反面分數比(另一面最佳分 ÷ 選中分,越接近 1 越分不出正反;— = 沒看到另一面)。
+      每格四行:<b>分數</b> / 位置誤差 px / 角度誤差 ° / 正反面分數比(另一面最佳分 ÷ 選中分,越接近 1 越分不出正反;— = 沒看到另一面)。
+      分數那行是門檻的依據:整張表最低的分數再留些餘裕,就是 min score 可以設的位置。
       底色取最差者:橘 &gt;2px、&gt;0.5° 或比值 &gt;0.85;紅 &gt;5px、&gt;2° 或 &gt;0.95;✗ 定位失敗。指到格子看細節。
     </div>
   </div>;
@@ -502,8 +506,19 @@ function SweepPanel({ sweep, floor }) {
     {all && <Modal open={popped} onCancel={() => setPopped(false)} footer={null} zIndex={3000}
         width="min(1180px, 96vw)" style={{ top: 24 }} destroyOnClose
         title={<span>強健性掃描 · 總表 <span style={{ fontSize: 12, color: P.dim, marginLeft: 8 }}>
-          {sweep.done}/{sweep.total} · 門檻 {floor.toFixed(2)} · 每格:施加值 / 位置誤差 / 角度誤差 / 正反面分數比</span></span>}>
+          {sweep.done}/{sweep.total} · 門檻 {floor.toFixed(2)} · 每格:施加值 / <b>分數</b> / 位置誤差 / 角度誤差 / 正反面分數比</span></span>}>
       <div style={{ color: P.ink }}>
+        {(() => {
+          const ok = sweep.rows.filter((r) => r.located && Number.isFinite(r.sim)).map((r) => r.sim);
+          const lost = sweep.rows.filter((r) => !r.located).length;
+          if (!ok.length) return null;
+          const mn = Math.min(...ok), mx = Math.max(...ok);
+          return <div style={{ fontSize: 13, marginBottom: 8, padding: '6px 10px', background: P.panel, borderRadius: 4 }}>
+            分數範圍 <b>{mn.toFixed(3)} ～ {mx.toFixed(3)}</b>(定位到的 {ok.length} 步{lost ? `,失敗 ${lost} 步` : ''}),
+            目前 min score 門檻 <b>{floor.toFixed(2)}</b>;最低分距門檻 <b style={{ color: mn - floor < 0.1 ? P.bad : P.ok }}>{(mn - floor).toFixed(3)}</b>。
+            想讓這整張表都過又留餘裕,門檻可以設在 {Math.max(0.05, mn - 0.1).toFixed(2)} 左右。
+          </div>;
+        })()}
         <SweepGrid sweep={sweep} big />
         {verdictBlock(12.5)}
       </div>
