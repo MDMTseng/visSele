@@ -9350,19 +9350,27 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     // fits about as well as the chosen pose, the pick is a coin flip (the mirror-lock
     // case coarse similarity cannot see). alt_residual = min refine_residual over other
     // same-group members.
-    float altRes = -1.0f;
+    float altRes = -1.0f, altScore = -1.0f, faceAltScore = -1.0f;
     if (m.group >= 0) {
       for (size_t _j = 0; _j < ms.size(); ++_j) {
         if ((int)_j == mi) continue;
         if (ms[_j].group != m.group) continue;
-        if (ms[_j].refine_residual < 0.0f) continue;
+        // Face confidence: the best coarse score the OTHER face reached at this
+        // place, whatever its angle. Near the chosen score = the faces are
+        // indistinguishable to the coarse stage (mirror-symmetric part, or a
+        // template that lost its handedness); far below = the face is certain.
+        if (ms[_j].flipped != m.flipped && ms[_j].score > faceAltScore) faceAltScore = ms[_j].score;
         // A genuinely different pose, not a near-duplicate in the same basin.
         float _da = std::fabs(ms[_j].angle - m.angle); if (_da > 180.f) _da = 360.f - _da;
-        if (_da < 5.0f) continue;
+        if (_da < 5.0f && ms[_j].flipped == m.flipped) continue;
+        if (ms[_j].score > altScore) altScore = ms[_j].score;
+        if (ms[_j].refine_residual < 0.0f) continue;
         if (altRes < 0.0f || ms[_j].refine_residual < altRes) altRes = ms[_j].refine_residual;
       }
     }
-    singleReport.trust_alt_residual = altRes;
+    singleReport.trust_alt_residual   = altRes;
+    singleReport.trust_alt_score      = altScore;
+    singleReport.trust_face_alt_score = faceAltScore;
     {
       // Def first (per-recipe, set from the deformation budget), env as the bench
       // override, then the global default.

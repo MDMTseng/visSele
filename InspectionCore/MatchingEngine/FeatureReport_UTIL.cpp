@@ -561,6 +561,10 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
     cJSON *tr = cJSON_CreateObject();
     cJSON_AddNumberToObject(tr, "residual", report.trust_residual);
     if (report.trust_alt_residual >= 0.0f) cJSON_AddNumberToObject(tr, "alt_residual", report.trust_alt_residual);
+    // Coarse scores of the runner-up poses (0..100, same scale as the matcher's
+    // similarity x100): the best other pose, and the best pose of the other face.
+    if (report.trust_alt_score >= 0.0f)      cJSON_AddNumberToObject(tr, "alt_score", report.trust_alt_score);
+    if (report.trust_face_alt_score >= 0.0f) cJSON_AddNumberToObject(tr, "face_alt_score", report.trust_face_alt_score);
     cJSON_AddNumberToObject(tr, "npts", report.trust_npts);
     cJSON_AddNumberToObject(tr, "inliers", report.trust_ninliers);
     if (report.trust_code[0]) cJSON_AddStringToObject(tr, "code", report.trust_code);
