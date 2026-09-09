@@ -103,6 +103,7 @@ export function sweepRow(axis, value, sum, base, expect, mmpp) {
     na: sum ? sum.counts.na + sum.counts.ng : 0,
     why: sum ? sum.why : '',
     residual: NaN, posErrPx: NaN,
+    faceRatio: sum && sum.located && Number.isFinite(sum.pose.faceRatio) ? sum.pose.faceRatio : NaN,
   };
   if (!row.located || !base || !base.located) return row;
   const moved = angleDelta(sum.pose.rotate, base.pose.rotate) * 180 / Math.PI;

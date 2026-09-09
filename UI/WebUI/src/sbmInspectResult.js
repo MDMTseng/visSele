@@ -180,6 +180,13 @@ export function inspectSummary(rp, authoredReg, opts) {
   const poses = objs.map((obj) => {
     const pose = { cx: obj.cx, cy: obj.cy, rotate: obj.rotate,
                    isFlipped: !!obj.isFlipped, similarity: obj.similarity };
+    // Face confidence, from the core's trust block: the other face's best
+    // coarse score over this pose's. 1.0 = the faces tied (no confidence);
+    // 0.7 = the other face was 30% worse. undefined when the core saw no
+    // opposite-face candidate (matching_face fixed, or none above threshold).
+    const _fa = obj.trust && Number.isFinite(obj.trust.face_alt_score) ? obj.trust.face_alt_score : undefined;
+    if (_fa !== undefined && Number.isFinite(obj.similarity) && obj.similarity > 0)
+      pose.faceRatio = (_fa / 100) / obj.similarity;
     pose.at = toCanvas({ x: pose.cx, y: pose.cy });     // where to draw its marker
     // The object's 0-degree axis, as a SECOND POINT through the same transform
     // rather than as an angle through a formula.
