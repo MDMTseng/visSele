@@ -99,6 +99,10 @@ export const OVERLAY_DEFAULTS = {
     // The verdict gauge is for reading results, not for setting a def up, so
     // by default it appears only where there IS a result.
     gauge_on_insp_only: true,
+    // A parallelism reading is a fraction of a degree; drawn to scale the arc
+    // is nothing at all. This is the smallest arc the overlay will draw, in
+    // degrees -- the number in the text stays the true one.
+    min_draw_deg:        12,
     gap_style_max_deg:   25,    // below this the lines count as "near parallel"
     vertex_max_ps:      120,    // a vertex further than this is off screen
     head_inside_min_deg:  8,    // narrower than this, arrowheads flip outside

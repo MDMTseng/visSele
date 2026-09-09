@@ -57,8 +57,7 @@ export function signedAngleDeg(a1, a2, nominal) { return vectorAngleDeg(a1, a2, 
 // minimum opening (15 deg) because the real angle is usually well under 1 deg
 // and would be invisible; the text carries the true value.
 function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
-  const { measValueAdjStr, unitConvert = { unit: 'mm', mult: 1 } } = sctx;
-  let measValueAdjStrTag = '';
+  const { measValueAdjStr } = sctx;
   const aA = Math.atan2(A1.y - A0.y, A1.x - A0.x);
   const aB = Math.atan2(B1.y - B0.y, B1.x - B0.x);
   const nominal = shape.nominal_deg || 0;
@@ -66,149 +65,61 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const measureDeg = vectorAngleDeg(aA, aB, nominal, range);
   const shownDeg = (shape.inspection_value !== undefined) ? shape.inspection_value : measureDeg;
   const P = shape.pt1;
+  const ps = renderer.getPrimitiveSize();
   const toRad = Math.PI / 180;
   const refA = aA + nominal * toRad;          // the datum direction (A rotated by the nominal)
   const raw = wrap360((aB - refA) / toRad);
 
-  // Every colour, dash and size below comes from canvas/overlayKit -- tune it
-  // there (or live, via OVERLAY_TUNE in the console), never here.
-  const K = overlayKit(ctx, renderer);
-  const { C, ps, lw, S, dash, at, seg, projOn, arrow, chip, datumMark, extendTo, gauge, withAlpha } = K;
-  const A = OVERLAY.angle;
-  const full = (A.detail === 'full');
+  const TAGS = { signed90: '±90', abs90: '0~90', deg180: '0~180', signed180: '±180', deg360: '0~360', supp: '補角', comp: '餘角' };
+  const measValueAdjStrTag = ' ' + (TAGS[range] || '±90');
 
-  const tA = projOn(P, A0, A1), tB = projOn(P, B0, B1);
-  const fmtV = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
-  const fmtL = (v) => (v * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit;
-  const datumName = nominal ? `A${nominal > 0 ? '+' : ''}${nominal}º` : 'A';
+  // This is the classic angle overlay -- the same arc-with-one-arrowhead the
+  // quadrant mode has always drawn, in the caller's colour -- with only what
+  // the vector mode actually needs added on top:
+  //   * the sweep starts at the DATUM direction (A + nominal), so the drawn
+  //     arc is the reading, and the arrowhead's direction IS the sign;
+  //   * each range sweeps its own span, so 補角/餘角 draw the angle they
+  //     report rather than the raw one;
+  //   * parallel lines have no vertex, so the arc then centres on the label
+  //     point instead of vanishing to infinity.
+  let sDeg, eDeg;
+  switch (range) {
+    case 'abs90':     { sDeg = 0; eDeg = wrap180(raw); break; }
+    case 'deg180':    { sDeg = 0; eDeg = pos180(raw); break; }
+    case 'signed180': { sDeg = 0; eDeg = wrap360(raw); break; }
+    case 'deg360':    { sDeg = 0; eDeg = pos360(raw); break; }
+    case 'supp':      { sDeg = pos180(raw); eDeg = 180; break; }
+    case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; break; }
+    default:          { sDeg = 0; eDeg = wrap180(raw); break; }
+  }
+
+  let V = intersectPoint(A0, A1, B0, B1);
+  if (!V || !Number.isFinite(V.x) || !Number.isFinite(V.y)
+      || Math.hypot(V.x - P.x, V.y - P.y) > OVERLAY.angle.vertex_max_ps * ps) V = P;
+  const dist = Math.max(Math.hypot(P.x - V.x, P.y - V.y), 8 * ps);
+  const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
+
+  // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc
+  // is opened out to that much so the direction still reads; the text carries
+  // the true value.
+  const minSpan = (OVERLAY.angle.min_draw_deg || 0) * toRad;
+  let e0d = e0;
+  if (Math.abs(e0 - s0) < minSpan) e0d = s0 + Math.sign(e0 - s0 || 1) * minSpan;
 
   ctx.save();
-  ctx.lineWidth = lw * S.line_w;
-  ctx.font = renderer.getFontStyle(1);
-  ctx.setLineDash([]);
-
-  // Where is the vertex, and is it usable? Nearly-parallel lines have none.
-  let V = intersectPoint(A0, A1, B0, B1);
-  const vertexOK = V && Number.isFinite(V.x) && Number.isFinite(V.y)
-                   && Math.hypot(V.x - P.x, V.y - P.y) < A.vertex_max_ps * ps;
-  const needsVertex = (range === 'deg180' || range === 'signed180' || range === 'deg360' || range === 'supp');
-  const gapStyle = !vertexOK || (!needsVertex && Math.abs(wrap180(raw)) < A.gap_style_max_deg);
-
-  const TAGS = { signed90: '±90', abs90: '0~90', deg180: '0~180', signed180: '±180', deg360: '0~360', supp: '補角', comp: '餘角' };
-  measValueAdjStrTag = ' ' + (TAGS[range] || '±90');
-
-  if (gapStyle) {
-    // ---- GAP STYLE. What a fitter does with a height gauge: hold the datum,
-    // measure the standoff at each end of the feature, and read the difference.
-    // The wedge between the datum ray and B is filled, so which end opens is
-    // visible even when the angle is a fraction of a degree; the two standoffs
-    // are dimensioned so the reading is traceable to something measurable.
-    const segLen = Math.hypot(B1.y - B0.y, B1.x - B0.x);
-    const L = Math.max(S.span_min * ps, Math.min(segLen / 2, S.span_max * ps));
-    const Q1 = at(tB, aB + Math.PI, L), Q2 = at(tB, aB, L);
-    const D1 = projOn(Q1, tA, at(tA, refA, 1)), D2 = projOn(Q2, tA, at(tA, refA, 1));
-    extendTo(tA, A0, A1, withAlpha(C.datum, 0.75));
-    extendTo(tB, B0, B1, withAlpha(C.feature, 0.75));
-    // the wedge: hue carries the sign
-    ctx.save();
-    ctx.fillStyle = withAlpha(shownDeg >= 0 ? C.reading : A.wedge_neg, OVERLAY.alpha.wedge);
-    ctx.beginPath(); ctx.moveTo(D1.x, D1.y); ctx.lineTo(Q1.x, Q1.y); ctx.lineTo(Q2.x, Q2.y); ctx.lineTo(D2.x, D2.y); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    // datum ray, dash-dot
-    ctx.save();
-    ctx.strokeStyle = C.datum; ctx.lineWidth = lw * S.line_w; ctx.setLineDash(dash('datum'));
-    seg(at(D1, refA + Math.PI, 3 * ps), at(D2, refA, 3 * ps));
-    ctx.restore();
-    // the measured line over the same span
-    ctx.save();
-    ctx.strokeStyle = C.feature; ctx.lineWidth = lw * S.heavy_w;
-    seg(Q1, Q2);
-    ctx.restore();
-    // The two dimensioned standoffs are what makes the reading traceable to
-    // something a fitter can measure -- and they are also most of the clutter,
-    // so they belong to the 'full' detail level.
-    if (full) {
-    ctx.save();
-    ctx.strokeStyle = ctx.fillStyle = C.reading; ctx.lineWidth = lw * S.line_w * 0.9;
-    for (const [q, d, first] of [[Q1, D1, true], [Q2, D2, false]]) {
-      seg(d, q);
-      const dir = Math.atan2(q.y - d.y, q.x - d.x);
-      if (Math.hypot(q.y - d.y, q.x - d.x) > 5 * ps) { arrow(q, dir, S.tick * ps); arrow(d, dir + Math.PI, S.tick * ps); }
-      const mid = { x: (q.x + d.x) / 2, y: (q.y + d.y) / 2 };
-      const off = at(mid, refA + (first ? Math.PI : 0), S.chip_gap * ps);
-      chip(fmtL(Math.hypot(q.y - d.y, q.x - d.x)), off.x, off.y, C.reading, OVERLAY.font.small);
-    }
-    ctx.restore();
-    }
-    if (full) {
-      datumMark(tA, aA, datumName, P);
-      const bTag = at(Q2, aB, 2.5 * ps);
-      chip('B', bTag.x, bTag.y, C.feature, OVERLAY.font.tag);
-    }
-    // the reading, next to the wide end of the wedge
-    const g1 = Math.hypot(Q1.y - D1.y, Q1.x - D1.x), g2 = Math.hypot(Q2.y - D2.y, Q2.x - D2.x);
-    const wide = (g2 >= g1) ? Q2 : Q1;
-    chip(full ? `${fmtV(shownDeg)}  Δ${fmtL(g2 - g1)}` : fmtV(shownDeg),
-         wide.x, at(wide, aB + Math.PI / 2, 4 * ps).y, C.reading);
-  } else {
-    // ---- VERTEX STYLE (ISO 129-1 angular dimension): the two sides really do
-    // meet on screen, so the classic arc with arrowheads is the clearest thing
-    // to draw. The sector is filled so the swept side is unambiguous.
-    let sDeg, eDeg, heads = false;
-    switch (range) {
-      case 'abs90':     { sDeg = 0; eDeg = wrap180(raw); break; }
-      case 'deg180':    { sDeg = 0; eDeg = pos180(raw); break; }
-      case 'signed180': { sDeg = 0; eDeg = wrap360(raw); heads = true; break; }
-      case 'deg360':    { sDeg = 0; eDeg = pos360(raw); heads = true; break; }
-      case 'supp':      { sDeg = pos180(raw); eDeg = 180; break; }
-      case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; break; }
-      default:          { sDeg = 0; eDeg = wrap180(raw); break; }
-    }
-    const r = Math.max(10 * ps, Math.min(Math.hypot(P.x - V.x, P.y - V.y), 70 * ps));
-    const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad, ccw = eDeg < sDeg;
-    ctx.save();
-    ctx.fillStyle = withAlpha(C.reading, OVERLAY.alpha.sector);
-    ctx.beginPath(); ctx.moveTo(V.x, V.y); ctx.arc(V.x, V.y, r, s0, e0, ccw); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    // the two sides, each drawn out to the arc, with its extension shown
-    if (full) for (const [ang, L0, L1, col] of [[s0, A0, A1, C.datum], [e0, B0, B1, C.feature]]) {
-      const end = at(V, ang, r + 3 * ps), foot = projOn(end, L0, L1);
-      extendTo(foot, L0, L1, withAlpha(col, 0.75));
-      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = lw * S.line_w; ctx.setLineDash(dash('aux'));
-      seg(V, end); ctx.restore();
-    }
-    // dimension arc, heads outside when the span is too small to hold them
-    ctx.save();
-    ctx.strokeStyle = ctx.fillStyle = C.reading; ctx.lineWidth = lw * S.line_w;
-    ctx.beginPath(); ctx.arc(V.x, V.y, r, s0, e0, ccw); ctx.stroke();
-    const hl = S.arrow_head * ps, dir = ccw ? -1 : 1;
-    const inside = Math.abs(eDeg - sDeg) >= A.head_inside_min_deg;
-    arrow(at(V, e0, r), e0 + (inside ? dir : -dir) * Math.PI / 2, hl);
-    arrow(at(V, s0, r), s0 - (inside ? dir : -dir) * Math.PI / 2, hl);
-    ctx.restore();
-    if (heads && full) {   // vector ranges: the head shows which way pt1->pt2 points
-      ctx.save();
-      ctx.strokeStyle = ctx.fillStyle = C.datum; arrow(at(tA, refA, 7 * ps), refA, S.arrow_head * ps);
-      ctx.strokeStyle = ctx.fillStyle = C.feature; arrow(at(tB, aB, 7 * ps), aB, S.arrow_head * ps);
-      ctx.restore();
-    }
-    if (range === 'comp' && full) {   // the 90º the reading is taken from
-      const q = 1.8 * ps;
-      const c1 = at(V, e0, q), c2 = at(V, refA, q), c3 = { x: c1.x + c2.x - V.x, y: c1.y + c2.y - V.y };
-      ctx.save(); ctx.setLineDash([]); ctx.strokeStyle = C.datum; seg(c1, c3); seg(c3, c2); ctx.restore();
-    }
-    if (full) {
-      datumMark(at(V, s0, r * 0.55), aA, datumName, P);
-      const bAt = at(V, e0, r * 0.55);
-      chip('B', bAt.x, bAt.y, C.feature, OVERLAY.font.tag);
-    }
-    const mid = at(V, (s0 + e0) / 2 + (ccw && e0 > s0 ? Math.PI : 0), r + S.chip_gap * ps);
-    chip(fmtV(shownDeg), mid.x, mid.y, C.reading);
-  }
-  if (!A.gauge_on_insp_only || shape.inspection_value !== undefined)
-    gauge(P.x, P.y - S.gauge_dy * ps, shownDeg,
-          { nominal: shape.value, lo: shape.LSL, hi: shape.USL });
+  ctx.lineWidth = renderer.getIndicationLineSize();
+  renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
   renderer.drawpoint(ctx, P);
+
+  // Witness lines: from the nearest real end of each line out to its end of
+  // the arc, so the two sides being compared are named by the picture.
+  ctx.setLineDash([ps, ps]);
+  for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
+    const arcPt = { x: V.x + dist * Math.cos(ang), y: V.y + dist * Math.sin(ang) };
+    const closestPt = closestPointOnPoints(arcPt, [L0, L1]);
+    renderer.drawReportLine(ctx, { x0: closestPt.x, y0: closestPt.y, x1: arcPt.x, y1: arcPt.y });
+  }
+  ctx.setLineDash([]);
   ctx.restore();
 
   const fontPx = renderer.getFontHeightPx();
