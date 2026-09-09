@@ -80,7 +80,10 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     const f = at(tip, ang + Math.PI, len);
     renderer.canvas_arrow(ctx, f.x, f.y, tip.x, tip.y, len);
   };
-  const label = (text, x, y, scale = 1) => renderer.draw_Text(ctx, text, fpx * scale, x, y);
+  // draw_Text leaves ctx.lineWidth at a SCREEN-independent value (base size
+  // x 0.013), which at high zoom is many image pixels: every line stroked
+  // after a label came out as a thick band. Restore it around each label.
+  const label = (text, x, y, scale = 1) => { const lw = ctx.lineWidth; renderer.draw_Text(ctx, text, fpx * scale, x, y); ctx.lineWidth = lw; };
   const fmtV = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
 
   ctx.save();
