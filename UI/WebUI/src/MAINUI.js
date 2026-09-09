@@ -281,6 +281,19 @@ function setBootDefFile(pathNoExt)
   catch (e) { log.warn("[boot-def] could not store", String(e)); return false; }
 }
 
+function clearBootDefFile()
+{
+  try { window.localStorage.removeItem(BOOT_DEF_LS_KEY); return true; }
+  catch (e) { return false; }
+}
+
+// The boot key holds the def path without extension, forward slashes -- the
+// form ACT_Def_Model_Path_Update takes. A recent-list entry carries ".hydef".
+function bootPathOf(p)
+{
+  return String(p || '').replace(/\\/g, '/').replace(new RegExp('\\.' + DEF_EXTENSION + '$', 'i'), '');
+}
+
 function getBootDefFile()
 {
   const o = LocalStorageTools.getobj(BOOT_DEF_LS_KEY);
@@ -329,6 +342,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   
   const _mus = useSelector(state => state.UIData.machine_custom_setting);
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
+  // Bumped when the boot def changes so the open 近期檔案 dialog re-renders.
+  const [bootTick, setBootTick] = useState(0);
   
   const [stepIdx,setStepIdx]=useState(0);
   const [isVertical,setIsVertical]=useState(false);
@@ -940,7 +955,28 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
             let fileGroups = [
-              { name: "history", list: getLocalStorage_RecentFiles() },
+              // 近期檔案 carries the boot-default controls. Which def opens at
+              // start was otherwise settable only from the custom-display
+              // catalogue (CT asked for it here, 2026-09-09). Each row can be
+              // made the boot def, the current one is tagged, and 清除 falls
+              // back to "most recently opened". Both read the boot key at
+              // render time; bootTick re-renders the open dialog.
+              { name: "history", list: getLocalStorage_RecentFiles(),
+                rowActionTitle: '開機',
+                rowAction: (file) => {
+                  const bootNow = getBootDefFile();
+                  const p = bootPathOf(file.path);
+                  return (bootNow !== undefined && p === bootPathOf(bootNow))
+                    ? <span style={{ color: '#389e0d', fontWeight: 600 }}>★ 開機配方</span>
+                    : <AntButton size="small" onClick={() => { setBootDefFile(p); setBootTick((t) => t + 1); }}>設為開機</AntButton>;
+                },
+                header: () => {
+                  const bootNow = getBootDefFile();
+                  return <span>開機載入:{bootNow !== undefined
+                    ? <><b>{bootNow}</b>　<AntButton size="small" onClick={() => { clearBootDefFile(); setBootTick((t) => t + 1); }}>清除(改用最近開啟的)</AntButton></>
+                    : <span style={{ color: '#888' }}>未指定,開機載入最近開啟的檔案</span>}</span>;
+                },
+              },
               
             ];
             let fileSelectFilter = defFileFilter;
@@ -1035,6 +1071,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           setFileSelectorInfo(undefined);
         }}
         
+        renderTick={bootTick}
         fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
         additionalFuncs={(fileSelectorInfo !== undefined)?fileSelectorInfo.additionalFuncs:undefined}
         fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />

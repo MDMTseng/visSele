@@ -1125,7 +1125,19 @@ export class InspectionEditorLogic {
       cam_param: { ...((sig && sig.cam_param) || this.cameraParam || {}),
                    ...(this.defCamParam || {}) },
       features: this.shapeList,
-      inherentfeatures: this.inherentShapeList
+      // SAVED AS THE FILE HAS ALWAYS HAD IT. The inherent orientation line's
+      // ref carries an id at runtime (findLostRefShapes resolves ids only,
+      // af9336eb), but every def on disk holds that ref as {name, keyTrace}.
+      // Writing the id made the round trip differ from the file, and opening
+      // test2 and pressing back said 變更的欄位:inherentfeatures (CT
+      // 2026-09-09). Strip it on the way out: the id is derivable (the
+      // signature's), the core ignores this entry, and the hash stays put.
+      inherentfeatures: (this.inherentShapeList || []).map((sh) => {
+        if (!sh || sh.type != SHAPE_TYPE.aux_line || !Array.isArray(sh.ref)) return sh;
+        const ref = sh.ref.map((r) => (r && r.name !== undefined && r.id !== undefined)
+          ? Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'id')) : r);
+        return { ...sh, ref };
+      })
     };
 
   }

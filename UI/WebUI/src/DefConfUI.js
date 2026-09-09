@@ -2859,10 +2859,29 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           // this threw on nearly every dirty exit. The throw came out of the
           // button's onClick, so the back button simply did nothing: no dialog,
           // no error on screen, no way to leave the page.
-          const _cut = (v) => String(JSON.stringify(v)).slice(0, 120);
-          if (_keys.length) log.warn("[exit-dirty] featureSet fields differ", _keys.map((k) => ({
-            key: k, was: _cut(_loaded[k]), now: _cut(_now[k]),
-          })));
+          // 120 chars hid the actual difference every time (a 4-entry array
+          // agrees for its first 120 chars); 4000 shows the entry that moved.
+          const _cut = (v) => String(JSON.stringify(v)).slice(0, 4000);
+          // inherentfeatures is a list of named entries with a 360-bin
+          // signature inside; its raw text is all signature, so say which
+          // ENTRY moved and which of its keys.
+          const _entryDiff = (a, b) => {
+            const A = Array.isArray(a) ? a : [], B = Array.isArray(b) ? b : [];
+            const nm = (e) => (e && (e.name || e.id)) + '';
+            const out = [];
+            for (const e of A) {
+              const f = B.find((x) => nm(x) === nm(e));
+              if (!f) { out.push({ entry: nm(e), gone: true }); continue; }
+              const ks = [...new Set([...Object.keys(e), ...Object.keys(f)])].filter((k) => !_same(e[k], f[k]));
+              if (ks.length) out.push({ entry: nm(e), keys: ks.map((k) => ({ k, was: _cut(e[k]).slice(0, 200), now: _cut(f[k]).slice(0, 200) })) });
+            }
+            for (const f of B) if (!A.find((x) => nm(x) === nm(f))) out.push({ entry: nm(f), added: true, now: _cut(f).slice(0, 300) });
+            return out;
+          };
+          if (_keys.length) log.warn("[exit-dirty] featureSet fields differ", _keys.map((k) => (
+            k === 'inherentfeatures'
+              ? { key: k, entries: _entryDiff(_loaded[k], _now[k]) }
+              : { key: k, was: _cut(_loaded[k]), now: _cut(_now[k]) })));
           else log.warn("[exit-dirty] hash differs but no featureSet field does", {
             loadedHash: edit_info.DefFileHash, nowHash: defFile_New.featureSet_sha1 });
           setModal_view({

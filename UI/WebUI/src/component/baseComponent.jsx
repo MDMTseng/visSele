@@ -690,7 +690,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       dataIndex: 'mtime_ms',
       key:'mtime_ms',
       render:(millisecond, record) => 
-        dateFormat(new Date(millisecond), "yyyy/mm/dd hh:mm:ss"),
+        (typeof millisecond === 'number') ? dateFormat(new Date(millisecond), "yyyy/mm/dd hh:mm:ss") : '',   // catalogue entries carry no mtime
       sorter:(a, b) => a.mtime_ms>b.mtime_ms
     }
 
@@ -742,7 +742,14 @@ export class BPG_FileBrowser_proto extends React.Component{
         Col_file_modified_time_ms,
         Col_file_Size,
         Col_file_Path,];
-        
+      // A group (fileGroups entry) may add one action column of its own:
+      // rowAction(file) -> node. The 近期檔案 list uses it for 設為開機.
+      const grp = this.state.selectedFileGroup;
+      if (grp && typeof grp.rowAction === 'function') {
+        columns.push({ title: grp.rowActionTitle || '', key: '__rowAction', width: 120,
+          render: (_, file) => <span onClick={(e) => e.stopPropagation()}>{grp.rowAction(file)}</span> });
+      }
+
       fileList=this.state.selectedFileGroupInfo;
       tableWidthClass="width10"
     }
@@ -805,10 +812,11 @@ export class BPG_FileBrowser_proto extends React.Component{
             if(evt.item.props.list!==undefined)
             {
               let list = evt.item.props.list;
+              const grp = customfileStruct[evt.item.props.groupidx];
               if(this.state.selectedFileGroupInfo===undefined)
-                this.setState({selectedFileGroupInfo:list});
+                this.setState({selectedFileGroupInfo:list, selectedFileGroup:grp});
               else
-                this.setState({selectedFileGroupInfo:undefined});
+                this.setState({selectedFileGroupInfo:undefined, selectedFileGroup:undefined});
               return;
             }
             
@@ -820,7 +828,7 @@ export class BPG_FileBrowser_proto extends React.Component{
         >
           {
             customfileStruct.map((group,idx)=>
-              <Menu.Item key={group.name+"_"+idx} path={group.path} list={group.list}>{group.name}</Menu.Item>)
+              <Menu.Item key={group.name+"_"+idx} path={group.path} list={group.list} groupidx={idx}>{group.name}</Menu.Item>)
           }
         </Menu>
       </div>);
@@ -880,6 +888,8 @@ export class BPG_FileBrowser_proto extends React.Component{
 
     fv_UI.push(
       <div className={"height12 scroll "+tableWidthClass} key="folderView">
+        {(this.state.selectedFileGroupInfo !== undefined && this.state.selectedFileGroup && this.state.selectedFileGroup.header)
+          ? <div key="groupHeader" style={{ padding: '4px 8px' }}>{(typeof this.state.selectedFileGroup.header === 'function') ? this.state.selectedFileGroup.header() : this.state.selectedFileGroup.header}</div> : null}
         <Table key="fileList"
           onRow={(file) => ({
             onClick: (evt) => { 
