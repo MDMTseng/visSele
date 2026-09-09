@@ -65,8 +65,18 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const measureDeg = vectorAngleDeg(aA, aB, nominal, range);
   const P = shape.pt1;
   const ps = renderer.getPrimitiveSize();
-  const R = 9 * ps;            // ray length
-  const rS = 5 * ps;           // sector radius
+  // Size follows the label point, like the quadrant mode's arc follows its
+  // distance to the vertex: the further the point sits from the two lines,
+  // the bigger the rose, so the operator sizes it by dragging. Floor so a
+  // point dropped right on a line still gets a readable one.
+  // Distance to the INFINITE lines, not the segments: a line given as
+  // point + unit vector is a 1 px segment and its far end made the rose
+  // fill the screen (2026-09-09).
+  const _dLine = (Q, L0, L1) => { const vx = L1.x - L0.x, vy = L1.y - L0.y, n = Math.hypot(vx, vy) || 1;
+    return Math.abs((Q.x - L0.x) * vy - (Q.y - L0.y) * vx) / n; };
+  const _reach = Math.max(_dLine(shape.pt1, A0, A1), _dLine(shape.pt1, B0, B1));
+  const R = Math.min(120 * ps, Math.max(25 * ps, _reach));   // ray length
+  const rS = 0.6 * R;                                         // sector radius
   const toRad = Math.PI / 180;
   const refA = aA + nominal * toRad;           // A's direction after the nominal
   const raw = wrap360((aB - refA) / toRad);    // B relative to that, (-180, 180]
@@ -156,11 +166,16 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     ctx.setLineDash([]);
   }
   // Ray labels: A (with the nominal when it is not 0) and B.
-  ctx.font = renderer.getFontStyle(renderer.getFontHeightPx() * 0.8);
+  // draw_Text's third argument is a SCALE applied to a 1 px font (that is
+  // the convention everywhere else: ctx.font = getFontStyle(1), then scale =
+  // font height). Setting a real font size AND passing it as the scale
+  // squared the zoom: the labels shrank when zooming in (CT, 2026-09-09).
+  ctx.font = renderer.getFontStyle(1);
+  const fpx = renderer.getFontHeightPx() * 0.9;
   ctx.fillStyle = 'rgba(30,60,200,1)';
-  { const t = ray(refA, R + 1.5 * ps); renderer.draw_Text(ctx, nominal ? `A${nominal > 0 ? '+' : ''}${nominal}º` : 'A', renderer.getFontHeightPx() * 0.8, t.x, t.y); }
+  { const t = ray(refA, R + 2 * ps); renderer.draw_Text(ctx, nominal ? `A${nominal > 0 ? '+' : ''}${nominal}º` : 'A', fpx, t.x, t.y); }
   ctx.fillStyle = 'rgba(200,60,30,1)';
-  { const t = ray(aB, R + 1.5 * ps); renderer.draw_Text(ctx, 'B', renderer.getFontHeightPx() * 0.8, t.x, t.y); }
+  { const t = ray(aB, R + 2 * ps); renderer.draw_Text(ctx, 'B', fpx, t.x, t.y); }
   renderer.drawpoint(ctx, P);
   ctx.restore();
 
