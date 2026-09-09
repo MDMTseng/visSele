@@ -57,49 +57,114 @@ export function signedAngleDeg(a1, a2, nominal) { return vectorAngleDeg(a1, a2, 
 // and would be invisible; the text carries the true value.
 function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const { measValueAdjStr } = sctx;
+  let measValueAdjStrTag = '';
   const aA = Math.atan2(A1.y - A0.y, A1.x - A0.x);
   const aB = Math.atan2(B1.y - B0.y, B1.x - B0.x);
   const nominal = shape.nominal_deg || 0;
   const range = shape.angle_range || 'signed90';
   const measureDeg = vectorAngleDeg(aA, aB, nominal, range);
   const P = shape.pt1;
-  const L = 6 * renderer.getPrimitiveSize();
   const ps = renderer.getPrimitiveSize();
+  const R = 9 * ps;            // ray length
+  const rS = 5 * ps;           // sector radius
+  const toRad = Math.PI / 180;
+  const refA = aA + nominal * toRad;           // A's direction after the nominal
+  const raw = wrap360((aB - refA) / toRad);    // B relative to that, (-180, 180]
+
+  // WHAT EACH RANGE MEASURES, as a sector [s, e] from the A side to the B
+  // side, plus whether ray heads matter (vector ranges) and any extra marker.
+  //   vector heads: signed180 / deg360 read pt1->pt2 as a direction.
+  //   comp: the sector between B and the perpendicular to A (90 - acute).
+  //   supp: the sector between B and A's opposite end (180 - theta).
+  let sDeg, eDeg, heads = false, marker = null, tag;
+  switch (range) {
+    case 'abs90':     { const d = wrap180(raw); sDeg = 0; eDeg = d; tag = '0~90'; break; }
+    case 'deg180':    { sDeg = 0; eDeg = pos180(raw); tag = '0~180'; break; }
+    case 'signed180': { sDeg = 0; eDeg = wrap360(raw); heads = true; tag = '±180'; break; }
+    case 'deg360':    { sDeg = 0; eDeg = pos360(raw); heads = true; tag = '0~360'; break; }
+    case 'supp':      { const t = pos180(raw); sDeg = t; eDeg = 180; tag = '補角'; break; }
+    case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; marker = sg * 90; tag = '餘角'; break; }
+    default:          { sDeg = 0; eDeg = wrap180(raw); tag = '±90'; break; }
+  }
+  const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
+  const ccw = eDeg < sDeg;                       // canvas arc direction
 
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();
-  // ties to the two lines
+
+  // Ties from the label point to the two lines it compares.
   ctx.setLineDash([ps, ps]);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   const tA = closestPointOnPoints(P, [A0, A1]);
   const tB = closestPointOnPoints(P, [B0, B1]);
   renderer.drawReportLine(ctx, { x0: P.x, y0: P.y, x1: tA.x, y1: tA.y });
   renderer.drawReportLine(ctx, { x0: P.x, y0: P.y, x1: tB.x, y1: tB.y });
-  // reference stub (A, dashed) and measured stub (B, solid), both from P.
-  // B's stub is drawn at the nominal-rotated A direction plus the measured
-  // deviation, exaggerated to at least 15 deg so the sign is readable.
-  // What the arc shows: the raw A->B rotation for the 180/360 readings (the
-  // arrow then IS the reading), the signed deviation for the ±90 ones,
-  // exaggerated to at least 15 deg so a 0.3 deg tilt still has a visible
-  // direction. The text always carries the true value.
-  const raw = (aB - aA) * 180 / Math.PI - nominal;
-  let showDeg;
-  if (range === 'deg360' || range === 'signed180') showDeg = wrap360(raw);
-  else if (range === 'deg180' || range === 'supp') showDeg = pos180(raw);
-  else showDeg = wrap180(raw);
-  const dir = Math.sign(showDeg) || 1;
-  const shown = dir * Math.max(15, Math.abs(showDeg)) * Math.PI / 180;
-  const refA = aA + nominal * Math.PI / 180;
-  const stubB = refA + shown;
-  ctx.setLineDash([ps, ps]);
-  renderer.drawReportLine(ctx, { x0: P.x - L * Math.cos(refA), y0: P.y - L * Math.sin(refA),
-                                  x1: P.x + L * Math.cos(refA), y1: P.y + L * Math.sin(refA) });
+
+  // The two directions through P: A (after the nominal) dashed, B solid.
+  // Full lines, not stubs, so two nearly parallel lines still read as two.
+  const ray = (ang, len) => ({ x: P.x + len * Math.cos(ang), y: P.y + len * Math.sin(ang) });
+  ctx.setLineDash([2 * ps, ps]);
+  ctx.strokeStyle = 'rgba(30,60,200,0.9)';
+  { const p1 = ray(refA, R), p2 = ray(refA + Math.PI, R);
+    renderer.drawReportLine(ctx, { x0: p2.x, y0: p2.y, x1: p1.x, y1: p1.y }); }
   ctx.setLineDash([]);
-  renderer.drawReportLine(ctx, { x0: P.x, y0: P.y, x1: P.x + L * Math.cos(stubB), y1: P.y + L * Math.sin(stubB) });
-  // arc arrow from A's direction to B's: its sense is the sign
-  renderer.drawArcArrow(ctx, P.x, P.y, 0.7 * L, refA, stubB, shown < 0);
+  ctx.strokeStyle = 'rgba(200,60,30,0.9)';
+  { const p1 = ray(aB, R), p2 = ray(aB + Math.PI, R);
+    renderer.drawReportLine(ctx, { x0: p2.x, y0: p2.y, x1: p1.x, y1: p1.y }); }
+  // Heads on the + ends when direction matters.
+  if (heads) {
+    const hl = 2.5 * ps;
+    ctx.strokeStyle = ctx.fillStyle = 'rgba(30,60,200,0.9)';
+    { const t = ray(refA, R), f = ray(refA, R - hl); renderer.canvas_arrow(ctx, f.x, f.y, t.x, t.y, hl); }
+    ctx.strokeStyle = ctx.fillStyle = 'rgba(200,60,30,0.9)';
+    { const t = ray(aB, R), f = ray(aB, R - hl); renderer.canvas_arrow(ctx, f.x, f.y, t.x, t.y, hl); }
+  }
+
+  // The measured sector, shaded, with an arrow at its B end. True geometry:
+  // a 0.3 deg tilt is a sliver, which is honest; the exaggerated arrow below
+  // says which way it leans.
+  ctx.fillStyle = 'rgba(255,170,0,0.28)';
+  ctx.beginPath();
+  ctx.moveTo(P.x, P.y);
+  ctx.arc(P.x, P.y, rS, s0, e0, ccw);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = ctx.fillStyle = 'rgba(200,110,0,1)';
+  const span = Math.abs(eDeg - sDeg);
+  if (span >= 8) {
+    renderer.drawArcArrow(ctx, P.x, P.y, rS, s0, e0, ccw);
+  } else {
+    // Too thin to carry an arrow: draw the sense on a wider, dotted arc
+    // (15 deg, marked as exaggerated) so the sign is still readable.
+    const sg = Math.sign(eDeg - sDeg) || 1;
+    ctx.setLineDash([ps * 0.6, ps * 0.6]);
+    renderer.drawArcArrow(ctx, P.x, P.y, rS * 1.35, s0, s0 + sg * 15 * toRad, sg < 0);
+    ctx.setLineDash([]);
+  }
+  // Right-angle marker for the complementary reading.
+  if (marker !== null) {
+    const m = marker * toRad, q = 1.6 * ps;
+    const c1 = ray(refA + m, q), c2 = ray(refA, q);
+    const c3 = { x: c1.x + c2.x - P.x, y: c1.y + c2.y - P.y };
+    ctx.strokeStyle = 'rgba(30,60,200,0.9)';
+    renderer.drawReportLine(ctx, { x0: c1.x, y0: c1.y, x1: c3.x, y1: c3.y });
+    renderer.drawReportLine(ctx, { x0: c3.x, y0: c3.y, x1: c2.x, y1: c2.y });
+    // and the perpendicular itself, dotted
+    ctx.setLineDash([ps * 0.6, ps * 0.6]);
+    const pp = ray(refA + m, R);
+    renderer.drawReportLine(ctx, { x0: P.x, y0: P.y, x1: pp.x, y1: pp.y });
+    ctx.setLineDash([]);
+  }
+  // Ray labels: A (with the nominal when it is not 0) and B.
+  ctx.font = renderer.getFontStyle(renderer.getFontHeightPx() * 0.8);
+  ctx.fillStyle = 'rgba(30,60,200,1)';
+  { const t = ray(refA, R + 1.5 * ps); renderer.draw_Text(ctx, nominal ? `A${nominal > 0 ? '+' : ''}${nominal}º` : 'A', renderer.getFontHeightPx() * 0.8, t.x, t.y); }
+  ctx.fillStyle = 'rgba(200,60,30,1)';
+  { const t = ray(aB, R + 1.5 * ps); renderer.draw_Text(ctx, 'B', renderer.getFontHeightPx() * 0.8, t.x, t.y); }
   renderer.drawpoint(ctx, P);
   ctx.restore();
 
+  measValueAdjStrTag = ' ' + tag;
   const fontPx = renderer.getFontHeightPx();
   ctx.font = renderer.getFontStyle(1);
   ctx.save();
@@ -118,7 +183,7 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     renderer.drawDefMeasureInfoText(ctx, shape.name,
       fmt(shape.value),
       "L:" + fmt(shape.LSL) + " U:" + fmt(shape.USL),
-      "Now:" + fmt(measureDeg) + measValueAdjStr,
+      "Now:" + fmt(measureDeg) + measValueAdjStrTag + measValueAdjStr,
       fontPx);
     measureValue = measureDeg;
   }
