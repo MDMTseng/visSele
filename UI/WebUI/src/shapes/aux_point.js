@@ -3,6 +3,7 @@
 import Color from 'color';
 import { closestPointOnPoints } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 // Endpoint for the dashed crosshair drawn from the aux_point's intersection
@@ -63,12 +64,12 @@ export function draw(ctx, shape, renderer, {
   inFullDisplay = true, shapeList = [], next_ShapeColor = null,
   skip_id_list = [], unitConvert = { unit: 'mm', mult: 1 }, drawSubObjs = false,
 } = {}) {
-  let shapeColor = SHAPE_TYPE_COLOR[type] || SHAPE_TYPE_COLOR.default;
-  shapeColor = Color(shapeColor).alpha(0.8);
+  const K = overlayKit(ctx, renderer);
+  const shapeColor = K.C.region;
 
   if (true || inFullDisplay) {
     ctx.lineWidth = renderer.getSearchDirectionLineSize();
-    ctx.strokeStyle = shapeColor.alpha(1);
+    ctx.strokeStyle = shapeColor;
     let db_obj = renderer.db_obj;
     let subObjs = shape.ref
       .map((ref) => db_obj.FindShape('id', ref.id, shapeList))
@@ -79,7 +80,7 @@ export function draw(ctx, shape, renderer, {
 
     let point = renderer.db_obj.auxPointParse(shape, shapeList);
     if (point !== undefined && subObjs.length == 2) { // Draw crosssect line
-      ctx.setLineDash([2 * renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
+      ctx.setLineDash(K.dash('tie'));   // fine dot = "this is derived from that"
 
       for (const sub of subObjs) {
         const foot = refFoot(sub, point);
@@ -90,8 +91,15 @@ export function draw(ctx, shape, renderer, {
         ctx.stroke();
       }
       ctx.setLineDash([]);
-      ctx.strokeStyle = 'gray';
-      renderer.drawpoint(ctx, point);
+      // A construction intersection is a circle with a centre dot, not a
+      // generic grey blob. Filled = the core reported it, hollow = derived here
+      // (shape, not colour -- colour is spent on the role).
+      const reported = (shape.reported_pt !== undefined);
+      ctx.strokeStyle = shapeColor; ctx.fillStyle = shapeColor;
+      ctx.lineWidth = K.lw * K.S.thin_w;
+      ctx.beginPath(); ctx.arc(point.x, point.y, 2.2 * K.ps, 0, 2 * Math.PI); ctx.stroke();
+      if (reported) { ctx.beginPath(); ctx.arc(point.x, point.y, 0.9 * K.ps, 0, 2 * Math.PI); ctx.fill(); }
+      if (shape.name) K.chip(shape.name, point.x, point.y - K.S.chip_gap * K.ps, shapeColor, OVERLAY.font.tag);
     }
   }
 }

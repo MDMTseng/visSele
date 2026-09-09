@@ -2,6 +2,7 @@
 // See shapes/line.js for the pattern + rationale.
 import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 
 export const type = 'aux_line';
 
@@ -64,9 +65,12 @@ export function draw(ctx, shape, renderer, {
   const ext = 0.25 * L;
   const ux = dx / L, uy = dy / L;
   const na = shape.inspection_status !== undefined && shape.inspection_status !== 0;
+  // Construction line: the drafting convention is dash-dot, and its role is
+  // "auxiliary", not the amber it used to share with a fitted arc.
+  const K = overlayKit(ctx, renderer);
   ctx.lineWidth = renderer.getSearchDirectionLineSize();
-  ctx.strokeStyle = na ? 'rgba(200,60,60,0.9)' : (SHAPE_TYPE_COLOR[type] || 'gray');
-  ctx.setLineDash([renderer.getPrimitiveSize() * 2, renderer.getPrimitiveSize()]);
+  ctx.strokeStyle = na ? K.C.ng : K.C.region;
+  ctx.setLineDash(K.dash('datum'));
   ctx.beginPath();
   ctx.moveTo(a.x - ux * ext, a.y - uy * ext);
   ctx.lineTo(b.x + ux * ext, b.y + uy * ext);
@@ -82,6 +86,11 @@ export function draw(ctx, shape, renderer, {
   ctx.beginPath();
   ctx.rect(mid.x - r, mid.y - r, 2 * r, 2 * r);
   ctx.stroke();
+  if (shape.name) {
+    const up = Math.atan2(-(b.x - a.x), b.y - a.y);
+    const at = K.at(mid, up, K.S.chip_gap * K.ps);
+    K.chip(shape.name, at.x, at.y, ctx.strokeStyle, OVERLAY.font.tag);
+  }
 }
 
 // Inspection overlay (the quick-verify modal, the live screen): the overlay

@@ -7,6 +7,7 @@
 // localization_exclude arrays (a direct copy of the points — no transform) and
 // removes them from `features`. At load, SetDefInfo rebuilds them from those arrays.
 import React from 'react';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import {
   Row, Section, NumberField, TextField,
 } from './_propertySheet/primitives.jsx';
@@ -29,15 +30,23 @@ export function fitCameraCenterRegion(shape) {
   return { x: sx / pts.length, y: sy / pts.length };
 }
 
-// Build a per-type draw function. `stroke` is the outline color.
-export function makeDraw(stroke) {
+// Build a per-type draw function. `kind` is 'include' or 'exclude'; the colour
+// AND the fill treatment come from it. Include gets a soft solid fill, exclude
+// gets a hatch, so a nested pair reads correctly in greyscale too and "which
+// part is carved out" stops depending on telling green from red.
+export function makeDraw(kind) {
   return function draw(ctx, shape, renderer /*, opts */) {
     const pts = Array.isArray(shape.points) ? shape.points : [];
     if (pts.length === 0 && !shape._cursor) return;
 
+    const K = overlayKit(ctx, renderer);
+    const exclude = (kind === 'exclude');
+    const stroke = exclude ? K.C.ng : K.C.ok;
+
     ctx.save();
     ctx.lineWidth = renderer.getIndicationLineSize();
     ctx.strokeStyle = stroke;
+    if (exclude) ctx.setLineDash(K.dash('aux'));
 
     // Polygon outline (closed once we have >=3 vertices).
     if (pts.length >= 1) {
@@ -46,12 +55,38 @@ export function makeDraw(stroke) {
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
       // In-progress preview: rubber-band the last edge to the cursor.
       if (shape._cursor) ctx.lineTo(shape._cursor.x, shape._cursor.y);
-      if (pts.length >= 3 && !shape._cursor) ctx.closePath();
+      const closed = (pts.length >= 3 && !shape._cursor);
+      if (closed) ctx.closePath();
+      if (closed) {
+        ctx.save();
+        ctx.clip();
+        if (exclude) {
+          // 45deg hatch across the bounding box, clipped to the polygon.
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+          const step = 4 * K.ps, h = y1 - y0, span = (x1 - x0) + h;
+          ctx.strokeStyle = K.withAlpha(K.C.ng, 0.5);
+          ctx.lineWidth = K.lw * K.S.thin_w;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          for (let d = 0; d <= span; d += step) { ctx.moveTo(x0 + d, y0); ctx.lineTo(x0 + d - h, y1); }
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = K.withAlpha(K.C.ok, OVERLAY.alpha.region);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
       ctx.stroke();
     }
 
-    // Vertices.
-    for (const p of pts) renderer.drawpoint(ctx, p);
+    // Vertices belong to the editing session, not to a finished region.
+    if (shape._cursor || pts.length < 3) for (const p of pts) renderer.drawpoint(ctx, p);
+    const c = fitCameraCenterRegion(shape);
+    if (c) {
+      const tag = (shape.name || (exclude ? '排除區' : '取用區')) + (pts.length < 3 ? ' 未閉合' : '');
+      K.chip(tag, c.x, c.y, stroke, OVERLAY.font.tag);
+    }
     ctx.restore();
   };
 }

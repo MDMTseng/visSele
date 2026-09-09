@@ -4,6 +4,7 @@ import Color from 'color';
 import { ARC_POLARITY, EDGE_MIN_STRENGTH } from './_caliperSeed';
 import { threePointToArc, arcSweep } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { caliperField, edgeField, drawArcCalipers, drawCaliperHits } from './_caliperFields';
 export { ArcPropertySheet as PropertySheet } from './_propertySheet/ArcPropertySheet';
@@ -90,10 +91,14 @@ export function applyDefaults(shape) {
 
 // Draw an arc — extracted verbatim from renderUTIL.drawShapeList.case SHAPE_TYPE.arc.
 export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
-  let shapeColor = SHAPE_TYPE_COLOR[type] || SHAPE_TYPE_COLOR.default;
-  shapeColor = Color(shapeColor).alpha(0.8);
+  // Same role as line: a fitted arc is a feature. It used to share the amber
+  // of aux_line, which made a fitted arc and a construction line identical.
+  const K = overlayKit(ctx, renderer);
+  const { C, ps, S, withAlpha } = K;
+  const shapeColor = C.feature;
 
   let arc = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
+  const arcNominal = { x: arc.x, y: arc.y, r: arc.r, thetaS: arc.thetaS, thetaE: arc.thetaE };
   const isCaliper = (shape.locating === 'caliper');
 
   // Contour-mode margin band + offset arc: the wide search-range strip.
@@ -101,11 +106,12 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   if (!isCaliper) {
     let margin = renderer.getSearchDirectionLineSize();
     if (inFullDisplay) margin = shape.margin;
+    ctx.strokeStyle = withAlpha(C.search, OVERLAY.alpha.search * 2.6);
     ctx.lineWidth = margin * 2;
     renderer.drawReportArc(ctx, arc);
 
     ctx.lineWidth = renderer.getSearchDirectionLineSize();
-    ctx.strokeStyle = shapeColor;
+    ctx.strokeStyle = withAlpha(C.search, 0.9);
 
     let marginOffset = margin + ctx.lineWidth / 2;
     if (shape.direction < 0) marginOffset = -marginOffset;
@@ -120,10 +126,37 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
     renderer.drawReportArc(ctx, arc);
   }
 
-  ctx.strokeStyle = 'gray';
+  ctx.strokeStyle = shapeColor;
   renderer.drawpoint(ctx, shape.pt1);
   renderer.drawpoint(ctx, shape.pt2);
   renderer.drawpoint(ctx, shape.pt3);
+
+  // The centre, the radius that ties the arc to it, which side the calipers
+  // scan, and the name+radius -- none of which existed on canvas before.
+  if (inFullDisplay && Number.isFinite(arcNominal.r) && arcNominal.r > 0) {
+    const c = { x: arcNominal.x, y: arcNominal.y };
+    const mid = (arcNominal.thetaS + arcNominal.thetaE) / 2;
+    const onArc = K.at(c, mid, arcNominal.r);
+    ctx.save();
+    ctx.strokeStyle = C.datum; ctx.lineWidth = K.lw * S.thin_w;
+    ctx.setLineDash([]);
+    K.seg({ x: c.x - 1.6 * ps, y: c.y }, { x: c.x + 1.6 * ps, y: c.y });
+    K.seg({ x: c.x, y: c.y - 1.6 * ps }, { x: c.x, y: c.y + 1.6 * ps });
+    ctx.strokeStyle = withAlpha(C.region, 0.8);
+    ctx.setLineDash(K.dash('tie'));
+    K.seg(c, onArc);
+    ctx.restore();
+    if (!isCaliper) {
+      const out = (shape.direction < 0) ? mid + Math.PI : mid;
+      ctx.save();
+      ctx.strokeStyle = ctx.fillStyle = C.search;
+      K.arrow(K.at(onArc, out, (shape.margin || 2 * ps) + 2 * ps), out, S.arrow_head * ps);
+      ctx.restore();
+    }
+    const tag = (shape.name ? shape.name + ' ' : '') + 'R' + arcNominal.r.toFixed(renderer.fixedDigit.R);
+    const lp = K.at(c, mid, arcNominal.r * 0.55);
+    K.chip(tag, lp.x, lp.y, shapeColor, OVERLAY.font.tag);
+  }
 
   // Caliper-mode overlay: N radial caliper boxes along the arc. Editor-mode only.
   if (inFullDisplay && shape.locating === 'caliper') {

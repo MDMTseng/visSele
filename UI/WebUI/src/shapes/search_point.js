@@ -2,6 +2,7 @@
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { edgeField, drawSingleCaliperBox, drawCaliperHits } from './_caliperFields';
 export { SearchPointPropertySheet as PropertySheet } from './_propertySheet/SearchPointPropertySheet';
@@ -75,8 +76,8 @@ export function draw(ctx, shape, renderer, {
   inFullDisplay = true, shapeList = [], next_ShapeColor = null,
   skip_id_list = [], unitConvert = { unit: 'mm', mult: 1 }, drawSubObjs = false,
 } = {}) {
-  let shapeColor = SHAPE_TYPE_COLOR[type] || SHAPE_TYPE_COLOR.default;
-  shapeColor = Color(shapeColor).alpha(0.8);
+  const K = overlayKit(ctx, renderer);
+  const shapeColor = K.C.search;
 
   let db_obj = renderer.db_obj;
   let subObjs = shape.ref
@@ -103,6 +104,7 @@ export function draw(ctx, shape, renderer, {
 
   if (!isCaliper) {
     // Contour mode: legacy thick margin band + offset visualization line.
+    ctx.strokeStyle = K.withAlpha(K.C.search, OVERLAY.alpha.search * 2.6);
     ctx.lineWidth = margin * 2;
     renderer.drawReportLine(ctx, {
       x0: shape.pt1.x - vector.x, y0: shape.pt1.y - vector.y,
@@ -130,11 +132,45 @@ export function draw(ctx, shape, renderer, {
   if (drawSubObjs)
     renderer.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs, inFullDisplay);
 
-  ctx.strokeStyle = 'gray';
+  ctx.strokeStyle = shapeColor;
   renderer.drawpoint(ctx, shape.pt1);
+  // The scan direction, in contour mode too (it used to be visible only as the
+  // caliper box's arrow, so contour points showed no polarity at all).
+  if (inFullDisplay) {
+    const sd = Math.atan2(cnormal.y, cnormal.x);
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle = K.C.search;
+    K.arrow(K.at(shape.pt1, sd, margin + 3 * K.ps), sd, K.S.arrow_head * K.ps);
+    ctx.restore();
+  }
+  // A locating anchor is a DATUM, so it is drawn in the datum colour with
+  // concentric circles -- the red aim-cross is reserved for "the point the
+  // inspection actually found". anchor_corner (2D) adds four corner ticks;
+  // an edge anchor (1D) marks only its own axis.
   if (shape.locating_anchor) {
-    ctx.strokeStyle = 'red';
-    renderer.draw_aimcross(ctx, shape.pt1, renderer.getPointSize() * 3, 0.3);
+    const p = shape.pt1, q = 1.6 * K.ps;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = K.C.datum; ctx.fillStyle = K.C.datum; ctx.lineWidth = K.lw * K.S.line_w;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3.2 * K.ps, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.1 * K.ps, 0, 2 * Math.PI); ctx.fill();
+    if (shape.anchor_corner) {
+      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const cx = p.x + sx * 5 * K.ps, cy = p.y + sy * 5 * K.ps;
+        K.seg({ x: cx, y: cy }, { x: cx - sx * q, y: cy });
+        K.seg({ x: cx, y: cy }, { x: cx, y: cy - sy * q });
+      }
+    } else {
+      const sd = Math.atan2(cnormal.y, cnormal.x);
+      K.seg(K.at(p, sd, 4.4 * K.ps), K.at(p, sd, 6 * K.ps));
+      K.seg(K.at(p, sd + Math.PI, 4.4 * K.ps), K.at(p, sd + Math.PI, 6 * K.ps));
+    }
+    ctx.restore();
+  }
+  if (inFullDisplay && shape.name) {
+    const nm = shape.name + (shape.locating_anchor ? (shape.anchor_corner ? ' 錨·角點' : ' 錨·邊') : '');
+    K.chip(nm, shape.pt1.x, shape.pt1.y + K.S.chip_gap * 2 * K.ps,
+           shape.locating_anchor ? K.C.datum : shapeColor, OVERLAY.font.tag);
   }
 
   // Caliper-mode per-hit overlay (dots, not crosses — search_point clusters
