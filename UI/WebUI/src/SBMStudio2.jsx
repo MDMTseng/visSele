@@ -25,7 +25,7 @@ import { defFileGeneration, stampRefImagePath, SBM_INFO_NAME } from 'UTIL/MISC_U
 import { refPngPathOf } from 'UTIL/defNaming.mjs';
 import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
-import { SWEEP_AXES, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
+import { SWEEP_AXES, SWEEP_ALL_ORDER, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
 import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
 import { imageCentre, expectedPosition } from './sbmExpectPose.mjs';
 import { HookCanvasComponent } from './SBMStudio';
@@ -347,71 +347,63 @@ function InspectPanel({ insp, onClear }) {
   </div>;
 }
 
-// The sweep, as a strip you can read down. One row per step, the baseline
-// marked, and the two numbers that matter per row: the match score and -- where
-// the axis has a ground truth -- how far the reported pose is from the pose we
-// imposed.
+// The sweep as a table: one row per step, the baseline first, and per row the
+// score plus the two errors against what we imposed -- position (px) and angle
+// (deg). In an all-axes run the first column names the axis.
 function SweepPanel({ sweep, floor }) {
   if (!sweep) return null;
-  const A = SWEEP_AXES[sweep.axis] || {};
-  const u = A.unit || '';
-  const fmt = (v) => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2));
-  // THE BAR IS HEADROOM ABOVE THE ACCEPTANCE FLOOR, not the score.
-  //
-  // It first scaled to the min/max of the run, on the reasoning that scores all
-  // sit near 1.0 and a 0..1 bar makes them look identical. That reasoning was
-  // wrong in the direction that matters: on a real sweep spanning 0.986 to
-  // 0.998 -- twelve thousandths, comfortably above a 0.50 gate -- it drew a bar
-  // swinging from nearly empty to full. A reader would tune against that, and
-  // there is nothing there to tune. Auto-scaling turns any run into a dramatic
-  // curve, including one that is flat.
-  //
-  // Against the floor, a healthy sweep is a column of nearly-full bars, which
-  // is the true statement, and a step actually approaching the gate visibly
-  // shortens. The spread stays legible as the printed number next to it.
-  const bar = (sim) => headroom(sim, floor);
+  const all = sweep.axis === 'all';
+  const fmtV = (r) => {
+    if (r.axis === 'base') return '原圖';
+    const A = SWEEP_AXES[r.axis] || {};
+    const v = r.value;
+    return (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2)) + (A.unit || '');
+  };
+  const axisName = (ax) => ((SWEEP_AXES[ax] || {}).label || ax).split(' ')[0];
+  const cell = { padding: '2px 6px', borderTop: '1px solid ' + P.line, whiteSpace: 'nowrap' };
+  const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+  const errColor = (v, warn, bad) => (!Number.isFinite(v) ? P.dim : Math.abs(v) > bad ? P.bad : Math.abs(v) > warn ? '#b26a00' : P.ink);
+  const verdicts = sweep.verdicts || {};
   return <div style={{ marginTop: 4 }}>
     <div style={{ fontSize: 11, color: P.dim }}>
       {sweep.done}/{sweep.total}{sweep.aborted ? '(已中止)' : ''}
-      <span style={{ marginLeft: 6 }} title="長條 = 分數距離接受門檻還有多少餘裕(滿格 = 1.0)">
-        門檻 {floor.toFixed(2)}</span>
+      <span style={{ marginLeft: 6 }}>門檻 {floor.toFixed(2)}</span>
     </div>
-    {sweep.verdict && <div style={{ fontSize: 11, color: P.accent, margin: '3px 0',
-                                    lineHeight: 1.5 }}>{sweep.verdict}</div>}
-    <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 3 }}>
-      {sweep.rows.map((r, i) => {
-        const isBase = Math.abs(r.value - A.neutral) <= 1e-9;
-        return <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4,
-                     fontSize: 11, fontVariantNumeric: 'tabular-nums',
-                     borderTop: '1px solid #333', padding: '1px 0',
-                     background: isBase ? '#eaf3f6' : undefined }}>
-          <span style={{ width: 46, textAlign: 'right', color: isBase ? P.accent : P.ink }}>
-            {fmt(r.value)}{u}</span>
-          <span style={{ width: 34, flex: '0 0 auto', height: 8, background: '#e3e8ea',
-                         borderRadius: 2, overflow: 'hidden' }}>
-            {r.located && <span style={{ display: 'block', height: '100%',
-              width: `${Math.max(4, bar(r.sim) * 100)}%`,
-              background: '#00c853' }} />}
-          </span>
-          <span style={{ width: 42, color: r.located ? P.ink : P.bad }}>
-            {r.located ? r.sim.toFixed(3) : '失敗'}</span>
-          {Number.isFinite(r.residual)
-            ? <span style={{ flex: '1 1 auto', textAlign: 'right',
-                             color: r.signSuspect ? '#ffab00'
-                                  : Math.abs(r.residual) > 0.5 ? '#b26a00' : P.dim }}
-                title={`施加 ${fmt(r.expected)}${u},量到 ${fmt(r.moved)}${u}`}>
-                {r.residual >= 0 ? '+' : ''}{r.residual.toFixed(3)}{u}
-                {r.signSuspect ? ' ⚠符號' : ''}
-              </span>
-            : <span style={{ flex: '1 1 auto', textAlign: 'right', color: '#666' }}>
-                {r.located ? `${r.ok}/${r.ok + r.na}` : ''}
-              </span>}
-        </div>;
-      })}
+    {Object.keys(verdicts).length > 0 && <div style={{ fontSize: 11, color: P.accent, margin: '3px 0', lineHeight: 1.5 }}>
+      {(sweep.axes || []).map((ax) => verdicts[ax]
+        ? <div key={ax}>{all ? <b>{axisName(ax)}:</b> : null} {verdicts[ax]}</div> : null)}
+    </div>}
+    <div style={{ maxHeight: 260, overflow: 'auto', marginTop: 3 }}>
+      <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
+        <thead><tr style={{ color: P.dim }}>
+          {all && <th style={{ ...cell, textAlign: 'left', borderTop: 'none' }}>變數</th>}
+          <th style={{ ...num, borderTop: 'none' }}>值</th>
+          <th style={{ ...num, borderTop: 'none' }}>分數</th>
+          <th style={{ ...num, borderTop: 'none' }} title="定位到的中心,離擾動後應在位置的距離">位置誤差 px</th>
+          <th style={{ ...num, borderTop: 'none' }} title="回報角度相對原圖的變化,減掉施加的旋轉">角度誤差 °</th>
+        </tr></thead>
+        <tbody>
+          {sweep.rows.map((r, i) => {
+            const isBase = r.axis === 'base';
+            return <tr key={i} style={{ background: isBase ? '#eaf3f6' : undefined }}>
+              {all && <td style={{ ...cell, color: P.dim }}>{isBase ? '基準' : axisName(r.axis)}</td>}
+              <td style={{ ...num, color: isBase ? P.accent : P.ink }}>{fmtV(r)}</td>
+              <td style={{ ...num, color: r.located ? P.ink : P.bad }} title={r.located ? '' : r.why}>
+                {r.located ? r.sim.toFixed(3) : '失敗'}</td>
+              <td style={{ ...num, color: errColor(r.posErrPx, 2, 5) }}>
+                {Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(2) : (r.located ? '—' : '')}</td>
+              <td style={{ ...num, color: r.signSuspect ? '#ffab00' : errColor(r.residual, 0.5, 2) }}
+                  title={Number.isFinite(r.moved) ? `施加 ${r.expected.toFixed(2)}°,量到 ${r.moved.toFixed(3)}°` : ''}>
+                {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(3) : (r.located ? '—' : '')}
+                {r.signSuspect ? ' ⚠' : ''}</td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
     </div>
     {sweep.rows.some((r) => r.signSuspect) &&
       <div style={{ fontSize: 11, color: '#ffab00', marginTop: 3, lineHeight: 1.5 }}>
-        ⚠ 殘差約等於施加值的兩倍 — 這是角度符號反了,不是定位差了兩倍。
+        ⚠ 角度誤差約等於施加值的兩倍 — 這是角度符號反了,不是定位差了兩倍。
       </div>}
   </div>;
 }
@@ -903,59 +895,78 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       .finally(() => setInspBusy(false));
   }, [inspectOnce, reg.cx, reg.cy]);
 
-  // ROBUSTNESS SWEEP: degrade the scene along one axis and watch where the
-  // locator gives up.
+  // ROBUSTNESS SWEEP: degrade the scene along one axis -- or every axis, one
+  // after another -- and put the two errors that matter in a table: where the
+  // locator said the part is against where we put it, and how far its angle
+  // is from the angle we imposed.
   //
   // Sequential, not parallel. The core holds ONE cached image and one matching
   // engine behind a lock, so firing the whole sweep at once would serialise in
   // the core anyway while making the progress meaningless and the abort
-  // impossible. One at a time also means the panel can show the curve building.
-  const runSweep = useCallback(async () => {
-    const A = SWEEP_AXES[sweepAxis];
-    const r = sweepRange[sweepAxis] || {};
-    const from = Number.isFinite(r.from) ? r.from : A.from;
-    const to = Number.isFinite(r.to) ? r.to : A.to;
-    const steps = Number.isFinite(r.steps) ? r.steps : A.steps;
-    const values = sweepValues(sweepAxis, from, to, steps);
-    // One seed for the WHOLE sweep. A per-step seed would re-roll the noise
-    // between steps of a gain sweep, so the curve would mix two variables and
-    // read as noise sensitivity that is not there.
-    const seed = 1 + Math.floor(Math.abs(from * 1000 + to * 37 + steps));
+  // impossible. One at a time also means the panel can show the table building.
+  //
+  // ONE BASELINE for the whole run. The unperturbed frame is measured first
+  // and every axis's errors are read against it; measuring it again per axis
+  // would cost a run each and could hand two axes two different baselines.
+  const runAxes = useCallback(async (axes) => {
+    const plan = [];   // [{axis, value, perturb}]
+    for (const ax of axes) {
+      const A = SWEEP_AXES[ax];
+      const r = sweepRange[ax] || {};
+      const from = Number.isFinite(r.from) ? r.from : A.from;
+      const to = Number.isFinite(r.to) ? r.to : A.to;
+      const steps = Number.isFinite(r.steps) ? r.steps : A.steps;
+      // One seed per axis (a per-step seed would re-roll the noise between
+      // steps of a gain sweep and read as noise sensitivity that is not there).
+      const seed = 1 + Math.floor(Math.abs(from * 1000 + to * 37 + steps));
+      for (const v of sweepValues(ax, from, to, steps)) {
+        if (Math.abs(v - A.neutral) <= 1e-9) continue;   // the shared baseline stands in
+        plan.push({ axis: ax, value: v, perturb: perturbFor(ax, v, seed) });
+      }
+    }
     abortRef.current = false;
-    setSweep({ axis: sweepAxis, from, to, steps, rows: [], done: 0, total: values.length });
+    const label = axes.length === 1 ? axes[0] : 'all';
+    setSweep({ axis: label, axes, rows: [], done: 0, total: plan.length + 1 });
+    // The baseline: unperturbed, expected where the def says the part is.
     let base;
     const rows = [];
-    for (let i = 0; i < values.length; i++) {
+    try {
+      base = await inspectOnce(null, Number.isFinite(reg.cx) ? { x: reg.cx, y: reg.cy } : null);
+    } catch (e) { base = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 }, why: 'core 沒有回應' }; }
+    setInsp(base);   // the baseline is also the single-test result; the overlay fills in
+    rows.push({ ...sweepRow(axes[0], SWEEP_AXES[axes[0]].neutral, base, base,
+                            base.located ? { x: base.pose.cx, y: base.pose.cy } : null, def_mmpp),
+                axis: 'base' });
+    setSweep((sw) => (sw ? { ...sw, rows: [...rows], done: 1 } : sw));
+    for (let i = 0; i < plan.length; i++) {
       if (abortRef.current) break;
-      const v = values[i];
-      let sum;
-      // WHERE THE PART MUST BE AT THIS STEP.
-      //
-      // We chose the perturbation, so this is arithmetic rather than a guess --
-      // and it is the only thing that distinguishes "the part, moved" from "a
-      // different object that now scores higher". The baseline supplies the
-      // starting position; before it exists, the def's own registration does.
-      const _p = perturbFor(sweepAxis, v, seed);
+      const { axis: ax, value: v, perturb: _p } = plan[i];
+      // WHERE THE PART MUST BE AT THIS STEP. We chose the perturbation, so this
+      // is arithmetic rather than a guess -- and it is the only thing that
+      // distinguishes "the part, moved" from "a different object that now
+      // scores higher".
       const _from = (base && base.located && base.pose)
         ? { cx: base.pose.cx, cy: base.pose.cy }
         : (Number.isFinite(reg.cx) ? { cx: reg.cx, cy: reg.cy } : null);
-      const _expect = _from ? expectedPosition(_from, pivot, _p || {}) : null;
+      const _expect = _from ? expectedPosition(_from, pivot, _p || {}, def_mmpp) : null;
+      let sum;
       try { sum = await inspectOnce(_p, _expect); }
       catch (e) { sum = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
                           why: 'core 沒有回應' }; }
-      if (i === 0) {
-        base = sum;
-        // The baseline result is also the single-test result -- it is the same
-        // run. Showing it means the overlay is populated while the sweep works.
-        setInsp(sum);
-      }
-      rows.push(sweepRow(sweepAxis, v, sum, base));
-      setSweep((sw) => (sw && sw.axis === sweepAxis
-        ? { ...sw, rows: [...rows], done: i + 1 } : sw));
+      rows.push(sweepRow(ax, v, sum, base, _expect, def_mmpp));
+      setSweep((sw) => (sw && sw.axis === label ? { ...sw, rows: [...rows], done: i + 2 } : sw));
     }
-    setSweep((sw) => (sw ? { ...sw, verdict: sweepVerdict(sweepAxis, rows),
-                             aborted: abortRef.current } : sw));
-  }, [sweepAxis, sweepRange, inspectOnce, pivot, reg.cx, reg.cy]);
+    // One verdict line per axis, each read over its own rows plus the baseline.
+    const verdicts = {};
+    for (const ax of axes) {
+      const own = rows.filter((r) => r.axis === ax || r.axis === 'base')
+                      .map((r) => (r.axis === 'base' ? { ...r, value: SWEEP_AXES[ax].neutral } : r));
+      verdicts[ax] = sweepVerdict(ax, own);
+    }
+    setSweep((sw) => (sw ? { ...sw, verdicts, aborted: abortRef.current } : sw));
+  }, [sweepRange, inspectOnce, pivot, reg.cx, reg.cy, def_mmpp]);
+  const runSweep = useCallback(() => runAxes([sweepAxis]), [runAxes, sweepAxis]);
+  const runSweepAll = useCallback(() => runAxes(SWEEP_ALL_ORDER), [runAxes]);
 
   // "跑全部影像": the same test, once per sample sitting next to the def.
   //
@@ -1447,7 +1458,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <Button style={{ flex: 1, height: H }} onClick={runSweep}
-              disabled={!!(sweep && sweep.done < sweep.total && !sweep.aborted)}>▶▶ 掃描</Button>
+              disabled={!!(sweep && sweep.done < sweep.total && !sweep.aborted)}>▶▶ 掃這個</Button>
+            <Button type="primary" style={{ flex: 1, height: H }} onClick={runSweepAll}
+              disabled={!!(sweep && sweep.done < sweep.total && !sweep.aborted)}
+              title="旋轉、位移、縮放、歪斜、亮度、offset、雜訊各用自己的範圍,一次掃完,同一張原圖當基準">▶▶ 全部掃描</Button>
             <Button danger style={{ height: H }} onClick={() => { abortRef.current = true; }}
               disabled={!(sweep && sweep.done < sweep.total && !sweep.aborted)}>中止</Button>
           </div>

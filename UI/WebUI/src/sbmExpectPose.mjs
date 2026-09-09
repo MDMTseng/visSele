@@ -49,7 +49,10 @@ export function imageCentreInObjectFrame(widthPx, heightPx, mmpp) {
 //
 // gain, bias and noise are absent on purpose: they change what the pixels say,
 // not where the part is, so a prediction that moved for them would be wrong.
-export function expectedPosition(from, pivot, perturb) {
+// `mmpp` is only needed for shift_x / shift_y, which the core applies in image
+// PIXELS after the rotation/scale/skew (TestPerturb.h adds them to the matrix's
+// translation). Without it a shift is ignored here, which is the old behaviour.
+export function expectedPosition(from, pivot, perturb, mmpp) {
   const p = perturb || {};
   let x = from.cx - pivot.x;
   let y = from.cy - pivot.y;
@@ -71,8 +74,12 @@ export function expectedPosition(from, pivot, perturb) {
 
   const sk = Number.isFinite(p.skew) ? p.skew : 0;
   if (sk) x += sk * y;
-
-  return { x: x + pivot.x, y: y + pivot.y };
+  x += pivot.x; y += pivot.y;
+  if (Number.isFinite(mmpp) && mmpp > 0) {
+    if (Number.isFinite(p.shift_x)) x += p.shift_x * mmpp;
+    if (Number.isFinite(p.shift_y)) y += p.shift_y * mmpp;
+  }
+  return { x, y };
 }
 
 // Choose the candidate that IS the part, and say so when none of them is.

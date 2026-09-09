@@ -51,6 +51,11 @@ export const SWEEP_AXES = {
     from: -0.1, to: 0.1, steps: 11,
     hint: '相機沒有正對零件時的一階近似。',
   },
+  shift: {
+    label: '位移 shift', key: 'shift_x', unit: 'px', neutral: 0,
+    from: -30, to: 30, steps: 7,
+    hint: '整張圖橫向平移。定位器回報的位置應該剛好跟著移,差多少就是位置誤差。',
+  },
 };
 
 // The step values, baseline FIRST.
@@ -81,34 +86,34 @@ export function perturbFor(axis, value, seed) {
   return { [A.key]: value, seed };
 }
 
-// One step's verdict, given the summary and the baseline summary.
-export function sweepRow(axis, value, sum, base) {
+// One row of the table. Two errors, both against what WE imposed:
+//   residual  angle error (deg): how far the reported rotation moved from the
+//             baseline minus how far the perturbation should have moved it
+//             (0 for every axis but rot).
+//   posErrPx  position error (px): distance from the reported centre to where
+//             the perturbation put the baseline centre (expectedPosition), in
+//             image px so it reads against the tolerance the operator set.
+// `expect` is that predicted position; `mmpp` converts mm to px.
+export function sweepRow(axis, value, sum, base, expect, mmpp) {
   const A = SWEEP_AXES[axis];
   const row = {
-    value, located: !!(sum && sum.located),
+    axis, value, located: !!(sum && sum.located),
     sim: sum && sum.located ? sum.pose.similarity : NaN,
     ok: sum ? sum.counts.ok : 0,
     na: sum ? sum.counts.na + sum.counts.ng : 0,
     why: sum ? sum.why : '',
-    residual: NaN,
+    residual: NaN, posErrPx: NaN,
   };
   if (!row.located || !base || !base.located) return row;
-
-  if (A && A.expect) {
-    // found - baseline is what the SCENE did; expect(value) is what we asked
-    // it to do. angleDelta keeps the comparison honest across +/-pi.
-    const moved = angleDelta(sum.pose.rotate, base.pose.rotate) * 180 / Math.PI;
-    row.moved = moved;
-    row.expected = A.expect(value);
-    row.residual = moved - row.expected;
-    // An INVERTED sign convention somewhere between here and
-    // getRotationMatrix2D shows up as moved = -expected, i.e. a residual of
-    // MINUS twice the applied value. That is not "the locator is twice as bad
-    // as it looks" -- it is a bug in this file or in the core's angle
-    // convention, and it produces a confident linear error curve that somebody
-    // would otherwise act on. Flagged, not absorbed.
-    row.signSuspect = Math.abs(row.expected) > 1e-6 &&
-                      Math.abs(row.residual + 2 * row.expected) < Math.abs(row.expected) * 0.25;
+  const moved = angleDelta(sum.pose.rotate, base.pose.rotate) * 180 / Math.PI;
+  row.moved = moved;
+  row.expected = (A && A.expect) ? A.expect(value) : 0;
+  row.residual = moved - row.expected;
+  row.signSuspect = Math.abs(row.expected) > 1e-6 &&
+                    Math.abs(row.residual + 2 * row.expected) < Math.abs(row.expected) * 0.25;
+  if (expect && Number.isFinite(expect.x) && Number.isFinite(mmpp) && mmpp > 0) {
+    const dx = sum.pose.cx - expect.x, dy = sum.pose.cy - expect.y;
+    row.posErrPx = Math.hypot(dx, dy) / mmpp;
   }
   return row;
 }
@@ -139,6 +144,11 @@ export function sweepVerdict(axis, rows) {
   const sims = done.filter((r) => r.located && Number.isFinite(r.sim)).map((r) => r.sim);
   if (sims.length) s += `,分數 ${Math.min(...sims).toFixed(3)}～${Math.max(...sims).toFixed(3)}`;
   const res = done.filter((r) => Number.isFinite(r.residual)).map((r) => Math.abs(r.residual));
-  if (res.length) s += `,角度殘差最大 ${Math.max(...res).toFixed(3)}°`;
+  if (res.length) s += `,角度誤差最大 ${Math.max(...res).toFixed(3)}°`;
+  const pe = done.filter((r) => Number.isFinite(r.posErrPx)).map((r) => r.posErrPx);
+  if (pe.length) s += `,位置誤差最大 ${Math.max(...pe).toFixed(2)} px`;
   return s;
 }
+
+// Every axis in one run: the order the table lists them in.
+export const SWEEP_ALL_ORDER = ['rot', 'shift', 'scale', 'skew', 'gain', 'bias', 'noise'];
