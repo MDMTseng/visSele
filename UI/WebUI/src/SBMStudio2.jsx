@@ -25,6 +25,7 @@ import { defFileGeneration, stampRefImagePath, SBM_INFO_NAME } from 'UTIL/MISC_U
 import { refPngPathOf } from 'UTIL/defNaming.mjs';
 import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
+import Tooltip from 'antd/lib/tooltip';
 import { SWEEP_AXES, SWEEP_ALL_ORDER, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
 import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
 import { imageCentre, expectedPosition } from './sbmExpectPose.mjs';
@@ -347,60 +348,131 @@ function InspectPanel({ insp, onClear }) {
   </div>;
 }
 
-// The sweep as a table: one row per step, the baseline first, and per row the
-// score plus the two errors against what we imposed -- position (px) and angle
-// (deg). In an all-axes run the first column names the axis.
+// Shared by both views: how bad is a step. 0 fine, 1 worth a look, 2 bad,
+// 3 not located. Position in px, angle in deg; the worse of the two decides.
+function stepSeverity(r) {
+  if (!r.located) return 3;
+  const p = Number.isFinite(r.posErrPx) ? r.posErrPx : 0;
+  const a = Number.isFinite(r.residual) ? Math.abs(r.residual) : 0;
+  if (p > 5 || a > 2) return 2;
+  if (p > 2 || a > 0.5) return 1;
+  return 0;
+}
+const SEV_BG = ['#f6ffed', '#fff7e6', '#fff1f0', '#fff1f0'];
+const SEV_INK = [P.ink, '#b26a00', P.bad, P.bad];
+const fmtVal = (r) => {
+  if (r.axis === 'base') return '原圖';
+  const A = SWEEP_AXES[r.axis] || {};
+  const v = r.value;
+  return (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2)) + (A.unit || '');
+};
+const axisName = (ax) => ((SWEEP_AXES[ax] || {}).label || ax).split(' ')[0];
+// What the bubble says for one step.
+function StepDetail({ r }) {
+  return <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+    <div><b>{axisName(r.axis === 'base' ? 'rot' : r.axis)}</b> {fmtVal(r)}</div>
+    {r.located ? <>
+      <div>分數 {r.sim.toFixed(3)}</div>
+      <div>位置誤差 {Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(2) + ' px' : '—'}</div>
+      <div>角度誤差 {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(3) + '°' : '—'}
+        {Number.isFinite(r.moved) ? <span style={{ color: '#bbb' }}>(施加 {r.expected.toFixed(2)}°,量到 {r.moved.toFixed(3)}°)</span> : null}
+        {r.signSuspect ? ' ⚠ 符號反了' : ''}</div>
+    </> : <div style={{ color: '#ff7875' }}>定位失敗{r.why ? ':' + r.why : ''}</div>}
+  </div>;
+}
+
+// THE OVERVIEW GRID (全部掃描): one column per axis, one row per step index,
+// each cell the position error in px coloured by the worse of the two errors;
+// the bubble carries the value, score and both errors. A step's value differs
+// per axis (row 3 is -6 deg for rotation and 0.94x for scale), which is why
+// the row is an index and the value lives in the bubble.
+function SweepGrid({ sweep }) {
+  const axes = sweep.axes || [];
+  const base = sweep.rows.find((r) => r.axis === 'base');
+  const byAxis = {};
+  for (const r of sweep.rows) if (r.axis !== 'base') (byAxis[r.axis] = byAxis[r.axis] || []).push(r);
+  const n = Math.max(0, ...axes.map((ax) => (byAxis[ax] || []).length));
+  // Eight columns have to fit a ~300 px rail: tight cells, no horizontal scroll.
+  const cell = { padding: '2px 2px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+                 border: '1px solid ' + P.line, minWidth: 30, cursor: 'default', fontSize: 10.5 };
+  const Cell = ({ r }) => {
+    if (!r) return <td style={{ ...cell, color: P.line }}>·</td>;
+    const sev = stepSeverity(r);
+    return <Tooltip title={<StepDetail r={r} />} mouseEnterDelay={0.05}>
+      <td style={{ ...cell, background: SEV_BG[sev], color: SEV_INK[sev] }}>
+        {r.located ? (Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(1) : '·') : '✗'}
+      </td>
+    </Tooltip>;
+  };
+  return <div style={{ overflowX: 'auto', marginTop: 3 }}>
+    <table style={{ fontSize: 10.5, borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+      <thead><tr style={{ color: P.dim }}>
+        <th style={{ ...cell, border: 'none', textAlign: 'right', width: 26 }}>#</th>
+        {axes.map((ax) => <th key={ax} style={{ ...cell, border: 'none' }}
+          title={(SWEEP_AXES[ax] || {}).label}>{axisName(ax)}</th>)}
+      </tr></thead>
+      <tbody>
+        {base && <tr style={{ background: '#eaf3f6' }}>
+          <td style={{ ...cell, color: P.accent, textAlign: 'right' }}>原圖</td>
+          <Tooltip title={<StepDetail r={base} />}><td colSpan={axes.length} style={{ ...cell, color: base.located ? P.ink : P.bad }}>
+            {base.located ? `分數 ${base.sim.toFixed(3)}` : '定位失敗'}</td></Tooltip>
+        </tr>}
+        {Array.from({ length: n }, (_, i) => <tr key={i}>
+          <td style={{ ...cell, color: P.dim, textAlign: 'right' }}>{i + 1}</td>
+          {axes.map((ax) => <Cell key={ax} r={(byAxis[ax] || [])[i]} />)}
+        </tr>)}
+      </tbody>
+    </table>
+    <div style={{ fontSize: 11, color: P.dim, marginTop: 3 }}>
+      格內數字 = 位置誤差 px;底色 = 位置/角度誤差較差者(綠 ok,橘 &gt;2px 或 &gt;0.5°,紅 &gt;5px 或 &gt;2°,✗ 定位失敗)。指到格子看數值。
+    </div>
+  </div>;
+}
+
+// Single-axis view: one row per step with the numbers spelled out.
+function SweepTable({ sweep }) {
+  const cell = { padding: '2px 6px', borderTop: '1px solid ' + P.line, whiteSpace: 'nowrap' };
+  const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+  return <div style={{ maxHeight: 260, overflow: 'auto', marginTop: 3 }}>
+    <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
+      <thead><tr style={{ color: P.dim }}>
+        <th style={{ ...num, borderTop: 'none' }}>值</th>
+        <th style={{ ...num, borderTop: 'none' }}>分數</th>
+        <th style={{ ...num, borderTop: 'none' }}>位置誤差 px</th>
+        <th style={{ ...num, borderTop: 'none' }}>角度誤差 °</th>
+      </tr></thead>
+      <tbody>
+        {sweep.rows.map((r, i) => {
+          const isBase = r.axis === 'base'; const sev = stepSeverity(r);
+          return <Tooltip key={i} title={<StepDetail r={r} />} mouseEnterDelay={0.05}>
+            <tr style={{ background: isBase ? '#eaf3f6' : SEV_BG[sev] }}>
+              <td style={{ ...num, color: isBase ? P.accent : P.ink }}>{fmtVal(r)}</td>
+              <td style={{ ...num, color: r.located ? P.ink : P.bad }}>{r.located ? r.sim.toFixed(3) : '失敗'}</td>
+              <td style={{ ...num, color: SEV_INK[sev] }}>{Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(2) : (r.located ? '—' : '')}</td>
+              <td style={{ ...num, color: r.signSuspect ? '#ffab00' : SEV_INK[sev] }}>
+                {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(3) : (r.located ? '—' : '')}{r.signSuspect ? ' ⚠' : ''}</td>
+            </tr>
+          </Tooltip>;
+        })}
+      </tbody>
+    </table>
+  </div>;
+}
+
 function SweepPanel({ sweep, floor }) {
   if (!sweep) return null;
   const all = sweep.axis === 'all';
-  const fmtV = (r) => {
-    if (r.axis === 'base') return '原圖';
-    const A = SWEEP_AXES[r.axis] || {};
-    const v = r.value;
-    return (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2)) + (A.unit || '');
-  };
-  const axisName = (ax) => ((SWEEP_AXES[ax] || {}).label || ax).split(' ')[0];
-  const cell = { padding: '2px 6px', borderTop: '1px solid ' + P.line, whiteSpace: 'nowrap' };
-  const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
-  const errColor = (v, warn, bad) => (!Number.isFinite(v) ? P.dim : Math.abs(v) > bad ? P.bad : Math.abs(v) > warn ? '#b26a00' : P.ink);
   const verdicts = sweep.verdicts || {};
   return <div style={{ marginTop: 4 }}>
     <div style={{ fontSize: 11, color: P.dim }}>
       {sweep.done}/{sweep.total}{sweep.aborted ? '(已中止)' : ''}
       <span style={{ marginLeft: 6 }}>門檻 {floor.toFixed(2)}</span>
     </div>
-    {Object.keys(verdicts).length > 0 && <div style={{ fontSize: 11, color: P.accent, margin: '3px 0', lineHeight: 1.5 }}>
+    {all ? <SweepGrid sweep={sweep} /> : <SweepTable sweep={sweep} />}
+    {Object.keys(verdicts).length > 0 && <div style={{ fontSize: 11, color: P.accent, margin: '4px 0', lineHeight: 1.5 }}>
       {(sweep.axes || []).map((ax) => verdicts[ax]
         ? <div key={ax}>{all ? <b>{axisName(ax)}:</b> : null} {verdicts[ax]}</div> : null)}
     </div>}
-    <div style={{ maxHeight: 260, overflow: 'auto', marginTop: 3 }}>
-      <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
-        <thead><tr style={{ color: P.dim }}>
-          {all && <th style={{ ...cell, textAlign: 'left', borderTop: 'none' }}>變數</th>}
-          <th style={{ ...num, borderTop: 'none' }}>值</th>
-          <th style={{ ...num, borderTop: 'none' }}>分數</th>
-          <th style={{ ...num, borderTop: 'none' }} title="定位到的中心,離擾動後應在位置的距離">位置誤差 px</th>
-          <th style={{ ...num, borderTop: 'none' }} title="回報角度相對原圖的變化,減掉施加的旋轉">角度誤差 °</th>
-        </tr></thead>
-        <tbody>
-          {sweep.rows.map((r, i) => {
-            const isBase = r.axis === 'base';
-            return <tr key={i} style={{ background: isBase ? '#eaf3f6' : undefined }}>
-              {all && <td style={{ ...cell, color: P.dim }}>{isBase ? '基準' : axisName(r.axis)}</td>}
-              <td style={{ ...num, color: isBase ? P.accent : P.ink }}>{fmtV(r)}</td>
-              <td style={{ ...num, color: r.located ? P.ink : P.bad }} title={r.located ? '' : r.why}>
-                {r.located ? r.sim.toFixed(3) : '失敗'}</td>
-              <td style={{ ...num, color: errColor(r.posErrPx, 2, 5) }}>
-                {Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(2) : (r.located ? '—' : '')}</td>
-              <td style={{ ...num, color: r.signSuspect ? '#ffab00' : errColor(r.residual, 0.5, 2) }}
-                  title={Number.isFinite(r.moved) ? `施加 ${r.expected.toFixed(2)}°,量到 ${r.moved.toFixed(3)}°` : ''}>
-                {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(3) : (r.located ? '—' : '')}
-                {r.signSuspect ? ' ⚠' : ''}</td>
-            </tr>;
-          })}
-        </tbody>
-      </table>
-    </div>
     {sweep.rows.some((r) => r.signSuspect) &&
       <div style={{ fontSize: 11, color: '#ffab00', marginTop: 3, lineHeight: 1.5 }}>
         ⚠ 角度誤差約等於施加值的兩倍 — 這是角度符號反了,不是定位差了兩倍。
