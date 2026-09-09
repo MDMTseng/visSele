@@ -26,9 +26,11 @@ import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
 import Radio from 'antd/lib/radio';
 import Tooltip from 'antd/lib/tooltip';
+import { DeviceSettingsModal } from './uInspDeviceSettings.jsx';
 import Popover from 'antd/lib/popover';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
+import SettingOutlined from '@ant-design/icons/SettingOutlined';
 import CaretRightOutlined from '@ant-design/icons/CaretRightOutlined';
 import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -743,8 +745,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // two disagree.
   const [speed, setSpeed] = useState(undefined);
   const [hzInput, setHzInput] = useState('');        // gate fire-rate cap, in parts/s
-  const [geoInput, setGeoInput] = useState({});      // 盤面幾何 drafts: dia / ppr
-  const [widthInput, setWidthInput] = useState({});  // 脈衝寬度 drafts: min / max
+  const [devCfgOpen, setDevCfgOpen] = useState(false);   // 裝置設定 modal
   useEffect(() => { setPlateGeometry(cfg && cfg.pulses_per_rev, cfg && cfg.plate_diameter_mm); },
             [cfg && cfg.pulses_per_rev, cfg && cfg.plate_diameter_mm]);
   const [procHzInput, setProcHzInput] = useState(''); // host throughput cap, in parts/s
@@ -1802,65 +1803,17 @@ build ${fw.build}`}>
             <span style={{ color: '#c33' }}>← 平均就來不及,料會一顆顆變 NA</span>
           )}
         </div>
-        {/* Plate geometry: the two numbers every mm on this panel is derived
-            from. Settable here because a plate that is not 240 mm / 70400
-            pulses used to need a JSON edit, and the 17.3% pulses_per_rev
-            error stayed invisible for weeks (min_dist_ticks note, firmware). */}
-        <div style={{ marginBottom: 4 }}>盤面幾何
-          <Why>盤面直徑和一圈的脈波數決定「1 tick = 幾 mm」,所有工位 offset、最小間距、
-            速度換算都靠這兩個數。直徑量玻璃盤外徑;一圈脈波數用 jog 走整圈數回來
-            (韌體預設 70400 是量 40 圈 2816001 tick 得到的)。改了之後所有以 mm
-            顯示的數字會跟著變,offset 本身(tick)不會動。</Why></div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <Input style={{ width: 150 }} addonBefore="直徑" addonAfter="mm"
-            placeholder={cfg.plate_diameter_mm !== undefined ? String(cfg.plate_diameter_mm) : '240'}
-            value={geoInput.dia === undefined ? '' : geoInput.dia}
-            onChange={(e) => setGeoInput({ ...geoInput, dia: e.target.value })} />
-          <Input style={{ width: 190 }} addonBefore="一圈" addonAfter="脈波"
-            placeholder={cfg.pulses_per_rev !== undefined ? String(cfg.pulses_per_rev) : '70400'}
-            value={geoInput.ppr === undefined ? '' : geoInput.ppr}
-            onChange={(e) => setGeoInput({ ...geoInput, ppr: e.target.value })} />
-          <Button size="small" loading={busy === 'geo'}
-            disabled={!((Number(geoInput.dia) > 0) || (Number(geoInput.ppr) > 0))}
-            onClick={() => run('geo', (api) => api.machineSetupUpdate({
-              ...(Number(geoInput.dia) > 0 ? { plate_diameter_mm: Number(geoInput.dia) } : {}),
-              ...(Number(geoInput.ppr) > 0 ? { pulses_per_rev: Math.round(Number(geoInput.ppr)) } : {}),
-            }, false, true)).then(() => setGeoInput({}))}
-          >套用</Button>
-          <span style={dim}>1 tick = {mmPerPulse().toFixed(4)} mm</span>
+        {/* Everything else the board accepts -- plate geometry, the width
+            filter, debounce, camera pairing, stop thresholds -- lives in one
+            modal (uInspDeviceSettings.jsx), table-driven off the firmware's
+            set_setup key lists. Only the run-time knobs stay on this page. */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          <Button size="small" icon={<SettingOutlined />} onClick={() => setDevCfgOpen(true)}>裝置設定…</Button>
+          <span style={dim}>盤面幾何、脈衝寬度濾波、去抖、相機配對、停機門檻。1 tick = {mmPerPulse().toFixed(4)} mm</span>
         </div>
-
-        {/* The width filter: the only thing separating a part from anything
-            else that breaks the beam. rej_width_lo/hi say which side is
-            rejecting, and cam_trig carries each part's w for choosing. */}
-        <div style={{ marginBottom: 4 }}>脈衝寬度濾波
-          <Why>閘門遮光脈衝的寬度(tick)要落在下限和上限之間才算一顆料:太短通常是碎屑或
-            抖動,太長通常是兩顆黏著或大異物。0 = 不限。下面「擋下·太短 / 太長」是
-            這道濾波各擋掉幾顆;每顆料回報裡的 w 是實際寬度,先看正常料的分布再定門檻。
-            單位是 tick,換算:tick × {mmPerPulse().toFixed(4)} mm。</Why></div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <Input style={{ width: 150 }} addonBefore="下限" addonAfter="tick"
-            placeholder={cfg.pulse_min_width !== undefined ? String(cfg.pulse_min_width) : '0'}
-            value={widthInput.min === undefined ? '' : widthInput.min}
-            onChange={(e) => setWidthInput({ ...widthInput, min: e.target.value })} />
-          <Input style={{ width: 150 }} addonBefore="上限" addonAfter="tick"
-            placeholder={cfg.pulse_max_width !== undefined ? String(cfg.pulse_max_width) : '1000'}
-            value={widthInput.max === undefined ? '' : widthInput.max}
-            onChange={(e) => setWidthInput({ ...widthInput, max: e.target.value })} />
-          <Button size="small" loading={busy === 'width'}
-            disabled={!(widthInput.min !== undefined && widthInput.min !== '' && Number(widthInput.min) >= 0)
-                      && !(widthInput.max !== undefined && widthInput.max !== '' && Number(widthInput.max) >= 0)}
-            onClick={() => run('width', (api) => api.machineSetupUpdate({
-              ...(widthInput.min !== undefined && widthInput.min !== '' && Number(widthInput.min) >= 0 ? { pulse_min_width: Math.round(Number(widthInput.min)) } : {}),
-              ...(widthInput.max !== undefined && widthInput.max !== '' && Number(widthInput.max) >= 0 ? { pulse_max_width: Math.round(Number(widthInput.max)) } : {}),
-            }, false, true)).then(() => setWidthInput({}))}
-          >套用</Button>
-          <span style={dim}>
-            {cfg.pulse_min_width !== undefined
-              ? `現在 ${cfg.pulse_min_width}–${cfg.pulse_max_width} tick = ${(cfg.pulse_min_width * mmPerPulse()).toFixed(2)}–${(cfg.pulse_max_width * mmPerPulse()).toFixed(2)} mm`
-              : ''}
-          </span>
-        </div>
+        <DeviceSettingsModal open={devCfgOpen} onClose={() => setDevCfgOpen(false)} cfg={cfg}
+          busy={busy === 'devcfg'} mmPerPulse={mmPerPulse()}
+          apply={(patch) => run('devcfg', (api) => api.machineSetupUpdate(patch, false, true))} />
 
         {/* Where the object's zero sits inside the gate pulse. Every station
             offset (stage_pulse_offset) is measured from this point, so

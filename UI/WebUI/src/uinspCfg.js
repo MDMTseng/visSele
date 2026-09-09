@@ -41,6 +41,10 @@ export const CFG_GROUP = {
   gate_proc_rate_hz:     ["gate", "proc_rate_hz"],
   gate_proc_sep_us:      ["gate", "proc_sep_us"],
   gate_proc_iir_shift:   ["gate", "proc_iir_shift"],
+  gate_proc_auto:        ["gate", "proc_auto"],
+  gate_proc_auto_max_us: ["gate", "proc_auto_max_us"],
+  gate_proc_auto_rho_pct:["gate", "proc_auto_rho_pct"],
+  gate_cam_stale_ms:     ["gate", "cam_stale_ms"],
 
   report_match_ts:       ["cam", "report_match_ts"],
   // report_match_pcnt is NOT mapped any more: pulse-count pairing was removed

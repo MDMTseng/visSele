@@ -39,6 +39,10 @@ CFG_GROUP = {
     "gate_debounce_rise":    ("gate", "debounce_rise"),
     "gate_debounce_fall":    ("gate", "debounce_fall"),
     "min_detect_dist_um":    ("gate", "min_detect_dist_um"),
+    "gate_proc_auto":        ("gate", "proc_auto"),
+    "gate_proc_auto_max_us": ("gate", "proc_auto_max_us"),
+    "gate_proc_auto_rho_pct":("gate", "proc_auto_rho_pct"),
+    "gate_cam_stale_ms":     ("gate", "cam_stale_ms"),
 
     "report_match_ts":       ("cam", "report_match_ts"),
     "report_match_pcnt":     ("cam", "report_match_pcnt"),
