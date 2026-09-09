@@ -360,6 +360,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // Set it to a value below the real ambiguity (e.g. 30 for a part whose two
   // plausible poses differ by 180) to opt in. Costs a full measurement pass per
   // extra candidate, which is why it is opt-in rather than a new default.
+  //
+  // 2026-09-09: this is now the ONLY rule for how many poses a location offers.
+  // Poses at one place are alternates of one object when they differ by at
+  // least this angle (the two faces count as poses), ordered by coarse score;
+  // there is no separate cap, score gap, or face arbitration any more.
   float shape_nms_angle = 360.0f;
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
   float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
