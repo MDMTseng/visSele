@@ -459,6 +459,17 @@ typedef struct FeatureReport_judgeDef{
     struct ANGLE{
       int quadrant;
       acv_XY pt;
+      // SIGNED MODE (parallelism / squareness). The classic angle takes the
+      // two lines' intersection and the quadrant the label point sits in, and
+      // reports 0..180 -- which has no sign and, for two nearly parallel
+      // lines, no usable intersection. In signed mode the value is the
+      // rotation from line 1 (the reference) to line 2, modulo 180 (a line has
+      // no head), minus nominal_deg, wrapped into (-90, +90]. Parallelism is
+      // nominal 0, squareness nominal 90. Counter-clockwise in the part's own
+      // frame is positive (the sign follows the flip). Off = the classic
+      // behaviour, byte for byte; defs without the key never enter here.
+      bool signed_mode;
+      float nominal_deg;
     }ANGLE;
     struct CALC{
       string exp;

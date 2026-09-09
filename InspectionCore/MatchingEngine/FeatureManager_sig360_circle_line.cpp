@@ -703,6 +703,27 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         break;
       }
 
+      if (judge.data.ANGLE.signed_mode)
+      {
+        // Direction of each line modulo 180, rotation from line 1 to line 2,
+        // minus the nominal, wrapped into (-90, 90]. No intersection, no
+        // quadrant, no label point: two parallel lines give exactly 0. The
+        // sign is CCW-positive in the part's frame: the vectors are in the
+        // image frame, and a flipped part turns the other way, so the sign
+        // follows flip_f. The UI (shapes/measure/angle.js, signedAngleDeg)
+        // computes the same formula on the def; keep the two together.
+        double a1 = atan2(vec1.y, vec1.x), a2 = atan2(vec2.y, vec2.x);
+        double d = (a2 - a1) * 180.0 / M_PI;
+        if (flip_f < 0) d = -d;
+        d -= judge.data.ANGLE.nominal_deg;
+        d = fmod(d, 180.0);
+        if (d > 90.0) d -= 180.0;
+        else if (d <= -90.0) d += 180.0;
+        judgeReport.measured_val = (float)d;
+        notNA = true;
+        break;
+      }
+
       acv_XY pt11, pt21;
       if (ParseLocatePosition(report, judge.OBJ1_id, &pt11) != 0 ||
           ParseLocatePosition(report, judge.OBJ2_id, &pt21) != 0)
@@ -2223,7 +2244,18 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
     judge.data.ANGLE.pt.x = *JFetEx_NUMBER(judge_obj, "pt1.x");
     judge.data.ANGLE.pt.y = *JFetEx_NUMBER(judge_obj, "pt1.y");
 
-    LOGV("quadrant:%d", judge.data.ANGLE.quadrant);
+    // angle_mode "signed" + nominal_deg: see the struct note. Absent = classic.
+    judge.data.ANGLE.signed_mode = false;
+    judge.data.ANGLE.nominal_deg = 0;
+    {
+      char *am = JFetch_STRING(judge_obj, "angle_mode");
+      if (am != NULL && strcmp(am, "signed") == 0) judge.data.ANGLE.signed_mode = true;
+      double *nd = JFetch_NUMBER(judge_obj, "nominal_deg");
+      if (nd != NULL) judge.data.ANGLE.nominal_deg = (float)*nd;
+    }
+
+    LOGV("quadrant:%d signed:%d nominal:%f", judge.data.ANGLE.quadrant,
+         (int)judge.data.ANGLE.signed_mode, judge.data.ANGLE.nominal_deg);
   }
   else if (strcmp(subtype, "area") == 0)
   {

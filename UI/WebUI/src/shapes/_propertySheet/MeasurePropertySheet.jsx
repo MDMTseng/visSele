@@ -95,6 +95,9 @@ export function MeasurePropertySheet({
 
   const isCalc       = shape.subtype === SHAPE_TYPE.measure_subtype.calc;
   const isCircleInfo = shape.subtype === SHAPE_TYPE.measure_subtype.circle_info;
+  const isAngle      = shape.subtype === SHAPE_TYPE.measure_subtype.angle;
+  const ANGLE_MODES  = ['quadrant', 'signed'];
+  const angleModeLabel = (m) => (m === 'signed' ? '帶正負(平行/垂直度)' : '夾角(象限)');
   const refCount     = isCalc ? 0 : 3;
 
   return <div>
@@ -104,6 +107,28 @@ export function MeasurePropertySheet({
     <DropdownField label={t('subtype')} value={shape.subtype}
       options={SUBTYPES} optionLabel={(v) => t('opt_' + v)}
       onChange={(subtype) => onUpdate({ ...shape, subtype })} />
+
+    {/* Angle mode. 'signed' is the parallelism / squareness measure: the
+        rotation from line A (ref 0, the reference) to line B minus the
+        nominal, wrapped into -90..+90, CCW positive. No intersection, no
+        quadrant, so two parallel lines read exactly 0 and the label point
+        only places the overlay. Absent = the classic quadrant angle. */}
+    {isAngle && <Section label="角度模式">
+      <DropdownField label="模式" value={shape.angle_mode || 'quadrant'}
+        options={ANGLE_MODES} optionLabel={angleModeLabel}
+        onChange={(m) => onUpdate({ ...shape, angle_mode: m === 'signed' ? 'signed' : undefined,
+                                    ...(m === 'signed' && shape.nominal_deg === undefined ? { nominal_deg: 0 } : {}) })} />
+      {shape.angle_mode === 'signed' && <>
+        <NumberField label="標稱" unit="º" step={1} value={shape.nominal_deg ?? 0}
+          onCommit={(v) => onUpdate({ ...shape, nominal_deg: Number(v) || 0 })}
+          quickActions={<>
+            <StepButton onClick={() => onUpdate({ ...shape, nominal_deg: 0 })}>0 平行</StepButton>
+            <StepButton onClick={() => onUpdate({ ...shape, nominal_deg: 90 })}>90 垂直</StepButton>
+          </>} />
+        <Row label=""><span style={{ fontSize: 11, color: '#888' }}>
+          值 = 線 B 相對線 A(參照 0)的轉角 − 標稱,範圍 −90~+90,逆時針為正;標籤點只決定畫在哪。</span></Row>
+      </>}
+    </Section>}
 
     {/* Target + control/spec limits */}
     <Section label={t('target')}>
