@@ -75,8 +75,9 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const _dLine = (Q, L0, L1) => { const vx = L1.x - L0.x, vy = L1.y - L0.y, n = Math.hypot(vx, vy) || 1;
     return Math.abs((Q.x - L0.x) * vy - (Q.y - L0.y) * vx) / n; };
   const _reach = Math.max(_dLine(shape.pt1, A0, A1), _dLine(shape.pt1, B0, B1));
-  const R = Math.min(120 * ps, Math.max(25 * ps, _reach));   // ray length
-  const rS = 0.6 * R;                                         // sector radius
+  // Half the reach, 15..60 px: the reach itself was too big (CT 2026-09-09).
+  const R = Math.min(60 * ps, Math.max(15 * ps, 0.5 * _reach));   // ray length
+  const rS = 0.6 * R;                                              // sector radius
   const toRad = Math.PI / 180;
   const refA = aA + nominal * toRad;           // A's direction after the nominal
   const raw = wrap360((aB - refA) / toRad);    // B relative to that, (-180, 180]
