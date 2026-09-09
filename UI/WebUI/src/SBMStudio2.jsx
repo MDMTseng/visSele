@@ -1532,6 +1532,15 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
 
         <Block n="4" idx={3} title="ROI 取樣點"
           summary={(roiBusy ? '更新窗口中… ' : '') + (roiPts.length ? roiPts.length + ' 點' : '自動')}>
+          <Row label="ROI 最小間距" unit="px">
+            <InputNumber min={-1} max={200} step={1} style={{ width: 92 }}
+              value={edit_info.shape_roi_spacing ?? -1}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_roi_spacing: (typeof v === 'number') ? v : -1 }))} />
+          </Row>
+          <Hint>自動產生時,兩點至少相隔這麼遠,視窗才不會疊在一起。
+            <b style={{ color: P.ink }}>-1 = 自動</b>(一個視窗寬 30 px,視窗不重疊)、
+            <b style={{ color: P.ink }}>0 = 關</b>(只靠 5×5 格子每格最多 2 點)、正數 = 指定像素。
+            改完再按「自動產生」。</Hint>
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
             <Button style={{ flex: 1, height: H }} loading={genBusy || roiBusy} onClick={autoFillRoi}>⚙ 自動產生</Button>
             <Button style={{ height: H }} loading={roiBusy} onClick={() => onRoi([])}>清除</Button>
@@ -1637,15 +1646,6 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
             <b style={{ color: P.ink }}>360 = 只留分數最高的一個</b>;設 10 就會保留每隔 10° 的姿態
             (正反面也算姿態),量測依<b style={{ color: P.ink }}>粗定位分數</b>由高到低逐一試,
             第一個通過方向必要量測的就是答案。沒有方向必要量測時永遠取第一個。</Hint>
-          <Row label="ROI 最小間距" unit="px">
-            <InputNumber min={-1} max={200} step={1} style={{ width: 92 }}
-              value={edit_info.shape_roi_spacing ?? -1}
-              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_roi_spacing: (typeof v === 'number') ? v : -1 }))} />
-          </Row>
-          <Hint>自動產生 ROI 點時,兩點至少相隔這麼遠,視窗才不會疊在一起。
-            <b style={{ color: P.ink }}>-1 = 自動</b>(ROI 半寬 15 px,最多疊一半)、
-            <b style={{ color: P.ink }}>0 = 關</b>(只靠 5×5 格子每格最多 2 點)、正數 = 指定像素。
-            改完要重按「自動產生」才會重選點。</Hint>
           <Row label="定位信任" unit="">
             <Select style={{ width: 92 }} value={edit_info.shape_trust_na === true ? 1 : 0}
               onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_trust_na: v === 1 }))}
