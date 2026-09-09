@@ -1496,6 +1496,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
               value={edit_info.shape_nms_angle ?? 360}
               onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_nms_angle: v }))} />
           </Row>
+          <Hint>同一顆料的候選姿態要相差幾度才算不同姿態。候選數量就由這個值決定:
+            <b style={{ color: P.ink }}>360 = 只留分數最高的一個</b>;設 10 就會保留每隔 10° 的姿態
+            (正反面也算姿態),量測依<b style={{ color: P.ink }}>粗定位分數</b>由高到低逐一試,
+            第一個通過方向必要量測的就是答案。沒有方向必要量測時永遠取第一個。</Hint>
           <Row label="定位信任" unit="">
             <Select style={{ width: 92 }} value={edit_info.shape_trust_na === true ? 1 : 0}
               onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_trust_na: v === 1 }))}
