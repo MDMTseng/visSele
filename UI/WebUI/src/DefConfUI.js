@@ -1476,16 +1476,35 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
       // leaves notches in a polar outline, and the fill must not follow them
       // in. Then the constant margin.
       const N = sg.magnitude.length, WIN = 5;   // 10-degree max window (5 bins either side), per CT 2026-09-09
+      // THE ANGLE MUST ONLY ADVANCE. sg.angle[i] is the measured angle of
+      // the contour point in bin i, and where the contour passes close to
+      // the centre it can step BACKWARDS (test2 bins 312-314 read -60.9 deg
+      // after bin 311's -49.4, at a fifth of the radius). Sorting those by
+      // angle interleaved them with the far points near -60 deg, the polygon
+      // ran in and out along that ray, and the mask showed a wedge cut at
+      // the upper right (2026-09-09). So walk the bins in order, unwrap the
+      // angle so it never decreases (a backward bin joins the previous ray),
+      // and keep one point per ray: the largest radius.
       const pts = [];
+      let thPrev = NaN;
       for (let i = 0; i < N; i++) {
-        const th = sg.angle[i];
+        let th = sg.angle[i];
         if (!(sg.magnitude[i] > 1e-4) || !Number.isFinite(th)) continue;   // empty bin
         let R = 0;
         for (let k = -WIN; k <= WIN; k++) { const v = sg.magnitude[(i + k + N) % N]; if (v > R) R = v; }
+        if (Number.isFinite(thPrev)) {
+          th = thPrev + Math.atan2(Math.sin(th - thPrev), Math.cos(th - thPrev));   // unwrap next to the previous
+          if (th <= thPrev + 1e-9) {                       // same ray or backwards: merge
+            const q = pts[pts.length - 1];
+            if (R > q.R) { q.R = R; const Ro = R + margin; q.x = Ro * Math.cos(q.th); q.y = Ro * Math.sin(q.th); }
+            continue;
+          }
+        }
         const Ro = R + margin;
-        pts.push({ th, x: Ro * Math.cos(th), y: Ro * Math.sin(th) });
+        pts.push({ th, R, x: Ro * Math.cos(th), y: Ro * Math.sin(th) });
+        thPrev = th;
       }
-      pts.sort((a, b) => a.th - b.th);   // a polygon, in angular order
+      // Already in angular order (bin order, angle strictly increasing).
       if (pts.length >= 3) {
         seedInclude = [pts.map((q) => ({ x: q.x, y: q.y }))];
         dispatch(DefConfAct.EditInfo_Patch({ __loc_include: seedInclude }));
