@@ -91,6 +91,26 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   ctx.font = renderer.getFontStyle(1);
   ctx.setLineDash([]);
 
+  // VIRTUAL EXTENSION LINES. The datum symbol and the leader's foot sit on
+  // the infinite line, which can be well outside the part (CT's screenshot,
+  // 2026-09-09: the foot on B was 10 mm below the segment, floating). A thin
+  // dashed line from the nearest end of the real segment to the foot says
+  // "this is that line, extended". A search-point line is a point + unit
+  // vector, so its "segment" is that point: the extension runs from there.
+  const extendTo = (foot, L0, L1, colour) => {
+    const vx = L1.x - L0.x, vy = L1.y - L0.y, n2 = vx * vx + vy * vy || 1;
+    const t = ((foot.x - L0.x) * vx + (foot.y - L0.y) * vy) / n2;
+    if (t >= 0 && t <= 1) return;                       // foot lies on the segment
+    const from = (t < 0) ? L0 : L1;
+    ctx.save();
+    ctx.strokeStyle = colour; ctx.setLineDash([2 * ps, 1.5 * ps]); ctx.lineWidth = 0.6 * renderer.getIndicationLineSize();
+    const over = at(foot, Math.atan2(foot.y - from.y, foot.x - from.x), 3 * ps);   // a little past the foot
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(over.x, over.y); ctx.stroke();
+    ctx.restore();
+  };
+  extendTo(tA, A0, A1, 'rgba(30,60,200,0.8)');
+  extendTo(tB, B0, B1, 'rgba(200,60,30,0.8)');
+
   const isGDT = (range === 'signed90');
   if (isGDT) {
     // ---- GD&T (ISO 1101 / ASME Y14.5): datum symbol on A, feature control
@@ -162,9 +182,10 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     // extension lines: from each line's foot (nearest the arc end) out past the arc
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.setLineDash([ps, ps]);
-    for (const [ang, L0, L1] of [[s0, A0, A1], [e0, B0, B1]]) {
+    for (const [ang, L0, L1, col] of [[s0, A0, A1, 'rgba(30,60,200,0.8)'], [e0, B0, B1, 'rgba(200,60,30,0.8)']]) {
       const end = at(V, ang, r + 2 * ps);
       const foot = proj(end, L0, L1);
+      extendTo(foot, L0, L1, col);
       seg(foot, end);
     }
     ctx.setLineDash([]);
