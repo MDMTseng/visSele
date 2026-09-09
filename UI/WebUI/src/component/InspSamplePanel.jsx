@@ -19,7 +19,7 @@ import Input from 'antd/lib/input';
 import InputNumber from 'antd/lib/input-number';
 import Select from 'antd/lib/select';
 import Switch from 'antd/lib/switch';
-import { ReloadOutlined, DeleteOutlined, SettingOutlined, PlusOutlined, CloseOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DeleteOutlined, SettingOutlined, PlusOutlined, CloseOutlined, SaveOutlined } from '@ant-design/icons';
 import { loadSampleGroups, saveSampleGroups, pushSampleGroups, SAMPLE_WANTS } from 'UTIL/inspSampleGroups';
 import { INSPECTION_STATUS } from 'UTIL/InspectionStatus';
 import { RepDisplay } from '../RepDisplayUI.js';
@@ -47,6 +47,41 @@ function imageFromRecord(rec) {
            jpegBytes: bytes, image: bytes };
 }
 
+// Write one kept record to disk as the pair the playback screen and the
+// editor's quick verify read: <stem>.xreps (the same JSON the core's
+// saveInspectionSample writes -- reports = the frame's objects, defInfo,
+// camera_param = the frame's cam_param, time_ms) and <stem>.jpg (the frame,
+// bytes as kept). Both go through SV with a binary payload, the same path
+// that saves defs. The stem is <def>-<record time>, so a record saved twice
+// lands on the same files.
+function stampOf(ms) {
+  const d = new Date(ms || Date.now());
+  const p2 = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + '-' + p2(d.getMinutes()) + '-' + p2(d.getSeconds()) + '_' + String(d.getMilliseconds()).padStart(3, '0');
+}
+function saveRecordAsXreps(rec, sendBPG, dir, defName) {
+  const frames = (rec.report && rec.report.reports) || [];
+  const frame = frames[0] || {};
+  const body = {
+    reports: frame.reports || [],
+    defInfo: rec.def,
+    camera_param: frame.cam_param,
+    time_ms: rec.ts_ms || Date.now(),
+  };
+  const stem = (dir || 'data').replace(/\/+$/, '') + '/' + (defName || 'sample') + '-' + stampOf(rec.ts_ms);
+  const put = (filename, bytes) => new Promise((resolve, reject) =>
+    sendBPG('SV', 0, { filename, make_dir: true }, bytes, {
+      resolve: (pkts) => { const SS = (pkts || []).find((x) => x.type === 'SS'); (SS && SS.data && SS.data.ACK) ? resolve() : reject(new Error('write refused: ' + filename)); },
+      reject: (e) => reject(e instanceof Error ? e : new Error(String(e))),
+    }));
+  const bin = atob(rec.jpg_b64 || '');
+  const img = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) img[i] = bin.charCodeAt(i);
+  return put(stem + '.xreps', new TextEncoder().encode(JSON.stringify(body)))
+    .then(() => (img.length ? put(stem + '.jpg', img) : undefined))
+    .then(() => stem);
+}
+
 // The rows that made the verdict what it is, worst first.
 function judgeRows(obj) {
   const js = (obj && obj.judgeReports) || [];
@@ -55,9 +90,12 @@ function judgeRows(obj) {
   return js.slice().sort((a, b) => rank(a.status) - rank(b.status));
 }
 
-function Detail({ rec }) {
+function Detail({ rec, sendBPG, saveDir, defName }) {
   // Hooks first, unconditionally (rules of hooks); the early returns follow.
   const recId = rec && rec.id;
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(undefined);
+  useEffect(() => { setSaved(undefined); }, [recId]);
   const image = useMemo(() => imageFromRecord(rec), [recId]);
   // A FRESH def copy per record: RepDisplay's rootDefInfoLoading deletes
   // featureSet_sha1 off whatever it is handed.
@@ -77,7 +115,16 @@ function Detail({ rec }) {
       <Tag color={COLOUR[rec.group_verdict] || '#555'}>{rec.group}</Tag>
       <span style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(rec.ts_ms)}</span>
       <span style={{ fontSize: 12, color: '#888' }}>{rec.w}x{rec.h} 全解析度 · {objs.length} 顆</span>
+      <span style={{ flex: 1 }} />
+      <Button size="small" icon={<SaveOutlined />} loading={saving} onClick={() => {
+        setSaving(true);
+        saveRecordAsXreps(rec, sendBPG, saveDir, defName)
+          .then((stem) => setSaved({ ok: true, text: '已存 ' + stem + '.xreps / .jpg' }))
+          .catch((e) => setSaved({ ok: false, text: '存檔失敗:' + (e && e.message || e) }))
+          .finally(() => setSaving(false));
+      }}>存成 xreps</Button>
     </div>
+    {saved ? <div style={{ fontSize: 12, color: saved.ok ? '#389e0d' : COLOUR.NG, marginBottom: 6 }}>{saved.text}</div> : null}
     {/* The overlay, from the same component the playback screen uses: the def,
         the camera param and the report draw search points, fitted lines and
         circles and caliper hits over the frame the measurement was taken from. */}
@@ -167,7 +214,7 @@ function GroupEditor({ defName, measures, initial, sendBPG, onApplied, onCancel 
   </div>;
 }
 
-export default function InspSamplePanel({ visible, onClose, sendBPG, defName, measures }) {
+export default function InspSamplePanel({ visible, onClose, sendBPG, defName, measures, saveDir }) {
   const [editing, setEditing] = useState(false);
   const [list, setList] = useState(undefined);
   const [sel, setSel] = useState(undefined);
@@ -245,7 +292,7 @@ export default function InspSamplePanel({ visible, onClose, sendBPG, defName, me
             </div>))}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {sel !== undefined && rec === undefined ? <div style={{ color: '#888', padding: 20 }}>讀取中…</div> : <Detail rec={rec} />}
+          {sel !== undefined && rec === undefined ? <div style={{ color: '#888', padding: 20 }}>讀取中…</div> : <Detail rec={rec} sendBPG={sendBPG} saveDir={saveDir} defName={defName} />}
         </div>
       </div>}
   </Modal>;

@@ -3936,6 +3936,7 @@ class APP_INSP_MODE extends React.Component {
         onClose={()=>this.setState({samplePanel:false})}
         sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)}
         defName={this.props.defModelName}
+        saveDir={(this.props.machine_custom_setting && this.props.machine_custom_setting.InspSampleSavePath) || 'data'}
         measures={(this.props.shape_list||[]).filter(sh=>sh.type==='measure').map(sh=>({id:sh.id,name:sh.name}))} />
       <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
         <RedoOutlined/>
