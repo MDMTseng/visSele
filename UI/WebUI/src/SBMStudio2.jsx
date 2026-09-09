@@ -502,7 +502,9 @@ function SweepPanel({ sweep, floor }) {
       {all && <a onClick={() => setPopped(true)} style={{ fontSize: 11 }}>⤢ 放大檢視</a>}
     </div>
     {all ? <SweepGrid sweep={sweep} /> : <SweepTable sweep={sweep} />}
-    {verdictBlock(11)}
+    {/* The per-axis verdict sentences are the single-axis view's; the grid
+        already says it all and the sentences only pushed the panel down. */}
+    {!all && verdictBlock(11)}
     {all && <Modal open={popped} onCancel={() => setPopped(false)} footer={null} zIndex={3000}
         width="min(1180px, 96vw)" style={{ top: 24 }} destroyOnClose
         title={<span>強健性掃描 · 總表 <span style={{ fontSize: 12, color: P.dim, marginLeft: 8 }}>
@@ -520,7 +522,6 @@ function SweepPanel({ sweep, floor }) {
           </div>;
         })()}
         <SweepGrid sweep={sweep} big />
-        {verdictBlock(12.5)}
       </div>
     </Modal>}
     {sweep.rows.some((r) => r.signSuspect) &&
