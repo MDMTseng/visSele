@@ -16,6 +16,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { fields as measureFields } from '../measure';
+import { ANGLE_RANGES } from '../measure/angle';
 import { BACK_SIDE_LIMITS_ENABLED } from 'UTIL/backSideLimits';
 import { Measure_Calc_Editor } from 'JSSRCROOT/DefConfUI';
 import {
@@ -96,8 +97,10 @@ export function MeasurePropertySheet({
   const isCalc       = shape.subtype === SHAPE_TYPE.measure_subtype.calc;
   const isCircleInfo = shape.subtype === SHAPE_TYPE.measure_subtype.circle_info;
   const isAngle      = shape.subtype === SHAPE_TYPE.measure_subtype.angle;
-  const ANGLE_MODES  = ['quadrant', 'signed'];
-  const angleModeLabel = (m) => (m === 'signed' ? '帶正負(平行/垂直度)' : '夾角(象限)');
+  const ANGLE_MODES  = ['signed', 'quadrant'];
+  const angleModeLabel = (m) => (m === 'signed' ? '向量(新)' : '夾角(象限,舊)');
+  const rangeLabel = (k) => { const r = ANGLE_RANGES.find((x) => x.key === k); return r ? r.label : k; };
+  const rangeHint = (k) => { const r = ANGLE_RANGES.find((x) => x.key === k); return r ? r.hint : ''; };
   const refCount     = isCalc ? 0 : 3;
 
   return <div>
@@ -119,6 +122,10 @@ export function MeasurePropertySheet({
         onChange={(m) => onUpdate({ ...shape, angle_mode: m === 'signed' ? 'signed' : undefined,
                                     ...(m === 'signed' && shape.nominal_deg === undefined ? { nominal_deg: 0 } : {}) })} />
       {shape.angle_mode === 'signed' && <>
+        <DropdownField label="範圍" value={shape.angle_range || 'signed90'}
+          options={ANGLE_RANGES.map((r) => r.key)} optionLabel={rangeLabel}
+          onChange={(k) => onUpdate({ ...shape, angle_range: k })} />
+        <Row label=""><span style={{ fontSize: 11, color: '#888' }}>{rangeHint(shape.angle_range || 'signed90')}</span></Row>
         <NumberField label="標稱" unit="º" step={1} value={shape.nominal_deg ?? 0}
           onCommit={(v) => onUpdate({ ...shape, nominal_deg: Number(v) || 0 })}
           quickActions={<>
@@ -126,7 +133,7 @@ export function MeasurePropertySheet({
             <StepButton onClick={() => onUpdate({ ...shape, nominal_deg: 90 })}>90 垂直</StepButton>
           </>} />
         <Row label=""><span style={{ fontSize: 11, color: '#888' }}>
-          值 = 線 B 相對線 A(參照 0)的轉角 − 標稱,範圍 −90~+90,逆時針為正;標籤點只決定畫在哪。</span></Row>
+          以兩條線的方向向量算,線 A = 參照 0,逆時針為正,先減標稱再折到所選範圍;標籤點只決定畫在哪。</span></Row>
       </>}
     </Section>}
 

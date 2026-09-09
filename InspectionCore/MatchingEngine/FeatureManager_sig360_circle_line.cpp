@@ -716,9 +716,23 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         double d = (a2 - a1) * 180.0 / M_PI;
         if (flip_f < 0) d = -d;
         d -= judge.data.ANGLE.nominal_deg;
-        d = fmod(d, 180.0);
-        if (d > 90.0) d -= 180.0;
-        else if (d <= -90.0) d += 180.0;
+        // The same seven readings as the UI's vectorAngleDeg (angle.js).
+        typedef FeatureReport_judgeDef R;
+        auto wrap180 = [](double v) { v = fmod(v, 180.0); if (v > 90.0) v -= 180.0; else if (v <= -90.0) v += 180.0; return v; };
+        auto wrap360 = [](double v) { v = fmod(v, 360.0); if (v > 180.0) v -= 360.0; else if (v <= -180.0) v += 360.0; return v; };
+        auto pos180  = [](double v) { v = fmod(v, 180.0); if (v < 0) v += 180.0; return v; };
+        auto pos360  = [](double v) { v = fmod(v, 360.0); if (v < 0) v += 360.0; return v; };
+        switch (judge.data.ANGLE.range)
+        {
+          case R::ANGLE_ABS90:     d = fabs(wrap180(d)); break;
+          case R::ANGLE_DEG180:    d = pos180(d); break;
+          case R::ANGLE_SIGNED180: d = wrap360(d); break;
+          case R::ANGLE_DEG360:    d = pos360(d); break;
+          case R::ANGLE_SUPP:      d = 180.0 - pos180(d); break;
+          case R::ANGLE_COMP:      d = 90.0 - fabs(wrap180(d)); break;
+          case R::ANGLE_SIGNED90:
+          default:           d = wrap180(d); break;
+        }
         judgeReport.measured_val = (float)d;
         notNA = true;
         break;
@@ -2249,9 +2263,24 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
     judge.data.ANGLE.nominal_deg = 0;
     {
       char *am = JFetch_STRING(judge_obj, "angle_mode");
-      if (am != NULL && strcmp(am, "signed") == 0) judge.data.ANGLE.signed_mode = true;
+      // "signed" is the name the first build shipped with; "vector" is the
+      // same mode now that it has a range option. Both mean: direction
+      // vectors, no intersection, no quadrant.
+      if (am != NULL && (strcmp(am, "signed") == 0 || strcmp(am, "vector") == 0)) judge.data.ANGLE.signed_mode = true;
       double *nd = JFetch_NUMBER(judge_obj, "nominal_deg");
       if (nd != NULL) judge.data.ANGLE.nominal_deg = (float)*nd;
+      judge.data.ANGLE.range = FeatureReport_judgeDef::ANGLE_SIGNED90;
+      char *ar = JFetch_STRING(judge_obj, "angle_range");
+      if (ar != NULL)
+      {
+        typedef FeatureReport_judgeDef R;
+        if      (strcmp(ar, "abs90") == 0)     judge.data.ANGLE.range = R::ANGLE_ABS90;
+        else if (strcmp(ar, "deg180") == 0)    judge.data.ANGLE.range = R::ANGLE_DEG180;
+        else if (strcmp(ar, "signed180") == 0) judge.data.ANGLE.range = R::ANGLE_SIGNED180;
+        else if (strcmp(ar, "deg360") == 0)    judge.data.ANGLE.range = R::ANGLE_DEG360;
+        else if (strcmp(ar, "supp") == 0)      judge.data.ANGLE.range = R::ANGLE_SUPP;
+        else if (strcmp(ar, "comp") == 0)      judge.data.ANGLE.range = R::ANGLE_COMP;
+      }
     }
 
     LOGV("quadrant:%d signed:%d nominal:%f", judge.data.ANGLE.quadrant,

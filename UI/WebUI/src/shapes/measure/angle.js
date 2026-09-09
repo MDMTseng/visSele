@@ -20,13 +20,33 @@ export function availableRefShapes(shapeList) {
 // (-90, 90]. Same formula as the core's ANGLE judge (signed_mode branch);
 // change both or neither. CCW-positive in the def frame (y-down canvas: the
 // atan2 sign is the same one the core uses on the image, so they agree).
-export function signedAngleDeg(a1, a2, nominal) {
-  let d = (a2 - a1) * 180 / Math.PI - (nominal || 0);
-  d = d % 180;
-  if (d > 90) d -= 180;
-  else if (d <= -90) d += 180;
-  return d;
+export const ANGLE_RANGES = [
+  { key: 'signed90',  label: '±90 平行度',      hint: '線 B 相對線 A 的轉角,−90~+90,線不分頭尾。平行 = 0。' },
+  { key: 'abs90',     label: '0~90 銳角',       hint: '兩線間的銳角,無正負。' },
+  { key: 'deg180',    label: '0~180',           hint: 'A 逆時針轉到 B,0~180,線不分頭尾。' },
+  { key: 'signed180', label: '±180 向量',       hint: '把線當有頭尾的向量(pt1→pt2),−180~+180。' },
+  { key: 'deg360',    label: '0~360 向量',      hint: 'A 逆時針轉到 B,0~360,向量有頭尾。' },
+  { key: 'supp',      label: '補角 180−θ',      hint: '180 減去 0~180 的角。' },
+  { key: 'comp',      label: '餘角 90−θ',       hint: '90 減去銳角。' },
+];
+const wrap180 = (v) => { v = v % 180; if (v > 90) v -= 180; else if (v <= -90) v += 180; return v; };
+const wrap360 = (v) => { v = v % 360; if (v > 180) v -= 360; else if (v <= -180) v += 360; return v; };
+const pos180  = (v) => { v = v % 180; if (v < 0) v += 180; return v; };
+const pos360  = (v) => { v = v % 360; if (v < 0) v += 360; return v; };
+// Same seven readings as the core's ANGLE judge (signed_mode branch).
+export function vectorAngleDeg(a1, a2, nominal, range) {
+  const d = (a2 - a1) * 180 / Math.PI - (nominal || 0);
+  switch (range) {
+    case 'abs90':     return Math.abs(wrap180(d));
+    case 'deg180':    return pos180(d);
+    case 'signed180': return wrap360(d);
+    case 'deg360':    return pos360(d);
+    case 'supp':      return 180 - pos180(d);
+    case 'comp':      return 90 - Math.abs(wrap180(d));
+    default:          return wrap180(d);
+  }
 }
+export function signedAngleDeg(a1, a2, nominal) { return vectorAngleDeg(a1, a2, nominal, 'signed90'); }
 
 // The overlay for signed mode. There is no vertex to draw at (parallel lines
 // have none), so everything anchors on the label point: a dashed stub along
@@ -40,7 +60,8 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const aA = Math.atan2(A1.y - A0.y, A1.x - A0.x);
   const aB = Math.atan2(B1.y - B0.y, B1.x - B0.x);
   const nominal = shape.nominal_deg || 0;
-  const measureDeg = signedAngleDeg(aA, aB, nominal);
+  const range = shape.angle_range || 'signed90';
+  const measureDeg = vectorAngleDeg(aA, aB, nominal, range);
   const P = shape.pt1;
   const L = 6 * renderer.getPrimitiveSize();
   const ps = renderer.getPrimitiveSize();
@@ -56,8 +77,17 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   // reference stub (A, dashed) and measured stub (B, solid), both from P.
   // B's stub is drawn at the nominal-rotated A direction plus the measured
   // deviation, exaggerated to at least 15 deg so the sign is readable.
-  const dir = Math.sign(measureDeg) || 1;
-  const shown = dir * Math.max(15, Math.min(60, Math.abs(measureDeg))) * Math.PI / 180;
+  // What the arc shows: the raw A->B rotation for the 180/360 readings (the
+  // arrow then IS the reading), the signed deviation for the ±90 ones,
+  // exaggerated to at least 15 deg so a 0.3 deg tilt still has a visible
+  // direction. The text always carries the true value.
+  const raw = (aB - aA) * 180 / Math.PI - nominal;
+  let showDeg;
+  if (range === 'deg360' || range === 'signed180') showDeg = wrap360(raw);
+  else if (range === 'deg180' || range === 'supp') showDeg = pos180(raw);
+  else showDeg = wrap180(raw);
+  const dir = Math.sign(showDeg) || 1;
+  const shown = dir * Math.max(15, Math.abs(showDeg)) * Math.PI / 180;
   const refA = aA + nominal * Math.PI / 180;
   const stubB = refA + shown;
   ctx.setLineDash([ps, ps]);

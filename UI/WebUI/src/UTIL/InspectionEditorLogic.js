@@ -685,6 +685,14 @@ export class InspectionEditorLogic {
                   break;
                 case SHAPE_TYPE.measure_subtype.angle:
                   edit_info.edit_tar_info.ref = [{}, {}];
+                  // New angles are vector angles (CT 2026-09-09): direction
+                  // vectors, a range, a nominal -- no intersection, no
+                  // quadrant. The property sheet can switch back to the
+                  // classic quadrant angle; defs that never had angle_mode
+                  // keep it.
+                  edit_info.edit_tar_info.angle_mode = 'signed';
+                  edit_info.edit_tar_info.angle_range = 'signed90';
+                  edit_info.edit_tar_info.nominal_deg = 0;
                   break;
                 default:
                   log.info("Error: " + cand + " is not in the measure_subtype list");

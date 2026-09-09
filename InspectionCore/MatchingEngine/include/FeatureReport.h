@@ -455,6 +455,7 @@ typedef struct FeatureReport_judgeDef{
   bool NGasNA;
   bool NAasNG;
 
+  enum AngleRange { ANGLE_SIGNED90 = 0, ANGLE_ABS90, ANGLE_DEG180, ANGLE_SIGNED180, ANGLE_DEG360, ANGLE_SUPP, ANGLE_COMP };
   struct data{
     struct ANGLE{
       int quadrant;
@@ -470,6 +471,16 @@ typedef struct FeatureReport_judgeDef{
       // behaviour, byte for byte; defs without the key never enter here.
       bool signed_mode;
       float nominal_deg;
+      // Which reading of the A->B rotation to report (angle_range in the def):
+      //   SIGNED90  (-90, 90]   parallelism (default of the vector mode)
+      //   ABS90     [0, 90]     acute
+      //   DEG180    [0, 180)    A to B, lines (no head)
+      //   SIGNED180 (-180, 180] vectors (head matters)
+      //   DEG360    [0, 360)    A to B counter-clockwise, vectors
+      //   SUPP      180 - DEG180  supplementary
+      //   COMP      90 - ABS90    complementary
+      // nominal_deg is subtracted from the raw rotation before the wrap.
+      int range;   // an AngleRange (declared below data; the member ANGLE hides the type name here)
     }ANGLE;
     struct CALC{
       string exp;
