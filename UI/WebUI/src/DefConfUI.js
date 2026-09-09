@@ -1453,29 +1453,43 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
   // the object frame. That is exactly what the shape locator's include region
   // is for, and the core already fell back to it internally when a def had no
   // include polygon -- but silently, with nothing to see or adjust in the
-  // studio, and the studio counted the range as empty. Bake it instead:
-  // the outline grown 5% about the centre (so the boundary gradient and a
-  // little slack sit inside), stored as the def's include polygon (object-frame
-  // mm, the same frame the operator draws one in). Only when the def has none;
-  // an authored range is not overwritten.
+  // studio counted the range as empty. Bake it instead:
+  // the outline pushed OUT by a constant margin (a dilation, not a scale: a 5%
+  // scale about the centre grows the far tip by 5% and a point near the centre
+  // by nothing, so the margin was uneven and thin where the part bends back
+  // towards its centre), stored as the def's include polygon (object-frame
+  // mm, the same frame the operator draws one in). The margin is 5% of the
+  // part's reach or 6 px, whichever is larger. Only when the def has none; an
+  // authored range is not overwritten.
   let seedInclude = null;
   if (!(Array.isArray(ei.__loc_include) && ei.__loc_include.length)) {
     const sig0 = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
                  && ei._obj.sig360info.reports[0];
     const sg = sig0 && sig0.signature;
     if (sg && Array.isArray(sg.magnitude) && Array.isArray(sg.angle) && sg.magnitude.length === sg.angle.length) {
-      const GROW = 1.05;
+      const mmpp = (ei._obj && typeof ei._obj.getEditorMmpp === 'function') ? ei._obj.getEditorMmpp() : 0;
+      let rMax = 0;
+      for (let i = 0; i < sg.magnitude.length; i++) if (sg.magnitude[i] > rMax) rMax = sg.magnitude[i];
+      const margin = Math.max(0.05 * rMax, (mmpp > 0 ? 6 * mmpp : 0));   // mm
+      // Radial max over a 5-degree window first (each bin takes the largest
+      // radius of itself and its two neighbours either side): a thin bent part
+      // leaves notches in a polar outline, and the fill must not follow them
+      // in. Then the constant margin.
+      const N = sg.magnitude.length, WIN = 2;
       const pts = [];
-      for (let i = 0; i < sg.magnitude.length; i++) {
-        const R = sg.magnitude[i], th = sg.angle[i];
-        if (!(R > 1e-4) || !Number.isFinite(th)) continue;   // empty bin
-        pts.push({ th, x: GROW * R * Math.cos(th), y: GROW * R * Math.sin(th) });
+      for (let i = 0; i < N; i++) {
+        const th = sg.angle[i];
+        if (!(sg.magnitude[i] > 1e-4) || !Number.isFinite(th)) continue;   // empty bin
+        let R = 0;
+        for (let k = -WIN; k <= WIN; k++) { const v = sg.magnitude[(i + k + N) % N]; if (v > R) R = v; }
+        const Ro = R + margin;
+        pts.push({ th, x: Ro * Math.cos(th), y: Ro * Math.sin(th) });
       }
       pts.sort((a, b) => a.th - b.th);   // a polygon, in angular order
       if (pts.length >= 3) {
         seedInclude = [pts.map((q) => ({ x: q.x, y: q.y }))];
         dispatch(DefConfAct.EditInfo_Patch({ __loc_include: seedInclude }));
-        log.info('[migrate] include region baked from the sig360 outline x' + GROW + ' (' + pts.length + ' pts)');
+        log.info('[migrate] include region baked from the sig360 outline: 5-deg radial max + ' + margin.toFixed(3) + ' mm margin (' + pts.length + ' pts)');
       }
     }
   }
