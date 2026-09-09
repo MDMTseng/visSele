@@ -1446,6 +1446,39 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
     seedReg = seed;
     if (seed) dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: seed }));
   }
+  // THE FEATURE RANGE COMES FROM THE PART'S OWN OUTLINE.
+  //
+  // A sig360 def carries the part's silhouette as a polar signature -- one
+  // (radius, angle) sample per degree around the signature centre, measured in
+  // the object frame. That is exactly what the shape locator's include region
+  // is for, and the core already fell back to it internally when a def had no
+  // include polygon -- but silently, with nothing to see or adjust in the
+  // studio, and the studio counted the range as empty. Bake it instead:
+  // the outline grown 5% about the centre (so the boundary gradient and a
+  // little slack sit inside), stored as the def's include polygon (object-frame
+  // mm, the same frame the operator draws one in). Only when the def has none;
+  // an authored range is not overwritten.
+  let seedInclude = null;
+  if (!(Array.isArray(ei.__loc_include) && ei.__loc_include.length)) {
+    const sig0 = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
+                 && ei._obj.sig360info.reports[0];
+    const sg = sig0 && sig0.signature;
+    if (sg && Array.isArray(sg.magnitude) && Array.isArray(sg.angle) && sg.magnitude.length === sg.angle.length) {
+      const GROW = 1.05;
+      const pts = [];
+      for (let i = 0; i < sg.magnitude.length; i++) {
+        const R = sg.magnitude[i], th = sg.angle[i];
+        if (!(R > 1e-4) || !Number.isFinite(th)) continue;   // empty bin
+        pts.push({ th, x: GROW * R * Math.cos(th), y: GROW * R * Math.sin(th) });
+      }
+      pts.sort((a, b) => a.th - b.th);   // a polygon, in angular order
+      if (pts.length >= 3) {
+        seedInclude = [pts.map((q) => ({ x: q.x, y: q.y }))];
+        dispatch(DefConfAct.EditInfo_Patch({ __loc_include: seedInclude }));
+        log.info('[migrate] include region baked from the sig360 outline x' + GROW + ' (' + pts.length + ' pts)');
+      }
+    }
+  }
 
   // FULLY AUTOMATIC FROM HERE. Decided 2026-09-04: the studio is for people who
   // want to adjust something, not a step everyone has to walk through.
@@ -1475,6 +1508,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
       const ei = getState().UIData.edit_info;
       const o = { ...ei, locating_engine: 'shape_based', shape_match_scale: 0.3 };
       if (seedReg && (!o.def_image_reg || typeof o.def_image_reg.cx !== 'number')) o.def_image_reg = seedReg;
+      if (seedInclude && !(Array.isArray(o.__loc_include) && o.__loc_include.length)) o.__loc_include = seedInclude;
       return o;
     };
     const send = (tl, data) => new Promise((resolve, reject) => {
