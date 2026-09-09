@@ -1471,11 +1471,11 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
       let rMax = 0;
       for (let i = 0; i < sg.magnitude.length; i++) if (sg.magnitude[i] > rMax) rMax = sg.magnitude[i];
       const margin = Math.max(0.05 * rMax, (mmpp > 0 ? 6 * mmpp : 0));   // mm
-      // Radial max over a 5-degree window first (each bin takes the largest
-      // radius of itself and its two neighbours either side): a thin bent part
+      // Radial max over a 10-degree window first (each bin takes the largest
+      // radius of itself and its five neighbours either side): a thin bent part
       // leaves notches in a polar outline, and the fill must not follow them
       // in. Then the constant margin.
-      const N = sg.magnitude.length, WIN = 2;
+      const N = sg.magnitude.length, WIN = 5;   // 10-degree max window (5 bins either side), per CT 2026-09-09
       const pts = [];
       for (let i = 0; i < N; i++) {
         const th = sg.angle[i];
@@ -1489,7 +1489,7 @@ export function migrateDefToShapeBased(dispatch, edit_info) {
       if (pts.length >= 3) {
         seedInclude = [pts.map((q) => ({ x: q.x, y: q.y }))];
         dispatch(DefConfAct.EditInfo_Patch({ __loc_include: seedInclude }));
-        log.info('[migrate] include region baked from the sig360 outline: 5-deg radial max + ' + margin.toFixed(3) + ' mm margin (' + pts.length + ' pts)');
+        log.info('[migrate] include region baked from the sig360 outline: 10-deg radial max + ' + margin.toFixed(3) + ' mm margin (' + pts.length + ' pts)');
       }
     }
   }
