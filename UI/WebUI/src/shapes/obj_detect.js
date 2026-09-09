@@ -58,7 +58,7 @@ export function draw(ctx, shape, renderer) {
   // Stats go through draw_Text in chips: raw fillText rotated and mirrored with
   // the view and had no ground under it, and sitting ABOVE the box it collided
   // with whatever was up there. Inside the box, top-left, is safe.
-  if (rep && rep.status !== -128) {
+  if (rep && rep.status !== -128 && K.showDetail(Math.abs(b.x - a.x))) {
     const f = (v) => (typeof v === 'number' ? v.toFixed(1) : '—');
     const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y);
     const rows = [];

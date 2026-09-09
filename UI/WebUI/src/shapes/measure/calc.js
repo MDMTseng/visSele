@@ -7,6 +7,7 @@
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import { mkLog } from "UTIL/logger";
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 const log = mkLog("editor.shapes");
 
 // Editor schema slice for the calc subtype: replaces the default ref-buttons
@@ -80,7 +81,9 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                       shape.name,
                       "C" + shape.value.toFixed(renderer.fixedDigit.C),
                       "L:" + shape.LSL.toFixed(renderer.fixedDigit.C) + " U:" + shape.USL.toFixed(renderer.fixedDigit.C),
-                      "Now:" +measureValue.toFixed(renderer.fixedDigit.C + measValueAdjStr),
+                      // toFixed(digits) + the adjustment string APPENDED -- the
+                      // old form added the string to the digit count.
+                      "Now:" + measureValue.toFixed(renderer.fixedDigit.C) + measValueAdjStr,
                       fontPx);
                     
 

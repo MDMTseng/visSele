@@ -83,7 +83,9 @@ export function makeDraw(kind) {
     // Vertices belong to the editing session, not to a finished region.
     if (shape._cursor || pts.length < 3) for (const p of pts) renderer.drawpoint(ctx, p);
     const c = fitCameraCenterRegion(shape);
-    if (c) {
+    let ext = 0;
+    for (const p of pts) ext = Math.max(ext, Math.hypot(p.x - c.x, p.y - c.y) * 2);
+    if (c && K.showDetail(ext)) {
       const tag = (shape.name || (exclude ? '排除區' : '取用區')) + (pts.length < 3 ? ' 未閉合' : '');
       K.chip(tag, c.x, c.y, stroke, OVERLAY.font.tag);
     }

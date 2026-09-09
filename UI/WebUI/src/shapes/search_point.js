@@ -167,7 +167,7 @@ export function draw(ctx, shape, renderer, {
     }
     ctx.restore();
   }
-  if (inFullDisplay && shape.name) {
+  if (inFullDisplay && shape.name && K.showDetail(shape.width)) {
     const nm = shape.name + (shape.locating_anchor ? (shape.anchor_corner ? ' 錨·角點' : ' 錨·邊') : '');
     K.chip(nm, shape.pt1.x, shape.pt1.y + K.S.chip_gap * 2 * K.ps,
            shape.locating_anchor ? K.C.datum : shapeColor, OVERLAY.font.tag);

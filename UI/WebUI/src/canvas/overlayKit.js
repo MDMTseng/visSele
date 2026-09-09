@@ -75,6 +75,13 @@ export const OVERLAY_DEFAULTS = {
     tag:   0.80,
     small: 0.72,
   },
+  // ---- level of detail ---------------------------------------------------
+  // A shape whose on-screen extent is under `detail_ps` primitive-sizes gets
+  // geometry only: no name plate, no dimension text. `size / ps` is
+  // proportional to on-screen pixels (ps = base / cameraScale), so this is a
+  // real zoom test, not a mm threshold.
+  lod: { detail_ps: 20 },
+
   // ---- gauge -------------------------------------------------------------
   gauge: {
     enabled:   true,
@@ -265,7 +272,13 @@ export function overlayKit(ctx, renderer) {
     return true;
   };
 
-  return { T, C: T.role, ps, lw, fpx, S, dash, at, seg, projOn, arrow, text, chip, datumMark, extendTo, gauge, withAlpha };
+  // True when a thing of this size (in def mm) is big enough on screen to be
+  // worth labelling. Callers pass their own extent, so a small feature stays
+  // clean while a large one in the same frame still gets its plate.
+  const showDetail = (sizeMM) => !(sizeMM > 0) || (sizeMM / ps) > T.lod.detail_ps;
+
+  return { T, C: T.role, ps, lw, fpx, S, dash, at, seg, projOn, arrow, text, chip,
+           datumMark, extendTo, gauge, withAlpha, showDetail };
 }
 
 export default overlayKit;
