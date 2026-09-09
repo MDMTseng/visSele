@@ -31,7 +31,8 @@ import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
 
-import { BPG_FileBrowser, BPG_FileSavingBrowser,BPG_FileBrowser_varify_info } from './component/baseComponent.jsx';
+import { BPG_FileBrowser, BPG_FileSavingBrowser } from './component/baseComponent.jsx';
+import { getRecentDefFiles, noteRecentDefFile } from 'UTIL/recentDefFiles';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 
 import { default as AntButton } from 'antd/lib/button';
@@ -253,12 +254,9 @@ function isString(data) {
   return (typeof data === 'string' || data instanceof String);
 }
 
-function getLocalStorage_RecentFiles()
-{
-  let LocalS_RecentDefFiles =LocalStorageTools.getlist("RecentDefFiles");
-  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter(BPG_FileBrowser_varify_info);
-  return LocalS_RecentDefFiles;
-}
+// The list lives in UTIL/recentDefFiles.js now; every def loader (this
+// screen, DefConfUI's 載入, the catalogue picker) records through it.
+function getLocalStorage_RecentFiles() { return getRecentDefFiles(); }
 
 // Which def opens when the app starts.
 //
@@ -291,12 +289,8 @@ function getBootDefFile()
 
 function appendLocalStorage_RecentFiles(fileInfo)
 {
-  
-  return LocalStorageTools.appendlist("RecentDefFiles",fileInfo,
-    (ls_fileInfo,idx) =>
-      (idx<100)&&//Do list length limiting
-      (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
-
+  if (!fileInfo || typeof fileInfo.path !== 'string') return false;
+  return noteRecentDefFile(fileInfo.path.replace("." + DEF_EXTENSION, ""), fileInfo, DEF_EXTENSION);
 }
 
 
@@ -577,6 +571,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             // Only after the load actually resolved: a def that failed to open
             // must not become the one the machine tries again at every boot.
             setBootDefFile(filePath);
+            noteRecentDefFile(filePath, undefined, DEF_EXTENSION);   // catalogue picks count as recent too
             ACT_Def_Model_Path_Update(filePath);
             actionChannel(pkts);
             ACT_InspOptionalTag_Update(setTags);

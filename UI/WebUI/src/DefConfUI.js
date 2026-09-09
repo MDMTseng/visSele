@@ -1,6 +1,7 @@
 'use strict'
 
 
+import { noteRecentDefFile } from 'UTIL/recentDefFiles';
 import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -3295,11 +3296,12 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout palatte-gold-7 vbox"
       key="LOAD"
       text="load" onClick={() => {
-        setFileSelectedCallBack(()=>(filePath) => {
+        setFileSelectedCallBack(()=>(filePath, fileInfo) => {
           let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
 
           loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
+          noteRecentDefFile(fileNamePath, fileInfo, DEF_EXTENSION);   // was missing: 載入 here never reached 近期檔案
           setFileSelectedCallBack(undefined);
         })
 
