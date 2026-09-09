@@ -90,6 +90,15 @@ export const OVERLAY_DEFAULTS = {
   },
   // ---- angle measure specifics ------------------------------------------
   angle: {
+    // 'simple' draws only what answers "which is the datum, which way does it
+    // tilt, by how much": the filled wedge or sector, the datum ray, and one
+    // value. 'full' adds the dimensioned standoffs, the ISO datum triangle,
+    // the A/B plates and the direction arrowheads. Switch live with
+    //     OVERLAY_TUNE({ angle: { detail: 'full' } })
+    detail:         'simple',
+    // The verdict gauge is for reading results, not for setting a def up, so
+    // by default it appears only where there IS a result.
+    gauge_on_insp_only: true,
     gap_style_max_deg:   25,    // below this the lines count as "near parallel"
     vertex_max_ps:      120,    // a vertex further than this is off screen
     head_inside_min_deg:  8,    // narrower than this, arrowheads flip outside

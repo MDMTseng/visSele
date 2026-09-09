@@ -75,6 +75,7 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const K = overlayKit(ctx, renderer);
   const { C, ps, lw, S, dash, at, seg, projOn, arrow, chip, datumMark, extendTo, gauge, withAlpha } = K;
   const A = OVERLAY.angle;
+  const full = (A.detail === 'full');
 
   const tA = projOn(P, A0, A1), tB = projOn(P, B0, B1);
   const fmtV = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
@@ -123,7 +124,10 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     ctx.strokeStyle = C.feature; ctx.lineWidth = lw * S.heavy_w;
     seg(Q1, Q2);
     ctx.restore();
-    // the two standoffs, with ticks and values
+    // The two dimensioned standoffs are what makes the reading traceable to
+    // something a fitter can measure -- and they are also most of the clutter,
+    // so they belong to the 'full' detail level.
+    if (full) {
     ctx.save();
     ctx.strokeStyle = ctx.fillStyle = C.reading; ctx.lineWidth = lw * S.line_w * 0.9;
     for (const [q, d, first] of [[Q1, D1, true], [Q2, D2, false]]) {
@@ -135,13 +139,17 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
       chip(fmtL(Math.hypot(q.y - d.y, q.x - d.x)), off.x, off.y, C.reading, OVERLAY.font.small);
     }
     ctx.restore();
-    datumMark(tA, aA, datumName, P);
-    const bTag = at(Q2, aB, 2.5 * ps);
-    chip('B', bTag.x, bTag.y, C.feature, OVERLAY.font.tag);
+    }
+    if (full) {
+      datumMark(tA, aA, datumName, P);
+      const bTag = at(Q2, aB, 2.5 * ps);
+      chip('B', bTag.x, bTag.y, C.feature, OVERLAY.font.tag);
+    }
     // the reading, next to the wide end of the wedge
     const g1 = Math.hypot(Q1.y - D1.y, Q1.x - D1.x), g2 = Math.hypot(Q2.y - D2.y, Q2.x - D2.x);
     const wide = (g2 >= g1) ? Q2 : Q1;
-    chip(`${fmtV(shownDeg)}  Δ${fmtL(g2 - g1)}`, wide.x, at(wide, aB + Math.PI / 2, 4 * ps).y, C.reading);
+    chip(full ? `${fmtV(shownDeg)}  Δ${fmtL(g2 - g1)}` : fmtV(shownDeg),
+         wide.x, at(wide, aB + Math.PI / 2, 4 * ps).y, C.reading);
   } else {
     // ---- VERTEX STYLE (ISO 129-1 angular dimension): the two sides really do
     // meet on screen, so the classic arc with arrowheads is the clearest thing
@@ -163,7 +171,7 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     ctx.beginPath(); ctx.moveTo(V.x, V.y); ctx.arc(V.x, V.y, r, s0, e0, ccw); ctx.closePath(); ctx.fill();
     ctx.restore();
     // the two sides, each drawn out to the arc, with its extension shown
-    for (const [ang, L0, L1, col] of [[s0, A0, A1, C.datum], [e0, B0, B1, C.feature]]) {
+    if (full) for (const [ang, L0, L1, col] of [[s0, A0, A1, C.datum], [e0, B0, B1, C.feature]]) {
       const end = at(V, ang, r + 3 * ps), foot = projOn(end, L0, L1);
       extendTo(foot, L0, L1, withAlpha(col, 0.75));
       ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = lw * S.line_w; ctx.setLineDash(dash('aux'));
@@ -178,25 +186,28 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     arrow(at(V, e0, r), e0 + (inside ? dir : -dir) * Math.PI / 2, hl);
     arrow(at(V, s0, r), s0 - (inside ? dir : -dir) * Math.PI / 2, hl);
     ctx.restore();
-    if (heads) {   // vector ranges: the head shows which way pt1->pt2 points
+    if (heads && full) {   // vector ranges: the head shows which way pt1->pt2 points
       ctx.save();
       ctx.strokeStyle = ctx.fillStyle = C.datum; arrow(at(tA, refA, 7 * ps), refA, S.arrow_head * ps);
       ctx.strokeStyle = ctx.fillStyle = C.feature; arrow(at(tB, aB, 7 * ps), aB, S.arrow_head * ps);
       ctx.restore();
     }
-    if (range === 'comp') {   // the 90º the reading is taken from
+    if (range === 'comp' && full) {   // the 90º the reading is taken from
       const q = 1.8 * ps;
       const c1 = at(V, e0, q), c2 = at(V, refA, q), c3 = { x: c1.x + c2.x - V.x, y: c1.y + c2.y - V.y };
       ctx.save(); ctx.setLineDash([]); ctx.strokeStyle = C.datum; seg(c1, c3); seg(c3, c2); ctx.restore();
     }
-    datumMark(at(V, s0, r * 0.55), aA, datumName, P);
-    const bAt = at(V, e0, r * 0.55);
-    chip('B', bAt.x, bAt.y, C.feature, OVERLAY.font.tag);
+    if (full) {
+      datumMark(at(V, s0, r * 0.55), aA, datumName, P);
+      const bAt = at(V, e0, r * 0.55);
+      chip('B', bAt.x, bAt.y, C.feature, OVERLAY.font.tag);
+    }
     const mid = at(V, (s0 + e0) / 2 + (ccw && e0 > s0 ? Math.PI : 0), r + S.chip_gap * ps);
     chip(fmtV(shownDeg), mid.x, mid.y, C.reading);
   }
-  gauge(P.x, P.y - S.gauge_dy * ps, shownDeg,
-        { nominal: shape.value, lo: shape.LSL, hi: shape.USL });
+  if (!A.gauge_on_insp_only || shape.inspection_value !== undefined)
+    gauge(P.x, P.y - S.gauge_dy * ps, shownDeg,
+          { nominal: shape.value, lo: shape.LSL, hi: shape.USL });
   renderer.drawpoint(ctx, P);
   ctx.restore();
 
