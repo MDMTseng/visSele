@@ -86,6 +86,8 @@ export const OVERLAY_DEFAULTS = {
     chip_pad:    0.7,    // x font height
     chip_gap:    3.2,    // chip offset from what it labels
     ext_over:    2.0,    // how far an extension line runs past its foot
+    cross_r:     5.0,    // crosshair arm, from the point outward
+    cross_gap:   1.4,    // ...and the gap left around the point itself
     gauge_r:     6.0,
     gauge_dy:    8.5,    // gauge centre above the label point
     span_min:    14.0,   // shortest drawn span (gap style)
@@ -331,6 +333,25 @@ export function overlayKit(ctx, renderer) {
     ctx.restore();
   };
 
+  // A crosshair that does not cover the point it marks. Four ticks aimed at
+  // the position with a gap in the middle: the pixel being reported stays
+  // visible, which is the whole job of a mark on a measured point. A filled
+  // dot -- what drawpoint paints, halo and all -- hides several pixels either
+  // side of the thing it claims to locate.
+  const crosshair = (p, colour, { r = S.cross_r, gap = S.cross_gap, w = S.thin_w } = {}) => {
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = colour || T.role.search;
+    ctx.lineWidth = lw * w;
+    ctx.beginPath();
+    ctx.moveTo(p.x - r * ps, p.y); ctx.lineTo(p.x - gap * ps, p.y);
+    ctx.moveTo(p.x + gap * ps, p.y); ctx.lineTo(p.x + r * ps, p.y);
+    ctx.moveTo(p.x, p.y - r * ps); ctx.lineTo(p.x, p.y - gap * ps);
+    ctx.moveTo(p.x, p.y + gap * ps); ctx.lineTo(p.x, p.y + r * ps);
+    ctx.stroke();
+    ctx.restore();
+  };
+
   // The verdict gauge: where the reading sits inside its tolerance band. The
   // drawing says WHAT is measured; this says HOW BAD, at a glance, without
   // reading a number. Drawn only when the def actually carries limits.
@@ -386,7 +407,7 @@ export function overlayKit(ctx, renderer) {
   };
 
   return { T, C: T.role, ps, lw, fpx, S, dash, at, seg, projOn, arrow, text, chip,
-           datumMark, extendTo, gauge, withAlpha, showDetail, measureName, construction,
+           datumMark, extendTo, gauge, withAlpha, showDetail, measureName, construction, crosshair,
            // True while THIS shape is the one being edited.
            isEditing: (shape) => {
              const e = renderer.EditShape;
