@@ -159,7 +159,13 @@ export default {
     },
     connection:{
       server_connected:"已連結",
-      server_disconnected:"斷線!! 數據不會上傳",
+      // NOT "數據不會上傳" any more. It is: the records are spooled and sent
+      // when the link comes back, and the button next to this says how many are
+      // waiting (待補傳 N). The only case where something really is lost is a
+      // full spool, and that has its own loud 已丟棄 badge. A standing warning
+      // that the machine has stopped keeping data -- when it is keeping it --
+      // is the kind of alarm people learn to read past.
+      server_disconnected:"斷線(暫存中)",
       server_disconnecting:"嘗試連線中",
       connect:"連線"
     },
