@@ -148,16 +148,15 @@ export function draw(ctx, shape, renderer, {
   // corner ticks; an edge anchor (1D) marks only its own axis, which is the
   // one direction it actually constrains.
   if (shape.locating_anchor) {
-    // An anchor is a point FIRST -- it is drawn like every other point, with a
-    // circle at half the X's radius sitting on it to say this one also holds
-    // the object frame. One extra mark on the shared one, rather than a second
-    // vocabulary that has to be learned.
+    // An anchor is a point FIRST: the same X, in orange instead of yellow.
+    // Nothing else added -- the colour is the whole difference, and it costs
+    // no extra marks on an image that already has plenty.
     const p = shape.pt1, q = 1.6 * K.ps;
+    K.crosshair(p, K.C.datum);
     ctx.save();
     ctx.setLineDash([]);
-    ctx.strokeStyle = K.C.feature; ctx.fillStyle = K.C.feature;
+    ctx.strokeStyle = K.C.datum; ctx.fillStyle = K.C.datum;
     ctx.lineWidth = K.lw * K.S.construction_w;
-    ctx.beginPath(); ctx.arc(p.x, p.y, K.S.cross_r * 0.5 * K.ps, 0, 2 * Math.PI); ctx.stroke();
     if (shape.anchor_corner) {
       for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const cx = p.x + sx * 5 * K.ps, cy = p.y + sy * 5 * K.ps;

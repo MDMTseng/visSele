@@ -45,8 +45,10 @@ export const OVERLAY_DEFAULTS = {
     region:  'rgba(240,168,58,1)',    // construction / projection / aux / loc regions
     // Ours, not the reference's: it has no datum colour because a datum is just
     // another element named in the label. We mark locating anchors and the
-    // registration frame, which the operator does need to pick out.
-    datum:   'rgba(66,133,214,1)',
+    // registration frame, which the operator does need to pick out -- an
+    // anchor is a point like any other, drawn as the same X, and only its
+    // colour says it also holds the object frame.
+    datum:   'rgba(255,140,0,1)',
     ok:      'rgba(18,135,74,1)',
     ng:      'rgba(207,42,42,1)',
     neutral: 'rgba(120,132,143,1)',
