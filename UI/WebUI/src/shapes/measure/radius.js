@@ -8,6 +8,7 @@ import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import dclone from 'clone';
 import { mkLog } from "UTIL/logger";
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 const log = mkLog("editor.shapes");
 
 // canvasCtrl: radius refs an arc.
@@ -33,9 +34,27 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                     x0:arc.x+dispVec.x,y0:arc.y+dispVec.y,
                     x1:shape.pt1.x,y1:shape.pt1.y,
                   };*/
-                  let arrowSize = 3 * renderer.getPrimitiveSize();
-                  renderer.canvas_arrow(ctx, shape.pt1.x, shape.pt1.y, arc.x + dispVec.x, arc.y + dispVec.y, arrowSize);
-                  //renderer.drawReportLine(ctx, lineInfo);
+                  // A radius is drawn FROM THE CENTRE outward, with the head on
+                  // the arc and the centre marked -- the old arrow pointed at the
+                  // arc from the label point and never drew the centre, so
+                  // nothing on screen said which circle the number belonged to.
+                  const K = overlayKit(ctx, renderer);
+                  const onArc = { x: arc.x + dispVec.x, y: arc.y + dispVec.y };
+                  ctx.save();
+                  ctx.setLineDash([]);
+                  ctx.strokeStyle = K.C.datum; ctx.fillStyle = K.C.datum;
+                  ctx.lineWidth = K.lw * K.S.thin_w;
+                  K.seg({ x: arc.x - 1.8 * K.ps, y: arc.y }, { x: arc.x + 1.8 * K.ps, y: arc.y });
+                  K.seg({ x: arc.x, y: arc.y - 1.8 * K.ps }, { x: arc.x, y: arc.y + 1.8 * K.ps });
+                  ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+                  ctx.lineWidth = K.lw * K.S.line_w;
+                  K.seg({ x: arc.x, y: arc.y }, onArc);
+                  K.arrow(onArc, Math.atan2(dispVec.y, dispVec.x), K.S.arrow_head * K.ps);
+                  // leader from the arc to wherever the operator parked the label
+                  ctx.strokeStyle = K.withAlpha(K.C.reading, 0.8);
+                  ctx.setLineDash(K.dash('tie'));
+                  K.seg(onArc, shape.pt1);
+                  ctx.restore();
 
                   renderer.drawpoint(ctx, shape.pt1);
 
@@ -61,7 +80,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                       -(shape.inspection_value - shape.value) / (shape.LSL - shape.value);
                       
                     renderer.drawInspMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       "R" + (shape.inspection_value * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit,
                       marginPC,fontPx);
                     measureValue=shape.inspection_value;
@@ -70,7 +89,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
             
                     
                     renderer.drawDefMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       "R" + shape.value.toFixed(renderer.fixedDigit.R) + unitConvert.unit,
                       "L:" + (shape.LSL * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit + " U:" + (shape.USL * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit,
                       "Now:" + (arc.r * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit + measValueAdjStr,

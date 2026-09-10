@@ -1202,8 +1202,14 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.db_obj = edit_DB_info._obj;
     if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
     this.rUtil.setEditor_db_obj(this.db_obj);
-    let imageChanged=edit_DB_info.img!=this.img_info;
-    this.SetImg(edit_DB_info.img);
+    // A pushed stream frame must not replace what this preview is showing.
+    // The slot it lives in is shared with the def's own picture, so a machine
+    // running an inspection behind this screen used to animate the preview of
+    // a recipe nobody was inspecting. Requested images (def load, image switch,
+    // CHECK) are unmarked and still land.
+    const streamed = !!(edit_DB_info.img && edit_DB_info.img.fromStream);
+    let imageChanged = !streamed && edit_DB_info.img != this.img_info;
+    if (!streamed) this.SetImg(edit_DB_info.img);
     
     // getEditorMmpp, NOT the raw getsig360info_mmpp.
     //
@@ -2275,7 +2281,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
-    this.SetImg(edit_DB_info.img);
+    // Same rule as the preview: the editor stays on the frame being edited.
+    // The TAKE dialog's viewfinder is a separate canvas that reads the slot
+    // directly, so it still sees every streamed frame -- which is what stops
+    // the canvas BEHIND the dialog animating along with it.
+    if (!(edit_DB_info.img && edit_DB_info.img.fromStream))
+      this.SetImg(edit_DB_info.img);
 
     this.SetEditShape(edit_DB_info.edit_tar_info);
 

@@ -195,6 +195,10 @@ function setPlateGeometry(ppr, dia) {
   if (Number(dia) > 0) GEO.dia = Number(dia);
 }
 const pulsesPerRev = () => GEO.ppr;
+// Where a station sits on the plate, as a fraction of one revolution. Unlike
+// mm (needs the plate diameter) and ms (needs the current speed), this is what
+// a pulse offset intrinsically is, so it stays true when either of those move.
+const pctRev = (ticks) => ((ticks / pulsesPerRev()) * 100).toFixed(1) + '%';
 const mmPerPulse = () => (GEO.dia * Math.PI) / GEO.ppr;
 const plateRpm = (pf) => (pf > 0 ? (2 * pf * 60) / pulsesPerRev() : 0);
 const plateMmS = (pf) => (pf > 0 ? 2 * pf * mmPerPulse() : 0);
@@ -746,8 +750,6 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [speed, setSpeed] = useState(undefined);
   const [hzInput, setHzInput] = useState('');        // gate fire-rate cap, in parts/s
   const [devCfgOpen, setDevCfgOpen] = useState(false);   // 裝置設定 modal
-  useEffect(() => { setPlateGeometry(cfg && cfg.pulses_per_rev, cfg && cfg.plate_diameter_mm); },
-            [cfg && cfg.pulses_per_rev, cfg && cfg.plate_diameter_mm]);
   const [procHzInput, setProcHzInput] = useState(''); // host throughput cap, in parts/s
   const [stopAfterInput, setStopAfterInput] = useState('');
   const [nomatchAfterInput, setNomatchAfterInput] = useState('');
@@ -784,6 +786,21 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // Set by nudge(), consumed by the effect that pushes the change. setSpoEdit
   // is async, so committing inside nudge() would send the PREVIOUS value.
   const [nudged, setNudged] = useState(false);
+
+  // Drop every editor-owned working copy so the panel re-seeds from the device.
+  //
+  // The typed fields are deliberately NOT bound to the device -- rebinding on
+  // every poll would overwrite a half-typed number on the next tick. The cost
+  // is that a whole-config change (import, NVS restore) updates the store and
+  // leaves the visible fields showing what was there before, which reads as
+  // "the import did nothing". Anything that replaces the WHOLE config has to
+  // say so explicitly; a per-field edit must not.
+  const reseedFromDevice = () => {
+    setSpoEdit({});
+    setHzInput(''); setProcHzInput(''); setCapacityInput('');
+    setStopAfterInput(''); setNomatchAfterInput('');
+    setSel(null);
+  };
   // Station placement (jog). Only the arm speed is UI state -- everything else
   // is read from the device, because the device is the one that knows where the
   // plate actually stopped.
@@ -820,6 +837,13 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const mounted = useRef(true);
 
   const cfg = GetObjElement(CONN, ['machineSetup']) || {};
+  // Plate geometry for every pulse<->mm conversion in this panel. This has to
+  // sit AFTER cfg: a hook's dependency array is evaluated during render, so
+  // reading cfg above its own const threw
+  //   ReferenceError: Cannot access 'cfg' before initialization
+  // and took the whole panel down.
+  useEffect(() => { setPlateGeometry(cfg.pulses_per_rev, cfg.plate_diameter_mm); },
+            [cfg.pulses_per_rev, cfg.plate_diameter_mm]);
   const dev = GetObjElement(CONN, ['deviceState']) || {};
   // cfg is the board's own settings, filled only by a get_setup reply.
   // Empty means "not read", which is NOT the same as "read, and it said
@@ -1543,7 +1567,7 @@ build ${fw.build}`}>
                   Promise.resolve(api.sendP({ type: 'restore_setup' }))
                     .then(() => (typeof api.refreshSetup === 'function')
                                 ? api.refreshSetup() : undefined)
-                    .then(() => { if (mounted.current) setSpoEdit({}); })),
+                    .then(() => { if (mounted.current) reseedFromDevice(); })),
               })}
             >從 NVS 還原</Button>
           </span>
@@ -1627,6 +1651,9 @@ build ${fw.build}`}>
                 .then((doc) => api.importSetupP(doc))
                 .then((r) => {
                   setCfgReport(r);
+                  // importSetupP has already published the device's own re-read
+                  // copy; this is what makes the PANEL show it.
+                  if (mounted.current) reseedFromDevice();
                   if (r.mismatch.length) message.warning(`${r.written.length} 個欄位已寫入,但 ${r.mismatch.length} 個沒有生效`);
                   else message.success(`${r.written.length} 個欄位已寫入並確認`);
                 })
@@ -1955,7 +1982,10 @@ build ${fw.build}`}>
               barely moves when the recipe changes, which is exactly what made
               the absolute number impossible to keep correct. */}
           {procMode === 'auto' && (<>
-            <Input style={{ width: 130 }} addonBefore="產能" addonAfter="%"
+            {/* antd sizes the whole group, addons included, so a CJK addon
+                eats the field: "產能" + "%" take ~82px of 130 and left ~48
+                for the number, which clipped 100 to "1...". */}
+            <Input style={{ width: 175 }} addonBefore="產能" addonAfter="%"
               placeholder={capacityPct > 0 ? String(capacityPct) : '自動探測'}
               value={capacityInput}
               onChange={(e) => setCapacityInput(e.target.value)} />
@@ -2137,7 +2167,9 @@ build ${fw.build}`}>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap',
                             alignItems: 'center', marginBottom: 6 }}>
-                <Input style={{ width: 175 }} addonBefore="無判決 連續"
+                {/* addonBefore is 5 CJK chars + addonAfter 2 more, ~148px of
+                    the 175 -- the field was under 30px wide. */}
+                <Input style={{ width: 245 }} addonBefore="無判決 連續"
                   addonAfter="顆停" placeholder={lim !== undefined ? String(lim) : ''}
                   value={stopAfterInput}
                   onChange={(e) => setStopAfterInput(e.target.value)} />
@@ -2153,7 +2185,7 @@ build ${fw.build}`}>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap',
                             alignItems: 'center' }}>
-                <Input style={{ width: 175 }} addonBefore="對不上 連續"
+                <Input style={{ width: 245 }} addonBefore="對不上 連續"
                   addonAfter="顆停" placeholder={nlim !== undefined ? String(nlim) : ''}
                   value={nomatchAfterInput}
                   onChange={(e) => setNomatchAfterInput(e.target.value)} />
@@ -2374,21 +2406,14 @@ build ${fw.build}`}>
                   </Tooltip>
                 ) : null}
               </span>
+              {/* One conversion, not three. mm and ms both depend on numbers
+                  that move (plate diameter, current speed), while a fraction of
+                  a revolution is what the offset actually IS -- and it is the
+                  one an operator can check against the plate in front of them.
+                  The warnings stay: they are not conversions. */}
               <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
-                {Number(pos) >= 0
-                  ? `${(Number(pos) * mmPerPulse()).toFixed(1)} mm · ${fmtMs(ticksToMs(Number(pos), refFreq(plate_freq)))}`
-                  : '—'}
-                {/* Both edges, spelled out. A centre is only useful if you can
-                    see what it buys either side of the part. */}
-                {centered && Number(wid) > 0 ? (() => {
-                  const t = Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6);
-                  const half = Math.floor(t / 2);
-                  const a = Math.max(0, Number(pos) - half);
-                  return `  [${a} … ${a + t}] t`;
-                })() : ''}
-                {st.off ? (bad
-                  ? '  ⚠ 寬度必須 > 0'
-                  : `  → ${Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6)} t = ${(Number(wid) * 2 * setpoint_freq / 1e6 * mmPerPulse()).toFixed(2)} mm${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0,裝置要等設定轉速後才換算'}`) : ''}
+                {Number(pos) >= 0 ? `${pctRev(Number(pos))} 圈` : '—'}
+                {st.off && bad ? '  ⚠ 寬度必須 > 0' : ''}
               </span>
             </div>
           );

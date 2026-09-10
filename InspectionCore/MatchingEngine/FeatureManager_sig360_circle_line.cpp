@@ -261,7 +261,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   // (* ppmm) before constructing CaliperParams. Sentinels (-1) pass through
   // and trigger downstream fallbacks ("use initMatchingMargin" / "1px step").
   cir.locating = 0; cir.cal_count = CALIPER_PARSE_DEFAULT_COUNT; cir.cal_width = CALIPER_PARSE_DEFAULT_WIDTH; cir.cal_length = -1; cir.cal_step = -1;
-  cir.cal_min_inliers = 0; cir.cal_max_error = 0;
+  cir.cal_min_inliers = 0; cir.cal_max_error = 0; cir.cal_soft_reject = 0;
   cir.fit_mode = 0;  // 0=ls, 1=outer, 2=inner (LS-center envelope variants)
   // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
   cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::FALLING;
@@ -277,6 +277,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
                 cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 cir.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
                 cir.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
+                cir.cal_soft_reject = JFetch_NUMBER_ex(calo, "soft_reject", 0);
                 // Clamp against pathological caliper sizes that would DoS the
                 // measurement loop (per-primitive cost ~ count * (2*width+1) *
                 // length). Real-world calipers are tens; even at these caps
@@ -1311,7 +1312,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            eT.getBacpac(),
                            &out, &str, def.id, &rep.cal_hits, &spClipped,
                            DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
-                           def.rel_strength, &relMoved);
+                           def.rel_strength, &relMoved, def.dist_decay);
       // The scale the panel needs to express an offset in the def's own units.
       if (DbgEmit("edge_profile") && eT.getBacpac() && eT.getBacpac()->sampler)
         rep.cal_peaks.mmpp = eT.getBacpac()->sampler->mmpP_ideal();
@@ -1684,6 +1685,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.include_range = 0;
   searchPoint.manual_offset = 0;
   searchPoint.alpha_keep = 0;
+  searchPoint.dist_decay = 0;   // off: same answer as before it existed
   // Today's hard-coded rule, as the default. A def that says nothing keeps
   // exactly the behaviour it has always had.
   searchPoint.rel_strength = 0.40f;
@@ -1717,6 +1719,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("manual_offset", featureDef_searchPoint::EDGE_SET_MANUAL_OFFSET, &searchPoint.manual_offset);
       take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
       take   ("rel_strength",  featureDef_searchPoint::EDGE_SET_REL_STRENGTH,  &searchPoint.rel_strength);
+      take   ("dist_decay",    featureDef_searchPoint::EDGE_SET_DIST_DECAY,   &searchPoint.dist_decay);
       // mask_dilate is gone (2026-08-26). Say so rather than ignoring it: a def
       // that carries the key was tuned by somebody who believed it did
       // something, and silently dropping it is how a knob becomes folklore.
@@ -1863,6 +1866,7 @@ int FeatureManager_sig360_circle_line::parse_auxLineData(cJSON *jobj)
   line.locating = 0; line.fit_mode = 0;
   line.cal_count = CALIPER_PARSE_DEFAULT_COUNT; line.cal_width = CALIPER_PARSE_DEFAULT_WIDTH;
   line.cal_length = -1; line.cal_step = -1; line.cal_min_inliers = 0; line.cal_max_error = 0;
+  line.cal_soft_reject = 0;
   line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
   line.edge_rel_strength = 0.15f; line.edge_sigma = 0; line.edge_nth = 0; line.edge_min_strength = 0;
   line.aux_pt1_id = (int)*a;
@@ -1948,7 +1952,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   // cal_width/length/step in DEF UNITS (mm); LineMatching_ReportGen converts
   // to px (/= mmpp) before the caliper engine consumes them.
   line.locating = 0; line.cal_count = CALIPER_PARSE_DEFAULT_COUNT; line.cal_width = CALIPER_PARSE_DEFAULT_WIDTH; line.cal_length = -1; line.cal_step = -1;
-  line.cal_min_inliers = 0; line.cal_max_error = 0;
+  line.cal_min_inliers = 0; line.cal_max_error = 0; line.cal_soft_reject = 0;
   // default caliper edge: dominant FALLING edge (white->dark), matching the backlit
   // dark-object-on-bright silhouette. Explicit def "edge.polarity" overrides.
   line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
@@ -1974,6 +1978,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
                 line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 line.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
                 line.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
+                line.cal_soft_reject = JFetch_NUMBER_ex(calo, "soft_reject", 0);
                 // Clamp pathological caliper sizes (see parse_arcData).
                 if (line.cal_count  >  CALIPER_MAX_COUNT)  line.cal_count  = CALIPER_MAX_COUNT;
                 if (line.cal_width  >  CALIPER_MAX_WIDTH)  line.cal_width  = CALIPER_MAX_WIDTH;
@@ -5060,6 +5065,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cal.step   = (cdef.cal_step > 0) ? (cdef.cal_step * ppmm) : 1.0f;
     cal.min_inliers = cdef.cal_min_inliers;
     cal.max_error   = (cdef.cal_max_error > 0) ? (cdef.cal_max_error * ppmm) : 0;
+    cal.soft_reject = cdef.cal_soft_reject;   // unitless
     cal.edge.method       = cdef.edge_method;
     cal.edge.polarity     = cdef.edge_polarity;
     cal.edge.nth          = cdef.edge_nth;
@@ -5419,6 +5425,7 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   cal.step   = (lineDef.cal_step > 0) ? lineDef.cal_step : 1.0f;
   cal.min_inliers = lineDef.cal_min_inliers;
   cal.max_error   = lineDef.cal_max_error;  // already mm→px via LineMatching_ReportGen
+  cal.soft_reject = lineDef.cal_soft_reject;  // unitless, no conversion
   cal.edge.method       = lineDef.edge_method;
   cal.edge.polarity     = lineDef.edge_polarity;
   cal.edge.nth          = lineDef.edge_nth;

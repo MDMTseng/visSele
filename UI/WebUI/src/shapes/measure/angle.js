@@ -8,6 +8,7 @@ import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import dclone from 'clone';
 import { mkLog } from "UTIL/logger";
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 const log = mkLog("editor.shapes");
 
 // canvasCtrl: angle refs two lines or search_points (intersection).
@@ -56,8 +57,7 @@ export function signedAngleDeg(a1, a2, nominal) { return vectorAngleDeg(a1, a2, 
 // minimum opening (15 deg) because the real angle is usually well under 1 deg
 // and would be invisible; the text carries the true value.
 function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
-  const { measValueAdjStr, unitConvert = { unit: 'mm', mult: 1 } } = sctx;
-  let measValueAdjStrTag = '';
+  const { measValueAdjStr } = sctx;
   const aA = Math.atan2(A1.y - A0.y, A1.x - A0.x);
   const aB = Math.atan2(B1.y - B0.y, B1.x - B0.x);
   const nominal = shape.nominal_deg || 0;
@@ -69,215 +69,170 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const toRad = Math.PI / 180;
   const refA = aA + nominal * toRad;          // the datum direction (A rotated by the nominal)
   const raw = wrap360((aB - refA) / toRad);
-  const fpx = renderer.getFontHeightPx();
-  const lwBase = renderer.getIndicationLineSize();
 
-  const COL_A = 'rgba(30,90,220,1)';          // datum / line A
-  const COL_B = 'rgba(215,70,40,1)';          // measured / line B
-  const COL_V = 'rgba(230,140,0,1)';          // the quantity being read
-  const COL_OK = 'rgba(40,160,90,1)';
-  const COL_NG = 'rgba(220,50,50,1)';
-
-  // Geometry helpers on the two INFINITE lines.
-  const proj = (Q, L0, L1) => { const vx = L1.x - L0.x, vy = L1.y - L0.y, n2 = vx * vx + vy * vy || 1;
-    const t = ((Q.x - L0.x) * vx + (Q.y - L0.y) * vy) / n2; return { x: L0.x + t * vx, y: L0.y + t * vy }; };
-  const tA = proj(P, A0, A1), tB = proj(P, B0, B1);
-  const seg = (p, q) => { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); };
-  const at = (c, ang, r) => ({ x: c.x + r * Math.cos(ang), y: c.y + r * Math.sin(ang) });
-  const arrowHead = (tip, ang, len) => { const f = at(tip, ang + Math.PI, len); renderer.canvas_arrow(ctx, f.x, f.y, tip.x, tip.y, len); };
-  // draw_Text leaves ctx.lineWidth at a screen-size value; restore it or every
-  // line stroked after a label comes out as a band.
-  const label = (text, x, y, scale = 1) => { const lw = ctx.lineWidth; renderer.draw_Text(ctx, text, fpx * scale, x, y); ctx.lineWidth = lw; };
-  const chip = (text, x, y, col, scale = 0.85) => {
-    const w = 0.62 * fpx * scale * text.length + 0.7 * fpx * scale, h = 1.25 * fpx * scale;
-    ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.fillRect(x - w / 2, y - h / 2, w, h);
-    ctx.strokeStyle = col; ctx.lineWidth = lwBase * 0.7; ctx.strokeRect(x - w / 2, y - h / 2, w, h);
-    ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    label(text, x, y, scale); ctx.restore();
-  };
-  const fmtV = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
-  const fmtL = (v) => (v * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit;
-
-  ctx.save();
-  ctx.lineWidth = lwBase;
-  ctx.font = renderer.getFontStyle(1);
-  ctx.setLineDash([]);
-
-  // A virtual extension line says "this is that line, extended": the datum ray
-  // and the feet often sit outside the real segment.
-  const extendTo = (foot, L0, L1, colour) => {
-    const vx = L1.x - L0.x, vy = L1.y - L0.y, n2 = vx * vx + vy * vy || 1;
-    const t = ((foot.x - L0.x) * vx + (foot.y - L0.y) * vy) / n2;
-    if (t >= 0 && t <= 1) return;
-    const from = (t < 0) ? L0 : L1;
-    ctx.save();
-    ctx.strokeStyle = colour; ctx.setLineDash([2 * ps, 1.5 * ps]); ctx.lineWidth = 0.6 * lwBase;
-    seg(from, at(foot, Math.atan2(foot.y - from.y, foot.x - from.x), 2 * ps));
-    ctx.restore();
-  };
-
-  // The datum marker: filled triangle on line A with a boxed letter, ISO 1101.
-  const datumMark = (anchor, dirAng, letter) => {
-    const nrm = Math.atan2(P.y - anchor.y, P.x - anchor.x);
-    const side = Number.isFinite(nrm) && Math.hypot(P.y - anchor.y, P.x - anchor.x) > 1e-6 ? nrm : dirAng + Math.PI / 2;
-    const h = 2.2 * ps, w = 1.4 * ps;
-    const apex = at(anchor, side, h), b1 = at(anchor, dirAng, w), b2 = at(anchor, dirAng + Math.PI, w);
-    ctx.save();
-    ctx.fillStyle = ctx.strokeStyle = COL_A; ctx.lineWidth = lwBase * 0.8;
-    ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(apex.x, apex.y); ctx.lineTo(b2.x, b2.y); ctx.closePath(); ctx.fill();
-    const box = at(apex, side, 2.4 * ps);
-    seg(apex, box);
-    chip(letter, box.x, box.y, COL_A, 0.8);
-    ctx.restore();
-  };
-
-  // The tilt gauge: how far the reading sits inside the tolerance band. This is
-  // the part an operator reads at a glance -- the drawing above says WHAT is
-  // measured, the gauge says HOW BAD. Only drawn when the def has limits.
-  const gauge = (cx, cy, r) => {
-    const nom = Number.isFinite(shape.value) ? shape.value : 0;
-    const lo = shape.LSL, hi = shape.USL;
-    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return;
-    const half = Math.max(Math.abs(hi - nom), Math.abs(nom - lo));
-    const full = Math.max(half * 1.8, Math.abs(shownDeg - nom) * 1.25, 1e-6);
-    const ang = (v) => -Math.PI / 2 + Math.max(-1, Math.min(1, (v - nom) / full)) * (Math.PI / 2);
-    const ok = shownDeg >= lo && shownDeg <= hi;
-    ctx.save();
-    ctx.lineWidth = lwBase * 0.8;
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(90,90,90,0.9)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.stroke();
-    seg({ x: cx - r, y: cy }, { x: cx + r, y: cy });
-    // tolerance band
-    ctx.strokeStyle = 'rgba(40,160,90,0.85)'; ctx.lineWidth = lwBase * 2.2;
-    ctx.beginPath(); ctx.arc(cx, cy, r * 0.78, ang(lo), ang(hi)); ctx.stroke();
-    // nominal tick
-    ctx.strokeStyle = 'rgba(60,60,60,0.9)'; ctx.lineWidth = lwBase * 0.8;
-    seg(at({ x: cx, y: cy }, ang(nom), r * 0.55), at({ x: cx, y: cy }, ang(nom), r));
-    // needle
-    ctx.strokeStyle = ok ? COL_OK : COL_NG; ctx.lineWidth = lwBase * 1.4;
-    seg({ x: cx, y: cy }, at({ x: cx, y: cy }, ang(shownDeg), r * 0.92));
-    ctx.fillStyle = ok ? COL_OK : COL_NG;
-    ctx.beginPath(); ctx.arc(cx, cy, ps * 0.6, 0, 2 * Math.PI); ctx.fill();
-    ctx.restore();
-  };
-
-  // Where is the vertex, and is it usable? Nearly-parallel lines have none.
-  let V = intersectPoint(A0, A1, B0, B1);
-  const vertexOK = V && Number.isFinite(V.x) && Number.isFinite(V.y)
-                   && Math.hypot(V.x - P.x, V.y - P.y) < 120 * ps;
-  const needsVertex = (range === 'deg180' || range === 'signed180' || range === 'deg360' || range === 'supp');
-  const gapStyle = !vertexOK || (!needsVertex && Math.abs(wrap180(raw)) < 25);
+  const K = overlayKit(ctx, renderer);
 
   const TAGS = { signed90: '±90', abs90: '0~90', deg180: '0~180', signed180: '±180', deg360: '0~360', supp: '補角', comp: '餘角' };
-  measValueAdjStrTag = ' ' + (TAGS[range] || '±90');
+  const measValueAdjStrTag = ' ' + (TAGS[range] || '±90');
 
-  if (gapStyle) {
-    // ---- GAP STYLE. What a fitter does with a height gauge: hold the datum,
-    // measure the standoff at each end of the feature, and read the difference.
-    // The wedge between the datum ray and B is filled, so which end opens is
-    // visible even when the angle is a fraction of a degree; the two standoffs
-    // are dimensioned so the reading is traceable to something measurable.
-    const segLen = Math.hypot(B1.y - B0.y, B1.x - B0.x);
-    const L = Math.max(14 * ps, Math.min(segLen / 2, 60 * ps));
-    const Q1 = at(tB, aB + Math.PI, L), Q2 = at(tB, aB, L);
-    // The datum ray runs under the span, anchored at the foot on A.
-    const D1 = proj(Q1, tA, at(tA, refA, 1)), D2 = proj(Q2, tA, at(tA, refA, 1));
-    extendTo(tA, A0, A1, 'rgba(30,90,220,0.75)');
-    extendTo(tB, B0, B1, 'rgba(215,70,40,0.75)');
-    // the wedge
-    ctx.save();
-    ctx.fillStyle = (shownDeg >= 0) ? 'rgba(230,140,0,0.16)' : 'rgba(120,80,220,0.16)';
-    ctx.beginPath(); ctx.moveTo(D1.x, D1.y); ctx.lineTo(Q1.x, Q1.y); ctx.lineTo(Q2.x, Q2.y); ctx.lineTo(D2.x, D2.y); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    // datum ray (dash-dot, the drawing convention for a reference)
-    ctx.save();
-    ctx.strokeStyle = COL_A; ctx.lineWidth = lwBase; ctx.setLineDash([4 * ps, 1.5 * ps, 0.8 * ps, 1.5 * ps]);
-    seg(at(D1, refA + Math.PI, 3 * ps), at(D2, refA, 3 * ps));
-    ctx.restore();
-    // the measured line, solid over the same span
-    ctx.save();
-    ctx.strokeStyle = COL_B; ctx.lineWidth = lwBase * 1.3;
-    seg(Q1, Q2);
-    ctx.restore();
-    // the two standoffs, with ticks and values
-    ctx.save();
-    ctx.strokeStyle = COL_V; ctx.fillStyle = COL_V; ctx.lineWidth = lwBase * 0.9;
-    const gaps = [[Q1, D1, 'd1'], [Q2, D2, 'd2']];
-    for (const [q, d, nm] of gaps) {
-      seg(d, q);
-      const dir = Math.atan2(q.y - d.y, q.x - d.x);
-      if (Math.hypot(q.y - d.y, q.x - d.x) > 5 * ps) { arrowHead(q, dir, 1.6 * ps); arrowHead(d, dir + Math.PI, 1.6 * ps); }
-      const mid = { x: (q.x + d.x) / 2, y: (q.y + d.y) / 2 };
-      const off = at(mid, refA + (nm === 'd1' ? Math.PI : 0), 3.2 * ps);
-      chip(fmtL(Math.hypot(q.y - d.y, q.x - d.x)), off.x, off.y, COL_V, 0.72);
+  // This is the classic angle overlay -- the same arc-with-one-arrowhead the
+  // quadrant mode has always drawn, in the caller's colour -- with only what
+  // the vector mode actually needs added on top:
+  //   * the sweep starts at the DATUM direction (A + nominal), so the drawn
+  //     arc is the reading, and the arrowhead's direction IS the sign;
+  //   * each range sweeps its own span, so 補角/餘角 draw the angle they
+  //     report rather than the raw one;
+  //   * parallel lines have no vertex, so the arc then centres on the label
+  //     point instead of vanishing to infinity.
+  let sDeg, eDeg;
+  switch (range) {
+    case 'abs90':     { sDeg = 0; eDeg = wrap180(raw); break; }
+    case 'deg180':    { sDeg = 0; eDeg = pos180(raw); break; }
+    case 'signed180': { sDeg = 0; eDeg = wrap360(raw); break; }
+    case 'deg360':    { sDeg = 0; eDeg = pos360(raw); break; }
+    case 'supp':      { sDeg = pos180(raw); eDeg = 180; break; }
+    case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; break; }
+    default:          { sDeg = 0; eDeg = wrap180(raw); break; }
+  }
+
+  // WHERE THE ANGLE IS DRAWN.
+  //
+  // With a usable vertex the arc goes on it, and each side's extension runs
+  // ALONG ITS OWN LINE from the end of the real segment, through the vertex,
+  // out past the arc -- which is what an extension line means.
+  //
+  // Near-parallel lines have no vertex on screen. The old fallback centred the
+  // arc on the label point with a minimum radius, which made the arc a dot and
+  // turned the two extensions into a V pointing at the label -- neither line
+  // extended, nothing to read. So the label point becomes a LOCAL vertex: the
+  // two directions are drawn as rays from it at a fixed radius, each tied back
+  // to its own line by a dotted line from the foot of the perpendicular. The
+  // rays are the lines' directions, the arc between them is the reading.
+  // A vertex is only worth drawing on when the angle is actually READ there.
+  // The construction is always the same one, and it is the one a person draws
+  // by hand: continue each line, dotted and collinear, past the end of the
+  // real segment until the two meet; put the arc on that vertex; run a leader
+  // from the arc to the label. The label's distance from the vertex IS the
+  // radius, so where the operator parks it decides how big the arc is.
+  //
+  // There is deliberately no second style. A local arc drawn near the label,
+  // tied to the lines by perpendiculars, was tried and is wrong: those
+  // perpendicular ties are not extension lines, they cross the lines instead
+  // of continuing them, and nothing on the canvas then says where the angle
+  // actually is.
+  let V = intersectPoint(A0, A1, B0, B1);
+  const vOK = V && Number.isFinite(V.x) && Number.isFinite(V.y)
+              && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps;
+  const dist = vOK ? Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps) : 0;
+  let s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
+
+  // WHICH SIDE OF THE VERTEX. Vertical angles are equal, so the same reading
+  // can be drawn on either side -- and one of them is the side the part and
+  // the label are on. Drawn on the far side the whole construction walks off
+  // into empty image, which is what a near-parallel pair did: the vertex is a
+  // long way out, and the arc opened away from everything worth looking at.
+  //
+  // Both rays flip together, so the angle between them -- the reading -- is
+  // untouched; only the side changes.
+  if (vOK) {
+    const toLabel = Math.atan2(P.y - V.y, P.x - V.x);
+    const mid = (s0 + e0) / 2;
+    if (Math.cos(toLabel - mid) < 0) { s0 += Math.PI; e0 += Math.PI; }
+  }
+
+  // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc
+  // is opened out to that much so the direction still reads; the text carries
+  // the true value.
+  const minSpan = (OVERLAY.angle.min_draw_deg || 0) * toRad;
+  let e0d = e0;
+  if (Math.abs(e0 - s0) < minSpan) e0d = s0 + Math.sign(e0 - s0 || 1) * minSpan;
+
+  // Quiet construction first, then the dashed red arc with one arrowhead. The
+  // extensions are deliberately much lighter -- the arc has to be the only
+  // thing on the canvas that reads as "this is the number".
+  // (mech1_ref/OVERLAY_DESIGN.md 3.3)
+  ctx.save();
+  if (vOK) {
+    // AN EXTENSION LINE IS THE LINE, CONTINUED -- so it is built from the
+    // line's own direction and from nothing else. Deriving it from the arc's
+    // angles is what bent it: s0/e0d have been flipped to the near side and
+    // opened out to min_draw_deg, so by then they are no longer the lines'
+    // directions and the "extensions" left the lines at an angle.
+    for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
+      // Work in the line's own parameter, so the extension covers whatever it
+      // has to and cannot leave the line. Both the vertex and this side's end
+      // of the arc lie ON this line; the extension is simply the run from the
+      // real segment out to whichever of them is furthest, DRAWN ON BOTH SIDES
+      // -- the operator can drag the label past the far end of the segment,
+      // and then the arc needs the extension going the other way.
+      const ux = Math.cos(Math.atan2(L1.y - L0.y, L1.x - L0.x));
+      const uy = Math.sin(Math.atan2(L1.y - L0.y, L1.x - L0.x));
+      const t = (q) => (q.x - L0.x) * ux + (q.y - L0.y) * uy;
+      const at_t = (tt) => ({ x: L0.x + tt * ux, y: L0.y + tt * uy });
+      const segLo = Math.min(t(L0), t(L1)), segHi = Math.max(t(L0), t(L1));
+      const E = { x: V.x + (dist + 3 * ps) * Math.cos(ang),
+                  y: V.y + (dist + 3 * ps) * Math.sin(ang) };
+      const lo = Math.min(segLo, t(V), t(E)), hi = Math.max(segHi, t(V), t(E));
+      if (lo < segLo - 1e-9) K.construction(at_t(lo), at_t(segLo));
+      if (hi > segHi + 1e-9) K.construction(at_t(segHi), at_t(hi));
     }
-    ctx.restore();
-    datumMark(tA, aA, nominal ? `A${nominal > 0 ? '+' : ''}${nominal}º` : 'A');
-    ctx.save(); ctx.fillStyle = COL_B; ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
-    chip('B', at(Q2, aB, 2.5 * ps).x, at(Q2, aB, 2.5 * ps).y, COL_B, 0.8);
-    ctx.restore();
-    // the reading itself, next to the wide end of the wedge
-    const wide = (Math.hypot(Q2.y - D2.y, Q2.x - D2.x) >= Math.hypot(Q1.y - D1.y, Q1.x - D1.x)) ? Q2 : Q1;
-    const dDelta = Math.hypot(Q2.y - D2.y, Q2.x - D2.x) - Math.hypot(Q1.y - D1.y, Q1.x - D1.x);
-    chip(`${fmtV(shownDeg)}  Δ${fmtL(dDelta)}`, wide.x, at(wide, aB + Math.PI / 2, 4 * ps).y, COL_V, 0.85);
   } else {
-    // ---- VERTEX STYLE (ISO 129-1 angular dimension): the two sides really do
-    // meet on screen, so the classic arc with arrowheads is the clearest thing
-    // to draw. The sector is filled so the swept side is unambiguous.
-    let sDeg, eDeg, heads = false;
-    switch (range) {
-      case 'abs90':     { sDeg = 0; eDeg = wrap180(raw); break; }
-      case 'deg180':    { sDeg = 0; eDeg = pos180(raw); break; }
-      case 'signed180': { sDeg = 0; eDeg = wrap360(raw); heads = true; break; }
-      case 'deg360':    { sDeg = 0; eDeg = pos360(raw); heads = true; break; }
-      case 'supp':      { sDeg = pos180(raw); eDeg = 180; break; }
-      case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; break; }
-      default:          { sDeg = 0; eDeg = wrap180(raw); break; }
-    }
-    const r = Math.max(10 * ps, Math.min(Math.hypot(P.x - V.x, P.y - V.y), 70 * ps));
-    const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad, ccw = eDeg < sDeg;
-    // sector fill
-    ctx.save();
-    ctx.fillStyle = 'rgba(230,140,0,0.14)';
-    ctx.beginPath(); ctx.moveTo(V.x, V.y); ctx.arc(V.x, V.y, r, s0, e0, ccw); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    // the two sides, each drawn out to the arc, with its extension shown
-    for (const [ang, L0, L1, col] of [[s0, A0, A1, COL_A], [e0, B0, B1, COL_B]]) {
-      const end = at(V, ang, r + 3 * ps), foot = proj(end, L0, L1);
-      extendTo(foot, L0, L1, col.replace('1)', '0.75)'));
-      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = lwBase; ctx.setLineDash([ps, ps]);
-      seg(V, end); ctx.restore();
-    }
-    // dimension arc, heads outside when the span is too small to hold them
-    ctx.save();
-    ctx.strokeStyle = ctx.fillStyle = COL_V; ctx.lineWidth = lwBase;
-    ctx.beginPath(); ctx.arc(V.x, V.y, r, s0, e0, ccw); ctx.stroke();
-    const hl = 2 * ps, dir = ccw ? -1 : 1, inside = Math.abs(eDeg - sDeg) >= 8;
-    arrowHead(at(V, e0, r), e0 + (inside ? dir : -dir) * Math.PI / 2, hl);
-    arrowHead(at(V, s0, r), s0 - (inside ? dir : -dir) * Math.PI / 2, hl);
-    ctx.restore();
-    if (heads) {   // vector ranges: the head shows which way pt1->pt2 points
+    // Truly parallel (or a vertex so far out that drawing to it is nonsense).
+    // There is no angle to draw, so draw none -- just say which two lines the
+    // number came from, and let the text carry it.
+    K.construction(K.projOn(P, A0, A1), P);
+    K.construction(K.projOn(P, B0, B1), P);
+  }
+  // THE LEAD-OUT ARC (from WebUI2's _Draw_FeatureElement_Edit_Measure_Angle).
+  //
+  // The label point sets the arc's radius, but the operator is free to park it
+  // anywhere -- including well outside the angle being swept, which is the
+  // normal case for a small angle. Then the arc and the number it belongs to
+  // sit apart with nothing joining them. A lighter arc continued from whichever
+  // end is nearer, at the same radius, out to the label's own bearing, says
+  // "this number belongs to that arc" without adding a second thing that reads
+  // like a measurement.
+  const TWO_PI = Math.PI * 2;
+  const norm = (a) => { a = a % TWO_PI; return a < 0 ? a + TWO_PI : a; };
+  let labelTheta = NaN;
+  if (vOK) {
+    labelTheta = Math.atan2(P.y - V.y, P.x - V.x);
+    const fromStart = norm(labelTheta - s0);
+    const swept = norm(e0d - s0);
+    const inside = (e0d >= s0) ? (fromStart <= swept) : (norm(s0 - labelTheta) <= norm(s0 - e0d));
+    if (!inside) {
+      const gapEnd = norm((e0d >= s0) ? labelTheta - e0d : e0d - labelTheta);
+      const gapStart = norm((e0d >= s0) ? s0 - labelTheta : labelTheta - s0);
+      const gap = Math.min(gapEnd, gapStart);
       ctx.save();
-      ctx.strokeStyle = ctx.fillStyle = COL_A; arrowHead(at(tA, refA, 7 * ps), refA, 2 * ps);
-      ctx.strokeStyle = ctx.fillStyle = COL_B; arrowHead(at(tB, aB, 7 * ps), aB, 2 * ps);
+      ctx.strokeStyle = K.withAlpha(K.C.reading, OVERLAY.alpha.faint);
+      ctx.lineWidth = K.lw * K.S.thin_w;
+      ctx.setLineDash(K.dash('tie'));
+      // Continue the arc only while the label is just past its end. Parked
+      // right round the other side -- which is where it ends up when the
+      // vertex is far off the part -- an arc all the way there sweeps half the
+      // screen and reads as a measurement of something. Past that, a straight
+      // leader, which is what a drawing uses and what nobody can misread.
+      if (gap <= OVERLAY.angle.lead_arc_max_deg * toRad) {
+        ctx.beginPath();
+        if (gapEnd <= gapStart) ctx.arc(V.x, V.y, dist, e0d, labelTheta, e0d < s0);
+        else                    ctx.arc(V.x, V.y, dist, labelTheta, s0, e0d < s0);
+        ctx.stroke();
+      } else {
+        const from = (gapEnd <= gapStart) ? e0d : s0;
+        K.seg({ x: V.x + dist * Math.cos(from), y: V.y + dist * Math.sin(from) }, P);
+      }
       ctx.restore();
     }
-    if (range === 'comp') {   // the 90º the reading is taken from
-      const q = 1.8 * ps;
-      const c1 = at(V, e0, q), c2 = at(V, refA, q), c3 = { x: c1.x + c2.x - V.x, y: c1.y + c2.y - V.y };
-      ctx.save(); ctx.strokeStyle = COL_A; seg(c1, c3); seg(c3, c2); ctx.restore();
-    }
-    datumMark(at(V, s0, r * 0.55), aA, nominal ? `A${nominal > 0 ? '+' : ''}${nominal}º` : 'A');
-    const bAt = at(V, e0, r * 0.55);
-    chip('B', bAt.x, bAt.y, COL_B, 0.8);
-    // the reading on the arc's midpoint
-    const mid = at(V, (s0 + e0) / 2 + (ccw && e0 > s0 ? Math.PI : 0), r + 3.2 * ps);
-    chip(fmtV(shownDeg), mid.x, mid.y, COL_V, 0.85);
   }
-  gauge(P.x, P.y - 8.5 * ps, 6 * ps);
+
+  if (vOK) {
+    ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+    ctx.lineWidth = K.lw * K.S.line_w;
+    ctx.setLineDash(K.dash('meas'));
+    renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
+    ctx.setLineDash([]);
+  }
   renderer.drawpoint(ctx, P);
   ctx.restore();
 
@@ -285,6 +240,17 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   ctx.font = renderer.getFontStyle(1);
   ctx.save();
   ctx.translate(P.x, P.y);
+  // Lay the text along the radius it hangs off, the way a drawing does -- and
+  // flip it end-for-end when that would put it upside down, so it is always
+  // read left-to-right. draw_Text cancels the VIEW rotation to keep text
+  // upright, so the view's own rotation is added back here; without that the
+  // label would follow the radius in image space and not on screen.
+  if (OVERLAY.angle.label_follows_radius && Number.isFinite(labelTheta) && !renderer.viewFlip) {
+    let th = labelTheta + (renderer.viewRotation || 0);
+    th = Math.atan2(Math.sin(th), Math.cos(th));
+    if (th > Math.PI / 2 || th < -Math.PI / 2) th += Math.PI;
+    ctx.rotate(th);
+  }
   ctx.strokeStyle = "black";
   const fmt = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
   let measureValue;
@@ -293,10 +259,10 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     const marginPC = (iv > shape.value)
       ? (iv - shape.value) / (shape.USL - shape.value)
       : -(iv - shape.value) / (shape.LSL - shape.value);
-    renderer.drawInspMeasureInfoText(ctx, shape.name, fmt(iv), marginPC, fontPx);
+    renderer.drawInspMeasureInfoText(ctx, measureLabelName(shape), fmt(iv), marginPC, fontPx);
     measureValue = iv;
   } else {
-    renderer.drawDefMeasureInfoText(ctx, shape.name,
+    renderer.drawDefMeasureInfoText(ctx, measureLabelName(shape),
       fmt(shape.value),
       "L:" + fmt(shape.LSL) + " U:" + fmt(shape.USL),
       "Now:" + fmt(measureDeg) + measValueAdjStrTag + measValueAdjStr,
@@ -493,7 +459,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                       (shape.inspection_value - shape.value) / (shape.USL - shape.value) :
                       -(shape.inspection_value - shape.value) / (shape.LSL - shape.value);
                     renderer.drawInspMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       (shape.inspection_value).toFixed(renderer.fixedDigit.A) + "º",
                       marginPC,fontPx);
                     measureValue=shape.inspection_value;
@@ -502,7 +468,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
             
                     
                     renderer.drawDefMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       ""+shape.value.toFixed(renderer.fixedDigit.A) + "º",
                       "L:" + shape.LSL.toFixed(renderer.fixedDigit.A) + "º U:" + shape.USL.toFixed(renderer.fixedDigit.A) + "º",
                       "Now:" + (measureDeg).toFixed(renderer.fixedDigit.A) + "º" + measValueAdjStr,

@@ -3,6 +3,7 @@
 import Color from 'color';
 import { closestPointOnPoints } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 // Endpoint for the dashed crosshair drawn from the aux_point's intersection
@@ -63,12 +64,12 @@ export function draw(ctx, shape, renderer, {
   inFullDisplay = true, shapeList = [], next_ShapeColor = null,
   skip_id_list = [], unitConvert = { unit: 'mm', mult: 1 }, drawSubObjs = false,
 } = {}) {
-  let shapeColor = SHAPE_TYPE_COLOR[type] || SHAPE_TYPE_COLOR.default;
-  shapeColor = Color(shapeColor).alpha(0.8);
+  const K = overlayKit(ctx, renderer);
+  const shapeColor = K.C.region;
 
   if (true || inFullDisplay) {
     ctx.lineWidth = renderer.getSearchDirectionLineSize();
-    ctx.strokeStyle = shapeColor.alpha(1);
+    ctx.strokeStyle = shapeColor;
     let db_obj = renderer.db_obj;
     let subObjs = shape.ref
       .map((ref) => db_obj.FindShape('id', ref.id, shapeList))
@@ -79,19 +80,19 @@ export function draw(ctx, shape, renderer, {
 
     let point = renderer.db_obj.auxPointParse(shape, shapeList);
     if (point !== undefined && subObjs.length == 2) { // Draw crosssect line
-      ctx.setLineDash([2 * renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
-
+      // The run from each source to the intersection is that source's line,
+      // CONTINUED -- the intersection lies on it, and the foot is the segment
+      // end facing it -- so it is drawn as an extension line, in the same
+      // yellow dotted style every other extension uses. It was its own dash
+      // and its own colour before, which made the same idea look like three
+      // different ones across the canvas.
       for (const sub of subObjs) {
         const foot = refFoot(sub, point);
-        if (!foot) continue;
-        ctx.beginPath();
-        ctx.moveTo(point.x, point.y);
-        ctx.lineTo(foot.x, foot.y);
-        ctx.stroke();
+        if (foot) K.construction(foot, point);
       }
-      ctx.setLineDash([]);
-      ctx.strokeStyle = 'gray';
-      renderer.drawpoint(ctx, point);
+      // The same yellow X every point gets.
+      K.crosshair(point);
+      // No text: an intersection is a dot. Its name belongs in the sheet.
     }
   }
 }
@@ -120,20 +121,24 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
   let point = reported || derived;
   const isReported = !!reported;
   if (point !== undefined && subObjs.length == 2) {
-    ctx.setLineDash([renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
+    const K = overlayKit(ctx, renderer);
+    // Same extension lines as the editor draws -- see draw().
     for (const sub of subObjs) {
       const foot = refFoot(sub, point);
-      if (!foot) continue;
-      ctx.beginPath();
-      ctx.moveTo(point.x, point.y);
-      ctx.lineTo(foot.x, foot.y);
-      ctx.stroke();
+      if (foot) K.construction(foot, point);
     }
-    ctx.setLineDash([]);
-    // Gray for the core's answer, hollow amber for a JS guess. A guess that
-    // looks identical to a measurement is how the divergence stayed invisible.
-    ctx.strokeStyle = isReported ? 'gray' : 'rgba(255, 190, 60, 0.9)';
-    renderer.drawcross(ctx, point, renderer.getPointSize() * (isReported ? 2 : 1.4));
+    // The core's own answer gets the plain X. A browser-side fallback gets a
+    // smaller one with a ring around it: a guess that looks identical to a
+    // measurement is how the divergence stayed invisible for so long, and the
+    // difference has to be in the SHAPE -- the colour is spoken for.
+    K.crosshair(point, undefined, { r: isReported ? K.S.cross_r : K.S.cross_r * 0.7 });
+    if (!isReported) {
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = K.C.feature; ctx.lineWidth = K.lw * K.S.construction_w;
+      ctx.beginPath(); ctx.arc(point.x, point.y, K.S.cross_r * K.ps, 0, 2 * Math.PI); ctx.stroke();
+      ctx.restore();
+    }
   }
   // na_reason is printed centrally by renderUTIL.drawNAReason, which is
   // called for every NA shape. The copy that used to live here called

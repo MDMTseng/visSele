@@ -44,6 +44,7 @@ const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './renderConst';
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 import { getShapeModule } from 'JSSRCROOT/shapes';
 
 class renderUTIL {
@@ -134,7 +135,10 @@ class renderUTIL {
     return this.getPrimitiveSize()*2;
   }
   getIndicationLineSize() {
-    return this.getPrimitiveSize()*2;
+    // One knob for how heavy the whole overlay draws. Every module's stroke
+    // width comes from here (directly, or via overlayKit's size multipliers),
+    // so this is the only place it has to be said.
+    return this.getPrimitiveSize() * 2 * (OVERLAY.size.stroke_scale ?? 1);
   }
   getSearchDirectionLineSize() {
     return this.getPrimitiveSize();
@@ -494,30 +498,29 @@ class renderUTIL {
       }
 
 
-      ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
+      // ISO 129-1 linear dimension: witness (extension) lines from the two
+      // features out past the dimension line, arrowheads at both ends of the
+      // dimension line itself. Before this the measured span was a bare
+      // segment, so which pair of features it spanned was guesswork.
+      const K = overlayKit(ctx, this);
+      const A = { x: extended_ind_line.x0, y: extended_ind_line.y0 };
+      const B = { x: extended_ind_line.x1, y: extended_ind_line.y1 };
+      const dimAng = Math.atan2(B.y - A.y, B.x - A.x);
 
-      this.drawReportLine(ctx, {
+      K.construction(A, point_onAlignLine);
+      K.construction(B, point);
+      K.construction(B, eObject.pt1);
 
-        x0: extended_ind_line.x0, y0: extended_ind_line.y0,
-        x1: point_onAlignLine.x, y1: point_onAlignLine.y
-      });
-
-      this.drawReportLine(ctx, {
-
-        x0: extended_ind_line.x1, y0: extended_ind_line.y1,
-        x1: point.x, y1: point.y
-      });
-
-
-      this.drawReportLine(ctx, {
-
-        x0: extended_ind_line.x1, y0: extended_ind_line.y1,
-        x1: eObject.pt1.x, y1: eObject.pt1.y
-      });
+      ctx.save();
       ctx.setLineDash([]);
-
-
+      ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+      ctx.lineWidth = K.lw * K.S.line_w;
       this.drawReportLine(ctx, extended_ind_line);
+      if (Math.hypot(B.y - A.y, B.x - A.x) > 6 * K.ps) {
+        K.arrow(A, dimAng + Math.PI, K.S.arrow_head * K.ps);
+        K.arrow(B, dimAng, K.S.arrow_head * K.ps);
+      }
+      ctx.restore();
 
       this.drawpoint(ctx, eObject.pt1);
 
@@ -538,7 +541,7 @@ class renderUTIL {
           -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
         
         this.drawInspMeasureInfoText(ctx,
-          eObject.name,
+          measureLabelName(eObject),
           "D" + (eObject.inspection_value * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           marginPC,fontPx);
 
@@ -550,10 +553,13 @@ class renderUTIL {
         measureValue=Math.hypot(point.x - point_on_line.x, point.y - point_on_line.y);
         
         this.drawDefMeasureInfoText(ctx,
-          eObject.name,
+          measureLabelName(eObject),
           "D" + eObject.value.toFixed(this.fixedDigit.D) + unitConvert.unit,
-          "L:" + eObject.LSL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit + 
-          " U:" + eObject.USL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit,
+          // (LSL * unitConvert.mult).toFixed(...), NOT LSL * mult.toFixed(...):
+          // the old form called toFixed on the MULTIPLIER and multiplied by the
+          // resulting string, so both shown limits were garbage.
+          "L:" + (eObject.LSL * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit +
+          " U:" + (eObject.USL * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           "Now:" + (measureValue * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit + measValueAdjStr,
           fontPx)
 

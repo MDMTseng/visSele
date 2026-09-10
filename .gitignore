@@ -141,3 +141,7 @@ UI/WebUI/tools/webctl/blow_probe.mjs
 UI/WebUI/tools/webctl/mid_probe.mjs
 UI/WebUI/tools/webctl/shot_oldver.mjs
 UI/WebUI/tools/webctl/crashtest.mjs
+
+# vite dev server scratch (dev.sh up_dev_server)
+UI/WebUI/.vite-dev.log
+UI/WebUI/.vite-dev.pid

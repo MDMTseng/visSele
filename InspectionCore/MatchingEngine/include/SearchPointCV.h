@@ -56,6 +56,12 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // min_strength, sat NEARER than the one measured, and were
                      // dropped by relStrength -- i.e. how much of the answer
                      // came from the relative rule rather than the def's floor.
-                     int *outRelMoved = nullptr);
+                     int *outRelMoved = nullptr,
+                     // distDecay: strength is scaled by exp(-|d|/distDecay), d
+                     // being the candidate's distance from the def's own point
+                     // along the search axis. 0 = off, and off is bit-identical
+                     // to the code before it existed. See
+                     // featureDef_searchPoint::dist_decay.
+                     float distDecay = 0.0f);
 
 #endif // SEARCH_POINT_CV_H

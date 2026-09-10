@@ -162,6 +162,11 @@ typedef struct featureDef_circle{
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (3 for circle)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // 0 = the hard inlier mask this has always used; 1 = the residual weight
+  // falls smoothly to zero at the same threshold, so a hit sitting on the edge
+  // of the band cannot swing the fit by appearing and vanishing. See
+  // CaliperParams::soft_reject.
+  float cal_soft_reject;
   // Envelope-fit mode: keep the LS-fit center, recompute the radius as
   //   0=ls    (default, no change)
   //   1=outer (max |center - hit|; min-circumscribed-radius assuming LS center)
@@ -218,6 +223,11 @@ typedef struct featureDef_line{
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (2 for line)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // 0 = the hard inlier mask this has always used; 1 = the residual weight
+  // falls smoothly to zero at the same threshold, so a hit sitting on the edge
+  // of the band cannot swing the fit by appearing and vanishing. See
+  // CaliperParams::soft_reject.
+  float cal_soft_reject;
   int edge_method;         // EdgeSelectParams::Method
   int edge_polarity;       // EdgeSelectParams::Polarity
   int edge_nth;
@@ -332,6 +342,26 @@ typedef struct featureDef_searchPoint{
   //     turns it off. Removal is now a per-def decision somebody makes on
   //     purpose, and the core says out loud when a def is relying on it.
   float rel_strength;      // default 0.40
+  //   dist_decay: HOW FAR FROM WHERE THE DEF SAID, IN PIXELS.
+  //
+  //     Every candidate's strength is multiplied by exp(-|d| / dist_decay),
+  //     d being its distance from the def's own point along the search axis.
+  //     A candidate further from where the edge is expected therefore has to
+  //     be proportionally stronger to be believed, and the selector stops
+  //     being a pure "nearest thing that clears the floor".
+  //
+  //     What it is for: an edge that flickers in and out at the far end of the
+  //     window -- a neighbouring part, a burr, a hair, a reflection that comes
+  //     and goes with the lighting. While it is there it can be the nearest
+  //     survivor, so the reported point jumps to it and back frame to frame,
+  //     at full strength, with a perfectly consistent-looking consider band.
+  //     Nothing in strength says it is wrong. Distance does.
+  //
+  //     0 = off, and off is bit-identical to the behaviour before this
+  //     existed. A useful value is a few times the real edge's positional
+  //     noise: large enough that the true edge never loses, small enough that
+  //     something half a window away cannot win on strength alone.
+  float dist_decay;        // default 0 (off)
   // WHICH of the edge knobs the def actually said something about.
   //
   // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
@@ -364,6 +394,7 @@ typedef struct featureDef_searchPoint{
     EDGE_SET_MANUAL_OFFSET= 1u << 2,
     EDGE_SET_ALPHA_KEEP   = 1u << 4,
     EDGE_SET_REL_STRENGTH = 1u << 6,
+    EDGE_SET_DIST_DECAY   = 1u << 7,
     // 1u << 5 was EDGE_SET_MASK_DILATE. Left as a hole rather than reused: a
     // new knob taking that bit would read as "set" on nothing, but the number
     // is in dumps and logs going back months and a reused bit makes those lie.

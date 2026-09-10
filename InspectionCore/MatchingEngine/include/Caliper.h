@@ -29,6 +29,26 @@ struct CaliperParams
   //                 even if MAD would have kept it. <=0 ⇒ no cap.
   int   min_inliers = 0;
   float max_error   = 0;
+  // soft_reject: SOFTEN THE EDGE OF THE INLIER BAND.
+  //
+  // The fit rejects on a hard threshold: |residual| <= thr counts fully,
+  // anything past it counts not at all. A caliper hit sitting AT thr therefore
+  // flips its whole contribution in and out between frames -- and with only a
+  // handful of hits on a short edge, one appearing or vanishing swings the
+  // fitted line or circle far more than its own residual would suggest. The
+  // measurement moves because of a point that carries no information about
+  // where the edge is.
+  //
+  // With soft_reject on, the residual weight falls smoothly to zero at the
+  // same threshold (Tukey biweight, (1-(r/thr)^2)^2), so a hit near the edge of
+  // the band contributes almost nothing whichever side of it lands on, and
+  // crossing it changes the answer by almost nothing. The threshold itself,
+  // the MAD that sets it and max_error are all unchanged; only the shape of
+  // the cliff at its edge is.
+  //
+  // 0 = off, bit-identical to the hard mask. 1 = full biweight. Values in
+  // between blend, so a def can be moved onto it gradually.
+  float soft_reject = 0;
 };
 
 // Measure one caliper. center = caliper center (image px). searchDir = direction

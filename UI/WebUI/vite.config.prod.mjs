@@ -81,6 +81,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Source maps ship with the build. A minified stack ("Cannot access 'yr'
+    // before initialization at index-urEfxG8U.js:275:78953") costs a round of
+    // guessing every time; with the .map next to the chunk devtools names the
+    // file, the line and the identifier. They are separate .map files, so they
+    // cost nothing until devtools is opened.
+    sourcemap: true,
     rollupOptions: {
       input: r('index.html'),
       external: ['electron', 'fs', 'path'],

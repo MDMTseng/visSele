@@ -864,7 +864,13 @@ function StateReducer(newState, action) {
             break;
             
           case UISEV.Image_Update:
-            newState.edit_info = { ...newState.edit_info, img: action.data };
+            // fromStream: this frame was PUSHED by a running stream rather than
+            // requested by a screen. One slot carries both -- a def's own
+            // picture, a CHECK result, and every viewfinder frame -- so the
+            // difference has to travel with the image.
+            newState.edit_info = { ...newState.edit_info,
+              img: (action.data && action.FROM_LIVE_STREAM === true)
+                ? { ...action.data, fromStream: true } : action.data };
             break;
 
 

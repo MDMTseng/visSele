@@ -451,7 +451,13 @@ function urlConcat(base, add) {
                 //   rawData:req_pkt
                 // };
                 // this.props.DISPATCH(acts)
-                this.comp.WSDataDispatch(stacked_pkts);
+                // No promise on this session: nobody asked for it, so it is a
+                // pushed STREAM batch (a viewfinder, the running inspection),
+                // not a reply. Screens that requested an image get it through
+                // resolve() instead -- including the ones that hand their own
+                // reply to WSDataDispatch, which is why this is marked here at
+                // the call site and not inside WSDataDispatch.
+                this.comp.WSDataDispatch(stacked_pkts, true);
                 // req_pkt.pkts.forEach((pkt)=>
                 // {
                 //   let act=map_BPG_Packet2Act(pkt);

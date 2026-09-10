@@ -327,6 +327,22 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
 // inlier points coincident (zero covariance -- atan2(0,0) would "fit" a
 // horizontal line with rms 0, i.e. always in spec, which is the one answer a
 // degenerate input must never produce).
+// The residual weight at |res| given the current inlier threshold. soft=0 is
+// the hard mask the fits have always used (1 inside, 0 outside); soft=1 is a
+// Tukey biweight that reaches 0 AT the threshold, so a point sitting on the
+// boundary contributes nothing from either side and its flicker cannot move
+// the fit. In between the two are blended.
+static inline float caliper_res_weight(float absRes, float thr, float soft)
+{
+  if (!(thr > 0)) return 1.0f;
+  if (absRes > thr) return 0.0f;
+  if (!(soft > 0)) return 1.0f;
+  float u = absRes / thr, t = 1.0f - u * u;
+  float bw = t * t;                       // 1 at the centre, 0 at thr
+  if (soft >= 1.0f) return bw;
+  return (1.0f - soft) + soft * bw;       // blend toward the hard mask
+}
+
 static bool wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
                     const std::vector<char> &use, acv_XY &anchor, acv_XY &dir)
 {
@@ -471,6 +487,9 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   if (r.nValid < 2) { if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
+  // The weights the fit actually solves with. Identical to w until a residual
+  // weight is applied, which is why soft_reject=0 is bit-identical.
+  std::vector<float> wf(w);
   acv_XY anchor = {0,0}, dir = {1,0};
   // If the fit NEVER succeeds, r must not be ok: anchor/dir would still hold
   // their initialisers and the "measurement" below would be a fabrication with
@@ -478,7 +497,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
-    if (!wlsLine(pts, w, use, anchor, dir)) break;
+    if (!wlsLine(pts, wf, use, anchor, dir)) break;
     fitOk = true;
     acv_XY n = { -dir.y, dir.x };
     std::vector<float> res(pts.size());
@@ -491,7 +510,14 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     float thr = 3.0f * 1.4826f * med + 0.5f; // MAD-based, +0.5px floor
     if (cal.max_error > 0 && thr > cal.max_error) thr = cal.max_error;
     int changed = 0;
-    for (size_t i = 0; i < pts.size(); i++) { char nu = fabsf(res[i]) <= thr ? 1 : 0; if (nu != use[i]) changed++; use[i] = nu; }
+    for (size_t i = 0; i < pts.size(); i++)
+    {
+      const float rw = caliper_res_weight(fabsf(res[i]), thr, cal.soft_reject);
+      wf[i] = w[i] * rw;
+      char nu = (rw > 0) ? 1 : 0;
+      if (nu != use[i]) changed++;
+      use[i] = nu;
+    }
     if (!changed) break;
   }
   // final stats
@@ -613,6 +639,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   if (r.nValid < 3) { if (dbg) caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
+  std::vector<float> wf(w);          // see the line fit
   acv_XY cen = center0; float rad = radius0;
   // Same guard as the line path: if Kasa never solves, cen/rad still hold the
   // def's NOMINAL circle, residuals against it are ~0 (the calipers were
@@ -621,7 +648,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
-    if (!kasaCircle(pts, w, use, cen, rad)) break;
+    if (!kasaCircle(pts, wf, use, cen, rad)) break;
     fitOk = true;
     std::vector<float> absr;
     for (size_t i = 0; i < pts.size(); i++) if (use[i])
@@ -633,7 +660,14 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     if (cal.max_error > 0 && thr > cal.max_error) thr = cal.max_error;
     int changed = 0;
     for (size_t i = 0; i < pts.size(); i++)
-    { float d = fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad); char nu = d<=thr?1:0; if (nu!=use[i])changed++; use[i]=nu; }
+    {
+      float d = fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad);
+      const float rw = caliper_res_weight(d, thr, cal.soft_reject);
+      wf[i] = w[i] * rw;
+      char nu = (rw > 0) ? 1 : 0;
+      if (nu != use[i]) changed++;
+      use[i] = nu;
+    }
     if (!changed) break;
   }
   double sq = 0, sumw = 0; int ni = 0;
