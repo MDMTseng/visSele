@@ -746,8 +746,6 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [speed, setSpeed] = useState(undefined);
   const [hzInput, setHzInput] = useState('');        // gate fire-rate cap, in parts/s
   const [devCfgOpen, setDevCfgOpen] = useState(false);   // 裝置設定 modal
-  useEffect(() => { setPlateGeometry(cfg && cfg.pulses_per_rev, cfg && cfg.plate_diameter_mm); },
-            [cfg && cfg.pulses_per_rev, cfg && cfg.plate_diameter_mm]);
   const [procHzInput, setProcHzInput] = useState(''); // host throughput cap, in parts/s
   const [stopAfterInput, setStopAfterInput] = useState('');
   const [nomatchAfterInput, setNomatchAfterInput] = useState('');
@@ -820,6 +818,13 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const mounted = useRef(true);
 
   const cfg = GetObjElement(CONN, ['machineSetup']) || {};
+  // Plate geometry for every pulse<->mm conversion in this panel. This has to
+  // sit AFTER cfg: a hook's dependency array is evaluated during render, so
+  // reading cfg above its own const threw
+  //   ReferenceError: Cannot access 'cfg' before initialization
+  // and took the whole panel down.
+  useEffect(() => { setPlateGeometry(cfg.pulses_per_rev, cfg.plate_diameter_mm); },
+            [cfg.pulses_per_rev, cfg.plate_diameter_mm]);
   const dev = GetObjElement(CONN, ['deviceState']) || {};
   // cfg is the board's own settings, filled only by a get_setup reply.
   // Empty means "not read", which is NOT the same as "read, and it said
