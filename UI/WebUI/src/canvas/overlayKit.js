@@ -118,6 +118,9 @@ export const OVERLAY_DEFAULTS = {
     // canvas they bury the thing they are naming, and they bury the MEASURE
     // labels, which are the only text anyone reads off the image.
     show_primitive_names: false,
+    // The value mapping (A~B => X~Y) is recipe setup, not a reading -- see
+    // measure/index.js.
+    show_value_mapping: false,
   },
 
   // ---- control points ----------------------------------------------------
