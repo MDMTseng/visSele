@@ -8,7 +8,7 @@ import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import dclone from 'clone';
 import { mkLog } from "UTIL/logger";
-import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 const log = mkLog("editor.shapes");
 
 // canvasCtrl: angle refs two lines or search_points (intersection).
@@ -106,20 +106,24 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   let e0d = e0;
   if (Math.abs(e0 - s0) < minSpan) e0d = s0 + Math.sign(e0 - s0 || 1) * minSpan;
 
+  // Four marks and no more, in the reference machine's order (see
+  // mech1_ref/OVERLAY_DESIGN.md 3.3): two quiet construction lines out to the
+  // vertex, then the dashed red arc with one arrowhead. The extension lines
+  // are deliberately much lighter than the arc -- the red dashed arc has to be
+  // the only thing on the canvas that reads as "this is the number".
+  const K = overlayKit(ctx, renderer);
   ctx.save();
-  ctx.lineWidth = renderer.getIndicationLineSize();
-  renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
-  renderer.drawpoint(ctx, P);
-
-  // Witness lines: from the nearest real end of each line out to its end of
-  // the arc, so the two sides being compared are named by the picture.
-  ctx.setLineDash([ps, ps]);
   for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
     const arcPt = { x: V.x + dist * Math.cos(ang), y: V.y + dist * Math.sin(ang) };
     const closestPt = closestPointOnPoints(arcPt, [L0, L1]);
-    renderer.drawReportLine(ctx, { x0: closestPt.x, y0: closestPt.y, x1: arcPt.x, y1: arcPt.y });
+    K.construction(closestPt, arcPt);
   }
+  ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+  ctx.lineWidth = K.lw * K.S.line_w;
+  ctx.setLineDash(K.dash('meas'));
+  renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
   ctx.setLineDash([]);
+  renderer.drawpoint(ctx, P);
   ctx.restore();
 
   const fontPx = renderer.getFontHeightPx();
@@ -134,10 +138,10 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     const marginPC = (iv > shape.value)
       ? (iv - shape.value) / (shape.USL - shape.value)
       : -(iv - shape.value) / (shape.LSL - shape.value);
-    renderer.drawInspMeasureInfoText(ctx, shape.name, fmt(iv), marginPC, fontPx);
+    renderer.drawInspMeasureInfoText(ctx, measureLabelName(shape), fmt(iv), marginPC, fontPx);
     measureValue = iv;
   } else {
-    renderer.drawDefMeasureInfoText(ctx, shape.name,
+    renderer.drawDefMeasureInfoText(ctx, measureLabelName(shape),
       fmt(shape.value),
       "L:" + fmt(shape.LSL) + " U:" + fmt(shape.USL),
       "Now:" + fmt(measureDeg) + measValueAdjStrTag + measValueAdjStr,
@@ -334,7 +338,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                       (shape.inspection_value - shape.value) / (shape.USL - shape.value) :
                       -(shape.inspection_value - shape.value) / (shape.LSL - shape.value);
                     renderer.drawInspMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       (shape.inspection_value).toFixed(renderer.fixedDigit.A) + "º",
                       marginPC,fontPx);
                     measureValue=shape.inspection_value;
@@ -343,7 +347,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
             
                     
                     renderer.drawDefMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       ""+shape.value.toFixed(renderer.fixedDigit.A) + "º",
                       "L:" + shape.LSL.toFixed(renderer.fixedDigit.A) + "º U:" + shape.USL.toFixed(renderer.fixedDigit.A) + "º",
                       "Now:" + (measureDeg).toFixed(renderer.fixedDigit.A) + "º" + measValueAdjStr,

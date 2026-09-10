@@ -44,7 +44,7 @@ const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './renderConst';
-import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 import { getShapeModule } from 'JSSRCROOT/shapes';
 
 class renderUTIL {
@@ -554,7 +554,7 @@ class renderUTIL {
           -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
         
         this.drawInspMeasureInfoText(ctx,
-          eObject.name,
+          measureLabelName(eObject),
           "D" + (eObject.inspection_value * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           marginPC,fontPx);
 
@@ -566,7 +566,7 @@ class renderUTIL {
         measureValue=Math.hypot(point.x - point_on_line.x, point.y - point_on_line.y);
         
         this.drawDefMeasureInfoText(ctx,
-          eObject.name,
+          measureLabelName(eObject),
           "D" + eObject.value.toFixed(this.fixedDigit.D) + unitConvert.unit,
           // (LSL * unitConvert.mult).toFixed(...), NOT LSL * mult.toFixed(...):
           // the old form called toFixed on the MULTIPLIER and multiplied by the

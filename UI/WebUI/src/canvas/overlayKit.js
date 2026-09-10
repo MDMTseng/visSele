@@ -25,12 +25,28 @@
 
 export const OVERLAY_DEFAULTS = {
   // ---- roles -------------------------------------------------------------
+  // Taken from the KEYENCE IM in mech1_ref/OVERLAY_DESIGN.md, which has had two
+  // decades of shop-floor use to settle four roles and no more:
+  //
+  //   fitted geometry  solid yellow, thin, drawn on the edge it found
+  //   search region    translucent cyan AREA (never a fat stroke)
+  //   the measurement  RED, always DASHED, with arrowheads -- and nothing else
+  //                    on the canvas is red, so a dashed red line means
+  //                    "this is a number", full stop
+  //   construction     thin dotted, low contrast, no arrowheads
+  //
+  // The contrast between the last two is the point: an extension line must be
+  // visibly quieter than the dimension it serves, or the eye cannot tell which
+  // mark carries the value.
   role: {
-    datum:   'rgba(31,111,235,1)',    // the reference side; locating anchors
-    feature: 'rgba(209,68,47,1)',     // fitted geometry being measured
-    reading: 'rgba(196,122,0,1)',     // the quantity itself: dimension lines, arcs, values
-    search:  'rgba(14,143,142,1)',    // caliper boxes, margin bands, scan direction
-    region:  'rgba(122,90,245,1)',    // aux / construction / loc regions
+    feature: 'rgba(232,214,26,1)',    // fitted geometry: line, arc, sig360 outline
+    search:  'rgba(41,182,216,1)',    // caliper boxes, margin bands, scan direction
+    reading: 'rgba(229,57,53,1)',     // dimension lines, angle arcs, the value
+    region:  'rgba(240,168,58,1)',    // construction / projection / aux / loc regions
+    // Ours, not the reference's: it has no datum colour because a datum is just
+    // another element named in the label. We mark locating anchors and the
+    // registration frame, which the operator does need to pick out.
+    datum:   'rgba(66,133,214,1)',
     ok:      'rgba(18,135,74,1)',
     ng:      'rgba(207,42,42,1)',
     neutral: 'rgba(120,132,143,1)',
@@ -40,15 +56,17 @@ export const OVERLAY_DEFAULTS = {
   alpha: {
     wedge:   0.16,   // angle gap style: between datum ray and the measured line
     sector:  0.14,   // angle vertex style: the swept sector
-    search:  0.13,   // search/margin bands
+    search:  0.15,   // search/margin bands
     region:  0.14,   // loc_include fill
+    faint:   0.55,   // construction lines: quieter than what they serve
     band:    0.85,   // gauge tolerance band stroke
   },
   // ---- line vocabulary (dash patterns, in ps units) ----------------------
   dash: {
+    meas:   [3, 2],               // THE measurement. Red + this = a number.
     datum:  [7, 2.5, 1.5, 2.5],   // dash-dot: a reference, never a real edge
     aux:    [5, 3],               // long dash: virtual extension / construction
-    tie:    [1.5, 2.5],           // fine dot: "this uses that"
+    tie:    [1.5, 2.5],           // fine dot: construction, "this uses that"
     search: [4, 2.5],             // search-area outline
   },
   // ---- sizes, all in multiples of getPrimitiveSize() ---------------------
@@ -75,6 +93,17 @@ export const OVERLAY_DEFAULTS = {
     tag:   0.80,
     small: 0.72,
   },
+  // ---- labels ------------------------------------------------------------
+  // The reference machine prints "[N] value[mode]" and its calculator inserts
+  // that same [N] into a formula. Ours could: calc_f already references
+  // measures as [id]. But the id is OURS, not the operator's -- they number
+  // their measures the way the drawing numbers them, and two numbering schemes
+  // on one label is worse than none. So the id stays an id, the name stays
+  // theirs, and this is off. Turn it on for a session with
+  //     OVERLAY_TUNE({ label: { show_index: true } })
+  // when hunting for which measure an expression refers to.
+  label: { show_index: false },
+
   // ---- level of detail ---------------------------------------------------
   // A shape whose on-screen extent is under `detail_ps` primitive-sizes gets
   // geometry only: no name plate, no dimension text. `size / ps` is
@@ -154,6 +183,14 @@ if (typeof window !== 'undefined') {
   tune.defaults = () => clone(OVERLAY_DEFAULTS);
   window.OVERLAY_TUNE = tune;
   window.OVERLAY = OVERLAY;
+}
+
+// "[12] 外徑" -- the index the calc expression editor uses, in front of the
+// operator's own name. Standalone so a caller with no canvas can use it too.
+export function measureLabelName(shape) {
+  const nm = (shape && shape.name) || '';
+  if (!OVERLAY.label.show_index || !shape || shape.id === undefined) return nm;
+  return '[' + shape.id + '] ' + nm;
 }
 
 // Turn 'rgba(r,g,b,a)' into the same colour at another alpha. Kept dumb on
@@ -290,8 +327,26 @@ export function overlayKit(ctx, renderer) {
   // clean while a large one in the same frame still gets its plate.
   const showDetail = (sizeMM) => !(sizeMM > 0) || (sizeMM / ps) > T.lod.detail_ps;
 
+  // "[12] 外徑" -- the index the calc expression editor uses, in front of the
+  // name the operator gave it.
+  const measureName = (shape) => {
+    const nm = (shape && shape.name) || '';
+    if (!T.label.show_index || !shape || shape.id === undefined) return nm;
+    return '[' + shape.id + '] ' + nm;
+  };
+
+  // A construction line: quiet, dotted, thin. Never competes with a dimension.
+  const construction = (p, q, colour) => {
+    ctx.save();
+    ctx.strokeStyle = withAlpha(colour || T.role.region, T.alpha.faint);
+    ctx.lineWidth = lw * S.thin_w;
+    ctx.setLineDash(dash('tie'));
+    seg(p, q);
+    ctx.restore();
+  };
+
   return { T, C: T.role, ps, lw, fpx, S, dash, at, seg, projOn, arrow, text, chip,
-           datumMark, extendTo, gauge, withAlpha, showDetail };
+           datumMark, extendTo, gauge, withAlpha, showDetail, measureName, construction };
 }
 
 export default overlayKit;

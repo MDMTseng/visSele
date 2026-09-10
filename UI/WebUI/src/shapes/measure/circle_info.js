@@ -8,7 +8,7 @@ import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import dclone from 'clone';
 import { mkLog } from "UTIL/logger";
-import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 const log = mkLog("editor.shapes");
 
 // Editor schema slice for the circle_info subtype: adds the info_type dropdown.
@@ -150,7 +150,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                       -(shape.inspection_value - shape.value) / (shape.LSL - shape.value);
                       
                     renderer.drawInspMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       tagName + (shape.inspection_value * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit,
                       marginPC,fontPx);
                     measureValue=shape.inspection_value;
@@ -159,7 +159,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
             
                     
                     renderer.drawDefMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       tagName + shape.value.toFixed(renderer.fixedDigit.R) + unitConvert.unit,
                       "L:" + (shape.LSL * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit + " U:" + (shape.USL * unitConvert.mult).toFixed(renderer.fixedDigit.R) + unitConvert.unit,
                       "?" + measValueAdjStr,
