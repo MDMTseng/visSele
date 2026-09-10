@@ -26,7 +26,18 @@ LAUNCHER="export_v2/launcher/Xception INSP-win32-x64/Xception INSP.exe"
 MINGW_BIN="/c/msys64/mingw64/bin"
 ESP32_DIR="Peripheral/uInspESP32"
 ESP32_ENV="esp32dev"
-PIO="$HOME/.platformio/penv/Scripts/pio.exe"
+# PlatformIO installs under the WINDOWS user profile, and $HOME in MSYS2 is
+# /home/<user> by DEFAULT -- so this pointed at a directory that does not exist
+# on any MSYS2 that was not reconfigured, and flashing failed with "platformio
+# not found" while it sat right there. Look in both.
+PIO=""
+for _pio_dir in "$HOME" \
+                "$(cygpath -u "${USERPROFILE:-}" 2>/dev/null)" \
+                "/c/Users/${USERNAME:-$(basename "$HOME")}"; do
+  [[ -n "$_pio_dir" && -x "$_pio_dir/.platformio/penv/Scripts/pio.exe" ]] || continue
+  PIO="$_pio_dir/.platformio/penv/Scripts/pio.exe"; break
+done
+[[ -n "$PIO" ]] || PIO="$HOME/.platformio/penv/Scripts/pio.exe"   # for the error message
 
 # The Vite dev server. Port and strictPort come from UI/WebUI/vite.config.mjs;
 # if you move it there, move it here.
@@ -71,6 +82,12 @@ timed() {
 # ------------------------------------------------------------------- steps --
 
 step_web() {
+  # A fresh clone has no node_modules, and `npm run build` there fails with
+  # vite-not-found rather than saying what is missing. Install once, then build.
+  if [[ ! -d "$WEBUI_SRC/node_modules" ]]; then
+    say "first build here -- installing WebUI dependencies (a few minutes)"
+    ( cd "$WEBUI_SRC" && npm install ) || die "npm install failed"
+  fi
   ( cd "$WEBUI_SRC" && npm run build ) || die "WebUI build failed"
 }
 
