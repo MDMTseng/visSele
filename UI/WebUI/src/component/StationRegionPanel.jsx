@@ -130,6 +130,33 @@ function ThreshField({ value, onChange, title }) {
   </Popover>;
 }
 
+// The area limit gets the same treatment, with one difference: it has no fixed
+// full scale. mm² of dirt is whatever this region and this lens make it, so the
+// slider spans 0 to twice the current value -- enough headroom to loosen the
+// limit, fine enough to move it a hair -- with a 0.5 floor so a limit sitting
+// at 0 still has something to drag along.
+//
+// The range is FROZEN while the popover is open. Recomputing it from the live
+// value would move the scale under the handle on every drag, which makes the
+// control feel like it is fighting back.
+function AreaField({ value, onChange, title }) {
+  const [openMax, setOpenMax] = useState(0.5);
+  const v = Number.isFinite(value) ? value : 0;
+  const step = openMax <= 1 ? 0.001 : 0.01;
+  return <Popover trigger="click" placement="right"
+    onOpenChange={(o) => { if (o) setOpenMax(Math.max(0.5, v * 2)); }}
+    content={<div style={{ width: 190, padding: '2px 4px' }}>
+      <div style={{ ...HINT, marginBottom: 2 }}>暗面積上限 {v.toFixed(3)} mm²</div>
+      <Slider min={0} max={openMax} step={step} value={Math.min(v, openMax)}
+              onChange={(x) => onChange(parseFloat(Number(x).toFixed(4)))}
+              marks={{ 0: '0', [openMax]: String(parseFloat(openMax.toFixed(2))) }} />
+    </div>}>
+    <InputNumber size="small" style={{ width: 48, flex: '0 0 auto' }} step={0.01}
+      value={value} min={0} title={title}
+      onChange={(x) => onChange(x)} />
+  </Popover>;
+}
+
 const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
 const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
   ? { ...r, x: r.x - o.x, y: r.y - o.y } : r;
@@ -491,8 +518,8 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
               title="低於這個灰階的像素算「暗」— 點一下用滑桿調"
               onChange={(v) => setC({ dark_thresh: v })} />
             <span style={HINT}>≤</span>
-            <InputNumber size="small" style={{ width: 48, flex: '0 0 auto' }} step={0.01} value={c.dark_area_max}
-              title="暗面積上限 (mm²)"
+            <AreaField value={c.dark_area_max}
+              title="暗面積上限 (mm²) — 點一下用滑桿調"
               onChange={(v) => setC({ dark_area_max: v })} />
             <span style={{ ...HINT, whiteSpace: 'nowrap' }}>mm²</span>
             {/* Setting this threshold meant reading the measured area off the
@@ -506,7 +533,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
                 title={'把目前量到的 ' + measured.toFixed(4) + ' mm² 填進上限'}
                 onClick={() => setC({ dark_area_max: parseFloat(measured.toFixed(4)) })}>←</Button>
             ) : null}
-            <Select size="small" style={{ width: 54, flex: '0 0 auto', marginLeft: 'auto' }}
+            <Select size="small" style={{ width: 60, flex: '0 0 auto', marginLeft: 'auto' }}
               value={c.on_fail === 'ng' ? 'ng' : 'na'}
               title={c.on_fail === 'ng' ? '超出 → NG,吹掉' : '超出 → NA,繞回重測'}
               onChange={(v) => setC({ on_fail: v })}
