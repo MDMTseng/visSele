@@ -3265,10 +3265,18 @@ export function UINSP_ESP32_MINI() {
           rather than a number anyone copies onto a sheet. The exact value is on
           the title. If it ever needs to be read exactly, it wants its own row,
           not a wider clause. */}
+      {/* ONE LINE, ALWAYS. This clause is as long as whatever the machine is
+          doing -- "STOP · 盤停止" one moment, "ERROR · 盤停止 · 需先在設定中清除
+          錯誤" the next -- and while it was allowed to wrap, every state change
+          that crossed the width changed this block's HEIGHT and shoved every
+          block below it down a line. A sidebar that reflows while you are
+          reaching for a button is worse than a truncated sentence, and the
+          whole sentence is still on the hover. */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6,
                     fontSize: 11, lineHeight: 1.35, marginBottom: 3,
-                    whiteSpace: 'normal' }}>
-        <span style={{ flex: 1, minWidth: 0 }}>
+                    whiteSpace: 'nowrap' }}
+           title={`${label}${rpm > 0 ? ' · ' + rpm.toFixed(1) + ' rpm' : ' · 盤停止'}${doing ? ' · ' + doing : ''}`}>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           <b style={{ color }}>{label}</b>
           <span style={{ color: '#888' }}>
             {' · '}{rpm > 0 ? `${rpm.toFixed(1)} rpm` : '盤停止'}
@@ -3323,7 +3331,12 @@ export function UINSP_ESP32_MINI() {
           style={{ margin: '0 6px 2px' }}
         />
       </div>
-      {why ? <div style={{ fontSize: 11, color: '#c33', marginBottom: 3 }}>⚠ {why}</div> : null}
+      {/* Same rule: a failure message is as long as the failure, and it must
+          not be able to grow the strip. It reserves its line when there is one
+          and says the rest on hover. */}
+      {why ? <div style={{ fontSize: 11, color: '#c33', marginBottom: 3,
+                           whiteSpace: 'nowrap', overflow: 'hidden',
+                           textOverflow: 'ellipsis' }} title={why}>⚠ {why}</div> : null}
       {/* error_hist is the one thing here that must never be quiet -- it keeps
           its own line per error even though everything around it got tighter */}
       {stat && stat.error_hist && stat.error_hist.length > 0 && (
