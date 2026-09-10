@@ -4094,9 +4094,19 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
           const hit = j.find((e) => e && e.id === edit_tar.id);
           return (hit && Number.isFinite(hit.value)) ? hit.value : undefined;
         })();
+        // The core's own stats for THIS region, when the shape is one that has
+        // them. Same rule as _measured above: read from the report, not from
+        // the shape -- the shape says what the def asks for.
+        const _measuredRegion = (() => {
+          if (edit_tar.type !== 'obj_detect') return undefined;
+          const o = GetObjElement(edit_info, ['inspReport', 'reports', 0, 'objDetects']);
+          if (!Array.isArray(o)) return undefined;
+          return o.find((e) => e && e.id === edit_tar.id);
+        })();
         UIArr.push(<PSheet
           key="propertySheet"
           measured={_measured}
+          measuredRegion={_measuredRegion}
           shape={edit_tar}
           shapeList={shape_list}
           dict={DICT}
