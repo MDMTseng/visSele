@@ -97,7 +97,7 @@ PY
   ok "overlay zip"
 }
 
-step_esp32() {
+step_flash_uinspesp32() {
   local port="${1:-}"
   [[ -x "$PIO" ]] || die "platformio not found at $PIO"
   if [[ -z "$port" ]]; then
@@ -108,7 +108,7 @@ step_esp32() {
       2>/dev/null | tr -d '\r')"
     local n; n=$(wc -w <<<"$port")
     [[ "$n" -eq 0 ]] && die "no serial port found -- is the board plugged in?"
-    [[ "$n" -gt 1 ]] && die "several serial ports ($port) -- name one: ./dev.sh esp32 COM3"
+    [[ "$n" -gt 1 ]] && die "several serial ports ($port) -- name one: ./dev.sh flash_uinspesp32 COM3"
   fi
   say "flashing $ESP32_DIR -> $port"
   # The core holds the port open, so it has to go first.
@@ -183,7 +183,8 @@ ${B}dev.sh${N} -- build, install and run visSele
       ./dev.sh web             build the WebUI only            ${DIM}~35s${N}
       ./dev.sh install         copy the last build into the app  ${DIM}instant${N}
       ./dev.sh core            build InspectionCore              ${DIM}~3-4min${N}
-      ./dev.sh esp32 [COM3]    flash the uInsp ESP32             ${DIM}~35s${N}
+      ./dev.sh flash_uinspesp32 [COM3]
+                               flash the uInsp ESP32             ${DIM}~35s${N}
       ./dev.sh overlay [sha]   zip Core + WebUI for the update   ${DIM}~5s${N}
 
   ${B}The app${N}
@@ -205,7 +206,7 @@ ${B}dev.sh${N} -- build, install and run visSele
 
   ${B}Notes${N}
 
-    * ${B}core${N} and ${B}esp32${N} stop the launcher first, and they have to: a running
+    * ${B}core${N} and ${B}flash_uinspesp32${N} stop the launcher first, and they have to: a running
       visSele.exe locks the build output, and it holds the serial port open.
     * The installed app is read from export_v2/app/current.json -- currently
       ${B}$VERSION${N}. Switch versions there, not here.
@@ -237,7 +238,10 @@ case "$CMD" in
   install)  step_install ;;
   core)     timed "core build" "3-4min" step_core ;;
   overlay)  step_overlay "${1:-}" ;;
-  esp32)    timed "ESP32 flash" "35s" step_esp32 "${1:-}" ;;
+  # Named for the board, not for the chip: this repo has a dozen ESP32
+  # firmwares under Peripheral/ and "esp32" did not say which one.
+  flash_uinspesp32) timed "uInspESP32 flash" "35s" step_flash_uinspesp32 "${1:-}" ;;
+  esp32)    die "renamed: ./dev.sh flash_uinspesp32 [COM3]" ;;
   up)       step_up ;;
   down)     step_down ;;
   status)   step_status ;;
