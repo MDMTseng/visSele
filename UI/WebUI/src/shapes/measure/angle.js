@@ -109,35 +109,22 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   // to its own line by a dotted line from the foot of the perpendicular. The
   // rays are the lines' directions, the arc between them is the reading.
   // A vertex is only worth drawing on when the angle is actually READ there.
-  // Two nearly-parallel lines do intersect -- half a screen away -- and putting
-  // the arc on that intersection drags the whole overlay off the part, which is
-  // exactly what it did at -7.16 deg. So the vertex has to be both close AND
-  // the angle wide enough that a vertex means something; otherwise the reading
-  // is drawn locally, at the label.
+  // The construction is always the same one, and it is the one a person draws
+  // by hand: continue each line, dotted and collinear, past the end of the
+  // real segment until the two meet; put the arc on that vertex; run a leader
+  // from the arc to the label. The label's distance from the vertex IS the
+  // radius, so where the operator parks it decides how big the arc is.
+  //
+  // There is deliberately no second style. A local arc drawn near the label,
+  // tied to the lines by perpendiculars, was tried and is wrong: those
+  // perpendicular ties are not extension lines, they cross the lines instead
+  // of continuing them, and nothing on the canvas then says where the angle
+  // actually is.
   let V = intersectPoint(A0, A1, B0, B1);
-  const vFinite = V && Number.isFinite(V.x) && Number.isFinite(V.y);
-  const vNear = vFinite
-                && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps
-                && Math.abs(wrap180(raw)) >= OVERLAY.angle.vertex_min_deg;
-  let dist;
-  // Which way the drawn rays point. Only used for DRAWING -- flipping both by
-  // 180 leaves the angle between them, and so the reading, untouched.
-  let drawFlip = 0;
-  if (vNear) {
-    dist = Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps);
-  } else {
-    // No usable vertex. Put the local one BETWEEN THE TWO LINES, not on the
-    // label: an arc hanging off the label points away from the part and ends
-    // up floating in empty image, which is what -7.16 deg looked like. Halfway
-    // between the two feet is on the feature, where both lines are visible.
-    const fA = K.projOn(P, A0, A1), fB = K.projOn(P, B0, B1);
-    V = { x: (fA.x + fB.x) / 2, y: (fA.y + fB.y) / 2 };
-    dist = OVERLAY.angle.local_radius_ps * ps;
-    // ...and point the rays at the label, so the arc opens toward the number
-    // instead of away from it.
-    if ((P.x - V.x) * Math.cos(refA) + (P.y - V.y) * Math.sin(refA) < 0) drawFlip = Math.PI;
-  }
-  const s0 = refA + sDeg * toRad + drawFlip, e0 = refA + eDeg * toRad + drawFlip;
+  const vOK = V && Number.isFinite(V.x) && Number.isFinite(V.y)
+              && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps;
+  const dist = vOK ? Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps) : 0;
+  const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
 
   // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc
   // is opened out to that much so the direction still reads; the text carries
@@ -152,16 +139,19 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   // (mech1_ref/OVERLAY_DESIGN.md 3.3)
   const ray = dist + 3 * ps;
   ctx.save();
-  for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
-    const tip = { x: V.x + ray * Math.cos(ang), y: V.y + ray * Math.sin(ang) };
-    if (vNear) {
-      // The vertex lies ON both lines, so segment-end -> vertex -> tip is one
-      // straight run along the line.
+  if (vOK) {
+    for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
+      // The vertex lies ON both lines, so segment-end -> vertex -> arc end is
+      // one straight collinear run: the line, continued.
+      const tip = { x: V.x + ray * Math.cos(ang), y: V.y + ray * Math.sin(ang) };
       K.construction(closestPointOnPoints(V, [L0, L1]), tip);
-    } else {
-      K.construction(K.projOn(V, L0, L1), V);   // which line this ray came from
-      K.construction(V, tip);                   // the line's direction
     }
+  } else {
+    // Truly parallel (or a vertex so far out that drawing to it is nonsense).
+    // There is no angle to draw, so draw none -- just say which two lines the
+    // number came from, and let the text carry it.
+    K.construction(K.projOn(P, A0, A1), P);
+    K.construction(K.projOn(P, B0, B1), P);
   }
   // THE LEAD-OUT ARC (from WebUI2's _Draw_FeatureElement_Edit_Measure_Angle).
   //
@@ -175,7 +165,7 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const TWO_PI = Math.PI * 2;
   const norm = (a) => { a = a % TWO_PI; return a < 0 ? a + TWO_PI : a; };
   let labelTheta = NaN;
-  if (vNear) {
+  if (vOK) {
     labelTheta = Math.atan2(P.y - V.y, P.x - V.x);
     const fromStart = norm(labelTheta - s0);
     const swept = norm(e0d - s0);
@@ -206,11 +196,13 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     }
   }
 
-  ctx.strokeStyle = ctx.fillStyle = K.C.reading;
-  ctx.lineWidth = K.lw * K.S.line_w;
-  ctx.setLineDash(K.dash('meas'));
-  renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
-  ctx.setLineDash([]);
+  if (vOK) {
+    ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+    ctx.lineWidth = K.lw * K.S.line_w;
+    ctx.setLineDash(K.dash('meas'));
+    renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
+    ctx.setLineDash([]);
+  }
   renderer.drawpoint(ctx, P);
   ctx.restore();
 
