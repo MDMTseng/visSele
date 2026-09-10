@@ -36,6 +36,11 @@ export function caliperField(countDefault, geomLengthFn) {
       width: 'input-number',
       min_inliers: 'input-number',
       max_error: 'input-number',
+      // 0 = the hard inlier mask (a hit is in or out); 1 = its weight falls
+      // smoothly to zero at the same threshold, so a hit sitting on the edge
+      // of the band contributes nothing either way and cannot swing the fit by
+      // flickering in and out. In between blends the two.
+      soft_reject: 'input-number',
     } : undefined,
     // The seed itself lives in _caliperSeed so the offline converter
     // (tools/def_convert.mjs) runs THIS rule rather than a copy of it. A second

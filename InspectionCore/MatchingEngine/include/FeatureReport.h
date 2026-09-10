@@ -162,6 +162,11 @@ typedef struct featureDef_circle{
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (3 for circle)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // 0 = the hard inlier mask this has always used; 1 = the residual weight
+  // falls smoothly to zero at the same threshold, so a hit sitting on the edge
+  // of the band cannot swing the fit by appearing and vanishing. See
+  // CaliperParams::soft_reject.
+  float cal_soft_reject;
   // Envelope-fit mode: keep the LS-fit center, recompute the radius as
   //   0=ls    (default, no change)
   //   1=outer (max |center - hit|; min-circumscribed-radius assuming LS center)
@@ -218,6 +223,11 @@ typedef struct featureDef_line{
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (2 for line)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // 0 = the hard inlier mask this has always used; 1 = the residual weight
+  // falls smoothly to zero at the same threshold, so a hit sitting on the edge
+  // of the band cannot swing the fit by appearing and vanishing. See
+  // CaliperParams::soft_reject.
+  float cal_soft_reject;
   int edge_method;         // EdgeSelectParams::Method
   int edge_polarity;       // EdgeSelectParams::Polarity
   int edge_nth;
