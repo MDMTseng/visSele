@@ -429,7 +429,25 @@ function urlConcat(base, add) {
           if (req_pkt !== undefined)//Find the tracking req
           {
             if (parsed_pkt !== undefined)//There is an act, push into the req acts
+            {
               req_pkt.pkts.push(parsed_pkt);
+              // PROGRESS, for a request whose answer arrives in pieces.
+              //
+              // A session resolves once, at its SS, with everything it
+              // collected -- right for a reply, useless for a job that streams
+              // results over seconds (the core-side robustness sweep sends one
+              // report per step for ~15s). Without a hook the only choices were
+              // a frozen panel until the end, or splitting the job back into
+              // one request per step, which is what moving it into the core
+              // undid. onPacket is optional and nothing else passes it.
+              const _op = req_pkt.promiseCBs && req_pkt.promiseCBs.onPacket;
+              if (_op) {
+                // A throwing consumer must not take the socket's read loop with
+                // it: every other session on this connection is parsed here too.
+                try { _op(parsed_pkt); }
+                catch (e) { console.error('[bpg] onPacket threw', e); }
+              }
+            }
 
             if (!SS_start && header.type == "SS")//Get the termination session[SS] pkt
             {//remove tracking(reqWindow) info and Dispatch the pkt

@@ -4285,6 +4285,12 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
     // `cJSON_Delete(json)` at the bottom of this block was removed.
     CJsonHold _json_guard(json);
     char err_str[1000] = "\0";
+    // SS is the session TERMINATOR: the WebUI closes the request the moment
+    // one arrives. A handler that accepts a job and answers later -- SW is
+    // the only one today -- must therefore NOT let the tail below fire, or
+    // the client tears the session down before the first result and every
+    // packet after it lands on a request nobody is tracking.
+    bool defer_session_ss = false;
     bool session_ACK = false;
     // Sized for the worst case, not the typical one: the reply below formats
     // err_str (1000 bytes, filled from client-supplied strings like
@@ -6006,6 +6012,10 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
             g_sweep.finished.store(true);
           });
 
+        // From here the WORKER owns this session and will close it with its own
+        // SS when the last step is in. An abort or any error above still falls
+        // through to the tail, so a rejected sweep is answered immediately.
+        defer_session_ss = true;
         session_ACK = true;
       } while (false);
     }
@@ -8341,12 +8351,15 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
     // Bounded as well as sized (see tmp's declaration): the buffer is big
     // enough today, and a future err_str growth must truncate instead of
     // silently smashing the stack again.
-    snprintf(tmp, sizeof(tmp), "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
-            dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
-    bpg_dat = GenStrBPGData("SS", tmp);
-    bpg_dat.pgID = dat->pgID;
+    if (!defer_session_ss)
+    {
+      snprintf(tmp, sizeof(tmp), "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+              dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
+      bpg_dat = GenStrBPGData("SS", tmp);
+      bpg_dat.pgID = dat->pgID;
 
-    fromUpperLayer(bpg_dat, peer);
+      fromUpperLayer(bpg_dat, peer);
+    }
     // (json cleanup handled by _json_guard RAII added at the top of this block)
   }
   while(0);

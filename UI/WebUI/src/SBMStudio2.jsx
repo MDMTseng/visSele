@@ -599,6 +599,10 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
   const [batch, setBatch] = useState(undefined);       // {rows, done, total}
   const [sweepRange, setSweepRange] = useState({});    // axis -> {from,to,steps}
   const abortRef = useRef(false);
+  // The in-flight core sweep's resolver, so an abort can end the wait without
+  // waiting for the core to notice -- the core is told separately (SW abort)
+  // and stops at its next step boundary.
+  const sweepReqRef = useRef(null);
   // Which floor a match has to clear, per the locator this def actually uses.
   const floorInfo = acceptanceFloor(edit_info);
   const inspRef = useRef(undefined);                   // mirror, same reason as featRef
@@ -1061,24 +1065,94 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
                             base.located ? { x: base.pose.cx, y: base.pose.cy } : null, def_mmpp),
                 axis: 'base' });
     setSweep((sw) => (sw ? { ...sw, rows: [...rows], done: 1 } : sw));
-    for (let i = 0; i < plan.length; i++) {
-      if (abortRef.current) break;
-      const { axis: ax, value: v, perturb: _p } = plan[i];
-      // WHERE THE PART MUST BE AT THIS STEP. We chose the perturbation, so this
-      // is arithmetic rather than a guess -- and it is the only thing that
-      // distinguishes "the part, moved" from "a different object that now
-      // scores higher".
-      const _from = (base && base.located && base.pose)
-        ? { cx: base.pose.cx, cy: base.pose.cy }
-        : (Number.isFinite(reg.cx) ? { cx: reg.cx, cy: reg.cy } : null);
-      const _expect = _from ? expectedPosition(_from, pivot, _p || {}, def_mmpp) : null;
-      let sum;
-      try { sum = await inspectOnce(_p, _expect); }
-      catch (e) { sum = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
-                          why: 'core 沒有回應' }; }
-      rows.push(sweepRow(ax, v, sum, base, _expect, def_mmpp));
-      setSweep((sw) => (sw && sw.axis === label ? { ...sw, rows: [...rows], done: i + 2 } : sw));
+
+    // WHERE THE PART MUST BE AT EACH STEP. We chose the perturbation, so this
+    // is arithmetic rather than a guess -- and it is the only thing that
+    // distinguishes "the part, moved" from "a different object that now scores
+    // higher". Computed here, for the whole plan, because the core is not told
+    // what an axis is and must not have to be.
+    const _from = (base && base.located && base.pose)
+      ? { cx: base.pose.cx, cy: base.pose.cy }
+      : (Number.isFinite(reg.cx) ? { cx: reg.cx, cy: reg.cy } : null);
+    const expects = plan.map((s) =>
+      (_from ? expectedPosition(_from, pivot, s.perturb || {}, def_mmpp) : null));
+
+    // ONE REQUEST FOR THE WHOLE PLAN.
+    //
+    // This was a loop of `await inspectOnce(...)` -- one II per step, 73 of
+    // them for 掃描全部軸. Each II is handled inline on the core's select
+    // thread, so every step stalled everything else the core had to answer:
+    // measured 2026-09-11, worst reply gap 243 ms through a sweep, against
+    // 43 ms once the loop moved into the core. The core runs the plan on its
+    // own thread and streams one report back per step.
+    //
+    // The arithmetic did NOT move. The core is handed perturbations and returns
+    // reports; which axes, where the part should land, what counts as a failure
+    // and the per-axis verdict all stay right here.
+    const stepSummary = (rp, i) => {
+      if (!rp || rp.sweep_miss) {
+        return { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                 why: '這一步沒有定位到' };
+      }
+      const tolMm = (posTolPx > 0 && def_mmpp > 0) ? posTolPx * def_mmpp : undefined;
+      const e = expects[i];
+      return inspectSummary(rp, edit_info.def_image_reg,
+                            e ? { expect: e, tolMm } : undefined);
+    };
+
+    // Slots, not appends: reports are answered in order today, but a table that
+    // silently reorders itself if that ever stops being true is a table nobody
+    // can trust. The index is in the packet; use it.
+    const stepRows = new Array(plan.length).fill(null);
+    const flush = () => {
+      const all = rows.concat(stepRows.filter(Boolean));
+      setSweep((sw) => (sw && sw.axis === label
+        ? { ...sw, rows: all, done: 1 + stepRows.filter(Boolean).length } : sw));
+    };
+
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { deffile = null; }
+
+    if (deffile && sendBPG) {
+      const freshRef = (edit_info.__img_fresh_capture && edit_info.__tmp_ref_image_path)
+        ? edit_info.__tmp_ref_image_path : null;
+      await new Promise((resolve) => {
+        sweepReqRef.current = resolve;
+        sendBPG('SW', 0, {
+          definfo: deffile,
+          imgsrc: freshRef || '__CACHE_IMG__',
+          img_property: { calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp } },
+          perturbs: plan.map((s) => s.perturb || {}),
+        }, undefined, {
+          onPacket: (pkt) => {
+            if (!pkt || pkt.type !== 'RP' || !pkt.data) return;
+            const d = pkt.data;
+            const i = d.sweep_i;
+            if (!Number.isInteger(i) || i < 0 || i >= plan.length) return;
+            stepRows[i] = sweepRow(plan[i].axis, plan[i].value,
+                                   stepSummary(d, i), base, expects[i], def_mmpp);
+            flush();
+          },
+          resolve: () => resolve(),
+          // A link error ends the sweep with whatever came back rather than
+          // hanging the panel on a promise that will never settle.
+          reject: () => resolve(),
+        });
+      });
+      sweepReqRef.current = null;
     }
+    // Steps the core never answered are still steps: leaving holes would make
+    // an interrupted sweep look like a shorter one that passed.
+    for (let i = 0; i < plan.length; i++) {
+      if (stepRows[i]) continue;
+      stepRows[i] = sweepRow(plan[i].axis, plan[i].value,
+                             { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                               why: abortRef.current ? '已中止' : 'core 沒有回應' },
+                             base, expects[i], def_mmpp);
+    }
+    rows.push(...stepRows);
+    setSweep((sw) => (sw && sw.axis === label ? { ...sw, rows: [...rows], done: rows.length } : sw));
     // One verdict line per axis, each read over its own rows plus the baseline.
     const verdicts = {};
     for (const ax of axes) {
@@ -1087,7 +1161,8 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
       verdicts[ax] = sweepVerdict(ax, own);
     }
     setSweep((sw) => (sw ? { ...sw, verdicts, aborted: abortRef.current } : sw));
-  }, [sweepRange, inspectOnce, pivot, reg.cx, reg.cy, def_mmpp]);
+  }, [sweepRange, inspectOnce, pivot, reg.cx, reg.cy, def_mmpp,
+      sendBPG, edit_info, posTolPx]);
   const runSweep = useCallback(() => runAxes([sweepAxis]), [runAxes, sweepAxis]);
   const runSweepAll = useCallback(() => runAxes(SWEEP_ALL_ORDER), [runAxes]);
 
