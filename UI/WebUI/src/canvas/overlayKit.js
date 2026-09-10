@@ -135,12 +135,21 @@ export const OVERLAY_DEFAULTS = {
     // Radius of the arc when there is no vertex on screen (near-parallel), in
     // primitive-sizes. Big enough that the opened arc and the two direction
     // rays are legible next to the label.
-    local_radius_ps:     18,
+    // Below this the two lines count as parallel for DRAWING purposes: they
+    // do meet, but half a screen away, and an arc out there is not a reading
+    // anyone can use. Nothing to do with what the judge reports.
+    vertex_min_deg:      20,
+    // Radius of the locally-drawn arc, in primitive-sizes -- i.e. in units that
+    // stay put on screen as the camera zooms. 18 drew a 9-pixel arc; this is
+    // the size of a thing you can actually look at.
+    local_radius_ps:     44,
+    // How far past the arc's end a lead-out arc is still an arc.
+    lead_arc_max_deg:    35,
     // Lay the value along the radius it hangs off (a drawing convention, and
     // what the reference machine does). Off = axis-aligned, as before.
     label_follows_radius: true,
     gap_style_max_deg:   25,    // below this the lines count as "near parallel"
-    vertex_max_ps:      120,    // a vertex further than this is off screen
+    vertex_max_ps:       90,    // a vertex further than this is off screen
     head_inside_min_deg:  8,    // narrower than this, arrowheads flip outside
     wedge_neg: 'rgba(120,80,220,1)',  // negative wedge fill hue (positive uses role.reading)
   },

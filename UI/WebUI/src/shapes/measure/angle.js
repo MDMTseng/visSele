@@ -108,9 +108,17 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   // two directions are drawn as rays from it at a fixed radius, each tied back
   // to its own line by a dotted line from the foot of the perpendicular. The
   // rays are the lines' directions, the arc between them is the reading.
+  // A vertex is only worth drawing on when the angle is actually READ there.
+  // Two nearly-parallel lines do intersect -- half a screen away -- and putting
+  // the arc on that intersection drags the whole overlay off the part, which is
+  // exactly what it did at -7.16 deg. So the vertex has to be both close AND
+  // the angle wide enough that a vertex means something; otherwise the reading
+  // is drawn locally, at the label.
   let V = intersectPoint(A0, A1, B0, B1);
-  const vNear = V && Number.isFinite(V.x) && Number.isFinite(V.y)
-                && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps;
+  const vFinite = V && Number.isFinite(V.x) && Number.isFinite(V.y);
+  const vNear = vFinite
+                && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps
+                && Math.abs(wrap180(raw)) >= OVERLAY.angle.vertex_min_deg;
   let dist;
   if (vNear) {
     dist = Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps);
@@ -164,14 +172,25 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     if (!inside) {
       const gapEnd = norm((e0d >= s0) ? labelTheta - e0d : e0d - labelTheta);
       const gapStart = norm((e0d >= s0) ? s0 - labelTheta : labelTheta - s0);
+      const gap = Math.min(gapEnd, gapStart);
       ctx.save();
       ctx.strokeStyle = K.withAlpha(K.C.reading, OVERLAY.alpha.faint);
       ctx.lineWidth = K.lw * K.S.thin_w;
       ctx.setLineDash(K.dash('tie'));
-      ctx.beginPath();
-      if (gapEnd <= gapStart) ctx.arc(V.x, V.y, dist, e0d, labelTheta, e0d < s0);
-      else                    ctx.arc(V.x, V.y, dist, labelTheta, s0, e0d < s0);
-      ctx.stroke();
+      // Continue the arc only while the label is just past its end. Parked
+      // right round the other side -- which is where it ends up when the
+      // vertex is far off the part -- an arc all the way there sweeps half the
+      // screen and reads as a measurement of something. Past that, a straight
+      // leader, which is what a drawing uses and what nobody can misread.
+      if (gap <= OVERLAY.angle.lead_arc_max_deg * toRad) {
+        ctx.beginPath();
+        if (gapEnd <= gapStart) ctx.arc(V.x, V.y, dist, e0d, labelTheta, e0d < s0);
+        else                    ctx.arc(V.x, V.y, dist, labelTheta, s0, e0d < s0);
+        ctx.stroke();
+      } else {
+        const from = (gapEnd <= gapStart) ? e0d : s0;
+        K.seg({ x: V.x + dist * Math.cos(from), y: V.y + dist * Math.sin(from) }, P);
+      }
       ctx.restore();
     }
   }
