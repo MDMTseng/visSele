@@ -165,7 +165,7 @@ export default {
       // waiting (待補傳 N), and the one case where something really is lost --
       // a full spool -- has its own loud 已丟棄 badge. Neither needs a word
       // here, and the label shares a narrow button with three counters.
-      server_disconnected:"斷線",
+      server_disconnected:"斷線暫存中",
       server_disconnecting:"嘗試連線中",
       connect:"連線"
     },

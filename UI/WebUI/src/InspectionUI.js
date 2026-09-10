@@ -37,6 +37,7 @@ const log = mkLog('ui.insp');
 import Row from 'antd/lib/row';
 import Col from 'antd/lib/col';
 import Slider from 'antd/lib/slider';
+import Tooltip from 'antd/lib/tooltip';
 import message from 'antd/lib/message';
 import Checkbox from 'antd/lib/checkbox'
 import Popover from 'antd/lib/popover';
@@ -279,9 +280,30 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   // return null;
 
 
-  return <Button type="primary" size={"large"} 
-    className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
-    icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
+  // The button says the STATE and the counters. What the numbers mean, and what
+  // the machine is doing about a broken link, is a paragraph -- and a paragraph
+  // does not belong on a button that four numbers already share. It is a hover
+  // away instead.
+  const detail = (
+    <div style={{ maxWidth: 320, fontSize: 12, lineHeight: 1.6 }}>
+      <b>{isConnected ? "資料庫已連線" : "資料庫斷線,報告暫存中"}</b><br/>
+      {isConnected
+        ? "報告即時送出。"
+        : "報告會存在本機,連線恢復後自動補送 — 斷線期間的資料不會消失。"}
+      <br/><br/>
+      <b>{_this.sendedCounter}&lt;{_this.sendCounter}</b> 已送達 &lt; 已送出<br/>
+      <b>{_this.totalCounter}</b> 本次開機累計檢驗<br/>
+      <b>/{insert_skip}</b> 每 {insert_skip} 筆上傳 1 筆(1 = 每筆都傳)
+      {dbQ.pending ? <><br/><b>待補傳 {dbQ.pending}</b> 已暫存、等連線</> : null}
+      {dbQ.dropped ? <><br/><span style={{ color: '#ff7875' }}>
+        <b>已丟棄 {dbQ.dropped}</b> 暫存已滿,這些筆數真的沒有了</span></> : null}
+    </div>
+  );
+
+  return <Tooltip title={detail} placement="bottom">
+    <Button type="primary" size={"large"}
+      className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
+      icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
         {(isConnected ? LANG_DICT.connection.server_connected : LANG_DICT.connection.server_disconnected)
         + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip
         + (dbQ.pending ? "  待補傳 " + dbQ.pending : "")}
@@ -292,6 +314,7 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
           已丟棄 {dbQ.dropped}
         </span> : null}
     </Button>
+  </Tooltip>
 }
 
 
