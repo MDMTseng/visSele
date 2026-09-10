@@ -782,6 +782,21 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // Set by nudge(), consumed by the effect that pushes the change. setSpoEdit
   // is async, so committing inside nudge() would send the PREVIOUS value.
   const [nudged, setNudged] = useState(false);
+
+  // Drop every editor-owned working copy so the panel re-seeds from the device.
+  //
+  // The typed fields are deliberately NOT bound to the device -- rebinding on
+  // every poll would overwrite a half-typed number on the next tick. The cost
+  // is that a whole-config change (import, NVS restore) updates the store and
+  // leaves the visible fields showing what was there before, which reads as
+  // "the import did nothing". Anything that replaces the WHOLE config has to
+  // say so explicitly; a per-field edit must not.
+  const reseedFromDevice = () => {
+    setSpoEdit({});
+    setHzInput(''); setProcHzInput(''); setCapacityInput('');
+    setStopAfterInput(''); setNomatchAfterInput('');
+    setSel(null);
+  };
   // Station placement (jog). Only the arm speed is UI state -- everything else
   // is read from the device, because the device is the one that knows where the
   // plate actually stopped.
@@ -1548,7 +1563,7 @@ build ${fw.build}`}>
                   Promise.resolve(api.sendP({ type: 'restore_setup' }))
                     .then(() => (typeof api.refreshSetup === 'function')
                                 ? api.refreshSetup() : undefined)
-                    .then(() => { if (mounted.current) setSpoEdit({}); })),
+                    .then(() => { if (mounted.current) reseedFromDevice(); })),
               })}
             >從 NVS 還原</Button>
           </span>
@@ -1632,6 +1647,9 @@ build ${fw.build}`}>
                 .then((doc) => api.importSetupP(doc))
                 .then((r) => {
                   setCfgReport(r);
+                  // importSetupP has already published the device's own re-read
+                  // copy; this is what makes the PANEL show it.
+                  if (mounted.current) reseedFromDevice();
                   if (r.mismatch.length) message.warning(`${r.written.length} 個欄位已寫入,但 ${r.mismatch.length} 個沒有生效`);
                   else message.success(`${r.written.length} 個欄位已寫入並確認`);
                 })
