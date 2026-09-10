@@ -36,8 +36,15 @@ DEV_LOG="$WEBUI_SRC/.vite-dev.log"
 DEV_PID="$WEBUI_SRC/.vite-dev.pid"
 
 # Core builds are memory-hungry: this is an 8 GB machine and -j4 has been OOM
-# killed twice with the launcher and an editor open. Override with -j.
-CORE_JOBS=2
+# killed twice with the launcher and an editor open. -j2 was killed too, on
+# 2026-09-10, with 1.5 GB free.
+#
+# One job is also FASTER here, which is not the paradox it looks like: 96% of
+# this target's own source is a single 14.7k-line translation unit
+# (Core0_1/wiringPanel.cpp), so the critical path is one compiler process and
+# the second job only competes with it for memory. Measured the same afternoon:
+# -j2 101s, -j1 72s. Raise it with -j once that file is split.
+CORE_JOBS=1
 
 # ------------------------------------------------------------------ output --
 if [[ -t 1 ]]; then
@@ -75,15 +82,73 @@ step_install() {
   ok "installed into $APP_DIR/WebUI"
 }
 
+# Marker: the app's Core/ holds a FAST-PATH build (unstripped, not bundled).
+# step_overlay refuses to ship one, because an update zip built from it would
+# carry a 33 MB debug exe and stale DLLs.
+CORE_DEV_MARK="$APP_DIR/Core/.dev_fast_build"
+
+# Put the freshly built binaries where the launcher actually runs them.
+#
+# THIS STEP DID NOT EXIST. `dev.sh core` built into InspectionCore/dist/win and
+# stopped there, while the launcher runs export_v2/app/<version>/Core -- so a
+# core build followed by `dev.sh up` started the OLD core, silently, and the
+# only hint was two different timestamps in `dev.sh status`.
+install_core() {
+  local src="$1"
+  [[ -d "$APP_DIR/Core" ]] || die "no $APP_DIR/Core -- is export_v2/app/current.json right?"
+  local n=0
+  for exe in visSele.exe inspd_log.exe; do
+    [[ -f "$src/$exe" ]] || continue
+    cp -f "$src/$exe" "$APP_DIR/Core/$exe" || die "could not replace $APP_DIR/Core/$exe (is it running?)"
+    n=$((n + 1))
+  done
+  [[ "$n" -gt 0 ]] || die "nothing to install from $src"
+  ok "installed $n core binaries into $APP_DIR/Core"
+}
+
 step_core() {
+  local full=0
+  [[ "${1:-}" == "full" ]] && full=1
   command -v cmake >/dev/null 2>&1 || export PATH="$MINGW_BIN:$PATH"
   # A running exe in the build dir makes the link fail with a bare "Error 3".
   stop_launcher_quiet
-  ( cd InspectionCore && ./build.sh -p win-mingw-msys --no-configure -j "$CORE_JOBS" -e dist/win ) \
+
+  if [[ "$full" == 1 ]]; then
+    # The deployable bundle: strip, archive the symbols, copy the 36 mingw DLLs
+    # and the camera runtimes, then crash the result on purpose to prove it
+    # symbolicates itself. Measured at 22s on top of the build, every time.
+    ( cd InspectionCore && ./build.sh -p win-mingw-msys --no-configure -j "$CORE_JOBS" -e dist/win ) \
+      || die "core build failed (out of memory? try -j 1, and close the editor)"
+    install_core "InspectionCore/dist/win"
+    rm -f "$CORE_DEV_MARK"
+    return
+  fi
+
+  # FAST PATH -- the default, because it is what iterating actually needs.
+  #
+  # Compile and link, then copy the two exes into the app. No -e, so none of
+  # the packaging runs: nothing is stripped, no symbol archive is written, the
+  # 36 DLLs that did not change are not copied again, and the exe is not
+  # crashed to test the crash handler. That was 22 of the 72 seconds.
+  #
+  # The installed exe is the UNSTRIPPED one (~33 MB against 2.8 MB). That is
+  # the right trade here: it costs a local file copy and it makes a crash
+  # symbolicate from the exe itself, with no .debug to keep in step.
+  ( cd InspectionCore && ./build.sh -p win-mingw-msys --no-configure -j "$CORE_JOBS" ) \
     || die "core build failed (out of memory? try -j 1, and close the editor)"
+  install_core "InspectionCore/build/win-mingw-msys"
+  # A .debug left from an earlier full build describes a DIFFERENT binary, and
+  # the symbolicator prefers it over the exe. Stale symbols are worse than no
+  # symbols: they resolve, plausibly, to the wrong lines.
+  rm -f "$APP_DIR/Core/visSele.exe.debug" "$APP_DIR/Core/inspd_log.exe.debug"
+  : > "$CORE_DEV_MARK"
+  warn "fast build: unstripped, not bundled. './dev.sh core full' before shipping."
 }
 
 step_overlay() {
+  # Never build an update out of a fast build: it would ship a 33 MB unstripped
+  # exe next to whatever DLLs happened to be in Core/ already.
+  [[ -f "$CORE_DEV_MARK" ]] && die "Core/ holds a fast build -- run './dev.sh core full' first"
   local sha="${1:-$(git rev-parse --short=8 HEAD)}"
   local out="export_v2/app/overlay_${VERSION}_${sha}.zip"
   python - "$APP_DIR" "$out" <<'PY' || die "overlay zip failed"
@@ -254,7 +319,8 @@ ${B}dev.sh${N} -- build, install and run visSele
 
       ./dev.sh web             build the WebUI only            ${DIM}~35s${N}
       ./dev.sh install         copy the last build into the app  ${DIM}instant${N}
-      ./dev.sh core            build InspectionCore              ${DIM}~3-4min${N}
+      ./dev.sh core            build InspectionCore + install it ${DIM}~25s${N}
+      ./dev.sh core full       ... and strip, bundle and self-test ${DIM}~50s${N}
       ./dev.sh flash_uinspesp32 [COM3]
                                flash the uInsp ESP32             ${DIM}~35s${N}
       ./dev.sh overlay [sha]   zip Core + WebUI for the update   ${DIM}~5s${N}
@@ -271,7 +337,7 @@ ${B}dev.sh${N} -- build, install and run visSele
 
   ${B}Everything${N}
 
-      ./dev.sh all             core + web + install + overlay + up  ${DIM}~5min${N}
+      ./dev.sh all             core + web + install + overlay + up  ${DIM}~2min${N}
 
   ${B}Options${N}
 
@@ -284,6 +350,13 @@ ${B}dev.sh${N} -- build, install and run visSele
 
     * ${B}core${N} and ${B}flash_uinspesp32${N} stop the launcher first, and they have to: a running
       visSele.exe locks the build output, and it holds the serial port open.
+    * ${B}core${N} installs what it built into the app -- so ${B}core${N} then ${B}up${N} runs the
+      core you just compiled. It used to build into dist/win and stop there,
+      which meant ${B}up${N} quietly kept running the previous one.
+    * ${B}core${N} skips packaging (22s of stripping, symbol archiving, copying 36
+      unchanged DLLs and crash-testing the result) and installs the unstripped
+      exe. ${B}core full${N} does all of it and is what ${B}all${N} and any shipped
+      overlay use; ${B}overlay${N} refuses to run on top of a fast build.
     * The installed app is read from export_v2/app/current.json -- currently
       ${B}$VERSION${N}. Switch versions there, not here.
     * ${B}up_dev_server${N} is the one to use while working on the UI. It only
@@ -316,7 +389,9 @@ T0=$SECONDS
 case "$CMD" in
   web)      timed "WebUI build" "35s" step_web ;;
   install)  step_install ;;
-  core)     timed "core build" "3-4min" step_core ;;
+  # `core` is the fast path; `core full` is the deployable one.
+  core)     if [[ "${1:-}" == "full" ]]; then timed "core build (full bundle)" "50s" step_core full
+            else                              timed "core build" "25s" step_core; fi ;;
   overlay)  step_overlay "${1:-}" ;;
   # Named for the board, not for the chip: this repo has a dozen ESP32
   # firmwares under Peripheral/ and "esp32" did not say which one.
@@ -333,7 +408,7 @@ case "$CMD" in
     [[ "$KEEP" == 1 ]] && { warn "launcher left alone (--keep); reload it with Ctrl+R"; } || step_up
     ;;
   all)
-    timed "core build" "3-4min" step_core
+    timed "core build (full bundle)" "50s" step_core full
     timed "WebUI build" "35s"   step_web
     step_install
     step_overlay

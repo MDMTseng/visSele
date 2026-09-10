@@ -63,11 +63,29 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-w -Wno-sign-compare -Wno-write-strings -Wno-unused-variable)
 add_compile_options(-Werror=return-type)
 add_compile_options($<$<CONFIG:Release>:-O3>)
-# Ship Release as -O3 AND -g (debug info). The deploy bundle (build.sh) strips
-# the shipped exe and archives the separated symbols (symbols/<exe>-<sha>.debug),
-# so a field crash dump stays symbolicatable via addr2line without shipping fat
-# binaries. -g doesn't change codegen, only adds DWARF sections that get stripped.
-add_compile_options($<$<CONFIG:Release>:-g>)
+# Ship Release as -O3 AND debug info. The deploy bundle (build.sh) strips the
+# shipped exe and archives the separated symbols (symbols/<exe>-<sha>.debug), so
+# a field crash dump stays symbolicatable via addr2line without shipping fat
+# binaries. Debug info never changes codegen, only what DWARF is emitted.
+#
+# -g1, NOT -g. The only thing this project asks of its debug info is that
+# addr2line turn a crash-dump address into function + file:line, and -g1 emits
+# exactly that -- line tables and function boundaries -- while -g additionally
+# emits the full type and local-variable graph for an interactive debugger that
+# nothing here runs on a Release build.
+#
+# It is not free to keep. Measured 2026-09-10 on Core0_1/wiringPanel.cpp, the
+# 14.7k-line translation unit that dominates every core build:
+#
+#     -O3 -g    25 s   obj 5.6 MB      <- what this used to be
+#     -O3 -g1   18 s   obj 1.5 MB      <- 28% less time, 73% less object
+#     -O3       17 s   obj 0.5 MB      <- no symbolication at all
+#
+# So full DWARF was costing about a quarter of every core build to describe
+# variables nobody was going to look at. Anyone who does want to step through a
+# Release build in gdb should build that target with -g locally; this is the
+# default, not a prohibition.
+add_compile_options($<$<CONFIG:Release>:-g1>)
 
 find_package(OpenMP)
 # OpenCV is now an unconditional dependency of MatchingEngine. Provide via vcpkg.
