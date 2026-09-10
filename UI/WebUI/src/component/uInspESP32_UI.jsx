@@ -2413,9 +2413,7 @@ build ${fw.build}`}>
                   The warnings stay: they are not conversions. */}
               <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
                 {Number(pos) >= 0 ? `${pctRev(Number(pos))} 圈` : '—'}
-                {st.off ? (bad
-                  ? '  ⚠ 寬度必須 > 0'
-                  : `  → ${pctRev(Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6))} 圈${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0'}`) : ''}
+                {st.off && bad ? '  ⚠ 寬度必須 > 0' : ''}
               </span>
             </div>
           );
