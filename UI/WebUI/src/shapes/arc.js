@@ -144,10 +144,8 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
     ctx.setLineDash([]);
     K.seg({ x: c.x - 1.6 * ps, y: c.y }, { x: c.x + 1.6 * ps, y: c.y });
     K.seg({ x: c.x, y: c.y - 1.6 * ps }, { x: c.x, y: c.y + 1.6 * ps });
-    ctx.strokeStyle = withAlpha(C.region, 0.8);
-    ctx.setLineDash(K.dash('tie'));
-    K.seg(c, onArc);
     ctx.restore();
+    K.construction(c, onArc);
     if (!isCaliper) {
       const out = (shape.direction < 0) ? mid + Math.PI : mid;
       ctx.save();

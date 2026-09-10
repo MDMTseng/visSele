@@ -507,14 +507,9 @@ class renderUTIL {
       const B = { x: extended_ind_line.x1, y: extended_ind_line.y1 };
       const dimAng = Math.atan2(B.y - A.y, B.x - A.x);
 
-      ctx.save();
-      ctx.setLineDash(K.dash('aux'));
-      ctx.strokeStyle = K.withAlpha(K.C.region, 0.85);
-      ctx.lineWidth = K.lw * K.S.thin_w;
-      this.drawReportLine(ctx, { x0: A.x, y0: A.y, x1: point_onAlignLine.x, y1: point_onAlignLine.y });
-      this.drawReportLine(ctx, { x0: B.x, y0: B.y, x1: point.x, y1: point.y });
-      this.drawReportLine(ctx, { x0: B.x, y0: B.y, x1: eObject.pt1.x, y1: eObject.pt1.y });
-      ctx.restore();
+      K.construction(A, point_onAlignLine);
+      K.construction(B, point);
+      K.construction(B, eObject.pt1);
 
       ctx.save();
       ctx.setLineDash([]);

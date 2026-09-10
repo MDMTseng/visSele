@@ -77,6 +77,8 @@ export const OVERLAY_DEFAULTS = {
     stroke_scale: 0.49,   // 0.7 of 0.7 -- thinned twice, on the machine
     line_w:      1.0,    // x getIndicationLineSize()
     thin_w:      0.7,    // x getIndicationLineSize()
+    // Extension / projection lines, as a fraction of a primitive's own line.
+    construction_w: 0.7,
     heavy_w:     1.35,   // x getIndicationLineSize()
     arrow_head:  2.0,
     tick:        1.6,
@@ -326,11 +328,8 @@ export function overlayKit(ctx, renderer) {
     const t = ((foot.x - L0.x) * vx + (foot.y - L0.y) * vy) / n2;
     if (t >= 0 && t <= 1) return;
     const from = (t < 0) ? L0 : L1;
-    ctx.save();
-    ctx.strokeStyle = colour; ctx.lineWidth = lw * S.thin_w;
-    ctx.setLineDash(dash('aux'));
-    seg(from, at(foot, Math.atan2(foot.y - from.y, foot.x - from.x), S.ext_over * ps));
-    ctx.restore();
+    // Same style as every other extension -- see construction().
+    construction(from, at(foot, Math.atan2(foot.y - from.y, foot.x - from.x), S.ext_over * ps), colour);
   };
 
   // A crosshair that does not cover the point it marks. Four ticks aimed at
@@ -396,11 +395,16 @@ export function overlayKit(ctx, renderer) {
     return '[' + shape.id + '] ' + nm;
   };
 
-  // A construction line: quiet, dotted, thin. Never competes with a dimension.
+  // ONE style for every extension, projection and tie: the primitive's own
+  // yellow, dotted, and thinner than the primitive line. Same colour because
+  // it IS that line, continued -- a different hue would make it a different
+  // object. Dotted and thinner because it is not the edge itself, and because
+  // the only thing on the canvas allowed to look like a measurement is the
+  // red dashed one.
   const construction = (p, q, colour) => {
     ctx.save();
-    ctx.strokeStyle = withAlpha(colour || T.role.region, T.alpha.faint);
-    ctx.lineWidth = lw * S.thin_w;
+    ctx.strokeStyle = colour || T.role.feature;
+    ctx.lineWidth = lw * S.construction_w;
     ctx.setLineDash(dash('tie'));
     seg(p, q);
     ctx.restore();
