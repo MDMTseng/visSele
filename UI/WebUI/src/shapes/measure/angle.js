@@ -144,6 +144,38 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
       K.construction(V, tip);                   // the line's direction
     }
   }
+  // THE LEAD-OUT ARC (from WebUI2's _Draw_FeatureElement_Edit_Measure_Angle).
+  //
+  // The label point sets the arc's radius, but the operator is free to park it
+  // anywhere -- including well outside the angle being swept, which is the
+  // normal case for a small angle. Then the arc and the number it belongs to
+  // sit apart with nothing joining them. A lighter arc continued from whichever
+  // end is nearer, at the same radius, out to the label's own bearing, says
+  // "this number belongs to that arc" without adding a second thing that reads
+  // like a measurement.
+  const TWO_PI = Math.PI * 2;
+  const norm = (a) => { a = a % TWO_PI; return a < 0 ? a + TWO_PI : a; };
+  let labelTheta = NaN;
+  if (vNear) {
+    labelTheta = Math.atan2(P.y - V.y, P.x - V.x);
+    const fromStart = norm(labelTheta - s0);
+    const swept = norm(e0d - s0);
+    const inside = (e0d >= s0) ? (fromStart <= swept) : (norm(s0 - labelTheta) <= norm(s0 - e0d));
+    if (!inside) {
+      const gapEnd = norm((e0d >= s0) ? labelTheta - e0d : e0d - labelTheta);
+      const gapStart = norm((e0d >= s0) ? s0 - labelTheta : labelTheta - s0);
+      ctx.save();
+      ctx.strokeStyle = K.withAlpha(K.C.reading, OVERLAY.alpha.faint);
+      ctx.lineWidth = K.lw * K.S.thin_w;
+      ctx.setLineDash(K.dash('tie'));
+      ctx.beginPath();
+      if (gapEnd <= gapStart) ctx.arc(V.x, V.y, dist, e0d, labelTheta, e0d < s0);
+      else                    ctx.arc(V.x, V.y, dist, labelTheta, s0, e0d < s0);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   ctx.strokeStyle = ctx.fillStyle = K.C.reading;
   ctx.lineWidth = K.lw * K.S.line_w;
   ctx.setLineDash(K.dash('meas'));
@@ -156,6 +188,17 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   ctx.font = renderer.getFontStyle(1);
   ctx.save();
   ctx.translate(P.x, P.y);
+  // Lay the text along the radius it hangs off, the way a drawing does -- and
+  // flip it end-for-end when that would put it upside down, so it is always
+  // read left-to-right. draw_Text cancels the VIEW rotation to keep text
+  // upright, so the view's own rotation is added back here; without that the
+  // label would follow the radius in image space and not on screen.
+  if (OVERLAY.angle.label_follows_radius && Number.isFinite(labelTheta) && !renderer.viewFlip) {
+    let th = labelTheta + (renderer.viewRotation || 0);
+    th = Math.atan2(Math.sin(th), Math.cos(th));
+    if (th > Math.PI / 2 || th < -Math.PI / 2) th += Math.PI;
+    ctx.rotate(th);
+  }
   ctx.strokeStyle = "black";
   const fmt = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
   let measureValue;

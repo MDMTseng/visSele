@@ -136,6 +136,9 @@ export const OVERLAY_DEFAULTS = {
     // primitive-sizes. Big enough that the opened arc and the two direction
     // rays are legible next to the label.
     local_radius_ps:     18,
+    // Lay the value along the radius it hangs off (a drawing convention, and
+    // what the reference machine does). Off = axis-aligned, as before.
+    label_follows_radius: true,
     gap_style_max_deg:   25,    // below this the lines count as "near parallel"
     vertex_max_ps:      120,    // a vertex further than this is off screen
     head_inside_min_deg:  8,    // narrower than this, arrowheads flip outside
