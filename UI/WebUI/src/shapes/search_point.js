@@ -144,17 +144,20 @@ export function draw(ctx, shape, renderer, {
     K.arrow(K.at(shape.pt1, sd, margin + 3 * K.ps), sd, K.S.arrow_head * K.ps);
     ctx.restore();
   }
-  // A locating anchor is a DATUM, so it is drawn in the datum colour with
-  // concentric circles -- the red aim-cross is reserved for "the point the
-  // inspection actually found". anchor_corner (2D) adds four corner ticks;
-  // an edge anchor (1D) marks only its own axis.
+  // A locating anchor also holds the object frame. anchor_corner (2D) adds four
+  // corner ticks; an edge anchor (1D) marks only its own axis, which is the
+  // one direction it actually constrains.
   if (shape.locating_anchor) {
+    // An anchor is a point FIRST -- it is drawn like every other point, with a
+    // circle at half the X's radius sitting on it to say this one also holds
+    // the object frame. One extra mark on the shared one, rather than a second
+    // vocabulary that has to be learned.
     const p = shape.pt1, q = 1.6 * K.ps;
     ctx.save();
     ctx.setLineDash([]);
-    ctx.strokeStyle = K.C.datum; ctx.fillStyle = K.C.datum; ctx.lineWidth = K.lw * K.S.line_w;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 3.2 * K.ps, 0, 2 * Math.PI); ctx.stroke();
-    ctx.beginPath(); ctx.arc(p.x, p.y, 1.1 * K.ps, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = K.C.feature; ctx.fillStyle = K.C.feature;
+    ctx.lineWidth = K.lw * K.S.construction_w;
+    ctx.beginPath(); ctx.arc(p.x, p.y, K.S.cross_r * 0.5 * K.ps, 0, 2 * Math.PI); ctx.stroke();
     if (shape.anchor_corner) {
       for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const cx = p.x + sx * 5 * K.ps, cy = p.y + sy * 5 * K.ps;
@@ -171,7 +174,7 @@ export function draw(ctx, shape, renderer, {
   if (OVERLAY.label.show_primitive_names && inFullDisplay && shape.name && K.showDetail(shape.width)) {
     const nm = shape.name + (shape.locating_anchor ? (shape.anchor_corner ? ' 錨·角點' : ' 錨·邊') : '');
     K.chip(nm, shape.pt1.x, shape.pt1.y + K.S.chip_gap * 2 * K.ps,
-           shape.locating_anchor ? K.C.datum : shapeColor, OVERLAY.font.tag);
+           shapeColor, OVERLAY.font.tag);
   }
 
   // Caliper-mode per-hit overlay (dots, not crosses — search_point clusters
