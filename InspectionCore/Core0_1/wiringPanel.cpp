@@ -4155,6 +4155,70 @@ static void cmd_stat_add(const char *tl, double ms)
   if (ms > g_cmdStat[i].max_ms) g_cmdStat[i].max_ms = ms;
 }
 
+// ---------------------------------------------------------------------------
+// SW -- THE ROBUSTNESS SWEEP, RUN IN THE CORE
+//
+// The sweep degrades one image along an axis (rotate it 10 degrees, halve the
+// gain, add noise) and asks whether the locator still finds the part, and finds
+// it in the place the perturbation says it must now be. The SBM studio's "掃描
+// 全部軸" is seven axes of 7-12 steps: 73 inspections.
+//
+// It used to be 73 separate II round trips from the WebUI. Every one of those
+// runs INLINE on the thread that owns select(), and II is the single most
+// expensive command in the core -- measured 2026-09-10 at 251 ms average, 87%
+// of all the time that thread spends not serving sockets. So a full sweep was
+// ~19 seconds during which the core accepted nothing, read nothing from any
+// other client, and processed no disconnects: heartbeats stalled, panels stopped
+// polling, and the window looked hung. The sweep was the one thing in this core
+// that turned a per-command cost into a visible outage.
+//
+// So the whole plan goes over in one request and the loop runs HERE, on its own
+// thread, streaming one RP per step back as it finishes. The select thread hands
+// the job over and returns immediately.
+//
+// WHAT IS DELIBERATELY NOT MOVED
+//   The arithmetic. Which perturbations to run, where the part is expected to
+//   land, what counts as a failure, the verdict per axis -- all of that stays in
+//   sbmSweep.js. The core is handed a LIST OF PERTURBATIONS and returns a
+//   report for each; it does not know what an axis is. That keeps the property
+//   the sweep is built on -- the perturbation is its own ground truth -- in one
+//   place, and it means tuning the ranges never needs a core build.
+//
+// WHAT IT SHARES, AND WITH WHAT
+//   The inspection itself takes matchingEnglock, exactly as II does, so a sweep
+//   step and the live inspection thread still cannot run at once. The def and
+//   the image are copied into the job before the thread starts, so the worker
+//   never touches cacheImage/tmp_buff -- the buffers several other handlers
+//   reuse on the select thread. What remains shared is neutral_bacpac, which
+//   the sweep configures once on the select thread before starting and the
+//   worker then only reads. A CI/FI session started DURING a sweep would write
+//   it; that cannot come from the one UI that can do either (different screens,
+//   and this core serves one client), so it is a documented edge rather than a
+//   guarded one.
+struct SweepJob
+{
+  std::thread             th;
+  std::atomic<bool>       running{false};
+  std::atomic<bool>       abort{false};
+  // Set by the worker as it exits so the next request can join the old thread
+  // without waiting on anything.
+  std::atomic<bool>       finished{false};
+};
+static SweepJob g_sweep;
+
+// Is the client that asked for this sweep still there?
+//
+// A sweep outlives a browser reload easily -- 19 seconds is a long time -- and
+// the peer it must answer is a pool slot that a later connection can be given.
+// Checking membership in `peers` under the same lock the CLOSING handler takes
+// is what makes "still connected" mean it at the moment of the send.
+static bool sweep_peer_alive(void *peer)
+{
+  if (peer == NULL || ifwebsocket == NULL) return false;
+  std::lock_guard<std::mutex> _g(bpg_pi.subscribersLock);
+  return ifwebsocket->peers.count((ws_conn_data *)peer) > 0;
+}
+
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 {
   const auto _t0 = std::chrono::steady_clock::now();
@@ -5697,6 +5761,253 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
       } while (false);
 
       calib_bacpac.sampler->ignoreCalib(false);
+    }
+    else if (checkTL("SW", dat)) //[S]Weep -- run a whole robustness sweep in the core
+    {
+      session_ACK = false;
+      do
+      {
+        if (json == NULL) { snprintf(err_str, sizeof(err_str), "SW: JSON parse failed"); break; }
+
+        // ABORT comes down the same command. The operator pressing stop is not
+        // a different kind of request, and giving it its own tag would mean a
+        // second place that has to know a sweep exists.
+        if (cJSON_IsTrue(cJSON_GetObjectItem(json, "abort")))
+        {
+          g_sweep.abort.store(true);
+          LOGI("SW: abort requested");
+          session_ACK = true;
+          break;
+        }
+
+        // Reap a finished worker before deciding whether one is running: the
+        // thread sets `finished` as its last act, and without this a second
+        // sweep would be refused until something else happened to join it.
+        if (g_sweep.finished.load() && g_sweep.th.joinable())
+        {
+          g_sweep.th.join();
+          g_sweep.finished.store(false);
+          g_sweep.running.store(false);
+        }
+        if (g_sweep.running.load())
+        {
+          snprintf(err_str, sizeof(err_str), "SW: a sweep is already running");
+          LOGE("%s", err_str);
+          break;
+        }
+
+        // ---- the plan ----------------------------------------------------
+        cJSON *plan = JFetch_ARRAY(json, "perturbs");
+        const int n = plan ? cJSON_GetArraySize(plan) : 0;
+        if (n <= 0) { snprintf(err_str, sizeof(err_str), "SW: no 'perturbs' array"); break; }
+        if (n > 4096) { snprintf(err_str, sizeof(err_str), "SW: %d steps is not a sweep", n); break; }
+
+        std::vector<TestPerturb> steps;
+        std::vector<int>         seeds;
+        steps.reserve(n); seeds.reserve(n);
+        for (int i = 0; i < n; i++)
+        {
+          cJSON *e = cJSON_GetArrayItem(plan, i);
+          steps.push_back(test_perturb_parse(e));
+          double *sd = e ? JFetch_NUMBER(e, "seed") : NULL;
+          seeds.push_back(sd ? (int)*sd : 0);
+        }
+
+        // ---- the def -----------------------------------------------------
+        // Copied into the job, not referenced: the request's cJSON tree is
+        // freed when this handler returns, long before the worker is done.
+        std::string defStr;
+        {
+          cJSON *defInfo = JFetch_OBJECT(json, "definfo");
+          char  *defFile = (char *)JFetch(json, "deffile", cJSON_String);
+          if (defInfo)
+          {
+            MallocHold _own(cJSON_Print(defInfo));
+            if (_own.get()) defStr = _own.str();
+          }
+          else if (defFile)
+          {
+            MallocHold _own(ReadText(defFile));
+            if (_own.get()) defStr = _own.str();
+          }
+          if (defStr.empty())
+          { snprintf(err_str, sizeof(err_str), "SW: neither 'definfo' nor a readable 'deffile'"); break; }
+        }
+
+        // ---- the image ---------------------------------------------------
+        // A PRIVATE copy. tmp_buff and cacheImage are reused by half a dozen
+        // handlers on the select thread; a worker holding a pointer into either
+        // for 19 seconds is a use-after-overwrite waiting for the operator to
+        // press anything else.
+        cv::Mat baseImg;
+        {
+          char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
+          if (imgSrcPath == NULL || strcmp(imgSrcPath, "__CACHE_IMG__") == 0)
+          {
+            cacheImage.copyTo(baseImg);
+          }
+          else
+          {
+            baseImg = cv::imread(imgSrcPath, cv::IMREAD_ANYCOLOR);
+            if (!baseImg.empty() && !baseImg.isContinuous()) baseImg = baseImg.clone();
+          }
+          if (baseImg.empty() || baseImg.cols * baseImg.rows <= 10)
+          { snprintf(err_str, sizeof(err_str), "SW: no usable image from %s",
+                     imgSrcPath ? imgSrcPath : "__CACHE_IMG__"); break; }
+        }
+
+        // ---- the same setup II does -------------------------------------
+        // Done HERE, on the select thread, so the sweep measures what a single
+        // 測試檢驗 measures. A sweep whose baseline disagrees with the single
+        // test it is compared against is worse than no sweep.
+        calib_bacpac.sampler->ignoreCalib(false);
+        neutral_bacpac.sampler->ignoreCalib(true);
+        neutral_bacpac.insp_region_x = neutral_bacpac.insp_region_y = 0;
+        neutral_bacpac.insp_region_w = neutral_bacpac.insp_region_h = 0;
+        // Same key and same shape as II's, so a client sends one object to
+        // either and gets the same working area.
+        {
+          cJSON *wa = cJSON_GetObjectItem(json, "work_region");
+          if (wa && cJSON_IsObject(wa))
+          {
+            cJSON *jx = cJSON_GetObjectItem(wa, "x"), *jy = cJSON_GetObjectItem(wa, "y");
+            cJSON *jw = cJSON_GetObjectItem(wa, "w"), *jh = cJSON_GetObjectItem(wa, "h");
+            if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy) &&
+                cJSON_IsNumber(jw) && cJSON_IsNumber(jh))
+            {
+              neutral_bacpac.insp_region_x = (float)jx->valuedouble;
+              neutral_bacpac.insp_region_y = (float)jy->valuedouble;
+              neutral_bacpac.insp_region_w = (float)jw->valuedouble;
+              neutral_bacpac.insp_region_h = (float)jh->valuedouble;
+              cJSON *jf = cJSON_GetObjectItem(wa, "fit");
+              neutral_bacpac.insp_region_fit =
+                  (cJSON_IsString(jf) && strcmp(jf->valuestring, "center") == 0)
+                      ? FeatureManager_BacPac::INSP_FIT_CENTRE
+                      : FeatureManager_BacPac::INSP_FIT_CONTAIN;
+            }
+          }
+        }
+        {
+          CJsonHold defObj(cJSON_Parse(defStr.c_str()));
+          if (defObj.get() == NULL)
+          { snprintf(err_str, sizeof(err_str), "SW: def did not parse"); break; }
+          double _ppb  = JFetch_NUMBER_ex(defObj.get(), "featureSet[0].cam_param.ppb2b");
+          double _mmpb = JFetch_NUMBER_ex(defObj.get(), "featureSet[0].cam_param.mmpb2b");
+          if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
+          {
+            neutral_bacpac.sampler->getCalibMap()->calibPpB  = _ppb;
+            neutral_bacpac.sampler->getCalibMap()->calibmmpB = _mmpb;
+          }
+        }
+        {
+          cJSON  *_ip = JFetch_OBJECT(json, "img_property");
+          cJSON  *_ci = _ip ? JFetch_OBJECT(_ip, "calibInfo") : NULL;
+          double *_fm = _ci ? JFetch_NUMBER(_ci, "mmpp") : NULL;
+          if (_fm && std::isfinite(*_fm) && *_fm > 0)
+          {
+            auto *_cm = neutral_bacpac.sampler->getCalibMap();
+            _cm->calibPpB  = 1.0;
+            _cm->calibmmpB = *_fm;
+          }
+        }
+
+        // ---- hand it over -------------------------------------------------
+        if (g_sweep.th.joinable()) g_sweep.th.join();
+        g_sweep.abort.store(false);
+        g_sweep.finished.store(false);
+        g_sweep.running.store(true);
+
+        const uint16_t pg = dat->pgID;
+        void *sweep_peer  = peer;
+        LOGI("SW: starting a %d-step sweep on a %dx%d image", n, baseImg.cols, baseImg.rows);
+
+        g_sweep.th = std::thread(
+          [this, steps, seeds, defStr, baseImg, pg, sweep_peer, n]() mutable
+          {
+            int done = 0;
+            bool aborted = false;
+            for (int i = 0; i < n; i++)
+            {
+              if (g_sweep.abort.load()) { aborted = true; break; }
+              // The client going away ends the sweep. Nobody is waiting for
+              // these numbers and each step costs a quarter of a second.
+              if (!sweep_peer_alive(sweep_peer))
+              { LOGI("SW: client left after %d/%d steps -- stopping", done, n); aborted = true; break; }
+
+              cv::Mat img = baseImg.clone();
+              if (steps[i].any()) test_perturb_apply(img, steps[i], seeds[i]);
+
+              char *jstr = NULL;
+              try
+              {
+                std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+                InspPhaseMs _phases;
+                ImgInspection_JSONStr(matchingEng, img, 1,
+                                      (char *)defStr.c_str(), &neutral_bacpac, &_phases);
+                const FeatureReport *report = skip_inspection() ? NULL : matchingEng.GetReport();
+                if (report != NULL)
+                {
+                  cJSON *jobj = matchingEng.FeatureReport2Json(report);
+                  AttachStaticInfo(jobj, this);
+                  cJSON_AddNumberToObject(jobj, "insp_wall_ms", _phases.insp_ms);
+                  cJSON_AddNumberToObject(jobj, "insp_cpu_ms",  _phases.insp_cpu_ms);
+                  // WHICH STEP THIS IS. The replies all carry the request's
+                  // pgID, so without an index the client would have to trust
+                  // arrival order across a link that also carries the live
+                  // stream. It is cheap to say instead of assume.
+                  cJSON_AddNumberToObject(jobj, "sweep_i", i);
+                  cJSON_AddNumberToObject(jobj, "sweep_n", n);
+                  jstr = cJSON_Print(jobj);
+                  cJSON_Delete(jobj);
+                }
+              }
+              catch (const std::exception &e)
+              { LOGE("SW step %d threw (%s) -- reported as a miss, sweep continues", i, e.what()); }
+              catch (...)
+              { LOGE("SW step %d threw -- reported as a miss, sweep continues", i); }
+
+              // A step that found nothing still has to be ANSWERED, or the
+              // client's table has a hole it cannot tell from a lost packet.
+              if (jstr == NULL)
+              {
+                cJSON *miss = cJSON_CreateObject();
+                cJSON_AddNumberToObject(miss, "sweep_i", i);
+                cJSON_AddNumberToObject(miss, "sweep_n", n);
+                cJSON_AddBoolToObject(miss, "sweep_miss", true);
+                jstr = cJSON_Print(miss);
+                cJSON_Delete(miss);
+              }
+              if (jstr)
+              {
+                if (sweep_peer_alive(sweep_peer))
+                {
+                  BPG_protocol_data bd = GenStrBPGData("RP", jstr);
+                  bd.pgID = pg;
+                  fromUpperLayer(bd, sweep_peer);
+                }
+                free(jstr);
+              }
+              done++;
+            }
+
+            // The closing packet, always sent: it is what turns "the table
+            // stopped growing" into "the sweep is over", and it says which.
+            if (sweep_peer_alive(sweep_peer))
+            {
+              char ss[128];
+              snprintf(ss, sizeof(ss), "{\"ACK\":true,\"done\":%d,\"total\":%d,\"aborted\":%s}",
+                       done, n, aborted ? "true" : "false");
+              BPG_protocol_data bd = GenStrBPGData("SS", ss);
+              bd.pgID = pg;
+              fromUpperLayer(bd, sweep_peer);
+            }
+            LOGI("SW: %s after %d/%d steps", aborted ? "stopped" : "finished", done, n);
+            g_sweep.running.store(false);
+            g_sweep.finished.store(true);
+          });
+
+        session_ACK = true;
+      } while (false);
     }
     else if (checkTL("SL", dat)) //[S]ample [L]ist: what the kept-sample buffer holds (groups, counts, ids)
     {

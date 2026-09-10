@@ -154,6 +154,17 @@ step_core() {
   ( cd InspectionCore && ./build.sh -p win-mingw-msys --no-configure -j "$CORE_JOBS" ) \
     || die "core build failed (out of memory? try -j 1, and close the editor)"
   install_core "InspectionCore/build/win-mingw-msys"
+  # dist/win too. It is not the launcher's copy, but it IS where the bench
+  # tooling and BUILD.md point, and leaving it behind a fast build recreates
+  # exactly the trap this command was changed to close: I started a bench core
+  # from dist/win after building, and spent twenty minutes debugging a handler
+  # that was not in the binary I was running.
+  if [[ -d InspectionCore/dist/win ]]; then
+    for _exe in visSele.exe inspd_log.exe; do
+      [[ -f "InspectionCore/build/win-mingw-msys/$_exe" ]] || continue
+      cp -f "InspectionCore/build/win-mingw-msys/$_exe" "InspectionCore/dist/win/$_exe" 2>/dev/null || true
+    done
+  fi
   # A .debug left from an earlier full build describes a DIFFERENT binary, and
   # the symbolicator prefers it over the exe. Stale symbols are worse than no
   # symbols: they resolve, plausibly, to the wrong lines.

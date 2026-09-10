@@ -37,7 +37,7 @@ bad()  { printf '  %sX%s    %s\n' "$R" "$N" "$*"; }
 UPGRADE=0
 for a in "$@"; do
   case "$a" in
-    --upgrade) UPGRADE=1 ;;
+    --upgrade) UPGRADE=1 ;;   # see the warning printed before it runs
     -h|--help)
       sed -n '2,30p' "$0" | sed 's/^#//;s/^ //'
       echo "Options:  --upgrade   also run 'pacman -Syu' first"
@@ -69,9 +69,14 @@ fi
 
 # ------------------------------------------------------------------ upgrade --
 if (( UPGRADE )); then
+  warn "--upgrade updates EVERY installed package, including the compiler and OpenCV."
+  warn "A major OpenCV bump breaks this build; downgrade from the pacman cache if it happens."
   say "updating the package database and system (this may ask you to reopen the shell)"
   pacman -Syu --noconfirm || { bad "pacman -Syu failed"; exit 1; }
 else
+  # -Sy WITHOUT -u, on purpose, and only far enough to install something that
+  # is missing. It is also why the install below is version-pinned to what is
+  # already here: see the note there.
   say "refreshing the package database"
   pacman -Sy --noconfirm >/dev/null 2>&1 || warn "pacman -Sy failed -- continuing with what is cached"
 fi
@@ -92,9 +97,43 @@ PKGS=(
   base-devel
 )
 
+# INSTALL WHAT IS MISSING. DO NOT TOUCH WHAT IS THERE.
+#
+# `pacman -S --needed` does not mean "only if absent" -- it skips a reinstall of
+# the SAME version and upgrades anything the repo has moved past. Running this
+# script on 2026-09-10 therefore silently took OpenCV from 4.13.0 to 5.0.0 on a
+# machine that was deliberately pinned to 4.13, and the next core build failed
+# in TestPerturb.h on a symbol OpenCV 5 had moved. It also pulled new mingw
+# headers and crt underneath a working toolchain.
+#
+# It got past a pin to do it. /etc/pacman.conf here already carried
+#   IgnorePkg = mingw-w64-x86_64-opencv
+# and that is honoured by `pacman -Syu` -- but an EXPLICITLY NAMED `pacman -S
+# <pkg>` only asks "it is in IgnorePkg, install anyway?", and --noconfirm
+# answers yes. So the one guard the machine had was defeated by the one flag a
+# script has to pass.
+#
+# That is the worst thing a setup script can do: the person running it is
+# trying to get to a working build, and it broke one that already worked. So
+# the default installs only what is genuinely absent -- which never names an
+# installed package and therefore never reaches that prompt -- and upgrading is
+# something you ask for with --upgrade, having decided to.
 say "installing build packages"
-if pacman -S --needed --noconfirm "${PKGS[@]}"; then
-  ok "pacman packages present"
+_missing=()
+for _pkg in "${PKGS[@]}"; do
+  # A GROUP (mingw-w64-x86_64-toolchain, base-devel) is not a package, so -Qq
+  # never finds one and the first version of this check re-resolved them every
+  # run -- which is the upgrade path it was written to close. -Qg answers for
+  # groups; a group counts as present once any of it is installed, which for
+  # these two is what "the toolchain is here" means.
+  pacman -Qq "$_pkg" >/dev/null 2>&1 && continue
+  pacman -Qg "$_pkg" >/dev/null 2>&1 && continue
+  _missing+=("$_pkg")
+done
+if (( ${#_missing[@]} == 0 )); then
+  ok "all build packages already installed (nothing upgraded)"
+elif pacman -S --needed --noconfirm "${_missing[@]}"; then
+  ok "installed: ${_missing[*]}"
 else
   bad "pacman install failed -- fix the error above and re-run"
   exit 1
@@ -143,6 +182,21 @@ if command -v ccache >/dev/null 2>&1; then
       echo "     a normal MSYS2 MINGW64 shell rather than a stripped environment."
     fi
   fi
+fi
+
+# ------------------------------------------------------------------ opencv --
+# The one dependency whose VERSION matters, so it is checked rather than
+# assumed. OpenCV 5 moved symbols this tree uses (getRotationMatrix2D out of
+# where TestPerturb.h looks for it, calib3d split into calib + geometry), and
+# an accidental major upgrade shows up as a compile error in an unrelated file.
+if _ocv="$(pacman -Q mingw-w64-x86_64-opencv 2>/dev/null | awk '{print $2}')"; then
+  case "$_ocv" in
+    4.*) ok "opencv $_ocv" ;;
+    *)   warn "opencv $_ocv -- this tree builds against OpenCV 4.x"
+         echo "     Downgrade from the pacman cache, e.g.:"
+         echo "       pacman -U /var/cache/pacman/pkg/mingw-w64-x86_64-opencv-4.13.0-7-any.pkg.tar.zst"
+         echo "     and consider pinning it:  IgnorePkg = mingw-w64-x86_64-opencv  in /etc/pacman.conf" ;;
+  esac
 fi
 
 # --------------------------------------------------------- outside of MSYS2 --
