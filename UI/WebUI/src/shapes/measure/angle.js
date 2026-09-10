@@ -70,6 +70,8 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const refA = aA + nominal * toRad;          // the datum direction (A rotated by the nominal)
   const raw = wrap360((aB - refA) / toRad);
 
+  const K = overlayKit(ctx, renderer);
+
   const TAGS = { signed90: '±90', abs90: '0~90', deg180: '0~180', signed180: '±180', deg360: '0~360', supp: '補角', comp: '餘角' };
   const measValueAdjStrTag = ' ' + (TAGS[range] || '±90');
 
@@ -92,8 +94,6 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; break; }
     default:          { sDeg = 0; eDeg = wrap180(raw); break; }
   }
-
-  const K = overlayKit(ctx, renderer);
 
   // WHERE THE ANGLE IS DRAWN.
   //
@@ -120,13 +120,24 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
                 && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps
                 && Math.abs(wrap180(raw)) >= OVERLAY.angle.vertex_min_deg;
   let dist;
+  // Which way the drawn rays point. Only used for DRAWING -- flipping both by
+  // 180 leaves the angle between them, and so the reading, untouched.
+  let drawFlip = 0;
   if (vNear) {
     dist = Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps);
   } else {
-    V = P;
+    // No usable vertex. Put the local one BETWEEN THE TWO LINES, not on the
+    // label: an arc hanging off the label points away from the part and ends
+    // up floating in empty image, which is what -7.16 deg looked like. Halfway
+    // between the two feet is on the feature, where both lines are visible.
+    const fA = K.projOn(P, A0, A1), fB = K.projOn(P, B0, B1);
+    V = { x: (fA.x + fB.x) / 2, y: (fA.y + fB.y) / 2 };
     dist = OVERLAY.angle.local_radius_ps * ps;
+    // ...and point the rays at the label, so the arc opens toward the number
+    // instead of away from it.
+    if ((P.x - V.x) * Math.cos(refA) + (P.y - V.y) * Math.sin(refA) < 0) drawFlip = Math.PI;
   }
-  const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
+  const s0 = refA + sDeg * toRad + drawFlip, e0 = refA + eDeg * toRad + drawFlip;
 
   // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc
   // is opened out to that much so the direction still reads; the text carries
