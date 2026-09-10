@@ -122,9 +122,38 @@ fi
 # --clean build doesn't pay full recompile cost (object cache is keyed on
 # source content, so it survives wipes of the build dir). Disable with
 # NO_CCACHE=1 in the environment. Saves ~10-20x on full rebuilds once warm.
+#
+# These -D flags only reach a CONFIGURE, and every build through dev.sh passes
+# --no-configure -- so on a build directory configured before ccache was
+# installed, this block had never actually done anything. CMakeLists.txt now
+# sets the launcher too, which is what covers the existing build dir; these
+# stay for a fresh configure.
 CCACHE_OPTS=()
 if [[ -z "${NO_CCACHE:-}" ]] && command -v ccache >/dev/null 2>&1; then
   echo "==> ccache: $(ccache --version | head -1)  dir=$(ccache -k cache_dir 2>/dev/null || echo '~/.cache/ccache')"
+  # WITHOUT THIS, THE BIGGEST FILE IS NOT CACHED AT ALL.
+  #
+  # wiringPanel.cpp and logctrl.cpp take their reported build time from
+  # __DATE__/__TIME__, and ccache treats a translation unit containing those as
+  # uncacheable unless it is told the staleness is acceptable. wiringPanel.cpp
+  # is the 14.7k-line unit that dominates every build, so leaving this unset
+  # quietly skips the one file the cache exists for.
+  #
+  # What it costs: on a cache HIT the binary reports the build time of the
+  # FIRST compile of that content, not this one. BUILD_GIT_HASH is unaffected --
+  # it comes from the generated build_info.h, which is a real dependency, so
+  # provenance still identifies the source exactly.
+  #
+  # Set here rather than in the user's ccache.conf so a fresh clone on another
+  # machine gets the same behaviour without a setup step.
+  export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-time_macros}"
+  # Depend mode: on a cache MISS, get the dependency list from the compiler's
+  # own -MD output instead of running a separate preprocessor pass. Without
+  # it every real edit pays that extra pass -- measured at 3s on
+  # wiringPanel.cpp, i.e. ccache made the ONE case you hit most often
+  # slightly slower (24s -> 27s) while making full rebuilds 12x faster. With
+  # it, the edit case is back to 24s and the full rebuild stays at 23s.
+  export CCACHE_DEPEND_MODE="${CCACHE_DEPEND_MODE:-true}"
   CCACHE_OPTS=(
     -DCMAKE_C_COMPILER_LAUNCHER=ccache
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache

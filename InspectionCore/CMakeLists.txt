@@ -53,6 +53,45 @@ option(FEATURE_OPENCV     "Build MatchingEngine against OpenCV"    ON)
 # per-file flags & defines (e.g. FEATURE_OPENCV) -- no need to #define them in source.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# --- compiler cache --------------------------------------------------------
+#
+# The builds that actually hurt here are not the one-file edits (24s) -- they
+# are the ones where NOTHING the compiler sees really changed but everything
+# gets rebuilt anyway: a header touched, a branch switched, CMakeLists edited,
+# a build directory wiped. Each of those is ~4 minutes of recompiling
+# translation units to byte-identical objects. Measured 2026-09-10: 260s.
+#
+# ccache keys on the PREPROCESSED source plus the compiler and its flags, so
+# those rebuilds become a hash lookup and a file copy, while a real edit still
+# compiles normally. Nothing about the produced binary changes.
+#
+# Opt out with INSP_NO_CCACHE=1 in the environment (e.g. to time a cold build,
+# which is the one measurement ccache makes impossible to take by accident).
+#
+# build.sh also wires ccache, but only as -D flags on a CONFIGURE, and every
+# build through dev.sh passes --no-configure -- so on a build directory that
+# was configured before ccache existed, that path had simply never run. Doing
+# it here means the cache applies to the build dir you already have.
+#
+# NOTE ON BUILD TIME: wiringPanel.cpp and logctrl.cpp report their build time
+# from __DATE__/__TIME__, and ccache refuses to cache such a TU unless told
+# to -- which would skip the single biggest file and make this pointless. So
+# the cache runs with `sloppiness = time_macros`, and a cache HIT therefore
+# reports the time of the first compile rather than this one. BUILD_GIT_HASH
+# is unaffected: it comes from build_info.h, which is a real dependency.
+if(NOT DEFINED ENV{INSP_NO_CCACHE})
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "ccache: ${CCACHE_PROGRAM}")
+  else()
+    # Said out loud rather than silently skipped: "the build got slow again" is
+    # otherwise indistinguishable from "ccache fell off the PATH".
+    message(STATUS "ccache: not found -- every rebuild will be a full compile")
+  endif()
+endif()
+
 # --- shared compile options (mirrors old FLAGS: -w -O3 + suppressions) ----
 # -w silences everything, which is how a non-void function with no return
 # survived here long enough to become a `ud2` that killed the core on a board
