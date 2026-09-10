@@ -4109,7 +4109,68 @@ int getImage(CameraLayer *camera, cv::Mat &dst, int trig_type=0, int timeout_ms=
 
 
 
+// ---------------------------------------------------------------------------
+// THE SELECT-THREAD STALL METER
+//
+// Every WebSocket command in this core is handled INLINE on the thread that
+// owns select(). mainLoop does select() -> ws runLoop -> recv -> BPG reassembly
+// -> toUpperLayer_dispatch, and that dispatch is ~3400 lines: it loads and
+// saves defs, walks directories, encodes JPEGs, opens and closes serial ports
+// (a path that constructs an object which THROWS when the port is absent), and
+// runs a full inspection for II. While any of that runs, nothing is accepted,
+// nothing is read, no client is serviced, and no peer teardown is processed.
+//
+// That is the thing worth restructuring, and the first step is not to move work
+// -- it is to know WHICH work. "The loop blocks" is a shape, not a measurement;
+// which packet types actually hold it, for how long, and how often decides
+// whether a queue is worth its lifetime hazards, and which handlers have to
+// stay on this thread regardless (anything touching peer lifetime).
+//
+// So: one histogram over all commands, plus a per-type table keyed by the
+// two-letter tag. Both are written only by the select thread; the GS reader
+// tolerates a torn count the same way the report-path histograms do.
+static LatHist g_histCmd;          // one handler call, wall ms
+static LatHist g_histServe;        // ONE loop turn outside select(), wall ms
+struct CmdStat { uint16_t tl = 0; uint64_t n = 0; double sum_ms = 0, max_ms = 0; };
+static CmdStat g_cmdStat[48];      // small, linear: a handful of tags exist
+static int     g_cmdStatN = 0;
+// Anything past this is worth a line in the log by itself. A command is a
+// human pressing a button; a fifth of a second of dead socket per press is the
+// point where a reload starts to feel like the core hung.
+static double  g_cmdStallLogMs = 200.0;
+
+static void cmd_stat_add(const char *tl, double ms)
+{
+  const uint16_t code = ((uint16_t)(uint8_t)tl[0] << 8) | (uint8_t)tl[1];
+  int i = 0;
+  for (; i < g_cmdStatN; i++) if (g_cmdStat[i].tl == code) break;
+  if (i == g_cmdStatN)
+  {
+    if (g_cmdStatN >= (int)(sizeof(g_cmdStat) / sizeof(g_cmdStat[0]))) return;
+    g_cmdStat[g_cmdStatN].tl = code;
+    g_cmdStatN++;
+  }
+  g_cmdStat[i].n++;
+  g_cmdStat[i].sum_ms += ms;
+  if (ms > g_cmdStat[i].max_ms) g_cmdStat[i].max_ms = ms;
+}
+
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
+{
+  const auto _t0 = std::chrono::steady_clock::now();
+  const char tl0 = bpgdat.tl[0], tl1 = bpgdat.tl[1];
+  const int ret = toUpperLayer_dispatch(bpgdat, peer);
+  const double _ms = std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - _t0).count();
+  g_histCmd.add(_ms);
+  { const char tl[2] = { tl0, tl1 }; cmd_stat_add(tl, _ms); }
+  if (_ms >= g_cmdStallLogMs)
+    LOGE("select thread blocked %.1f ms in [%c%c] -- no client was served for that long",
+         _ms, tl0, tl1);
+  return ret;
+}
+
+int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, void *peer)
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
 
@@ -4721,6 +4782,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddItemToArray(ed, cJSON_CreateNumber(PERIF_HIST_EDGES_MS[i]));
               struct { const char *k; LatHist *h; } hs[] = {
                 { "dog",     &g_histDog     },   // watchdog wake lateness
+                { "cmd",     &g_histCmd     },   // ONE ws command handler, on the select thread
+                { "serve",   &g_histServe   },   // one whole loop turn outside select()
                 { "log",     &g_histLog     },   // the send thread's logging tail
                 { "tx_lock", &g_histTxLock  },   // contention on perif_tx_lock
                 { "tx_wire", &g_histTxWire  },   // the send call itself
@@ -4735,6 +4798,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
                 { "write",   &g_histWrite   },   // the serial write itself
                 { "e2e",     &g_histE2E     } }; // camera in -> write returned
+              // Which packet type held the select thread, keyed by its own
+              // two-letter tag. The aggregate `cmd` histogram says a stall
+              // happened; this says whose it was, which is the only form of
+              // the answer that tells you what to move off this thread.
+              {
+                cJSON *bt = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, "cmd_by_tl", bt);
+                for (int _ci = 0; _ci < g_cmdStatN; _ci++)
+                {
+                  char kb[3] = { (char)(g_cmdStat[_ci].tl >> 8),
+                                 (char)(g_cmdStat[_ci].tl & 0xFF), 0 };
+                  cJSON *o = cJSON_CreateObject();
+                  cJSON_AddItemToObject(bt, kb, o);
+                  cJSON_AddNumberToObject(o, "n", (double)g_cmdStat[_ci].n);
+                  cJSON_AddNumberToObject(o, "max_ms", g_cmdStat[_ci].max_ms);
+                  cJSON_AddNumberToObject(o, "avg_ms", g_cmdStat[_ci].n
+                    ? g_cmdStat[_ci].sum_ms / g_cmdStat[_ci].n : 0.0);
+                  cJSON_AddNumberToObject(o, "total_ms", g_cmdStat[_ci].sum_ms);
+                }
+              }
               // Bundle members, named by index: the engine does not carry
               // human names for them, and the index is what the code shows.
               for (int _si = 0; _si < MatchingEngine::lastStageN; _si++)
@@ -10126,6 +10209,8 @@ void PerifConsoleThread(bool *terminationflag)
           { "tx_lock",   &g_histTxLock   },
           { "tx_wire",   &g_histTxWire   },
           { "write",     &g_histWrite    },
+          { "cmd",       &g_histCmd      },
+          { "serve",     &g_histServe    },
           { "log",       &g_histLog      },
           { "dog",       &g_histDog      },
           { "e2e",       &g_histE2E      } };
@@ -13629,7 +13714,16 @@ int mainLoop(bool realCamera = false)
       continue; // transient error: keep serving instead of killing the process
     }
 
-    ifwebsocket->runLoop(&fd_s, NULL);
+    // What one turn of servicing costs, end to end -- accept + recv + reassembly
+    // + every handler that fired this turn. g_histCmd says how long a single
+    // command took; this says how long the socket layer was actually unattended,
+    // which is the number a queue would have to improve.
+    {
+      const auto _s0 = std::chrono::steady_clock::now();
+      ifwebsocket->runLoop(&fd_s, NULL);
+      g_histServe.add(std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - _s0).count());
+    }
   }
 
   // Teardown, on the main thread instead of inside the signal handler.

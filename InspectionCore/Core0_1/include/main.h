@@ -254,6 +254,11 @@ public:
   }
 
   int toUpperLayer(BPG_protocol_data bpgdat, void *peer) override;
+  // The command handlers themselves. toUpperLayer is now a thin wrapper that
+  // times this call and files the result per packet type -- see the stall meter
+  // in wiringPanel.cpp. Every handler in here still runs on the SELECT THREAD,
+  // which is exactly the fact the meter exists to quantify.
+  int toUpperLayer_dispatch(BPG_protocol_data bpgdat, void *peer);
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
   void delete_PeripheralChannel();
