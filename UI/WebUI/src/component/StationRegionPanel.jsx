@@ -22,7 +22,7 @@
 // gain nothing.
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip, Switch } from 'antd';
+import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip, Switch, Popover, Slider } from 'antd';
 import { AimOutlined, DeleteOutlined, SaveOutlined, PlusOutlined } from '@ant-design/icons';
 import log from 'loglevel';
 
@@ -106,6 +106,29 @@ const TightRow = ({ children, gap = 3 }) => (
                 margin: '2px 0', minWidth: 0 }}>{children}</div>
 );
 const HINT = { fontSize: 11, color: '#888' };
+
+// The dark threshold is a GREY LEVEL, and a grey level is not a number anybody
+// knows by heart -- it is found by moving it until the region reads clean and
+// the dirt does not. Typing 128, looking, typing 131, looking is that search
+// done the slow way. Clicking the field opens a slider over the full 0-255 and
+// every drag pushes the value live, so the measured area beside it moves while
+// the handle does.
+//
+// The number stays editable underneath, for the case where it IS known --
+// copied off another station, say.
+function ThreshField({ value, onChange, title }) {
+  const v = Number.isFinite(value) ? value : 128;
+  return <Popover trigger="click" placement="right"
+    content={<div style={{ width: 190, padding: '2px 4px' }}>
+      <div style={{ ...HINT, marginBottom: 2 }}>暗門檻(灰階) {v}</div>
+      <Slider min={0} max={255} value={v} onChange={(x) => onChange(Math.round(x))}
+              marks={{ 0: '0', 128: '128', 255: '255' }} />
+    </div>}>
+    <InputNumber size="small" style={{ width: 40, flex: '0 0 auto' }} value={v}
+      min={0} max={255} title={title}
+      onChange={(x) => onChange(Math.round(x || 0))} />
+  </Popover>;
+}
 
 const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
 const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
@@ -464,11 +487,11 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
           </TightRow>
           <TightRow>
             <span style={HINT}>暗</span>
-            <InputNumber size="small" style={{ width: 42, flex: '0 0 auto' }} value={c.dark_thresh ?? 128}
-              title="低於這個灰階的像素算「暗」"
-              onChange={(v) => setC({ dark_thresh: Math.round(v || 0) })} />
+            <ThreshField value={c.dark_thresh ?? 128}
+              title="低於這個灰階的像素算「暗」— 點一下用滑桿調"
+              onChange={(v) => setC({ dark_thresh: v })} />
             <span style={HINT}>≤</span>
-            <InputNumber size="small" style={{ width: 52, flex: '0 0 auto' }} step={0.01} value={c.dark_area_max}
+            <InputNumber size="small" style={{ width: 48, flex: '0 0 auto' }} step={0.01} value={c.dark_area_max}
               title="暗面積上限 (mm²)"
               onChange={(v) => setC({ dark_area_max: v })} />
             <span style={{ ...HINT, whiteSpace: 'nowrap' }}>mm²</span>
@@ -483,7 +506,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
                 title={'把目前量到的 ' + measured.toFixed(4) + ' mm² 填進上限'}
                 onClick={() => setC({ dark_area_max: parseFloat(measured.toFixed(4)) })}>←</Button>
             ) : null}
-            <Select size="small" style={{ width: 46, flex: '0 0 auto', marginLeft: 'auto' }}
+            <Select size="small" style={{ width: 54, flex: '0 0 auto', marginLeft: 'auto' }}
               value={c.on_fail === 'ng' ? 'ng' : 'na'}
               title={c.on_fail === 'ng' ? '超出 → NG,吹掉' : '超出 → NA,繞回重測'}
               onChange={(v) => setC({ on_fail: v })}
