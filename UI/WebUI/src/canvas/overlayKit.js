@@ -71,6 +71,10 @@ export const OVERLAY_DEFAULTS = {
   },
   // ---- sizes, all in multiples of getPrimitiveSize() ---------------------
   size: {
+    // Overall weight of every overlay stroke. getIndicationLineSize() carries
+    // it, and every module's width is a multiple of that, so this thins or
+    // fattens the whole drawing at once.
+    stroke_scale: 0.7,
     line_w:      1.0,    // x getIndicationLineSize()
     thin_w:      0.7,    // x getIndicationLineSize()
     heavy_w:     1.35,   // x getIndicationLineSize()

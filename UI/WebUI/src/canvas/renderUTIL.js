@@ -135,7 +135,10 @@ class renderUTIL {
     return this.getPrimitiveSize()*2;
   }
   getIndicationLineSize() {
-    return this.getPrimitiveSize()*2;
+    // One knob for how heavy the whole overlay draws. Every module's stroke
+    // width comes from here (directly, or via overlayKit's size multipliers),
+    // so this is the only place it has to be said.
+    return this.getPrimitiveSize() * 2 * (OVERLAY.size.stroke_scale ?? 1);
   }
   getSearchDirectionLineSize() {
     return this.getPrimitiveSize();
