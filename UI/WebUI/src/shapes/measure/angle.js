@@ -93,10 +93,31 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     default:          { sDeg = 0; eDeg = wrap180(raw); break; }
   }
 
+  const K = overlayKit(ctx, renderer);
+
+  // WHERE THE ANGLE IS DRAWN.
+  //
+  // With a usable vertex the arc goes on it, and each side's extension runs
+  // ALONG ITS OWN LINE from the end of the real segment, through the vertex,
+  // out past the arc -- which is what an extension line means.
+  //
+  // Near-parallel lines have no vertex on screen. The old fallback centred the
+  // arc on the label point with a minimum radius, which made the arc a dot and
+  // turned the two extensions into a V pointing at the label -- neither line
+  // extended, nothing to read. So the label point becomes a LOCAL vertex: the
+  // two directions are drawn as rays from it at a fixed radius, each tied back
+  // to its own line by a dotted line from the foot of the perpendicular. The
+  // rays are the lines' directions, the arc between them is the reading.
   let V = intersectPoint(A0, A1, B0, B1);
-  if (!V || !Number.isFinite(V.x) || !Number.isFinite(V.y)
-      || Math.hypot(V.x - P.x, V.y - P.y) > OVERLAY.angle.vertex_max_ps * ps) V = P;
-  const dist = Math.max(Math.hypot(P.x - V.x, P.y - V.y), 8 * ps);
+  const vNear = V && Number.isFinite(V.x) && Number.isFinite(V.y)
+                && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps;
+  let dist;
+  if (vNear) {
+    dist = Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps);
+  } else {
+    V = P;
+    dist = OVERLAY.angle.local_radius_ps * ps;
+  }
   const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
 
   // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc
@@ -106,17 +127,22 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   let e0d = e0;
   if (Math.abs(e0 - s0) < minSpan) e0d = s0 + Math.sign(e0 - s0 || 1) * minSpan;
 
-  // Four marks and no more, in the reference machine's order (see
-  // mech1_ref/OVERLAY_DESIGN.md 3.3): two quiet construction lines out to the
-  // vertex, then the dashed red arc with one arrowhead. The extension lines
-  // are deliberately much lighter than the arc -- the red dashed arc has to be
-  // the only thing on the canvas that reads as "this is the number".
-  const K = overlayKit(ctx, renderer);
+  // Quiet construction first, then the dashed red arc with one arrowhead. The
+  // extensions are deliberately much lighter -- the arc has to be the only
+  // thing on the canvas that reads as "this is the number".
+  // (mech1_ref/OVERLAY_DESIGN.md 3.3)
+  const ray = dist + 3 * ps;
   ctx.save();
   for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
-    const arcPt = { x: V.x + dist * Math.cos(ang), y: V.y + dist * Math.sin(ang) };
-    const closestPt = closestPointOnPoints(arcPt, [L0, L1]);
-    K.construction(closestPt, arcPt);
+    const tip = { x: V.x + ray * Math.cos(ang), y: V.y + ray * Math.sin(ang) };
+    if (vNear) {
+      // The vertex lies ON both lines, so segment-end -> vertex -> tip is one
+      // straight run along the line.
+      K.construction(closestPointOnPoints(V, [L0, L1]), tip);
+    } else {
+      K.construction(K.projOn(V, L0, L1), V);   // which line this ray came from
+      K.construction(V, tip);                   // the line's direction
+    }
   }
   ctx.strokeStyle = ctx.fillStyle = K.C.reading;
   ctx.lineWidth = K.lw * K.S.line_w;

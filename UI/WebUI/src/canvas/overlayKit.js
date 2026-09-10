@@ -132,6 +132,10 @@ export const OVERLAY_DEFAULTS = {
     // is nothing at all. This is the smallest arc the overlay will draw, in
     // degrees -- the number in the text stays the true one.
     min_draw_deg:        12,
+    // Radius of the arc when there is no vertex on screen (near-parallel), in
+    // primitive-sizes. Big enough that the opened arc and the two direction
+    // rays are legible next to the label.
+    local_radius_ps:     18,
     gap_style_max_deg:   25,    // below this the lines count as "near parallel"
     vertex_max_ps:      120,    // a vertex further than this is off screen
     head_inside_min_deg:  8,    // narrower than this, arrowheads flip outside
