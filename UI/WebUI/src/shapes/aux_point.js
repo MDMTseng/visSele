@@ -80,17 +80,16 @@ export function draw(ctx, shape, renderer, {
 
     let point = renderer.db_obj.auxPointParse(shape, shapeList);
     if (point !== undefined && subObjs.length == 2) { // Draw crosssect line
-      ctx.setLineDash(K.dash('tie'));   // fine dot = "this is derived from that"
-
+      // The run from each source to the intersection is that source's line,
+      // CONTINUED -- the intersection lies on it, and the foot is the segment
+      // end facing it -- so it is drawn as an extension line, in the same
+      // yellow dotted style every other extension uses. It was its own dash
+      // and its own colour before, which made the same idea look like three
+      // different ones across the canvas.
       for (const sub of subObjs) {
         const foot = refFoot(sub, point);
-        if (!foot) continue;
-        ctx.beginPath();
-        ctx.moveTo(point.x, point.y);
-        ctx.lineTo(foot.x, foot.y);
-        ctx.stroke();
+        if (foot) K.construction(foot, point);
       }
-      ctx.setLineDash([]);
       // A construction intersection is a circle with a centre dot, not a
       // generic grey blob. Filled = the core reported it, hollow = derived here
       // (shape, not colour -- colour is spent on the role).
@@ -128,20 +127,21 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
   let point = reported || derived;
   const isReported = !!reported;
   if (point !== undefined && subObjs.length == 2) {
-    ctx.setLineDash([renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
+    const K = overlayKit(ctx, renderer);
+    // Same extension lines as the editor draws -- see draw().
     for (const sub of subObjs) {
       const foot = refFoot(sub, point);
-      if (!foot) continue;
-      ctx.beginPath();
-      ctx.moveTo(point.x, point.y);
-      ctx.lineTo(foot.x, foot.y);
-      ctx.stroke();
+      if (foot) K.construction(foot, point);
     }
-    ctx.setLineDash([]);
-    // Gray for the core's answer, hollow amber for a JS guess. A guess that
+    // Filled centre for the core's answer, hollow for a JS guess. A guess that
     // looks identical to a measurement is how the divergence stayed invisible.
-    ctx.strokeStyle = isReported ? 'gray' : 'rgba(255, 190, 60, 0.9)';
-    renderer.drawcross(ctx, point, renderer.getPointSize() * (isReported ? 2 : 1.4));
+    K.crosshair(point, K.C.reading, { r: isReported ? K.S.cross_r : K.S.cross_r * 0.8 });
+    if (isReported) {
+      ctx.save();
+      ctx.fillStyle = K.C.reading;
+      ctx.beginPath(); ctx.arc(point.x, point.y, 0.8 * K.ps, 0, 2 * Math.PI); ctx.fill();
+      ctx.restore();
+    }
   }
   // na_reason is printed centrally by renderUTIL.drawNAReason, which is
   // called for every NA shape. The copy that used to live here called
