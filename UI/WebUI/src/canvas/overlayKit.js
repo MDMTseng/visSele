@@ -88,8 +88,7 @@ export const OVERLAY_DEFAULTS = {
     chip_pad:    0.7,    // x font height
     chip_gap:    3.2,    // chip offset from what it labels
     ext_over:    2.0,    // how far an extension line runs past its foot
-    cross_r:     5.0,    // crosshair arm, from the point outward
-    cross_gap:   1.4,    // ...and the gap left around the point itself
+    cross_r:     5.0,    // the X's arm, from the point outward
     gauge_r:     6.0,
     gauge_dy:    8.5,    // gauge centre above the label point
     span_min:    14.0,   // shortest drawn span (gap style)
@@ -332,21 +331,22 @@ export function overlayKit(ctx, renderer) {
     construction(from, at(foot, Math.atan2(foot.y - from.y, foot.x - from.x), S.ext_over * ps), colour);
   };
 
-  // A crosshair that does not cover the point it marks. Four ticks aimed at
-  // the position with a gap in the middle: the pixel being reported stays
-  // visible, which is the whole job of a mark on a measured point. A filled
-  // dot -- what drawpoint paints, halo and all -- hides several pixels either
-  // side of the thing it claims to locate.
-  const crosshair = (p, colour, { r = S.cross_r, gap = S.cross_gap, w = S.thin_w } = {}) => {
+  // A POINT is a thin yellow X, drawn through the position itself -- the mark
+  // the reference machine uses for every derived point (mech1_ref/18). Two
+  // strokes crossing exactly where the point is: nothing to read off but the
+  // crossing, and no filled dot covering the pixels it claims to locate.
+  //
+  // Diagonal, not upright, so it cannot be mistaken for a piece of geometry --
+  // edges in these images are mostly horizontal and vertical.
+  const crosshair = (p, colour, { r = S.cross_r, w = S.construction_w } = {}) => {
+    const d = r * ps * Math.SQRT1_2;
     ctx.save();
     ctx.setLineDash([]);
-    ctx.strokeStyle = colour || T.role.search;
+    ctx.strokeStyle = colour || T.role.feature;
     ctx.lineWidth = lw * w;
     ctx.beginPath();
-    ctx.moveTo(p.x - r * ps, p.y); ctx.lineTo(p.x - gap * ps, p.y);
-    ctx.moveTo(p.x + gap * ps, p.y); ctx.lineTo(p.x + r * ps, p.y);
-    ctx.moveTo(p.x, p.y - r * ps); ctx.lineTo(p.x, p.y - gap * ps);
-    ctx.moveTo(p.x, p.y + gap * ps); ctx.lineTo(p.x, p.y + r * ps);
+    ctx.moveTo(p.x - d, p.y - d); ctx.lineTo(p.x + d, p.y + d);
+    ctx.moveTo(p.x - d, p.y + d); ctx.lineTo(p.x + d, p.y - d);
     ctx.stroke();
     ctx.restore();
   };

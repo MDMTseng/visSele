@@ -132,9 +132,9 @@ export function draw(ctx, shape, renderer, {
   if (drawSubObjs)
     renderer.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs, inFullDisplay);
 
-  // A search point IS a position -- so it is marked with a crosshair aimed at
-  // it, not a filled dot sitting on top of it.
-  K.crosshair(shape.pt1, shapeColor);
+  // A search point IS a position -- marked with the yellow X every point
+  // gets, not a filled dot sitting on top of it.
+  K.crosshair(shape.pt1);
   // The scan direction, in contour mode too (it used to be visible only as the
   // caliper box's arrow, so contour points showed no polarity at all).
   if (inFullDisplay) {
@@ -189,7 +189,7 @@ export function draw(ctx, shape, renderer, {
 // the reported pixel is visible.
 export function drawInspection(ctx, shape, renderer) {
   const K = overlayKit(ctx, renderer);
-  K.crosshair(shape.pt1, K.C.reading);
+  K.crosshair(shape.pt1);
   ctx.lineWidth = renderer.getIndicationLineSize();
   if (renderer.show_caliper_hits !== false && shape.cal_hits) {
     drawCaliperHits(ctx, shape.cal_hits, renderer, { style: 'dot' });

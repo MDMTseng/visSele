@@ -90,14 +90,8 @@ export function draw(ctx, shape, renderer, {
         const foot = refFoot(sub, point);
         if (foot) K.construction(foot, point);
       }
-      // A construction intersection is a circle with a centre dot, not a
-      // generic grey blob. Filled = the core reported it, hollow = derived here
-      // (shape, not colour -- colour is spent on the role).
-      const reported = (shape.reported_pt !== undefined);
-      ctx.strokeStyle = shapeColor; ctx.fillStyle = shapeColor;
-      ctx.lineWidth = K.lw * K.S.thin_w;
-      ctx.beginPath(); ctx.arc(point.x, point.y, 2.2 * K.ps, 0, 2 * Math.PI); ctx.stroke();
-      if (reported) { ctx.beginPath(); ctx.arc(point.x, point.y, 0.9 * K.ps, 0, 2 * Math.PI); ctx.fill(); }
+      // The same yellow X every point gets.
+      K.crosshair(point);
       // No text: an intersection is a dot. Its name belongs in the sheet.
     }
   }
@@ -133,13 +127,16 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
       const foot = refFoot(sub, point);
       if (foot) K.construction(foot, point);
     }
-    // Filled centre for the core's answer, hollow for a JS guess. A guess that
-    // looks identical to a measurement is how the divergence stayed invisible.
-    K.crosshair(point, K.C.reading, { r: isReported ? K.S.cross_r : K.S.cross_r * 0.8 });
-    if (isReported) {
+    // The core's own answer gets the plain X. A browser-side fallback gets a
+    // smaller one with a ring around it: a guess that looks identical to a
+    // measurement is how the divergence stayed invisible for so long, and the
+    // difference has to be in the SHAPE -- the colour is spoken for.
+    K.crosshair(point, undefined, { r: isReported ? K.S.cross_r : K.S.cross_r * 0.7 });
+    if (!isReported) {
       ctx.save();
-      ctx.fillStyle = K.C.reading;
-      ctx.beginPath(); ctx.arc(point.x, point.y, 0.8 * K.ps, 0, 2 * Math.PI); ctx.fill();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = K.C.feature; ctx.lineWidth = K.lw * K.S.construction_w;
+      ctx.beginPath(); ctx.arc(point.x, point.y, K.S.cross_r * K.ps, 0, 2 * Math.PI); ctx.stroke();
       ctx.restore();
     }
   }
