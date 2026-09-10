@@ -696,7 +696,7 @@ class APPMasterX extends React.Component {
   }
 
 
-  WSDataDispatch(pkts) {
+  WSDataDispatch(pkts, unsolicited = false) {
     // Camera-state doorbell (core CamStateWatchThread): the core pushes this
     // tiny GS batch whenever the camera's health CHANGES. It is a doorbell,
     // not a data update -- re-run the normal camera_info query immediately so
@@ -729,7 +729,13 @@ class APPMasterX extends React.Component {
     let acts = {
       type: "ATBundle",
       ActionThrottle_type: "express",
-      data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined),
+      data: pkts.map(pkt => {
+        const act = BPG_Protocol.map_BPG_Packet2Act(pkt);
+        // Marks a frame nobody asked for. The editor canvases use it to stay
+        // on the picture the operator is working on; the live views ignore it.
+        if (act && unsolicited) act.FROM_LIVE_STREAM = true;
+        return act;
+      }).filter(act => act !== undefined),
       //rawData:req_pkt
     };
     //console.log(pkts,acts);
