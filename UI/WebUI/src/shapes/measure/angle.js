@@ -124,7 +124,21 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   const vOK = V && Number.isFinite(V.x) && Number.isFinite(V.y)
               && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps;
   const dist = vOK ? Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps) : 0;
-  const s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
+  let s0 = refA + sDeg * toRad, e0 = refA + eDeg * toRad;
+
+  // WHICH SIDE OF THE VERTEX. Vertical angles are equal, so the same reading
+  // can be drawn on either side -- and one of them is the side the part and
+  // the label are on. Drawn on the far side the whole construction walks off
+  // into empty image, which is what a near-parallel pair did: the vertex is a
+  // long way out, and the arc opened away from everything worth looking at.
+  //
+  // Both rays flip together, so the angle between them -- the reading -- is
+  // untouched; only the side changes.
+  if (vOK) {
+    const toLabel = Math.atan2(P.y - V.y, P.x - V.x);
+    const mid = (s0 + e0) / 2;
+    if (Math.cos(toLabel - mid) < 0) { s0 += Math.PI; e0 += Math.PI; }
+  }
 
   // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc
   // is opened out to that much so the direction still reads; the text carries
