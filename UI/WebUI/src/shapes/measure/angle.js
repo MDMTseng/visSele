@@ -151,14 +151,22 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
   // extensions are deliberately much lighter -- the arc has to be the only
   // thing on the canvas that reads as "this is the number".
   // (mech1_ref/OVERLAY_DESIGN.md 3.3)
-  const ray = dist + 3 * ps;
   ctx.save();
   if (vOK) {
-    for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
-      // The vertex lies ON both lines, so segment-end -> vertex -> arc end is
-      // one straight collinear run: the line, continued.
-      const tip = { x: V.x + ray * Math.cos(ang), y: V.y + ray * Math.sin(ang) };
-      K.construction(closestPointOnPoints(V, [L0, L1]), tip);
+    // AN EXTENSION LINE IS THE LINE, CONTINUED -- so it is built from the
+    // line's own direction and from nothing else. Deriving it from the arc's
+    // angles is what bent it: s0/e0d have been flipped to the near side and
+    // opened out to min_draw_deg, so by then they are no longer the lines'
+    // directions and the "extensions" left the lines at an angle.
+    for (const [L0, L1] of [[A0, A1], [B0, B1]]) {
+      const dir = Math.atan2(L1.y - L0.y, L1.x - L0.x);
+      const from = closestPointOnPoints(V, [L0, L1]);   // the end facing the vertex
+      const toV = { x: V.x - from.x, y: V.y - from.y };
+      const sgn = (toV.x * Math.cos(dir) + toV.y * Math.sin(dir) < 0) ? -1 : 1;
+      // Far enough to reach the vertex AND the arc, whichever is further out.
+      const out = Math.max(Math.hypot(toV.x, toV.y), dist) + 3 * ps;
+      K.construction(from, { x: from.x + sgn * out * Math.cos(dir),
+                             y: from.y + sgn * out * Math.sin(dir) });
     }
   } else {
     // Truly parallel (or a vertex so far out that drawing to it is nonsense).
