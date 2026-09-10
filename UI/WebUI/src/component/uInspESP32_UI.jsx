@@ -1978,7 +1978,10 @@ build ${fw.build}`}>
               barely moves when the recipe changes, which is exactly what made
               the absolute number impossible to keep correct. */}
           {procMode === 'auto' && (<>
-            <Input style={{ width: 130 }} addonBefore="產能" addonAfter="%"
+            {/* antd sizes the whole group, addons included, so a CJK addon
+                eats the field: "產能" + "%" take ~82px of 130 and left ~48
+                for the number, which clipped 100 to "1...". */}
+            <Input style={{ width: 175 }} addonBefore="產能" addonAfter="%"
               placeholder={capacityPct > 0 ? String(capacityPct) : '自動探測'}
               value={capacityInput}
               onChange={(e) => setCapacityInput(e.target.value)} />
@@ -2160,7 +2163,9 @@ build ${fw.build}`}>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap',
                             alignItems: 'center', marginBottom: 6 }}>
-                <Input style={{ width: 175 }} addonBefore="無判決 連續"
+                {/* addonBefore is 5 CJK chars + addonAfter 2 more, ~148px of
+                    the 175 -- the field was under 30px wide. */}
+                <Input style={{ width: 245 }} addonBefore="無判決 連續"
                   addonAfter="顆停" placeholder={lim !== undefined ? String(lim) : ''}
                   value={stopAfterInput}
                   onChange={(e) => setStopAfterInput(e.target.value)} />
@@ -2176,7 +2181,7 @@ build ${fw.build}`}>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap',
                             alignItems: 'center' }}>
-                <Input style={{ width: 175 }} addonBefore="對不上 連續"
+                <Input style={{ width: 245 }} addonBefore="對不上 連續"
                   addonAfter="顆停" placeholder={nlim !== undefined ? String(nlim) : ''}
                   value={nomatchAfterInput}
                   onChange={(e) => setNomatchAfterInput(e.target.value)} />
