@@ -28,6 +28,13 @@ ESP32_DIR="Peripheral/uInspESP32"
 ESP32_ENV="esp32dev"
 PIO="$HOME/.platformio/penv/Scripts/pio.exe"
 
+# The Vite dev server. Port and strictPort come from UI/WebUI/vite.config.mjs;
+# if you move it there, move it here.
+DEV_PORT=8081
+DEV_URL="http://localhost:$DEV_PORT"
+DEV_LOG="$WEBUI_SRC/.vite-dev.log"
+DEV_PID="$WEBUI_SRC/.vite-dev.pid"
+
 # Core builds are memory-hungry: this is an 8 GB machine and -j4 has been OOM
 # killed twice with the launcher and an editor open. Override with -j.
 CORE_JOBS=2
@@ -117,6 +124,65 @@ step_flash_uinspesp32() {
     || die "flash failed"
 }
 
+# --------------------------------------------------------- the dev server --
+#
+# The launcher already knows how to do this: INSP_UI_DEV_URL points the Electron
+# window at Vite instead of at the bundle on disk (scripts/boot.js). React
+# Refresh then re-mounts the touched component WITHOUT reloading the page, so
+# the Redux store and the WS connection to the core survive the edit -- the
+# session stays where it was instead of needing the whole bring-up again.
+
+dev_server_pid() {
+  [[ -f "$DEV_PID" ]] || return 1
+  local pid; pid="$(cat "$DEV_PID" 2>/dev/null)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
+  rm -f "$DEV_PID"; return 1
+}
+
+start_dev_server() {
+  if dev_server_pid >/dev/null; then ok "dev server already up ($DEV_URL)"; return 0; fi
+  say "starting Vite on $DEV_URL ${DIM}(log: $DEV_LOG)${N}"
+  ( cd "$WEBUI_SRC" && nohup npm run dev >"$ROOT/$DEV_LOG" 2>&1 & echo $! > "$ROOT/$DEV_PID" )
+  # strictPort is set, so "ready" and "port in use" are the only two outcomes
+  # and both are decidable from the log rather than from a fixed sleep.
+  local i
+  for i in $(seq 1 60); do
+    grep -qi "ready in\|Local:" "$DEV_LOG" 2>/dev/null && { ok "dev server up"; return 0; }
+    grep -qi "is in use\|EADDRINUSE" "$DEV_LOG" 2>/dev/null && die "port $DEV_PORT is taken -- './dev.sh down_dev_server', or find what is on it"
+    dev_server_pid >/dev/null || { tail -20 "$DEV_LOG"; die "vite exited -- see $DEV_LOG"; }
+    sleep 1
+  done
+  warn "vite did not say it was ready in 60s; carrying on -- see $DEV_LOG"
+}
+
+step_down_dev_server() {
+  local pid
+  if pid="$(dev_server_pid)"; then
+    # The npm wrapper is the parent; kill the tree or vite keeps the port.
+    powershell.exe -NoProfile -Command "taskkill /PID $pid /T /F" >/dev/null 2>&1
+    kill -9 "$pid" 2>/dev/null
+    rm -f "$DEV_PID"
+    ok "dev server stopped ($pid)"
+  else
+    ok "dev server not running"
+  fi
+}
+
+step_up_dev_server() {
+  start_dev_server
+  [[ -f "$LAUNCHER" ]] || die "launcher not found at $LAUNCHER"
+  stop_launcher_quiet
+  say "starting the launcher against $DEV_URL"
+  # Passed in the environment, not baked into the app: a production machine
+  # must not be able to end up pointing at a dev server because a variable was
+  # left behind somewhere. The launcher only accepts loopback URLs.
+  INSP_UI_DEV_URL="$DEV_URL" nohup "$LAUNCHER" >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+  sleep 6
+  step_status
+  echo "   ${DIM}edit UI/WebUI/src/** and the window updates in place (no rebuild, no restart)${N}"
+}
+
 # ------------------------------------------------------------- the launcher --
 
 launcher_pids() {
@@ -135,6 +201,7 @@ stop_launcher_quiet() {
 }
 
 step_down() {
+  step_down_dev_server
   local pids; pids="$(launcher_pids)"
   if [[ -z "$pids" ]]; then ok "not running"; return 0; fi
   stop_launcher_quiet
@@ -157,6 +224,11 @@ step_status() {
   installed=$(date -r "$APP_DIR/WebUI/index.html" '+%m-%d %H:%M' 2>/dev/null || echo 'none')
   built=$(date -r "$WEBUI_SRC/dist/index.html" '+%m-%d %H:%M' 2>/dev/null || echo 'none')
   echo "   WebUI     built $built   installed $installed"
+  if dev_server_pid >/dev/null; then
+    echo "   dev srv   ${G}$DEV_URL${N} (pid $(dev_server_pid))  ${DIM}$DEV_LOG${N}"
+  else
+    echo "   dev srv   ${DIM}not running${N}"
+  fi
   local pids; pids="$(launcher_pids)"
   if [[ -n "$pids" ]]; then
     powershell.exe -NoProfile -Command \
@@ -189,8 +261,12 @@ ${B}dev.sh${N} -- build, install and run visSele
 
   ${B}The app${N}
 
-      ./dev.sh up              (re)start the launcher
-      ./dev.sh down            stop it
+      ./dev.sh up              (re)start the launcher on the installed build
+      ./dev.sh up_dev_server   (re)start it against Vite -- a WebUI edit then
+                               appears in the running window with no rebuild,
+                               no restart, and the session left where it was
+      ./dev.sh down_dev_server stop Vite (leave the app running)
+      ./dev.sh down            stop both
       ./dev.sh status          what is built, what is installed, what runs
 
   ${B}Everything${N}
@@ -210,6 +286,10 @@ ${B}dev.sh${N} -- build, install and run visSele
       visSele.exe locks the build output, and it holds the serial port open.
     * The installed app is read from export_v2/app/current.json -- currently
       ${B}$VERSION${N}. Switch versions there, not here.
+    * ${B}up_dev_server${N} is the one to use while working on the UI. It only
+      changes where the window loads its files from -- the core, the machine
+      and the data are the same ones ${B}up${N} uses, so what you see is real.
+      ${B}up${N} puts it back on the installed bundle.
     * Nothing in this script commits, pushes or uploads anything.
 EOF
 }
@@ -243,6 +323,8 @@ case "$CMD" in
   flash_uinspesp32) timed "uInspESP32 flash" "35s" step_flash_uinspesp32 "${1:-}" ;;
   esp32)    die "renamed: ./dev.sh flash_uinspesp32 [COM3]" ;;
   up)       step_up ;;
+  up_dev_server|updev)   step_up_dev_server ;;
+  down_dev_server|downdev) step_down_dev_server ;;
   down)     step_down ;;
   status)   step_status ;;
   ship)
