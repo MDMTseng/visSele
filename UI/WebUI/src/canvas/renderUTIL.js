@@ -44,7 +44,7 @@ const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './renderConst';
-import { overlayKit, OVERLAY, measureLabelName, withAlpha } from 'JSSRCROOT/canvas/overlayKit';
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 import { getShapeModule } from 'JSSRCROOT/shapes';
 
 class renderUTIL {
@@ -397,91 +397,59 @@ class renderUTIL {
     ctx.restore();
   }
 
-  // THE MEASURE LABEL.
-  //
-  // It is the only text anyone reads off the image, and it was three rows of
-  // near-equal weight -- name, nominal, and a "Now:" line carrying the reading
-  // plus a unit-conversion tail -- with nothing behind them, over a photo of a
-  // part. Six of those on one screen is what CT called 有點亂.
-  //
-  // What it is now: one block, on a paper backdrop so it reads over anything,
-  // with ONE row that matters. The reading is the big row, because that is the
-  // number being looked at. The name is above it, small, because you need it
-  // only to know which measure this is. The nominal and the limits are below,
-  // smaller and dimmer, because they are what the reading is being judged
-  // against, not the answer.
-  _infoRows(ctx, rows, fontPx) {
-    // ctx.font is a 1px font here (getFontStyle(1)), so measureText gives the
-    // width per point of size.
-    let w = 0, h = 0;
-    for (const r of rows) {
-      if (!r.t) continue;
-      w = Math.max(w, ctx.measureText(r.t).width * fontPx * r.s);
-      h += fontPx * r.s * 1.22;
-    }
-    return { w, h };
-  }
-
-  // A backdrop in the label's own screen-aligned space -- the same rotation
-  // cancel draw_Text does, so the box and the text cannot drift apart when the
-  // view is rotated or flipped.
-  _infoBackdrop(ctx, w, h, fontPx) {
-    const pad = fontPx * 0.35;
-    ctx.save();
-    const _r = this.viewRotation || 0;
-    if (_r || this.viewFlip) {
-      if (this.viewFlip) { ctx.scale(1, -1); ctx.rotate(_r); }
-      else ctx.rotate(-_r);
-    }
-    ctx.fillStyle = OVERLAY.role.paper;
-    ctx.fillRect(-pad, -fontPx * 0.95 - pad * 0.5, w + 2 * pad, h + pad);
-    ctx.restore();
-  }
-
-  _drawInfoRows(ctx, rows, fontPx) {
-    rows = rows.filter((r) => r.t);
-    if (rows.length === 0) return;
-    const box = this._infoRows(ctx, rows, fontPx);
-    this._infoBackdrop(ctx, box.w, box.h, fontPx);
-    const base = ctx.fillStyle;
-    let y = 0;
-    for (const r of rows) {
-      // The context rows are the same colour, quieter -- not a second colour.
-      ctx.fillStyle = r.dim ? withAlpha(String(base), 0.62) : base;
-      this.draw_Text(ctx, r.t, fontPx * r.s, 0, y, true);
-      y += fontPx * r.s * 1.22;
-    }
-    ctx.fillStyle = base;
-  }
-
-  drawInspMeasureInfoText(ctx, name, value, marginPC, fontPx) {
+  drawInspMeasureInfoText(ctx,name,value,marginPC,fontPx)
+  {
     ctx.strokeStyle = "black";
     ctx.lineWidth = this.getIndicationLineSize() / 3;
-    const P = this.renderParam.measureInfoText;
-    let big = P.value === true ? value : "";
-    if (marginPC === marginPC && isFinite(marginPC) && P.showMarginPC === true)
-      big += "  " + (marginPC * 100).toFixed(1) + "%";
-    this._drawInfoRows(ctx, [
-      { t: P.name === true ? name : "", s: 0.72, dim: true },
-      { t: big, s: 1.0 },
-    ], fontPx);
+    let Y_offset = 0;
+    if(this.renderParam.measureInfoText.name==true)
+      this.draw_Text(ctx, name, fontPx, 0, 0, true);
+    
+    Y_offset+=fontPx;
+    let text="";
+    if(this.renderParam.measureInfoText.value==true)
+      text = value;
+    else
+      text = "";
+
+    if(marginPC==marginPC && isFinite(marginPC) && this.renderParam.measureInfoText.showMarginPC==true)
+      text += ":" + (marginPC * 100).toFixed(1) + "%";
+
+    this.draw_Text(ctx, text, fontPx, 0, Y_offset, true);
   }
 
-  drawDefMeasureInfoText(ctx, name, value, InfoLU, InfoCurVal, fontPx) {
-    const P = this.renderParam.measureInfoText;
-    // "Now:" said which row this was when the rows looked alike. It is the big
-    // one now, so the word is noise.
-    const cur = String(InfoCurVal || "").replace(/^\s*Now:\s*/, "");
-    const sub = [];
-    if (P.value === true && value) sub.push(value);
-    if (P.showLU === true && InfoLU) sub.push(InfoLU);
-    this._drawInfoRows(ctx, [
-      { t: P.name === true ? name : "", s: 0.72, dim: true },
-      { t: P.showCur === true ? cur : (P.value === true ? value : ""), s: 1.0 },
-      { t: P.showCur === true ? sub.join("   ") : "", s: 0.62, dim: true },
-    ], fontPx);
-  }
+  drawDefMeasureInfoText(ctx,name,value,InfoLU,InfoCurVal,fontPx)
+  {
 
+    let Y_offset = 0;
+
+
+        
+    if(this.renderParam.measureInfoText.name==true)
+      this.draw_Text(ctx, name, fontPx, 0, 0, true);
+    
+
+    if(this.renderParam.measureInfoText.value==true)
+    {
+      Y_offset += fontPx;
+      this.draw_Text(ctx, value, fontPx, 0, Y_offset, true);
+    }
+
+    fontPx *=0.7;
+
+    if(this.renderParam.measureInfoText.showLU==true)
+    {
+      Y_offset += fontPx;
+      this.draw_Text(ctx, InfoLU, fontPx, 0, Y_offset, true);
+    }
+
+
+    if(this.renderParam.measureInfoText.showCur==true)
+    {
+      Y_offset += fontPx;
+      this.draw_Text(ctx, InfoCurVal, fontPx, 0, Y_offset, true);
+    }
+  }
   drawMeasureDistance(ctx, eObject, refObjs, shapeList, unitConvert,measValueAdjStr="") {
 
     let alignLine = null;
