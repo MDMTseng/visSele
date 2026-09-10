@@ -304,9 +304,16 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     <Button type="primary" size={"large"}
       className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
       icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
-        {(isConnected ? LANG_DICT.connection.server_connected : LANG_DICT.connection.server_disconnected)
-        + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip
-        + (dbQ.pending ? "  待補傳 " + dbQ.pending : "")}
+        {/* Disconnected: the label only. The counters are what the link is
+            doing, and while it is down the answer is "nothing, and none of it
+            is lost" -- which the label already says. Dropping them takes a
+            wide red bar back down to four characters in a toolbar that is
+            fighting for width, and every number is still one hover away. */}
+        {isConnected
+          ? (LANG_DICT.connection.server_connected
+             + " " + _this.sendedCounter + "<" + _this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip
+             + (dbQ.pending ? "  待補傳 " + dbQ.pending : ""))
+          : LANG_DICT.connection.server_disconnected}
         {/* Loud and separate. A discarded record is not a delayed one, and it
             must not read as another counter in the same grey run-on. */}
         {dbQ.dropped ? <span style={{ marginLeft: 8, padding: '0 6px', borderRadius: 3,
