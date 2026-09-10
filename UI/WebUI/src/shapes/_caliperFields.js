@@ -89,6 +89,13 @@ export function edgeField({ method = 'strongest', polarity = 'falling', min_stre
       // the core's hidden 0.15 (caliper) / 0.40 (search point) until 2026-09-05.
       // 自動 writes 0 so a measured min_strength is absolute.
       rel_strength: 'input-number',
+      // Distance decay, px: a candidate's strength is scaled by
+      // exp(-|d|/dist_decay), d being how far it sits from where the def put
+      // the point. It is what stops an edge that flickers in and out nearer
+      // than the real one -- a neighbour, a burr, a hair -- from taking the
+      // measurement with it, which strength alone cannot see. 0 = off, and off
+      // is exactly the behaviour before this existed. Search points only.
+      dist_decay:   'input-number',
       // across-edge Gaussian before differencing, px; 0 = none (line/arc only)
       sigma:        'input-number',
     } : undefined,

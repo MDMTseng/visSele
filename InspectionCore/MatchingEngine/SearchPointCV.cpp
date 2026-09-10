@@ -37,7 +37,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      acv_XY *outPt, float *outW, int spId,
                      std::vector<CaliperHit> *outHits, bool *outClipped,
                      SearchPointPeaks *outPeaks, float relStrength,
-                     int *outRelMoved)
+                     int *outRelMoved, float distDecay)
 {
   if (outClipped) *outClipped = false;
   if (gray.empty()) return false;
@@ -291,8 +291,31 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // instead of guessed. See featureDef_searchPoint::rel_strength.
   const float peakFrac = (relStrength > 0) ? relStrength : 0.0f;
   float peakThresh = maxPeak * peakFrac;
+
+  // DISTANCE DECAY.
+  //
+  // Strength alone cannot tell a real edge from a bright thing that happens to
+  // be in the window, and the selector's other rule -- take the nearest
+  // survivor -- rewards exactly the intruder that is nearer than the edge. So
+  // distance from where the def SAID the edge is becomes part of being
+  // believed: strength is scaled by exp(-|d| / distDecay), d measured along
+  // the search axis from the def's own point. perpCoord is centred on that
+  // point, so d is perpCoord itself.
+  //
+  // Applied to the gate and to the averaging weights, and therefore to which
+  // candidates can be the nearest survivor -- which is where the flicker
+  // lives. NOT applied to maxPeak: the relative floor stays relative to the
+  // strongest real thing in the window, wherever that is.
+  //
+  // distDecay <= 0 skips all of it and the result is bit-identical to the
+  // code before this existed.
+  const bool useDecay = (distDecay > 0);
+  auto decay = [&](float perpCoord) -> float {
+    return useDecay ? expf(-fabsf(perpCoord) / distDecay) : 1.0f;
+  };
+
   std::vector<SPEdgePt> eps;
-  for (auto &c : cand) if (c.peak >= peakThresh) eps.push_back(c);
+  for (auto &c : cand) if (c.peak * decay(c.perpCoord) >= peakThresh) eps.push_back(c);
   if (eps.empty()) return false;
 
   // TOP selection: of all per-row edge maxima, take the one nearest the search origin along
@@ -308,7 +331,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (outRelMoved)
   {
     int n = 0;
-    for (auto &c : cand) if (c.perpCoord < pMin && c.peak < peakThresh) n++;
+    for (auto &c : cand) if (c.perpCoord < pMin && c.peak * decay(c.perpCoord) < peakThresh) n++;
     *outRelMoved = n;
   }
   if (dbg) {
@@ -331,7 +354,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     if (dist > considerRange) continue;
     float a = 1.0f - (dist - alphaKeep) / (considerRange - alphaKeep);
     if (a > 1) a = 1; if (a < 0) a = 0;
-    float ww = e.peak * a;
+    float ww = e.peak * a * decay(e.perpCoord);
     Ws += ww; Ss += (double)e.searchCoord * ww; Ps += (double)e.perpCoord * ww; nUsed++;
   }
   if (!(Ws > 0)) return false;                         // also catches NaN
