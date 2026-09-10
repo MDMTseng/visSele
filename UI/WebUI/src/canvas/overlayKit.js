@@ -91,6 +91,9 @@ export const OVERLAY_DEFAULTS = {
     chip_gap:    3.2,    // chip offset from what it labels
     ext_over:    2.0,    // how far an extension line runs past its foot
     cross_r:     5.0,    // the X's arm, from the point outward
+    // Heavier than a construction line: an X marks a position, and a position
+    // has to be findable at a glance among the lines around it.
+    cross_w:     1.05,   // x getIndicationLineSize()
     gauge_r:     6.0,
     gauge_dy:    8.5,    // gauge centre above the label point
     span_min:    14.0,   // shortest drawn span (gap style)
@@ -343,7 +346,7 @@ export function overlayKit(ctx, renderer) {
   //
   // Diagonal, not upright, so it cannot be mistaken for a piece of geometry --
   // edges in these images are mostly horizontal and vertical.
-  const crosshair = (p, colour, { r = S.cross_r, w = S.construction_w } = {}) => {
+  const crosshair = (p, colour, { r = S.cross_r, w = S.cross_w } = {}) => {
     const d = r * ps * Math.SQRT1_2;
     ctx.save();
     ctx.setLineDash([]);
