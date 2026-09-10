@@ -13667,6 +13667,22 @@ int mainLoop(bool realCamera = false)
   //   LOGI(">>>");
   // }
 
+  // NEVER SERVE WITHOUT A LISTENER.
+  //
+  // The retry loop above catches the exception init() throws when the port
+  // could not be taken, so reaching here normally means a socket exists. This
+  // is the belt: every path below -- get_fd_set(), findMaxFd(), select() --
+  // takes the listen socket as a given, and with a -1 in the set select fails
+  // on every turn forever while the process looks perfectly healthy from the
+  // outside. A core that cannot be reached is not a degraded core; it is a
+  // machine that is not running, and it should say so and stop.
+  if (ifwebsocket->get_socket() < 0)
+  {
+    LOGE("main loop: no listening socket on port %d -- refusing to run. "
+         "Another core is almost certainly already using it.", ws_port);
+    return -1;
+  }
+
   ifwebsocket->setUpperLayer(&bpg_pi);
   bpg_pi.setLink(ifwebsocket);
   // mjpegS = new MJPEG_Streamer2(7603);
@@ -13708,9 +13724,19 @@ int mainLoop(bool realCamera = false)
     tv.tv_usec = 200000;
     if (select(maxfd + 1, &fd_s, NULL, NULL, &tv) == -1)
     {
-      if (errno == EINTR)
+      // errno, not WSAGetLastError, is what this used to read -- and Winsock
+      // sets neither errno nor anything perror can see. So on Windows the
+      // EINTR test below could never be true and the message described some
+      // unrelated CRT call. Both now come from the socket layer itself.
+      if (sock_err_is_intr())
         continue; // interrupted by a signal; just retry
-      perror("select");
+      // Rate-limited: a select that fails does so on EVERY turn, so an
+      // unconditional log here writes a few thousand identical lines a second
+      // into the ring and evicts the history that would explain it.
+      static int _selFail = 0;
+      if ((_selFail++ % 500) == 0)
+        LOGE("main loop: select failed (%s) -- %d so far, still serving",
+             sock_err_str(), _selFail);
       continue; // transient error: keep serving instead of killing the process
     }
 
