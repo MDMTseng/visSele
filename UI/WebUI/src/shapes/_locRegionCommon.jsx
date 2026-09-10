@@ -85,7 +85,7 @@ export function makeDraw(kind) {
     const c = fitCameraCenterRegion(shape);
     let ext = 0;
     for (const p of pts) ext = Math.max(ext, Math.hypot(p.x - c.x, p.y - c.y) * 2);
-    if (c && K.showDetail(ext)) {
+    if (OVERLAY.label.show_primitive_names && c && K.showDetail(ext)) {
       const tag = (shape.name || (exclude ? '排除區' : '取用區')) + (pts.length < 3 ? ' 未閉合' : '');
       K.chip(tag, c.x, c.y, stroke, OVERLAY.font.tag);
     }

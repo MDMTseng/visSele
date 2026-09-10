@@ -86,7 +86,7 @@ export function draw(ctx, shape, renderer, {
   ctx.beginPath();
   ctx.rect(mid.x - r, mid.y - r, 2 * r, 2 * r);
   ctx.stroke();
-  if (shape.name) {
+  if (OVERLAY.label.show_primitive_names && shape.name) {
     const up = Math.atan2(-(b.x - a.x), b.y - a.y);
     const at = K.at(mid, up, K.S.chip_gap * K.ps);
     K.chip(shape.name, at.x, at.y, ctx.strokeStyle, OVERLAY.font.tag);

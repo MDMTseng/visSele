@@ -102,7 +102,14 @@ export const OVERLAY_DEFAULTS = {
   // theirs, and this is off. Turn it on for a session with
   //     OVERLAY_TUNE({ label: { show_index: true } })
   // when hunting for which measure an expression refers to.
-  label: { show_index: false },
+  label: {
+    show_index: false,
+    // Primitives do not name themselves. A def has dozens of them and their
+    // names are for the property sheet, not the picture -- printed on the
+    // canvas they bury the thing they are naming, and they bury the MEASURE
+    // labels, which are the only text anyone reads off the image.
+    show_primitive_names: false,
+  },
 
   // ---- level of detail ---------------------------------------------------
   // A shape whose on-screen extent is under `detail_ps` primitive-sizes gets

@@ -153,7 +153,7 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
       K.arrow(K.at(onArc, out, (shape.margin || 2 * ps) + 2 * ps), out, S.arrow_head * ps);
       ctx.restore();
     }
-    if (K.showDetail(arcNominal.r * 2)) {
+    if (OVERLAY.label.show_primitive_names && K.showDetail(arcNominal.r * 2)) {
       const tag = (shape.name ? shape.name + ' ' : '') + 'R' + arcNominal.r.toFixed(renderer.fixedDigit.R);
       const lp = K.at(c, mid, arcNominal.r * 0.55);
       K.chip(tag, lp.x, lp.y, shapeColor, OVERLAY.font.tag);

@@ -152,7 +152,7 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
       ctx.restore();
     }
     // LOD: a line only a few primitive-sizes long on screen gets geometry only.
-    if (shape.name && K.showDetail(Math.hypot(shape.pt2.x - shape.pt1.x, shape.pt2.y - shape.pt1.y))) {
+    if (OVERLAY.label.show_primitive_names && shape.name && K.showDetail(Math.hypot(shape.pt2.x - shape.pt1.x, shape.pt2.y - shape.pt1.y))) {
       const up = Math.atan2(-cnormal.vy, -cnormal.vx);
       const at = K.at(mid, up, S.chip_gap * ps);
       K.chip(shape.name, at.x, at.y, shapeColor, OVERLAY.font.tag);

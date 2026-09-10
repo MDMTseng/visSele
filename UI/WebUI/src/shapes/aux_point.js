@@ -99,7 +99,7 @@ export function draw(ctx, shape, renderer, {
       ctx.lineWidth = K.lw * K.S.thin_w;
       ctx.beginPath(); ctx.arc(point.x, point.y, 2.2 * K.ps, 0, 2 * Math.PI); ctx.stroke();
       if (reported) { ctx.beginPath(); ctx.arc(point.x, point.y, 0.9 * K.ps, 0, 2 * Math.PI); ctx.fill(); }
-      if (shape.name) K.chip(shape.name, point.x, point.y - K.S.chip_gap * K.ps, shapeColor, OVERLAY.font.tag);
+      // No text: an intersection is a dot. Its name belongs in the sheet.
     }
   }
 }
