@@ -195,6 +195,10 @@ function setPlateGeometry(ppr, dia) {
   if (Number(dia) > 0) GEO.dia = Number(dia);
 }
 const pulsesPerRev = () => GEO.ppr;
+// Where a station sits on the plate, as a fraction of one revolution. Unlike
+// mm (needs the plate diameter) and ms (needs the current speed), this is what
+// a pulse offset intrinsically is, so it stays true when either of those move.
+const pctRev = (ticks) => ((ticks / pulsesPerRev()) * 100).toFixed(1) + '%';
 const mmPerPulse = () => (GEO.dia * Math.PI) / GEO.ppr;
 const plateRpm = (pf) => (pf > 0 ? (2 * pf * 60) / pulsesPerRev() : 0);
 const plateMmS = (pf) => (pf > 0 ? 2 * pf * mmPerPulse() : 0);
@@ -2402,21 +2406,16 @@ build ${fw.build}`}>
                   </Tooltip>
                 ) : null}
               </span>
+              {/* One conversion, not three. mm and ms both depend on numbers
+                  that move (plate diameter, current speed), while a fraction of
+                  a revolution is what the offset actually IS -- and it is the
+                  one an operator can check against the plate in front of them.
+                  The warnings stay: they are not conversions. */}
               <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
-                {Number(pos) >= 0
-                  ? `${(Number(pos) * mmPerPulse()).toFixed(1)} mm · ${fmtMs(ticksToMs(Number(pos), refFreq(plate_freq)))}`
-                  : '—'}
-                {/* Both edges, spelled out. A centre is only useful if you can
-                    see what it buys either side of the part. */}
-                {centered && Number(wid) > 0 ? (() => {
-                  const t = Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6);
-                  const half = Math.floor(t / 2);
-                  const a = Math.max(0, Number(pos) - half);
-                  return `  [${a} … ${a + t}] t`;
-                })() : ''}
+                {Number(pos) >= 0 ? `${pctRev(Number(pos))} 圈` : '—'}
                 {st.off ? (bad
                   ? '  ⚠ 寬度必須 > 0'
-                  : `  → ${Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6)} t = ${(Number(wid) * 2 * setpoint_freq / 1e6 * mmPerPulse()).toFixed(2)} mm${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0,裝置要等設定轉速後才換算'}`) : ''}
+                  : `  → ${pctRev(Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6))} 圈${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0'}`) : ''}
               </span>
             </div>
           );
