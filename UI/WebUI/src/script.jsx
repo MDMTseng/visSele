@@ -248,9 +248,24 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
 
   
   if(gridSize===undefined)gridSize=iconSize+50;
-  // height:auto + whiteSpace:normal so the full label can wrap instead of being
-  // clipped by the antd button's default nowrap (運算核心 -> 運算核, HikCam -> HikCa).
-  let gridStyle={...style,width:(gridSize)+"px", height:"auto", whiteSpace:"normal" };
+  // FIXED CELL, not a cell that grows with its label.
+  //
+  // These are status tiles laid out in a wrapping row, and each one used to be
+  // width:fixed + height:auto -- so a long name (檢測相機 BMP_CAM) wrapped to
+  // three lines, made that tile taller than its neighbours, and the wrap took
+  // the tiles after it onto a ragged next row. The icons then sat at different
+  // heights and moved whenever a NAME changed: a camera swap re-laid-out the
+  // panel.
+  //
+  // Every tile is now the same box. The label gets two lines and then an
+  // ellipsis, with the full text on the tile's own title, so no name can move
+  // anything.
+  const labelLines = showText ? 2 : 0;
+  const cellH = showText ? (iconSize + 10 + labelLines * 15) : (iconSize + 8);
+  let gridStyle={...style, width:(gridSize)+"px", height:cellH+"px",
+                 whiteSpace:"normal", padding:"2px 2px",
+                 display:"flex", flexDirection:"column",
+                 alignItems:"center", justifyContent:"flex-start" };
   
   let iconStyle={width:iconSize+"px",height:iconSize+"px"};
 
@@ -343,9 +358,10 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     .map(([textName, conn_info, icon,froceAppear],idx)=>{
       let brief_info= GetObjElement(conn_info,["brief_info"]);
       return(
-      <Button size="large" key={`stat ${textName} ${idx}`} style={gridStyle} 
+      <Button size="large" key={`stat ${textName} ${idx}`} style={gridStyle}
       type="text" //disabled={!systemConnectState.core}
-      className={"s HXA "+connectionStatus2CSSColor(conn_info)} 
+      title={[textName, brief_info].filter(Boolean).join(' — ')}
+      className={"s HXA "+connectionStatus2CSSColor(conn_info)}
       onClick={()=>onItemClick(conn_info)}>
         <div 
           className={"antd-icon-sizing veleX"} 
@@ -354,10 +370,16 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           {icon}
         </div>
             {(showText==false)?null:
-              <>
-                <span className="veleX" style={{whiteSpace:"normal", wordBreak:"break-word", textAlign:"center", lineHeight:1.15, display:"block"}}>{textName}<br/>{brief_info}</span>
-
-              </>}
+              // Two lines, then an ellipsis. -webkit-line-clamp is the only
+              // thing that clamps WRAPPED text by line count; it is supported
+              // in the Chromium this app ships with.
+              <span className="veleX"
+                style={{whiteSpace:"normal", wordBreak:"break-word", textAlign:"center",
+                        lineHeight:"15px", display:"-webkit-box", WebkitLineClamp:labelLines,
+                        WebkitBoxOrient:"vertical", overflow:"hidden",
+                        width:"100%", fontSize:11}}>
+                {textName}{brief_info ? <><br/>{brief_info}</> : null}
+              </span>}
       </Button>)})
 
 }
