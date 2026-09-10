@@ -127,9 +127,11 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   }
 
   ctx.strokeStyle = shapeColor;
-  renderer.drawpoint(ctx, shape.pt1);
-  renderer.drawpoint(ctx, shape.pt2);
-  renderer.drawpoint(ctx, shape.pt3);
+  if (!OVERLAY.ctrl.edit_only || K.isEditing(shape)) {
+    renderer.drawpoint(ctx, shape.pt1);
+    renderer.drawpoint(ctx, shape.pt2);
+    renderer.drawpoint(ctx, shape.pt3);
+  }
 
   // The centre, the radius that ties the arc to it, which side the calipers
   // scan, and the name+radius -- none of which existed on canvas before.

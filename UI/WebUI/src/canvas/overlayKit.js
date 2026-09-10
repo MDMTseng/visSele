@@ -115,6 +115,15 @@ export const OVERLAY_DEFAULTS = {
     show_primitive_names: false,
   },
 
+  // ---- control points ----------------------------------------------------
+  // A line's endpoints and an arc's three picks are HANDLES: they exist to be
+  // dragged. Drawn on every shape all the time they are just dots over the
+  // part -- a def with twenty primitives puts fifty of them on the image. They
+  // appear on the shape being edited, where they are the thing you reach for.
+  // Hit-testing is unaffected, so a handle still grabs whether or not it is
+  // painted.
+  ctrl: { edit_only: true },
+
   // ---- level of detail ---------------------------------------------------
   // A shape whose on-screen extent is under `detail_ps` primitive-sizes gets
   // geometry only: no name plate, no dimension text. `size / ps` is
@@ -377,7 +386,12 @@ export function overlayKit(ctx, renderer) {
   };
 
   return { T, C: T.role, ps, lw, fpx, S, dash, at, seg, projOn, arrow, text, chip,
-           datumMark, extendTo, gauge, withAlpha, showDetail, measureName, construction };
+           datumMark, extendTo, gauge, withAlpha, showDetail, measureName, construction,
+           // True while THIS shape is the one being edited.
+           isEditing: (shape) => {
+             const e = renderer.EditShape;
+             return !!(e && e.id !== undefined && shape && e.id === shape.id);
+           } };
 }
 
 export default overlayKit;

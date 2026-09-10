@@ -137,8 +137,10 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   }
 
   ctx.strokeStyle = shapeColor;
-  renderer.drawpoint(ctx, shape.pt1);
-  renderer.drawpoint(ctx, shape.pt2);
+  if (!OVERLAY.ctrl.edit_only || K.isEditing(shape)) {
+    renderer.drawpoint(ctx, shape.pt1);
+    renderer.drawpoint(ctx, shape.pt2);
+  }
 
   // A line used to carry no text at all, and its scan side was legible only as
   // "the faint line is over there". Name plate + one arrow fixes both.
