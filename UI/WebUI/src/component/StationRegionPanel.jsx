@@ -74,6 +74,31 @@ const EMPTY_REGION = { x: 0, y: 0, w: 0, h: 0 };
 // Before the first report there is no origin to have. {0,0} is the honest
 // answer for that window: the panel has nothing to place a box against yet.
 const ORIGIN_UNKNOWN = { x: 0, y: 0 };
+// DECLARED AT MODULE SCOPE, and they have to be.
+//
+// A component declared inside a render body is a new component TYPE on every
+// render: React cannot match it to the previous tree, so it unmounts the old
+// subtree and mounts a fresh one. Every input inside then loses focus the
+// moment anything re-renders the panel -- and the station poll re-renders it
+// about once a second, which is why a threshold could not be typed into while
+// the machine was running.
+//
+// The prose that used to sit between every control lives behind these "?"s. It
+// was three paragraphs for two controls, and once a station is set up nobody
+// reads it again -- but the day you do need it, it is a hover away.
+const Q = ({ children }) => (
+  <Tooltip title={<div style={{ maxWidth: 300, fontSize: 12 }}>{children}</div>}>
+    <span style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
+      borderRadius: '50%', fontSize: 10, lineHeight: '13px', width: 14, height: 14,
+      display: 'inline-block', textAlign: 'center', marginLeft: 4 }}>?</span>
+  </Tooltip>
+);
+const Row = ({ children, gap = 6 }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'wrap',
+                margin: '2px 0' }}>{children}</div>
+);
+const HINT = { fontSize: 11, color: '#888' };
+
 const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
 const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
   ? { ...r, x: r.x - o.x, y: r.y - o.y } : r;
@@ -279,8 +304,12 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // That is exactly what happened when this panel was mounted somewhere that
   // never received the canvas. Refuse to arm, and say so.
   const canAim = !!(ecCanvas && typeof ecCanvas.SetROISettingCallBack === 'function');
-  const AimBtn = ({ target, children }) => (
+  // A plain function, CALLED (aimBtn(...)), not a component used as <AimBtn/>.
+  // Same reason as Q and Row above: as an inline component type it would
+  // remount its subtree on every render.
+  const aimBtn = (target, children, style) => (
     <Button size="small" icon={<AimOutlined />} disabled={!canAim}
+      style={style}
       title={canAim ? undefined : '畫布尚未就緒'}
       type={aiming === target ? 'primary' : 'default'}
       onClick={() => setAiming(aiming === target ? null : target)}>
@@ -316,20 +345,6 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   );
 
   if (!open) return header;
-  // The prose that used to sit between every control is behind a "?" now. It was
-  // three paragraphs for two controls, and once a station is set up nobody reads
-  // it again -- but the day you do need it, it is a hover away instead of gone.
-  const Q = ({ children }) => (
-    <Tooltip title={<div style={{ maxWidth: 300, fontSize: 12 }}>{children}</div>}>
-      <span style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
-        borderRadius: '50%', fontSize: 10, lineHeight: '13px', width: 14, height: 14,
-        display: 'inline-block', textAlign: 'center', marginLeft: 4 }}>?</span>
-    </Tooltip>
-  );
-  const Row = ({ children, gap = 6 }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'wrap',
-                  margin: '3px 0' }}>{children}</div>
-  );
 
   // Only worth screen space when it DISAGREES. In sync it is one tick; out of
   // sync it is the most important line in the panel, because the boxes look
@@ -381,7 +396,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     ) : null}
 
     <Row>
-      <AimBtn target="region">拉框設定</AimBtn>
+      {aimBtn('region', '拉框設定')}
       <Select size="small" style={{ width: 112 }}
         value={region.fit === 'center' ? 'center' : 'contain'}
         onChange={(v) => editRegion({ ...region, fit: v })}
@@ -419,32 +434,50 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     {clean.map((c, i) => {
       const m = station && Array.isArray(station.clean)
         ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
+      const setC = (patch) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...patch } : x))));
+      const measured = m && Number.isFinite(m.dark_area_mm2) ? m.dark_area_mm2 : undefined;
       return (
-        <div key={i} style={{ borderLeft: '2px solid #ffab00', paddingLeft: 5, marginBottom: 5 }}>
-          <Row>
-            <AimBtn target={i}>{c.name || ('淨空' + (i + 1))}</AimBtn>
+        <div key={i} style={{ borderLeft: '2px solid #ffab00', paddingLeft: 5, marginBottom: 3 }}>
+          {/* Two rows, not three: the on_fail choice used to wrap onto its own
+              line because the threshold row could not hold it, so every region
+              cost a third of the panel. */}
+          <Row gap={4}>
+            {aimBtn(i, c.name || ('淨空' + (i + 1)), { flex: '0 1 auto', minWidth: 0 })}
             {m ? <span style={{ fontSize: 11, color: m.dirty ? '#c33' : '#389e0d' }}>
-              {m.dirty ? '有雜物 ' : '乾淨 '}{Number(m.dark_area_mm2).toFixed(4)}mm²
-            </span> : <span style={{ fontSize: 11, color: '#888' }}>{c.w > 0 ? '等待影像' : '尚未框選'}</span>}
+              {m.dirty ? '髒 ' : '淨 '}{Number(m.dark_area_mm2).toFixed(3)}
+            </span> : <span style={HINT}>{c.w > 0 ? '待影像' : '未框選'}</span>}
+            <Select size="small" style={{ width: 68, marginLeft: 'auto' }}
+              value={c.on_fail === 'ng' ? 'ng' : 'na'}
+              onChange={(v) => setC({ on_fail: v })}
+              options={[{ value: 'na', label: '→NA' }, { value: 'ng', label: '→NG' }]} />
             <Popconfirm title="刪除?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
               <Button size="small" danger type="text" icon={<DeleteOutlined />}
-                style={{ padding: '0 4px', marginLeft: 'auto' }} />
+                style={{ padding: '0 2px' }} />
             </Popconfirm>
           </Row>
-          <Row gap={4}>
-            <span style={{ fontSize: 11, color: '#888' }}>暗</span>
-            <InputNumber size="small" style={{ width: 58 }} value={c.dark_thresh ?? 128}
-              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: Math.round(v || 0) } : x))))} />
-            <span style={{ fontSize: 11, color: '#888' }}>≤</span>
-            <InputNumber size="small" style={{ width: 68 }} step={0.01} value={c.dark_area_max}
-              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_area_max: v } : x))))} />
-            <span style={{ fontSize: 11, color: '#888' }}>mm²</span>
-            <Select size="small" style={{ width: 96 }} value={c.on_fail === 'ng' ? 'ng' : 'na'}
-              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, on_fail: v } : x))))}
-              options={[{ value: 'na', label: '→NA' }, { value: 'ng', label: '→NG' }]} />
+          <Row gap={3}>
+            <span style={HINT}>暗</span>
+            <InputNumber size="small" style={{ width: 54 }} value={c.dark_thresh ?? 128}
+              title="低於這個灰階的像素算「暗」"
+              onChange={(v) => setC({ dark_thresh: Math.round(v || 0) })} />
+            <span style={HINT}>≤</span>
+            <InputNumber size="small" style={{ width: 66 }} step={0.01} value={c.dark_area_max}
+              title="暗面積上限 (mm²)"
+              onChange={(v) => setC({ dark_area_max: v })} />
+            <span style={HINT}>mm²</span>
+            {/* Setting this threshold meant reading the measured area off the
+                panel and retyping it, which is slow and how a decimal point
+                goes missing. Only offered when there IS a measurement. */}
+            {measured !== undefined ? (
+              <Button size="small" type="link" style={{ fontSize: 11, padding: '0 3px', height: 20 }}
+                title={'把目前量到的 ' + measured.toFixed(4) + ' mm² 填進上限'}
+                onClick={() => setC({ dark_area_max: parseFloat(measured.toFixed(4)) })}>
+                ←目前
+              </Button>
+            ) : null}
           </Row>
           {nums ? <RectFields rect={c} showNumbers
-            onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} /> : null}
+            onChange={(r) => setC(r)} /> : null}
         </div>
       );
     })}
