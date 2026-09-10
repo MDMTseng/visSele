@@ -131,7 +131,14 @@ export const OVERLAY_DEFAULTS = {
     // A parallelism reading is a fraction of a degree; drawn to scale the arc
     // is nothing at all. This is the smallest arc the overlay will draw, in
     // degrees -- the number in the text stays the true one.
-    min_draw_deg:        12,
+    // An angular dimension's arc ENDS ON ITS TWO EXTENSION LINES -- that is
+    // what makes it a dimension rather than a decoration. Opening a small arc
+    // out so it stays visible breaks exactly that: the opened end leaves the
+    // line, and the drawing then says an angle nobody measured. So: 0, draw
+    // the true angle. A fraction of a degree is a short arc, and the pair of
+    // extension lines plus the value carry it. Set it non-zero only if you
+    // would rather see the direction than have the arc land on the line.
+    min_draw_deg:         0,
     // Radius of the arc when there is no vertex on screen (near-parallel), in
     // primitive-sizes. Big enough that the opened arc and the two direction
     // rays are legible next to the label.
