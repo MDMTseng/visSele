@@ -516,17 +516,6 @@ class renderUTIL {
       this.drawReportLine(ctx, { x0: B.x, y0: B.y, x1: eObject.pt1.x, y1: eObject.pt1.y });
       ctx.restore();
 
-      // The datum the distance is projected onto.
-      ctx.save();
-      ctx.setLineDash(K.dash('datum'));
-      ctx.strokeStyle = K.C.datum;
-      ctx.lineWidth = K.lw * K.S.thin_w;
-      this.drawReportLine(ctx, {
-        x0: point_onAlignLine.x - mainObjVec.x * 0.15, y0: point_onAlignLine.y - mainObjVec.y * 0.15,
-        x1: point_onAlignLine.x + mainObjVec.x * 1.15, y1: point_onAlignLine.y + mainObjVec.y * 1.15,
-      });
-      ctx.restore();
-
       ctx.save();
       ctx.setLineDash([]);
       ctx.strokeStyle = ctx.fillStyle = K.C.reading;
