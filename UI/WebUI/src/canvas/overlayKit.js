@@ -68,7 +68,7 @@ export const OVERLAY_DEFAULTS = {
     meas:   [3, 2],               // THE measurement. Red + this = a number.
     datum:  [7, 2.5, 1.5, 2.5],   // dash-dot: a reference, never a real edge
     aux:    [5, 3],               // long dash: virtual extension / construction
-    tie:    [0.63, 1.04],         // fine dot: extension / construction lines
+    tie:    [0.82, 1.35],         // fine dot: extension / construction lines
     search: [4, 2.5],             // search-area outline
   },
   // ---- sizes, all in multiples of getPrimitiveSize() ---------------------
