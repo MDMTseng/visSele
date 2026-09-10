@@ -328,7 +328,19 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   const SLIDConn       = _linkToConn(usePerifLink(ConnInfo.SLID_API_ID),       ConnInfo.SLID_API_ID);
   const CNCConn        = _linkToConn(usePerifLink(ConnInfo.CNC_API_ID),        ConnInfo.CNC_API_ID);
 
-  return [
+  // A GRID, not a row of floated buttons.
+  //
+  // In flow layout a tile that is one line taller than its neighbours does not
+  // just look wrong, it pushes the tiles after it into a column down the side:
+  // the row breaks where the tall one ends. A grid gives every tile a cell of
+  // its own, the columns are decided by the container's width rather than by
+  // the labels, and a tall tile only makes ITS OWN ROW taller. Nothing a name
+  // does can move a tile into a different column.
+  //
+  // auto-fill + minmax means the same code lays out the wide system panel
+  // (gridSize 100 -> as many columns as fit) and the narrow edge strip
+  // (gridSize 30 inside a 50px button -> one column).
+  const tiles = [
     [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
@@ -375,8 +387,15 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
                   {brief_info || ' '}
                 </span>
               </span>}
-      </Button>)})
+      </Button>)});
 
+  return (
+    <div style={{ display: 'grid',
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))`,
+                  justifyItems: 'center', alignItems: 'start', gap: 2 }}>
+      {tiles}
+    </div>
+  );
 }
 
                     
