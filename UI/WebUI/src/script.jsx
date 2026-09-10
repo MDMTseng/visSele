@@ -355,16 +355,25 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           {icon}
         </div>
             {(showText==false)?null:
-              // ALWAYS TWO LINES. The second one holds the brief state when
-              // there is one and a non-breaking space when there is not --
-              // otherwise a tile with no state is a line shorter than its
-              // neighbours, the row goes ragged, and the icons move whenever a
-              // state string appears or clears. A blank line costs nothing and
-              // keeps every tile the same height without truncating anything.
+              // EXACTLY TWO LINES, always. One for the name, one for the brief
+              // state -- a non-breaking space when there is none, so a tile
+              // without state is not a line shorter than its neighbours.
+              //
+              // The state line may NOT wrap. It carries whatever the device
+              // calls itself, and BMP_CAM in a 100px tile broke as "BMP_CA /
+              // M": three lines, a tile taller than the row, and the tiles
+              // after it pushed into a column down the side. A name is short
+              // CJK and fits; a state string is arbitrary, so it truncates
+              // with an ellipsis and says the rest on the tile's title.
               <span className="veleX"
-                style={{whiteSpace:"normal", wordBreak:"break-word", textAlign:"center",
-                        lineHeight:1.15, display:"block"}}>
-                {textName}<br/>{brief_info || ' '}
+                style={{textAlign:"center", lineHeight:1.15, display:"block", width:"100%"}}>
+                <span style={{display:"block", whiteSpace:"normal", wordBreak:"break-word"}}>
+                  {textName}
+                </span>
+                <span style={{display:"block", whiteSpace:"nowrap",
+                              overflow:"hidden", textOverflow:"ellipsis"}}>
+                  {brief_info || ' '}
+                </span>
               </span>}
       </Button>)})
 
