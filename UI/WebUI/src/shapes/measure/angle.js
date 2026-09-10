@@ -158,15 +158,23 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     // angles is what bent it: s0/e0d have been flipped to the near side and
     // opened out to min_draw_deg, so by then they are no longer the lines'
     // directions and the "extensions" left the lines at an angle.
-    for (const [L0, L1] of [[A0, A1], [B0, B1]]) {
-      const dir = Math.atan2(L1.y - L0.y, L1.x - L0.x);
-      const from = closestPointOnPoints(V, [L0, L1]);   // the end facing the vertex
-      const toV = { x: V.x - from.x, y: V.y - from.y };
-      const sgn = (toV.x * Math.cos(dir) + toV.y * Math.sin(dir) < 0) ? -1 : 1;
-      // Far enough to reach the vertex AND the arc, whichever is further out.
-      const out = Math.max(Math.hypot(toV.x, toV.y), dist) + 3 * ps;
-      K.construction(from, { x: from.x + sgn * out * Math.cos(dir),
-                             y: from.y + sgn * out * Math.sin(dir) });
+    for (const [ang, L0, L1] of [[s0, A0, A1], [e0d, B0, B1]]) {
+      // Work in the line's own parameter, so the extension covers whatever it
+      // has to and cannot leave the line. Both the vertex and this side's end
+      // of the arc lie ON this line; the extension is simply the run from the
+      // real segment out to whichever of them is furthest, DRAWN ON BOTH SIDES
+      // -- the operator can drag the label past the far end of the segment,
+      // and then the arc needs the extension going the other way.
+      const ux = Math.cos(Math.atan2(L1.y - L0.y, L1.x - L0.x));
+      const uy = Math.sin(Math.atan2(L1.y - L0.y, L1.x - L0.x));
+      const t = (q) => (q.x - L0.x) * ux + (q.y - L0.y) * uy;
+      const at_t = (tt) => ({ x: L0.x + tt * ux, y: L0.y + tt * uy });
+      const segLo = Math.min(t(L0), t(L1)), segHi = Math.max(t(L0), t(L1));
+      const E = { x: V.x + (dist + 3 * ps) * Math.cos(ang),
+                  y: V.y + (dist + 3 * ps) * Math.sin(ang) };
+      const lo = Math.min(segLo, t(V), t(E)), hi = Math.max(segHi, t(V), t(E));
+      if (lo < segLo - 1e-9) K.construction(at_t(lo), at_t(segLo));
+      if (hi > segHi + 1e-9) K.construction(at_t(segHi), at_t(hi));
     }
   } else {
     // Truly parallel (or a vertex so far out that drawing to it is nonsense).
