@@ -97,6 +97,14 @@ const Row = ({ children, gap = 6 }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'wrap',
                 margin: '2px 0' }}>{children}</div>
 );
+// A row that may NOT wrap. The sidebar is about 225px and a wrapping row does
+// not save space, it spends it: the one control that does not fit drops onto a
+// line of its own and the region costs an extra row. Everything in here is
+// sized to fit that width, and the flexible parts shrink instead.
+const TightRow = ({ children, gap = 3 }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap',
+                margin: '2px 0', minWidth: 0 }}>{children}</div>
+);
 const HINT = { fontSize: 11, color: '#888' };
 
 const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
@@ -441,41 +449,46 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
           {/* Two rows, not three: the on_fail choice used to wrap onto its own
               line because the threshold row could not hold it, so every region
               cost a third of the panel. */}
-          <Row gap={4}>
-            {aimBtn(i, c.name || ('淨空' + (i + 1)), { flex: '0 1 auto', minWidth: 0 })}
-            {m ? <span style={{ fontSize: 11, color: m.dirty ? '#c33' : '#389e0d' }}>
-              {m.dirty ? '髒 ' : '淨 '}{Number(m.dark_area_mm2).toFixed(3)}
-            </span> : <span style={HINT}>{c.w > 0 ? '待影像' : '未框選'}</span>}
-            <Select size="small" style={{ width: 68, marginLeft: 'auto' }}
-              value={c.on_fail === 'ng' ? 'ng' : 'na'}
-              onChange={(v) => setC({ on_fail: v })}
-              options={[{ value: 'na', label: '→NA' }, { value: 'ng', label: '→NG' }]} />
+          <TightRow>
+            {aimBtn(i, c.name || ('淨空' + (i + 1)),
+                    { flex: '1 1 auto', minWidth: 0, overflow: 'hidden' })}
+            {m ? <span style={{ fontSize: 11, whiteSpace: 'nowrap',
+                                color: m.dirty ? '#c33' : '#389e0d' }}>
+              {m.dirty ? '髒' : '淨'}{Number(m.dark_area_mm2).toFixed(3)}
+            </span> : <span style={{ ...HINT, whiteSpace: 'nowrap' }}>
+              {c.w > 0 ? '待影像' : '未框選'}</span>}
             <Popconfirm title="刪除?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
               <Button size="small" danger type="text" icon={<DeleteOutlined />}
-                style={{ padding: '0 2px' }} />
+                style={{ padding: 0, width: 18, flex: '0 0 auto' }} />
             </Popconfirm>
-          </Row>
-          <Row gap={3}>
+          </TightRow>
+          <TightRow>
             <span style={HINT}>暗</span>
-            <InputNumber size="small" style={{ width: 54 }} value={c.dark_thresh ?? 128}
+            <InputNumber size="small" style={{ width: 42, flex: '0 0 auto' }} value={c.dark_thresh ?? 128}
               title="低於這個灰階的像素算「暗」"
               onChange={(v) => setC({ dark_thresh: Math.round(v || 0) })} />
             <span style={HINT}>≤</span>
-            <InputNumber size="small" style={{ width: 66 }} step={0.01} value={c.dark_area_max}
+            <InputNumber size="small" style={{ width: 52, flex: '0 0 auto' }} step={0.01} value={c.dark_area_max}
               title="暗面積上限 (mm²)"
               onChange={(v) => setC({ dark_area_max: v })} />
-            <span style={HINT}>mm²</span>
+            <span style={{ ...HINT, whiteSpace: 'nowrap' }}>mm²</span>
             {/* Setting this threshold meant reading the measured area off the
                 panel and retyping it, which is slow and how a decimal point
-                goes missing. Only offered when there IS a measurement. */}
+                goes missing. Only offered when there IS a measurement, and it
+                is an arrow rather than a word because the row has no room for
+                a word. */}
             {measured !== undefined ? (
-              <Button size="small" type="link" style={{ fontSize: 11, padding: '0 3px', height: 20 }}
+              <Button size="small" type="link"
+                style={{ fontSize: 13, padding: 0, width: 18, height: 20, flex: '0 0 auto' }}
                 title={'把目前量到的 ' + measured.toFixed(4) + ' mm² 填進上限'}
-                onClick={() => setC({ dark_area_max: parseFloat(measured.toFixed(4)) })}>
-                ←目前
-              </Button>
+                onClick={() => setC({ dark_area_max: parseFloat(measured.toFixed(4)) })}>←</Button>
             ) : null}
-          </Row>
+            <Select size="small" style={{ width: 46, flex: '0 0 auto', marginLeft: 'auto' }}
+              value={c.on_fail === 'ng' ? 'ng' : 'na'}
+              title={c.on_fail === 'ng' ? '超出 → NG,吹掉' : '超出 → NA,繞回重測'}
+              onChange={(v) => setC({ on_fail: v })}
+              options={[{ value: 'na', label: 'NA' }, { value: 'ng', label: 'NG' }]} />
+          </TightRow>
           {nums ? <RectFields rect={c} showNumbers
             onChange={(r) => setC(r)} /> : null}
         </div>
