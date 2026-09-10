@@ -3915,153 +3915,149 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-    let headerUI = 
-    <>
-      
-      <Button type="primary" size={"large"} onClick={()=>this.EXIT()}>
-        <ArrowLeftOutlined />
-      </Button>
+    // THE TOOLBAR.
+    //
+    // It was twelve controls in one undifferentiated row, every one size=large,
+    // with `primary` blue on 返回, 資料圖表 and 設定ROI alike -- so the colour
+    // said nothing, and the row was wide enough to push the DB status off the
+    // edge on a 1366 screen.
+    //
+    // Now it is three groups, left to right in the order a person needs them:
+    //
+    //   WHERE AM I   back, the recipe, its tags, the rank setting
+    //   WHAT IS THE MACHINE DOING   the DB link and the locate note -- state,
+    //     not controls, and the only things here that change on their own
+    //   WHAT CAN I DO   view toggles first (they change what is on screen),
+    //     then actions (they write something)
+    //
+    // Colour means one thing: BLUE = this toggle is on. Actions are plain, and
+    // red is left for 選擇ROI中, which is a mode the canvas is in and has to be
+    // got out of. Size drops from large to middle: a toolbar is chrome, and
+    // large buttons spend the width that the numbers in the middle need.
+    const TBGap = { display: 'flex', alignItems: 'center', gap: 6 };
+    const graphOn = this.state.GraphUIDisplayMode !== 0;
+    const roiArming = this.state.onROISettingCallBack !== undefined;
+    let headerUI =
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
 
-      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="click">
-        <span style={{margin:"10px"}} ><FileOutlined /> {shortedModelName}</span>
-      </Popover>
-      <TagDisplay_rdx size="middle"/>
-      
-      <Tag className="large" color="gray" onClick={() =>{
-            this.setInspectionRankUI()
-          }}><SettingOutlined /></Tag>
-      {this.state.additionalUI}
+      {/* ---- where am I ------------------------------------------------- */}
+      <div style={TBGap}>
+        <Tooltip title="離開檢驗畫面">
+          <Button type="primary" onClick={()=>this.EXIT()} icon={<ArrowLeftOutlined />} />
+        </Tooltip>
+        <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>}
+                 placement="bottomLeft" trigger="click">
+          <span style={{ cursor: 'pointer', maxWidth: 180, overflow: 'hidden',
+                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <FileOutlined /> {shortedModelName}
+          </span>
+        </Popover>
+        <TagDisplay_rdx size="small"/>
+        <Tooltip title="檢驗等級設定">
+          <Button size="small" icon={<SettingOutlined />}
+                  onClick={() => this.setInspectionRankUI()} />
+        </Tooltip>
+        {this.state.additionalUI}
+      </div>
 
+      {/* ---- what is the machine doing ----------------------------------- */}
+      <div style={TBGap}>
+        <LocateNoteBanner />
+        <InspectionReportInsert2DB
+          LANG_DICT={this.props.DICT}
+          onDBInsertSuccess={(data, info) => {
+          }}
+          onDBInsertFail={(data, info) => {
+            log.error(data, info);
+          }}
+          insert_skip={InspectionReportPullSkip}/>
+      </div>
 
+      {/* ---- what can I do: view toggles --------------------------------- */}
+      <div style={TBGap}>
+        <Tooltip title={this.state.renderObjAlignRotate
+          ? "目前:把標的轉正,原圖跟著轉" : "目前:原圖不轉,標的照實際角度畫"}>
+          <Button type={this.state.renderObjAlignRotate ? "primary" : "default"}
+            icon={<RedoOutlined/>}
+            onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
+            {this.state.renderObjAlignRotate ? "旋轉標的" : "不轉原圖"}
+          </Button>
+        </Tooltip>
+        <Tooltip title="切換資料圖表的大小(關 / 小 / 大)">
+          <Button type={graphOn ? "primary" : "default"} key="Info Graphs"
+            icon={<BarChartOutlined />}
+            onClick={() => {
+              this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
+              this.setState(Object.assign({}, this.state));
+            }}>圖表</Button>
+        </Tooltip>
+        <Tooltip title={roiArming ? "在影像上拉出要用的範圍" : "設定相機取像範圍(ROI)"}>
+          <Button type={roiArming ? "primary" : "default"} danger={roiArming} key="Manual ZOOM"
+            icon={<ExpandOutlined />}
+            onClick={() => {
+              // Open the sensor fully so the whole field is visible to drag on. The
+              // core persists whatever ROI it is given; nothing is mirrored locally
+              // any more (see the note where the connect-time push used to be).
+              let FullSensorROI=[0,0,99999,99999];
+              this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+              { CameraSetting: { ROI:FullSensorROI } });
 
+              this.setState({ onROISettingCallBack:(ROI_setting)=>{
+                let x = ROI_setting.start.pix.x;
+                let y = ROI_setting.start.pix.y;
+                let w = ROI_setting.end.pix.x-x;
+                let h = ROI_setting.end.pix.y-y;
+                if(w<0) { x+=w; w=-w; }
+                if(h<0) { y+=h; h=-h; }
+                let ROI = [x,y,w,h];
+                if(w<10 || h<10 ) { ROI=FullSensorROI; }
 
-      
-      {/* <Button type="primary" size={"large"} 
-      className={ ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
-      icon={this.state.DB_Conn_state == 1 ? <LinkOutlined /> : <DisconnectOutlined />} >
-          {(this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected : this.props.DICT.connection.server_disconnected)
-          + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
-      </Button> */}
-      
-      <LocateNoteBanner />
-      <InspectionReportInsert2DB 
-        // newAddedReport={this.props.reportStatisticState.newAddedReport} 
-        LANG_DICT={this.props.DICT}
-        // DBStatus,
-        // DBPushPromise,
-        onDBInsertSuccess={(data, info) => {
-          // log.info(data, info);
-        }}
-        onDBInsertFail={(data, info) => {
-          log.error(data, info);
-        }}
-        insert_skip={InspectionReportPullSkip}/>
+                // The ONLY write to the machine's stored crop, and it lands under
+                // its own key (InspectionROI). The full-sensor open above says
+                // nothing: that is the UI looking at the frame, not an operator
+                // picking a crop. DefConf and the backlight calib open the sensor
+                // fully too, for the same reason -- with a separate key none of
+                // them can reach this value even by accident.
+                this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+                {CameraSetting: { ROI, save_insp_roi:true }});
 
+                this.setState({onROISettingCallBack:undefined});
+              }})
+            }}>{roiArming ? "選擇ROI中" : "ROI"}</Button>
+        </Tooltip>
+      </div>
 
+      {/* ---- what can I do: actions -------------------------------------- */}
+      <div style={TBGap}>
+        <Tooltip title="檢驗樣本:保留的樣品、存成 xreps">
+          <Button icon={<PictureOutlined/>} onClick={()=>this.setState({samplePanel:true})}>樣本</Button>
+        </Tooltip>
+        <Tooltip title="把畫面上這一幀存成 PNG 到 data/">
+          <Button icon={<SaveOutlined />} onClick={() => {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T','_').replace('Z','');
+            const filename = `./data/snap_${ts}.png`;
+            this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
+              { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined,
+              {
+                resolve: (pkts) => {
+                  const SS = pkts.find(p => p.type === "SS");
+                  if (SS && SS.data.ACK === true) this.notifyPopUp(null, `儲存影像 ${filename}`);
+                  else this.warnPopUp(`儲存影像失敗 ${filename}`);
+                },
+                reject: () => this.warnPopUp(`儲存影像失敗 ${filename}`),
+              });
+          }}>存影像</Button>
+        </Tooltip>
+      </div>
 
-      <Button size={"large"} type="dashed" onClick={()=>this.setState({samplePanel:true})}>
-        <PictureOutlined/>樣本
-      </Button>
+      {/* Not a toolbar control -- a panel that lives wherever it is mounted. */}
       <InspSamplePanel visible={this.state.samplePanel===true}
         onClose={()=>this.setState({samplePanel:false})}
         sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)}
         defName={this.props.defModelName}
         saveDir={(this.props.machine_custom_setting && this.props.machine_custom_setting.InspSampleSavePath) || 'data'}
         measures={(this.props.shape_list||[]).filter(sh=>sh.type==='measure').map(sh=>({id:sh.id,name:sh.name}))} />
-      <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
-        <RedoOutlined/>
-        {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
-      </Button>
-
-      <Button size={"large"} onClick={() => {
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T','_').replace('Z','');
-        const filename = `./data/snap_${ts}.png`;
-        this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
-          { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined,
-          {
-            resolve: (pkts) => {
-              const SS = pkts.find(p => p.type === "SS");
-              if (SS && SS.data.ACK === true) this.notifyPopUp(null, `儲存影像 ${filename}`);
-              else this.warnPopUp(`儲存影像失敗 ${filename}`);
-            },
-            reject: () => this.warnPopUp(`儲存影像失敗 ${filename}`),
-          });
-      }}>存影像</Button>
-
-
-
-
-
-
-{/* 
-      <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
-      onChange={(ev)=>
-          {
-            this.CameraCtrl.setCameraImageTransfer(ev.target.checked);
-            this.setState({});//just to kick update
-          }
-        } >{
-          "相機影像更新"
-        }</Checkbox> */}
-      
-      <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}
-      onClick={() => {
-        this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
-        this.setState(Object.assign({}, this.state));
-      }}
-      >資料圖表</Button>
-
-      <Button type={"primary"} danger={this.state.onROISettingCallBack!==undefined} key="Manual ZOOM" size={"large"}
-        onClick={() => {
-
-
-        // Open the sensor fully so the whole field is visible to drag on. The
-        // core persists whatever ROI it is given; nothing is mirrored locally
-        // any more (see the note where the connect-time push used to be).
-        let FullSensorROI=[0,0,99999,99999];
-        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        { CameraSetting: { ROI:FullSensorROI } });
-
-        this.setState({ onROISettingCallBack:(ROI_setting)=>{
-          
-          let x = ROI_setting.start.pix.x;
-          let y = ROI_setting.start.pix.y;
-          
-          let w = ROI_setting.end.pix.x-x;
-          let h = ROI_setting.end.pix.y-y;
-          if(w<0)
-          {
-            x+=w;
-            w=-w;
-          }
-          if(h<0)
-          {
-            y+=h;
-            h=-h;
-          }
-          
-          let ROI = [x,y,w,h];
-          if(w<10 || h<10 )
-          {
-            ROI=FullSensorROI;
-          }
-
-          
-          // The ONLY write to the machine's stored crop, and it lands under
-          // its own key (InspectionROI). The full-sensor open above says
-          // nothing: that is the UI looking at the frame, not an operator
-          // picking a crop. DefConf and the backlight calib open the sensor
-          // fully too, for the same reason -- with a separate key none of them
-          // can reach this value even by accident.
-          this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-          {CameraSetting: { ROI, save_insp_roi:true }});
-
-
-          this.setState({onROISettingCallBack:undefined});
-        }})
-      }} ><ExpandOutlined />
-        {this.state.onROISettingCallBack===undefined?"設定ROI":"選擇ROI中"}</Button>
-    </>
+    </div>
 
 /*
     </>;*/
