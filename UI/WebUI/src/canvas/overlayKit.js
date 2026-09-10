@@ -80,7 +80,9 @@ export const OVERLAY_DEFAULTS = {
     line_w:      1.0,    // x getIndicationLineSize()
     thin_w:      0.7,    // x getIndicationLineSize()
     // Extension / projection lines, as a fraction of a primitive's own line.
-    construction_w: 0.7,
+    // 1.0: an extension IS that line continued, so it carries the line's
+    // weight; what separates them is the dotting, not a thinner stroke.
+    construction_w: 1.0,
     heavy_w:     1.35,   // x getIndicationLineSize()
     arrow_head:  2.0,
     tick:        1.6,
