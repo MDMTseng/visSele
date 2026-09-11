@@ -1279,9 +1279,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
       ctx.scale(scale * mmpp, scale * mmpp);
-      // if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-      //   ctx.translate((this.img_info.offsetX) / scale-0.5, (this.img_info.offsetY) / scale-0.5);
-      // }
+      if (this.img_info !== undefined && this.img_info.offsetX !== undefined
+          && this.img_info.offsetY !== undefined) {
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
+      }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
 
@@ -1367,8 +1368,12 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
                   + "UNPLACED (scale right, offset zero):", e && e.message, e);
       }
 
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
       
+      // The boundary moves with the image, on purpose: it bounds the drawn
+      // pixels, so it belongs at -0.5 and width-0.5 -- the outer edges of the
+      // first and last pixel, not the centres of them.
       ctx.strokeStyle = "rgba(120, 120, 120,30)";
       let curScale=this.camera.GetCameraScale();
       ctx.lineWidth = 200/curScale/scale;
@@ -1963,9 +1968,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
         ctx.scale(mmpp_mult, mmpp_mult);
         if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-          ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
+          ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
         }
-        // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+        this.rUtil.alignImagePixelGrid(ctx);
         ctx.drawImage(this.secCanvas, 0, 0);
 
         // Screen position of image pixel (0,0), for the timing caption below.
@@ -1985,6 +1990,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         try{
           ctx.imageSmoothingEnabled=false;
           ctx.scale(mmpp, mmpp);
+          this.rUtil.alignImagePixelGrid(ctx);
           ctx.drawImage(this.stream_img, 0, 0);
         } catch (error) {
           log.error("[stream-drawImage]", { stream_img: this.stream_img, error });
@@ -2540,13 +2546,11 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       let mmpp_mult = scale * mmpp;
       
       ctx.scale(mmpp_mult, mmpp_mult);
-      if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        //ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+      if (this.img_info !== undefined && this.img_info.offsetX !== undefined
+          && this.img_info.offsetY !== undefined) {
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
       }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
-      //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
-      
-      
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
 
       // Where the image's top-left corner ends up on screen.
@@ -3113,9 +3117,9 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
       }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
@@ -3318,9 +3322,9 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
       }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }

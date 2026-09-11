@@ -791,6 +791,35 @@ class renderUTIL {
     ctx.strokeStyle = saveStroke; ctx.fillStyle = saveFill;
   }
 
+  // THE HALF PIXEL.
+  //
+  // The core and the canvas disagree about what an integer coordinate means.
+  // The core's sampler (CvBridge.h, cvUnsignedMap1Sampling) returns pixel k's
+  // value exactly at x = k, so an integer coordinate is a pixel's CENTRE --
+  // the OpenCV convention, and the one every number in a report is in.
+  // ctx.drawImage(img, 0, 0) puts pixel k's top-left CORNER at k, so its centre
+  // lands at k + 0.5.
+  //
+  // Uncorrected, every overlay sits half a pixel up and left of the pixel it
+  // was measured on. Invisible at normal zoom; unmistakable once you are zoomed
+  // in far enough to see the pixels -- which is exactly when someone is checking
+  // whether an edge was found in the right place.
+  //
+  // The IMAGE moves, not the overlays. That leaves the coordinate system alone
+  // -- mouse picking, stored def geometry and every reported number keep meaning
+  // what they meant -- and simply puts the picture where those coordinates say
+  // it is. Call it immediately before drawImage, inside the image's own
+  // transform, and let the enclosing restore() undo it.
+  //
+  // It existed before as a `- 0.5` buried inside an image-offset translate, in
+  // three of the six places that draw an image and commented out in two more,
+  // so the same frame sat half a pixel apart between DefConf and the inspection
+  // view and moved depending on whether img_info happened to carry an offset.
+  // One place to say it, one place to change it.
+  alignImagePixelGrid(ctx) {
+    ctx.translate(-0.5, -0.5);
+  }
+
   drawImageBoundaryGrid(ctx,imgInfo={
     offsetX:0,
     offsetY:0,
