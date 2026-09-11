@@ -177,6 +177,22 @@ export const OVERLAY_DEFAULTS = {
     // rays are legible next to the label.
     // How far past the arc's end a lead-out arc is still an arc.
     lead_arc_max_deg:    35,
+    // ...AND a cap on what that actually DRAWS.
+    //
+    // The degree cap alone bounds the wrong quantity. The lead-out is an arc at
+    // the main arc's radius, and that radius is the distance from the label to
+    // the vertex -- so for two lines a few degrees apart, meeting thousands of
+    // pixels away, a "small" 35 deg connector is over a thousand pixels of
+    // curve sweeping across the whole frame. Checked before changing anything:
+    // the start/end/direction choice is correct, every drawn arc sweeps exactly
+    // the gap it is meant to and never the long way round. It is the size of
+    // the result that was never bounded, not the geometry.
+    //
+    // In ps, i.e. roughly screen pixels, so this stays a fixed visual size at
+    // any zoom. Past it the straight leader is drawn instead -- which is what a
+    // drawing uses for a far-away label anyway, and cannot be misread as a
+    // measured sweep.
+    lead_arc_max_len_ps: 70,
     // Lay the value along the radius it hangs off (a drawing convention, and
     // what the reference machine does). Off = axis-aligned, as before.
     label_follows_radius: true,

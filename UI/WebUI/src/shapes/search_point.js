@@ -132,9 +132,10 @@ export function draw(ctx, shape, renderer, {
   if (drawSubObjs)
     renderer.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs, inFullDisplay);
 
-  // A search point IS a position -- marked with the yellow X every point
-  // gets, not a filled dot sitting on top of it.
-  K.crosshair(shape.pt1);
+  // A search point IS a position -- marked with the X every point gets, not a
+  // filled dot sitting on top of it. An anchor is the same point in the datum
+  // colour: the ROLE differs, the mark does not.
+  K.crosshair(shape.pt1, shape.locating_anchor ? K.C.datum : undefined);
   // The scan direction, in contour mode too (it used to be visible only as the
   // caliper box's arrow, so contour points showed no polarity at all).
   if (inFullDisplay) {
@@ -144,32 +145,13 @@ export function draw(ctx, shape, renderer, {
     K.arrow(K.at(shape.pt1, sd, margin + 3 * K.ps), sd, K.S.arrow_head * K.ps);
     ctx.restore();
   }
-  // A locating anchor also holds the object frame. anchor_corner (2D) adds four
-  // corner ticks; an edge anchor (1D) marks only its own axis, which is the
-  // one direction it actually constrains.
-  if (shape.locating_anchor) {
-    // An anchor is a point FIRST: the same X, in orange instead of yellow.
-    // Nothing else added -- the colour is the whole difference, and it costs
-    // no extra marks on an image that already has plenty.
-    const p = shape.pt1, q = 1.6 * K.ps;
-    K.crosshair(p, K.C.datum);
-    ctx.save();
-    ctx.setLineDash([]);
-    ctx.strokeStyle = K.C.datum; ctx.fillStyle = K.C.datum;
-    ctx.lineWidth = K.lw * K.S.construction_w;
-    if (shape.anchor_corner) {
-      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-        const cx = p.x + sx * 5 * K.ps, cy = p.y + sy * 5 * K.ps;
-        K.seg({ x: cx, y: cy }, { x: cx - sx * q, y: cy });
-        K.seg({ x: cx, y: cy }, { x: cx, y: cy - sy * q });
-      }
-    } else {
-      const sd = Math.atan2(cnormal.y, cnormal.x);
-      K.seg(K.at(p, sd, 4.4 * K.ps), K.at(p, sd, 6 * K.ps));
-      K.seg(K.at(p, sd + Math.PI, 4.4 * K.ps), K.at(p, sd + Math.PI, 6 * K.ps));
-    }
-    ctx.restore();
-  }
+  // An anchor used to get MORE than a colour here: a second crosshair drawn on
+  // top of the first, plus corner ticks (anchor_corner) or a pair of axis ticks
+  // (edge anchor) saying which directions it constrains. That is gone by
+  // request -- an anchor is a search point in orange and nothing else. The
+  // 2D/1D distinction it carried still lives in the property sheet, which is
+  // where the answer is actually read; the canvas was spending marks on an
+  // image that already has plenty.
   if (OVERLAY.label.show_primitive_names && inFullDisplay && shape.name && K.showDetail(shape.width)) {
     const nm = shape.name + (shape.locating_anchor ? (shape.anchor_corner ? ' 錨·角點' : ' 錨·邊') : '');
     K.chip(nm, shape.pt1.x, shape.pt1.y + K.S.chip_gap * 2 * K.ps,
@@ -187,11 +169,15 @@ export function draw(ctx, shape, renderer, {
 
 // Inspection-mode draw: the point the inspection actually found, marked the
 // same way the def marks the one it was told to look for -- a crosshair aimed
-// at the position, in the measurement colour, with the middle left clear so
-// the reported pixel is visible.
+// at the position, with the middle left clear so the reported pixel is visible.
 export function drawInspection(ctx, shape, renderer) {
   const K = overlayKit(ctx, renderer);
-  K.crosshair(shape.pt1);
+  // Anchors are orange HERE TOO. This drew the default feature yellow for every
+  // search point and never looked at locating_anchor, so a point that was
+  // orange while you were setting it up changed colour the moment the machine
+  // ran -- and orange means "this is what everything else is measured from",
+  // which is exactly the thing you want to find on an inspected frame.
+  K.crosshair(shape.pt1, shape.locating_anchor ? K.C.datum : undefined);
   ctx.lineWidth = renderer.getIndicationLineSize();
   if (renderer.show_caliper_hits !== false && shape.cal_hits) {
     drawCaliperHits(ctx, shape.cal_hits, renderer, { style: 'dot' });

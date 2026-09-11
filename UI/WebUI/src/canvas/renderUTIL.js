@@ -73,6 +73,10 @@ class renderUTIL {
     // EverCheckCanvasComponent before each draw so per-shape drawInspection
     // can gate the overlay without reading redux.
     this.show_caliper_hits = true;
+    // Set per report group before its shapes are drawn (see
+    // EverCheckCanvasComponent). False everywhere else -- the def editor
+    // draws the taught geometry, which is never mirrored.
+    this.objIsFlipped = false;
     this.renderParam = {
       base_Size: 2.5,
       size_Multiplier: 1,
@@ -373,6 +377,14 @@ class renderUTIL {
   draw_Text(ctx, text, scale, x, y, screenOffset = false) {
     ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.013;
     ctx.save();
+    // strokeText OBEYS THE DASH PATTERN. Every label here is filled and then
+    // outlined, and the outline was picking up whatever dash the last caller
+    // happened to leave set -- so a label drawn after an extension line came
+    // out with a dotted outline, which reads as a different kind of mark
+    // entirely. Setting lineWidth was never enough; this is the other half of
+    // the same statement, and doing it here fixes every caller at once instead
+    // of chasing whichever one leaked.
+    ctx.setLineDash([]);
     if (screenOffset && (this.viewRotation || this.viewFlip)) {
       const r = this.viewRotation || 0;
       let vx, vy;

@@ -95,6 +95,37 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     default:          { sDeg = 0; eDeg = wrap180(raw); break; }
   }
 
+  // A MIRRORED PART REPORTS THE OPPOSITE SIGN TO THE ONE ON SCREEN.
+  //
+  // The core measures in the OBJECT's frame, where the part is not mirrored;
+  // this file measures the lines where they are drawn, in the image. A mirror
+  // reverses the sense of rotation, so for a part detected as 反 the two
+  // disagree in sign while agreeing exactly in magnitude. Measured on a real
+  // frame: aA 161.83 deg, aB 168.21 deg -- a +6.38 deg turn on screen -- with
+  // the core reporting -6.38, and viewFlip false, so the canvas really is
+  // showing the unmirrored image.
+  //
+  // Neither number is wrong, and the fix is NOT to sweep the reported sign from
+  // the datum: that draws the other wedge entirely, away from line B, and the
+  // arc then ends nowhere near the line it is supposed to reach.
+  //
+  // The wedge between two lines is the same set of points whichever end you
+  // start from -- only the direction, and therefore the arrowhead, changes. So
+  // when the reading's sign disagrees with the drawn turn, the two ends are
+  // SWAPPED: the same wedge, traversed from B back to A. The arc covers exactly
+  // what it did before, and the arrowhead now points the way the printed number
+  // says. The magnitudes must match for this to be the mirror case and not some
+  // unrelated disagreement, which is what the tolerance below checks.
+  {
+    const reported = shape.inspection_value;
+    const turn = eDeg - sDeg;
+    if (Number.isFinite(reported) && Math.abs(turn) > 1e-9
+        && Math.sign(reported) !== Math.sign(turn)
+        && Math.abs(Math.abs(reported) - Math.abs(turn)) < 0.5) {
+      const t = sDeg; sDeg = eDeg; eDeg = t;
+    }
+  }
+
   // WHERE THE ANGLE IS DRAWN.
   //
   // With a usable vertex the arc goes on it, and each side's extension runs
@@ -213,10 +244,36 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
       // vertex is far off the part -- an arc all the way there sweeps half the
       // screen and reads as a measurement of something. Past that, a straight
       // leader, which is what a drawing uses and what nobody can misread.
-      if (gap <= OVERLAY.angle.lead_arc_max_deg * toRad) {
+      // BOTH caps have to pass. The angular one keeps the connector from
+      // wrapping round the circle; the length one keeps it from being a
+      // thousand pixels of curve when the vertex is far and the radius is
+      // therefore huge. `gap * dist` is the arc length this would draw.
+      const leadLenOK = (gap * dist) <= OVERLAY.angle.lead_arc_max_len_ps * ps;
+      if (gap <= OVERLAY.angle.lead_arc_max_deg * toRad && leadLenOK) {
+        // What the canvas will ACTUALLY sweep, by its own rule: anticlockwise
+        // false sweeps start->end increasing, true sweeps decreasing. If this
+        // does not equal `gap` then the arc goes the long way round, which is
+        // the whole complaint -- so it is computed rather than assumed.
+        const _aS = (gapEnd <= gapStart) ? e0d : labelTheta;
+        const _aE = (gapEnd <= gapStart) ? labelTheta : s0;
+        const _ccw = e0d < s0;
+        const _sweep = _ccw ? norm(_aS - _aE) : norm(_aE - _aS);
+        if (typeof window !== 'undefined' && window.__ANGLE_DEBUG__) {
+          const D = (v) => (typeof v === 'number' ? +v.toFixed(2) : v);
+          const deg = (r) => D(r * 180 / Math.PI);
+          // eslint-disable-next-line no-console
+          console.log('[angle lead]', measureLabelName(shape), {
+            branch: (gapEnd <= gapStart) ? 'end->label' : 'label->start',
+            gap_deg: deg(gap), gapEnd_deg: deg(gapEnd), gapStart_deg: deg(gapStart),
+            ccw: _ccw, s0_deg: deg(s0), e0d_deg: deg(e0d), labelTheta_deg: deg(labelTheta),
+            actual_sweep_deg: deg(_sweep),
+            wrong_way: Math.abs(_sweep - gap) > 1e-6,
+            arc_len_ps: D(_sweep * dist / ps), chord_len_ps: D(2 * dist * Math.sin(gap / 2) / ps),
+            cap_ps: OVERLAY.angle.lead_arc_max_len_ps, dist_ps: D(dist / ps),
+          });
+        }
         ctx.beginPath();
-        if (gapEnd <= gapStart) ctx.arc(V.x, V.y, dist, e0d, labelTheta, e0d < s0);
-        else                    ctx.arc(V.x, V.y, dist, labelTheta, s0, e0d < s0);
+        ctx.arc(V.x, V.y, dist, _aS, _aE, _ccw);
         ctx.stroke();
       } else {
         const from = (gapEnd <= gapStart) ? e0d : s0;
@@ -232,6 +289,32 @@ function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
     ctx.setLineDash(K.dash('meas'));
     renderer.drawArcArrow(ctx, V.x, V.y, dist, s0, e0d, e0d < s0);
     ctx.setLineDash([]);
+  }
+
+  // TEMPORARY DIAGNOSTIC -- turn on in the console with:
+  //     window.__ANGLE_DEBUG__ = true
+  // and off again by deleting it. Off by default and costs one property read
+  // per draw when off, which matters because this runs per shape per frame.
+  //
+  // Here because three plausible explanations for a wrong angle overlay were
+  // argued from screenshots and each was contradicted by the next clue. These
+  // are the numbers that decide it: what the core said, what this file
+  // computed, which range it used, and what it therefore swept.
+  if (typeof window !== 'undefined' && window.__ANGLE_DEBUG__) {
+    const D = (v) => (typeof v === 'number' ? +v.toFixed(2) : v);
+    // eslint-disable-next-line no-console
+    console.log('[angle]', measureLabelName(shape), {
+      range,
+      core_value: D(shape.inspection_value),   // what the label prints
+      js_measureDeg: D(measureDeg),            // what this file measured
+      raw: D(raw), nominal: D(nominal),
+      aA_deg: D(aA * 180 / Math.PI), aB_deg: D(aB * 180 / Math.PI),
+      sweep_deg: D((e0d - s0) * 180 / Math.PI),   // what the arc ACTUALLY draws
+      sDeg: D(sDeg), eDeg: D(eDeg),
+      vOK, vertex_dist_ps: vOK ? D(Math.hypot(V.x - P.x, V.y - P.y) / ps) : null,
+      radius_ps: D(dist / ps),
+      viewFlip: !!renderer.viewFlip, viewRotation: D(renderer.viewRotation || 0),
+    });
   }
   renderer.drawpoint(ctx, P);
   ctx.restore();

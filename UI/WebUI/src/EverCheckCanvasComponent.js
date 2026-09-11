@@ -2160,7 +2160,17 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
         ctx.restore();
         //console.log(listClone);
+        // WHICH HANDEDNESS THIS GROUP WAS FOUND IN.
+        //
+        // The core measures a signed angle in the OBJECT's frame, where the
+        // part is not mirrored. A group detected as 反 therefore reports the
+        // opposite sign to the turn you can see between the same two lines on
+        // screen -- both correct, in different frames. Overlays that draw a
+        // DIRECTION (the angle arc and its arrowhead) need to know which frame
+        // they are in, and until now nothing downstream of here was told.
+        this.rUtil.objIsFlipped = !!report.isFlipped;
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
+        this.rUtil.objIsFlipped = false;
       }
     });
 
@@ -3667,7 +3677,11 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
           }
           
           
+          // See the note at the other drawInspectionShapeList call: a 反 group
+          // reports its angles in a mirrored frame.
+          this.rUtil.objIsFlipped = !!report.isFlipped;
           this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
+          this.rUtil.objIsFlipped = false;
         });
       //this.stage_light_report
     }
