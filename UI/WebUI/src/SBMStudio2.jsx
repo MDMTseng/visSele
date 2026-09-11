@@ -1104,16 +1104,38 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     // silently reorders itself if that ever stops being true is a table nobody
     // can trust. The index is in the packet; use it.
     const stepRows = new Array(plan.length).fill(null);
-    const flush = () => {
-      const all = rows.concat(stepRows.filter(Boolean));
+
+    // COALESCE THE REPAINTS.
+    //
+    // Rebuilding the whole table and re-rendering it on every report froze the
+    // window for 400-500 ms at a time: 65 reports now arrive back to back in
+    // about eleven seconds, where each step used to be its own round trip and
+    // left the browser idle in between. Moving the loop into the core removed
+    // the very gaps that were hiding this.
+    //
+    // So the table repaints at most every FLUSH_MS while the sweep runs, and
+    // the final state is written unconditionally once the request settles --
+    // a dropped intermediate frame costs nothing, a dropped last one would.
+    const FLUSH_MS = 120;
+    let flushAt = 0, flushTimer = null;
+    const paint = () => {
+      flushTimer = null;
+      flushAt = Date.now();
+      const done = stepRows.filter(Boolean);
       setSweep((sw) => (sw && sw.axis === label
-        ? { ...sw, rows: all, done: 1 + stepRows.filter(Boolean).length } : sw));
+        ? { ...sw, rows: rows.concat(done), done: 1 + done.length } : sw));
+    };
+    const flush = () => {
+      if (flushTimer) return;
+      flushTimer = setTimeout(paint, Math.max(0, FLUSH_MS - (Date.now() - flushAt)));
     };
 
     let deffile;
     try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
     catch (e) { deffile = null; }
 
+    // TEMPORARY: which path this sweep actually took. Delete once the
+    // core-side sweep is confirmed working end to end.
     if (deffile && sendBPG) {
       const freshRef = (edit_info.__img_fresh_capture && edit_info.__tmp_ref_image_path)
         ? edit_info.__tmp_ref_image_path : null;
@@ -1126,7 +1148,8 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           perturbs: plan.map((s) => s.perturb || {}),
         }, undefined, {
           onPacket: (pkt) => {
-            if (!pkt || pkt.type !== 'RP' || !pkt.data) return;
+            if (!pkt) return;
+            if (pkt.type !== 'RP' || !pkt.data) return;
             const d = pkt.data;
             const i = d.sweep_i;
             if (!Number.isInteger(i) || i < 0 || i >= plan.length) return;
@@ -1141,6 +1164,7 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
         });
       });
       sweepReqRef.current = null;
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
     }
     // Steps the core never answered are still steps: leaving holes would make
     // an interrupted sweep look like a shorter one that passed.
