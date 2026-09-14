@@ -352,9 +352,11 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
   const n0v = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
   const has = (v) => typeof v === 'number' && isFinite(v);
 
+  // Same order as the strip that opens this. Two lists of the same three
+  // numbers in two different orders is a way to misread one for the other.
   const rows = selOK && selNG
-    ? [['NG', n0v(cnt[selNG]), '#c33', selNG],
-       ['OK', n0v(cnt[selOK]), '#389e0d', selOK]]
+    ? [['OK', n0v(cnt[selOK]), '#389e0d', selOK],
+       ['NG', n0v(cnt[selNG]), '#c33', selNG]]
     : [['SEL1', n0v(cnt.SEL1), undefined, 'SEL1'],
        ['SEL2', n0v(cnt.SEL2), undefined, 'SEL2'],
        ['SEL3', n0v(cnt.SEL3), undefined, 'SEL3']];
@@ -3365,9 +3367,15 @@ export function UINSP_ESP32_MINI() {
                                       statSince={statSince} onResetStat={resetLatency} />}>
         <div style={{ display: 'flex', gap: 4, cursor: 'pointer' }}
              data-testid="uinsp-counts-row">
+          {/* OK, NG, NA -- good, bad, unjudged. The strip is glanced at, and
+              the first cell is the one that gets read, so it is the one an
+              operator is actually watching. NA stays last: it is the rarest
+              and the only one that is not a verdict about the part. The
+              unwired fallback below keeps SEL1/2/3 order, because those are
+              physical outlets and their numbering is not ours to reorder. */}
           {selOK && selNG ? (<>
-            {tag('NG', cnt[selNG], 'red',   undefined, selNG)}
             {tag('OK', cnt[selOK], 'green', undefined, selOK)}
+            {tag('NG', cnt[selNG], 'red',   undefined, selNG)}
           </>) : (<>
             {tag('SEL1', cnt.SEL1, undefined, true)}
             {tag('SEL2', cnt.SEL2, undefined, true)}
