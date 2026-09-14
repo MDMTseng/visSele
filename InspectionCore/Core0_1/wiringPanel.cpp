@@ -13586,6 +13586,53 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       {
         if (bpg_pi.camera)
           bpg_pi.camera->TriggerMode(1);
+
+        // ASK THE BOARD TO KEEP ITS COUNTS, BEFORE WE LET GO OF IT.
+        //
+        // The sorter's counters are incremented with the blow -- the actuation
+        // and the count are one event -- so they live on the board and only the
+        // board can persist them. It deliberately does NOT write flash on a
+        // normal stop (that write landed in the middle of the plate's decel
+        // ramp and made it skip), and its host-link watchdog only fires while
+        // the machine is RUNNING. So one sequence saves nothing: stop the
+        // machine, then close the app. Nothing faults, nobody times out, and
+        // the next core start reopens the port -- which pulses DTR, which
+        // resets the board, which loses the shift's counts.
+        //
+        // This is the host closing that gap on its way out. Best effort by
+        // construction: we are about to drop the channel, so there is no reply
+        // to wait for.
+        //
+        // THE DEVICE MAY REFUSE, AND THAT IS NOT A LOSS. It declines while the
+        // plate is turning, because writing flash under a decel ramp is the
+        // fault this whole change is about. Refused means the machine was still
+        // RUNNING when the host went away -- which is precisely the case the
+        // board's own host-link watchdog exists for: no inbound frame for
+        // host_timeout_ms (we arm it at 1000 above) -> INSPECTION_ERROR
+        // (HOST_LINK_TIMEOUT) -> the counters are saved on the way into ERROR.
+        // At ~1s that lands with seconds to spare before any restart can reopen
+        // the port and reset the board.
+        //
+        // So the two paths partition the cases rather than overlapping: this
+        // one covers a host leaving a STOPPED machine, where nothing times out
+        // and nobody would otherwise save; the watchdog covers a host leaving a
+        // RUNNING one.
+        // Twice, for the same reason the RESYNC path sends RESET twice: one
+        // frame lost to a resync here costs the shift's counts.
+        //
+        // The real fix is upstream of all this -- stop the port open from
+        // resetting the board at all -- and when that lands this becomes a
+        // belt-and-braces line rather than the only thing holding the counts.
+        if (bpg_pi.perifCH != NULL)
+        {
+          static const char save_cnt[] = "{\"type\":\"save_counters\"}";
+          std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
+          bpg_pi.perifCH->send_json_string(0, (uint8_t *)save_cnt,
+                                           (int)strlen(save_cnt), 0);
+          LOGI("perif: last client gone -- save_counters sent before releasing "
+               "the channel");
+        }
+
         bpg_pi.delete_PeripheralChannel();
       }
       MT_UNLOCK("ws CLOSING");

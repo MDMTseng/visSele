@@ -255,6 +255,15 @@ float PLATE_FREQ_CURRENT=0;
 // (set_setup "plate_accel", persisted). <=0 means jump instantly.
 float SYS_FREQ_ACCEL=2000;
 bool SYS_STEPPER_DISABLED=false;
+// Ramp stall guard -- see the ramp service. A pass longer than this did not
+// spend that time ramping, so it is not charged to the ramp.
+static const float RAMP_STALL_DT_MAX = 0.060f;   // seconds
+// Reported in get_running_stat. Not decoration: this is the meter that says
+// whether the loop is being blocked long enough to matter, and by how much. A
+// rising count with the machine otherwise healthy is the early warning for the
+// class of fault that a 500 Hz frequency step used to be the late one for.
+uint32_t RAMP_STALLS=0;
+float    RAMP_STALL_DT_WORST=0.0f;
 
 // 15/s was the old machine's rate; production runs ~30/s and bursts higher, so
 // a 66ms floor silently merged adjacent parts. 4ms still rejects the double
@@ -1181,6 +1190,10 @@ volatile int host_timeout_ms=0;
 // is not a stored number, it is a host having actually connected and said so.
 // The core sends comm_lost_backup on every CONNECT.
 volatile bool COMM_LOST_BACKUP=false;
+// Times the host has gone quiet while the machine was NOT running and the
+// counts were written because of it. Reported in get_running_stat: a normal
+// shift should show this stepping once per shutdown and never during a run.
+uint32_t HOSTLOSS_SAVES=0;
 
 // Attack instantly, decay slowly: a maximum that FOLLOWS THE ENVELOPE instead of
 // latching on one event and then saying nothing.
@@ -3077,33 +3090,39 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         SEL_SAFE_AT_MS = millis() + selHoldMs();
         OUTPUTS_SAFE_EXCEPT_SEL();
 
-        // A stop is a save point, and it has to be -- otherwise the commonest
-        // sequence there is loses the shift: run, stop, close the host. The
-        // watchdog cannot cover that one. It is deliberately blind in IDLE (a
-        // stopped plate needs no host, and firing there would turn an operator
-        // closing the host into an error), so with the save tied only to the
-        // watchdog, the counts would sit in RAM until the next core start
-        // reopened the port and rebooted the board out from under them.
+        // A NORMAL STOP DOES NOT TOUCH FLASH. Deliberately, and this is the
+        // whole point rather than an omission.
         //
-        // So the save is tied to the machine coming to rest, not to the host
-        // dying. Between this and the watchdog the three cases are covered:
-        // stopped normally -> saved here; host died mid-run -> saved by the
-        // watchdog; host died after a stop -> already saved here.
+        // A save used to be armed here, on every arrival in IDLE from a running
+        // state -- so every ordinary stop wrote NVS. It cost a real fault: the
+        // write runs in the main loop, immediately before the plate's ramp
+        // service and while the plate is still turning (IDLE re-asserts the
+        // setpoint, and set_setup{plate_freq:0} has not landed yet). The step
+        // ISR is IRAM_ATTR so it keeps emitting at the OLD rate throughout,
+        // which is exactly what makes this invisible until it bites: the plate
+        // runs smoothly through the stall, then the ramp wakes with a dt
+        // spanning the whole flash write and steps the frequency by up to
+        // SYS_FREQ_ACCEL * 0.25 = 500 Hz in one go. A stepper cannot absorb
+        // that: it skips and it rings. Reported from the floor as "every once
+        // in a while, stopping makes the plate jump and shake".
         //
-        // Only when arriving from a state that was running. Boot enters IDLE
-        // from INIT, and arming there would rewrite the record with the values
-        // just restored from it -- a flash write on every power-up, for
-        // nothing.
-        if(sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_READY  ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_RECAL  ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_SPINUP ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_CAL    ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_TEST   ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_ERROR)
-        {
-          CNT_NVS_REQ_MS = millis();
-          CNT_NVS_REQ = CNT_NVS_SAVE;
-        }
+        // It only bit sometimes because cntSame() skips the write when nothing
+        // has been counted since the stored record -- so a stop after an idle
+        // spell wrote nothing, and a stop after real production wrote.
+        //
+        // WHAT COVERS THE COUNTS NOW is the host-link watchdog, which is what
+        // was meant to all along: no valid inbound frame for host_timeout_ms
+        // while running -> INSPECTION_ERROR(HOST_LINK_TIMEOUT) -> the save on
+        // the way into ERROR. That covers a core crash and a host that goes
+        // away mid-run, which are the cases the counts actually need saving
+        // for.
+        //
+        // The one case the watchdog cannot see is stop-then-close: the machine
+        // is already in IDLE, so the watchdog is blind by design (firing there
+        // would turn an operator closing the host into an error). The HOST
+        // closes that gap by asking, with save_counters, on its way out --
+        // shutting down is not normal operation, and by then the plate has long
+        // stopped, so the write is free.
       } //enter
       else if (i == 1)
       {
@@ -6987,6 +7006,60 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }                       // end of the schema-clean body
 
   }
+  else if(strcmp(type,"save_counters")==0)
+  {
+    // THE HOST ASKING, ON ITS WAY OUT.
+    //
+    // The counts live here because they are incremented with the blow -- the
+    // actuation and the count are one event and cannot be split across a link.
+    // So the board owns them, and the board is the only thing that can persist
+    // them. But a normal stop must not write flash (see SYS_STATE::IDLE), and
+    // the host-link watchdog only fires while the machine is RUNNING. That
+    // leaves one hole: stop the machine, then close the app. Nothing is wrong,
+    // nobody times out, and the next core start reopens the port -- which
+    // pulses DTR, which resets this board, which loses the counts.
+    //
+    // This is how the host closes that hole: it asks, once, while shutting
+    // down. Shutting down is not normal operation, and by then the plate has
+    // been stopped for as long as it took somebody to click -- so the write
+    // costs nothing and endangers nothing.
+    //
+    // Not gated on cfgPersistDeny: that guards CONFIG writes, and its state
+    // test (IDLE or READY) would refuse exactly the case this exists for --
+    // a host leaving with the machine parked in ERROR still wants its counts.
+    // countersNvsService holds the real safety condition, which is the blow,
+    // and it keeps it.
+    retdoc["type"]="save_counters";
+    if(PLATE_FREQ_CURRENT!=0)
+    {
+      // REFUSED, NOT QUEUED -- and refusing is safe because something else has
+      // this case.
+      //
+      // Writing flash under a decel ramp is the fault the IDLE save was removed
+      // for, so this will not do it. And a moving plate means the host left a
+      // RUNNING machine, which is exactly what the host-link watchdog above is
+      // for: it fires at host_timeout_ms and saves on the way into ERROR. The
+      // counts are covered; they are just covered by the other path.
+      //
+      // Queueing would be the trap. The request would sit armed until the plate
+      // came to rest -- and with the host gone nothing ever commands it to, so
+      // it would either never fire or fire from under the watchdog's own ramp.
+      retdoc["err"]="plate still moving";
+      retdoc["covered_by"]="host_link_watchdog";
+      retdoc["plate_freq_current"]=PLATE_FREQ_CURRENT;
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      CNT_NVS_REQ_MS = millis();
+      CNT_NVS_REQ = CNT_NVS_SAVE;
+      // The service does the write (it still waits out any blow in flight), so
+      // the ack says "accepted", not "on flash". save_seq in get_running_stat
+      // is what says it landed.
+      retdoc["queued"]=true;
+      doRsp=rspAck=true;
+    }
+  }
   else if(strcmp(type,"save_setup")==0)
   {
     retdoc["type"]="save_setup";
@@ -7467,6 +7540,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     retdoc["plate_freq"]=PLATE_FREQ_TARGET;      // COMMANDED
     retdoc["plate_freq_meas"]=PLATE_FREQ_MEAS;   // MEASURED
+    // Ramp passes skipped because the loop had been blocked (see the ramp
+    // service). Zero on a healthy machine. Non-zero says something is stalling
+    // the main loop long enough to have stepped the plate frequency, back when
+    // a stall was charged to the ramp -- so this is the meter for the fault
+    // class, not just for this fix.
+    retdoc["hostloss_saves"]=HOSTLOSS_SAVES;
+    retdoc["ramp_stalls"]=RAMP_STALLS;
+    retdoc["ramp_stall_worst_ms"]=(uint32_t)(RAMP_STALL_DT_WORST*1000.0f);
     // if(SEL1_ACT_COUNTDOWN>=0)
     // {
     // }
@@ -10210,10 +10291,60 @@ void firmwareLoop()
     if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
     {
       // Parts are moving with nobody answering for them. Stopping is the whole
-      // job here; the counter save rides on the way into ERROR, which is also
-      // where every OTHER way of coming to rest saves.
+      // job here; the counter save rides on the way into ERROR.
       SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
                          (int)GEN_ERROR_CODE::HOST_LINK_TIMEOUT);
+    }
+  }
+
+  // THE HOST GOING AWAY IS ALWAYS A REASON TO KEEP THE COUNTS -- including in
+  // the states above deliberately do not cover.
+  //
+  // The block above is about STOPPING a machine nobody is answering for, so it
+  // is rightly limited to the states where parts are moving. Keeping the counts
+  // is a different question with a different answer: it matters wherever the
+  // host disappears, and the state the host most often disappears in is IDLE --
+  // the shift ends, the operator stops the machine, and then the app is closed
+  // or the core dies.
+  //
+  // Nothing used to cover that. An unconditional save on arrival in IDLE did,
+  // but it wrote flash on every ordinary stop -- under the decel ramp, which is
+  // what made the plate skip (see SYS_STATE::IDLE). A host TIMEOUT is not an
+  // ordinary stop: it happens when something has gone wrong or someone has gone
+  // home, and at that point a write is exactly what is wanted. The principle
+  // holds -- normal operation still never touches flash -- because a normal
+  // stop leaves the host alive and this never fires.
+  //
+  // NO STATE CHANGE HERE, on purpose. Pushing IDLE into ERROR would turn an
+  // operator closing the app into a fault somebody has to clear before the next
+  // run. Saving is silent and costs nothing.
+  //
+  // LATCHED, because last_rx_ms stops advancing the moment the host goes: the
+  // condition below is true on every pass from then on, and re-arming a flash
+  // write once per loop for as long as the host stays away would be far worse
+  // than the write it replaced. One save per absence, released when the host
+  // speaks again.
+  //
+  // The in-flight blow is not a special case: countersNvsService() already
+  // holds the write until SEL_SAFE_AT_MS clears, so anything mid-puff finishes
+  // and is counted before the record is taken.
+  static bool HOSTLOSS_SAVED=false;
+  if(host_timeout_ms>0 && COMM_LOST_BACKUP && !hostNeeded)
+  {
+    const uint32_t last=djrl.last_rx_ms;
+    if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
+    {
+      if(!HOSTLOSS_SAVED)
+      {
+        HOSTLOSS_SAVED=true;
+        CNT_NVS_REQ_MS = millis();
+        CNT_NVS_REQ = CNT_NVS_SAVE;
+        HOSTLOSS_SAVES++;
+      }
+    }
+    else if(last!=0)
+    {
+      HOSTLOSS_SAVED=false;   // the host is back; arm for the next absence
     }
   }
 
@@ -10633,10 +10764,36 @@ void firmwareLoop()
     {
       TimerNeedsStart=true;
     }
-    // Wall-time ramp: accel is Hz/s regardless of loop speed. dt is clamped so
-    // a stall (long serial burst, NVS write) can't turn into a frequency jump.
+    // Wall-time ramp: accel is Hz/s regardless of loop speed.
+    //
+    // A STALL COSTS RAMP PROGRESS, NEVER CONTINUITY.
+    //
+    // dt used to be merely clamped to 0.25s, with a comment saying that stopped
+    // a stall turning into a frequency jump. It does not -- it BOUNDS the jump.
+    // At the default accel of 2000 Hz/s the bound is 500 Hz applied in a single
+    // pass, written straight into timerAlarmWrite while the step ISR has been
+    // running at the old rate all through the stall. That discontinuity is what
+    // the motor has to absorb, and past a certain size it does not: it skips
+    // and it rings.
+    //
+    // The mistake was treating a stall as elapsed ramp time. It is not. Nothing
+    // integrated during it -- the frequency never moved -- so the honest thing
+    // is to charge the ramp nothing for it: hold the current speed for one more
+    // pass and resume from now. The plate reaches its target a stall later,
+    // which no one can perceive; the alternative is a step change, which
+    // everyone in the room can hear.
+    //
+    // The threshold is what a healthy pass looks like with room to spare. The
+    // ramp runs every 256th loop pass, so ordinary dt is a few ms; 60ms is an
+    // order of magnitude above that and still well under the ~250ms an NVS
+    // write can take. Between the two there is nothing a working loop produces.
     if(dt<0)dt=0;
-    if(dt>0.25f)dt=0.25f;
+    if(dt>RAMP_STALL_DT_MAX)
+    {
+      RAMP_STALLS++;
+      if(dt>RAMP_STALL_DT_WORST) RAMP_STALL_DT_WORST=dt;
+      break;                      // speed held; lastRampUs is already = now
+    }
     float step=(SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL*dt : 3.4e38f;
     if(PLATE_FREQ_CURRENT>PLATE_FREQ_TARGET)
     {
