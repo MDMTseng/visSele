@@ -165,6 +165,22 @@ const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
 // but it would reappear as a mystery in devtools years from now.
 try { localStorage.removeItem('visSele.station.draft.v1'); } catch (e) { /* ignore */ }
 
+// HIDE-WHEN-CLEAN is a VIEW preference, so unlike the bypass switch above it
+// does belong in localStorage.
+//
+// The bypass reads its state from the report because it is a property of the
+// CORE -- a remembered value there would lie about what the machine is doing.
+// This one changes nothing the core can see; it is one operator deciding how
+// much of their own screen the background boxes may have. Per browser is
+// exactly the right scope, and losing it costs a click.
+const LS_HIDE_CLEAN = 'visSele.station.hide_clean.v1';
+const readHideClean = () => {
+  try { return localStorage.getItem(LS_HIDE_CLEAN) === '1'; } catch (e) { return false; }
+};
+const writeHideClean = (v) => {
+  try { localStorage.setItem(LS_HIDE_CLEAN, v ? '1' : '0'); } catch (e) { /* ignore */ }
+};
+
 // A drag gives two opposite corners in any order; a region is an origin + size.
 function rectFromDrag(info) {
   const a = info && info.start && info.start.pix;
@@ -264,6 +280,8 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     setClean(Array.isArray(machineSetting.clean_regions) ? machineSetting.clean_regions : []);
   }, [machineSetting, dirty]);
 
+  const [hideClean, setHideClean] = useState(readHideClean);
+
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
     if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function') {
@@ -289,9 +307,16 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
         clean: clean.map((c, i) => ({ ...toCanvas(c, o),
                                       key: c.name || ('clean' + (i + 1)),
                                       name: c.name || ('淨空' + (i + 1)) })),
+        // The canvas still receives every region. Hiding is a DRAW decision
+        // made where the dirty state is known, because that state arrives with
+        // the image and not through here -- filtering the list at this end
+        // would mean deciding with whatever verdict happened to be current when
+        // React last ran this effect, which is the image-pairing race the
+        // comment above is about.
+        hideClean,
       });
     }
-  }, [ecCanvas, region, clean, origin.x, origin.y, bypassed, aiming]);
+  }, [ecCanvas, region, clean, origin.x, origin.y, bypassed, aiming, hideClean]);
 
   // Drag-to-set. The canvas clears its own callback after one drag, so aiming
   // is a one-shot: press the target, drag once, done. That is deliberate --
@@ -488,6 +513,15 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
       <Q>低於暗門檻的面積超過上限 → 依「超出時」處理。<br/>
          NA = 視野被污染,這顆量不準,繞回重測。<br/>NG = 這顆本身不良,吹掉。</Q>
     </Divider>
+
+    <Row>
+      <Switch size="small" checked={hideClean}
+        onChange={(v) => { setHideClean(v); writeHideClean(v); }} />
+      <span style={{ fontSize: 12, color: '#888' }}>畫面隱藏淨空框</span>
+      <Q>只是不畫,判定照常。<br/>
+         有雜物的那一框仍然會出現 — 否則就等於把零件被擋下的原因藏起來。<br/>
+         設定用的拉框在這個開關關掉時才看得到。</Q>
+    </Row>
 
     {clean.map((c, i) => {
       const m = station && Array.isArray(station.clean)

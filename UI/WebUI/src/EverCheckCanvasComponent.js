@@ -200,6 +200,15 @@ class EverCheckCanvasComponent_proto {
     ctx.save();
     ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
     ctx.lineWidth = this.rUtil.getIndicationLineSize();
+    // SOLID UNLESS THIS FUNCTION SAYS OTHERWISE.
+    //
+    // ctx.save() preserves the dash pattern, it does not clear it, so whatever
+    // the previous draw left set is inherited here. draw_INSP() runs
+    // immediately before this and leaves a 4-segment pattern behind, so every
+    // station box came out dashed -- including the inspection region, whose
+    // dash is supposed to MEAN something ("設定中·未過濾", below). A line style
+    // that carries a state is worthless if it also appears by accident.
+    ctx.setLineDash([]);
 
     // Two rectangles, two jobs. The OUTER one is identity and never changes
     // colour -- blue is the inspection region, orange is a clean region, and you
@@ -315,6 +324,23 @@ class EverCheckCanvasComponent_proto {
       c = { ...c, dirty: m ? m.dirty : undefined,
             detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
       const known = c.dirty !== undefined;
+      // QUIET UNTIL IT MATTERS.
+      //
+      // Clean regions are background: they are supposed to be empty, and while
+      // they are, their boxes, tints and captions sit on top of the part the
+      // operator is actually reading. On a part with several of them the
+      // measurement overlay is competing with three orange rectangles that are
+      // all saying "nothing to report".
+      //
+      // So the operator can ask for them to be hidden -- and a hidden one still
+      // appears the moment it is dirty, which is the only time it has anything
+      // to say. Hiding a region that is FAILING would be hiding the reason the
+      // part was rejected, and that is never what "hide" is meant to mean.
+      //
+      // Unknown state (no report yet) counts as quiet: before the first image
+      // there is nothing to show, and the boxes are still visible while the
+      // switch is off, which is where they get set up.
+      if (ov.hideClean && c.dirty !== true) return;
       const st = !known ? null
                : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
                          : { color: '#00e676', fill: null };
@@ -2207,6 +2233,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.rect(x, y, w, h);
       ctx.stroke();
       ctx.closePath();
+      // Put it back. This is where the station overlay's stray dashes came
+      // from: a pattern set for one rectangle and left set for everything
+      // drawn after it.
+      ctx.setLineDash([]);
     }
   }
 
