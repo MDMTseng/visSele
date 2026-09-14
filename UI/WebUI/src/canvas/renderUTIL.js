@@ -648,9 +648,38 @@ class renderUTIL {
 
 
   drawInspectionShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false,inFullDisplay=true) {
-    let normalRenderGroup = [];
-    // NA shapes, drawn last so a grey template can never overdraw a real result.
-    let naRenderGroup = [];
+    // DRAW ORDER: MEASUREMENTS UNDERNEATH, PRIMITIVES ON TOP.
+    //
+    // A measurement draws more than its own reading. It extends the lines it
+    // was taken between, runs a leader out to wherever the label was parked,
+    // and sweeps an arc across the space in between -- construction that is
+    // deliberately long, because it has to reach. The primitive is the thing
+    // that was actually FOUND on the part, and it is small.
+    //
+    // Drawn in the other order -- which is what this did, because primitives
+    // were dispatched inline and measurements were collected and drawn after --
+    // every one of those extension lines lay across the edges and arcs the
+    // operator is trying to check. The overlay covered its own subject.
+    //
+    // So both classes are collected and neither is dispatched inline. The
+    // measurement's construction still reaches wherever it needs to; it just
+    // passes behind the shapes rather than over them.
+    //
+    // THREE LAYERS, NOT TWO. Construction is not only the measurements':
+    // aux_line and aux_point are registered as primitives and dispatch through
+    // the same drawInspection path as a found edge, so the first version of
+    // this put them on the top layer along with it. They are exactly what the
+    // layering is for -- overlayKit calls their dash "virtual extension /
+    // construction" -- and a virtual line drawn over a real one hides the thing
+    // that was actually measured behind a thing that was inferred.
+    //
+    // The rule is what a shape MEANS, not which draw path it happens to take:
+    // anything that reasons about the part goes underneath, anything the core
+    // actually FOUND on the part goes on top.
+    const IS_CONSTRUCTION = (t) => (t === SHAPE_TYPE.aux_line || t === SHAPE_TYPE.aux_point);
+    let measureNormal = [], measureNA = [];
+    let auxNormal = [],     auxNA = [];
+    let primNormal = [],    primNA = [];
     eObjects.forEach((eObject) => {
       if (eObject == null) return;
 
@@ -676,40 +705,99 @@ class renderUTIL {
         else
           ctx.strokeStyle = eObject.color;
       }
-      // Keystone step 3 — inspection-mode draw also dispatched per-shape.
-      // measure has no drawInspection (it's deferred to the editor-style draw
-      // via normalRenderGroup below). Unregistered types pass through.
+      // Sorted, not drawn. Nothing is dispatched from this loop any more --
+      // see the note at the top. Note the per-shape strokeStyle set above is
+      // therefore no longer what a shape is drawn with; the draw passes below
+      // set it again, per shape, at the moment they draw it.
       if (eObject.type === SHAPE_TYPE.measure) {
-        (isNA ? naRenderGroup : normalRenderGroup).push(eObject);
+        (isNA ? measureNA : measureNormal).push(eObject);
+      } else if (IS_CONSTRUCTION(eObject.type)) {
+        (isNA ? auxNA : auxNormal).push(eObject);
       } else {
-        const mod = getShapeModule(eObject.type);
-        if (mod && mod.drawInspection) {
-          if (isNA) {
-            const savedFilter = ctx.filter;
-            const useF = naFilterOn();
-            if (useF) ctx.filter = NA_CANVAS_FILTER;
-            mod.drawInspection(ctx, eObject, this, { shapeList });
-            if (useF) ctx.filter = savedFilter;
-            // The reason is NOT greyed -- it is the one thing on an NA that
-            // should catch the eye.
-            this.drawNAReason(ctx, eObject);
-          } else {
-            mod.drawInspection(ctx, eObject, this, { shapeList });
-          }
-        }
+        (isNA ? primNA : primNormal).push(eObject);
       }
     });
 
-    this.drawShapeList(ctx, normalRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
-    if (naRenderGroup.length) {
+    // A PRIMITIVE'S COLOUR IN INSPECTION IS ITS VERDICT.
+    //
+    // It was not a colour at all before: four of the six drawInspection()
+    // functions set no strokeStyle, so they drew in whatever the caller had
+    // left set -- eObject.color, which falls back to SHAPE_TYPE_COLOR's
+    // `default` of rgba(100,50,100). That is where the inspection view's purple
+    // came from. Nobody chose it; it is the fallback of a per-TYPE table that
+    // the overlay kit's per-ROLE palette replaced everywhere except here, so
+    // the same fitted line was kit-yellow in DefConf and leftover-purple in
+    // inspection.
+    //
+    // Role is the right answer in the editor, where nothing has been measured
+    // yet and the only thing a colour can say is what kind of element this is.
+    // In inspection there is something better to say: whether this feature was
+    // found and passed. That is the question the operator is at the screen to
+    // answer, and a primitive is the one mark on the part that can answer it.
+    //
+    // UNSET keeps the role colour -- the feature is drawn, nothing is claimed
+    // about it. NA additionally goes through the grey filter below, which is
+    // why neutral rather than a fourth signal colour: it is about to be
+    // desaturated anyway, and NA's real signal is drawNAReason's text.
+    //
+    // A module may still override -- search_point paints a locating anchor with
+    // the datum colour, because "this one also holds the object frame" outranks
+    // its verdict and nothing else on the canvas carries it.
+    const K = overlayKit(ctx, this);
+    const verdictColor = (o) => {
+      switch (o.inspection_status) {
+        case INSPECTION_STATUS.SUCCESS: return K.C.ok;
+        case INSPECTION_STATUS.FAILURE: return K.C.ng;
+        case INSPECTION_STATUS.NA:      return K.C.neutral;
+        default:                        return K.C.feature;
+      }
+    };
+
+    // The primitives, whose modules draw one shape at a time.
+    const drawPrims = (list, greyed) => {
+      if (!list.length) return;
+      const savedFilter = ctx.filter;
+      const useF = greyed && naFilterOn();
+      if (useF) ctx.filter = NA_CANVAS_FILTER;
+      list.forEach((eObject) => {
+        const mod = getShapeModule(eObject.type);
+        if (!mod || !mod.drawInspection) return;
+        // An explicit ShapeColor from the caller still wins: that is how a
+        // single shape gets highlighted (drag preview, candidate), and a
+        // verdict colour there would fight the reason it was passed.
+        ctx.strokeStyle = (ShapeColor !== undefined && ShapeColor !== null)
+                          ? ShapeColor
+                          : (IS_CONSTRUCTION(eObject.type) ? K.C.region
+                                                           : verdictColor(eObject));
+        ctx.fillStyle = ctx.strokeStyle;
+        mod.drawInspection(ctx, eObject, this, { shapeList });
+      });
+      if (useF) ctx.filter = savedFilter;
+      // The reason is NOT greyed -- it is the one thing on an NA that should
+      // catch the eye -- so it goes outside the filter, after the shapes.
+      if (greyed) list.forEach((o) => this.drawNAReason(ctx, o));
+    };
+
+    // ---- pass 1: measurements, underneath ----------------------------------
+    this.drawShapeList(ctx, measureNormal, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+    if (measureNA.length) {
       const savedFilter = ctx.filter;
       const useF = naFilterOn();
       if (useF) ctx.filter = NA_CANVAS_FILTER;
-      this.drawShapeList(ctx, naRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+      this.drawShapeList(ctx, measureNA, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
       if (useF) ctx.filter = savedFilter;
-      naRenderGroup.forEach((o) => this.drawNAReason(ctx, o));
+      measureNA.forEach((o) => this.drawNAReason(ctx, o));
     }
 
+    // ---- pass 2: construction primitives, still underneath -----------------
+    drawPrims(auxNormal, false);
+    drawPrims(auxNA, true);
+
+    // ---- pass 3: what was actually found, on top ---------------------------
+    // NA after normal within each class, unchanged: a greyed template must not
+    // be what you see where a real result also exists.
+    drawPrims(primNormal, false);
+    drawPrims(primNA, true);
   }
 
   // The core's reason for an NA, written beside the shape.
