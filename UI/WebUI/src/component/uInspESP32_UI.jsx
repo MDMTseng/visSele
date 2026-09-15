@@ -348,7 +348,7 @@ const HIST_W = { label: 88, n: 78, feed: 84 };
 // it is being read as a sorting fault rather than as the machine simply running
 // out of time. Stated as a margin, it is a number that can be watched BEFORE it
 // becomes a defect.
-function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, statSince }) {
+function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, diag, onResetStat, statSince }) {
   const n0v = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
   const has = (v) => typeof v === 'number' && isFinite(v);
 
@@ -612,28 +612,36 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
           people to stop looking; a diagnostic that reads 0 is the good news.
           Absent on firmware that predates them, so the section disappears
           rather than showing four dashes. */}
-      {has(stat && stat.accel_cmd_max) ? (<>
+      {has(diag && diag.accel_cmd_max) ? (<>
         <Head>運轉診斷</Head>
         {/* The alarm, not the statistic. After the ramp's stall fix it cannot
             exceed the configured accel by way of the ramp, so anything above
             it means something ELSE wrote the plate frequency. */}
         <Row label="加速度峰值" sub="命令"
              value={`${exactN(n0v(stat.accel_cmd_max))} Hz/s`}
-             warn={n0v(cfg.plate_accel) > 0
-                   && n0v(stat.accel_cmd_max) > n0v(cfg.plate_accel) * 1.05} />
+             warn={n0v(diag.plate_accel) > 0
+                   && n0v(diag.accel_cmd_max) > n0v(diag.plate_accel) * 1.05} />
         {/* From the pulses that actually went out. Far from the commanded
             figure means the plate did not follow what it was told. */}
         <Row label="加速度峰值" sub="實測"
-             value={`${exactN(n0v(stat.accel_meas_max))} Hz/s`} />
+             value={`${exactN(n0v(diag.accel_meas_max))} Hz/s`} />
         {/* Loop passes long enough to have stepped the frequency, back when a
             stall was charged to the ramp. Non-zero is not itself a fault now --
             it says the stall happened and was absorbed. */}
-        <Row label="ramp 停頓" sub={`最長 ${n0v(stat.ramp_stall_worst_ms)} ms`}
-             value={exactN(n0v(stat.ramp_stalls))}
-             warn={n0v(stat.ramp_stalls) > 0} />
+        <Row label="ramp 停頓" sub={`最長 ${n0v(diag.ramp_stall_worst_ms)} ms`}
+             value={exactN(n0v(diag.ramp_stalls))}
+             warn={n0v(diag.ramp_stalls) > 0} />
         {/* Should step once per shutdown and never during a run. */}
-        {has(stat.hostloss_saves)
-          ? <Row label="斷線存檔" value={exactN(n0v(stat.hostloss_saves))} /> : null}
+        {has(diag.hostloss_saves)
+          ? <Row label="斷線存檔" value={exactN(n0v(diag.hostloss_saves))} /> : null}
+        {/* The margin this whole command exists because of. At zero the board
+            answers buf_overflow instead of the statistics and every count above
+            blanks -- so it is worth seeing BEFORE that happens, not after. */}
+        {has(diag.json_len_max)
+          ? <Row label="回覆餘裕"
+                 sub={`${n0v(diag.json_len_max)}/${n0v(diag.json_cap)} B`}
+                 value={`${n0v(diag.json_cap) - n0v(diag.json_len_max)} B`}
+                 warn={n0v(diag.json_cap) - n0v(diag.json_len_max) < 200} /> : null}
       </>) : null}
     </div>
   );
@@ -2778,6 +2786,11 @@ export function UINSP_ESP32_MINI() {
   // same pixel, so the guard is only a timing accident away from not being one.
   // The confirmation is in a different PLACE now -- open a modal, then press
   // something else -- which is the kind a slip cannot walk through.
+  // Fetched only while the bubble is open. These are investigation numbers, not
+  // glance numbers -- and the reason they have their own command is that the
+  // per-second reply had no room left, so putting them back on a poll would be
+  // undoing the fix.
+  const [diag, setDiag] = useState(undefined);
   const [histOpen, setHistOpen] = useState(false);
   const [hist, setHist] = useState(recallHist);
   const [rsting, setRsting] = useState(false);
@@ -2946,6 +2959,19 @@ export function UINSP_ESP32_MINI() {
     rateRef.current = nx;
     setRate({ g: nx.rg, i: nx.ri, o: nx.ro });
   }, [stat]);
+
+  useEffect(() => {
+    if (!bubbleOpen) return undefined;
+    let live = true;
+    const pull = () => withApi((api) => {
+      if (!api || typeof api.getMotionDiag !== 'function') return;
+      api.getMotionDiag().then((d) => { if (live && d && typeof d === 'object') setDiag(d); },
+                               () => {});
+    });
+    pull();
+    const h = setInterval(pull, 2000);
+    return () => { live = false; clearInterval(h); };
+  }, [bubbleOpen, API_ID]);
 
   useEffect(() => {
     mounted.current = true;
@@ -3399,7 +3425,7 @@ export function UINSP_ESP32_MINI() {
                overlayStyle={{ maxWidth: 320 }}
                visible={bubbleOpen} onVisibleChange={setBubbleOpen}
                content={<CountsBubble cnt={cnt} gate={gate} selOK={selOK} selNG={selNG}
-                                      rate={rate} stat={stat} cfg={cfg}
+                                      rate={rate} stat={stat} cfg={cfg} diag={diag}
                                       statSince={statSince} onResetStat={resetLatency} />}>
         <div style={{ display: 'flex', gap: 4, cursor: 'pointer' }}
              data-testid="uinsp-counts-row">

@@ -4227,6 +4227,20 @@ int HACK_cur_cmd_id=-1;
 // The buffer sizes are what they are: 256, 700, 2048, 3584. The 700 byte one
 // carries {"log": <an unbounded std::string>} plus the error history, which is
 // the message somebody reads when something has already gone wrong.
+// HOW CLOSE THE BIGGEST REPLY IS TO ITS CEILING.
+//
+// get_running_stat has outgrown a buffer twice -- 2048 once the clock
+// diagnostics went in, then 3072 when the width ones did -- and each time the
+// first symptom was somewhere else entirely: no reply at all, or a reply the
+// host truncated into valid-but-incomplete JSON that blanked the panel. The
+// margin was only ever known after it ran out.
+//
+// Recorded here because this is the one place every reply is serialised, and
+// kept as a high-water mark because the length varies with the data: counters
+// gain digits as they climb, and a float mid-ramp serialises far longer than
+// the same field reading 0. That variation is exactly why the failure is
+// intermittent and why an instantaneous reading would miss it.
+uint32_t JSON_LEN_MAX = 0;
 static bool send_json_or_error(MData_JR &jr, JsonDocument &doc,
                                uint8_t *buf, size_t bufsize, const char *what)
 {
@@ -4242,6 +4256,7 @@ static bool send_json_or_error(MData_JR &jr, JsonDocument &doc,
   else
   {
     int slen = serializeJson(doc, (char *)buf, bufsize);
+    if (slen > 0 && (uint32_t)slen > JSON_LEN_MAX) JSON_LEN_MAX = (uint32_t)slen;
     if (slen <= 0 || slen >= (int)bufsize) why = "buf_overflow";
     else return jr.send_json_string(0, buf, slen, 0) >= 0;
   }
@@ -7608,14 +7623,22 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // the main loop long enough to have stepped the plate frequency, back when
     // a stall was charged to the ramp -- so this is the meter for the fault
     // class, not just for this fix.
-    retdoc["hostloss_saves"]=HOSTLOSS_SAVES;
-    retdoc["restsave_saves"]=RESTSAVE_SAVES;
-    retdoc["ramp_stalls"]=RAMP_STALLS;
-    // Hz/s. cmd above plate_accel means something other than the ramp wrote the
-    // frequency; meas far from cmd means the plate did not follow.
-    retdoc["accel_cmd_max"]=(uint32_t)ACCEL_CMD_MAX;
-    retdoc["accel_meas_max"]=(uint32_t)ACCEL_MEAS_MAX;
-    retdoc["ramp_stall_worst_ms"]=(uint32_t)(RAMP_STALL_DT_WORST*1000.0f);
+    // The motion diagnostics are NOT here -- see get_motion_diag.
+    //
+    // They were, and it cost the panel. Measured after adding them:
+    // json_len_max 3584 against a 3584 buffer, i.e. no headroom at all, so
+    // send_json_or_error was answering buf_overflow instead of the statistics
+    // and every number in the strip blanked until a shorter reply came round.
+    // The reply's length is not constant -- counters gain digits as they climb
+    // and a float mid-ramp serialises far longer than the same field reading
+    // zero -- which is why it only happened sometimes, and around a stop.
+    //
+    // This reply has outgrown a buffer three times now (2048, 3072, and this).
+    // Raising it again is not available: the ceiling is the HOST's, not ours --
+    // the core reads this line with `if (line.size() < 4096) line += c` and
+    // silently drops the rest, so past 4096 the truncation happens where no
+    // device-side guard can see it. get_backup_stat was split out for exactly
+    // this reason; this follows it.
     // if(SEL1_ACT_COUNTDOWN>=0)
     // {
     // }
@@ -9483,6 +9506,37 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
 
+  else if(strcmp(type,"get_motion_diag")==0)
+  {
+    // What the plate actually did, and how close this link is to its limits.
+    //
+    // Its own command because get_running_stat has no room left (see there).
+    // That is not only a workaround: these answer a different question, asked
+    // at a different rate. The counts are glanced at continuously while parts
+    // are moving; this is opened when somebody is investigating, and a reply
+    // nobody reads every second is a reply that costs nothing to make separate.
+    retdoc["type"]="get_motion_diag";
+
+    // Hz/s. cmd above plate_accel means something other than the ramp wrote the
+    // frequency; meas far from cmd means the plate did not follow.
+    retdoc["accel_cmd_max"]=(uint32_t)ACCEL_CMD_MAX;
+    retdoc["accel_meas_max"]=(uint32_t)ACCEL_MEAS_MAX;
+    retdoc["ramp_stalls"]=RAMP_STALLS;
+    retdoc["ramp_stall_worst_ms"]=(uint32_t)(RAMP_STALL_DT_WORST*1000.0f);
+    retdoc["plate_accel"]=SYS_FREQ_ACCEL;   // so the reader can judge cmd without a second call
+
+    // Counter durability: which path saved, and how often.
+    retdoc["hostloss_saves"]=HOSTLOSS_SAVES;
+    retdoc["restsave_saves"]=RESTSAVE_SAVES;
+
+    // The margin that this command exists because of. Reported here rather
+    // than in the reply it measures, so asking the question cannot be what
+    // pushes the answer over.
+    retdoc["json_len_max"]=JSON_LEN_MAX;
+    retdoc["json_cap"]=(uint32_t)3584;
+
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_backup_stat")==0)
   {
     // Its own command, not part of get_running_stat.

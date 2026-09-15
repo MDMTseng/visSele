@@ -1181,13 +1181,50 @@ export class uInspESP32_API extends Perif_API_Base {
   // is the reply that says WHICH SIDE of the UART lost the time; the averages
   // in get_running_stat cannot.
   getSpikes() { return this.sendP({ type: 'get_spikes' }); }
+  // A REPLY THAT IS NOT A STAT MUST NOT REPLACE ONE THAT IS.
+  //
+  // This stored `ret` unconditionally, and a reply can resolve without being
+  // the statistics: a NAK, an error object, or -- the one that actually bit --
+  // a truncated one. The reply is close to its ceiling and the ceiling is the
+  // HOST's, not the device's: the core reads the peripheral line with
+  // `if (line.size() < 4096) line += c` and silently drops the rest, so a long
+  // reply arrives as valid JSON that is simply missing its tail. Overwriting
+  // with that blanked every number in the strip until the next poll came back
+  // short enough -- "all the numbers go blank when I stop, and recover after a
+  // few seconds".
+  //
+  // Keeping the last good value is the right behaviour on its own terms, and it
+  // makes the strip immune to this whole class of fault rather than to the one
+  // instance of it we chased. A stale count for one poll is a far smaller lie
+  // than no count at all.
+  //
+  // `count` is the test because it is what the panel reads and what a truncated
+  // tail loses. Counted and warned once per link, so a device that starts
+  // answering malformed replies says so instead of just looking quiet.
   getRunningStat() {
     return this.sendP({ type: 'get_running_stat' }).then((ret) => {
+      if (!ret || typeof ret !== 'object' || ret.count === undefined) {
+        this._statRejects = (this._statRejects || 0) + 1;
+        if (this._statRejects === 1) {
+          log.warn('[uinsp] get_running_stat reply is not a stat -- keeping the '
+                   + 'last good one. Truncated upstream, or the device NAKed: ', ret);
+        }
+        return this.runningStat;
+      }
       this.runningStat = ret;
       publish(this.id, { runningStat: ret });
       return ret;
     });
   }
+
+  // Motion diagnostics -- acceleration peaks, ramp stalls, counter-save paths,
+  // and this link's own reply-size margin.
+  //
+  // A separate command because get_running_stat has no room left: it measured
+  // 3584 bytes against a 3584 buffer, so the device was answering buf_overflow
+  // instead of the statistics. Asked only while somebody is looking at them,
+  // which is also why they were never worth carrying in the per-second reply.
+  getMotionDiag() { return this.sendP({ type: 'get_motion_diag' }); }
 
   // The enum lives in the firmware, so its text should come from there too.
   getStateNames() { return this.sendP({ type: 'get_state_names' }); }
