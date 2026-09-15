@@ -599,6 +599,42 @@ function CountsBubble({ cnt, gate, selOK, selNG, rate, stat, cfg, onResetStat, s
         <Row label="SKIP" value={exactN(n0v(cnt.SKIP))} warn />
         <Row label="UNANS" value={exactN(n0v(cnt.UNANSWERED))} warn />
       </>) : null}
+
+      {/* WHAT THE PLATE ACTUALLY DID, as opposed to what it was told.
+          These exist because of a fault that had no meter at all: stopping
+          wrote NVS under the decel ramp, the step ISR kept pulsing at the old
+          rate through the write, and the ramp then stepped the frequency by
+          up to 500 Hz in one pass. The plate skipped and rang, every once in a
+          while, and nothing on this machine recorded any of it.
+          Shown as zeros rather than hidden when healthy: this section's job is
+          to say "measured, and fine", which is an answer. The selector columns
+          elsewhere hide a permanent 0 because a bin that never fills teaches
+          people to stop looking; a diagnostic that reads 0 is the good news.
+          Absent on firmware that predates them, so the section disappears
+          rather than showing four dashes. */}
+      {has(stat && stat.accel_cmd_max) ? (<>
+        <Head>運轉診斷</Head>
+        {/* The alarm, not the statistic. After the ramp's stall fix it cannot
+            exceed the configured accel by way of the ramp, so anything above
+            it means something ELSE wrote the plate frequency. */}
+        <Row label="加速度峰值" sub="命令"
+             value={`${exactN(n0v(stat.accel_cmd_max))} Hz/s`}
+             warn={n0v(cfg.plate_accel) > 0
+                   && n0v(stat.accel_cmd_max) > n0v(cfg.plate_accel) * 1.05} />
+        {/* From the pulses that actually went out. Far from the commanded
+            figure means the plate did not follow what it was told. */}
+        <Row label="加速度峰值" sub="實測"
+             value={`${exactN(n0v(stat.accel_meas_max))} Hz/s`} />
+        {/* Loop passes long enough to have stepped the frequency, back when a
+            stall was charged to the ramp. Non-zero is not itself a fault now --
+            it says the stall happened and was absorbed. */}
+        <Row label="ramp 停頓" sub={`最長 ${n0v(stat.ramp_stall_worst_ms)} ms`}
+             value={exactN(n0v(stat.ramp_stalls))}
+             warn={n0v(stat.ramp_stalls) > 0} />
+        {/* Should step once per shutdown and never during a run. */}
+        {has(stat.hostloss_saves)
+          ? <Row label="斷線存檔" value={exactN(n0v(stat.hostloss_saves))} /> : null}
+      </>) : null}
     </div>
   );
 }
