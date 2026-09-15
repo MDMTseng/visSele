@@ -63,6 +63,13 @@ function send(channel, payloadObj) {
 function shellLog(message) {
   send('launcher:log', { at: Date.now(), message });
 }
+// The update question, pushed to the shell so it can raise a modal. Separate
+// channel from the log: a line in the log is something that happened, this is
+// something waiting on an answer.
+function shellPrompt(offer) {
+  send('launcher:updateOffer', offer);
+}
+
 function isDir(p) {
   try { return fs.statSync(p).isDirectory(); } catch { return false; }
 }
@@ -385,6 +392,23 @@ function wireSupervisor() {
 function assertShell(action) {
   if (uiState !== 'shell') throw new Error(`${action} is only available from the launcher screen`);
 }
+// CHANGING WHAT RUNS NEEDS THE WORD.
+//
+// Not security -- it is a shared word, it is in this file, and anyone who can
+// reach the launcher screen can read it. It is a SPEED BUMP, and what it is
+// for is the accidental change: the version list sits next to the log on a
+// touchscreen, every row has a button, and 'set as current' one row off is a
+// machine running the wrong recipe tomorrow morning with nobody aware it
+// moved. Typing something is enough to make that a decision instead of a slip.
+//
+// Per launcher run, not per action. Asking again for the second click in a
+// sequence the operator is plainly in the middle of just trains them to type
+// it without reading, which is how a speed bump stops being one.
+const UNLOCK_WORD = 'xception';
+let unlocked = false;
+function assertUnlocked(action) {
+  if (!unlocked) throw new Error(`${action} is locked -- unlock the launcher first`);
+}
 function assertStopped(action) {
   if (supervisor.running) throw new Error(`stop the core before ${action}`);
 }
@@ -413,7 +437,11 @@ function registerIpc() {
       // under pressure should not have to guess which is which.
       lastGood: apps.lastGood(),
       previous: apps.previousVersion(),
+      checkUpdates: cfg.checkUpdates,
+      unlocked,
       update: updater.scanSource(),
+      // Per-version failures and skips -- the version list marks from this.
+      updateState: apps.updateState(),
       pathIssues: cfg.pathIssues(),
       resolved: target || null,
       // The plan is shown in the UI on purpose. "What exactly is this launcher
@@ -471,12 +499,14 @@ function registerIpc() {
 
   ipcMain.handle('launcher:selectVersion', (_e, version) => {
     assertShell('selecting a version');
+    assertUnlocked('changing version');
     assertStopped('changing version');
     return { ok: true, version: updater.select(version) };
   });
 
   ipcMain.handle('launcher:chooseAndInstall', async () => {
     assertShell('installing an update');
+    assertUnlocked('installing an update');
     assertStopped('installing an update');
     const picked = await dialog.showOpenDialog(win, {
       title: 'Select update package',
@@ -545,7 +575,9 @@ function registerIpc() {
       source: scan.source, error: scan.error,
       release: scan.release, packages: scan.packages,
       current, running,
-      pending,
+      // Every version's update state, so the version table can mark the ones
+      // that failed and the prompt can tell whether this one was skipped.
+      updateState: apps.updateState(),
       // What the app UI should offer to do, decided here rather than in the
       // renderer -- it is the same question the shell answers and it should not
       // be answered twice.
@@ -564,6 +596,22 @@ function registerIpc() {
     }
     try {
       if (!pkg.installed) await updater.install(pkg.path, shellLog);
+
+      // BETWEEN INSTALLING AND SELECTING, because that is the only moment where
+      // failing is still free: the files are verified and in place, and nothing
+      // points at them yet, so the old version keeps running untouched.
+      const prep = await updater.runPostInstall(pkg.version, shellLog);
+      if (!prep.ok) {
+        // Not selected. The version stays installed and the record survives a
+        // restart, so the operator is told at boot and can retry from there.
+        return {
+          ok: false, version: pkg.version, setupFailed: true, refused: !!prep.refused,
+          error: prep.refused
+            ? `${pkg.version} 不適用於這台機器：${prep.error}`
+            : `${pkg.version} 的安裝後置作業失敗，仍維持舊版：${prep.error}`,
+        };
+      }
+
       apps.setCurrent(pkg.version);
       shellLog(`${pkg.version} 已安裝並設為現行 -- 下次重新啟動時生效`);
       return { ok: true, version: pkg.version, appliesAt: 'next-start' };
@@ -572,6 +620,64 @@ function registerIpc() {
       return { ok: false, error: e.message };
     }
   });
+
+  // MANUAL RETRY, and only manual.
+  //
+  // A postinstall fails on missing network, missing permissions, a package
+  // server that is down -- none of which get better by being asked again
+  // immediately, and a retry loop against any of them just fails repeatedly and
+  // buries the reason it failed the first time. So the operator fixes the cause
+  // and presses this.
+  ipcMain.handle('launcher:retrySetup', async (_e, version) => {
+    assertShell('retrying set-up');
+    assertUnlocked('retrying set-up');
+    // The version is always named by the caller now: the version table is what
+    // the operator retries from, and every row knows which version it is.
+    const v = version;
+    if (!v) return { ok: false, error: 'nothing is waiting for set-up' };
+    if (!apps.validate(v).ok) return { ok: false, error: `${v} is not installed` };
+    const prep = await updater.runPostInstall(v, shellLog);
+    if (!prep.ok) {
+      return { ok: false, version: v, setupFailed: true, refused: !!prep.refused, error: prep.error };
+    }
+    apps.setCurrent(v);
+    shellLog(`${v} 安裝後置作業完成 -- 下次重新啟動時生效`);
+    return { ok: true, version: v, appliesAt: 'next-start' };
+  });
+
+  // Whether to LOOK. There is deliberately no setting that installs without
+  // being asked -- see the note on cfg.checkUpdates.
+  // Per launcher run. Nothing persists it, so closing the launcher relocks --
+  // which is the right lifetime for a bump whose whole job is to make a click
+  // deliberate, and it means an unattended machine does not sit unlocked.
+  ipcMain.handle('launcher:unlock', async (_e, word) => {
+    assertShell('unlocking');
+    if (String(word || '').trim().toLowerCase() !== UNLOCK_WORD) {
+      return { ok: false, error: '密碼不對' };
+    }
+    unlocked = true;
+    shellLog('已解鎖 -- 這次啟動期間可以安裝與切換版本');
+    return { ok: true };
+  });
+
+  ipcMain.handle('launcher:setCheckUpdates', async (_e, on) => {
+    assertShell('changing the update policy');
+    cfg.set('checkUpdates', !!on);
+    shellLog(on ? '啟動時檢查更新：開' : '啟動時檢查更新：關');
+    return { ok: true, checkUpdates: cfg.checkUpdates };
+  });
+
+  // 'Not this one.' Scoped to the version, so a later one still asks.
+  ipcMain.handle('launcher:setSkipped', async (_e, version, on) => {
+    assertShell('skipping a version');
+    if (!version) return { ok: false, error: 'no version given' };
+    apps.setSkipped(version, !!on);
+    shellLog(on ? `跳過 ${version}（不再詢問這一版）` : `不再跳過 ${version}`);
+    return { ok: true, skipped: apps.isSkipped(version) };
+  });
+
+  // The current question, for a shell that wants to re-ask without a restart.
+  ipcMain.handle('launcher:updateOffer', async () => updateOffer());
 
   ipcMain.handle('launcher:pickUpdateSource', async () => {
     assertShell('changing the update source');
@@ -587,6 +693,7 @@ function registerIpc() {
   // the file instead of the operator browsing to it.
   ipcMain.handle('launcher:installFromSource', async (_e, file) => {
     assertShell('installing an update');
+    assertUnlocked('installing an update');
     assertStopped('installing an update');
     const scan = updater.scanSource();
     const pkg = scan.packages.find((p) => p.file === file);
@@ -622,6 +729,29 @@ app.on('second-instance', () => {
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
 
+// WHAT TO ASK AT START-UP, if anything.
+//
+// Checking is not applying. This works out whether there is a question worth
+// raising and hands it to the shell; nothing is installed and nothing is
+// selected here. The answer is the operator's, on the prompt, every time.
+//
+// Returns null when there is nothing to ask: checking is off, no source, no
+// pointer, the pointer already matches, the package is not here, or the
+// operator already said 'not this one' about exactly this version.
+function updateOffer() {
+  if (!cfg.checkUpdates) return null;
+  let scan;
+  try { scan = updater.scanSource(); } catch { return null; }
+  if (!scan.source || scan.error) return null;
+  const wanted = scan.release && scan.release.version;
+  if (!wanted || wanted === apps.currentVersion()) return null;
+  const pkg = scan.packages.find((p) => p.version === wanted);
+  if (!pkg) return null;
+  if (apps.isSkipped(wanted)) return null;
+  return { version: wanted, file: pkg.file, installed: !!pkg.installed,
+           current: apps.currentVersion(), failure: apps.setupFailure(wanted) };
+}
+
 app.whenReady().then(async () => {
   cfg = new Config(app.getPath('userData'));
   apps = new AppStore(cfg);
@@ -633,6 +763,10 @@ app.whenReady().then(async () => {
   createWindow();
   await showShell(null);
   if (cfg.loadError) shellLog(cfg.loadError);
+  // Ask, do not act. The shell raises the prompt; the core starts either way,
+  // on the version that is currently selected.
+  const offer = updateOffer();
+  if (offer) shellPrompt(offer);
   await startCore();
 });
 

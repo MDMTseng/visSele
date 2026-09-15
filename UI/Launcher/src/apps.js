@@ -35,8 +35,16 @@ const REPLACED = '.replaced';
 // The version that has PROVED itself, and the only thing that makes a rollback
 // target reliable. See markGood/lastGood below.
 const LAST_GOOD = 'last_good.json';
+// Per-version update state: what failed, and what the operator chose to skip.
+// One file, because both are small, both are about the same question ("what
+// should this machine be running"), and two files would be two chances to be
+// half-written.
+const UPDATE_STATE = 'update_state.json';
 const INFO = 'info.json';
 const BOOT = path.join('scripts', 'boot.js');
+// OPTIONAL, unlike the two above. A package that needs nothing done to the
+// machine before it can run simply does not ship one.
+const POSTINSTALL = path.join('scripts', 'postinstall.js');
 
 // The complete list. Kept as data so the updater and the shell can quote it
 // back to whoever built a package that is missing one.
@@ -49,6 +57,7 @@ class AppStore {
   get currentFile() { return path.join(this.dir, 'current.json'); }
 
   versionDir(version) { return path.join(this.dir, version); }
+  get updateStateFile() { return path.join(this.dir, UPDATE_STATE); }
 
   list() {
     let names;
@@ -205,6 +214,84 @@ class AppStore {
     } catch { return null; }
   }
 
+  // PER-VERSION UPDATE STATE.
+  //
+  // Two things the machine has to remember about a version it did not end up
+  // running, and both belong to the VERSION rather than to "the last attempt":
+  //
+  //   failures  a postinstall that did not complete. Kept per version because
+  //             the list of versions is what the operator browses, and "this
+  //             one failed, here is why" has to hang off the row they are
+  //             looking at. A single last-failure record cannot answer that
+  //             once a second version has been tried.
+  //   skipped   the operator said "not this one". Without it the prompt asks
+  //             again at every start, and a prompt that reappears after being
+  //             answered is one people learn to dismiss without reading.
+  //
+  // Read whole, written whole, via a temp file and a rename -- the same shape
+  // as last_good.json, for the same reason: a power cut leaves the old state or
+  // the new one, never a truncated file.
+  updateState() {
+    try {
+      const j = JSON.parse(fs.readFileSync(this.updateStateFile, 'utf8'));
+      return {
+        failures: (j && typeof j.failures === 'object' && j.failures) || {},
+        skipped: Array.isArray(j && j.skipped) ? j.skipped : [],
+      };
+    } catch { return { failures: {}, skipped: [] }; }
+  }
+
+  _writeUpdateState(st) {
+    const tmp = this.updateStateFile + '.tmp';
+    fs.mkdirSync(this.dir, { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify(st, null, 2));
+    fs.renameSync(tmp, this.updateStateFile);
+    return st;
+  }
+
+  // Two different facts, and conflating them wastes an operator's evening. A
+  // FAILURE is "the set-up could not be done" -- retry once the cause is fixed.
+  // A REFUSAL is the package saying "not on this machine"; retrying is pointless
+  // and the answer is a different package.
+  markSetupFailed(version, reason, refused = false) {
+    const st = this.updateState();
+    const prev = st.failures[version];
+    st.failures[version] = {
+      refused: !!refused,
+      reason: String(reason || '').slice(0, 2000),
+      at: new Date().toISOString(),
+      // How many times somebody has tried. A version on its fifth attempt is a
+      // different conversation from one on its first.
+      tries: (prev && Number(prev.tries) || 0) + 1,
+    };
+    this._writeUpdateState(st);
+    return version;
+  }
+
+  setupFailure(version) { return this.updateState().failures[version] || null; }
+
+  clearSetupFailed(version) {
+    const st = this.updateState();
+    if (!(version in st.failures)) return false;
+    delete st.failures[version];
+    this._writeUpdateState(st);
+    return true;
+  }
+
+  // "Not this one." Cleared if the operator later installs it anyway, so a skip
+  // is a decision about an offer and never a permanent block.
+  isSkipped(version) { return this.updateState().skipped.includes(version); }
+
+  setSkipped(version, on) {
+    const st = this.updateState();
+    const has = st.skipped.includes(version);
+    if (on && !has) st.skipped.push(version);
+    else if (!on && has) st.skipped = st.skipped.filter((v) => v !== version);
+    else return false;
+    this._writeUpdateState(st);
+    return true;
+  }
+
   markGood(version, ranForS) {
     const tmp = this.lastGoodFile + '.tmp';
     fs.mkdirSync(this.dir, { recursive: true });
@@ -322,4 +409,4 @@ function cmpVersion(a, b) {
   return 0;
 }
 
-module.exports = { AppStore, cmpVersion, STAGING, REPLACED, LAST_GOOD, REQUIRED_ENTRIES, INFO, BOOT };
+module.exports = { AppStore, cmpVersion, STAGING, REPLACED, LAST_GOOD, REQUIRED_ENTRIES, POSTINSTALL, UPDATE_STATE, INFO, BOOT };

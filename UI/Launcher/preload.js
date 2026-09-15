@@ -43,11 +43,17 @@ contextBridge.exposeInMainWorld('launcher', {
   pickAppRoot: () => ipcRenderer.invoke('launcher:pickAppRoot'),
   pickWorkingDir: () => ipcRenderer.invoke('launcher:pickWorkingDir'),
   pickUpdateSource: () => ipcRenderer.invoke('launcher:pickUpdateSource'),
+  unlock: (word) => ipcRenderer.invoke('launcher:unlock', word),
+  setCheckUpdates: (on) => ipcRenderer.invoke('launcher:setCheckUpdates', on),
+  retrySetup: (v) => ipcRenderer.invoke('launcher:retrySetup', v),
+  setSkipped: (v, on) => ipcRenderer.invoke('launcher:setSkipped', v, on),
+  updateOffer: () => ipcRenderer.invoke('launcher:updateOffer'),
   installFromSource: (file) => ipcRenderer.invoke('launcher:installFromSource', file),
   openFolder: (which) => ipcRenderer.invoke('launcher:openFolder', which),
 
   // Events
   onLog: (fn) => on('launcher:log', fn),
+  onUpdateOffer: (fn) => on('launcher:updateOffer', fn),
   onCoreLine: (fn) => on('launcher:coreline', fn),
   onHealth: (fn) => on('launcher:health', fn),
   onReason: (fn) => on('launcher:reason', fn),

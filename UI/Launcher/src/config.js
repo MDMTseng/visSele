@@ -107,6 +107,19 @@ const DEFAULTS = {
   // pathIssues().
   updateSource: null,
 
+  // Look in updateSource at start-up and ASK if something is waiting.
+  //
+  // Checking is not applying. This decides whether the launcher looks and
+  // raises the question; the answer is always the operator's, on the prompt,
+  // every time. There is deliberately no setting that installs without being
+  // asked -- an update nobody chose the moment for is the thing the whole
+  // next-start rule exists to prevent.
+  //
+  // On by default: a machine that silently stops noticing new versions is a
+  // machine that quietly falls behind the fleet, and nobody finds out until
+  // they are comparing behaviour between two units.
+  checkUpdates: true,
+
   // --- supervision --------------------------------------------------------
   // These are launcher behaviour, not application layout. Anything the
   // APPLICATION knows better -- its control port, how long it needs to become
@@ -177,6 +190,8 @@ class Config {
   get updateSource() {
     return this.values.updateSource || null;
   }
+
+  get checkUpdates() { return this.values.checkUpdates !== false; }
 
   // The paths that would let one job of this launcher destroy another's data.
   //

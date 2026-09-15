@@ -141,3 +141,35 @@ pre#log .lnc { color: var(--accent); }
 /* The update-source panel reuses the version table's shape. */
 #updatePkgs { width: 100%; border-collapse: collapse; margin-top: 10px; }
 .note.err { color: var(--bad); }
+
+
+/* --- modals ---------------------------------------------------------------
+   Used for the update question and for a version's failure detail. Both are
+   short-lived and carry text of unpredictable length, so the box scrolls rather
+   than growing past the window -- this runs on a Surface Go. */
+.modalBack {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modalBox {
+  background: #fff; border-radius: 4px; min-width: 380px; max-width: 560px;
+  max-height: 78vh; display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.modalTitle { margin: 0; padding: 14px 18px 8px; font-size: 16px; font-weight: 600; }
+.modalBody { padding: 0 18px 12px; overflow: auto; }
+.modalReason {
+  font-family: Consolas, monospace; font-size: 13px; white-space: pre-wrap;
+  word-break: break-word; background: #f6f6f6; border-radius: 3px; padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.modalSkip { display: flex; gap: 6px; align-items: center; margin-top: 12px; font-size: 13px; }
+.modalFoot {
+  padding: 10px 18px 14px; display: flex; gap: 8px; justify-content: flex-end;
+  border-top: 1px solid #eee;
+}
+
+.modalInput {
+  width: 100%; box-sizing: border-box; margin-top: 10px; padding: 7px 9px;
+  font-size: 15px; border: 1px solid #ccc; border-radius: 3px;
+}

@@ -32,7 +32,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 
-const { AppStore, cmpVersion, STAGING, REPLACED, REQUIRED_ENTRIES, INFO } = require('./apps');
+// Split captured child output into lines. A named constant because writing the
+// literal inline kept getting mangled by the tooling that edits this file.
+const SPLIT_LINES = new RegExp('\r?\n');
+
+const { AppStore, cmpVersion, STAGING, REPLACED, REQUIRED_ENTRIES, POSTINSTALL, INFO } = require('./apps');
 
 // Zip extraction with no npm dependency. The old launcher pulled in `unzipper`
 // and its tree for this one operation; the operating system already ships
@@ -126,6 +130,87 @@ class Updater {
   }
 
   // onLog is called with human-readable progress; it is what the shell shows.
+  // PREPARE THE MACHINE, BEFORE ANYTHING POINTS AT THE NEW VERSION.
+  //
+  // Some upgrades need something done to the machine and not just to the app
+  // folder -- a runtime installed, a driver, a service registered. That work
+  // has to happen between "the files are verified and in place" and "this is
+  // the version we start", because those are the only two moments where
+  // failing is still free: the old version is intact and still selected.
+  //
+  // scripts/postinstall.js is OPTIONAL. A package that needs nothing ships
+  // none, and this returns ok immediately.
+  //
+  // It is allowed to run for the same reason scripts/boot.js is: every file in
+  // the package was hashed against a manifest that must cover all of them, so
+  // this is verify-then-execute. It runs with the version directory as its cwd
+  // and INSP_APP_DIR / INSP_APP_VERSION in the environment, and its stdout and
+  // stderr are logged verbatim -- the operator is the one who has to act on
+  // whatever it says.
+  //
+  // THREE OUTCOMES, deliberately not two:
+  //   ok        the machine is ready; the caller may select this version.
+  //   failed    the set-up could not be done -- no network, no permission, a
+  //             package server down. Worth retrying once that is fixed.
+  //   refused   exit code 2: the package itself says "not this machine". A
+  //             retry is pointless; the answer is a different package.
+  // Collapsing those two into "it did not work" is how somebody spends an
+  // evening retrying something that was never going to succeed.
+  //
+  // MUST BE RE-RUNNABLE. The operator retries, so it runs again -- writing it
+  // so a second run is a no-op is the package author's job, and saying so here
+  // is the only place they will read it.
+  async runPostInstall(version, onLog = () => {}) {
+    const log = (m) => { onLog(m); return m; };
+    const dir = this.apps.versionDir(version);
+    const script = path.join(dir, POSTINSTALL);
+    if (!fs.existsSync(script)) {
+      this.apps.clearSetupFailed(version);
+      return { ok: true, ran: false };
+    }
+
+    log(`running ${POSTINSTALL} for ${version}...`);
+    const r = await new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      const child = execFile(process.execPath, [script], {
+        cwd: dir,
+        env: { ...process.env, INSP_APP_DIR: dir, INSP_APP_VERSION: version },
+        // Long enough for a real installer, short enough that a script waiting
+        // on a prompt nobody can answer does not hang the update forever.
+        timeout: 10 * 60 * 1000,
+        maxBuffer: 4 * 1024 * 1024,
+      }, (err, stdout, stderr) => {
+        // WHAT THE SCRIPT SAID, not what node said about the script.
+        //
+        // execFile's err.message is `Command failed: <node path> <script path>`
+        // and only then the output -- two hundred characters of paths in front
+        // of the one line the operator needs. This is the string that ends up
+        // on the shell's 待處理 row, so it should read like a reason.
+        const said = String(stderr || '').trim().split(SPLIT_LINES)
+                       .map((l) => l.trim()).filter(Boolean).pop() || '';
+        String(stdout || '').split(SPLIT_LINES).filter(Boolean).forEach((l) => log(`  ${l}`));
+        String(stderr || '').split(SPLIT_LINES).filter(Boolean).forEach((l) => log(`  ! ${l}`));
+        if (!err) return finish({ ok: true, ran: true });
+        const refused = err.code === 2;
+        finish({ ok: false, ran: true, refused,
+                 error: err.killed ? 'postinstall timed out after 10 minutes'
+                                   : (said || err.message || `exit ${err.code}`) });
+      });
+      child.on('error', (e) => finish({ ok: false, ran: true, refused: false, error: e.message }));
+    });
+
+    if (r.ok) {
+      log(`${POSTINSTALL} ok`);
+      this.apps.clearSetupFailed(version);
+    } else {
+      log(r.refused ? `${POSTINSTALL} REFUSED this machine: ${r.error}`
+                    : `${POSTINSTALL} FAILED: ${r.error}`);
+      this.apps.markSetupFailed(version, r.error, r.refused);
+    }
+    return r;
+  }
+
   async install(zipPath, onLog = () => {}) {
     const log = (m) => { onLog(m); return m; };
 

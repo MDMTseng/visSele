@@ -20,7 +20,6 @@
 // worse outcome than a missed update notification.
 import React, { useEffect, useRef, useState } from 'react';
 import notification from 'antd/lib/notification';
-import Button from 'antd/lib/button';
 import { mkLog } from 'UTIL/logger';
 
 const log = mkLog('ui.update');
@@ -39,12 +38,14 @@ export default function UpdateNotice() {
   const [state, setState] = useState(null);
   const dead = useRef(false);            // set once, never cleared
   const announced = useRef(null);
-  const applying = useRef(false);
 
   useEffect(() => {
     // 1 and 2: no host, or a host too old to know the question.
     const api = (typeof window !== 'undefined' && window.launcher) || null;
-    if (!api || typeof api.updateCheck !== 'function' || typeof api.updateApply !== 'function') {
+    // updateApply is no longer required: this notice does not install. Asking
+    // for a capability it does not use would switch itself off on a launcher
+    // that can answer the only question it actually asks.
+    if (!api || typeof api.updateCheck !== 'function') {
       log.info('[update] no launcher update API -- update notices disabled');
       dead.current = true;
       return undefined;
@@ -93,26 +94,6 @@ export default function UpdateNotice() {
     });
   }, [state && state.pending]);
 
-  const apply = async (pkg) => {
-    if (applying.current) return;
-    applying.current = true;
-    notification.info({ message: `安裝 ${pkg.version} …`, description: '機台會繼續檢驗,不會中斷。', duration: 0, key: 'insp-update' });
-    let r;
-    try {
-      r = await window.launcher.updateApply(pkg.file);
-    } catch (e) {
-      r = { ok: false, error: String(e && e.message) };
-    }
-    applying.current = false;
-    if (!r || !r.ok) {
-      notification.error({ message: '安裝失敗', description: (r && r.error) || '未知原因', duration: 0, key: 'insp-update' });
-      return;
-    }
-    announced.current = null;              // let the pending notice speak
-    notification.destroy('insp-update');
-    setState((s) => (s ? { ...s, available: null, current: r.version } : s));
-  };
-
   if (dead.current || !state || !state.available) return null;
   const pkg = state.available;
   if (!pkg.version || !pkg.file) return null;
@@ -121,16 +102,24 @@ export default function UpdateNotice() {
   // not nag, because `announced` remembers.
   if (announced.current !== 'avail:' + pkg.version) {
     announced.current = 'avail:' + pkg.version;
+    // TELLS, DOES NOT INSTALL.
+    //
+    // This used to carry an install button, and that put the one action that
+    // changes which version runs tomorrow on the screen the operator looks at
+    // all day -- easier to hit by accident than the launcher's own version
+    // list, which already sits behind a three-tap gate.
+    //
+    // So the two halves went where they belong: noticing is useful here,
+    // because this is the screen somebody is actually watching, and changing
+    // what runs happens in one place, behind the launcher's password. An
+    // update needs a restart to take effect anyway, so the operator ends up at
+    // that screen regardless -- this only asks them to go there knowingly.
     notification.open({
       message: `有新版本 ${pkg.version}`,
-      description: `目前執行中的是 ${state.running || '(未知)'}。安裝不會中斷檢驗,要重新啟動之後才會換版。`,
+      description: `目前執行中的是 ${state.running || '(未知)'}。`
+        + '要更新請關閉程式,在啟動畫面的版本清單安裝 —— 換版需要重新啟動才會生效。',
       duration: 0,
       key: 'insp-update',
-      btn: (
-        <Button type="primary" size="small" onClick={() => apply(pkg)}>
-          安裝,下次重啟時更新
-        </Button>
-      ),
     });
   }
   return null;
