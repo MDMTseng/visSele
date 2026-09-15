@@ -264,6 +264,36 @@ static const float RAMP_STALL_DT_MAX = 0.060f;   // seconds
 // class of fault that a 500 Hz frequency step used to be the late one for.
 uint32_t RAMP_STALLS=0;
 float    RAMP_STALL_DT_WORST=0.0f;
+// WHAT THE MOTOR ACTUALLY FEELS.
+//
+// ramp_stalls counts a cause; these measure the effect, and the effect is the
+// thing that breaks a stepper. A frequency discontinuity is an acceleration
+// spike, and it does not care which code path produced it -- a blocked loop, a
+// setpoint written from the host, jog braking, the transition into ERROR. A
+// meter on the stall only ever sees the one source somebody thought of.
+//
+// COMMANDED is exact and free: the ramp already computes the new frequency, so
+// the difference over the same dt it used is the acceleration it just asked
+// for. After the stall fix this can no longer exceed SYS_FREQ_ACCEL by way of
+// the ramp, which makes it a clean alarm rather than a statistic -- anything
+// above the configured accel means something OTHER than the ramp wrote the
+// plate frequency.
+//
+// MEASURED comes from SYS_STEP_COUNT, i.e. from the pulses that actually went
+// out, and is the honest answer to "did it do what it was told". The two
+// diverging is its own signal.
+//
+// Its one blind spot, stated rather than hidden: the sampler lives in the same
+// loop as the ramp, so a stall stops it too and that window is reported as its
+// average, not its peak. The discontinuity we care about lands just AFTER the
+// stall, which is inside the next sample.
+//
+// NO JERK. A trapezoidal profile steps acceleration from 0 to SYS_FREQ_ACCEL in
+// one pass, so jerk is unbounded at every ramp corner by construction and the
+// peak would be pinned there forever, carrying no information. It becomes worth
+// measuring if the profile ever goes S-curve, and not before.
+float ACCEL_CMD_MAX=0.0f;     // |dF/dt| commanded, Hz/s
+float ACCEL_MEAS_MAX=0.0f;    // |dF/dt| from the pulses, Hz/s
 
 // 15/s was the old machine's rate; production runs ~30/s and bursts higher, so
 // a 66ms floor silently merged adjacent parts. 4ms still rejects the double
@@ -1194,6 +1224,10 @@ volatile bool COMM_LOST_BACKUP=false;
 // counts were written because of it. Reported in get_running_stat: a normal
 // shift should show this stepping once per shutdown and never during a run.
 uint32_t HOSTLOSS_SAVES=0;
+// Armed when the machine comes off a run; fires when the plate is ACTUALLY at
+// rest. See SYS_STATE::IDLE and countersRestService.
+bool     CNT_SAVE_AT_REST=false;
+uint32_t RESTSAVE_SAVES=0;
 
 // Attack instantly, decay slowly: a maximum that FOLLOWS THE ENVELOPE instead of
 // latching on one event and then saying nothing.
@@ -2873,6 +2907,19 @@ static bool cntSame(const MachineConfig::Counters &a,
 }
 uint32_t CNT_NVS_SKIPPED = 0;
 
+// Fires the armed save once the plate has come to a stop. Separate from
+// countersNvsService because that one performs a REQUEST; this decides when to
+// make it.
+static void countersRestService()
+{
+  if(!CNT_SAVE_AT_REST) return;
+  if(PLATE_FREQ_CURRENT != 0.0f) return;   // still coasting; nothing to do yet
+  CNT_SAVE_AT_REST = false;
+  CNT_NVS_REQ_MS = millis();
+  CNT_NVS_REQ = CNT_NVS_SAVE;
+  RESTSAVE_SAVES++;
+}
+
 static void countersNvsService()
 {
   const uint8_t req = CNT_NVS_REQ;
@@ -3117,12 +3164,24 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // away mid-run, which are the cases the counts actually need saving
         // for.
         //
-        // The one case the watchdog cannot see is stop-then-close: the machine
-        // is already in IDLE, so the watchdog is blind by design (firing there
-        // would turn an operator closing the host into an error). The HOST
-        // closes that gap by asking, with save_counters, on its way out --
-        // shutting down is not normal operation, and by then the plate has long
-        // stopped, so the write is free.
+        // AND THE SAVE COMES BACK -- but after the plate has stopped, not here.
+        //
+        // The distinction is the whole fix. The danger was never the write, it
+        // was writing WHILE THE RAMP WAS RUNNING: the flash access blocks the
+        // loop, the step ISR keeps pulsing at the old rate, and the ramp then
+        // makes up the lost time in a single frequency step. At rest there is
+        // no ramp to disturb and the write costs nothing -- and it is measurably
+        // not counted as a stall either, because the ramp service returns before
+        // its stall check once current == target.
+        //
+        // So: arm here, fire in countersRestService when PLATE_FREQ_CURRENT
+        // reaches 0. That restores what the removal cost -- a shift that ends
+        // with stop, then a core crash, keeps its counts -- without putting a
+        // flash access back under a decelerating plate.
+        //
+        // cntSame() still skips a write that would store an unchanged record,
+        // so a stop with nothing counted since the last save is free.
+        CNT_SAVE_AT_REST = true;
       } //enter
       else if (i == 1)
       {
@@ -3255,6 +3314,10 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         blockNewDetectedObject=false;
         FEEDER_ON=true;
         io_drive(FEEDER_PIN, IOI_FEEDER, true);
+        // Back to work before the plate ever reached rest -- a stop that was
+        // reversed is not a stop, and leaving this armed would drop a flash
+        // write into the next deceleration instead of this one.
+        CNT_SAVE_AT_REST = false;
         // The unanswered budget belongs to the run, not to the boot. It is
         // cleared by a judged part and by reset_running_stat, and by nothing
         // else -- so a run that ended at 8 of stop_after 10 left the next one
@@ -7546,7 +7609,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // a stall was charged to the ramp -- so this is the meter for the fault
     // class, not just for this fix.
     retdoc["hostloss_saves"]=HOSTLOSS_SAVES;
+    retdoc["restsave_saves"]=RESTSAVE_SAVES;
     retdoc["ramp_stalls"]=RAMP_STALLS;
+    // Hz/s. cmd above plate_accel means something other than the ramp wrote the
+    // frequency; meas far from cmd means the plate did not follow.
+    retdoc["accel_cmd_max"]=(uint32_t)ACCEL_CMD_MAX;
+    retdoc["accel_meas_max"]=(uint32_t)ACCEL_MEAS_MAX;
     retdoc["ramp_stall_worst_ms"]=(uint32_t)(RAMP_STALL_DT_WORST*1000.0f);
     // if(SEL1_ACT_COUNTDOWN>=0)
     // {
@@ -7953,6 +8021,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       ACT_CAP_MAX_T         = 0;
       GATE_W_MAX            = 0;
       GATE_W_MIN            = 0xFFFFFFFFu;
+      // Both reported by this reply, and both are "since you last looked"
+      // questions rather than lifetime marks -- a spike that happened at
+      // spin-up three hours ago says nothing about the stop somebody is
+      // investigating now, and leaving it latched is exactly the failure the
+      // comment above ACCEL_CMD_MAX's declaration describes for every other max
+      // in this firmware.
+      ACCEL_CMD_MAX         = 0.0f;
+      ACCEL_MEAS_MAX        = 0.0f;
+      // The stall meters go with them, for the same reason and out of the same
+      // window. They were added without this and would have latched.
+      RAMP_STALLS           = 0;
+      RAMP_STALL_DT_WORST   = 0.0f;
       // Cleared as a PAIR -- :6304 emits them from one loop, so clearing only
       // one leaves the two arrays describing different eras with nothing
       // saying so.
@@ -10609,6 +10689,9 @@ void firmwareLoop()
   // runs 1/256 as often overshoots by whatever the plate covered meanwhile.
   jogService();
   selSafeService();
+  // Decide first, then service: an armed save that becomes due on this pass
+  // should not wait a whole loop to be picked up.
+  countersRestService();
   // Immediately after, because it waits on exactly what that just cleared.
   countersNvsService();
   do{//timer freq ctrl
@@ -10626,7 +10709,17 @@ void firmwareLoop()
       if(meas_us!=0 && nowUs>meas_us+100000)
       {
         const uint32_t d=(uint32_t)(SYS_STEP_COUNT-meas_step);
+        const float prev = PLATE_FREQ_MEAS;
+        const float span = (float)(nowUs-meas_us)*1e-6f;
         PLATE_FREQ_MEAS = (float)d*1e6f/(float)(nowUs-meas_us)/2.0f;
+        // First sample after a standstill is not an acceleration: prev is the
+        // stale value from before the plate stopped, and the difference across
+        // that gap is an artefact of the gap, not of any ramp.
+        if(span>0.0f && prev>0.0f)
+        {
+          const float a = fabsf(PLATE_FREQ_MEAS - prev)/span;
+          if(a>ACCEL_MEAS_MAX) ACCEL_MEAS_MAX=a;
+        }
         meas_step=SYS_STEP_COUNT; meas_us=nowUs;
       }
       else if(meas_us==0){ meas_step=SYS_STEP_COUNT; meas_us=nowUs; }
@@ -10820,6 +10913,19 @@ void firmwareLoop()
     }
 
 
+
+    // The acceleration this pass just asked for, measured where it is actually
+    // committed -- against the same dt the step above used, so it is the real
+    // rate and not a per-pass delta that a slow loop would flatter.
+    {
+      static float prevCmd = 0.0f;
+      if(dt>0.0f && prevCmd>0.0f && PLATE_FREQ_CURRENT>0.0f)
+      {
+        const float a = fabsf(PLATE_FREQ_CURRENT - prevCmd)/dt;
+        if(a>ACCEL_CMD_MAX) ACCEL_CMD_MAX=a;
+      }
+      prevCmd = PLATE_FREQ_CURRENT;
+    }
 
     if(PLATE_FREQ_CURRENT==0)
     {
