@@ -325,33 +325,61 @@ target_link_libraries(CameraLayer PUBLIC logctrl common_lib)
 # --- shape_based_matching (line2Dup + roi_refine localizer) ----------------
 # The submodule's own CMakeLists only builds test exes against a hard-coded
 # Windows OpenCV path, so we compile the high-level API into our own static lib
-# and link it into MatchingEngine. The public surface (include/shape_matcher.h)
-# is cv::Mat + std only -- MIPP/AVX2 stays internal to these TUs, so the rest of
-# MatchingEngine need not be built with AVX2.
+# and link it into MatchingEngine.
+#
+# line2Dup carries hand-written AVX2 in its hot loops. Compiling the library
+# -mavx2 made those unconditional: correct on the machines in the field, and a
+# silent death during startup on a CPU without AVX (a Pentium Gold 4415Y --
+# Kaby Lake with AVX fused off -- 2026-09-16, no log line, no dump, exit
+# 0xC0000409). Compiling -msse4.2 instead costs 2.1x on the match path
+# (63 ms -> 139 ms, measured by tools/sbm_bench.cpp on this machine).
+#
+# So neither is the default: line2Dup.cpp is compiled TWICE, into line2Dup::avx2
+# and line2Dup::base, and __builtin_cpu_supports picks one at the first
+# makeDetector() call. Measured overhead: none -- the dispatch is one virtual
+# call per match(), not per pixel. SBM_FORCE_ISA=base|avx2 overrides it.
+#
+# Only the SIMD-carrying classes are duplicated; Feature/Template/Match are
+# compiled once and shared, so no struct ever has to be converted between the
+# two halves.
+set(_SBM_ISA_SRC contrib/shape_based_matching/line2Dup.cpp
+                 contrib/shape_based_matching/detector_adapter.cpp)
+
+add_library(sbm_isa_base OBJECT ${_SBM_ISA_SRC})
+add_library(sbm_isa_avx2 OBJECT ${_SBM_ISA_SRC})
+
 add_library(shape_based_matching STATIC
-  contrib/shape_based_matching/line2Dup.cpp
   contrib/shape_based_matching/icp_refine.cpp
   contrib/shape_based_matching/roi_refine.cpp
-  contrib/shape_based_matching/shape_matcher.cpp)
-target_include_directories(shape_based_matching PUBLIC
-  contrib/shape_based_matching
-  contrib/shape_based_matching/include
-  contrib/shape_based_matching/MIPP
-  ${OpenCV_INCLUDE_DIRS})
+  contrib/shape_based_matching/shape_matcher.cpp
+  contrib/shape_based_matching/detector_dispatch.cpp
+  $<TARGET_OBJECTS:sbm_isa_base>
+  $<TARGET_OBJECTS:sbm_isa_avx2>)
+
+foreach(_t shape_based_matching sbm_isa_base sbm_isa_avx2)
+  target_include_directories(${_t} PUBLIC
+    contrib/shape_based_matching
+    contrib/shape_based_matching/include
+    contrib/shape_based_matching/MIPP
+    ${OpenCV_INCLUDE_DIRS})
+  if(WIN32 OR MINGW OR MSYS)
+    target_compile_options(${_t} PRIVATE -Wa,-mbig-obj)   # line2Dup.cpp is large
+  endif()
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(${_t} PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+endforeach()
 target_link_libraries(shape_based_matching PUBLIC opencv_core opencv_imgproc)
-# MIPP picks the AVX2 backend off __AVX2__; -mavx2 (not -march=native) keeps the
-# binary portable across build/deploy hosts. big-obj: line2Dup.cpp is large.
-# arm64 has no AVX2 -- MIPP auto-selects NEON there, so only force the flags
-# on x86 hosts.
+
+# The two halves differ ONLY in these flags. LINE2DUP_NO_SHARED_DEFS keeps the
+# avx2 build from re-defining the plain-data serialisation the base build owns.
+# arm64 has no AVX2 and MIPP auto-selects NEON, so the split is x86-only: there
+# both objects compile portably and the dispatcher always answers "base".
+target_compile_definitions(sbm_isa_base PRIVATE LINE2DUP_ISA=base)
+target_compile_definitions(sbm_isa_avx2 PRIVATE LINE2DUP_ISA=avx2 LINE2DUP_NO_SHARED_DEFS)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-  target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
-  target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
-endif()
-if(WIN32 OR MINGW OR MSYS)
-  target_compile_options(shape_based_matching PRIVATE -Wa,-mbig-obj)
-endif()
-if(OpenMP_CXX_FOUND)
-  target_link_libraries(shape_based_matching PUBLIC OpenMP::OpenMP_CXX)
+  target_compile_options(sbm_isa_base PRIVATE -msse4.2)
+  target_compile_options(sbm_isa_avx2 PRIVATE -mavx2 -mfma)
 endif()
 
 # --- MatchingEngine --------------------------------------------------------
@@ -473,6 +501,14 @@ target_link_libraries(calib_chessboard PRIVATE MatchingEngine)
 
 # jpeg_bench -- imencode timing micro-benchmark (BGR vs grayscale, ~5MP).
 add_executable(jpeg_bench tools/jpeg_bench.cpp)
+
+# Times the SBM match path with nothing else in the frame -- in a full inspection
+# the match is a minority of the wall time, which hides an ISA difference. Run it
+# twice under SBM_FORCE_ISA=avx2 / base to compare the two halves, in speed and
+# in the pose they return.
+add_executable(sbm_bench tools/sbm_bench.cpp)
+target_link_libraries(sbm_bench PRIVATE shape_based_matching ${OpenCV_LIBS})
+
 target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
 
 # latency_stages -- build the core's timing up one layer at a time, to find the
