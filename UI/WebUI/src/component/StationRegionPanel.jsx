@@ -400,31 +400,47 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     </Button>
   );
 
-  // Collapsed by default. This is setup, not monitoring: it is touched when the
-  // machine is being commissioned and not once per shift, so it must not sit
-  // between the operator and the counters they actually watch. The one-line
-  // summary is enough to tell at a glance that a region IS set -- which is the
-  // only thing about it that matters while parts are running.
-  const summary = (region.w > 0 && region.h > 0)
-    ? `${region.w}×${region.h} @${region.x},${region.y}`
-    : '未設定(不限制)';
+  // COLLAPSED, THIS COSTS ONE DIVIDER AND SAYS ONE THING.
+  // (operator request, 2026-09-17)
+  //
+  // Collapsed is the default and how this panel spends almost all of its life:
+  // it is setup, touched while the machine is being commissioned and not once
+  // per shift, so it must not sit between the operator and the counters they
+  // actually watch.
+  //
+  // It used to cost two lines -- a "工位區域" divider drawn by InspectionUI,
+  // then a summary row under it carrying the geometry, the clean-region count
+  // and an unsaved marker. So the divider moved in here and the row became its
+  // text, and then the text was cut to the one fact that changes what the
+  // machine does to a part: whether the region is being enforced.
+  //
+  // Both cuts were the same lesson. On the 1200 px screen this runs on, that
+  // summary ran past the sidebar and the item that got clipped was the LAST
+  // one -- 判定暫停. Carrying less is what keeps it visible.
   const header = (
-    <div onClick={() => setOpen(!open)}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-               fontSize: 11, padding: '2px 8px', userSelect: 'none' }}>
-      <span style={{ color: '#888' }}>{open ? '▾' : '▸'}</span>
-      <span style={{ color: '#888' }}>工位</span>
-      <span style={{ color: (region.w > 0 && region.h > 0) ? '#00b0ff' : '#888' }}>{summary}</span>
-      {clean.length ? <span style={{ color: '#ffab00' }}>· 淨空 {clean.length}</span> : null}
-      {dirty ? <span style={{ color: '#d48806' }}>· 未存檔</span> : null}
-      {/* The panel is collapsed by default, so this has to be legible without
-          opening it. A machine that has quietly stopped enforcing its station
-          is exactly the state nobody should have to expand a panel to find. */}
-      {/* Kept short on purpose: the sidebar is ~225px and the summary already
-          carries the geometry and the clean-region count, so a longer label
-          wraps the header onto a second line. */}
-      {bypassed ? <span style={{ color: '#c33', fontWeight: 'bold' }}>· 判定暫停</span> : null}
-    </div>
+    <Divider orientation="center" className="Antd_Divider_Small_Text_Tight"
+      onClick={() => setOpen(!open)}
+      style={{ margin: '2px 0', cursor: 'pointer', userSelect: 'none' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+        <span style={{ color: '#888' }}>{open ? '▾' : '▸'}</span>
+        <span style={{ color: '#888' }}>工位區域</span>
+        {/* WHETHER IT IS ENFORCING, and nothing else. (operator request, 2026-09-17)
+            
+            This line used to carry the geometry, the clean-region count and an
+            unsaved marker as well. On the 1200 px screen the machine actually
+            runs on, that ran past the sidebar and the LAST item was the one
+            that got clipped -- which was 判定暫停, the only one of them that
+            changes what the machine does to a part. Carrying less means the
+            thing worth seeing is always visible.
+            
+            The rest has not gone anywhere: open the panel and the geometry, the
+            clean regions and the unsaved state are all there, which is where
+            you are anyway if you are about to change one of them. */}
+        {bypassed
+          ? <span style={{ color: '#c33', fontWeight: 'bold' }}>· 判定暫停</span>
+          : <span style={{ color: '#3a3' }}>· 判定中</span>}
+      </span>
+    </Divider>
   );
 
   if (!open) return header;

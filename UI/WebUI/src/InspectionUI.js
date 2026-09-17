@@ -456,6 +456,29 @@ function valueInk(detailStatus, ratio, blank) {
   return { fg: "#389e0d", w: 400 };
 }
 
+// The same traffic light, for the strip's black ground.
+//
+// Not a tint of the light one -- lifted. #389e0d on black is barely a colour,
+// and #f5222d is dark enough there to lose against the badge beside it.
+//
+// A PASSING reading is WHITE, not green. Operators asked for big figures and
+// high contrast, and white on black is the most legible thing available; the
+// green would spend that contrast saying what the badge already says. NG and
+// the control-limit warning keep their colour, because those are the two the
+// eye is hunting for -- so a reject is loud twice, in the figure and in the
+// badge, and a pass is loud once, in the badge.
+function valueInkDark(detailStatus, blank) {
+  if (blank) return { fg: "#595959", w: 400 };
+  if (detailStatus === MEASURERSULTRESION.NA
+      || detailStatus === MEASURERSULTRESION.UNSET
+      || detailStatus === undefined) {
+    return { fg: "#595959", w: 400 };
+  }
+  if (NG_STATUSES.has(detailStatus)) return { fg: "#ff4d4f", w: 600 };
+  if (CAUTION_STATUSES.has(detailStatus)) return { fg: "#ffc53d", w: 600 };
+  return { fg: "#ffffff", w: 400 };
+}
+
 // Which detailStatus values count as a failure worth naming when a group is
 // collapsed. The C-variants are the caution band, which is not a failure.
 const CAUTION_STATUSES = new Set([
@@ -515,7 +538,28 @@ class ResultGroupItems extends React.PureComponent {
     // are then guaranteed to match what was actually being measured, in the
     // same order and the same slots -- which reading them back out of the
     // recipe would not guarantee.
-    const reports = (group && group.reports) || ghostReports || [];
+    // A REFERENCE ITEM IS NOT IN THIS LIST AT ALL. (operator request, 2026-09-17)
+    //
+    // quality_essential === false means the measurement is taken and shown but
+    // never decides the part. The first pass at the request blanked its reading
+    // and left the name behind; the operators meant the whole entry. They are
+    // right for this surface: the strip is the OK/NG column, every line on it
+    // is read as something that was judged, and a line that can never be judged
+    // is a permanent "why is that one always blank?".
+    //
+    // It is hidden HERE and nowhere lower, so this stays a display decision:
+    //   * finalResult is reduced over the UNFILTERED list (and already skips
+    //     non-essential items), so the part's verdict cannot move because of
+    //     this line;
+    //   * the sampling view renders through ResultRowExpanded, not through this
+    //     component, so an operator reading values off and writing them down
+    //     still gets every measurement including these;
+    //   * the canvas overlay still draws them, with the eye mark.
+    // The measurement is still taken, still reported, still on screen elsewhere
+    // -- what it no longer does is occupy a line in the column an operator
+    // scans for rejects.
+    const all = (group && group.reports) || ghostReports || [];
+    const reports = all.filter((r) => !r || !r.def || r.def.quality_essential !== false);
     const ghost = !group;
     // Keyed by SLOT, not by measurement name.
     //
@@ -543,26 +587,18 @@ class ResultGroupItems extends React.PureComponent {
           fullScreenToggleCallback={onFullScreen} />
       );
     }
-    // table-layout:fixed so the columns come from the colgroup and not from
-    // the content: a long measurement name must not be able to push the value
-    // column narrower on one row than on the next.
-    // separate, NOT collapse -- see the note on the row background. With
-    // border-collapse:collapse a <tr> has no background box of its own, so
-    // background-size and background-position on it are ignored and the scale
-    // floods the whole row height.
+    // A LIST OF BLOCKS, not a table.
     //
-    // (A JSX comment here instead would be a second root expression in the
-    // return, which is a parse error -- made twice now.)
+    // Each entry is now its own box with a big left-aligned reading and the
+    // verdict beside it, so there are no columns left to line up and nothing
+    // for a colgroup to fix. The table went with them: it existed to hold a
+    // name column and a value column to the same width down the page, and to
+    // give the scale row a background box of its own that border-collapse kept
+    // taking away.
     return (
-      <table style={{ width: "100%", tableLayout: "fixed",
-                      borderCollapse: "separate", borderSpacing: 0,
-                      background: "#fff" }}>
-        <colgroup>
-          <col />
-          <col style={{ width: 108 }} />
-        </colgroup>
-        <tbody>{out}</tbody>
-      </table>
+      <div style={{ background: "#000" }}>
+        {out}
+      </div>
     );
   }
 }
@@ -1004,11 +1040,14 @@ class InspectionResultDisplay extends React.PureComponent {
       // they have to be locatable without ever competing with the reading that
       // sits on top of them, and the marker has to stay the most saturated
       // thing on the row so the eye lands on it first.
-      { at: place(L.LSL), half: 1,   c: "#ffc9c7" },   // spec, the hard limits
-      { at: place(L.USL), half: 1,   c: "#ffc9c7" },
-      { at: ctlOff(L.LCL, true)  ? undefined : place(L.LCL), half: 0.8, c: "#ffe7a3" },
-      { at: ctlOff(L.UCL, false) ? undefined : place(L.UCL), half: 0.8, c: "#ffe7a3" },
-      { at: place(L.TGT), half: 0.7, c: "#cfcfcf" },   // target
+      // Darkened for the black ground: the pale pink and cream these used to be
+      // were chosen against white and glow against black, where they would
+      // out-shout the marker they exist to be read behind.
+      { at: place(L.LSL), half: 1,   c: "#8c3b3a" },   // spec, the hard limits
+      { at: place(L.USL), half: 1,   c: "#8c3b3a" },
+      { at: ctlOff(L.LCL, true)  ? undefined : place(L.LCL), half: 0.8, c: "#7a6224" },
+      { at: ctlOff(L.UCL, false) ? undefined : place(L.UCL), half: 0.8, c: "#7a6224" },
+      { at: place(L.TGT), half: 0.7, c: "#565656" },   // target
     ]) {
       if (t.at === undefined) continue;
       const at = Math.max(1.5, Math.min(98.5, t.at));
@@ -1033,7 +1072,7 @@ class InspectionResultDisplay extends React.PureComponent {
     // leaves the numbers on plain white where they are easiest to read.
     const track = (essential && SCALE.length)
       ? "linear-gradient(90deg, " + SCALE.map(tick).join(", ") + ")"
-      : "#fafafa";
+      : "#1f1f1f";
 
     // Out-of-tolerance values are PINNED to the edge and drawn thicker.
     //
@@ -1042,7 +1081,7 @@ class InspectionResultDisplay extends React.PureComponent {
     // value went out of spec the less of its marker was visible, and a really
     // bad one had no marker at all. That is backwards: the worse it is, the
     // more it has to show.
-    const ink = valueInk(rep.detailStatus, ratio, blank);
+    const ink = valueInkDark(rep.detailStatus, blank);
     // The marker is placed through the SAME mapping as the scale lines, so a
     // reading sitting on its limit lands on that limit's tick by construction.
     // It used to be derived from `ratio`, computed separately further up with
@@ -1062,70 +1101,100 @@ class InspectionResultDisplay extends React.PureComponent {
 
     // No bottom border here: the scale row below carries the separator, so the
     // two rows read as one entry rather than as two.
-    const cell = { padding: "3px 4px 1px", verticalAlign: "middle" };
-
-    // TWO rows per measurement: the reading, then a 9 px strip carrying the
-    // scale across both columns.
+    // ONE ENTRY IS ONE BLOCK, on black, with the reading big and the verdict
+    // beside it. (operator request, 2026-09-17)
     //
-    // The scale wants to be a band along the bottom of the row and not to run
-    // through the figures -- a red spec line landing on the "mm" of a number
-    // someone is copying out. Two attempts to do that with the row's own
-    // background failed: background-size/position are ignored on a <tr> under
-    // border-collapse:collapse, and switching to separate did not fix it
-    // either, so the gradient kept flooding the full height. A td with
-    // colSpan is not a workaround, it is simply the element that has the box
-    // we want -- and it costs two nodes.
+    // The operators compared this panel against the older machines and wanted
+    // the older one back. Asked what specifically, the answer was: big figures,
+    // high contrast, OK/NG at a glance, and not much interest in the rest.
+    // That is a clear instruction, and this is it, taken from a photo of the
+    // machine they meant:
+    //
+    //   a light rule ABOVE each entry
+    //   the measurement name, small
+    //   the reading, LARGE and LEFT-aligned, the verdict badge on its right
+    //
+    // Left-aligned because the figures are what the eye lands on, and a shared
+    // left edge down the column is easier to land on than a right one when the
+    // readings differ in width. The badge takes the right, where it forms its
+    // own column of coloured blocks -- that column IS the OK/NG answer, and it
+    // works before a single digit has been read.
+    //
+    // Two things the table version was right about are kept. The margin bar
+    // stays, at 5 px: the operators are indifferent to it, but indifference is
+    // not a reason to delete the only thing on screen that says a process is
+    // drifting BEFORE it starts rejecting. And a reference item still shows no
+    // reading -- on a strip, a number reads as something that was judged.
+    //
+    // The cost is real and worth stating plainly: this entry is taller than the
+    // table row it replaces, so fewer measurements fit on screen at once. That
+    // is the trade the operators asked for.
     const hide = (empty && !placeholder) ? "none" : undefined;
+    const verdict = OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
+                 || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA];
     return (
-      <>
-      <tr style={{ display: hide }}>
-        <td style={{ ...cell, overflow: "hidden", textOverflow: "ellipsis",
-                     whiteSpace: "nowrap", fontSize: 12, color: "#595959" }}
-            title={essential ? rep.name : rep.name + "(不列入判定)"}>
-          {/* The same eye the canvas overlay already draws on these shapes, so
-              the two views name the thing the same way. A row only reaches here
-              if it is IN rank -- out-of-rank rows are filtered out upstream --
-              so this mark always means "shown, measured, and not counted",
-              never "hidden". */}
+      <div style={{ display: hide, background: "#000",
+                    borderTop: "2px solid #d9d9d9", padding: "2px 0 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 8px",
+                      fontSize: 12, lineHeight: "16px", color: "#d4d4d4",
+                      whiteSpace: "nowrap", overflow: "hidden" }}
+             title={essential ? rep.name : rep.name + "（不列入判定）"}>
+          {/* The same eye the canvas overlay draws on these shapes, so the two
+              views name the thing the same way. A row only reaches here if it
+              is IN rank, so this mark always means "shown, measured, and not
+              counted", never "hidden". */}
           {!essential && <EyeInvisibleOutlined
-              style={{ fontSize: 11, marginRight: 4, color: "#8c8c8c" }} />}
-          {rep.name}
-        </td>
-        <td style={{ ...cell, textAlign: "right", padding: "3px 6px",
-                     fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
-                     fontSize: 18, lineHeight: "20px",
-                     fontWeight: ink.w,
-                     color: ink.fg, position: "relative" }}>
+              style={{ fontSize: 11, color: "#9a9a9a", flex: "0 0 auto" }} />}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {rep.name}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 3px" }}>
           <Popover content={detailInfo} placement="bottomLeft" trigger={["click", "hover"]}>
-            <span>{shown}<span style={{ fontSize: 11, marginLeft: 2, opacity: .65 }}>
-              {blank ? "" : unit}</span></span>
+            <span style={{ flex: "1 1 auto", minWidth: 0,
+                           fontFamily: "ui-monospace, Consolas, monospace",
+                           fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
+                           fontSize: 22, lineHeight: "27px",
+                           fontWeight: ink.w, color: essential ? ink.fg : "#4d4d4d",
+                           whiteSpace: "nowrap", overflow: "hidden",
+                           textOverflow: "ellipsis", cursor: "pointer" }}>
+              {essential
+                ? <>{shown}<span style={{ fontSize: 13, marginLeft: 1, opacity: .7 }}>
+                    {blank ? "" : unit}</span></>
+                : "···"}
+            </span>
           </Popover>
-          {/* A TINT, NOT A COLOUR CHANGE. The reading keeps the ink its status
-              earned -- a reference dimension that is out of tolerance is still
-              red, because it IS out of tolerance -- and the wash says only that
-              it does not decide the part. Repainting it grey instead would use
-              the one colour that already means NA or empty slot, so a real NG
-              that happens not to count would look like no reading at all. */}
-          {!essential && <span style={{
-              position: "absolute", inset: 0, pointerEvents: "none",
-              background: "rgba(140,140,140,0.22)" }} />}
-        </td>
-      </tr>
-      <tr style={{ display: hide }}>
-        {/* The separator is heavier than a hairline and stands off the scale.
-            The scale is itself a row of vertical marks, so a 1 px rule tight
-            underneath joined the two into one busy band and the eye could not
-            tell where an entry ended -- which matters more here than usual,
-            because each entry is two rows and the wrong grouping reads as one
-            measurement's scale belonging to the next measurement's number. */}
-        <td colSpan={2} style={{ padding: "0 0 7px", height: 16, lineHeight: 0,
+          {/* Nothing for a blank slot or a ghost -- there is no verdict yet --
+              and nothing for a reference item, whose whole point is that it
+              does not carry one. */}
+          {!blank && essential &&
+            <span style={{ flex: "0 0 auto", minWidth: 52, textAlign: "center",
+                           fontSize: 13, fontWeight: 600, lineHeight: "21px",
+                           padding: "0 9px", borderRadius: 4, color: "#fff",
+                           background: verdict.COLOR }}>
+              {verdict.TEXT}
+            </span>}
+        </div>
+
+        {/* The margin bar, 5 px, EDGE TO EDGE AND FLUSH TO THE BOTTOM, so it
+            sits directly on the light rule that opens the next entry.
+            (operator request, 2026-09-17)
+            
+            That pairing is the point: the rule is the line between entries and
+            the bar is the last thing inside this one, so the two together read
+            as one closing edge. Inset from the sides with a gap underneath, it
+            floated in the middle of the black and looked like a third element
+            competing with the name and the reading, rather than the entry's own
+            baseline. The side padding therefore lives on the two text rows
+            above and not on the entry, which is the only way the bar can reach
+            the full width. */}
+        {!blank && <div style={{ height: 5, lineHeight: 0,
                                  background: barLayers,
                                  backgroundRepeat: "no-repeat",
                                  backgroundPosition: "top",
-                                 backgroundSize: "100% 9px",
-                                 borderBottom: "3px solid #c4c4c4" }} />
-      </tr>
-      </>
+                                 backgroundSize: "100% 5px" }} />}
+      </div>
     );
   }
 }
@@ -1638,7 +1707,9 @@ class ObjInfoList extends React.Component {
     <SubMenu style={{ 'textAlign': 'left' }} key={"station"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
       title={
       <>
-        <Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>
+        {/* The heading lives INSIDE the panel now: collapsed, the panel is a
+            single divider carrying its own summary, which is what it cost
+            before this line was added on top of it. */}
         <StationRegionPanel
           ecCanvas={this.props.ecCanvas}
           machineSetting={this.props.machineSetting}
@@ -3614,6 +3685,183 @@ class APP_INSP_MODE extends React.Component {
   {
     this.notifyPopUp("警告",msg)
   }
+
+  // THE SNAPSHOT BUTTON, as a method, because it is rendered from the toolbar
+  // and the toolbar is not in the same scope the sidebar menu was built in.
+  //
+  // It replaced 存影像, which saved a bare PNG of the current frame and nothing
+  // else. This one writes the .png AND the .xreps beside it -- the reports for
+  // that frame, which is what makes the picture worth keeping: a snapshot you
+  // cannot play back is a screenshot, and the operator already has one of
+  // those. Two buttons a few centimetres apart, one of them strictly worse,
+  // was the actual problem. (operator request, 2026-09-17)
+  inspSnapshotButton(style) {
+    return (
+        <Button
+          icon={<SaveOutlined />}
+          key="SVX"
+          // width:100% came from the sidebar, where it was the only thing on
+          // its row. In the toolbar it would stretch across the whole bar.
+          style={style}
+          type="primary"
+          onClick={() =>{
+
+
+
+          
+
+            let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
+
+          
+            let tag_str = (curList.length==0)?"":curList[0].tag;
+
+
+            let default_dst_Path=this.props.machine_custom_setting.InspSampleSavePath;
+          
+            if(default_dst_Path===undefined)
+            {
+              default_dst_Path="data"
+            }
+            let targetName=this.props.edit_info.DefFileName+"-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
+            //the tag might have Chinease char and it breaks the file access function for hide it for now
+            // let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
+            this.setState({
+              modalInfo:{
+                title:"快照命名",
+                onOk:()=>{
+
+                  this.setState({
+                    modalInfo:{...this.state.modalInfo,confirmLoading:true}})
+
+                
+                  let name = this.state.modalInfo.targetName;
+                  let path_name = default_dst_Path+"/"+name;
+                
+                  this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                  { filename: path_name,
+                    report_extension:"xreps",
+                    img_extension:"png",
+                    make_dir:true, 
+                    type: "__LAST_DATA_VIEW_CACHE_INFO__" },undefined,
+                  {
+                    resolve:(pkts,action_ch)=>{
+                      let SS=pkts.find(pkt=>pkt.type=="SS");
+                    
+                      // console.log(SS)
+                      if(SS.data.ACK==false)
+                      {
+                        this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                      }
+                      else
+                      {
+                      
+                        this.setState({
+                          modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                      
+                        setTimeout(()=>{//close after 1s
+                          this.setState({modalInfo:undefined})
+                        },1000);
+                      }
+                
+          
+                    },
+                    reject:(e)=>{
+      
+                      this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                    }
+                  })
+
+                  if(false)//the old way
+                  this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                  { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
+                  {
+                    resolve:(pkts,action_ch)=>{
+
+                    
+                      let SS=pkts.find(pkt=>pkt.type=="SS");
+                      if(SS.data.ACK==true)
+                      {
+                        let deffile = defFileGeneration(this.props.edit_info);
+                        // console.log(curList);
+                        let reportSave = {
+                          reports:JSON.parse(JSON.stringify(curList,(key, val) => val===undefined? undefined:(val.toFixed ? Number(val.toFixed(6)) : val  ))),
+                          defInfo:deffile,
+                          camera_param:this.props.edit_info._obj.cameraParam
+                        }
+                        var enc = new TextEncoder();
+
+                      
+                
+          
+                        this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                        { filename: path_name+".xreps" },enc.encode(JSON.stringify(reportSave)),
+                        {
+                          resolve:(pkts,action_ch)=>{
+                            let SS=pkts.find(pkt=>pkt.type=="SS");
+                            if(SS.data.ACK==true)
+                            {
+                              // this.setState({modalInfo:undefined})
+
+                              // this.notifyPopUp(null,`儲存快照  ${ path_name }  成功`);
+                            
+                              this.setState({
+                                modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                            
+                              setTimeout(()=>{//close after 1s
+                                this.setState({modalInfo:undefined})
+                              },1000);
+
+                            }
+                            else
+                            {
+                              this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                            }
+                            // 
+                          
+                          },
+                          reject:(e)=>{
+                            this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                            // this.setState({modalInfo:undefined})
+                          }
+                        }
+                      
+                        )
+                      }
+                      else
+                      {
+                        this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                      }
+
+
+                    },
+                    reject:(e)=>{
+      
+                      this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                    }
+                  })
+
+
+                },
+                onCancel:()=>this.setState({modalInfo:undefined}),
+
+                targetName:targetName,
+                children:(modalInfo)=><>
+                路徑:{default_dst_Path}<br/>
+                名稱:
+                <Input size="small"
+                  value={modalInfo.targetName} 
+                  onChange={(ev)=> this.setState({
+                    modalInfo:{...modalInfo,targetName:ev.target.value}})}
+                />
+              
+                </>
+              }
+            })
+            return;
+          }} >檢測快照</Button>
+    );
+  }
+
   render() {
     let MenuSet = [];
     let menu_height = "HXA";//auto
@@ -3661,171 +3909,6 @@ class APP_INSP_MODE extends React.Component {
     // );
 
     
-    MenuSet.push(
-
-    //   <Button type="primary" icon={<SearchOutlined />}>
-    //   Search
-    // </Button>
-      <Button
-        icon={<SaveOutlined />}
-        key="SVX"
-        style={{width:"100%"}}
-        type="primary"
-        onClick={() =>{
-
-
-
-          
-
-          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
-
-          
-          let tag_str = (curList.length==0)?"":curList[0].tag;
-
-
-          let default_dst_Path=this.props.machine_custom_setting.InspSampleSavePath;
-          
-          if(default_dst_Path===undefined)
-          {
-            default_dst_Path="data"
-          }
-          let targetName=this.props.edit_info.DefFileName+"-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
-          //the tag might have Chinease char and it breaks the file access function for hide it for now
-          // let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
-          this.setState({
-            modalInfo:{
-              title:"快照命名",
-              onOk:()=>{
-
-                this.setState({
-                  modalInfo:{...this.state.modalInfo,confirmLoading:true}})
-
-                
-                let name = this.state.modalInfo.targetName;
-                let path_name = default_dst_Path+"/"+name;
-                
-                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                { filename: path_name,
-                  report_extension:"xreps",
-                  img_extension:"png",
-                  make_dir:true, 
-                  type: "__LAST_DATA_VIEW_CACHE_INFO__" },undefined,
-                {
-                  resolve:(pkts,action_ch)=>{
-                    let SS=pkts.find(pkt=>pkt.type=="SS");
-                    
-                    // console.log(SS)
-                    if(SS.data.ACK==false)
-                    {
-                      this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
-                    }
-                    else
-                    {
-                      
-                      this.setState({
-                        modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
-                      
-                      setTimeout(()=>{//close after 1s
-                        this.setState({modalInfo:undefined})
-                      },1000);
-                    }
-                
-          
-                  },
-                  reject:(e)=>{
-      
-                    this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
-                  }
-                })
-
-                if(false)//the old way
-                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
-                {
-                  resolve:(pkts,action_ch)=>{
-
-                    
-                    let SS=pkts.find(pkt=>pkt.type=="SS");
-                    if(SS.data.ACK==true)
-                    {
-                      let deffile = defFileGeneration(this.props.edit_info);
-                      // console.log(curList);
-                      let reportSave = {
-                        reports:JSON.parse(JSON.stringify(curList,(key, val) => val===undefined? undefined:(val.toFixed ? Number(val.toFixed(6)) : val  ))),
-                        defInfo:deffile,
-                        camera_param:this.props.edit_info._obj.cameraParam
-                      }
-                      var enc = new TextEncoder();
-
-                      
-                
-          
-                      this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                      { filename: path_name+".xreps" },enc.encode(JSON.stringify(reportSave)),
-                      {
-                        resolve:(pkts,action_ch)=>{
-                          let SS=pkts.find(pkt=>pkt.type=="SS");
-                          if(SS.data.ACK==true)
-                          {
-                            // this.setState({modalInfo:undefined})
-
-                            // this.notifyPopUp(null,`儲存快照  ${ path_name }  成功`);
-                            
-                            this.setState({
-                              modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
-                            
-                            setTimeout(()=>{//close after 1s
-                              this.setState({modalInfo:undefined})
-                            },1000);
-
-                          }
-                          else
-                          {
-                            this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
-                          }
-                          // 
-                          
-                        },
-                        reject:(e)=>{
-                          this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
-                          // this.setState({modalInfo:undefined})
-                        }
-                      }
-                      
-                      )
-                    }
-                    else
-                    {
-                      this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
-                    }
-
-
-                  },
-                  reject:(e)=>{
-      
-                    this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
-                  }
-                })
-
-
-              },
-              onCancel:()=>this.setState({modalInfo:undefined}),
-
-              targetName:targetName,
-              children:(modalInfo)=><>
-              路徑:{default_dst_Path}<br/>
-              名稱:
-              <Input size="small"
-                value={modalInfo.targetName} 
-                onChange={(ev)=> this.setState({
-                  modalInfo:{...modalInfo,targetName:ev.target.value}})}
-              />
-              
-              </>
-            }
-          })
-          return;
-        }} >檢測快照</Button>);
         
 
 
@@ -4032,21 +4115,8 @@ class APP_INSP_MODE extends React.Component {
         <Tooltip title="檢驗樣本:保留的樣品、存成 xreps">
           <Button icon={<PictureOutlined/>} onClick={()=>this.setState({samplePanel:true})}>樣本</Button>
         </Tooltip>
-        <Tooltip title="把畫面上這一幀存成 PNG 到 data/">
-          <Button icon={<SaveOutlined />} onClick={() => {
-            const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T','_').replace('Z','');
-            const filename = `./data/snap_${ts}.png`;
-            this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
-              { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined,
-              {
-                resolve: (pkts) => {
-                  const SS = pkts.find(p => p.type === "SS");
-                  if (SS && SS.data.ACK === true) this.notifyPopUp(null, `儲存影像 ${filename}`);
-                  else this.warnPopUp(`儲存影像失敗 ${filename}`);
-                },
-                reject: () => this.warnPopUp(`儲存影像失敗 ${filename}`),
-              });
-          }}>存影像</Button>
+        <Tooltip title="檢測快照:這一幀的影像 + 它的檢測報告（.png + .xreps，可回放）">
+          {this.inspSnapshotButton()}
         </Tooltip>
       </div>
 
