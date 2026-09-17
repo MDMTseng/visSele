@@ -455,3 +455,64 @@ margin:auto; float: none;
 
 	background: none;
 }
+
+/* --- scrollbars ------------------------------------------------------------
+   Two problems, and they are not the same one.
+
+   THE LAYOUT SHIFT is the one that matters on the bench. Chromium's classic
+   scrollbar takes layout width, so the moment a panel's content grows past its
+   box every element inside shrinks by ~15 px at once -- text that fitted wraps,
+   a row that fitted overflows, and on a touch screen the control the operator
+   is reaching for moves while they reach for it.
+
+   In the Electron app this is solved properly: main.js turns on Chromium's
+   OverlayScrollbar, which draws over the content and takes no width at all.
+   A plain browser has no such switch, so `scrollbar-gutter: stable` reserves
+   the space permanently instead -- the space is spent either way, but it is
+   spent once at layout time instead of appearing under the operator's hand.
+   Where overlay scrollbars ARE active the gutter costs nothing, because there
+   is no scrollbar occupying it.
+
+   THE APPEARANCE is the smaller half. The default is a wide light-grey bar
+   built for a mouse on a desktop; these are 10 px, dark enough to find on both
+   the white panels and the black strip, and they fade back when not hovered.
+   Wide enough to grab with a finger, which is the actual constraint. */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* Firefox and any engine on the standard properties. `thin` is the widest of
+   the two standard options and still narrower than the default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 140, 140, 0.55) transparent;
+}
+
+/* Chromium. The track stays TRANSPARENT rather than tinted: these bars sit on
+   panels that are white in one place and black in another, and a track with a
+   colour of its own is a grey stripe down one of them. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(140, 140, 140, 0.45);
+  border-radius: 6px;
+  /* The border is transparent and the background is clipped inside it, which
+     insets the visible thumb without narrowing the hit target -- the finger
+     still gets the full 10 px. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 120, 120, 0.75);
+  background-clip: content-box;
+}
+/* Where two scrollable areas meet. Left at default it is a small light square
+   in the bottom-right of every scrolling box. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

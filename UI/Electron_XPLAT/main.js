@@ -101,6 +101,20 @@ const folderSelDialog = async (mainWindow) => {
 
 
 
+// OVERLAY SCROLLBARS, so a scrollbar appearing does not move the layout.
+//
+// Chromium's classic scrollbar takes layout width: the moment a panel's
+// content grows past its box, every element in that box shrinks by ~15 px and
+// anything already near its limit wraps or overflows. On a touch screen that
+// is worse than untidy -- the operator's finger is already travelling toward a
+// control that moved while they reached for it.
+//
+// This has to be set BEFORE app ready; after that Chromium has already read
+// its feature list. The CSS in style/basis.css styles them and is the whole of
+// the story in a plain browser, where this switch does not exist -- there the
+// gutter is reserved instead, which stops the shift at the cost of the space.
+electron.app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar');
+
 electron.app.whenReady().then(() => {
   setup()
 
