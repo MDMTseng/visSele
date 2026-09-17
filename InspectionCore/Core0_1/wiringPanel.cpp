@@ -3438,10 +3438,11 @@ static void load_insp_region(cJSON *json_mac_setting)
 // code, so it stays here.
 static std::vector<CleanRegionCfg> &g_clean_regions = g_inspCtx.clean_regions;   // P0 alias
 
-static void load_clean_regions(cJSON *json_mac_setting)
+// Split so a live edit can hand over the array it has, instead of building a
+// machine_setting object around it just to have this dig the key back out.
+static void load_clean_regions_arr(cJSON *arr)
 {
   std::vector<CleanRegionCfg> out;
-  cJSON *arr = cJSON_GetObjectItem(json_mac_setting, "clean_regions");
   if (arr != NULL && cJSON_IsArray(arr))
   {
     cJSON *e = NULL;
@@ -3474,6 +3475,14 @@ static void load_clean_regions(cJSON *json_mac_setting)
     g_clean_regions = out;
   }
   LOGI("clean_regions: %d configured", (int)out.size());
+}
+
+// machine_setting.json shape. An ABSENT key still means "no clean regions" here
+// -- that is what a full setting load has to mean -- which is exactly why a
+// live edit uses the array form above and never this one.
+static void load_clean_regions(cJSON *json_mac_setting)
+{
+  load_clean_regions_arr(cJSON_GetObjectItem(json_mac_setting, "clean_regions"));
 }
 
 int InspStatusReducer(int total_status, int new_status);   // defined further down
@@ -7682,6 +7691,33 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
       {
         apply_insp_region(inspRegionLive_JSON);
         LOGI("inspection_region: live edit applied (not saved to disk)");
+      }
+
+      // The clean regions get the same treatment, for the same reason.
+      //
+      // The station box applied as it was dragged; the clean regions did not,
+      // so adding one and drawing it changed the picture and nothing else --
+      // the operator had to press 套用並存檔 before the machine would look at
+      // it, which is the "I added a clean area and nothing happened" report.
+      // Half the fix had been done and the other half was still open.
+      //
+      // An ARRAY, and the array is authoritative: what arrives replaces the
+      // set. An empty array therefore means "no clean regions" and is the
+      // correct way to clear the last one -- unlike MachineSetting, where an
+      // ABSENT key means the same thing and so a partial patch wipes them by
+      // accident. The difference is that here the caller is always stating the
+      // whole set on purpose.
+      //
+      // Runtime only. machine_setting.json is still written by 套用並存檔 alone,
+      // so an experiment abandoned mid-edit dies with the process instead of
+      // becoming the machine's configuration -- and the panel marks itself
+      // unsaved meanwhile, because live and saved are now genuinely different
+      // states and the operator has to be able to see which one they are in.
+      cJSON *cleanLive_JSON = cJSON_GetObjectItem(json, "CleanRegionsLive");
+      if (cleanLive_JSON && cJSON_IsArray(cleanLive_JSON))
+      {
+        load_clean_regions_arr(cleanLive_JSON);
+        LOGI("clean_regions: live edit applied (not saved to disk)");
       }
 
       // Legacy shape, still honoured: one bool per verdict meaning "both parts".

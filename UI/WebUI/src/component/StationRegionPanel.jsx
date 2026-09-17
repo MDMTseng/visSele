@@ -228,7 +228,7 @@ function RectFields({ rect, onChange, showNumbers }) {
  *   onSave(setting) persist                 (SV data/machine_setting.json)
  *   onBypass(bool)  stop/resume enforcing   (ST { InspAreaBypass })
  */
-export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyRegionLive, onSave, onBypass }) {
+export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyRegionLive, onApplyCleanLive, onSave, onBypass }) {
   // Empty until the core's machine setting arrives. Never pre-seeded from a
   // stored draft -- see the note at the top of this file.
   const [region, setRegion] = useState(EMPTY_REGION);
@@ -358,6 +358,18 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // cannot be forgotten by one of them -- which is exactly how the drag ended
   // up being the only editor that did not apply.
   const editRegion = (next) => { setDirty(true); setRegion(next); liveRegion(next); };
+  // The clean regions push live too, for the reason the station box does: the
+  // canvas redraws the new box at once while the core kept judging against the
+  // previous set until the save, so "I added a clean area and nothing happened"
+  // was the whole experience of adding one. Half this fix had been done.
+  //
+  // Takes the NEXT list rather than reading `clean`, because setClean is
+  // asynchronous -- reading state here would push the list as it was BEFORE
+  // this edit, which is the same bug one step removed.
+  const liveClean = (next) => {
+    if (typeof onApplyCleanLive === 'function') onApplyCleanLive(next);
+  };
+  const editClean = (next) => { setDirty(true); setClean(next); liveClean(next); };
   const edit = (fn) => { setDirty(true); fn(); };
   // "Cleared" has to be a VALUE, not a missing key.
   //
@@ -423,7 +435,16 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
       style={{ margin: '2px 0', cursor: 'pointer', userSelect: 'none' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
         <span style={{ color: '#888' }}>{open ? '▾' : '▸'}</span>
-        <span style={{ color: '#888' }}>工位區域</span>
+        {/* UNSAVED IS A STAR ON THE HEADING. (operator request, 2026-09-17)
+            Everything on this panel now applies to the running machine the
+            moment it is edited -- the station box and, since today, the clean
+            regions. So live and saved are genuinely different states, and the
+            one the operator cannot otherwise see is 'this machine is running'
+            'on something that is not in its file'. A restart would silently
+            undo it. One character, in front of the name, on the line that is
+            on screen anyway. */}
+        <span style={{ color: dirty ? '#d48806' : '#888', fontWeight: dirty ? 'bold' : 'normal' }}>
+          {dirty ? '*' : ''}工位區域</span>
         {/* WHETHER IT IS ENFORCING, and nothing else. (operator request, 2026-09-17)
             
             This line used to carry the geometry, the clean-region count and an
@@ -542,7 +563,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     {clean.map((c, i) => {
       const m = station && Array.isArray(station.clean)
         ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
-      const setC = (patch) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...patch } : x))));
+      const setC = (patch) => editClean(clean.map((x, k) => (k === i ? { ...x, ...patch } : x)));
       const measured = m && Number.isFinite(m.dark_area_mm2) ? m.dark_area_mm2 : undefined;
       return (
         <div key={i} style={{ borderLeft: '2px solid #ffab00', paddingLeft: 5, marginBottom: 3 }}>
@@ -557,7 +578,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
               {m.dirty ? '髒' : '淨'}{Number(m.dark_area_mm2).toFixed(3)}
             </span> : <span style={{ ...HINT, whiteSpace: 'nowrap' }}>
               {c.w > 0 ? '待影像' : '未框選'}</span>}
-            <Popconfirm title="刪除?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
+            <Popconfirm title="刪除?" onConfirm={() => editClean(clean.filter((_, k) => k !== i))}>
               <Button size="small" danger type="text" icon={<DeleteOutlined />}
                 style={{ padding: 0, width: 18, flex: '0 0 auto' }} />
             </Popconfirm>
@@ -597,7 +618,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
 
     <Row>
       <Button size="small" type="text" icon={<PlusOutlined />} style={{ padding: '0 4px' }}
-        onClick={() => edit(() => setClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }]))}>
+        onClick={() => editClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }])}>
         新增淨空區域</Button>
     </Row>
 

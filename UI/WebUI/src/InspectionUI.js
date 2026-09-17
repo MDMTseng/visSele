@@ -1731,6 +1731,15 @@ class ObjInfoList extends React.Component {
             // touches the station and nothing else, and never touches disk.
             this.props.WSCMD_CB("ST", 0, { InspRegionLive: region });
           }}
+          onApplyCleanLive={(list) => {
+            // The clean regions, live, on the same terms as the station box.
+            // Always the WHOLE set: the core replaces what it has with what
+            // arrives, so an empty array is how the last one gets cleared --
+            // unlike MachineSetting, where an ABSENT key means the same thing
+            // and a partial patch therefore wipes them by accident.
+            // Runtime only; the file still changes at 套用並存檔 alone.
+            this.props.WSCMD_CB("ST", 0, { CleanRegionsLive: Array.isArray(list) ? list : [] });
+          }}
           onBypass={(on) => {
             // Runtime only, and deliberately NOT part of the MachineSetting
             // patch above: that one gets written to machine_setting.json by
