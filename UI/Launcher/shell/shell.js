@@ -609,10 +609,6 @@ $('btnInstall').onclick = async () => {
 $('btnLogs').onclick = () => L.openFolder('logs');
 
 L.onLog(({ message }) => appendLog(message, 'lnc'));
-// The launcher pushes the question once, at start-up, after the shell has
-// loaded. Not polled: it is a question, not a state, and asking twice is how
-// you get two dialogs.
-L.onUpdateOffer((offer) => showUpdateOffer(offer));
 L.onCoreLine((line) => appendLog(line, line.startsWith('[err]') ? 'err' : undefined));
 L.onHealth(() => refresh());
 // --- the three-tap setup gate ------------------------------------------------
@@ -673,5 +669,23 @@ document.addEventListener('pointerdown', onGateTap, true);
 
 L.onReason((reason) => showReason(reason));
 
-refresh();
+// ASKED, NOT PUSHED.
+//
+// The launcher used to send the update question as an event the moment it had
+// worked one out, and it arrived before this script had registered a listener
+// for it -- so the modal simply never appeared, while every other part of the
+// path tested fine. Asking once we are up has no ordering to get wrong.
+//
+// Once per shell session, not per refresh: refresh runs every five seconds and
+// a dialog that reappears after being closed is not a question, it is a
+// hostage situation.
+let offerAsked = false;
+async function askOnce() {
+  if (offerAsked) return;
+  offerAsked = true;
+  try { const o = await L.updateOffer(); if (o) showUpdateOffer(o); }
+  catch (e) { appendLog('檢查更新失敗:' + e.message, 'err'); }
+}
+
+refresh().then(askOnce, askOnce);
 setInterval(refresh, 5000);

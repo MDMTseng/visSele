@@ -63,13 +63,6 @@ function send(channel, payloadObj) {
 function shellLog(message) {
   send('launcher:log', { at: Date.now(), message });
 }
-// The update question, pushed to the shell so it can raise a modal. Separate
-// channel from the log: a line in the log is something that happened, this is
-// something waiting on an answer.
-function shellPrompt(offer) {
-  send('launcher:updateOffer', offer);
-}
-
 function isDir(p) {
   try { return fs.statSync(p).isDirectory(); } catch { return false; }
 }
@@ -406,6 +399,11 @@ function assertShell(action) {
 // it without reading, which is how a speed bump stops being one.
 const UNLOCK_WORD = 'xception';
 let unlocked = false;
+// Checked AFTER the state guards, never before. The smoke test caught this:
+// selecting a missing version answered 'locked' instead of saying the version
+// was incomplete, because the bump was standing in front of the useful error.
+// It is not security, so it has no business hiding what is actually wrong --
+// it only has to make the final act deliberate.
 function assertUnlocked(action) {
   if (!unlocked) throw new Error(`${action} is locked -- unlock the launcher first`);
 }
@@ -499,15 +497,20 @@ function registerIpc() {
 
   ipcMain.handle('launcher:selectVersion', (_e, version) => {
     assertShell('selecting a version');
-    assertUnlocked('changing version');
+    // Before the bump, so a broken version says it is broken. Asking for a
+    // password and THEN reporting that the version was never installable is
+    // two wrong impressions in a row.
+    const v = apps.validate(version);
+    if (!v.ok) throw new Error(`${version} is incomplete: missing ${v.missing.join(', ')}`);
     assertStopped('changing version');
+    assertUnlocked('changing version');
     return { ok: true, version: updater.select(version) };
   });
 
   ipcMain.handle('launcher:chooseAndInstall', async () => {
     assertShell('installing an update');
-    assertUnlocked('installing an update');
     assertStopped('installing an update');
+    assertUnlocked('installing an update');
     const picked = await dialog.showOpenDialog(win, {
       title: 'Select update package',
       properties: ['openFile'],
@@ -693,8 +696,8 @@ function registerIpc() {
   // the file instead of the operator browsing to it.
   ipcMain.handle('launcher:installFromSource', async (_e, file) => {
     assertShell('installing an update');
-    assertUnlocked('installing an update');
     assertStopped('installing an update');
+    assertUnlocked('installing an update');
     const scan = updater.scanSource();
     const pkg = scan.packages.find((p) => p.file === file);
     // Never take a path from the renderer. It picks from the list the main
@@ -763,10 +766,9 @@ app.whenReady().then(async () => {
   createWindow();
   await showShell(null);
   if (cfg.loadError) shellLog(cfg.loadError);
-  // Ask, do not act. The shell raises the prompt; the core starts either way,
-  // on the version that is currently selected.
-  const offer = updateOffer();
-  if (offer) shellPrompt(offer);
+  // The shell ASKS for the update question once it is up (launcher:updateOffer).
+  // Pushing it from here raced the renderer's listener and the modal was simply
+  // never shown -- see the note in shell.js.
   await startCore();
 });
 
