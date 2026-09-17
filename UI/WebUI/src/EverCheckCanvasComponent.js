@@ -540,21 +540,64 @@ class EverCheckCanvasComponent_proto {
 
         //console.log(ti);
       }
+      // THE BROWSER GETS NONE OF THESE GESTURES.
+      //
+      // touch-action:none first, because it is the only part that works before
+      // any JavaScript runs: it tells the compositor not to pan or pinch-zoom
+      // this element, so a drag cannot start scrolling the page on the frame
+      // before the handler is reached. preventDefault alone cannot win that
+      // race -- the scroll has already begun by the time it is called.
+      //
+      // Then preventDefault on all three, with { passive: false } stated rather
+      // than relied on. touchmove already called it and got away with it only
+      // because a non-document element is still non-passive by default; that is
+      // a default, and defaults on this have moved before.
+      //
+      // touchstart matters for a reason that is not about scrolling: without it
+      // the browser ALSO synthesises a mouse event from the tap, and
+      // this.canvas.onmousedown is live -- so every touch ran onmousedown
+      // twice, once from touchStatus and once from the synthetic mousedown.
+      // It is also what stops double-tap zoom and the long-press menu, both of
+      // which a bench operator hits by accident within a shift.
+      this.canvas.style.touchAction = 'none';
+      this.canvas.style.webkitUserSelect = 'none';
+      this.canvas.style.userSelect = 'none';
+      // Kills the grey flash Chromium paints over a tapped element.
+      this.canvas.style.webkitTapHighlightColor = 'transparent';
+
       this.canvas.addEventListener("touchstart", (e) => {
         touchStatus(e);
-      }, false);
+        e.preventDefault();
+      }, { passive: false });
       this.canvas.addEventListener("touchmove", (e) => {
         touchStatus(e);
         e.preventDefault();
-      }, false);
+      }, { passive: false });
       this.canvas.addEventListener("touchend", (e) => {
         touchStatus(e);
-      }, false);
+        e.preventDefault();
+      }, { passive: false });
+      // A cancelled touch (the OS taking over -- a system gesture, a call) must
+      // leave the gesture state machine where a touchend would, or the next
+      // touch continues a drag the operator stopped making.
+      this.canvas.addEventListener("touchcancel", (e) => {
+        touchStatus(e);
+      }, { passive: false });
 
     }
 
 
-    this.canvas.addEventListener('wheel', this.onmouseswheel.bind(this), false);
+    // NOT passive: the wheel zooms the canvas, and without preventDefault the
+    // page scrolls at the same time -- and with ctrl held, Chromium zooms the
+    // whole UI instead, which on a bench leaves the operator looking at a
+    // 150%-scaled application with no obvious way back.
+    // Bound ONCE and kept. resourceClean() passed a fresh .bind(this) to
+    // removeEventListener, and bind returns a new function every call -- so the
+    // two below never matched the one registered here and the wheel listener
+    // was never actually removed. Noticed while making this listener
+    // non-passive; the leak predates that.
+    this._onWheelBound = this.onmouseswheel.bind(this);
+    this.canvas.addEventListener('wheel', this._onWheelBound, { passive: false });
 
     this.mouseStatus = { x: -1, y: -1, px: -1, py: -1, status: 0, pstatus: 0 };
 
@@ -600,7 +643,7 @@ class EverCheckCanvasComponent_proto {
   }
 
   resourceClean() {
-    this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    if (this._onWheelBound) this.canvas.removeEventListener('wheel', this._onWheelBound);
     this.releaseRawImg();
     log.debug("resourceClean......")
   }
@@ -883,7 +926,8 @@ class EverCheckCanvasComponent_proto {
     );
   }
   onmouseswheel(evt) {
-    //
+    // The zoom is ours; the browser's is not wanted on top of it.
+    evt.preventDefault();
     let ret_val = this.scaleCanvas(this.mouseStatus, evt.deltaY / 4);
     this.debounce_zoom_emit();
     return ret_val;
@@ -1542,7 +1586,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
  
   resourceClean() {
-    this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    if (this._onWheelBound) this.canvas.removeEventListener('wheel', this._onWheelBound);
     this.stream_img=null;
     log.debug("resourceClean......")
   }
