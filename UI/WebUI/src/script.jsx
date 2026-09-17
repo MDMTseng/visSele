@@ -15,6 +15,7 @@ import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
 import {CameraParamPanel} from './component/CameraParamPanel.jsx';
 import {CoreStatusPanel} from './component/CoreStatusPanel.jsx';
 import {DBStatusPanel} from './component/DBStatusPanel.jsx';
+import OrphanDefFinder from './component/OrphanDefFinder.jsx';
 
 // Ask the CAMERA what its trigger configuration is, right now.
 //
@@ -692,6 +693,8 @@ class APPMasterX extends React.Component {
         dispatch(act)
       },
       ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
+      // Plain payload, no BPG envelope -- what the DB sockets take.
+      ACT_WS_SEND_PLAIN: (id, data, return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id, data, return_cb)),
       ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
       ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
       ACT_System_Setting_Update: (sysSetting) => dispatch({type:"System_Setting_Update",data:sysSetting}),
@@ -702,6 +705,10 @@ class APPMasterX extends React.Component {
       showSM_graph: state.UIData.showSM_graph,
       stateMachine: state.UIData.sm,
       CORE_ID: state.ConnInfo.CORE_ID,
+      // For the orphan finder in the 設定DB modal: where the machine keeps its
+      // recipes, and where its database lives.
+      machine_custom_setting: state.UIData.machine_custom_setting,
+      edit_info: state.UIData.edit_info,
       Insp_DB_W_ID: state.ConnInfo.Insp_DB_W_ID,
       DefFile_DB_W_ID:state.ConnInfo.DefFile_DB_W_ID,
       CAM1_ID:state.ConnInfo.CAM1_ID,
@@ -1808,6 +1815,20 @@ class APPMasterX extends React.Component {
                       view_fn:()=><>
                         <DBStatusPanel id={_dbId} title={_title} connInfo={_ci}
                           getObj={(cb)=>this.props.ACT_WS_GET_OBJ(_dbId, cb)} />
+                        {/* Only on 設定DB. Orphans are a def problem, the fix is
+                            a def upload, and this is the socket it goes out on
+                            -- putting it under 檢測DB would be a control that
+                            does not belong to the link it is filed under. */}
+                        {_dbId === this.props.DefFile_DB_W_ID ? (
+                          <OrphanDefFinder
+                            machineSetting={this.props.machine_custom_setting}
+                            defFolder={(() => {
+                              const p = this.props.edit_info && this.props.edit_info.defModelPath;
+                              return p ? p.substr(0, p.lastIndexOf('/') + 1) : 'data/';
+                            })()}
+                            BPG_Channel={(...args) => this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, ...args)}
+                            DB_SEND={(data) => this.props.ACT_WS_SEND_PLAIN(_dbId, data)} />
+                        ) : null}
                         <details style={{marginTop:10}}>
                           <summary style={{cursor:"pointer", color:"#888"}}>連線資訊(原始)</summary>
                           <pre style={{maxHeight:240, overflow:"auto", fontSize:11}}>

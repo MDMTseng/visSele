@@ -194,6 +194,11 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   const dispatch = useDispatch();
   const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
   const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
+  // The DEF socket, and the sha of the def about to be inspected against.
+  const DefFile_DB_W_ID = useSelector(state => state.ConnInfo.DefFile_DB_W_ID);
+  const DefFile_DB_CONN_INFO = useSelector(state => state.ConnInfo.DefFile_DB_W_ID_CONN_INFO);
+  const defSha = useSelector(state => state.UIData.edit_info.DefFileHash);
+  const edit_info = useSelector(state => state.UIData.edit_info);
   const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
@@ -273,6 +278,135 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
 
   //   })
 
+  // IS THE DEF IN THE DATABASE? ASKED ONCE PER SHA.
+  //
+  // An inspection record carries the def's sha and nothing else about how it
+  // was judged; the def in the database is what makes it readable later. If the
+  // def was never uploaded, every record written against it is an ORPHAN --
+  // the numbers survive and attach to no specification, and the query screen
+  // says 設定檔已不在庫中.
+  //
+  // This is not hypothetical. HY_DB measured 231 orphan shas covering 322,640
+  // records (2.44%), still growing, and the machines at the top of the list
+  // this month are ours -- SAMP001, SLID001, SLID002, last seen today. The
+  // cause is exactly this: nothing ever asked.
+  //
+  // Per SHA, not per report. The same def measures hundreds of parts in a row
+  // and asking each time is waste, but a switch is the moment a new sha appears
+  // and is precisely when it has to be asked.
+  //
+  // It NEVER blocks the write. Losing inspection data is worse than orphaning
+  // it: an orphan can be adopted later by uploading the def, a record that was
+  // never written is gone. So this warns and nothing else.
+  const [defInDb, setDefInDb] = useState('unknown');   // unknown|known|missing|unreachable
+  const askedRef = useRef({ sha: undefined, warned: undefined });
+  const defDbConnected = GetObjElement(DefFile_DB_CONN_INFO,["type"])==="WS_CONNECTED";
+  useEffect(() => {
+    if (!defSha) { setDefInDb('unknown'); return; }
+    if (!defDbConnected) { setDefInDb('unreachable'); return; }
+    if (askedRef.current.sha === defSha) return;       // already answered for this def
+    askedRef.current.sha = defSha;
+    setDefInDb('unknown');
+    // The full envelope: the insert path still sends the legacy bare-payload
+    // shape, but db_action has to be stated or the server treats it as an
+    // insert -- which would write the sha string into DefineFile as a document.
+    WS_SEND(DefFile_DB_W_ID, { dbcmd: { db_action: 'exists' }, data: [defSha] })
+      .then((ret) => {
+        const missing = (ret && Array.isArray(ret.missing)) ? ret.missing : null;
+        if (missing === null) { setDefInDb('unreachable'); return; }
+        setDefInDb(missing.length ? 'missing' : 'known');
+      })
+      .catch(() => {
+        // A refused or dropped request is NOT "missing". Saying the def is
+        // absent because the question failed would send an operator to re-save
+        // a def that is already there, and teach them to ignore the warning.
+        setDefInDb('unreachable');
+        askedRef.current.sha = undefined;              // ask again on reconnect
+      });
+  }, [defSha, defDbConnected]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // PUSHING IT IS THE FIX; WARNING IS ONLY THE NOTICE.
+  //
+  // The def is generated the same way the save path generates it, because
+  // defFileGeneration is what stamps featureSet_sha1 -- so this uploads the
+  // document the sha actually names.
+  //
+  // And it is CHECKED against the sha we asked about. If the regenerated def
+  // hashes to something else then the def in memory is not the def the records
+  // are being written against, and uploading it would create a THIRD sha:
+  // one nobody asked about, one still missing, and a new document that adopts
+  // nothing. Refuse and say so instead -- that case is a different bug and
+  // hiding it under a successful-looking upload is how it would survive.
+  const pushDef = React.useCallback(() => {
+    let rep;
+    try { rep = defFileGeneration(edit_info); }
+    catch (e) {
+      Modal.error({ title: '無法產生設定檔', content: String(e && e.message || e) });
+      return;
+    }
+    if (rep.featureSet_sha1 !== defSha) {
+      Modal.error({
+        title: '設定檔對不上,沒有上傳',
+        width: 560,
+        content: (<div style={{ lineHeight: 1.9 }}>
+          <div>畫面上的設定檔重新產生後是另一個 sha,和正在檢驗的那一份不同。</div>
+          <div style={{ marginTop: 8 }}>
+            檢驗中 <code>{String(defSha).slice(0, 12)}…</code><br/>
+            重新產生 <code>{String(rep.featureSet_sha1).slice(0, 12)}…</code>
+          </div>
+          <div style={{ marginTop: 8, color: '#a8071a' }}>
+            上傳它只會多一份沒有人在用的設定檔,原本那一份還是缺的。請回設定畫面重新載入這個配方。
+          </div>
+        </div>),
+      });
+      return;
+    }
+    // Legacy bare-payload shape, the same one the save path and the inspection
+    // writer use -- the server reads a message with no dbcmd as an insert.
+    WS_SEND(DefFile_DB_W_ID, rep)
+      .then(() => {
+        setDefInDb('known');
+        message.success('設定檔已上傳,先前的檢驗資料也會接回來');
+      })
+      .catch((err) => {
+        Modal.error({
+          title: '設定檔上傳失敗',
+          content: (<div style={{ lineHeight: 1.9 }}>
+            <div>原因:{(err && err.message) ? err.message : '沒有回應'}</div>
+            <div style={{ marginTop: 8 }}>檢驗不受影響。可以再試一次,或回設定畫面存檔一次。</div>
+          </div>),
+        });
+      });
+  }, [edit_info, defSha, DefFile_DB_W_ID]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (defInDb !== 'missing') return;
+    if (askedRef.current.warned === defSha) return;    // one dialog per def
+    askedRef.current.warned = defSha;
+    Modal.confirm({
+      title: '這個設定檔不在資料庫裡',
+      width: 560,
+      okText: '立即上傳',
+      cancelText: '稍後再說',
+      onOk: pushDef,
+      content: (<div style={{ lineHeight: 1.9 }}>
+        <div><b>檢驗照常進行,資料不會遺失。</b></div>
+        <div style={{ marginTop: 8, color: '#a8071a' }}>
+          但這段時間寫進資料庫的檢驗資料<b>接不上任何規格</b> ——
+          報告本身不含判定依據,要靠資料庫裡的設定檔才能還原。
+          之後查這批報告會顯示「設定檔已不在庫中」。
+        </div>
+        <div style={{ marginTop: 8 }}>
+          按「立即上傳」就補上了,先前那些資料也會接回來。
+          回設定畫面存檔一次也有同樣效果。
+        </div>
+        <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+          sha1 {String(defSha).slice(0, 12)}…
+        </div>
+      </div>),
+    });
+  }, [defInDb, defSha]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   let isConnected=GetObjElement(Insp_DB_W_ID_CONN_INFO,["type"])==="WS_CONNECTED";
 
       
@@ -297,6 +431,14 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
       {dbQ.pending ? <><br/><b>待補傳 {dbQ.pending}</b> 已暫存、等連線</> : null}
       {dbQ.dropped ? <><br/><span style={{ color: '#ff7875' }}>
         <b>已丟棄 {dbQ.dropped}</b> 暫存已滿,這些筆數真的沒有了</span></> : null}
+      {/* The dialog is dismissed once and then gone; this is where the state
+          stays. Hidden while the answer is 'known' -- a line saying everything
+          is fine on every hover is a line that stops being read. */}
+      {defInDb === 'missing' ? <><br/><br/><span style={{ color: '#ff7875' }}>
+        <b>設定檔不在資料庫</b> 這些檢驗之後查不到判定依據 ——
+        <a onClick={pushDef} style={{ color: '#ff7875', textDecoration: 'underline' }}>立即上傳</a></span></> : null}
+      {defInDb === 'unreachable' ? <><br/><br/><span style={{ color: '#d48806' }}>
+        <b>設定檔存在與否未知</b> 問不到設定DB,不代表它不在</span></> : null}
     </div>
   );
 
