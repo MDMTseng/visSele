@@ -88,14 +88,39 @@ const HOLD = +arg('hold', 0) || 0;
 //   --screen go     1200x800   (default, Surface Go at 150%)
 //   --screen wide   1600x950   (what the benches used to use)
 //   --screen 1024x768
-const SCREENS = { go: [1200, 800], wide: [1600, 950] };
-const SCREEN = (() => {
-  const v = String(arg('screen', 'go'));
+// The tablets on the line are mounted BOTH WAYS, so portrait is not a curiosity
+// -- it is half the machines. At 800 px wide the sidebar takes 46% of the
+// screen instead of 30%, which is a different layout problem, not a narrower
+// version of the same one.
+const SCREENS = {
+  go:     [1200, 800],    // Surface Go, landscape, 1800x1200 at 150%
+  'go-p': [800, 1200],    // the same tablet stood up
+  wide:   [1600, 950],    // what the benches used before any of this
+};
+const parseScreen = (v) => {
   if (SCREENS[v]) return SCREENS[v];
-  const m = v.match(/^(\d+)x(\d+)$/);
+  const m = String(v).match(/^(\d+)x(\d+)$/);
   if (m) return [+m[1], +m[2]];
-  console.error(`unknown --screen "${v}" -- use go, wide, or WxH`);
+  console.error(`unknown screen "${v}" -- use ${Object.keys(SCREENS).join(', ')}, or WxH`);
   process.exit(2);
+};
+const SCREEN = parseScreen(String(arg('screen', 'go')));
+
+// --screens go,go-p,wide : during --hold, resize to each and shoot it.
+//
+// One run, one dataset, one session -- the only difference between the shots is
+// the window, which is what makes them comparable. Re-running the whole bringup
+// per size costs 40 s each and gives you a different set of parts every time.
+//
+// CAVEAT, and it is a real one: a resize is not a reload. Text truncation,
+// sidebar width and how many entries fit are all trustworthy this way. Anything
+// that sized itself once -- the canvas backing store, ecCanvas's transform, a
+// layout captured into useState -- may not re-derive, so judge the CANVAS only
+// from a run that started at that size.
+const SCREENS_LIST = (() => {
+  const v = arg('screens', '');
+  if (v === '' || v === true) return null;
+  return String(v).split(',').map((x) => [x.trim(), parseScreen(x.trim())]);
 })();
 // Seconds to keep watching AFTER the machine is up. A bring-up that checks
 // once and declares success is checking the easiest moment there is: the
@@ -944,7 +969,51 @@ if (haveBoard) {
 if (HOLD > 0) {
   console.log(`[hold] staying in the UI for ${HOLD}s -- drive inspections now`);
   await sleep(HOLD * 1000);
-  await shot('held');
+  if (SCREENS_LIST) {
+    for (const [name, [w, h]] of SCREENS_LIST) {
+      await page.setViewportSize({ width: w, height: h });
+      await sleep(1200);
+      // OUT TO THE MAIN UI AND BACK IN, at the new size.
+      //
+      // A resize alone moves the boxes but not the picture: the canvas sized its
+      // backing store and ecCanvas derived its transform when the Inspection UI
+      // mounted, and neither re-derives because the window changed. The first
+      // run of this loop produced three shots whose sidebars were right and
+      // whose images were all in the wrong place at the wrong scale.
+      //
+      // Leaving and re-entering remounts it, which is also what an operator
+      // does when they rotate the tablet, so it is the state worth
+      // photographing rather than a convenience.
+      if (!await clickIcon('anticon-arrow-left')) {
+        console.log(`[hold] ${name}: no way back to the main UI -- shooting the resize as-is`);
+      } else {
+        await sleep(2500);
+        // LEAVING CLEARS THE SELECTION. Coming back out drops 製程 and 檢測方式,
+        // and play then refuses with 「製程」至少要選 1 個 -- which arrives as a
+        // modal, so the next iteration cannot even find the back arrow and the
+        // whole loop photographs the main menu. Re-pick them, the same two the
+        // cold path picks.
+        await clickText(PROCESS);
+        await sleep(900);
+        await clickText(MODE);
+        await sleep(900);
+        if (!await clickIcon('anticon-caret-right')) {
+          console.log(`[hold] ${name}: could not re-enter the Inspection UI`);
+        } else {
+          await sleep(7000);
+          await page.evaluate(() => {
+            const x = document.querySelector('.ant-drawer-close');
+            if (x && x.offsetParent) x.click();
+          });
+          await sleep(1500);
+        }
+      }
+      console.log(`[hold] ${name} ${w}x${h}`);
+      await shot(`held_${name}_${w}x${h}`);
+    }
+  } else {
+    await shot('held');
+  }
 }
 
 await browser.close();
