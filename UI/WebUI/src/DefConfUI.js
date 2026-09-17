@@ -2572,40 +2572,41 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         report.name = fileName;
         ACT_DefFileName_Update(fileName);
       }
-      // The def goes to the database as well as to disk, and a failure here used
-      // to be a console.log nobody was reading.
+      // The def goes to the database as well as to disk, and the send is
+      // QUEUED, not fire-and-forget: DefFile_DB_W_ID is a DB_WS, the same class
+      // the inspection socket uses, so the record is written to IndexedDB
+      // before it is queued, replayed at construction after a reload, and
+      // deleted only when the insert is confirmed.
       //
-      // That silence is expensive in a specific way: an inspection REPORT does
-      // not carry the settings it was judged against. The def in the database is
-      // what makes an archived report interpretable later -- without it there is
-      // a verdict on record and no way to say what it meant. The local .def file
-      // is already written by the time this runs, so the save genuinely did
-      // succeed on this machine; only the shared half is missing. Say exactly
-      // that, and offer the retry, because a dropped socket is usually over by
-      // the time someone reads the dialog.
-      const pushDefToDB = (rep, pathForMsg, attempt = 1) => {
+      // Which is why there is no failure dialog here any more. There used to be
+      // one, hung on .catch, saying "本機檔案已經存好了,只有資料庫那一份沒有
+      // 送出" and offering a retry. It was wrong twice over: dataInfo.reject is
+      // never called anywhere in DB_WS, so that promise does not reject and the
+      // dialog could only ever appear if the in-memory queue refused the entry
+      // outright; and if it did appear it stated the opposite of the truth,
+      // because the record was already persisted and would go out by itself on
+      // reconnect. A dialog that tells an operator to act on something the
+      // machine is already handling teaches them to dismiss dialogs.
+      //
+      // What actually produced the orphan records was never a dropped send. It
+      // was that nothing ever ASKED whether the def was in the database before
+      // writing inspections against it -- see the exists check in
+      // InspectionUI's InspectionReportInsert2DB, and the orphan finder in the
+      // 設定DB panel for the ones already on record.
+      //
+      // The queue's own state is visible in that panel (待送、已丟棄), which is
+      // where a pending upload belongs: a number that is still true ten minutes
+      // later, not a modal that was true once.
+      const pushDefToDB = (rep, pathForMsg) => {
         DefFile_DB_SEND(rep)
-          .then((ret) => log.info("[def-db] uploaded", { path: pathForMsg, attempt }))
+          .then(() => log.info("[def-db] uploaded", { path: pathForMsg }))
           .catch((err) => {
-            const why = (err && err.message) ? err.message
-              : (typeof err === 'string' && err.length) ? err : '沒有回應';
-            log.warn("[def-db] upload failed", { path: pathForMsg, attempt, err: String(err) });
-            Modal.confirm({
-              title: '設定檔沒有上傳到資料庫',
-              content: (<div style={{ lineHeight: 1.9 }}>
-                <div><b>本機檔案已經存好了</b>（{pathForMsg}.{DEF_EXTENSION}），只有資料庫那一份沒有送出。</div>
-                <div style={{ marginTop: 8 }}>原因：{why}</div>
-                <div style={{ marginTop: 8, color: '#a8071a' }}>
-                  檢驗報告不包含當時的檢驗設定,要靠資料庫裡的設定檔才能還原一筆報告是依據什麼判定的。
-                  少了這一份,之後查這段時間的報告會查不出判定依據。
-                </div>
-                <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
-                  可以先確認右上角「設定DB」的連線狀態,再重試。
-                </div>
-              </div>),
-              okText: '重試上傳', cancelText: '先不上傳',
-              onOk: () => pushDefToDB(rep, pathForMsg, attempt + 1),
-            });
+            // Reachable only if the send could not be QUEUED at all -- the
+            // in-memory queue full, or a throw before persistence. Nothing to
+            // offer the operator here, so it is logged rather than dialogued;
+            // the panel's 待送/已丟棄 counters are the durable record of this.
+            log.error("[def-db] could not queue the def", {
+              path: pathForMsg, err: String(err) });
           });
       };
 
