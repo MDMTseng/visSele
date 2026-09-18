@@ -173,6 +173,30 @@ step_core() {
   warn "fast build: unstripped, not bundled. './dev.sh core full' before shipping."
 }
 
+# THE LAUNCHER IS CODE TOO, and nothing here was copying it.
+#
+# up_dev_server starts the PACKAGED launcher and points it at Vite, so a WebUI
+# edit appears in the window with no rebuild -- but the launcher's own shell
+# (its first page, its IPC, main.js) is baked into that .exe's resources/app.
+# Editing UI/Launcher and running up_dev_server therefore tested the OLD
+# launcher against the NEW WebUI, silently, which cost an afternoon of "the fix
+# is not there" on a fix that was.
+#
+# Same shape as install: replace the code, leave node_modules alone.
+step_launcher() {
+  local dst="$(dirname "$LAUNCHER")/resources/app"
+  [[ -d "$dst" ]] || die "no $dst -- is export_v2/launcher unpacked?"
+  for f in main.js preload.js; do
+    [[ -f "UI/Launcher/$f" ]] && cp "UI/Launcher/$f" "$dst/$f"
+  done
+  for d in shell src tools; do
+    [[ -d "UI/Launcher/$d" ]] || continue
+    rm -rf "${dst:?}/$d"
+    cp -r "UI/Launcher/$d" "$dst/$d"
+  done
+  ok "launcher code copied into $dst"
+}
+
 step_overlay() {
   # Never build an update out of a fast build: it would ship a 33 MB unstripped
   # exe next to whatever DLLs happened to be in Core/ already.
@@ -263,6 +287,9 @@ step_down_dev_server() {
 
 step_up_dev_server() {
   start_dev_server
+  # The launcher code goes with it. Without this, "edit and restart" quietly
+  # meant "the new WebUI against the launcher that was packaged weeks ago".
+  step_launcher
   [[ -f "$LAUNCHER" ]] || die "launcher not found at $LAUNCHER"
   stop_launcher_quiet
   say "starting the launcher against $DEV_URL"
@@ -352,6 +379,9 @@ ${B}dev.sh${N} -- build, install and run visSele
       ./dev.sh flash_uinspesp32 [COM3]
                                flash the uInsp ESP32             ${DIM}~35s${N}
       ./dev.sh overlay [sha]   zip Core + WebUI for the update   ${DIM}~5s${N}
+      ./dev.sh launcher        copy UI/Launcher into the packaged app ${DIM}instant${N}
+                               ${DIM}(needed for any launcher change -- up_dev_server
+                                runs the packaged launcher, not the source)${N}
 
   ${B}The app${N}
 
@@ -421,6 +451,7 @@ case "$CMD" in
   core)     if [[ "${1:-}" == "full" ]]; then timed "core build (full bundle)" "50s" step_core full
             else                              timed "core build" "25s" step_core; fi ;;
   overlay)  step_overlay "${1:-}" ;;
+  launcher) step_launcher ;;
   # Named for the board, not for the chip: this repo has a dozen ESP32
   # firmwares under Peripheral/ and "esp32" did not say which one.
   flash_uinspesp32) timed "uInspESP32 flash" "35s" step_flash_uinspesp32 "${1:-}" ;;
