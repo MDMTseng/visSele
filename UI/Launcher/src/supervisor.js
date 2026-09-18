@@ -304,11 +304,36 @@ class Supervisor extends EventEmitter {
     if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
   }
 
+    // A kill that fails silently is worse than one that fails: the launcher goes
+  // on to report a stopped application, every control that needs it stopped
+  // stays disabled, and the log holds no clue why. So this reports, and it
+  // reports by the only evidence that counts -- whether the process is gone.
   _forceKill(entry) {
-    if (entry.exited || !entry.child) return;
+    if (entry.exited || !entry.child) return Promise.resolve();
     const pid = entry.child.pid;
-    if (process.platform === 'win32') execFile('taskkill', ['/pid', String(pid), '/t', '/f'], () => {});
-    else { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+    if (process.platform !== 'win32') {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+      return Promise.resolve();
+    }
+    // Absolute path, not PATH. In a packaged Electron the environment is not
+    // the one a shell hands you, and a bare 'taskkill' that resolves to nothing
+    // fails with ENOENT -- which, with the old empty callback, was invisible.
+    const exe = process.env.SystemRoot
+      ? path.join(process.env.SystemRoot, 'System32', 'taskkill.exe') : 'taskkill';
+    return new Promise((resolve) => {
+      execFile(exe, ['/pid', String(pid), '/t', '/f'], (err, stdout, stderr) => {
+        if (err) {
+          this._record(`[launcher] taskkill ${pid} failed: ${err.code || err.message}`
+                     + `${stderr ? ' -- ' + String(stderr).trim() : ''}`);
+          // Last resort: Node's own TerminateProcess on the pid alone. It does
+          // not take the tree, but a dead primary is what unblocks the launcher.
+          try { process.kill(pid); } catch (e2) {
+            this._record(`[launcher] process.kill ${pid} also failed: ${e2.message}`);
+          }
+        }
+        resolve();
+      });
+    });
   }
 
   // Ask the way the application asked to be asked; then insist.
@@ -337,13 +362,25 @@ class Supervisor extends EventEmitter {
     const which = await Promise.race([allExited, timeout]);
     if (which === 'exited') return { stopped: true, forced: false };
 
-    this.lastStopWasForced = true;
+        this.lastStopWasForced = true;
     const stuck = [...this.children.values()].filter((e) => !e.exited);
     this._record(`[launcher] ${stuck.map((e) => e.spec.id).join(', ')} did not exit within `
                + `${this.cfg.values.shutdownTimeoutMs} ms -- FORCE KILLING. `
                + 'State written after this point may be incomplete.');
-    for (const e of stuck) this._forceKill(e);
+    await Promise.all(stuck.map((e) => this._forceKill(e)));
     await Promise.race([allExited, new Promise((r) => setTimeout(r, 3000))]);
+
+    // ASK THE PROCESS TABLE, DO NOT ASSUME. This used to return stopped:true
+    // unconditionally, so a kill that did not take was reported as a clean stop
+    // -- and the caller, and the operator, spent the next ten minutes looking
+    // at disabled buttons with nothing anywhere saying why.
+    if (this.running) {
+      const alive = [...this.children.values()].filter((e) => !e.exited);
+      const pids = alive.map((e) => `${e.spec.id}(pid ${e.child ? e.child.pid : '?'})`);
+      this._record(`[launcher] STILL RUNNING after force kill: ${pids.join(', ')}`);
+      this.stopping = false;   // nothing was stopped; do not stay in a stopping state
+      return { stopped: false, forced: true, stuck: pids };
+    }
     return { stopped: true, forced: true };
   }
 }

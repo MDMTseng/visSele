@@ -241,6 +241,9 @@ function planForDisplay(plan) {
 // overlap with a startup that was happening regardless; splashHoldMs only
 // guarantees a floor for the day the core answers quickly.
 let setupGate = null;
+// True between "the launcher came up with an update waiting" and "somebody
+// answered". The shell reads it to know that the start is ITS to release.
+let startHeld = false;
 
 // --- the good timer ----------------------------------------------------------
 //
@@ -435,7 +438,8 @@ function registerIpc() {
       // under pressure should not have to guess which is which.
       lastGood: apps.lastGood(),
       previous: apps.previousVersion(),
-      checkUpdates: cfg.checkUpdates,
+            checkUpdates: cfg.checkUpdates,
+      startHeld,
       unlocked,
       update: updater.scanSource(),
       // Per-version failures and skips -- the version list marks from this.
@@ -469,7 +473,8 @@ function registerIpc() {
                       : { canceled: false, filePaths: r.filePaths };
   });
 
-  ipcMain.handle('launcher:startCore', async () => {
+    ipcMain.handle('launcher:startCore', async () => {
+    startHeld = false;
     assertShell('starting the core');
     if (supervisor.running) return { ok: false, error: 'already running' };
     lastExit = null;
@@ -490,8 +495,16 @@ function registerIpc() {
     setupGate.armed = false;
     setupGate.requested = true;
     send('launcher:setupGate', null);
-    shellLog('進入設定模式 -- 停止核心,留在啟動器畫面');
-    await supervisor.stop();
+        shellLog('進入設定模式 -- 停止核心,留在啟動器畫面');
+    const r = await supervisor.stop();
+    if (!r.stopped) {
+      // The gate was consumed and the application is still up. Say so: every
+      // setup control keys off "core is running", so an operator who is told
+      // nothing sees the whole panel go dead for no stated reason.
+      const what = (r.stuck || []).join(', ');
+      shellLog(`核心停不下來(${what})-- 設定功能仍鎖住`);
+      return { ok: false, error: `核心沒有結束:${what}` };
+    }
     return { ok: true };
   });
 
@@ -766,10 +779,28 @@ app.whenReady().then(async () => {
   createWindow();
   await showShell(null);
   if (cfg.loadError) shellLog(cfg.loadError);
-  // The shell ASKS for the update question once it is up (launcher:updateOffer).
+    // The shell ASKS for the update question once it is up (launcher:updateOffer).
   // Pushing it from here raced the renderer's listener and the modal was simply
   // never shown -- see the note in shell.js.
-  await startCore();
+  //
+  // WHETHER TO START AT ALL IS DECIDED HERE, and there are three answers.
+  //
+  // The one that matters is the middle one. showApp() replaces the renderer, so
+  // starting the core takes the window away from the shell about three seconds
+  // in -- including the update question it is in the middle of asking. The
+  // dialog was computed, shown, and thrown away before anyone could read it,
+  // which is why a machine with an update waiting in its source folder would
+  // start the old version every morning and never mention it.
+  const waiting = updateOffer();
+  if (cfg.values.autoStart === false) {
+    shellLog('autoStart 為 false -- 停在啟動器畫面,不自動啟動');
+    } else if (waiting) {
+    startHeld = true;
+    shellLog(`有更新在等:${waiting.current || '(未指定)'} -> ${waiting.version}`
+           + ' -- 先問過再啟動');
+  } else {
+    await startCore();
+  }
 });
 
 // Closing the window stops the machine, so it goes through the same graceful

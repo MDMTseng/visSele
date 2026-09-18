@@ -31,6 +31,17 @@ const DEFAULTS = {
   // should be editing this file.
   splashHoldMs: 3000,
 
+    // Start the application as soon as the launcher is up.
+  //
+  // True on a machine on the line: power on, inspect, no one present to press
+  // anything. False is for a bench or a service visit, where the launcher IS
+  // the thing you came to use and starting the core just takes the window away.
+  //
+  // It is NOT the answer to "an update is waiting". That case is handled on its
+  // own below, because an operator who is about to be asked a question should
+  // not have the screen replaced while the question is still being computed.
+  autoStart: true,
+
   // Where installed application versions live, and the current.json that says
   // which one runs. Operator-settable: it may belong on a data drive, or be
   // shared between accounts. Defaults to <userData>/apps.

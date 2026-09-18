@@ -348,9 +348,14 @@ function showUpdateOffer(offer) {
     row.appendChild(el('span', null, `跳過這一版,不要再問 ${offer.version}`));
     b.appendChild(row);
   }, [
-    { label: '稍後再說', onClick: async () => {
+        { label: '稍後再說', onClick: async () => {
         if (skip) { try { await L.setSkipped(offer.version, true); } catch (e) { /* shown in log */ } }
-        closeModal(); refresh();
+        closeModal();
+        // The start was HELD for this question, so answering it has to release
+        // the hold -- otherwise "later" means the line stays down until someone
+        // finds the 啟動 button.
+        await startIfHeld();
+        refresh();
       } },
     { label: '安裝', primary: true, onClick: async () => {
         closeModal();
@@ -661,7 +666,17 @@ async function onGateTap() {
   gateDeadline = 0; taps = [];
   paintGate();
   const r = await L.requestSetup();
-  if (!r || !r.ok) appendLog(`[launcher] 設定模式未開啟:${(r && r.error) || '未知原因'}`, 'err');
+  if (!r || !r.ok) {
+    const why = (r && r.error) || '未知原因';
+    appendLog(`[launcher] 設定模式未開啟:${why}`, 'err');
+    // ON THE SCREEN, not only in the log. The operator who taps three times is
+    // standing at a machine; every setup control is about to grey out because
+    // the core is still up, and a line in a scrolling log is not an answer to
+    // "why did the panel die".
+    banner('bad', '設定模式未開啟', why + '\n'
+                 + '核心仍在執行,所以設定功能維持鎖住。可以先按「停止」,'
+                 + '停下來之後設定功能就會解開。');
+  }
 }
 // Capture phase, so a tap on a button counts too -- the operator is tapping the
 // screen, not aiming at anything.
@@ -683,8 +698,24 @@ let offerAsked = false;
 async function askOnce() {
   if (offerAsked) return;
   offerAsked = true;
-  try { const o = await L.updateOffer(); if (o) showUpdateOffer(o); }
+  let o = null;
+  try { o = await L.updateOffer(); }
   catch (e) { appendLog('檢查更新失敗:' + e.message, 'err'); }
+  if (o) { showUpdateOffer(o); return; }
+  // Nothing waiting: if the start was held for this check, let it go now.
+  await startIfHeld();
+}
+
+// The main process holds the start when it has an update to ask about, and
+// tells us so in the status. Releasing it is the shell's job, because the shell
+// is what asked the question.
+async function startIfHeld() {
+  try {
+    const st = await L.status();
+    if (!st || !st.startHeld || (st.core && st.core.running)) return;
+    appendLog('繼續啟動…', 'lnc');
+    await L.startCore();
+  } catch (e) { appendLog('啟動失敗:' + e.message, 'err'); }
 }
 
 refresh().then(askOnce, askOnce);

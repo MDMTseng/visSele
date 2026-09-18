@@ -100,6 +100,11 @@ td.act { text-align: right; }
 .tag.bad { color: var(--bad); border-color: #58262b; }
 
 .settings { display: grid; grid-template-columns: max-content 1fr auto; gap: 9px 14px; align-items: center; }
+/* The boot plan emits TWO cells per line, not three. In the shared three-column
+   grid every row after the first shifted by one, so the exe path landed in the
+   max-content key column and blew it out to the width of the path while the
+   arguments were squeezed into whatever was left. It is a two-column list. */
+#plan { grid-template-columns: max-content 1fr; }
 .settings .k { color: var(--ink-dim); font-size: 13px; }
 .settings .v { font-family: var(--mono); font-size: 13px; word-break: break-all; }
 
