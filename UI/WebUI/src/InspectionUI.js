@@ -194,14 +194,56 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   const dispatch = useDispatch();
   const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
   const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
-  // The DEF socket, and the sha of the def about to be inspected against.
+  // The DEF socket, and THE SHA THE RECORDS ARE ACTUALLY FILED UNDER.
+  //
+  // Taken from the report, not from edit_info.DefFileHash. Entering inspection
+  // legitimately alters the def -- 製程 margin overrides are merged and the
+  // display level is folded into quality_essential -- and the dispatch that
+  // carries the altered def back into the store re-derives the hash from it, so
+  // DefFileHash becomes the hash of something that exists in no file and no
+  // database row (measured 2026-09-17: 9a969c82db98 on load, c20045818573 after
+  // entering).
+  //
+  // The RECORDS are unaffected by that: the def sent to the core carries the
+  // pre-dispatch hash, the core copies it into every report as
+  // subFeatureDefSha1, and that is the key the row is stored under. So the
+  // question worth asking is the one the record itself answers -- is the sha
+  // THIS ROW will carry present in the database? -- and asking it of the store
+  // instead would have reported every def as missing forever.
   const DefFile_DB_W_ID = useSelector(state => state.ConnInfo.DefFile_DB_W_ID);
   const DefFile_DB_CONN_INFO = useSelector(state => state.ConnInfo.DefFile_DB_W_ID_CONN_INFO);
-  const defSha = useSelector(state => state.UIData.edit_info.DefFileHash);
+  const defSha = useSelector((state) => {
+    const ei = state.UIData.edit_info;
+    // InspFilingSha is stamped on entering inspection, from the hash that goes
+    // on the wire -- so it is available immediately and it is the key the rows
+    // will carry. See the note where it is set.
+    if (typeof ei.InspFilingSha === 'string' && ei.InspFilingSha.length === 40) {
+      return ei.InspFilingSha;
+    }
+    // Fallback: the reports themselves. Slower to arrive (there has to be a
+    // part first) but it is the same value read off the other end, so a session
+    // that somehow missed the stamp still gets asked about the right def.
+    const g = ei.reportStatisticState;
+    const tw = g && g.trackingWindow;
+    if (Array.isArray(tw)) {
+      for (let i = tw.length - 1; i >= 0; i--) {
+        const s0 = tw[i] && tw[i].subFeatureDefSha1;
+        if (typeof s0 === 'string' && s0.length === 40) return s0;
+      }
+    }
+    // NOT edit_info.DefFileHash. After entering inspection that is the hash of
+    // the altered def and appears in no database row, so asking about it would
+    // report every def as missing, forever.
+    return undefined;
+  });
   const edit_info = useSelector(state => state.UIData.edit_info);
   const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
+  // Reaches the DB_WS instance itself, for query() -- which is NOT send(). See
+  // the note on query() in script.jsx: send() wraps its argument in an insert
+  // envelope and writes it, so asking a question through it stores the question.
+  const WS_OBJ = (id,cb) => dispatch(UIAct.EV_WS_GET_OBJ(id,cb));
 
   // How much is waiting, and how much has been thrown away.
   //
@@ -295,6 +337,14 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   // and asking each time is waste, but a switch is the moment a new sha appears
   // and is precisely when it has to be asked.
   //
+  // Which also means the question is asked after the FIRST part rather than on
+  // entering: the sha is read off a report, and before there is a report there
+  // is nothing to ask about. Later than it sounds, but not too late -- the
+  // answer arrives within a part or two and an orphan stays adoptable
+  // afterwards. The alternative was asking about edit_info.DefFileHash, which
+  // after entering is the hash of the ALTERED def and appears in no database
+  // row, so every def would have reported missing, forever.
+  //
   // It NEVER blocks the write. Losing inspection data is worse than orphaning
   // it: an orphan can be adopted later by uploading the def, a record that was
   // never written is gone. So this warns and nothing else.
@@ -307,10 +357,20 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     if (askedRef.current.sha === defSha) return;       // already answered for this def
     askedRef.current.sha = defSha;
     setDefInDb('unknown');
-    // The full envelope: the insert path still sends the legacy bare-payload
-    // shape, but db_action has to be stated or the server treats it as an
-    // insert -- which would write the sha string into DefineFile as a document.
-    WS_SEND(DefFile_DB_W_ID, { dbcmd: { db_action: 'exists' }, data: [defSha] })
+    // query(), not send(). send() is the insert path: it wraps whatever it is
+    // handed in { dbcmd:{db_action:"insert"}, data } and persists it, so the
+    // first version of this asked the question THROUGH the insert queue and
+    // wrote an empty document into DefineFile for its trouble (2026-09-17
+    // 04:42:02Z, still there) -- while getting an insert ACK back with no
+    // `missing` in it, which read as 'unreachable' and showed the operator
+    // nothing. Both halves of that were silent.
+    new Promise((resolve, reject) => {
+      WS_OBJ(DefFile_DB_W_ID, (dbws) => {
+        if (!dbws || typeof dbws.query !== 'function') { reject(new Error('no db socket')); return; }
+        dbws.query({ dbcmd: { db_action: 'exists' }, data: [defSha] }).then(resolve, reject);
+      });
+      setTimeout(() => reject(new Error('exists timeout')), 12000);
+    })
       .then((ret) => {
         const missing = (ret && Array.isArray(ret.missing)) ? ret.missing : null;
         if (missing === null) { setDefInDb('unreachable'); return; }
@@ -443,8 +503,11 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   );
 
   return <Tooltip title={detail} placement="bottom">
-    <Button type="primary" size={"large"}
-      className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
+    {/* Middle, like everything else here. The toolbar's own note says large
+        buttons spend the width the numbers need, and this was the one button
+        exempting itself from that while carrying the most text. */}
+    <Button type="primary"
+      className={ "insp-db " + (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
       icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
         {/* Disconnected: the label only. The counters are what the link is
             doing, and while it is down the answer is "nothing, and none of it
@@ -452,9 +515,18 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
             wide red bar back down to four characters in a toolbar that is
             fighting for width, and every number is still one hover away. */}
         {isConnected
-          ? (LANG_DICT.connection.server_connected
-             + " " + _this.sendedCounter + "<" + _this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip
-             + (dbQ.pending ? "  待補傳 " + dbQ.pending : ""))
+          ? <>{LANG_DICT.connection.server_connected}
+              {/* Dropped below 900 px by the rule in basis.css. Exactly the
+                  trade the disconnected branch above already makes, and for
+                  the same reason: on a narrow bar these four numbers cost the
+                  width the CONTROLS need, and every one of them is still in
+                  the hover. */}
+              <span className="tb-num">
+                {" " + _this.sendedCounter + "<" + _this.sendCounter + ":"
+                     + _this.totalCounter + "/" + insert_skip
+                     + (dbQ.pending ? "  待補傳 " + dbQ.pending : "")}
+              </span>
+            </>
           : LANG_DICT.connection.server_disconnected}
         {/* Loud and separate. A discarded record is not a delayed one, and it
             must not read as another counter in the same grey run-on. */}
@@ -3231,6 +3303,28 @@ class APP_INSP_MODE extends React.Component {
       console.log("deffile",JSON.parse(JSON.stringify(deffile)));
       deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
 
+      // THE SHA THIS SESSION WILL FILE UNDER, kept where it can still be read.
+      //
+      // DefFileHash above is the hash of the file as loaded, and it is what
+      // goes on the wire, so the core stamps it into every report as
+      // subFeatureDefSha1 and every row lands under it.
+      //
+      // It does not survive in edit_info. Entering inspection legitimately
+      // alters the def -- 製程 overrides merged, display level folded into
+      // quality_essential -- and ACT_WS_Define_File_Update_EXPRESS above
+      // reloads edit_info from the altered def, which re-derives the hash from
+      // its contents. After that line both edit_info.DefFileHash and
+      // loadedDefFile.featureSet_sha1 are the hash of something that exists in
+      // no file and no database row (measured 2026-09-17: 9a969c82db98 became
+      // c20045818573).
+      //
+      // So it is stashed under its own name, at the one moment it is still
+      // true. Anything asking "which def are these records against?" reads
+      // this -- not DefFileHash, which after this point answers a different
+      // question, and answers it with a value nothing else in the system has
+      // ever seen.
+      this.props.ACT_EditInfo_Patch({ InspFilingSha: DefFileHash });
+
 
       // Shape-based matching needs its template, and the def carries only a
       // POINTER to it. Every other sender stamps that pointer (DefConfUI's
@@ -4172,7 +4266,8 @@ class APP_INSP_MODE extends React.Component {
     const graphOn = this.state.GraphUIDisplayMode !== 0;
     const roiArming = this.state.onROISettingCallBack !== undefined;
     let headerUI =
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+    <div className="insp-toolbar"
+         style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
 
       {/* ---- where am I ------------------------------------------------- */}
       <div style={TBGap}>
@@ -4398,6 +4493,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
+    ACT_EditInfo_Patch:(patch)=>dispatch(DefConfAct.EditInfo_Patch(patch)),
     ACT_WS_GET_OBJ: (api_id,callback)=>{
       // Peripheral APIs live in the module registry now (synchronous); the
       // Redux round-trip stays only for non-perif objects (DB_WS, Platform).

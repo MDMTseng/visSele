@@ -25,15 +25,37 @@ import Alert from 'antd/lib/alert';
 import Progress from 'antd/lib/progress';
 import Tag from 'antd/lib/tag';
 import message from 'antd/lib/message';
-import { SearchOutlined, CloudUploadOutlined, StopOutlined } from '@ant-design/icons';
-import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { SearchOutlined, CloudUploadOutlined, StopOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import * as BASE_COM from 'JSSRCROOT/component/baseComponent.jsx';
+import { DEF_EXTENSION, isSyncArtifact } from 'UTIL/BPG_Protocol';
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.orphan');
+const BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
+
+// Browsing FOR A FOLDER, so the files are noise: the answer is a directory and
+// every file listed is a row that cannot be the answer.
+//
+// Sync artefacts are dropped through isSyncArtifact rather than a rule of our
+// own -- Resilio's .sync folders and its partial/conflict files are not places
+// to scan, and the project already knows which those are.
+const folderOnlyFilter = (fileInfo) =>
+  !!fileInfo && fileInfo.type === 'DIR' && !isSyncArtifact(fileInfo);
 
 // The scan reads every def in the folder, which is the expensive part: a recipe
 // folder holds hundreds of files and each read is a round trip through the core.
 // So it is bounded and interruptible rather than fast.
 const FILE_CAP = 2000;
+
+// How far down to look. The core puts NO cap on this -- cJSON_DirFiles just
+// recurses while depth > 0 -- so the only reason for a number here is cost:
+// every level is more directories to walk before any file is read.
+//
+// It is a control rather than a constant because "not found" and "not looked
+// at" are the same picture on screen, and the difference matters: a def that
+// was never scanned reports as a def with no orphan, which is the one wrong
+// answer this panel must not give quietly. The scan says how deep it went and
+// whether anything was still nested at the bottom.
+const DEPTH_DEFAULT = 6;
 
 // The http base, derived from the ws url when the http one was never filled in.
 // Same host and port -- HY_DB serves both off 8085.
@@ -46,13 +68,19 @@ function httpBase(mus) {
 }
 
 export default function OrphanDefFinder({ machineSetting, defFolder, BPG_Channel, DB_SEND }) {
-  const [folder, setFolder]   = useState(defFolder || 'data/');
+  // data/sync is the Resilio-shared recipe folder -- where the fleet's defs
+  // actually live, and where the matches are. The loaded def's own folder wins
+  // when there is one, because that is the folder this machine is working in.
+  const [folder, setFolder]   = useState(defFolder || 'data/sync');
   const [busy, setBusy]       = useState('');
   const [prog, setProg]       = useState({ done: 0, total: 0 });
   const [err, setErr]         = useState(null);
   const [orphans, setOrphans] = useState(null);
   const [hits, setHits]       = useState([]);
   const [scanned, setScanned] = useState(0);
+  const [depth, setDepth]     = useState(DEPTH_DEFAULT);
+  const [deeper, setDeeper]   = useState(false);   // something sat at the floor
+  const [browsing, setBrowsing] = useState(false);
   const cancelRef = useRef(false);
 
   const base = httpBase(machineSetting);
@@ -93,15 +121,25 @@ export default function OrphanDefFinder({ machineSetting, defFolder, BPG_Channel
   // walks it (baseComponent.fList) rather than guessed at -- the first version
   // guessed, treated the whole thing as a plain nested object, and found zero
   // files in a folder that has plenty.
+  // Returns true when a directory was reached that the depth stopped us from
+  // opening -- i.e. there is more below than this scan saw.
   const collectDefs = (struct, out) => {
-    if (!struct || !Array.isArray(struct.files) || out.length >= FILE_CAP) return;
+    let truncated = false;
+    if (!struct || !Array.isArray(struct.files) || out.length >= FILE_CAP) return false;
     for (const f of struct.files) {
-      if (out.length >= FILE_CAP) return;
-      if (f.type === 'DIR') { collectDefs(f.struct, out); continue; }
+      if (out.length >= FILE_CAP) return truncated;
+      if (f.type === 'DIR') {
+        // A DIR with no struct is one the core did not descend into, which at
+        // this point can only be the depth running out.
+        if (!f.struct) { truncated = true; continue; }
+        if (collectDefs(f.struct, out)) truncated = true;
+        continue;
+      }
       if (String(f.name || '').toLowerCase().endsWith('.' + DEF_EXTENSION)) {
         out.push(struct.path + '/' + f.name);
       }
     }
+    return truncated;
   };
 
   const browse = (path, depth) => new Promise((resolve, reject) => {
@@ -129,13 +167,14 @@ export default function OrphanDefFinder({ machineSetting, defFolder, BPG_Channel
       if (!got.map.size) { setBusy(''); return; }
 
       setBusy('listing');
-      const tree = await browse(folder, 4);
+      const tree = await browse(folder, depth);
       // packet[0] is the structure; packet[1] carries the ACK. Reading the ACK
       // packet as the structure is what the first version did.
       const ok = Array.isArray(tree) && tree[1] && tree[1].data && tree[1].data.ACK;
       if (!ok) throw new Error('讀不到這個資料夾:' + folder);
       const files = [];
-      collectDefs(tree[0] && tree[0].data, files);
+      const cut = collectDefs(tree[0] && tree[0].data, files);
+      setDeeper(cut);
       if (!files.length) {
         setErr('這個資料夾裡沒有 .' + DEF_EXTENSION + ' 檔');
         setBusy(''); return;
@@ -228,9 +267,18 @@ export default function OrphanDefFinder({ machineSetting, defFolder, BPG_Channel
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Input size="small" style={{ flex: '1 1 240px', minWidth: 170 }}
+        <Input size="small" style={{ flex: '1 1 220px', minWidth: 160 }}
           value={folder} onChange={(e) => setFolder(e.target.value)}
           placeholder="配方資料夾" disabled={!!busy} />
+        <span style={{ fontSize: 12, color: '#888' }}>深度</span>
+        <Input size="small" style={{ width: 58 }} type="number" min={1} max={20}
+          value={depth} disabled={!!busy}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            setDepth(Number.isFinite(v) ? Math.max(1, Math.min(20, v)) : DEPTH_DEFAULT);
+          }} />
+        <Button size="small" icon={<FolderOpenOutlined />} disabled={!!busy}
+          onClick={() => setBrowsing(true)} title="瀏覽資料夾">瀏覽</Button>
         <Button size="small" type="primary" icon={<SearchOutlined />}
           loading={!!busy} disabled={!!busy} onClick={scan}>掃描</Button>
         {busy === 'reading' ? (
@@ -247,12 +295,33 @@ export default function OrphanDefFinder({ machineSetting, defFolder, BPG_Channel
         </div>
       ) : null}
 
+      {/* The same browser the def picker uses. Opened for a FOLDER, so it is
+          onOk -- the OK button reports where you are standing -- rather than
+          onFileSelected, which reports a file. searchDepth 1 because this is
+          navigation: the deep walk is the scan's job and doing it here would
+          make every click wait for it. */}
+      {browsing ? (
+        <BPG_FileBrowser key="orphan-browse" className="width8 modal-sizing"
+          searchDepth={1} path={folder || 'data/'} visible={true}
+          BPG_Channel={BPG_Channel}
+          onOk={(folderPath) => { if (folderPath) setFolder(folderPath); setBrowsing(false); }}
+          onCancel={() => setBrowsing(false)}
+          fileFilter={folderOnlyFilter}
+          onFileSelected={(filePath) => {
+            // Cannot happen while the filter hides files, but the browser owns
+            // that decision and this costs nothing: a file means its folder.
+            const cut = String(filePath).lastIndexOf('/');
+            if (cut > 0) setFolder(String(filePath).slice(0, cut));
+            setBrowsing(false);
+          }} />
+      ) : null}
+
       {err ? <Alert type="error" showIcon style={{ marginTop: 8 }} message={err} /> : null}
 
       {orphans && !busy ? (
         <div style={{ marginTop: 8, fontSize: 12 }}>
           資料庫有 <b>{orphans.total}</b> 個孤兒設定檔
-          {scanned ? <> · 本機掃過 <b>{scanned}</b> 個配方</> : null}
+          {scanned ? <> · 本機掃過 <b>{scanned}</b> 個配方（深度 {depth}）</> : null}
           {' · '}對上 <b style={{ color: hits.length ? '#a8071a' : undefined }}>{hits.length}</b> 個
           {hits.length && readyCount ? (
             <Button size="small" type="primary" style={{ marginLeft: 10 }}
@@ -261,6 +330,15 @@ export default function OrphanDefFinder({ machineSetting, defFolder, BPG_Channel
             </Button>
           ) : null}
         </div>
+      ) : null}
+
+      {/* Said out loud, because otherwise a folder that was never opened and a
+          folder with nothing in it produce the same screen -- and only one of
+          them means "no orphans here". */}
+      {deeper && !busy ? (
+        <Alert type="warning" showIcon style={{ marginTop: 8 }}
+          message={'深度 ' + depth + ' 沒有走到底'}
+          description="還有更深的資料夾沒有打開，裡面的配方等於沒有掃過。把深度調大再掃一次。" />
       ) : null}
 
       {hits.length ? (

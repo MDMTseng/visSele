@@ -1160,6 +1160,30 @@ class APPMasterX extends React.Component {
         return this.cQ.size();
       }
 
+      // A QUESTION, NOT A RECORD.
+      //
+      // send() exists to insert: it stamps
+      //   { dbcmd: { db_action: "insert" }, data }
+      // around whatever it is given, persists it to IndexedDB first, and retries
+      // it until the server confirms. Handing it a query therefore does the
+      // worst possible thing -- it wraps the question in an insert envelope and
+      // WRITES IT, so asking "is this def present?" created an empty document in
+      // DefineFile (2026-09-17T04:42:02Z, still there) and the caller got an
+      // insert ACK back instead of an answer.
+      //
+      // So queries go out here instead: straight down the tracked socket, no
+      // envelope of ours, no queue, no persistence. The reply is matched by
+      // req_id like any other and resolves this promise.
+      //
+      // Nothing durable about it, deliberately -- a question whose answer
+      // arrives after a reconnect is a question worth asking again, not one
+      // worth replaying.
+      query(obj)
+      {
+        if (!this.websocket) return Promise.reject(new Error("no socket"));
+        return this.websocket.send_obj({ ...obj });
+      }
+
       send(info)
       {
         dbLog.debug("[send-info]", info);
