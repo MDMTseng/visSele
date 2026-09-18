@@ -885,10 +885,28 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     UI_Stack.push(
       <div key="UI_Step0" className="s width12 height12 overlayCon" style={{background: "rgb(250,250,250)"}}>
         
-        <div className={twoPanelClass1} style={{padding: "10px",overflow:"scroll"}}>
+        {/* A full-height panel: it holds the tag display and the 製程 list, and it
+            is never the thing that scrolls -- the list inside it is. Flex column
+            so the list gets what is left after the display above it, rather than
+            asking for 100% of the whole panel and overflowing by the height of
+            its own sibling. Measured on the machine: the panel was over by 30 px
+            and grew a second scrollbar beside the list's own. */}
+        <div className={twoPanelClass1}
+             style={{padding: "10px", overflow: "hidden",
+                     display: "flex", flexDirection: "column", minHeight: 0}}>
           
-          <TagDisplay_rdx closable/>
-          <TagOptions_rdx className="s width12 HXA" size="middle" tagGroups={new_tagGroupsPreset}/>
+          {/* SELECTED ON TOP, THE PICKER IN THE MIDDLE, THE INPUT AT THE FOOT.
+              
+              Wrapped, because TagDisplay renders its tags as SIBLINGS rather
+              than inside one box -- so in a flex column each selected tag became
+              a flex item of its own and stretched to the full width, one per
+              row. The wrapper puts them back in normal flow and makes the group
+              a single item at its natural height. */}
+          <div style={{flex: "0 0 auto"}}>
+            <TagDisplay_rdx closable/>
+          </div>
+          <TagOptions_rdx className="s width12 HXA" size="middle"
+            tagGroups={new_tagGroupsPreset} newTagFooter/>
         </div>
         <ComponentBoundary name="MainCanvas" fallbackHeight="60vh">
           <CanvasComponent_rdx className={twoPanelClass2} showInspectionNote={showInspectionNote} />

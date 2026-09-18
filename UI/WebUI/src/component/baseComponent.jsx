@@ -23,7 +23,8 @@ import {
   LinkOutlined,
   DisconnectOutlined,
   FileOutlined,
-  FolderOutlined } from '@ant-design/icons';
+  FolderOutlined,
+  FolderFilled } from '@ant-design/icons';
 
 import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
@@ -429,6 +430,36 @@ export let DropDownWarp = React_createClass({
 
 
 
+// FOLDERS THIS OPERATOR KEEPS GOING BACK TO.
+//
+// The side list already had shortcuts, but they were fixed: whatever the caller
+// passed plus a hard-coded "data". A recipe folder three levels into a synced
+// share is exactly the kind of place that is tedious to reach and visited every
+// day, and nothing could put it there.
+//
+// localStorage, per browser, guarded on both ends -- the same shape the tag
+// shortcuts use. It stores paths and nothing else; a pinned folder that has
+// since been renamed or unmounted simply fails to open, the way typing that
+// path would.
+const LS_FAV_DIRS = 'visSele.filebrowser.favdirs.v1';
+function favDirsRead() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_FAV_DIRS) || '[]');
+    if (!Array.isArray(v)) return [];
+    // Normalise on the way in, not just on the way out: anything pinned before
+    // normDir learned about backslashes is stored with them, has no '/' to split
+    // on, and ends up labelled with its whole path instead of its folder name.
+    // (normDir is a function declaration below -- hoisted, so this is fine.)
+    return v.filter((x) => typeof x === 'string' && x).map(normDir);
+  } catch (_) { return []; }
+}
+function favDirsWrite(list) {
+  try { localStorage.setItem(LS_FAV_DIRS, JSON.stringify(list)); } catch (_) { /* no-op */ }
+}
+// Trailing slashes are noise here: "data/sync" and "data/sync/" are the same
+// place, and storing both would put it in the list twice.
+function normDir(p) { return String(p || '').replace(/\\+/g, '/').replace(/\/+$/, ''); }
+
 export function BPG_FileBrowser_varify_info(fileInfo)
 {
 
@@ -534,6 +565,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       folderStruct:{},
       history:["./"],
       searchText:undefined,
+      favDirs:favDirsRead(),
       searchFolderStruct:undefined,
       selectedFileGroupInfo:undefined
     }
@@ -661,12 +693,12 @@ export class BPG_FileBrowser_proto extends React.Component{
     let fileList;
     let tableWidthClass = "width10"
 
-    let Col_file_Type={
+            let Col_file_Type={
       title: "type",
       dataIndex: "type",
       key:"type",
-      render:(text, record) => 
-        (text=="DIR")?<FolderOutlined />:<FileOutlined />,
+      render:(text, record) =>
+        (text=="DIR")?<FolderFilled className="fb-dir-ico"/>:<FileOutlined className="fb-file-ico"/>,
       width:64
     }
 
@@ -678,18 +710,18 @@ export class BPG_FileBrowser_proto extends React.Component{
     }
 
 
-    let Col_file_Path={
+            let Col_file_Path={
       title: 'path',
       dataIndex: 'path',
       key:'path',
     }
 
 
-    let Col_file_modified_time_ms={
+            let Col_file_modified_time_ms={
       title: 'mtime_ms',
       dataIndex: 'mtime_ms',
       key:'mtime_ms',
-      render:(millisecond, record) => 
+      render:(millisecond, record) =>
         (typeof millisecond === 'number') ? dateFormat(new Date(millisecond), "yyyy/mm/dd hh:mm:ss") : '',   // catalogue entries carry no mtime
       sorter:(a, b) => a.mtime_ms>b.mtime_ms
     }
@@ -699,7 +731,9 @@ export class BPG_FileBrowser_proto extends React.Component{
       title: 'size',
       dataIndex: 'size',
       key:'size',
-      sorter:(a, b) => a.size_bytes>b.size_bytes
+      // fList turns size_bytes into the display string; the sort still reads the
+      // raw number, which is the only way it orders 9 kB before 1 MB.
+      sorter:(a, b) => (a.size_bytes||0)-(b.size_bytes||0)
     }
 
     
@@ -784,15 +818,35 @@ export class BPG_FileBrowser_proto extends React.Component{
         
   
 
-      pathSplitBtns=<>
+                  const _curDir = normDir(this.state.folderStruct && this.state.folderStruct.path);
+      const _isFav = (this.state.favDirs || []).includes(_curDir);
+                  pathSplitBtns=<>
         <AntButton type="primary" icon={<LeftOutlined />}  style={{float:"left"}} onClick={()=>this.goDir()}/>
+        {/* Pins WHERE YOU ARE. A shortcut list you can only edit somewhere else
+            is a list nobody edits: the moment the folder is worth keeping is the
+            moment you are standing in it. */}
+        {_curDir ? (
+                              <AntButton type="text" style={{float:"left"}}
+            title={_isFav ? '取消常用資料夾' : '設為常用資料夾'}
+            onClick={()=>{
+              const next = _isFav
+                ? this.state.favDirs.filter((d)=>d!==_curDir)
+                : [_curDir, ...(this.state.favDirs||[])];
+              favDirsWrite(next);
+              this.setState({...this.state, favDirs: next});
+            }}>
+                                    <span style={{ color: _isFav ? '#faad14' : '#bfbfbf', fontSize: 15 }}>
+              {_isFav ? '★' : '☆'}
+            </span>
+          </AntButton>
+        ) : null}
         &nbsp;&nbsp;&nbsp;
-        
+
         {curPathArr.map((folder,idx)=>
-          <>
-            <AntButton key={folder.name+"_"+idx}  type="link" onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
+          <React.Fragment key={folder.name+"_"+idx}>
+            <AntButton type="link" className="fb-crumb" onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
             /
-          </>
+          </React.Fragment>
         )}
       </>
     }
@@ -803,10 +857,36 @@ export class BPG_FileBrowser_proto extends React.Component{
       let customfileStruct=(this.props.fileGroups===undefined)?[]:[...this.props.fileGroups];
       
       customfileStruct.push({name:"data",path:"./data/"});
+
+                  // The shortcuts hang below "data", in the order they were pinned, each
+      // named by its own folder. A label only grows a parent when it would
+      // otherwise collide with another shortcut, one level at a time until they
+      // differ -- paying for the parent on every row is what makes the list
+      // unreadable. The full path is on hover either way.
+      const _favList = this.state.favDirs || [];
+      const _favSeg = _favList.map((f) => normDir(f).split('/').filter(Boolean));
+      const _favDepth = _favSeg.map(() => 1);
+      for (let pass = 0; pass < 6; pass++) {
+        const seen = {};
+        const label = (i) => _favSeg[i].slice(-_favDepth[i]).join('/');
+        _favSeg.forEach((_, i) => { const k = label(i); (seen[k] = seen[k] || []).push(i); });
+        let grew = false;
+        Object.keys(seen).forEach((k) => {
+          if (seen[k].length < 2) return;
+          seen[k].forEach((i) => {
+            if (_favDepth[i] < _favSeg[i].length) { _favDepth[i]++; grew = true; }
+          });
+        });
+        if (!grew) break;
+      }
+      _favList.forEach((f, i) => {
+        const name = _favSeg[i].slice(-_favDepth[i]).join('/') || f;
+        customfileStruct.push({ name, path: f, title: f, fav: true });
+      });
     
     
       fv_UI.push(
-      <div className="s height12 width2 scroll" key="sideMenu">
+                  <div className="s height12 width2 scroll fb-side" key="sideMenu">
         <Menu
           onClick={(evt)=>{
             if(evt.item.props.list!==undefined)
@@ -824,11 +904,13 @@ export class BPG_FileBrowser_proto extends React.Component{
             if(evt.item.props.path!==undefined)
               this.goDir(evt.item.props.path);
           }}
-          mode="inline"
+                              mode="inline"
         >
           {
             customfileStruct.map((group,idx)=>
-              <Menu.Item key={group.name+"_"+idx} path={group.path} list={group.list} groupidx={idx}>{group.name}</Menu.Item>)
+                            <Menu.Item key={group.name+"_"+idx} path={group.path} list={group.list}
+                groupidx={idx} title={group.title || group.name}
+                className={group.fav ? 'fb-fav' : undefined}>{group.name}</Menu.Item>)
           }
         </Menu>
       </div>);
@@ -836,13 +918,13 @@ export class BPG_FileBrowser_proto extends React.Component{
 
     }
 
-    titleRender=<>
-    
+            titleRender=<>
+
       {pathSplitBtns}
       <br/>
       {
         (this.props.searchDepth>=0 || this.props.searchDepth===undefined)?
-          <Input.Search key={"Search"} className="width3"  allowClear  style={{float:"left"}}
+                              <Input.Search key={"Search"} className="width3"  allowClear  style={{float:"left"}}
           size="middle" value={this.state.searchText} placeholder="Search" 
           onChange={(evt)=>{
             if(this.state.searchFolderStruct===undefined)
@@ -869,7 +951,7 @@ export class BPG_FileBrowser_proto extends React.Component{
           }}/>:null
       }
       
-      <Divider type="vertical"  style={{float:"left"}}/>
+                  <Divider type="vertical"  style={{float:"left"}}/>
       <AntButtonGroup  style={{float:"left"}}>
       {
         this.props.additionalFuncs===undefined?null:
@@ -881,16 +963,16 @@ export class BPG_FileBrowser_proto extends React.Component{
           </AntButton>)
       }
       </AntButtonGroup>
-      
+
     </>
 
 
 
     fv_UI.push(
-      <div className={"height12 scroll "+tableWidthClass} key="folderView">
+                  <div className={"height12 scroll "+tableWidthClass} key="folderView">
         {(this.state.selectedFileGroupInfo !== undefined && this.state.selectedFileGroup && this.state.selectedFileGroup.header)
           ? <div key="groupHeader" style={{ padding: '4px 8px' }}>{(typeof this.state.selectedFileGroup.header === 'function') ? this.state.selectedFileGroup.header() : this.state.selectedFileGroup.header}</div> : null}
-        <Table key="fileList"
+                        <Table key="fileList"
           onRow={(file) => ({
             onClick: (evt) => { 
               if(file.type!="DIR")

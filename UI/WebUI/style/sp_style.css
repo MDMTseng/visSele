@@ -61,6 +61,12 @@
   /* 1 and it will fill whole space left if no flex value are set to other children*/
   /* background: gold; */
   overflow: auto;
+  /* A flex item's min-height defaults to auto -- "at least as tall as my
+     content" -- which stops this box shrinking to its flex share. Kept because
+     it is correct, though it was not what caused the six pixels of overflow
+     here: that was the canvas sitting on a text baseline. See the canvas rule
+     in basis.css. */
+  min-height: 0;
 }
 
 .flex_footer {
