@@ -254,10 +254,34 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // only consulted when there is no truth to be had, and it never suppresses a
   // report that disagrees (which is how another browser's change, or a core
   // restart that cleared the flag, shows up here).
+  //
+  // "Until a report can answer" means until a report arrives that is NEWER THAN
+  // THE CLICK -- not merely until one has ever arrived. Keying it on the latter
+  // made the switch dead in the ordinary case: once any inspection has run, the
+  // last report sits in the store forever, so `reported` was never null and
+  // always beat the echo, while `area_bypass` in it could only change when a
+  // new object came through. Toggle the switch with the line idle and nothing
+  // moved. The report object is replaced wholesale on every update, so its
+  // identity is the clock: the first station object that is not the one we were
+  // looking at when the operator clicked is the first one that can have heard
+  // about the click.
   const [bypassEcho, setBypassEcho] = useState(false);
+  const echoSince = useRef(null);      // the station object present at click time
+  const echoing = useRef(false);
+  if (echoing.current && station !== echoSince.current) {
+    // A newer report exists; it is the truth again, whatever it says.
+    echoing.current = false;
+    echoSince.current = null;
+  }
   const reported = station ? !!station.area_bypass : null;
-  const bypassed = reported !== null ? reported : bypassEcho;
-  const bypassUnconfirmed = reported === null;
+  const bypassed = echoing.current || reported === null ? bypassEcho : reported;
+
+  const askBypass = (v) => {
+    echoSince.current = station;
+    echoing.current = true;
+    setBypassEcho(v);
+    if (onBypass) onBypass(v);
+  };
   const origin = (station && Array.isArray(station.roi_origin))
     ? { x: Math.round(station.roi_origin[0]), y: Math.round(station.roi_origin[1]) }
     : ORIGIN_UNKNOWN;
@@ -480,13 +504,14 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // latches it until restart -- left on. The switch shows what is happening.
   const bypassRow = (
     <Row>
-      <Switch size="small" checked={bypassed}
-        onChange={(v) => { setBypassEcho(v); if (onBypass) onBypass(v); }} />
+      <Switch size="small" checked={bypassed} onChange={askBypass} />
       <span style={{ fontSize: 12, color: bypassed ? '#c33' : '#888' }}>暫停區域判定</span>
-      {/* Says which of the two it is showing. Without this the switch cannot
-          distinguish "the core confirms this" from "nobody has reported yet". */}
-      {bypassUnconfirmed ? (
-        <span style={{ fontSize: 11, color: '#888' }}>(未執行檢測,尚無回報)</span>
+      {/* Which of the two the switch is showing: the core's own answer, or what
+          was just asked for and not yet confirmed by a report. */}
+      {echoing.current || reported === null ? (
+        <span style={{ fontSize: 11, color: '#888' }}>
+          {station ? '(等待下一次檢測回報)' : '(未執行檢測,尚無回報)'}
+        </span>
       ) : null}
       <Q>
         暫時停用<b>工位框</b>與<b>淨空區域</b>兩項判定,讓不在工位上的影像也能量測。<br/><br/>
@@ -503,17 +528,6 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     {header}
 
     {bypassRow}
-    {/* Stated as a banner and not just a switch position: while this is on the
-        machine is not doing the job the station exists for. It also has to say
-        the overlay is gone -- an empty image is otherwise indistinguishable
-        from a station that was never set up. */}
-    {bypassed ? (
-      <div style={{ fontSize: 11, color: '#c33', border: '1px solid #c33',
-                    borderRadius: 3, padding: '3px 6px', margin: '3px 0' }}>
-        工位框與淨空區域<b>目前不生效</b>,畫面上的框也一併隱藏(設定仍在,按「拉框設定」
-        會暫時顯示)。核心重啟即恢復。
-      </div>
-    ) : null}
 
     <Row>
       {aimBtn('region', '拉框設定')}
