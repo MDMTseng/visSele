@@ -3788,7 +3788,44 @@ m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
   // RC{target:"calib_files_load", ...} with the paths it wants.
 }
 
-void m_BPG_Protocol_Interface::delete_PeripheralChannel()
+// DOES THIS PORT EXIST -- without opening it.
+//
+// Opening is not a probe on this hardware. On Windows opening a COM port
+// asserts DTR/RTS, which is wired to EN on the ESP32 dev board, so "try it and
+// see" reboots the sorter every time it is tried -- the exact reset the reuse
+// path above exists to avoid. QueryDosDevice only resolves the name in the
+// object manager: no handle, no line state, microseconds.
+//
+// The answer is deliberately narrow. It says the name resolves, not that the
+// board is alive or that the port is free -- another process may hold it. It is
+// enough for the case it is here for: a port that is simply not there, because
+// the board is unplugged or enumerated as a different COM number, which is what
+// made the core tear down and rebuild the channel every 50 seconds forever.
+// The last connection description refused for a missing port, so the refusal is
+// logged on the transition and not on every 3-second retry. Touched only from
+// the WS command thread, which is the only caller of either function.
+static char g_perifLastRefused[160] = "";
+void perif_forget_last_refusal() { g_perifLastRefused[0] = 0; }
+
+static bool perif_uart_port_exists(const char *uart_name)
+{
+  if (uart_name == NULL || uart_name[0] == 0) return false;
+#ifdef _WIN32
+  // Accept both COM7 and the \\.\COM7 form the config may carry;
+  // QueryDosDevice wants the bare name.
+  const char *nm = uart_name;
+  if (strncmp(nm, "\\\\.\\", 4) == 0) nm += 4;
+  char targets[1024];
+  if (QueryDosDeviceA(nm, targets, (DWORD)sizeof(targets)) != 0) return true;
+  // ERROR_INSUFFICIENT_BUFFER means the name DID resolve, to something longer
+  // than we asked for. Only "file not found" is a real absence.
+  return GetLastError() != ERROR_FILE_NOT_FOUND;
+#else
+  return access(uart_name, F_OK) == 0;
+#endif
+}
+
+void m_BPG_Protocol_Interface::delete_PeripheralChannel(const char *why)
 {
 
   // Under the TX lock. Three threads write through perifCH -- PerifSendThread,
@@ -3818,9 +3855,22 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
     doomed = perifCH;
     perifCH = NULL;
   }
-  if (doomed)
+  // SAY NOTHING WHEN NOTHING HAPPENED.
+  //
+  // "DELETED..." was printed unconditionally, including on the calls where
+  // perifCH was already NULL and this function did not do a thing. On a machine
+  // with no board that is the ONLY thing it ever printed, once per connect
+  // attempt, forever: a screen of identical lines reporting an event that never
+  // occurred, with the one line that would have meant something (DELETING)
+  // absent precisely because nothing was there to delete.
+  if (!doomed)
   {
-    LOGI("DELETING");
+    LOGD("perif: %s asked to release the channel; there is none", why);
+    return;
+  }
+  {
+    LOGI("perif: releasing the channel to %s (%s)",
+         doomed->conn_desc[0] ? doomed->conn_desc : "(no desc)", why);
     // Ask before freeing. Everything else that writes through this channel
     // re-reads perifCH under perif_tx_lock and is therefore already safe after
     // the swap above; the synth sender captured `this` instead and is not.
@@ -3832,7 +3882,7 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
            "through `this` is a use-after-free. One abandoned channel is the "
            "cheaper failure. Only reachable with INSP_CAM_TS_SYNTH.");
   }
-  LOGI("DELETED...");
+  LOGI("perif: channel released (%s)", why);
 }
 
 
@@ -8048,11 +8098,38 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           }
           else
           {
+            // ASK BEFORE DEMOLISHING.
+            //
+            // delete_PeripheralChannel() used to run first and the open second,
+            // so a CONNECT naming a port that is not there destroyed a channel
+            // and built nothing -- and the client retries, so this repeated for
+            // as long as the board stayed unplugged. The log showed a screen of
+            // bare "DELETED..." lines about 50 s apart and nothing about why.
+            if (uart_name != NULL && !perif_uart_port_exists(uart_name))
+            {
+              // ONCE PER SITUATION, not once per attempt.
+              //
+              // The client retries every 3 s, so logging this on every refusal
+              // filled the operator's log with one sentence and pushed
+              // everything else off the screen. The reason travels to the panel
+              // in err_str below, which is where somebody is actually looking;
+              // the log only needs to mark the transition. A different port, or
+              // a connect that succeeds in between, makes it new again.
+              if (strcmp(g_perifLastRefused, desc) != 0)
+              {
+                snprintf(g_perifLastRefused, sizeof(g_perifLastRefused), "%s", desc);
+                LOGE("perif CONNECT: %s is not present -- refusing without "
+                     "touching the current channel (further attempts on this "
+                     "port are silent)", desc);
+              }
+              snprintf(err_str, sizeof(err_str), "%s 不存在", uart_name);
+              break;
+            }
             if (sameDesc)
               LOGE("perif CONNECT: same port %s but the link is suspect "
                    "(tx_fail:%d) -- reopening instead of reusing", desc,
                    g_perifTxFail.load());
-            delete_PeripheralChannel();
+            delete_PeripheralChannel("CONNECT: reopening the port");
             if(uart_name != NULL)
             {
               try{
@@ -8062,7 +8139,10 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
 
               }
               catch(std::runtime_error &e){
-
+                // Swallowed silently before. The channel is already gone by
+                // this point, so this is the only line that can say why the
+                // client is about to be told nothing opened.
+                LOGE("perif CONNECT: opening %s failed: %s", desc, e.what());
               }
             }
             else if(IP != NULL)
@@ -8073,6 +8153,7 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
 
               }
               catch(std::runtime_error &e){
+                LOGE("perif CONNECT: connecting %s failed: %s", desc, e.what());
               }
             }
           }
@@ -8081,6 +8162,7 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           {
             if(!reuse)
             {
+              perif_forget_last_refusal();
               perifCH=new PerifChannel();
               perifCH->ID=avail_CONN_ID;
               perifCH->setDLayer(PHYLayer);
@@ -8265,7 +8347,7 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
 
           if(CONN_ID==-1 || perifCH->ID == CONN_ID)
           {//disconnect
-            delete_PeripheralChannel();
+            delete_PeripheralChannel("DISCONNECT from the client");
             session_ACK = true;
             // Same event-driven push as CONNECT: the watcher's 1s sample can
             // miss a disconnect that something reconnects right away.
@@ -13669,7 +13751,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
                "the channel");
         }
 
-        bpg_pi.delete_PeripheralChannel();
+        bpg_pi.delete_PeripheralChannel("the last WS client closed");
       }
       MT_UNLOCK("ws CLOSING");
     }

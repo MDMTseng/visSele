@@ -760,6 +760,20 @@ const Why = ({ children }) => (
 // display:none rather than unmounting, so a half-typed value in a section is
 // still there when it is reopened -- several of these hold working copies
 // (the stage-timing table's spoDraft) that a remount would discard.
+// CLOSED MEANS NOT BUILT, not built and then hidden.
+//
+// This used to keep the body mounted and set display:none on it, so all seven
+// cards' contents -- about 1100 lines of JSX, most of it antd inputs and
+// tables -- were constructed and reconciled on every render of the panel, for
+// content nobody could see. The panel re-renders on each 1 s poll and on every
+// link publish, and a profile caught it costing 62 ms per render, 85 ms at
+// worst: more than every other piece of our own code in the capture combined.
+//
+// Children are dropped while closed. Their own local state goes with them,
+// which is the right behaviour here: every field in these cards is bound to
+// state held by the panel, and the two things that are not (a half-typed
+// number, a nested card's open flag) are not worth the frame budget to
+// preserve behind a closed lid.
 const FoldCard = ({ title, defaultOpen = false, style, extra, children }) => {
   const [open, setOpen] = useState(!!defaultOpen);
   return (
@@ -774,7 +788,7 @@ const FoldCard = ({ title, defaultOpen = false, style, extra, children }) => {
           <span style={{ flex: 1, minWidth: 0 }}>{title}</span>
         </span>
       }>
-      {children}
+      {open ? children : null}
     </Card>
   );
 };
@@ -1313,6 +1327,14 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
     <div style={{ minWidth: 460 }}>
       <div style={{ marginBottom: 8 }}>
         <Tag color={connected ? 'green' : 'red'}>{connected ? '已連線' : '未連線'}</Tag>
+        {/* WHY it is not connected, when the core said. The core refuses a
+            CONNECT to a port that is not there, and it used to say so only in
+            its log -- once per retry, which is once every three seconds, which
+            is why it is no longer in the log. It belongs here: this panel is
+            where somebody is looking when the device is missing. */}
+        {!connected && CONN && CONN.refusal ? (
+          <Tag color="red">{CONN.refusal}</Tag>
+        ) : null}
         <Tag color={inError ? 'red' : running ? 'blue' : 'default'}>
           {stat ? stateName(stat.state, names) : "—"}
         </Tag>

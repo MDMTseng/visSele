@@ -130,6 +130,8 @@ export function linkToLegacyConn(l) {
     type: (l.state === 'CONNECTED' || l.state === 'SUSPECT') ? 'WS_CONNECTED' : 'WS_DISCONNECTED',
     suspect: l.state === 'SUSPECT',
     machineStatus: l.machineStatus,
+    // Why the core would not open the link, when it said. Shown by the panel.
+    refusal: l.refusal,
     machineSetup: l.machineSetup,
     deviceState: l.deviceState,
     runningStat: l.runningStat,
@@ -364,11 +366,43 @@ export class Perif_API_Base {
     this.inReconnection = true;
     // Not every machine keeps its configuration on the host. See
     // loadSettingFileOnConnect.
-    if (this.loadSettingFileOnConnect()) this.LoadFileToMachine();
+    //
+    // ONCE, not once per ATTEMPT. This ran before the port was even open, so a
+    // device that is not there -- unplugged board, wrong COM port -- paid for a
+    // full LD round trip to the core, a machineSetup publish and a set_setup
+    // push on every retry, and checkReConnection retries every 3 s. The publish
+    // is the expensive half: it re-renders every subscriber, which a profile
+    // caught costing 127-161 ms of main thread per SECOND with the uInsp panel
+    // mounted, whether or not anything had changed.
+    //
+    // Reading it once is enough, because the CONNECT branch below pushes
+    // this.machineSetup with set_setup on every successful connect -- so a
+    // machine that comes back still receives the host's settings, from cache.
+    if (this.loadSettingFileOnConnect() && this.machineSetup === undefined) this.LoadFileToMachine();
     deps.sendBPG('PD', 0, { type: 'CONNECT', ...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true } }, undefined, {
       resolve: (stacked_pkts, action_channal) => {
         const PD = stacked_pkts.find((pkt) => pkt.type == 'PD');
         this.inReconnection = false;
+        // A REFUSAL IS A REPLY, and this used to drop it on the floor.
+        //
+        // The core answers a CONNECT it will not honour with an SS carrying
+        // ACK:false and the reason -- no PD at all. The block below only ever
+        // looked for the PD, so a refusal took none of the failure path: no
+        // _failN, no _nextAttemptAt, nothing published. checkReConnection
+        // therefore retried every 3 s forever, the backoff never engaged, and
+        // the panel showed a plain 未連線 while the core repeated the reason
+        // into the log a thousand times.
+        if (PD === undefined) {
+          const SS = stacked_pkts.find((pkt) => pkt.type == 'SS');
+          const why = (SS && SS.data && SS.data.errMsg) || '';
+          this.CONN_ID = undefined;
+          this.cleanUpConnection();
+          this._failN++;
+          this._nextAttemptAt = Date.now() + Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * Math.pow(2, this._failN - 1));
+          // The reason goes to the panel, which is where somebody is looking.
+          publish(this.id, { state: 'DISCONNECTED', refusal: why || undefined });
+          return;
+        }
         if (PD !== undefined) {
           const PD_data = PD.data;
           switch (PD_data.type) {
@@ -400,9 +434,11 @@ export class Perif_API_Base {
               // device is still silent. Stay SUSPECT until a PING is answered;
               // the recovery branch in _sendPing publishes CONNECTED then.
               // Untouched for every other reason to connect (flag unset).
+              // refusal cleared explicitly: publish() merges, so the last
+              // refusal would otherwise outlive the connect that disproved it.
               publish(this.id, this._reconnectAfterSilence
-                ? { state: 'SUSPECT', suspectSrc: 'local', CONN_ID: this.CONN_ID }
-                : { state: 'CONNECTED', CONN_ID: this.CONN_ID });
+                ? { state: 'SUSPECT', suspectSrc: 'local', CONN_ID: this.CONN_ID, refusal: undefined }
+                : { state: 'CONNECTED', CONN_ID: this.CONN_ID, refusal: undefined });
 
               if (this.machineSetup !== undefined) {
                 this.onBeforeSetupPush();
@@ -471,8 +507,14 @@ export class Perif_API_Base {
   // ---- machine setup ---------------------------------------------------
 
   machineSetupUpdate(newMachineInfo, doReplace = false) {
-    this.machineSetup = doReplace == true ? newMachineInfo : { ...this.machineSetup, ...newMachineInfo };
-    publish(this.id, { machineSetup: this.machineSetup });
+    const next = doReplace == true ? newMachineInfo : { ...this.machineSetup, ...newMachineInfo };
+    // A publish that carries the same settings as the last one still re-renders
+    // everything subscribed to them. Loading the file on a reconnect produced
+    // exactly that, and the panel is not cheap to draw.
+    let changed = true;
+    try { changed = JSON.stringify(next) !== JSON.stringify(this.machineSetup); } catch (_) {}
+    this.machineSetup = next;
+    if (changed) publish(this.id, { machineSetup: this.machineSetup });
     this.send(uinspRegroup({ type: 'set_setup', ...newMachineInfo }),
       (ret) => {
         // A REFUSED WRITE USED TO LOOK EXACTLY LIKE A SUCCESSFUL ONE.

@@ -261,7 +261,11 @@ public:
   int toUpperLayer_dispatch(BPG_protocol_data bpgdat, void *peer);
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
-  void delete_PeripheralChannel();
+  // `why` names the caller, and appears in the log. There are three of them and
+  // they mean completely different things -- a reopen, an operator disconnect,
+  // and the last browser tab closing -- which the log used to flatten into one
+  // anonymous line.
+  void delete_PeripheralChannel(const char *why);
   static BPG_protocol_data GenStrBPGData(char *TL,const char *jsonStr);
   
   static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
