@@ -262,6 +262,16 @@ export function measureLabelName(shape) {
   return '[' + shape.id + '] ' + nm;
 }
 
+// Every role at one grey. Alpha is carried in the rgba, the way every other
+// transparency in this file is -- not globalAlpha, which multiplies whatever a
+// shape already had and would push the 0.14 fills down to 0.10.
+function naPalette(role, alpha) {
+  const grey = withAlpha(role.neutral, alpha);
+  const out = {};
+  for (const k of Object.keys(role)) out[k] = grey;
+  return out;
+}
+
 // Turn 'rgba(r,g,b,a)' into the same colour at another alpha. Kept dumb on
 // purpose: every colour in this file is written in that one form.
 export function withAlpha(rgba, a) {
@@ -276,7 +286,21 @@ export function withAlpha(rgba, a) {
 // and ctx it needs, with sizes already resolved against the current camera.
 // ---------------------------------------------------------------------------
 export function overlayKit(ctx, renderer) {
-  const T = OVERLAY;
+  // NA MODE: every role colour becomes the same grey.
+  //
+  // The modules name their colours by role -- K.C.reading for a dimension,
+  // K.C.feature for fitted geometry -- and they do it unconditionally, because
+  // a module has no business knowing a verdict. Greying an NA result used to be
+  // done by wrapping the whole pass in ctx.filter='grayscale(1)', which is a
+  // per-draw-call offscreen surface in Chromium and was measured stalling the
+  // main thread for hundreds of milliseconds on NA frames.
+  //
+  // Same result, no filter: swap the palette. A kit built while renderer.naDim
+  // is set answers every role with neutral at that alpha, so a module that asks
+  // for red gets grey without knowing anything about it. Costs one object.
+  const T = (renderer && renderer.naDim)
+    ? { ...OVERLAY, role: naPalette(OVERLAY.role, renderer.naDim) }
+    : OVERLAY;
   const ps = renderer.getPrimitiveSize();
   const lw = renderer.getIndicationLineSize();
   const fpx = renderer.getFontHeightPx();
@@ -284,6 +308,7 @@ export function overlayKit(ctx, renderer) {
   const dash = (name) => (T.dash[name] || []).map((v) => v * ps);
 
   const at = (c, ang, r) => ({ x: c.x + r * Math.cos(ang), y: c.y + r * Math.sin(ang) });
+
   const seg = (p, q) => { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); };
   const projOn = (Q, L0, L1) => {
     const vx = L1.x - L0.x, vy = L1.y - L0.y, n2 = vx * vx + vy * vy || 1;

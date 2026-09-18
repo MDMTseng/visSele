@@ -218,6 +218,8 @@ class EverCheckCanvasComponent_proto {
     // when everything went green you could no longer tell the station from the
     // clean regions at a glance, which is the one thing the overlay has to make
     // obvious while parts are moving.
+    const LBL_FS = 0.42, LBL_PAD = 0.12;   // world mm
+    const labelQueue = [];
     const box = (r, stroke, fill, label, sub, state) => {
       if (!r || !(r.w > 0) || !(r.h > 0)) return;
       const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
@@ -246,14 +248,77 @@ class EverCheckCanvasComponent_proto {
       // at. Above collides with the neighbouring box's text as soon as the
       // stations sit a part-pitch apart, and below the plate is empty.
       //
+      // But "below its own box" is not enough on its own: the inspection region
+      // and the clean regions inside it end within a few mm of each other, so
+      // four captions land on the same band of pixels and overprint into an
+      // unreadable stack. They are QUEUED here and laid out once every box has
+      // been drawn -- a caption cannot avoid a neighbour that does not exist
+      // yet. See placeLabels below.
+      //
       // Small, because getFontStyle takes a size in WORLD mm: the 1 the
       // measurement overlay passes renders enormous for a station label, and
       // there are two lines per box.
-      const fs = 0.42, pad = 0.12;
-      ctx.font = this.rUtil.getFontStyle(fs);
-      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + h + fs + pad); }
-      if (sub)   { ctx.fillStyle = state ? state.color : stroke;
-                   ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
+      if (!label && !sub) return;
+      labelQueue.push({
+        x: x + LBL_PAD, top: y + h,
+        alpha: ctx.globalAlpha,
+        lines: [label ? { text: label, color: stroke } : null,
+                sub ? { text: sub, color: state ? state.color : stroke } : null]
+               .filter(Boolean),
+      });
+    };
+
+    // --- caption layout ------------------------------------------------------
+    //
+    // Each caption wants to sit directly under its own box. When that would
+    // overprint one already placed, it drops by whole lines until it is clear.
+    // Nothing moves sideways and nothing changes box: a caption that wandered
+    // to a free spot would be describing whichever box it landed near.
+    //
+    // Highest box first, so the order on screen matches the order down the
+    // image and a caption never jumps over the box above it.
+    const placeLabels = () => {
+      ctx.font = this.rUtil.getFontStyle(LBL_FS);
+      const lh = LBL_FS * 1.2;
+      const placed = [];
+      labelQueue.sort((a, b) => a.top - b.top);
+      for (const q of labelQueue) {
+        const w = Math.max(...q.lines.map((l) => ctx.measureText(l.text).width));
+        const h = lh * q.lines.length + LBL_PAD;
+        let y = q.top + LBL_PAD;
+        // Restart the scan after every move: dropping past one neighbour can
+        // land on another.
+        for (let guard = 0; guard < 24; guard++) {
+          const hit = placed.find((p) =>
+            q.x < p.x + p.w && p.x < q.x + w && y < p.y + p.h && p.y < y + h);
+          if (!hit) break;
+          y = hit.y + hit.h;
+        }
+        placed.push({ x: q.x, y, w, h });
+        const a0 = ctx.globalAlpha;
+        ctx.globalAlpha = q.alpha;
+        // A leader, but only when the caption was actually pushed away from its
+        // box. Drawn under every caption it would be four vertical ticks the
+        // eye has to dismiss; drawn only where the link is in doubt, it answers
+        // the one question the displacement creates -- which box is this about.
+        if (y > q.top + LBL_PAD * 2) {
+          ctx.save();
+          ctx.strokeStyle = q.lines[0].color;
+          ctx.lineWidth = LBL_FS * 0.06;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(q.x, q.top);
+          ctx.lineTo(q.x, y + LBL_FS * 0.9);
+          ctx.stroke();
+          ctx.restore();
+        }
+        q.lines.forEach((l, i) => {
+          ctx.fillStyle = l.color;
+          ctx.fillText(l.text, q.x, y + LBL_FS + lh * i);
+        });
+        ctx.globalAlpha = a0;
+      }
+      labelQueue.length = 0;
     };
 
     // State comes from edit_DB_info, NOT from the panel.
@@ -301,8 +366,8 @@ class EverCheckCanvasComponent_proto {
     // the part being measured -- the one thing in the frame worth looking at --
     // and a tint over it costs contrast on exactly the edges the measurement is
     // about. The two rings and the caption carry the state without touching the
-    // pixels. Clean regions keep their tint: they are supposed to be empty, so
-    // there is nothing there to obscure.
+    // pixels. Clean regions get none either: a region whose purpose is to show
+    // specks is the last place to put a wash.
     const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
                  : R.tone === 'ng' ? { color: '#ff5252', fill: null }
                  : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
@@ -340,13 +405,30 @@ class EverCheckCanvasComponent_proto {
       // Unknown state (no report yet) counts as quiet: before the first image
       // there is nothing to show, and the boxes are still visible while the
       // switch is off, which is where they get set up.
-      if (ov.hideClean && c.dirty !== true) return;
+      //
+      // "Hidden" is drawn at a tenth, not dropped. Gone entirely, the operator
+      // cannot tell a quiet clean region from one that was never set up, and
+      // the part underneath is equally readable either way -- a tenth is below
+      // the threshold where the box competes with the measurements, and still
+      // enough to see where the region is when you look for it.
+      const faint = ov.hideClean && c.dirty !== true;
       const st = !known ? null
                : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
                          : { color: '#00e676', fill: null };
-      box(c, '#ffab00', 'rgba(255,171,0,0.06)',
-          c.name || ('淨空' + (i + 1)),
-          known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null, st);
+      const alpha0 = ctx.globalAlpha;
+      if (faint) ctx.globalAlpha = alpha0 * 0.1;
+      // Faint keeps the OUTLINE only. A caption at a tenth is not quiet, it is
+      // unreadable -- and an unreadable word still occupies the space, and
+      // still takes a slot in the caption stacking below, pushing the captions
+      // that DO have something to say further from their boxes.
+      // NO tint, for the same reason the inspection region has none: the whole
+      // job of a clean region is to show specks, and a wash over it is exactly
+      // the contrast those specks are made of. The outline carries the region.
+      box(c, '#ffab00', null,
+          faint ? null : (c.name || ('淨空' + (i + 1))),
+          faint ? null
+                : (known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null), st);
+      ctx.globalAlpha = alpha0;
     });
 
     if (ov.pending) {
@@ -354,6 +436,7 @@ class EverCheckCanvasComponent_proto {
       box(ov.pending, '#ffffff', null, null);
       ctx.setLineDash([]);
     }
+    placeLabels();
     ctx.restore();
   }
 
@@ -1846,8 +1929,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   };
 
   draw() {
+    // draw_INSP draws the station itself, underneath the results (see there).
+    // This call is the fallback for the frames where it BAILED -- no report, no
+    // edit_DB_info, no image yet -- which is exactly when the station is being
+    // set up and must still be visible on an empty plate. That was the original
+    // reason it lived out here; it still holds, it is just no longer the only
+    // case.
+    this._stationDrawnThisFrame = false;
     this.draw_INSP();
-    this.draw_station_overlay();
+    if (!this._stationDrawnThisFrame) this.draw_station_overlay();
   }
 
 
@@ -2069,6 +2159,20 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         
       }
       ctx.restore();
+
+      // THE STATION, BETWEEN THE IMAGE AND THE RESULTS.
+      //
+      // It is a frame around where the work is -- the same rectangle every
+      // frame, saying which part of the image is being judged. The measurements
+      // are the answer the operator came for and they land inside it, so drawn
+      // afterwards it covered readings with a line that says nothing about
+      // them. Drawn before, it is background, which is what it is.
+      //
+      // Not in draw() ahead of this function: draw_INSP clears the canvas and
+      // repaints the image, so anything drawn before it is simply erased. That
+      // is what putting it first in draw() did.
+      this.draw_station_overlay();
+      this._stationDrawnThisFrame = true;
 
       // Same caption as the def editor, same keys. On this path the core sends
       // no def_build_ms -- CI/FI build the engine once at session open -- so it
@@ -3765,11 +3869,16 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
 
 
-    // The station, on top of everything else. Same call the inspection canvas
-    // makes; it lives on the shared proto now. Without it, 快速驗證 enforces the
-    // station filter with nothing on screen saying where the station IS, and an
-    // object dropped for standing outside it is indistinguishable from a def
-    // that could not locate.
+    // The station. Same call the inspection canvas makes; it lives on the
+    // shared proto now. Without it, 快速驗證 enforces the station filter with
+    // nothing on screen saying where the station IS, and an object dropped for
+    // standing outside it is indistinguishable from a def that could not
+    // locate.
+    //
+    // Last here, unlike the inspection canvas, because this path has already
+    // finished drawing by the time it reaches this line -- reordering it would
+    // mean restructuring the whole method, and the def canvas has no live
+    // measurement overlay for it to cover.
     this.draw_station_overlay();
   }
 

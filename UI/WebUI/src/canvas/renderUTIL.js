@@ -21,21 +21,40 @@ import { mkLog } from "UTIL/logger";
 // template that could not be measured must never differ only in saturation.
 const NA_CANVAS_FILTER = 'grayscale(1) opacity(0.7)';
 
-// A RUNTIME SWITCH, because this is a leak suspect and suspicion is not a
-// finding. Chromium renders every draw made under a non-'none' ctx.filter
-// through a temporary offscreen surface; on an accelerated canvas that surface
-// is GPU memory, and a soak measured the GPU process climbing about 15-16 KB
-// per inspection report -- with the JS heap flat and a forced collection
-// handing it all back at once, which is what "allocated per draw, swept late"
-// looks like. The greying arrived the same day as the measurement, so it is the
-// first thing to rule in or out.
+// ctx.filter IS THE COST. Measured by removing it: with the NA branch drawn and
+// this filter set, the field machine stalls for 100-450 ms on the frames that
+// go NA; with the branch skipped entirely it is smooth. Chromium renders every
+// draw made under a non-'none' ctx.filter through a temporary offscreen
+// surface, per draw call -- so the price is paid once for each stroke, arc and
+// glyph of every NA shape, on every frame, and it is paid on the main thread.
+// (The same allocation is why a soak saw the GPU process climb ~15-16 KB per
+// report with the JS heap flat.)
 //
-// window.__NA_FILTER_OFF__ = 1 turns it off without a rebuild, so one binary can
-// run both halves of the A/B. Absent means on, which is the shipped behaviour.
+// So the greying no longer goes through a filter. It is done with the two
+// things a 2D context can do for free:
+//
+// The colour, and nothing else: NA resolves to the neutral role colour at a
+// reduced alpha, written into the rgba the way every other transparency in this
+// file is. NOT globalAlpha -- alpha there MULTIPLIES whatever the shape already
+// carries, so the fills that are drawn at 0.14 by design would come out at
+// 0.10, and it applies to everything inside the block rather than to the thing
+// being dimmed.
+//
+// What is lost is the desaturation of anything a module colours FOR ITSELF and
+// against the verdict -- search_point's datum anchor is the deliberate case.
+// That is a small price for the stall, and arguably right: that colour outranks
+// the verdict by design, which is exactly why the module sets it.
+//
+// window.__NA_FILTER_ON__ = 1 restores the old filter path without a rebuild,
+// for comparing the two.
+const NA_DIM_ALPHA = 0.7;
 function naFilterOn() {
-  return !(typeof window !== 'undefined' && window.__NA_FILTER_OFF__);
+  return !!(typeof window !== 'undefined' && window.__NA_FILTER_ON__);
 }
-const NA_REASON_COLOR  = 'rgba(255, 210, 60, 0.95)';
+// The NA marker rides with the shape it belongs to, so it is grey like the rest
+// of it. It used to be yellow to catch the eye; against a fully greyed NA that
+// made the marker the loudest thing on a result that has nothing to report.
+const NA_REASON_COLOR  = 'rgba(120, 132, 143, 0.95)';
 // How near the pointer has to be, in SCREEN pixels, for a marker to show its
 // reason. Generous: the marker is small and the operator is aiming with a mouse
 // on a machine, not a stylus.
@@ -435,6 +454,28 @@ class renderUTIL {
 
   drawDefMeasureInfoText(ctx,name,value,InfoLU,InfoCurVal,fontPx)
   {
+    // AN NA IS A RESULT, SO IT GETS THE RESULT LAYOUT.
+    //
+    // Every measure module falls back to this call when the report carried no
+    // inspection_value, and this is the SETUP block: the nominal, the limits,
+    // and a "Now:" computed from the geometry on screen. On a running machine
+    // that is four lines of specification where the operator is looking for one
+    // number, and the one number it does show is the least trustworthy of the
+    // four -- it is what the canvas can derive, not what the core measured.
+    //
+    // While the NA pass is drawing (this.naDim), collapse it to the same single
+    // line a passing result gets -- and put NO NUMBER on that line. The canvas
+    // can derive a value from the geometry, but a number on an overlay is read
+    // as "this is what it measured", and nothing measured it. A derived figure
+    // dressed up with a qualifier is worse than none: it still gets read, and
+    // now it also has to be decoded.
+    if (this.naDim) {
+      if (this.renderParam.measureInfoText.name == true)
+        this.draw_Text(ctx, name, fontPx, 0, 0, true);
+      if (this.renderParam.measureInfoText.value == true)
+        this.draw_Text(ctx, 'NA', fontPx, 0, fontPx, true);
+      return;
+    }
 
     let Y_offset = 0;
 
@@ -748,7 +789,10 @@ class renderUTIL {
       switch (o.inspection_status) {
         case INSPECTION_STATUS.SUCCESS: return K.C.ok;
         case INSPECTION_STATUS.FAILURE: return K.C.ng;
-        case INSPECTION_STATUS.NA:      return K.C.neutral;
+        // Dimmed in the colour itself -- see the note on NA_DIM_ALPHA.
+        case INSPECTION_STATUS.NA:      return naFilterOn() ? K.C.neutral
+                                                            : K.withAlpha(K.C.neutral, NA_DIM_ALPHA);
+
         default:                        return K.C.feature;
       }
     };
@@ -759,6 +803,9 @@ class renderUTIL {
       const savedFilter = ctx.filter;
       const useF = greyed && naFilterOn();
       if (useF) ctx.filter = NA_CANVAS_FILTER;
+      // Set BEFORE the modules run: each one builds its own kit from the
+      // renderer, and the palette is chosen at that moment.
+      else if (greyed) this.naDim = NA_DIM_ALPHA;
       list.forEach((eObject) => {
         const mod = getShapeModule(eObject.type);
         if (!mod || !mod.drawInspection) return;
@@ -773,6 +820,7 @@ class renderUTIL {
         mod.drawInspection(ctx, eObject, this, { shapeList });
       });
       if (useF) ctx.filter = savedFilter;
+      this.naDim = 0;
       // The reason is NOT greyed -- it is the one thing on an NA that should
       // catch the eye -- so it goes outside the filter, after the shapes.
       if (greyed) list.forEach((o) => this.drawNAReason(ctx, o));
@@ -784,8 +832,14 @@ class renderUTIL {
       const savedFilter = ctx.filter;
       const useF = naFilterOn();
       if (useF) ctx.filter = NA_CANVAS_FILTER;
-      this.drawShapeList(ctx, measureNA, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+      else this.naDim = NA_DIM_ALPHA;
+      // Neutral unless the caller asked for a specific colour -- that request
+      // is how a single shape gets highlighted and must still win.
+      const naColor = (ShapeColor !== undefined && ShapeColor !== null) ? ShapeColor
+                    : (useF ? ShapeColor : K.withAlpha(K.C.neutral, NA_DIM_ALPHA));
+      this.drawShapeList(ctx, measureNA, naColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
       if (useF) ctx.filter = savedFilter;
+      this.naDim = 0;
       measureNA.forEach((o) => this.drawNAReason(ctx, o));
     }
 
