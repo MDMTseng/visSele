@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -220,10 +221,24 @@ struct LogWsServerImpl : public ws_protocol_callback {
         if (it == peers.end()) return;
         PeerState &ps = it->second;
 
-        /* Null-terminate (the lib reserves the slot per its ws_conn impl). */
-        data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
-        const char *txt =
-            reinterpret_cast<const char *>(data.data.data_frame.raw);
+        /* Copy the payload out before parsing, rather than writing a NUL at
+           raw[rawL].
+
+           That write was removed from BPG_Link_Interface_WebSocket and again
+           from wiringPanel's override, with the same diagnosis both times: the
+           byte past the payload is not spare when a single recv() carries
+           several pipelined WS frames. It is the NEXT frame's FIN/opcode byte,
+           and zeroing it turns that frame into an opcode-0 continuation, so the
+           rest of the batch is misparsed. The comment that used to sit here --
+           "the lib reserves the slot" -- was only ever true of the one byte at
+           the very end of recvBuf, not of the end of each frame inside it.
+
+           This server parses its payload as text, so unlike the BPG path it
+           cannot simply drop the terminator; it needs one that belongs to it. */
+        const std::string txtBuf(
+            reinterpret_cast<const char *>(data.data.data_frame.raw),
+            data.data.data_frame.rawL);
+        const char *txt = txtBuf.c_str();
         cJSON *msg = cJSON_Parse(txt);
         if (!msg) {
             send_ack(data.peer, ps, "", false, "invalid JSON");
