@@ -765,7 +765,7 @@ class ResultGroupItems extends React.PureComponent {
     //   * finalResult is reduced over the UNFILTERED list (and already skips
     //     non-essential items), so the part's verdict cannot move because of
     //     this line;
-    //   * the sampling view renders through ResultRowExpanded, not through this
+    //   * the sampling view renders through the same component as the strip
     //     component, so an operator reading values off and writing them down
     //     still gets every measurement including these;
     //   * the canvas overlay still draws them, with the eye mark.
@@ -867,9 +867,14 @@ function ResultGroupTitle({ group, slot, collapsed, simThres, onToggle, onFullSc
                        // 0.50 floor than against a 0.90 one; the fraction of
                        // the remaining range means the same thing against both,
                        // which is what lets one rule serve two locators.
-                       color: headroom(group.similarity, simThres) >= 0.15 ? "#8c8c8c"
+                       // Grey when there is no floor to compare against: the
+                       // score is still worth showing, the colour is not a
+                       // judgement anyone can make without the threshold.
+                       color: !Number.isFinite(simThres) ? "#8c8c8c"
+                            : headroom(group.similarity, simThres) >= 0.15 ? "#8c8c8c"
                             : group.similarity >= simThres ? "#d46b08" : "#cf1322" }}
-          title={`比對分數 ${group.similarity.toFixed(4)}／接受門檻 ${simThres.toFixed(2)}`}>
+          title={`比對分數 ${group.similarity.toFixed(4)}`
+                 + (Number.isFinite(simThres) ? `／接受門檻 ${simThres.toFixed(2)}` : '')}>
           {group.similarity.toFixed(3)}
         </span>}
       {/* Only when collapsed, and it takes the slack so the badge stays put. */}
@@ -894,91 +899,6 @@ function ResultGroupTitle({ group, slot, collapsed, simThres, onToggle, onFullSc
   );
 }
 
-// One measurement, laid out for READING AND WRITING DOWN.
-//
-// The strip on the left and this are the same numbers for two different jobs.
-// On the strip an operator glances at a verdict while the machine sorts; here,
-// in sampling mode, they read the value off and record it -- so the limits and
-// the margin belong on screen, not behind a hover, and the columns have to line
-// up down the page or the digits get transcribed wrong.
-class ResultRowExpanded extends React.PureComponent {
-  render() {
-    const rep = this.props.singleInspection;
-    const def = rep.def || {};
-    const essential = GetObjElement(rep, ["def", "quality_essential"]) !== false;
-
-    // Guarded. An unmapped detailStatus threw right here and took the whole
-    // inspection panel down with it -- the error boundary replaces the screen
-    // and the operator loses the session, which is a very expensive way to
-    // report an unknown enum value.
-    let color = (OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
-                 || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).COLOR;
-    if (!essential) color = Color(color).desaturate(0.6).darken(0.5);
-
-    const numeric = (rep.value === +rep.value) ? +rep.value : undefined;
-    const unit = DEFAULT_UNIT[rep.subtype] || "";
-    const shown = numeric === undefined ? "NaN" : numeric.toFixed(3);
-
-    let ratio;
-    if (numeric !== undefined && def.value !== undefined) {
-      const span = numeric > def.value ? (def.USL - def.value) : (def.value - def.LSL);
-      if (span > 0) ratio = (numeric - def.value) / span;
-    }
-    const OUT = 1.35;
-    const pos = 50 + (ratio === undefined ? 0 : Math.max(-OUT, Math.min(OUT, ratio))) * 42;
-
-    const num = (v) => (v === undefined || v === null ? "—" : Number(v).toFixed(3));
-    const mono = { fontFamily: "ui-monospace, Consolas, monospace",
-                   fontVariantNumeric: "tabular-nums" };
-
-    return (
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 14,
-                         color: essential ? "#262626" : "#bfbfbf",
-                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {rep.name}
-          </span>
-          <span style={{ ...mono, flex: "0 0 auto", fontSize: 30, lineHeight: "34px",
-                         letterSpacing: "-0.01em", textAlign: "right", minWidth: 148,
-                         color: essential ? "#141414" : "#999" }}>
-            {shown}<span style={{ fontSize: 14, color: "#8c8c8c", marginLeft: 4 }}>{unit}</span>
-          </span>
-          <span style={{ flex: "0 0 auto", fontSize: 12, fontWeight: 600, color: "#fff",
-                         background: color, borderRadius: 3, padding: "2px 8px" }}>
-            {(OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
-              || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).TEXT}
-          </span>
-        </div>
-
-        <div style={{ position: "relative", height: 6, borderRadius: 3, marginTop: 7,
-                      background: essential
-                        ? "linear-gradient(90deg,#e8e8e8 0 7.6%,#bdbdbd 7.6% 8.4%,"
-                          + "#e8e8e8 8.4% 49.6%,#8c8c8c 49.6% 50.4%,#e8e8e8 50.4% 91.6%,"
-                          + "#bdbdbd 91.6% 92.4%,#e8e8e8 92.4% 100%)"
-                        : "#f0f0f0" }}>
-          {ratio === undefined ? null : (
-            <span style={{ position: "absolute", top: -2, left: `calc(${pos}% - 1.5px)`,
-                           width: 3, height: 10, borderRadius: 2, background: color,
-                           boxShadow: "0 0 0 1.5px #fff" }} />
-          )}
-        </div>
-
-        {/* The limits, spelled out. On the strip they live behind a hover
-            because there is no room; here there is, and an operator writing a
-            number down needs to see what it is being judged against. */}
-        <div style={{ ...mono, display: "flex", justifyContent: "space-between",
-                      fontSize: 11.5, color: "#8c8c8c", marginTop: 5 }}>
-          <span>{num(def.LSL)}</span>
-          <span>目標 {num(def.value)}</span>
-          <span>{ratio === undefined ? "" : "餘裕 " + (ratio >= 0 ? "+" : "") + ratio.toFixed(2)}</span>
-          <span>{num(def.USL)}</span>
-        </div>
-      </div>
-    );
-  }
-}
-
 export class InspectionResultDisplay_FullScren extends React.Component {
 
   constructor(props) {
@@ -990,6 +910,7 @@ export class InspectionResultDisplay_FullScren extends React.Component {
   }
   render() {
     const groups = this.props.groups;
+    const DICT = this.props.DICT;
     if (!Array.isArray(groups)) return null;
 
 
@@ -1023,14 +944,29 @@ export class InspectionResultDisplay_FullScren extends React.Component {
                     maxHeight: "70vh", overflowY: "auto" }}>
         {groups.map((g, index) => (
           <div key={"fsc" + index}
-               style={{ border: "1px solid #e8e8e8", borderRadius: 6, overflow: "hidden" }}>
+               style={{ border: "1px solid #d9d9d9", borderRadius: 6, overflow: "hidden",
+                        background: "#000" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8,
                           padding: "8px 12px", background: "#fafafa",
-                          borderBottom: "1px solid #e8e8e8", fontSize: 14 }}>
-              <ResultGroupTitle group={g} />
+                          borderBottom: "1px solid #d9d9d9", fontSize: 14 }}>
+              <ResultGroupTitle group={g} simThres={this.props.simThres} />
             </div>
-            {g.reports.map((rep) => (
-              <ResultRowExpanded key={"x" + rep.name} singleInspection={rep} />
+            {/* THE SAME ROW THE STRIP DRAWS.
+                This view had its own renderer -- a light-themed expanded row --
+                and the strip was rebuilt dark, big-numbered and with reference
+                items dropped entirely. Two renderers for one thing means the
+                operator reads the same measurement two ways depending on which
+                view is open, and it means every future change has to be made
+                twice or the two drift again. So: one component. What fullscreen
+                has that the strip does not is room, and room is a layout
+                decision -- the grid above -- not a different way of showing a
+                number.
+                Reference items are filtered here for the same reason they are
+                filtered on the strip: they carry no verdict. */}
+            {g.reports.filter((r) => !r || !r.def || r.def.quality_essential !== false)
+                      .map((rep) => (
+              <InspectionResultDisplay key={"x" + rep.name} DICT={DICT}
+                singleInspection={rep} />
             ))}
           </div>
         ))}
@@ -1857,7 +1793,7 @@ class ObjInfoList extends React.Component {
     }
 
     let fullScreenMODAL = <InspectionResultDisplay_FullScren
-      groups={resultGroups} DICT={this.props.DICT} visible={this.state.fullScreen}
+      groups={resultGroups} simThres={simThres} DICT={this.props.DICT} visible={this.state.fullScreen}
       onCancel={this.toggleFullscreenBound} width="90%" />;
 
     let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
@@ -2255,9 +2191,28 @@ class CanvasComponent extends React.Component {
 
         log.info(`stream downsample ${prev} -> ${down_samp_level} `
                + `(${oversample.toFixed(2)} sensor px per canvas px)`);
+        // A RESEND IS THE SAME FRAME, sharper. The image object that comes back
+        // is new, so _imgChanged fires and the reports would be paired again --
+        // against the live tracking window, which by then holds whatever
+        // arrived since. Zooming into a stopped stream therefore replaced both
+        // the overlay and the list with results belonging to a different part,
+        // on a picture that had not changed at all.
+        //
+        // Armed here because this is the only place that knows the next image
+        // is a repeat rather than a new one.
+        //
+        // ONLY ON THE WAY UP IN DETAIL. A smaller down_samp_level is a sharper
+        // frame and there is something to see, so ask for it. A larger one is
+        // the same picture with detail removed -- zooming out, where the sharp
+        // copy already on screen displays perfectly well. Resending it spends a
+        // full frame over the wire, a JPEG decode and a repaint to make the
+        // image worse. The stream itself still switches, so the NEXT live frame
+        // comes at the cheaper level, which is the part that was worth having.
+        const _wantSharper = down_samp_level < prev;
+        this._expectResend = _wantSharper;
         this.props.ACT_WS_SEND_CORE_BPG("ST", 0, {
           CameraSetting: { down_samp_level },
-          LAST_FRAME_RESEND: true,
+          ...(_wantSharper ? { LAST_FRAME_RESEND: true } : {}),
         });
         break;
 
@@ -2298,9 +2253,31 @@ class CanvasComponent extends React.Component {
       // matching what is on screen, while statistics and upload still see every
       // report through redux, untouched.
       const _imgChanged = (this.pre_img !== props.img);
+      // Consumed by the first image after the request, whatever it is: a resend
+      // that never arrives must not leave this armed for a genuinely new frame.
+      const _isResend = _imgChanged && this._expectResend === true;
+      if (_imgChanged) this._expectResend = false;
       if(cur__surpress_display!=true || _imgChanged)
       {
-        this.ec_canvas.EditDBInfoSync(props._edit_info, /*updateImgOnly=*/ !_imgChanged);
+        // updateImgOnly is exactly what a resend wants: take the new picture,
+        // keep the overlay that was already matched to it.
+        this.ec_canvas.EditDBInfoSync(props._edit_info,
+                                      /*updateImgOnly=*/ !_imgChanged || _isResend);
+        // THE LIST BESIDE THE PICTURE IS PART OF THE PICTURE.
+        //
+        // EditDBInfoSync froze the reports belonging to this frame (its own
+        // dclone -- see frameReportList there) precisely so the overlay would
+        // stop running ahead of the image. The result list on the left was left
+        // reading the LIVE tracking window, i.e. the very thing that races: at
+        // 25-40 reports per second against ~6 images, the numbers on the left
+        // changed four or five times while one picture sat there, and none of
+        // those changes described what the operator was looking at.
+        //
+        // Hand it the same frozen array. No second clone -- this is the one the
+        // canvas just made -- and the list now re-renders once per IMAGE
+        // instead of once per report, which is fewer renders, not more.
+        if (_imgChanged && !_isResend && props.onFrameReports)
+          props.onFrameReports(this.ec_canvas.frameReportList);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         // Mirror System_Setting.SHOW_CALIPER_HITS_INSP to the renderer; per-
@@ -2905,6 +2882,137 @@ class AngledCalibrationHelper extends React.Component {
 
 }
 
+// 檢測等級 -- the OPERATOR's view of the def, and nothing else.
+//
+// Two ranks exist and they are deliberately independent:
+//
+//   the machine's   from the rankN tag. Folds into quality_essential, decides
+//                   what a part IS, and no control on this screen can move it.
+//   the operator's  this slider. Decides what is drawn, and nothing else.
+//
+// They were pinned together until now precisely so they could not drift, and
+// production asked for the pin to come off: the person at the machine wants to
+// read one level while the line keeps judging on another. So the drift is
+// allowed and REPORTED -- the note under the slider names both numbers the
+// moment they differ, and the same line goes to the log, because a screen
+// showing fewer measurements than the machine is judging on is a thing someone
+// has to be able to discover after the fact as well as during.
+// It lives in the settings modal, and that modal is built ONCE into
+// this.state.additionalUI as already-created elements (see the note on
+// CaliperHitsSwitch). So the `value` prop is frozen at the moment the gear was
+// pressed: the thumb has to be driven from the component's own state, or it
+// would not move under the operator's finger. The prop is the seed and the
+// resync-on-change, nothing more; the owner still hears every move through
+// onChange, because the owner is what filters the drawing.
+function MeasureRankSlider({ ranks, value: valueProp, machineRank, onChange }) {
+  const [value, setValue] = useState(valueProp);
+  useEffect(() => { setValue(valueProp); }, [valueProp]);
+  const move = (v) => { setValue(v); if (onChange) onChange(v); };
+
+  const marks = {};
+  for (const r of ranks) marks[r] = String(r);
+  const lo = ranks.length ? ranks[0] : 0;
+  const hi = ranks.length ? ranks[ranks.length - 1] : 0;
+  const shownCount = (v) => ranks.filter((r) => r <= v).length;
+
+  // WHAT COUNTS AS A MISMATCH WORTH SHOUTING ABOUT.
+  //
+  // No rankN tag is the normal setup: the machine judges on everything and the
+  // slider opens at the lowest level, so the operator is ALWAYS seeing less
+  // than the machine judges on. That is the intended default, not an anomaly,
+  // and a red line that is on by default is not a warning -- it is furniture
+  // people learn to read past.
+  //
+  // So the red is reserved for two settings that were each chosen and now
+  // disagree: a tag exists AND the slider sits somewhere else. The rest of the
+  // time both numbers are still stated plainly, in grey, because "what is on
+  // screen" and "what is being judged" are two different facts and the panel
+  // should never make the operator guess which one they are looking at.
+  const tagged = Number.isFinite(machineRank);
+  const conflict = tagged && value !== machineRank;
+  const hidden = ranks.filter((r) => r > value).length;
+
+  // Once per transition, not once per render.
+  const saidRef = useRef(undefined);
+  useEffect(() => {
+    const key = conflict ? `${value}/${machineRank}` : 'ok';
+    if (saidRef.current === key) return;
+    saidRef.current = key;
+    if (conflict) {
+      log.warn('[rank] 顯示等級與機器判定等級不一致',
+               { view: value, machine: machineRank });
+    }
+  }, [conflict, value, machineRank]);
+
+  if (ranks.length < 2) return null;   // nothing to choose between
+
+  return (
+    <div style={{ padding: "0 10px 6px" }}>
+      <Divider orientation="left" style={{ margin: "6px 0" }}>
+        檢測等級（顯示）
+      </Divider>
+      <Slider min={lo} max={hi} marks={marks} step={null}
+              value={Number.isFinite(value) ? value : hi}
+              onChange={move} />
+      <div style={{ fontSize: 11, color: conflict ? "#cf1322" : "#8c8c8c",
+                    lineHeight: "15px" }}>
+        {`畫面 ${value}（顯示 ${shownCount(value)} / ${ranks.length} 級）`}
+        {`，機器 ${tagged ? machineRank : "全部"}`}
+        {conflict ? " —— 兩邊各自設定過，且不一致。" : ""}
+      </div>
+      {hidden > 0 &&
+        <div style={{ fontSize: 11, color: "#8c8c8c", lineHeight: "15px" }}>
+          有 {hidden} 個等級未顯示，它們仍然參與判定。
+        </div>}
+      <div style={{ fontSize: 11, color: "#8c8c8c", lineHeight: "15px" }}>
+        只改變畫面。機器判定的等級由 rank 標籤決定（未設定＝全檢測），這個滑桿動不到它。
+      </div>
+    </div>
+  );
+}
+
+// The two ranks, on the toolbar, beside the tags.
+//
+// The slider that states them lives in the settings modal now, which is right
+// for a control pressed once a shift -- but it took the NUMBERS with it, and
+// those are not setup, they are status: "what is being judged" and "what you
+// are looking at" are two different facts, and the screen must never make the
+// operator guess which one is in front of them.
+//
+// Same conflict rule as MeasureRankSlider, deliberately: one definition of
+// "these disagree", used by the badge and by the note under the slider, so the
+// toolbar can never be calm while the modal is red.
+//
+// Machine rank comes from the rankN tag and nothing else, so it sits next to
+// the tags -- that IS where it was set.
+function RankBadge({ ranks, machineRank, viewRank, onClick }) {
+  if (!ranks || ranks.length < 2) return null;   // no choice to make; same as the slider
+
+  const tagged = Number.isFinite(machineRank);
+  const conflict = tagged && viewRank !== machineRank;
+  const shown = ranks.filter((r) => r <= viewRank).length;
+
+  return (
+    <Tooltip title={
+      <div style={{ fontSize: 12 }}>
+        <div>機器：判定用的等級,由 rankN 標籤決定(未設定＝全檢測)。</div>
+        <div>檢視：畫面顯示到第幾級,只改變畫面,動不到判定。</div>
+        {conflict ? <div style={{ marginTop: 4 }}>兩邊各自設定過,且不一致。</div> : null}
+      </div>}>
+      <span onClick={onClick}
+            style={{ cursor: onClick ? 'pointer' : 'default', fontSize: 12,
+                     lineHeight: '16px', whiteSpace: 'nowrap',
+                     padding: '1px 6px', borderRadius: 3,
+                     color: conflict ? '#cf1322' : '#8c8c8c',
+                     border: `1px solid ${conflict ? '#ffa39e' : '#f0f0f0'}`,
+                     background: conflict ? '#fff1f0' : 'transparent' }}>
+        {`機器 ${tagged ? machineRank : '全部'} · 檢視 ${viewRank}`}
+        <span style={{ opacity: 0.7 }}>{` (${shown}/${ranks.length})`}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
 function RestrictiveCircleREdit ({initR,onRChanged}){
       
   let rankMin=0;
@@ -3218,7 +3326,19 @@ class APP_INSP_MODE extends React.Component {
       // to be a 檢測等級 slider here deciding what was drawn; a viewing control
       // that hides measurements is fine, but it has to agree with the one the
       // core was told about, and a slider is a thing the core can never learn.
-      this.setState({ measureDisplayRank: rankLimit === undefined ? Infinity : rankLimit });
+      // TWO RANKS, ON PURPOSE, and they are allowed to disagree.
+      //
+      // The machine's rank is the tag, and only the tag: it folds into
+      // quality_essential above and decides what a part IS. The operator's rank
+      // is the slider in the settings panel and decides only what is on screen.
+      //
+      // The note above this line is the older design, where the display filter
+      // was pinned to the tag so the two could not drift. Production asked for
+      // them to be separable -- the person at the machine wants to look at one
+      // level while the line keeps judging on another -- so the pin is gone and
+      // a mismatch is REPORTED instead of prevented. Which is the honest trade:
+      // it can no longer be silent, and the screen says so beside the slider.
+      this.setState({ machineRank: rankLimit });
 
       // The SAME pick the grading path uses (UTIL/ctrlMarginPick.js). This one
       // decides what the core is told; that one decides what the screen shows.
@@ -3539,6 +3659,18 @@ class APP_INSP_MODE extends React.Component {
     super(props);
     this.ec_canvas = null;
 
+    // The reports belonging to the frame currently on screen. Set by the canvas
+    // the moment it pairs a new image (see updateCanvas), so the list beside the
+    // picture describes the picture and not whatever arrived since.
+    //
+    // Identity-checked before storing: the canvas hands over a fresh array per
+    // image, but a re-render that is not a new frame must not queue a state
+    // update that changes nothing.
+    this.onFrameReportsBound = (list) => {
+      if (list === this.state.frameIR) return;
+      this.setState({ frameIR: list });
+    };
+
     // CI auto-exit (power/overheat guard): CI is a STATIONARY inspection -- the
     // user puts objects on the plate and the camera streams + re-inspects the
     // same scene forever. If nobody is there (no object) or the same object just
@@ -3553,13 +3685,20 @@ class APP_INSP_MODE extends React.Component {
     this._autoExitTimer = null;
 
     this.state = {
+      frameIR: undefined,
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
       onROISettingCallBack:undefined,
       // Infinity until a rankN tag says otherwise: with no level chosen,
       // rank hides nothing. 0 hid every measurement above the lowest level
       // before anyone had asked for that.
-      measureDisplayRank:Infinity,
+      // What the OPERATOR sees. Starts at the lowest rank the def actually has
+      // (set once the def is known, see _ranksOf) -- the least cluttered view,
+      // which is where an operator watching a running line starts.
+      measureDisplayRank: Infinity,
+      // What the MACHINE judges on, from the rankN tag. Display never writes
+      // this; it is here so the panel can say when the two differ.
+      machineRank: undefined,
       isInSettingUI:false,
       SettingParamInfo:undefined,
       modalInfo:undefined,
@@ -3687,7 +3826,31 @@ class APP_INSP_MODE extends React.Component {
     this._autoExitTimer = setTimeout(() => { this._autoExitTimer = null; this.EXIT(); }, 2000);
   }
 
+  // The ranks this def actually uses, ascending. Empty when nothing carries
+  // one, which is the ordinary case for a def that was never levelled.
+  _ranksOf(shapeList) {
+    const set = new Set();
+    for (const d of (shapeList || [])) {
+      if (d && Number.isFinite(d.rank)) set.add(d.rank);
+    }
+    return [...set].sort((a, b) => a - b);
+  }
+
+  // Start the operator at the LOWEST level the def has -- the least cluttered
+  // view, which is where someone watching a running line starts. Seeded once
+  // per def and never again: after that the slider belongs to the operator, and
+  // a def reload must not drag it back under their hand mid-shift.
+  _seedViewRank() {
+    const sig = this._ranksOf(this.props.shape_list).join(',')
+              + '|' + (this.props.shape_list || []).length;
+    if (this._viewRankSeed === sig) return;
+    this._viewRankSeed = sig;
+    const ranks = this._ranksOf(this.props.shape_list);
+    this.setState({ measureDisplayRank: ranks.length ? ranks[0] : Infinity });
+  }
+
   componentDidUpdate() {
+    this._seedViewRank();
     if (this.props.machine_custom_setting.InspectionMode== "CI")
       this.checkAutoExitForCI(this.props.inspectionReport);
 
@@ -3755,12 +3918,20 @@ class APP_INSP_MODE extends React.Component {
       >
         
         
-        {/* The 檢測等級 slider stood here. It filtered what was drawn AND, until
-            the roll-up was fixed, what the screen's verdict was computed from --
-            so an operator could change a part's verdict by moving a viewing
-            control the core had never heard of. The level now arrives as a
-            rankN tag chosen with every other per-part tag, which reaches the
-            wire def and therefore both sides. */}
+        {/* The 檢測等級 slider is back where it started, and it is a VIEWING
+            control now. It once filtered what was drawn AND -- until the
+            roll-up was fixed -- what the screen's verdict was computed from, so
+            an operator could change a part's verdict by moving something the
+            core had never heard of. The machine's level now arrives as a rankN
+            tag chosen with every other per-part tag, which reaches the wire def
+            and therefore both sides; this slider cannot touch it, and the note
+            under it says so and names both numbers when they differ. */}
+        <MeasureRankSlider key="rankSlider"
+          ranks={this._ranksOf(this.props.shape_list)}
+          value={this.state.measureDisplayRank}
+          machineRank={this.state.machineRank}
+          onChange={(v) => this.setState({ measureDisplayRank: v })} />
+
         <Divider orientation="left" key="div2"></Divider>
 
         <Button key="opt uInsp" icon={<SettingOutlined/>}
@@ -4164,8 +4335,17 @@ class APP_INSP_MODE extends React.Component {
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
+      // The 檢測等級 slider used to stand here, at the top of the live panel.
+      // It is a setup control -- pressed once a shift, if that -- and the panel
+      // beside a running line is for what the machine is doing right now, so it
+      // moved into the gear (setInspectionRankUI). What it filters is unchanged.
 
-      let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
+      // The frame-paired snapshot when there is one; the live window until the
+      // first image arrives (CI with no image, or the moment before the first
+      // frame -- an empty list there would blank a panel that has something to
+      // say).
+      let trackingWindowInfo = this.state.frameIR
+        || this.props.reportStatisticState.trackingWindow;
       //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
       MenuSet.push(
         <ObjInfoList
@@ -4282,6 +4462,10 @@ class APP_INSP_MODE extends React.Component {
           </span>
         </Popover>
         <TagDisplay_rdx size="small"/>
+        <RankBadge ranks={this._ranksOf(this.props.shape_list)}
+                   machineRank={this.state.machineRank}
+                   viewRank={this.state.measureDisplayRank}
+                   onClick={() => this.setInspectionRankUI()} />
         <Tooltip title="檢驗等級設定">
           <Button size="small" icon={<SettingOutlined />}
                   onClick={() => this.setInspectionRankUI()} />
@@ -4402,6 +4586,7 @@ class APP_INSP_MODE extends React.Component {
           {(CanvasWindowRatio <= 0) ? null :
             <ComponentBoundary name="InspectionCanvas" fallbackHeight="60vh">
               <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
+                onFrameReports={this.onFrameReportsBound}
 
                 edit_info={this.props.edit_info}
                 onROISettingCallBack={this.state.onROISettingCallBack}
