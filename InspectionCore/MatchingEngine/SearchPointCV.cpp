@@ -37,13 +37,16 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      acv_XY *outPt, float *outW, int spId,
                      std::vector<CaliperHit> *outHits, bool *outClipped,
                      SearchPointPeaks *outPeaks, float relStrength,
-                     int *outRelMoved, float distDecay)
+                     int *outRelMoved, float distDecay, SearchPointClip *outClip,
+                     int minRows)
 {
   if (outClipped) *outClipped = false;
+  if (outClip) *outClip = SearchPointClip{};
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.x != s.x || s.y != s.y) return false;
   acv_XY perp = { -s.y, s.x };
+  if (outClip) { outClip->pt = pt; outClip->bar = s; }
 
   // Legacy band axes (verified): |proj onto SEARCH dir| < width/2, |proj onto PERP| < margin.
   // The rectified buffer is rotated 90deg CCW vs the old layout (search was cols, perp was
@@ -84,6 +87,12 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // also not part of the clipped test: the window the def asked for is the
   // one that has to be in-image, not the pixel beyond it.
   const int nPg = nP + 2;                                            // gathered cols
+  if (outClip) {
+    outClip->samples_total = nS * nP;
+    outClip->rows_total = nS;
+    outClip->width = (float)nS;
+    outClip->depth = (float)nP;
+  }
   // The failure Caliper.cpp guards with CELL_LIMIT, and the same realistic
   // trigger: not a hostile def, but a pixel figure typed into a field that
   // wants millimetres. Measured before this guard: margin=width=3e4 allocated
@@ -147,7 +156,23 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
         // one the def specified. Reported up so the caller can refuse the
         // measurement rather than average what is left.
         d[j] = 0; vv[j] = 0;
-        if (outClipped && j >= 1 && j <= nP) *outClipped = true;
+        if (j >= 1 && j <= nP)
+        {
+          if (outClipped) *outClipped = true;
+          if (outClip)
+          {
+            outClip->samples_off++;
+            // Columns 0 and nP-1 of the def's window are never candidates --
+            // the local-max test needs a real neighbour on both sides, so the
+            // loop runs def columns 1..nP-2. A missing sample in the outermost
+            // column cannot hide an edge, so it must not count as one that
+            // could.
+            const float pc = (float)((j - 1) - cp);
+            if (j >= 2 && j <= nP - 1 &&
+                (outClip->nearest_bad != outClip->nearest_bad || pc < outClip->nearest_bad))
+              outClip->nearest_bad = pc;
+          }
+        }
         continue;
       }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
@@ -161,6 +186,16 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       // NaN outside the calibration grid, and casting a NaN float to
       // unsigned char is UB, not "some grey value".
       d[j] = !(v > 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
+    }
+    // A row with nothing in the image contributes no candidate at all. That
+    // costs one sample of the average, which is a loss of precision; it is not
+    // the same failure as losing the near columns, which can cost the ANSWER.
+    // Counted apart so the two can be told from each other afterwards.
+    if (outClip)
+    {
+      bool anyIn = false;
+      for (int j = 1; j <= nP && !anyIn; j++) if (vv[j]) anyIn = true;
+      if (!anyIn) outClip->rows_off++;
     }
   }
   }
@@ -322,8 +357,29 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // the perpendicular (min perpCoord = "top" of the cap). perp = acvVecNormal(s) matches the
   // legacy searchVec and flips with search_far, so min-perp == legacy's most-negative-perp
   // extreme. Average the edges within `considerRange` of the top (legacy reng), peak-weighted.
+  if (considerRange <= 0) considerRange = 1;
   float pMin = 1e9f;
   for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;   // top along perpendicular
+  // ROW CONSENSUS. A top that only one or two rows can see is a speck, not the
+  // part; discard everything within considerRange of it and look again. The
+  // loop ends when a top has enough rows behind it or nothing is left.
+  if (minRows > 1)
+  {
+    for (;;)
+    {
+      int support = 0;
+      for (auto &e : eps) if (e.perpCoord - pMin <= considerRange) support++;
+      if (support >= minRows) break;
+      std::vector<SPEdgePt> keep;
+      keep.reserve(eps.size());
+      for (auto &e : eps) if (e.perpCoord - pMin > considerRange) keep.push_back(e);
+      if (dbg) fprintf(stderr, "[SPCV] top at perp %.1f had %d rows < min_rows %d -- dropped, %zu candidates left\n", pMin, support, minRows, keep.size());
+      eps.swap(keep);
+      if (eps.empty()) return false;
+      pMin = 1e9f;
+      for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;
+    }
+  }
   // How much of that answer came from the relative rule: candidates that
   // cleared min_strength (every entry of `cand` has, by construction) and sit
   // NEARER than the one chosen, but did not survive peakThresh. Zero means the
@@ -339,7 +395,6 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     fprintf(stderr,"[SPCV] pt=(%.0f,%.0f) eps=%zu perp[%.0f,%.0f] search[%.0f,%.0f] perpTop=%.0f\n",pt.x,pt.y,eps.size(),pa,pb,sa,sb,pMin);
     if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   }
-  if (considerRange <= 0) considerRange = 1;
   // Strictly below considerRange: equal makes the (considerRange-alphaKeep)
   // denominator below 0, and 0/0 = NaN poisons every weight and the result.
   if (alphaKeep >= considerRange) alphaKeep = considerRange * 0.999f;

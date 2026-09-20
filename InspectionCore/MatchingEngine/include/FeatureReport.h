@@ -32,6 +32,37 @@ struct CaliperHit
   float strength;
 };
 
+// How a scan band left the image, in the band's own coordinates.
+//
+// Lives here rather than beside search_point_cv that fills it: SearchPointCV.h
+// already includes this header for CaliperHit, so declaring it there and
+// referring to it from the report structs below would close an include cycle.
+//
+// Reconstructing this after the fact from the def and the pose does not work:
+// tried on seven recorded frames of 10221 BOS-LT12BH4211 and the rebuilt band
+// centre was out by up to 450 px (search depth is +-113), which turned two
+// scans that had SUCCEEDED into "30% off-frame". The geometry has to come from
+// the run that measured it.
+//
+// Coordinates match the selector's: `nearest_bad` is a perpCoord, i.e. signed
+// distance along the SEARCH axis from the def's own point, negative towards the
+// near end where the first hit is taken. So `nearest_bad >= 0` says every
+// missing sample sat further out than the answer could ever be, and a NaN says
+// nothing eligible was missing.
+struct SearchPointClip
+{
+  int   samples_off = 0;        // samples that fell outside the image
+  int   samples_total = 0;      // nS * nP -- the band the def asked for
+  int   rows_off = 0;           // rows with NO in-image sample at all
+  int   rows_total = 0;         // nS
+  float nearest_bad = NAN;      // perpCoord of the nearest missing sample
+  // Band geometry as USED, image px. Enough to redraw the rectangle exactly.
+  acv_XY pt{NAN, NAN};          // band centre (the def's point, posed)
+  acv_XY bar{NAN, NAN};         // unit vector along the width axis
+  float  width = NAN;           // px, along bar
+  float  depth = NAN;           // px, along the search axis (= 2*margin)
+};
+
 // THE EVIDENCE A THRESHOLD IS SET AGAINST.
 //
 // edge.min_strength decides which gradient peaks count as edges at all, and it
@@ -362,6 +393,20 @@ typedef struct featureDef_searchPoint{
   //     noise: large enough that the true edge never loses, small enough that
   //     something half a window away cannot win on strength alone.
   float dist_decay;        // default 0 (off)
+  //   min_rows: HOW MANY ROWS OF THE BAND MUST AGREE ON THE APEX.
+  //
+  //     The selector takes the nearest row edge along the search axis. A
+  //     speck or a fibre crossing the band produces an edge in one or two rows,
+  //     and if it sits nearer than the part it IS the nearest -- and the rows
+  //     of the real edge, further out than include_range, are then excluded
+  //     from the average. Nothing in strength or distance need be wrong.
+  //     min_rows says: an apex supported by fewer than this many rows (within
+  //     include_range of it) is not the apex; drop those candidates and take
+  //     the next nearest. A wire edge spans tens of rows, a speck a few.
+  //
+  //     0 = off, bit-identical to before. A useful value is a fraction of the
+  //     band width in px, e.g. 5 for a 30-row band.
+  int   min_rows;          // default 0 (off)
   // WHICH of the edge knobs the def actually said something about.
   //
   // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
@@ -395,6 +440,7 @@ typedef struct featureDef_searchPoint{
     EDGE_SET_ALPHA_KEEP   = 1u << 4,
     EDGE_SET_REL_STRENGTH = 1u << 6,
     EDGE_SET_DIST_DECAY   = 1u << 7,
+    EDGE_SET_MIN_ROWS     = 1u << 8,
     // 1u << 5 was EDGE_SET_MASK_DILATE. Left as a hole rather than reused: a
     // new knob taking that bit would read as "set" on nothing, but the number
     // is in dumps and logs going back months and a reused bit makes those lie.
@@ -568,6 +614,20 @@ typedef struct FeatureReport_circleReport{
   // Per-caliper hits when locating==1 (caliper); empty in the contour path.
   std::vector<CaliperHit> cal_hits;
   CaliperProfiles cal_prof;    // see FeatureReport_lineReport
+  // Why this circle is NA. Search points have carried one since they were
+  // written; circles never did, and on a recorded frame of 10221
+  // BOS-LT12BH4211 the circles were the LARGER half of the NAs (21 of 61
+  // failing features, with the aux points that hang off them) and the only
+  // ones the record could say nothing at all about.
+  char na_reason[96] = {0};
+  // The radial search each caliper ran, so a miss can be re-examined on the
+  // picture: each caliper i in cal_hits sits on the nominal circle (c0, r0)
+  // and searched +-len along the ray from c0 through its anchor. Without this
+  // a missed caliper's anchor says WHERE it looked and nothing about the
+  // DIRECTION or REACH -- which is the difference between "the wire was 12 px
+  // away and the ray never crossed it" and "the ray crossed it and the
+  // polarity refused it". OBJECT-FRAME mm, like cal_hits. len<0 = not run.
+  struct { acv_XY c0{NAN, NAN}; float r0 = NAN, len = -1, width = 0; int polarity = -1; } cal_geom;
 }FeatureReport_circleReport;
 
 
@@ -578,7 +638,7 @@ typedef struct FeatureReport_auxPointReport{
   int status;
   // Same field, same reason, as the search point's: an NA that cannot say why
   // is as unhelpful as a silent substitution. Empty unless there is a reason.
-  char na_reason[48];
+  char na_reason[96];
 }FeatureReport_auxPointReport;
 
 
@@ -601,16 +661,32 @@ typedef struct FeatureReport_searchPointReport{
   // An NA with no reason is the same disease as a silent substitution: the
   // screen cannot explain what the machine did. Empty unless a required knob
   // was missing.
-  char na_reason[48];
+  //
+  // 96, not 48: the off-frame reason is 63 characters and was being cut at
+  // "scan window is off-frame (142 of 339 columns ha" -- losing the end of the
+  // sentence, and with it any chance of noticing that the two numbers are not
+  // what the sentence claims.
+  char na_reason[96];
+  // The scan band as it was actually used, and where it left the image.
+  // Diagnostic only; see SearchPointClip for why this cannot be rebuilt
+  // afterwards from the def and the pose.
+  SearchPointClip clip;
   // Per-edge points produced by the caliper-mode scan (one per strength-gated
   // row edge). status: 2 = within considerRange of the top (used in the final
   // average), 1 = strength-gated edge outside the consider band. Empty in
   // contour mode. Coords converted to OBJECT-FRAME mm by SPointMatching_ReportGen.
   std::vector<CaliperHit> cal_hits;
-  // How many of the configured scan columns had image under them, and how many
-  // were configured. A window that hangs off the frame measures from the
-  // fraction that is left and used to report SUCCESS exactly like a full one --
-  // see the coverage check in the caliper branch of SPointMatching.
+  // NOT a coverage figure, despite the name and despite what the off-frame
+  // message used to say with these two numbers in it.
+  //
+  //   cal_used  = cal_hits.size() -- strength-gated row edges REPORTED, and
+  //               capped at HITS_MAX (600) by the bound in SearchPointCV.
+  //   cal_total = the band's row count (`width` in px).
+  //
+  // So "600 of 1017" means the hit list hit its cap, not that 600 of 1017
+  // samples had image. Read as coverage it overstated a 1.2% clip as 41%, and
+  // the 600 that appeared in two records was the cap, not a measurement.
+  // Coverage now lives in `clip`, which counts samples rather than hits.
   // 0/0 = not a caliper-mode scan.
   int cal_used = 0;
   int cal_total = 0;

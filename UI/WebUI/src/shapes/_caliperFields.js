@@ -101,6 +101,10 @@ export function edgeField({ method = 'strongest', polarity = 'falling', min_stre
       // measurement with it, which strength alone cannot see. 0 = off, and off
       // is exactly the behaviour before this existed. Search points only.
       dist_decay:   'input-number',
+      // Row consensus: the nearest edge must be seen by at least this many
+      // rows of the band (within include_range of it) or it is treated as a
+      // speck and the next nearest is taken. 0 = off. Search points only.
+      min_rows:     'input-number',
       // across-edge Gaussian before differencing, px; 0 = none (line/arc only)
       sigma:        'input-number',
     } : undefined,

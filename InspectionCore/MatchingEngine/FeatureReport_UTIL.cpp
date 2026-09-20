@@ -374,9 +374,26 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
       cJSON_AddItemToObject(cfj,"pt2",acv_acv_XY2JSON(vec[j].pt2));
       cJSON_AddItemToObject(cfj,"pt3",acv_acv_XY2JSON(vec[j].pt3));
     }
+    else if(vec[j].na_reason[0] != 0)
+    {
+      cJSON_AddStringToObject(cfj, "na_reason", vec[j].na_reason);
+    }
     // Emit caliper-mode per-caliper hits even on STATUS_NA — the user wants to
     // see where the calipers tried and failed when the fit didn't converge.
     AddCalHits2JSON(cfj, vec[j].cal_hits, center_offset);
+    if (vec[j].cal_geom.len >= 0 && DbgEmit("cal_hits"))
+    {
+      cJSON *extra = cJSON_GetObjectItem(cfj, "extra");
+      if (!extra) { extra = cJSON_CreateObject(); cJSON_AddItemToObject(cfj, "extra", extra); }
+      cJSON *g = cJSON_CreateObject();
+      cJSON_AddNumberToObject(g, "c0x", vec[j].cal_geom.c0.x - center_offset.x);
+      cJSON_AddNumberToObject(g, "c0y", vec[j].cal_geom.c0.y - center_offset.y);
+      cJSON_AddNumberToObject(g, "r0", vec[j].cal_geom.r0);
+      cJSON_AddNumberToObject(g, "len", vec[j].cal_geom.len);
+      cJSON_AddNumberToObject(g, "width", vec[j].cal_geom.width);
+      cJSON_AddNumberToObject(g, "pol", vec[j].cal_geom.polarity);
+      cJSON_AddItemToObject(extra, "cal_geom", g);
+    }
     AddCalProfile2JSON(cfj, vec[j].cal_prof);
 
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
@@ -445,6 +462,38 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
     else if(vec[j].na_reason[0] != 0)
     {
       cJSON_AddStringToObject(spj, "na_reason", vec[j].na_reason);
+    }
+    // THE BAND, WHENEVER IT WAS CLIPPED -- including (especially) when the
+    // scan was refused and there is no point to report.
+    //
+    // A refused scan is exactly the case somebody has to be able to look at
+    // afterwards, and it is the case that carried the least. Rebuilding the
+    // rectangle from the def and the pose was tried and does not work: on
+    // seven recorded frames the rebuilt centre was out by up to 450 px against
+    // a search depth of +-113, which made two scans that had SUCCEEDED look
+    // 30% off-frame. Written here so nobody has to reconstruct it.
+    // Emitted for EVERY caliper-mode scan, not only clipped ones: the band is
+    // where the scan looked after pose AND morph, and a "no edge in the band"
+    // NA is unreadable without it.
+    if (vec[j].clip.width > 0)
+    {
+      cJSON *cl = cJSON_AddObjectToObject(spj, "clip");
+      cJSON_AddNumberToObject(cl, "samples_off",   vec[j].clip.samples_off);
+      cJSON_AddNumberToObject(cl, "samples_total", vec[j].clip.samples_total);
+      cJSON_AddNumberToObject(cl, "rows_off",      vec[j].clip.rows_off);
+      cJSON_AddNumberToObject(cl, "rows_total",    vec[j].clip.rows_total);
+      // Signed distance along the SEARCH axis: negative is the near side, where
+      // the first hit is taken and where a missing sample can hide the answer.
+      // Absent = nothing was missing inside the candidate columns.
+      if (vec[j].clip.nearest_bad == vec[j].clip.nearest_bad)
+        cJSON_AddNumberToObject(cl, "nearest_bad", vec[j].clip.nearest_bad);
+      // Image px, same frame as cal_hits before the object-frame conversion.
+      cJSON_AddNumberToObject(cl, "px",     vec[j].clip.pt.x);
+      cJSON_AddNumberToObject(cl, "py",     vec[j].clip.pt.y);
+      cJSON_AddNumberToObject(cl, "bar_x",  vec[j].clip.bar.x);
+      cJSON_AddNumberToObject(cl, "bar_y",  vec[j].clip.bar.y);
+      cJSON_AddNumberToObject(cl, "width",  vec[j].clip.width);
+      cJSON_AddNumberToObject(cl, "depth",  vec[j].clip.depth);
     }
     AddCalHits2JSON(spj, vec[j].cal_hits, center_offset);
     AddSearchPeaks2JSON(spj, vec[j].cal_peaks);

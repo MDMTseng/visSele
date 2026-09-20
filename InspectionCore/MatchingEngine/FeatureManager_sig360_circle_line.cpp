@@ -1218,8 +1218,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // columns, an apex search does not. If the window is truncated the real
       // apex may be in the part that was cut, and the surviving columns then
       // agree on a DIFFERENT edge -- with full strength, a consistent consider
-      // band and a stable weighted average. That is why a clipped window is NA
-      // below rather than a slightly worse number.
+      // band and a stable weighted average. That was the case for refusing a
+      // clipped window; since 2026-09-20 it is measured by default and the
+      // clip geometry goes into the record instead (see allowClipped below).
       acv_XY off = eT.getImgOffset();
       acv_XY out; float str;
       bool ok;
@@ -1312,7 +1313,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            eT.getBacpac(),
                            &out, &str, def.id, &rep.cal_hits, &spClipped,
                            DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
-                           def.rel_strength, &relMoved, def.dist_decay);
+                           def.rel_strength, &relMoved, def.dist_decay,
+                           &rep.clip, def.min_rows);
       // The scale the panel needs to express an offset in the def's own units.
       if (DbgEmit("edge_profile") && eT.getBacpac() && eT.getBacpac()->sampler)
         rep.cal_peaks.mmpp = eT.getBacpac()->sampler->mmpP_ideal();
@@ -1349,6 +1351,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       {
         h.pt = acvVecAdd(h.pt, off);
       }
+      // The band centre came back in the crop's frame like the hits; put it in
+      // image px so the record can redraw the rectangle where it really was.
+      rep.clip.pt = acvVecAdd(rep.clip.pt, off);
       if (ok)
       {
         // A SEARCH POINT MEASURES ONE AXIS. THE OTHER IS NOT A MEASUREMENT.
@@ -1422,11 +1427,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         // uncropped frame reads 1.1322mm -- 0.2mm, with nothing anywhere saying
         // the measurement rested on 3 samples out of 21.
         //
-        // Reported ALWAYS, so the number is visible before it becomes a
-        // failure; below the floor it is an NA, because a window that is mostly
-        // outside the image is missing data, and the rule this codebase settled
-        // on for missing data is to say NA rather than to guess. Same rule as
-        // edge.min_strength above.
+        // Reported ALWAYS. Whether a window that runs outside the image is
+        // refused is a policy switch (INSP_CALIPER_REFUSE_CLIPPED, default off);
+        // the counts and the band geometry are recorded either way.
         {
           rep.cal_used  = (int)rep.cal_hits.size();
           rep.cal_total = (width > 1.f) ? (int)width : 1;
@@ -1446,20 +1449,43 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           // remainder -- possibly a good number, but not the measurement that
           // was specified, and nothing downstream can tell the difference.
           //
-          // INSP_CALIPER_ALLOW_CLIPPED=1 restores the old behaviour for a
-          // machine that would rather keep its current verdicts while the
-          // counts are being looked at. The counts are reported either way.
+          // DEFAULT: a clipped band is NOT refused (2026-09-20). On 10221
+          // BOS-LT12BH4211 every recorded frame lost the two total-width scans
+          // and the top-line scan to this gate although the edge they measure
+          // was in the picture -- the band is 13 mm wide and the part sits
+          // where the station puts it. The clip geometry is in the record
+          // (`clip`) for anyone who wants to judge it afterwards, and
+          // INSP_CALIPER_REFUSE_CLIPPED=1 brings the refusal back.
           static const bool allowClipped = []{
-            const char *e = getenv("INSP_CALIPER_ALLOW_CLIPPED");
-            return e && atoi(e) != 0;
+            const char *e = getenv("INSP_CALIPER_REFUSE_CLIPPED");
+            return !(e && atoi(e) != 0);
           }();
+          if (spClipped && allowClipped)
+            LOGW_EVERY_N(50, "search_point id=%d: scan band runs off the image (%d/%d samples, nearest %+.0fpx) -- measured from what was in frame",
+                         def.id, rep.clip.samples_off, rep.clip.samples_total,
+                         (rep.clip.nearest_bad == rep.clip.nearest_bad) ? rep.clip.nearest_bad : 0.0f);
           if (spClipped && !allowClipped)
           {
             rep.pt.x = NAN; rep.pt.y = NAN;
             rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+            // Say what was actually missing, in the numbers that mean it.
+            //
+            // This line used to print cal_used/cal_total as "N of M columns had
+            // image". Those are reported EDGE HITS (capped at 600) over the
+            // band's row count -- not a coverage figure at all. On a recorded
+            // frame it read "600 of 1017", which invites "41% of the window was
+            // off-frame"; the band was 1.18% off, entirely on the far side.
+            //
+            // near/far is the part worth reading: the first hit is taken at the
+            // SMALLEST perpCoord, so missing samples at a positive perpCoord sit
+            // further out than any answer and cannot have changed it.
+            const float nb = rep.clip.nearest_bad;
             snprintf(rep.na_reason, sizeof(rep.na_reason),
-                     "scan window is off-frame (%d of %d columns had image)",
-                     rep.cal_used, rep.cal_total);
+                     "scan window off-frame: %d/%d samples, %d/%d rows, nearest %+.0fpx (%s)",
+                     rep.clip.samples_off, rep.clip.samples_total,
+                     rep.clip.rows_off, rep.clip.rows_total,
+                     (nb == nb) ? nb : 0.0f,
+                     (nb != nb) ? "none" : (nb < 0 ? "NEAR side" : "far side"));
             LOGE_EVERY_N(20, "search_point id=%d: the scan window runs off the "
                              "image (%d/%d columns) -- NA, not a partial "
                              "measurement. Widen the camera ROI or move the "
@@ -1686,6 +1712,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.manual_offset = 0;
   searchPoint.alpha_keep = 0;
   searchPoint.dist_decay = 0;   // off: same answer as before it existed
+  searchPoint.min_rows = 0;     // off
   // Today's hard-coded rule, as the default. A def that says nothing keeps
   // exactly the behaviour it has always had.
   searchPoint.rel_strength = 0.40f;
@@ -1720,6 +1747,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
       take   ("rel_strength",  featureDef_searchPoint::EDGE_SET_REL_STRENGTH,  &searchPoint.rel_strength);
       take   ("dist_decay",    featureDef_searchPoint::EDGE_SET_DIST_DECAY,   &searchPoint.dist_decay);
+      takeInt("min_rows",      featureDef_searchPoint::EDGE_SET_MIN_ROWS,     &searchPoint.min_rows);
       // mask_dilate is gone (2026-08-26). Say so rather than ignoring it: a def
       // that carries the key was tuned by somebody who believed it did
       // something, and silently dropping it is how a knob becomes folklore.
@@ -4060,6 +4088,16 @@ static bool solveDenseNxN(double M[4][4], double b[4], double x[4], int n)
   return true;
 }
 
+// Tangent precision of an edge anchor as a fraction of its normal precision.
+// See solve_tps. Env MORPH_TANGENT_FLOOR overrides for experiments.
+static double tps_tangent_floor()
+{
+  static double v = -1;
+  if (v < 0) { const char *e = getenv("MORPH_TANGENT_FLOOR"); v = (e && atof(e) >= 0) ? atof(e) : 0.1; }
+  return v;
+}
+#define TPS_TANGENT_FLOOR tps_tangent_floor()
+
 // Directional weighted least-squares similarity fit (morph mode 1).
 //
 // Each valid anchor contributes ONE scalar constraint: the displacement of its
@@ -4134,6 +4172,25 @@ int ConstrainMap::solve()
       {
         for (int b = 0; b < 4; b++) M[a][b] += w * A[a] * A[b];
         r[a] += w * A[a] * D;
+      }
+      // Same tangent prior as solve_tps, for the same reason: two anchors with
+      // x-normals are two equations for four unknowns, and the ridge below
+      // (1e-3 of the trace) let a rotation about a far-away point satisfy both
+      // -- on frame 39_414 of 10221 that moved every other feature 1.2-1.8 mm
+      // and produced 28 NAs where the un-morphed pose had 11. The tangent row
+      // says the anchor did not move ALONG its edge, weakly, so the unobserved
+      // directions resolve to "no deformation" instead of to whatever the
+      // solver finds cheapest.
+      {
+        const double tx = -cy, ty = cx;                 // tangent
+        const double wt = (p.w_minor > 0 ? p.w_minor : TPS_TANGENT_FLOOR) * w;
+        const double At[4] = { tx * x + ty * y, ty * x - tx * y, tx, ty };
+        const double Dt = (p.w_minor > 0) ? (tx * u + ty * v) : (tx * x + ty * y); // corner: data; edge: stay
+        for (int a = 0; a < 4; a++)
+        {
+          for (int b = 0; b < 4; b++) M[a][b] += wt * At[a] * At[b];
+          r[a] += wt * At[a] * Dt;
+        }
       }
       used++;
     }
@@ -4314,10 +4371,28 @@ int ConstrainMap::solve_tps()
     if (nrm > 1e-9) { nx /= nrm; ny /= nrm; } else { nx = 1; ny = 0; }
     double wMaj = (p.weight  > 0) ? p.weight  : 1.0;  // precision along normal
     double wMin = (p.w_minor > 0) ? p.w_minor : 0.0;  // precision along tangent
+    double ux = p.to.x, uy = p.to.y;
+    // An edge anchor (w_minor == 0) says nothing about motion ALONG the edge:
+    // its first-hit lands wherever the edge is, and the tangent offset between
+    // `from` and `to` is where the operator clicked, not deformation. Left
+    // unobserved, that direction is a null space of the 2N+4 unknowns, and the
+    // 1e-6 ridge below did not hold it: on the recipe's own registration image
+    // three anchors with x-normals and <0.09 mm of data moved the frame 0.3 mm
+    // in y, and on a live frame 3.7 mm -- every caliper off the part.
+    // So give the tangent a weak observation of ZERO motion: the target is the
+    // normal-projected `to`, and the tangent precision is a fraction of the
+    // normal's. Weak enough that a corner anchor or several consistent normals
+    // still win; strong enough that "no data" means "no deformation".
+    if (wMin <= 0.0)
+    {
+      const double dn = (p.to.x - p.from.x) * nx + (p.to.y - p.from.y) * ny;
+      ux = p.from.x + nx * dn;
+      uy = p.from.y + ny * dn;
+      wMin = TPS_TANGENT_FLOOR * wMaj;
+    }
     double w11 = wMaj * nx * nx + wMin * ny * ny;
     double w22 = wMaj * ny * ny + wMin * nx * nx;
     double w12 = (wMaj - wMin) * nx * ny;
-    double ux = p.to.x, uy = p.to.y;
 
     std::fill(mx.begin(), mx.end(), 0.0);
     std::fill(my.begin(), my.end(), 0.0);
@@ -4363,7 +4438,10 @@ int ConstrainMap::solve_tps()
   S.at<double>(OB,  OB)  += gamma;                                  // b  -> 0
   S.at<double>(OTX, OTX) += gamma;                                  // tx -> 0
   S.at<double>(OTY, OTY) += gamma;                                  // ty -> 0
-  for (int j = 0; j < 2 * N; j++) S.at<double>(j, j) += 1e-6 * (sdmax + 1.0); // c -> 0 (numerical)
+  // The RBF coefficients ridge at the SAME strength as the similarity, not
+  // 1e-6 of it: they are the part of the model with the most freedom and the
+  // least data, and the previous value let them carry the whole null space.
+  for (int j = 0; j < 2 * N; j++) S.at<double>(j, j) += gamma; // c -> 0
 
   cv::Mat theta;
   if (!cv::solve(S, rhs, theta, cv::DECOMP_SVD)) return N; // singular -> fall back
@@ -4954,6 +5032,8 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     LOGE_EVERY_N(100, "Circle matching failed: resultR:%f defR:%f (1 line in 100)",
           cf.circle.radius, arcD.circleTar.radius);
     cr.def = plineDef;
+    snprintf(cr.na_reason, sizeof(cr.na_reason),
+             "no contour section for this arc (contour mode)");
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
     return cr;
   }
@@ -5036,6 +5116,15 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   // Points that drove the fit, in image-px (same frame as cf.circle.circumcenter).
   // Populated by either branch below; used afterward for envelope fit modes.
   std::vector<acv_XY> envelope_pts;
+  // HOW MANY CALIPERS FOUND AN EDGE, carried out of the caliper block.
+  //
+  // The failure path below cannot read `rr` -- it is scoped to that block --
+  // and cf.matching_pts is only assigned when the fit SUCCEEDS, so on failure
+  // it still holds the 0 that `acv_CircleFit cf = {}` put there. Reporting
+  // that 0 as an edge count says "the calipers found nothing" when the truth
+  // may be "they found 4 and 5 were required". -1 = the caliper path did not
+  // run at all (contour mode).
+  int cal_nValid = -1;
   if (cdef.locating == 1) // caliper/section circle fit (radial calipers)
   {
     CaliperParams cal;
@@ -5096,6 +5185,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       rr = caliper_locate_circle(eT.getImageCv(), cc, radius, sAngle, eAngle,
                                  cdef.cal_count, cal, eT.getBacpac(), cdef.name, off);
     }
+    cal_nValid = rr.nValid;
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
     else { cf.circle.radius = NAN; }
@@ -5107,6 +5197,12 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     // All hits (including missed) carry valid coords — Caliper.cpp stashes
     // the caliper's nominal anchor on miss.
     cr.cal_hits.reserve(rr.hits.size());
+    // Search geometry as run, object frame -- see cal_geom in FeatureReport.h.
+    cr.cal_geom.c0 = PixDomain_TO_TemplateDomain(acvVecAdd(cc, off), cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    cr.cal_geom.r0 = radius * mmpp;
+    cr.cal_geom.len = cal.length * mmpp;
+    cr.cal_geom.width = cal.width * mmpp;
+    cr.cal_geom.polarity = (int)cal.edge.polarity;
     std::vector<acv_XY> dbg_pix_hits;  // image-absolute px, for debug overlay
     std::vector<int>    dbg_pix_st;
     for (const auto &h : rr.hits) {
@@ -5229,6 +5325,26 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cr.def = plineDef;
     // LOGI("Circle search failed: resultR:%f defR:%f",
     //      cf.circle.radius, cdef.circleTar.radius);
+    // Which of the two it is matters to whoever reads the record: too few
+    // points to fit at all, or enough points that would not resolve to a
+    // circle. Both used to arrive as a bare NA.
+    // SAY HOW MANY CALIPERS WERE PLACED, not just how many found an edge.
+    //
+    // caliper_locate_circle sizes its hit list to cal_count
+    // (`r.hits.assign(count, ...)`), so a def with no cal_count places ZERO
+    // calipers, finds zero edges and fails with nValid < 3 -- which arrives
+    // looking exactly like "the calipers all missed the wire". Those are
+    // completely different problems (a recipe that was never given a count vs
+    // an edge the scan could not see) and the record could not tell them
+    // apart. cal_count is printed first for that reason.
+    if (cdef.locating == 1)
+      snprintf(cr.na_reason, sizeof(cr.na_reason),
+               "circle fit failed: %d calipers placed, %d found an edge, %d needed",
+               cdef.cal_count, cal_nValid,
+               cdef.cal_min_inliers > 0 ? cdef.cal_min_inliers : 3);
+    else
+      snprintf(cr.na_reason, sizeof(cr.na_reason),
+               "circle fit failed: contour mode, no circle through the sections");
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
     return cr;
   }
@@ -6210,6 +6326,36 @@ void SET_UNSET_REPORT_NA(FeatureReport_sig360_circle_line_single &srep)
 
 // Record a locate MISS on the container report, keeping the CLOSEST one.
 //
+// MORPH_DUMP=1: what the morph was given and what it does with it, per anchor.
+// The solve is silent, and when it produces a warp that throws every caliper
+// off the part there is otherwise nothing in the record to say whether the
+// anchors or the fit are at fault. Called from both matching paths.
+static void morph_dump(ConstrainMap &cm, const std::vector<featureDef_searchPoint> &searchPointList, int k)
+{
+  if (!getenv("MORPH_DUMP")) return;
+  {
+    fprintf(stderr, "[MORPH] iter=%d mode=%d valid=%d tps_valid=%d\n", k, cm.mode, cm.valid_count, (int)cm.tps_valid);
+    for (size_t j = 0; j < cm.anchorPairs.size(); j++)
+    {
+      const auto &p = cm.anchorPairs[j];
+      if (p.to.x != p.to.x) continue;
+      acv_XY c = cm.convert(p.from);
+      fprintf(stderr, "[MORPH]  sp=%d from=(%.3f,%.3f) to=(%.3f,%.3f) d=(%+.3f,%+.3f) n=(%.2f,%.2f) w=%.1f/%.1f  conv(from)=(%.3f,%.3f)\n",
+              (j < searchPointList.size()) ? searchPointList[j].id : -1,
+              p.from.x, p.from.y, p.to.x, p.to.y, p.to.x - p.from.x, p.to.y - p.from.y,
+              p.constrainVector.x, p.constrainVector.y, p.weight, p.w_minor, c.x, c.y);
+    }
+    for (size_t j = 0; j < cm.anchorPairs.size(); j++)
+    {
+      const auto &p = cm.anchorPairs[j];
+      if (p.to.x == p.to.x) continue;
+      acv_XY c = cm.convert(p.from);
+      fprintf(stderr, "[MORPH]  sp=%d (not anchor) from=(%.3f,%.3f) conv=(%.3f,%.3f) shift=%.3f mm\n",
+              (j < searchPointList.size()) ? searchPointList[j].id : -1, p.from.x, p.from.y, c.x, c.y, acvDistance(c, p.from));
+    }
+  }
+}
+
 // SingleMatching runs per candidate region, so most frames produce several
 // misses. The best of them is the useful one: it is the answer to "how far off
 // was it", and a run that reports the last candidate instead reports whichever
@@ -6684,7 +6830,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
       // Rebuild the cached morph from this iteration's anchors (no-op for mode 0).
       cm.solve();
-
+      morph_dump(cm, searchPointList, k);
       // Converged once every valid anchor moved less than the tolerance since the
       // previous iteration. (Single-iteration default never reaches this.)
       if (k + 1 < morph_max_iter)
@@ -9634,6 +9780,7 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
       }
     }
     cm.solve();
+    morph_dump(cm, searchPointList, k);
     if (k + 1 < morph_max_iter)
     {
       float maxd = 0; bool any_prev = false;

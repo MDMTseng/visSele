@@ -14682,6 +14682,43 @@ int cp_main(int argc, char **argv)
     cv::Mat cvSrc;
     if (loadImageCv(imgPath, cvSrc) != 0)
     { LOGE("--insp: cannot load image %s", imgPath); return 3; }
+
+    // THE CALIBRATION THE LIVE CORE HAS AND THIS PATH DID NOT.
+    //
+    // mainLoop autoloads data/lens_calib.json at startup, and field_calib
+    // arrives over the WebUI's calib_files_load RPC. --insp is handled in
+    // cp_main and returns before mainLoop ever runs, so it measured with NO
+    // distortion model and no bright/dark field -- the only camera numbers it
+    // had were the def's own cam_param.
+    //
+    // That made offline replay useless for the question it is most wanted for:
+    // a recorded frame replayed here produced NAs of its own, and there was no
+    // way to tell those apart from the ones the machine actually saw. Measured
+    // on 10221 BOS-LT12BH4211: 14 recorded frames replayed, 4 matched and 10
+    // differed, with the differences overwhelmingly OK -> NA, which is what an
+    // edge refine does when it has no lens model.
+    //
+    // Same files, same order, same failure handling as the live path; a missing
+    // file is a warning, not a refusal, because the offline gate is also used
+    // on machines that have neither.
+    {
+      struct stat _c_st;
+      if (stat("data/lens_calib.json", &_c_st) == 0)
+      {
+        if (load_lens_calib("data/lens_calib.json"))
+          g_calib_autoloaded = true;
+        else
+          LOGE("--insp: data/lens_calib.json did not load -- measuring WITHOUT "
+               "a lens distortion model");
+      }
+      else
+        LOGE("--insp: no data/lens_calib.json -- measuring WITHOUT a lens "
+             "distortion model; results will not match the live machine");
+      // field_calib is on-demand even live (the WebUI asks for it), so its
+      // absence is normal rather than notable.
+      if (stat("data/field_calib.json", &_c_st) == 0)
+        load_field_calib("data/field_calib.json");
+    }
     // Optional 5th argument: the same perturbation II accepts, as JSON.
     //
     //   visSele --insp img.png def.hydef out.json '{"rot_deg":5,"noise":8}'

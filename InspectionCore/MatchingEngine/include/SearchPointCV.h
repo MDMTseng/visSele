@@ -21,6 +21,10 @@
 
 enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 
+// SearchPointClip -- the band's clip geometry -- is declared in FeatureReport.h
+// (included above for CaliperHit). Declaring it here would close an include
+// cycle, since the report structs there carry one.
+
 // gray: source image (the edgeTracking crop). pt/searchDir in that image's px.
 // margin = search half-depth (px, region spans +/-margin along searchDir).
 // width  = band across the edge (px). polarity per SPEdgeType (search-dir gradient
@@ -62,6 +66,24 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // along the search axis. 0 = off, and off is bit-identical
                      // to the code before it existed. See
                      // featureDef_searchPoint::dist_decay.
-                     float distDecay = 0.0f);
+                     float distDecay = 0.0f,
+                     // WHERE the band left the image, not just that it did.
+                     //
+                     // `outClipped` is one bool, and a bool cannot tell a band
+                     // that lost a corner from one that lost its near half --
+                     // which is the difference between a measurement that is
+                     // certainly unaffected and one that may have had a nearer
+                     // edge hidden from it. Nothing downstream could make that
+                     // distinction, so every clipped band was refused alike and
+                     // the record kept no way to tell afterwards which it was.
+                     //
+                     // Diagnostic only: nothing here changes what is measured or
+                     // which scans are refused.
+                     SearchPointClip *outClip = nullptr,
+                     // minRows: an apex must be supported by at least this
+                     // many rows within considerRange, else it is discarded
+                     // and the next nearest is tried. 0 = off. See
+                     // featureDef_searchPoint::min_rows.
+                     int minRows = 0);
 
 #endif // SEARCH_POINT_CV_H
