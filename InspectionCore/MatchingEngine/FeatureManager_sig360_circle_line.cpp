@@ -1298,6 +1298,19 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       }
       float edgeSuppress = def.edge_min_strength;
       int relMoved = 0;
+      // edge.nth, on the same terms as the caliper path: an index, used when
+      // the method IS nth. It was parsed for search points and then dropped --
+      // search_point_cv was never given it -- so a def could ask for the second
+      // edge and silently measure the first, which is the failure mode that
+      // `blur` and `mask_dilate` were removed for.
+      const int spNth = (def.edge_method == EdgeSelectParams::NTH) ? def.edge_nth : 0;
+      // The other methods are not implemented here and never have been: this
+      // scan takes the nearest hit by construction. Say so rather than letting
+      // the word on the screen stand for something the machine does not do.
+      if (def.edge_method != EdgeSelectParams::FIRST && def.edge_method != EdgeSelectParams::NTH)
+        LOGW_EVERY_N(200, "search_point id=%d: edge.method is not 'first' or 'nth' -- a search "
+                          "point takes the NEAREST hit along its search axis, so the setting has "
+                          "no effect here. (1 line in 200)", def.id);
 
       // include_range is an OPTIONAL band: absent means the step is not
       // applied, and an explicit 0 means the same thing said out loud. Both
@@ -1314,7 +1327,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            &out, &str, def.id, &rep.cal_hits, &spClipped,
                            DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
                            def.rel_strength, &relMoved, def.dist_decay,
-                           &rep.clip, def.min_rows);
+                           &rep.clip, def.min_rows, spNth);
       // The scale the panel needs to express an offset in the def's own units.
       if (DbgEmit("edge_profile") && eT.getBacpac() && eT.getBacpac()->sampler)
         rep.cal_peaks.mmpp = eT.getBacpac()->sampler->mmpP_ideal();
@@ -1503,8 +1516,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         // and this one has a specific meaning: the scan ran and found no edge
         // that cleared min_strength inside the band -- so the band or the floor
         // is where to look, not the def.
-        snprintf(rep.na_reason, sizeof(rep.na_reason),
-                 "no edge over min_strength in the search band");
+        if (spNth > 0)
+          snprintf(rep.na_reason, sizeof(rep.na_reason),
+                   "edge.nth=%d: fewer than %d edges over min_strength in the band",
+                   spNth, spNth + 1);
+        else
+          snprintf(rep.na_reason, sizeof(rep.na_reason),
+                   "no edge over min_strength in the search band");
       }
       LOGV("caliper spoint rep.pt:%f %f, status:%d", rep.pt.x, rep.pt.y, rep.status);
       break;

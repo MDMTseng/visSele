@@ -38,7 +38,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      std::vector<CaliperHit> *outHits, bool *outClipped,
                      SearchPointPeaks *outPeaks, float relStrength,
                      int *outRelMoved, float distDecay, SearchPointClip *outClip,
-                     int minRows)
+                     int minRows, int nth)
 {
   if (outClipped) *outClipped = false;
   if (outClip) *outClip = SearchPointClip{};
@@ -360,6 +360,29 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (considerRange <= 0) considerRange = 1;
   float pMin = 1e9f;
   for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;   // top along perpendicular
+  // THE NTH EDGE, not the nearest.
+  //
+  // A first-hit scan answers "where does the part begin". Some features need
+  // the edge after that -- the far side of a wire, the second of two lips --
+  // and until now a search point could only say it by moving the window until
+  // the wanted edge happened to be the nearest thing in it, which is a
+  // placement that stops working as soon as the part moves.
+  //
+  // A cluster is one edge: candidates within considerRange of each other, the
+  // same grouping the apex average already uses. Skipping `nth` of them walks
+  // outward along the search axis.
+  for (int skip = 0; skip < nth; skip++)
+  {
+    std::vector<SPEdgePt> keep;
+    keep.reserve(eps.size());
+    for (auto &e : eps) if (e.perpCoord - pMin > considerRange) keep.push_back(e);
+    if (keep.empty()) return false;          // fewer edges in the band than nth
+    eps.swap(keep);
+    pMin = 1e9f;
+    for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;
+    if (dbg) fprintf(stderr, "[SPCV] nth: skipped edge %d, next top at perp %.1f, %zu candidates left\n", skip, pMin, eps.size());
+  }
+
   // ROW CONSENSUS. A top that only one or two rows can see is a speck, not the
   // part; discard everything within considerRange of it and look again. The
   // loop ends when a top has enough rows behind it or nothing is left.

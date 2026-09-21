@@ -84,6 +84,14 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // many rows within considerRange, else it is discarded
                      // and the next nearest is tried. 0 = off. See
                      // featureDef_searchPoint::min_rows.
-                     int minRows = 0);
+                     int minRows = 0,
+                     // nth: take the Nth DISTINCT edge along the search axis
+                     // instead of the nearest. Distinct means separated by more
+                     // than considerRange, which is already this scan's
+                     // definition of "the same edge". 0 = nearest, i.e. what a
+                     // first-hit scan has always done. The CALLER decides
+                     // whether the def asked for it (edge.method == nth),
+                     // matching how the caliper path reads edge.nth.
+                     int nth = 0);
 
 #endif // SEARCH_POINT_CV_H

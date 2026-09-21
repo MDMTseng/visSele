@@ -418,6 +418,26 @@ typedef struct featureDef_searchPoint{
   //     it on narrow bands over straight edges (a third of the rows), and
   //     leave apex scans at 0 -- dist_decay is the filter for those.
   int   min_rows;          // default 0 (off)
+  //   edge_nth: WHICH edge along the search axis, when edge_method is nth.
+  //
+  //     A search point takes the NEAREST hit. nth walks outward instead: 1 is
+  //     the edge after the nearest, 2 the one after that. Edges are separated
+  //     by include_range -- the same grouping the apex average uses, so "the
+  //     same edge" means one thing in this scan.
+  //
+  //     Parsed since the knob existed and never passed to search_point_cv, so
+  //     a def asking for the second edge measured the first and said nothing.
+  //     Wired 2026-09-21; nothing shipped was using it (every def in the tree
+  //     carries the default 0).
+  //
+  //     WHAT IT NEEDS: edges further apart than the scan's own spread. Measured
+  //     on 10221 frame 46_274 with include_range 0.05 mm (5.6 px): points whose
+  //     band crosses the wire stepped a whole wire thickness -- id 16 by 42 px,
+  //     id 21 by 97 px -- which is the intended behaviour. On a BLURRED edge
+  //     the per-row picks spread wider than the separation, so the one edge
+  //     splits into more than one group and nth walks 4-6 px along the same
+  //     ridge instead of to the next feature. Set it against an edge you can
+  //     see is separate, not as a way to nudge a point.
   // WHICH of the edge knobs the def actually said something about.
   //
   // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
