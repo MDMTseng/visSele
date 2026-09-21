@@ -4166,6 +4166,40 @@ class APP_INSP_MODE extends React.Component {
   // cannot play back is a screenshot, and the operator already has one of
   // those. Two buttons a few centimetres apart, one of them strictly worse,
   // was the actual problem. (operator request, 2026-09-17)
+  // THE SI PRESS.
+  //
+  // SI does not decide for itself when the part is placed: a settle detector
+  // cannot tell a part that has stopped moving from one the operator has not
+  // finished adjusting. The press is that statement, and it is also what makes
+  // "any change during the accumulation is a failure" a fair rule -- the
+  // operator said it was still.
+  //
+  // Shown only in SI. The state comes from the report the core sends, so the
+  // label is what the machine is actually doing, not what this button asked
+  // for a moment ago.
+  siTriggerButton(style) {
+    const si = ((this.props.inspectionReport || {}).si) || {};
+    const st = si.state || 'idle';
+    const busy = (st === 'settling' || st === 'accumulating');
+    const label = busy
+      ? `量測中 ${si.avg_count || 0}/${si.avg_target || 0}`
+      : (st === 'aborted' ? '重試（上次有變動）' : '量測');
+    return (
+      <Button
+        key="SITRIG"
+        style={style}
+        type="primary"
+        danger={st === 'aborted'}
+        loading={busy}
+        onClick={() => {
+          if (this.props.CORE_ID === undefined) return;
+          this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { INSP_SI_TRIGGER: true });
+        }}>
+        {label}
+      </Button>
+    );
+  }
+
   inspSnapshotButton(style) {
     return (
         <Button
@@ -4603,6 +4637,11 @@ class APP_INSP_MODE extends React.Component {
         <Tooltip title="檢測快照:這一幀的影像 + 它的檢測報告（.png + .xreps，可回放）">
           {this.inspSnapshotButton()}
         </Tooltip>
+        {this.props.machine_custom_setting.InspectionMode === "SI" ? (
+          <Tooltip title="靜置檢驗:按下後累積 N 張影像平均,再檢驗一次。過程中畫面有變動就算失敗">
+            {this.siTriggerButton()}
+          </Tooltip>
+        ) : null}
       </div>
 
       {/* Not a toolbar control -- a panel that lives wherever it is mounted. */}

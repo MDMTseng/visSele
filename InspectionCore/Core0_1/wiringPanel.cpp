@@ -1327,6 +1327,7 @@ static void image_pipe_info_do_return(image_pipe_info &info,resourcePool<image_p
   // Back to the default a non-SI frame has, so a recycled slot cannot carry an
   // SI accumulating frame's "do not report" into the next session.
   info.datViewInfo.si_measured = true;
+  info.datViewInfo.si_report = true;
   info.datViewInfo.si_avg_n = 0;
   pool.retResrc(&info);
 }
@@ -2591,11 +2592,25 @@ struct InspectionContext {
     // scene stopped changing by ITS threshold; a hand that has just let go can
     // be under that threshold and still settling. Requiring a few consecutive
     // still frames first costs a few frames and removes the whole class.
+    // Frames dropped right after the press, before the change gate starts.
+    // Pressing a button on a screen can shake what the screen is bolted to,
+    // and that shake is not the operator's fault. Changes during these frames
+    // are tolerated; after them, any change fails.
     int    head_skip   = 1;
   } si;
+  // SI is TRIGGERED, not automatic. The operator places the part and presses a
+  // button; that press is the statement "it is placed and still", which no
+  // settle detector can make on its own -- a detector cannot tell a part that
+  // has stopped moving from one the operator has not finished adjusting.
+  //
+  // And during the accumulation any change is a FAILURE, not a restart. A
+  // restart is silent: the operator sees the count sit there and learns
+  // nothing. A failure is the machine saying it could not do what it was asked.
+  enum SIState { SI_IDLE = 0, SI_HEAD, SI_ACC, SI_DONE, SI_ABORT };
+  SIState si_state = SI_IDLE;
+  bool si_trigger = false;       // set by ST, consumed by the next frame
   int  si_stack_n = 0;           // frames in the accumulator right now
-  int  si_skip_left = 0;         // still frames still to be thrown away
-  bool si_reported = false;      // this settled scene has already been measured
+  int  si_skip_left = 0;         // frames dropped right after the press
   bool area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
 };
 static InspectionContext g_inspCtx;
@@ -6529,9 +6544,10 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
                      : checkTL("SI", dat) ? InspectionContext::INSPM_SI
                                           : InspectionContext::INSPM_CI;
           // A session starts with nothing accumulated, whatever the last one left.
+          g_inspCtx.si_state = InspectionContext::SI_IDLE;
+          g_inspCtx.si_trigger = false;
           g_inspCtx.si_stack_n = 0;
-          g_inspCtx.si_skip_left = g_inspCtx.si.head_skip;
-          g_inspCtx.si_reported = false;
+          g_inspCtx.si_skip_left = 0;
           si_stack.Reset();
           // Announced, because it silently changes which objects get judged.
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
@@ -8050,6 +8066,25 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           if (double *v = JFetch_NUMBER(sip, "head_skip"))   sp.head_skip   = (*v >= 0) ? (int)*v : 0;
           LOGI("INSP_SI_PARAM: diff_global=%.2f diff_local=%d skip=%d avg_frames=%d head_skip=%d",
                sp.diff_global, sp.diff_local, sp.diff_skip, sp.avg_frames, sp.head_skip);
+        }
+      }
+
+      // The SI press:  ST { "INSP_SI_TRIGGER": true }
+      //
+      // A flag consumed by the next frame, not an action taken here: this runs
+      // on the WS thread and the accumulator belongs to the inspection thread.
+      {
+        auto trig = getDataFromJson(json, "INSP_SI_TRIGGER", NULL);
+        if (trig == cJSON_True)
+        {
+          if (g_insp_mode != InspectionContext::INSPM_SI)
+            LOGE("INSP_SI_TRIGGER ignored -- this session is %s, not SI",
+                 insp_mode_name(g_insp_mode));
+          else
+          {
+            g_inspCtx.si_trigger = true;
+            LOGI("INSP_SI_TRIGGER: next frame starts the accumulation");
+          }
         }
       }
 
@@ -12697,7 +12732,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       
       // An SI accumulating frame sends its picture -- the operator is watching
       // the part settle -- and no report.
-      bool skipInspDataTransfer=!reportSendState || !headImgPipe->datViewInfo.si_measured;
+      bool skipInspDataTransfer=!reportSendState || !headImgPipe->datViewInfo.si_report;
       bool skipImageTransfer= !imgSendState;
       bool inspSnap=saveToSnap;
 
@@ -13039,67 +13074,81 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     //
     // Set every frame, both ways: the flag is state on the managers, so a
     // false here is what releases the engine after a blocked frame.
-    // ---- SI: wait for the scene to settle, average, measure the average once --
+    // ---- SI: the operator presses, N frames are averaged, one inspection ----
     //
-    // A frame that is not the completed average is still INSPECTED, with no
-    // candidate objects. That is deliberate: it is the same path a blocked
-    // clean area uses, so the report keeps its shape (same `type`, same
-    // `reports`, zero objects) and the WebUI reducer is not handed a second
-    // shape it bails on. It costs the empty-frame inspection, not a measured
-    // one.
-    bool si_measure = true;
+    // Frames that are not the completed average are not inspected at all and
+    // send no report; the picture still goes, because the operator is watching
+    // the part while it is being measured. The abort frame DOES send one: a
+    // failure nobody is told about is the same as no failure.
+    bool si_measure = true;      // inspect this frame
+    bool si_report  = true;      // send its report packet
     if (g_insp_mode == InspectionContext::INSPM_SI)
     {
       InspectionContext::SIParam &sp = g_inspCtx.si;
       int &n = g_inspCtx.si_stack_n;
       int &skip = g_inspCtx.si_skip_left;
-      bool &done = g_inspCtx.si_reported;
-      if (si_stack.imgStacked.rows != capImg.rows || si_stack.imgStacked.cols != capImg.cols)
+      InspectionContext::SIState &st = g_inspCtx.si_state;
+      si_measure = false; si_report = false;
+
+      if (g_inspCtx.si_trigger)
       {
-        si_stack.ReSize(capImg); n = 0; skip = sp.head_skip; done = false;
+        g_inspCtx.si_trigger = false;
+        si_stack.ReSize(capImg);          // also clears it
+        n = 0; skip = sp.head_skip;
+        st = (skip > 0) ? InspectionContext::SI_HEAD : InspectionContext::SI_ACC;
+        LOGI("SI: triggered -- %d frame(s) to average, %d dropped first", sp.avg_frames, skip);
       }
-      // stackingC, not n: during the settle phase the stack holds one reference
-      // frame while n is still 0, and that is exactly when the comparison has
-      // to be running.
-      else if (si_stack.stackingC > 0 &&
-               si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip))
+      else if (si_stack.imgStacked.rows != capImg.rows || si_stack.imgStacked.cols != capImg.cols)
       {
-        // The scene is not what we were averaging. Everything accumulated is a
-        // picture of something else; start again rather than blending across
-        // the change -- and settle again before trusting it.
-        LOG_EVERY(20, "SI: scene changed after %d frame(s) -- accumulator dropped", n);
-        si_stack.Reset(); n = 0; skip = sp.head_skip; done = false;
+        // The frame size changed under us; nothing accumulated describes this.
+        si_stack.ReSize(capImg); n = 0;
+        if (st == InspectionContext::SI_HEAD || st == InspectionContext::SI_ACC)
+          st = InspectionContext::SI_ABORT;
       }
-      if (done)
+
+      if (st == InspectionContext::SI_HEAD)
       {
-        si_measure = false;          // already measured; wait for the scene to change
+        // Settling after the press. Hold this frame as the reference the next
+        // one is compared against; a change here is expected, not a failure.
+        si_stack.Reset(); si_stack.Add(capImg); n = 0;
+        if (--skip <= 0) { skip = 0; st = InspectionContext::SI_ACC; }
       }
-      else if (skip > 0)
+      else if (st == InspectionContext::SI_ACC)
       {
-        // Settling. Hold THIS frame as the reference the next one is compared
-        // against -- so the gate is frame-to-frame here -- and count nothing.
-        si_stack.Reset(); si_stack.Add(capImg); n = 0; skip--;
-        si_measure = false;
-      }
-      else
-      {
-        // The settle-phase reference is not one of the frames being averaged:
-        // drop it so avg_count is exactly what went into the picture.
-        if (n == 0) si_stack.Reset();
-        si_stack.Add(capImg); n++;
-        if (n >= (sp.avg_frames > 0 ? sp.avg_frames : 1))
+        if (si_stack.stackingC > 0 && n > 0 &&
+            si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip))
         {
-          // The measured image REPLACES the frame, so the report, the preview
-          // and the snapshot all refer to the picture that was measured.
-          cv::Mat avg; si_stack.Export(avg);
-          if (!avg.empty()) imgPipe->img = avg;
-          done = true;
-          LOGI("SI: measuring the average of %d frame(s)", n);
+          // ANY change during the accumulation fails the attempt. Averaging
+          // across it would produce a picture of neither position, and
+          // restarting quietly would leave the operator watching a counter
+          // that never finishes with nothing said.
+          LOGE("SI: scene changed after %d of %d frame(s) -- attempt failed",
+               n, sp.avg_frames);
+          si_stack.Reset(); n = 0;
+          st = InspectionContext::SI_ABORT;
+          si_report = true;              // tell somebody
         }
-        else si_measure = false;
+        else
+        {
+          // The settle reference is not one of the averaged frames.
+          if (n == 0) si_stack.Reset();
+          si_stack.Add(capImg); n++;
+          if (n >= (sp.avg_frames > 0 ? sp.avg_frames : 1))
+          {
+            // The measured image REPLACES the frame, so the report, the
+            // preview and the snapshot all refer to what was measured.
+            cv::Mat avg; si_stack.Export(avg);
+            if (!avg.empty()) imgPipe->img = avg;
+            st = InspectionContext::SI_DONE;
+            si_measure = true; si_report = true;
+            LOGI("SI: measuring the average of %d frame(s)", n);
+          }
+        }
       }
+      // SI_IDLE / SI_DONE / SI_ABORT: nothing until the next press.
     }
     imgPipe->datViewInfo.si_measured = si_measure;
+    imgPipe->datViewInfo.si_report    = si_report;
     imgPipe->datViewInfo.si_avg_n     = g_inspCtx.si_stack_n;
     matchingEng.setNoCandidateFrame(clean_blocked);
     // ONCE PER N, not N cheap ones. An accumulating frame is not inspected at
@@ -13780,10 +13829,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   if (g_insp_mode == InspectionContext::INSPM_SI && imgPipe->datViewInfo.report_json)
   {
     cJSON *si = cJSON_AddObjectToObject(imgPipe->datViewInfo.report_json, "si");
+    static const char *_stn[] = { "idle", "settling", "accumulating", "measured", "aborted" };
+    cJSON_AddStringToObject(si, "state", _stn[(int)g_inspCtx.si_state]);
     cJSON_AddNumberToObject(si, "avg_count", imgPipe->datViewInfo.si_avg_n);
     cJSON_AddNumberToObject(si, "avg_target", g_inspCtx.si.avg_frames);
-    cJSON_AddBoolToObject(si, "measured", g_inspCtx.si_reported);
-    cJSON_AddNumberToObject(si, "settling", g_inspCtx.si_skip_left);
+    cJSON_AddBoolToObject(si, "measured", imgPipe->datViewInfo.si_measured);
   }
 
   // What this frame's inspection cost, same keys the II path uses so the canvas
@@ -13877,7 +13927,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   else
   {
     
-    bool skipInspDataTransfer=!imgPipe->datViewInfo.si_measured;
+    bool skipInspDataTransfer=!imgPipe->datViewInfo.si_report;
     bool skipImageTransfer=false;
     bool inspSnap=false;
     imgPipe->dview_enq_us = perif_now_us(); // sent inline: the queue wait is nil
