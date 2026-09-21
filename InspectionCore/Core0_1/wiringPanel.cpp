@@ -2341,82 +2341,60 @@ class ImageStackAddUp
 {
   // NOT recursive, and it must not need to be: every public method takes this
   // ONCE and then works through the _-prefixed helpers, which assume it is
-  // already held.
-  //
-  // The helpers used to take it as well, and the public methods called them:
-  // ReSize -> Reset, Add -> set_1CH / addUp_1CH, Export() -> Export(out).
-  // Relocking a non-recursive std::mutex on the same thread is undefined, and
-  // here it is a straight self-deadlock -- the thread stops forever holding a
-  // lock nothing can release. SI hit it on its FIRST frame (ReSize against an
-  // empty accumulator) and took the inspection thread down with it, which is
-  // exactly what "SI hangs, CI is fine" was: CI never touches this object.
-  // The manual stacked save had the same bug in Add, waiting on a counter that
-  // could no longer advance.
+  // already held. The helpers used to take it too and the public methods
+  // called them (ReSize -> Reset, Add -> set_1CH/addUp_1CH, Export() ->
+  // Export(out)), which is a self-deadlock on a plain std::mutex: the thread
+  // stops forever holding a lock nothing can release.
   std::mutex lock;
 
-  void _set_1CH(const cv::Mat &src)
-  {
-    for (int i = 0; i < imgStacked.rows; i++)
-    {
-      uchar *aRow = imgStacked.ptr<uchar>(i);
-      const uchar *sRow = src.ptr<uchar>(i);
-      for (int j = 0; j < imgStacked.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
-        pixU->_3Byte.Num = sRow[j * 3];
-      }
-    }
-  }
+  // The accumulator is a plain 32-bit integer sum, one channel.
+  //
+  // It used to be a CV_8UC3 buffer read through _24BitUnion -- three bytes per
+  // pixel reinterpreted as a 24-bit counter -- and BOTH ends of that were
+  // wrong. The source was indexed `sRow[j * 3]`, so a single-channel frame was
+  // read three times past the end of every row; and `_3BYTE { unsigned Num :
+  // 24; }` has sizeof 4, so writing the last pixel of the last row wrote a
+  // byte past the buffer. It never showed because the deadlock above meant the
+  // loops had literally never run; the first frame that reached them was an
+  // access violation (SIGSEGV in _set_1CH, 2026-09-22).
+  //
+  // A CV_32SC1 sum cannot overflow at these counts (100 frames x 255) and lets
+  // OpenCV do the adding.
+  cv::Mat accum;        // CV_32SC1, the running sum
+  cv::Mat scratch;      // CV_8UC1 view of the last frame handed in
+  int     srcChannels = 1;  // what Add was given, so Export gives it back
 
-  void _addUp_1CH(const cv::Mat &src)
+  // One channel of 8-bit gray out of whatever the pipeline handed us. The
+  // frames here are mono carried in however many channels the camera layer
+  // happens to use, so channel 0 IS the picture.
+  const cv::Mat &_gray(const cv::Mat &in)
   {
-    for (int i = 0; i < imgStacked.rows; i++)
-    {
-      uchar *aRow = imgStacked.ptr<uchar>(i);
-      const uchar *sRow = src.ptr<uchar>(i);
-      for (int j = 0; j < imgStacked.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
-        pixU->_3Byte.Num += sRow[j * 3];
-      }
-    }
-  }
-
-  void _export(cv::Mat &out)
-  {
-    out.create(imgStacked.rows, imgStacked.cols, CV_8UC3);
-    const int div = (stackingC == 0) ? 1 : stackingC;
-    for (int i = 0; i < out.rows; i++)
-    {
-      uchar *oRow = out.ptr<uchar>(i);
-      const uchar *sRow = imgStacked.ptr<uchar>(i);
-      for (int j = 0; j < out.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
-        int pix = pixU->_3Byte.Num / div;
-        if (pix > 255) pix = 255;
-        oRow[j * 3] = oRow[j * 3 + 1] = oRow[j * 3 + 2] = pix;
-      }
-    }
+    if (in.channels() == 1) { return in; }
+    cv::extractChannel(in, scratch, 0);
+    return scratch;
   }
 
 public:
   int stackingC = 0;
-  // phase 3a: cv::Mat-backed (was acvImage).  imgStacked stores 24-bit
-  // accumulator values via _24BitUnion stored as 3 bytes / pixel.
+  // Kept for the callers that ask "is there anything in here, and what shape".
+  // It is the ACCUMULATOR, not a picture: read it through Export().
   cv::Mat imgStacked;
   cv::Mat imgExtract;
 
   void clear()
   {
     std::lock_guard<std::mutex> guard(lock);
-    if (!imgStacked.empty()) imgStacked.setTo(cv::Scalar(0,0,0));
+    if (!accum.empty()) accum.setTo(cv::Scalar(0));
+    stackingC = 0;
   }
 
   void ReSize(const cv::Mat &ref)
   {
     std::lock_guard<std::mutex> guard(lock);
-    imgStacked.create(ref.rows, ref.cols, CV_8UC3);
+    accum.create(ref.rows, ref.cols, CV_32SC1);
+    accum.setTo(cv::Scalar(0));
+    imgStacked = accum;                 // same geometry, for the size checks
+    srcChannels = ref.channels() < 1 ? 1 : ref.channels();
     stackingC = 0;
   }
 
@@ -2429,17 +2407,28 @@ public:
   void Add(const cv::Mat &in)
   {
     std::lock_guard<std::mutex> guard(lock);
-    // An Add against an accumulator of a different shape walks off the end of
-    // one of the two buffers. Sized here rather than trusting every caller.
-    if (imgStacked.rows != in.rows || imgStacked.cols != in.cols)
+    if (in.empty()) return;
+    // Sized here rather than trusting every caller: an Add against an
+    // accumulator of another shape is what walks off the end of a buffer.
+    if (accum.rows != in.rows || accum.cols != in.cols || accum.type() != CV_32SC1)
     {
-      imgStacked.create(in.rows, in.cols, CV_8UC3);
+      accum.create(in.rows, in.cols, CV_32SC1);
+      accum.setTo(cv::Scalar(0));
+      imgStacked = accum;
       stackingC = 0;
     }
-    if (stackingC == 0)  { _set_1CH(in);   stackingC++; return; }
-    if (stackingC < 100) { _addUp_1CH(in); stackingC++; }
+    srcChannels = in.channels() < 1 ? 1 : in.channels();
+    if (stackingC >= 100) return;       // the counter's ceiling, as before
+
+    const cv::Mat &g = _gray(in);
+    if (stackingC == 0) { g.convertTo(accum, CV_32SC1); }
+    else                { cv::add(accum, g, accum, cv::noArray(), CV_32SC1); }
+    stackingC++;
+    imgStacked = accum;
   }
 
+  // The mean, back in the shape it was given. Empty if nothing was added --
+  // the caller must check, and the SI path does.
   void Export(cv::Mat &out)
   {
     std::lock_guard<std::mutex> guard(lock);
@@ -2450,51 +2439,57 @@ public:
   {
     std::lock_guard<std::mutex> guard(lock);
     _export(imgExtract);
+    // Kept because callers read imgExtract directly.
   }
 
   bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
   {
     std::lock_guard<std::mutex> guard(lock);
     if (skipSampling < 1) skipSampling = 1;
-    // Nothing to compare against, or two pictures of different shapes: the two
-    // row pointers below would describe different things.
-    if (imgStacked.empty() ||
-        imgStacked.rows != img2.rows || imgStacked.cols != img2.cols)
+    // Nothing to compare against, or two pictures of different shapes: there
+    // is no answer, and "changed" would fail every attempt.
+    if (accum.empty() || stackingC <= 0 || img2.empty() ||
+        accum.rows != img2.rows || accum.cols != img2.cols)
       return false;
 
-    globalDiffThres *= globalDiffThres * (imgStacked.rows * imgStacked.cols / skipSampling / skipSampling);
-    localDiffThres *= localDiffThres;
+    const cv::Mat &g = _gray(img2);
 
-    uint64_t diffSum = 0; int diffMax = 0; int count = 0;
-    for (int i = 0; i < imgStacked.rows; i += skipSampling)
+    const double globalLimit =
+      (double)globalDiffThres * globalDiffThres *
+      ((double)accum.rows * accum.cols / skipSampling / skipSampling);
+    const int localLimit = localDiffThres * localDiffThres;
+
+    double diffSum = 0; int diffMax = 0;
+    for (int i = 0; i < accum.rows; i += skipSampling)
     {
-      const uchar *sRow = imgStacked.ptr<uchar>(i);
-      const uchar *src2Row = img2.ptr<uchar>(i);
-      for (int j = 0; j < imgStacked.cols; j += skipSampling)
+      const int32_t *aRow = accum.ptr<int32_t>(i);
+      const uchar   *sRow = g.ptr<uchar>(i);
+      for (int j = 0; j < accum.cols; j += skipSampling)
       {
-
-        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
-        int pix = stackingC == 0 ? 0 : (pixU->_3Byte.Num / stackingC);
-        count++;
-        int diff = pix - src2Row[j * 3];
+        const int mean = aRow[j] / stackingC;
+        int diff = mean - (int)sRow[j];
         diff *= diff;
         diffSum += diff;
-        if (diffSum > globalDiffThres)
-        {
-          return true;
-        }
+        if (diffSum > globalLimit) return true;
         if (diffMax < diff)
         {
           diffMax = diff;
-          if (diffMax > localDiffThres)
-          {
-            return true;
-          }
+          if (diffMax > localLimit) return true;
         }
       }
     }
-
     return false;
+  }
+
+private:
+  void _export(cv::Mat &out)
+  {
+    if (accum.empty() || stackingC <= 0) { out.release(); return; }
+    cv::Mat mean8;
+    accum.convertTo(mean8, CV_8UC1, 1.0 / stackingC);
+    if (srcChannels <= 1) { out = mean8; return; }
+    std::vector<cv::Mat> ch((size_t)srcChannels, mean8);
+    cv::merge(ch, out);
   }
 };
 
