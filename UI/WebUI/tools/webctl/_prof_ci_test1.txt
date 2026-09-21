@@ -1,0 +1,2 @@
+273 RP in 40 s (6.8 fps), 320 objects; insp_wall_ms median 26.1 p95 103.2
+

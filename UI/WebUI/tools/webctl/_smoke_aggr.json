@@ -1,0 +1,66 @@
+{
+ "ok25_10514_MODEL3131": {
+  "profile": "aggressive",
+  "adopt": true,
+  "unstable": false,
+  "baseRot": 0.007,
+  "baseShift": 0.1,
+  "S0": 1,
+  "Spred": 1.6,
+  "Spass": 2,
+  "Srec": 4,
+  "sc0": 0.3,
+  "scPass": 0.2,
+  "scRec": 0.2,
+  "nf0": 128,
+  "nfRec": 128,
+  "st0": 80,
+  "stRec": 80,
+  "extra": [
+   "shape_roi_prescale=0.5:slower",
+   "shape_roi_search=30@4",
+   "shape_num_features=64:fails",
+   "shape_strong_thres=120:slower"
+  ],
+  "baseMs": 20.1725,
+  "tunedMs": 15.6624,
+  "gain": 0.224,
+  "leverMed": 697
+ },
+ "ok42_10804_3S50A4200B_AN115116": {
+  "profile": "aggressive",
+  "skip": "rot 0.33 shift 8.11 judges 7/8 sim 0.937",
+  "rescueWhy": [
+   "shape_roi_prescale=0.5: unperturbed: judges 7/8 sim 0.987",
+   "shape_roi_search=30: unperturbed: judges 7/8 sim 0.987"
+  ]
+ },
+ "ok00_10206_2200300052_RHC-CP-18T07": {
+  "profile": "aggressive",
+  "adopt": true,
+  "unstable": false,
+  "baseRot": 0.042,
+  "baseShift": 0.16,
+  "S0": 1,
+  "Spred": 26,
+  "Spass": 10,
+  "Srec": 10,
+  "sc0": 0.3,
+  "scPass": 0.2,
+  "scRec": 0.2,
+  "nf0": 128,
+  "nfRec": 128,
+  "st0": 80,
+  "stRec": 80,
+  "extra": [
+   "shape_roi_prescale=0.5:slower",
+   "shape_roi_search=30:slower",
+   "shape_num_features=64:fails",
+   "shape_strong_thres=120:slower"
+  ],
+  "baseMs": 25.545,
+  "tunedMs": 17.7186,
+  "gain": 0.306,
+  "leverMed": 42
+ }
+}

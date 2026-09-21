@@ -1,0 +1,3 @@
+{ "recipes": [ { "name": "test1", "def": "test1.hydef", "images": ["test1.png", "test1_*.png"], "max_images": 2 }, { "name": "MODEL3131", "def": "ok25_10514_MODEL3131_sbm.hydef" } ],
+  "params": { "shape_angle_step_deg": [1, 2], "roi": [ {}, { "shape_roi_prescale": 0.5 } ], "shape_num_features": [64] },
+  "aug": [ { "rot_deg": 2 }, { "shift_x": 1.5, "shift_y": 1.5 }, { "gain": 0.8 }, { "scale": 1.02 } ], "seeds": [7] }

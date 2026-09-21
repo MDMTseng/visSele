@@ -1,0 +1,39 @@
+
+== mig_CON  base sim 0.996 judges 14/15  scale 0.3 step 1
+  angle step S (scale as is): worst-case rotation S/2 and 1.5S
+    S= 1  found 1/1/1  rotErr max 0.032°  sim min 0.994  judges min 14  insp 28.0 ms
+    S= 2  found 1/1/1  rotErr max 0.038°  sim min 0.992  judges min 14  insp 25.5 ms
+    S= 3  found 1/1/1  rotErr max 0.032°  sim min 0.991  judges min 14  insp 28.7 ms
+    S= 4  found 1/1/1  rotErr max 0.877°  sim min 0.972  judges min 14  insp 25.9 ms
+    S= 5  found 1/1/1  rotErr max 0.757°  sim min 0.951  judges min 14  insp 26.3 ms
+    S= 6  found 1/1/1  rotErr max 8.853°  sim min 0.929  judges min 14  insp 24.5 ms
+    S= 8  found 1/1/1  rotErr max 13.630°  sim min 0.850  judges min 14  insp 25.6 ms
+    S=10  found 1/1/1  rotErr max 14.938°  sim min 0.769  judges min 14  insp 28.3 ms
+    S=12  found 1/1/1  rotErr max 16.402°  sim min 0.929  judges min 14  insp 26.0 ms
+  match scale D (step as is): worst-case shift half a coarse pixel
+
+== mig_M3131  base sim 0.992 judges 8/8  scale 0.3 step 1
+  angle step S (scale as is): worst-case rotation S/2 and 1.5S
+    S= 1  found 1/1/1  rotErr max 0.007°  sim min 0.988  judges min 8  insp 11.2 ms
+    S= 2  found 1/1/1  rotErr max 0.032°  sim min 0.977  judges min 8  insp 10.0 ms
+    S= 3  found 1/1/1  rotErr max 0.149°  sim min 0.930  judges min 8  insp 9.9 ms
+    S= 4  found 1/1/1  rotErr max 0.744°  sim min 0.764  judges min 8  insp 9.3 ms
+    S= 5  found 1/1/1  rotErr max 1.202°  sim min 0.638  judges min 7  insp 9.3 ms
+    S= 6  found 1/1/1  rotErr max 2.438°  sim min 0.587  judges min 1  insp 9.7 ms
+    S= 8  found 1/1/1  rotErr max 3.272°  sim min 0.560  judges min 0  insp 11.2 ms
+    S=10  found 1/1/1  rotErr max 4.411°  sim min 0.531  judges min 0  insp 11.3 ms
+    S=12  found 0/0/0  rotErr max 99.000°  sim min 0.000  judges min -1  insp 0.0 ms
+  match scale D (step as is): worst-case shift half a coarse pixel
+
+== ok42_10804_3S50A4200B_AN115116  base sim 0.987 judges 8/11  scale 0.3 step 1
+  angle step S (scale as is): worst-case rotation S/2 and 1.5S
+    S= 1  found 1/1/1  rotErr max 0.333°  sim min 0.899  judges min 7  insp 33.8 ms
+    S= 2  found 1/1/1  rotErr max 0.323°  sim min 0.859  judges min 7  insp 33.2 ms
+    S= 3  found 1/1/1  rotErr max 0.520°  sim min 0.823  judges min 6  insp 32.2 ms
+    S= 4  found 1/1/1  rotErr max 2.460°  sim min 0.729  judges min 4  insp 31.1 ms
+    S= 5  found 1/1/1  rotErr max 2.544°  sim min 0.668  judges min 3  insp 27.7 ms
+    S= 6  found 1/1/1  rotErr max 3.854°  sim min 0.597  judges min 4  insp 28.0 ms
+    S= 8  found 1/1/1  rotErr max 4.192°  sim min 0.523  judges min 3  insp 12.9 ms
+    S=10  found 0/0/1  rotErr max 99.000°  sim min 0.000  judges min -1  insp 0.0 ms
+    S=12  found 0/0/0  rotErr max 99.000°  sim min 0.000  judges min -1  insp 0.0 ms
+  match scale D (step as is): worst-case shift half a coarse pixel

@@ -98,7 +98,19 @@ LOG_MODULE("core");
 
 #define _VERSION_ "1.2"
 char* SNAP_FILE_EXTENSION="xreps";
-char* SNAP_IMG_EXTENSION="jpg";
+// PNG, not JPEG: a snapshot is the evidence for a measurement, and JPEG
+// damages it exactly where the measurement is taken. Measured on a recorded
+// 2592x1936 frame of 10221: default-quality JPEG moves the intensity by up to
+// 8 counts and the GRADIENT by up to 6.0 (mean 0.66) -- and the arcs on that
+// recipe run an edge.min_strength of 5. A record that cannot reproduce its own
+// edge decisions is not evidence.
+//
+// It costs bytes and time: 2488 KB vs 932 KB, and 742 ms vs 78 ms to encode at
+// compression level 1. Affordable because saving runs on InspSnapSaveThread,
+// so the inspection loop never waits for it -- but it does cap snapshots at
+// ~1.3 images/s, and the comment above about an NG burst at 35 parts/s is
+// about the queue behind this.
+char* SNAP_IMG_EXTENSION="png";
 std::timed_mutex mainThreadLock;
 
 std::mutex matchingEnglock;
@@ -3278,8 +3290,16 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   if (ret_write_Len < 0)
     return -1;
 
-  if (want_img && !cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), image))
-    return -2;
+  // Compression level 1. OpenCV's PNG default is 6, which on this frame size
+  // is 4.0 s an image against 742 ms -- five times the cost for 7% fewer
+  // bytes, paid on every snapshot.
+  {
+    std::vector<int> _iparm;
+    if (img_extension && strcmp(img_extension, "png") == 0)
+      _iparm = {cv::IMWRITE_PNG_COMPRESSION, 1};
+    if (want_img && !cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), image, _iparm))
+      return -2;
+  }
 
   return 0;
 }
@@ -14669,6 +14689,45 @@ int cp_main(int argc, char **argv)
     neutral_bacpac.insp_region_fit = g_insp_region.fit;
     if (ai + 3 >= argc) { LOGE("--insp needs <image> <def> <out.json>"); return 2; }
     char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
+    // --calib <def|local|PATH>: WHOSE RULER measures this frame. Scanned rather
+    // than positional because argv[ai+4] is already the optional perturb JSON.
+    const char *calibSpec = NULL;
+    for (int k = ai + 4; k + 1 < argc; k++)
+      if (strcmp(argv[k], "--calib") == 0) { calibSpec = argv[k + 1]; break; }
+    // A .xreps is a RECORD, not a picture. It carries the camera_param of the
+    // machine that took it and the frame sits beside it, so replaying one has
+    // to impersonate that machine: measuring a 0.008841 mm/px frame with this
+    // bench's 0.013886 ruler is out by half, and nothing in the result says so.
+    std::string _recImg;
+    double _recPpb = NAN, _recMmpb = NAN;
+    {
+      const size_t L = strlen(imgPath);
+      if (L > 6 && strcmp(imgPath + L - 6, ".xreps") == 0)
+      {
+        char *xs = ReadText(imgPath);
+        if (!xs) { LOGE("--insp: cannot read record %s", imgPath); return 3; }
+        if (cJSON *xj = cJSON_Parse(xs))
+        {
+          _recPpb  = JFetch_NUMBER_ex(xj, "camera_param.ppb2b");
+          _recMmpb = JFetch_NUMBER_ex(xj, "camera_param.mmpb2b");
+          cJSON_Delete(xj);
+        }
+        free(xs);
+        const std::string base(imgPath, L - 6);
+        static const char *EXT[] = {"png", "jpg", "jpeg", "bmp"};
+        struct stat _ist;
+        for (const char *e : EXT)
+        {
+          const std::string cand = base + "." + e;
+          if (stat(cand.c_str(), &_ist) == 0) { _recImg = cand; break; }
+        }
+        if (_recImg.empty())
+        { LOGE("--insp: no frame beside %s (.png/.jpg/.jpeg/.bmp)", imgPath); return 3; }
+        LOGE("--insp: %s is a record -- frame %s, its camera_param ppb2b=%g mmpb2b=%g",
+             imgPath, _recImg.c_str(), _recPpb, _recMmpb);
+        imgPath = (char *)_recImg.c_str();
+      }
+    }
     // Reject non-regular def files (FIFO/socket/dir/char-device). ReadText() on
     // a FIFO blocks indefinitely waiting for a writer/EOF -> hang.
     {
@@ -14763,18 +14822,64 @@ int cp_main(int argc, char **argv)
     // does (~4814) -- otherwise img2ideal divides by an uninit RNormalFactor and
     // returns NaN, poisoning every edge refine (lines/circles/search points).
     // Legacy LoadCameraCalibrationFile removed -- sampler->calibMap is now
-    // primed by load_lens_calib (triggered by the WebUI's calib_files_load
-    // RPC). The def's cam_param.ppb2b / mmpb2b override below still applies
-    // when present for backward compat with old hydef files.
+    // primed by load_lens_calib (triggered by the WebUI's calib_files_load RPC).
+    //
+    // WHOSE RULER. This used to be one answer -- the def's -- applied always,
+    // which is right for exactly one of the three things --insp is asked to do.
+    //
+    //   local (default) : a picture taken on THIS machine, measured with this
+    //                     machine's calibration. load_lens_calib already pushed
+    //                     it, so this is simply not overriding it.
+    //   record          : a .xreps replay. Impersonate the machine that took
+    //                     it, the way the II handler does with
+    //                     img_property.calibInfo.mmpp.
+    //   def             : the def's own cam_param, the old behaviour, kept for
+    //                     reproducing an earlier run.
+    //   <path>          : a named lens_calib.json.
+    //
+    // The default is local because a bare image is most often this machine's.
+    // It is announced either way: the scale decides every millimetre reported,
+    // and a silent choice between three of them is how a 1.57x error travels.
     {
-      char *ds = ReadText(defPath);
-      if (ds) { cJSON *dj = cJSON_Parse(ds);
-        if (dj) {
-          apply_def_cam_param(neutral_bacpac, dj, "--insp");
-          cJSON_Delete(dj);
-        }
-        free(ds);
+      enum ScaleSrc { S_LOCAL, S_RECORD, S_DEF, S_FILE };
+      ScaleSrc src = S_LOCAL;
+      if (calibSpec && strcmp(calibSpec, "def") == 0)        src = S_DEF;
+      else if (calibSpec && strcmp(calibSpec, "local") == 0) src = S_LOCAL;
+      else if (calibSpec)                                    src = S_FILE;
+      else if (std::isfinite(_recPpb) && _recPpb > 0 &&
+               std::isfinite(_recMmpb) && _recMmpb > 0)      src = S_RECORD;
+
+      if (src == S_FILE)
+      {
+        if (!load_lens_calib(calibSpec))
+        { LOGE("--insp: --calib %s did not load -- refusing to measure at an unknown scale", calibSpec); return 6; }
+        g_calib_autoloaded = true;
       }
+      else if (src == S_LOCAL && !g_calib_autoloaded)
+      {
+        // No local calibration to be local to. The def's is the only
+        // self-consistent scale left; say that it is a fallback, not a choice.
+        LOGE("--insp: --calib local, but this machine has no usable "
+             "data/lens_calib.json -- falling back to the def's cam_param");
+        src = S_DEF;
+      }
+
+      if (src == S_RECORD)
+      {
+        auto *cm = neutral_bacpac.sampler->getCalibMap();
+        if (cm) { cm->calibPpB = _recPpb; cm->calibmmpB = _recMmpb; }
+      }
+      else if (src == S_DEF)
+      {
+        char *ds = ReadText(defPath);
+        if (ds) { if (cJSON *dj = cJSON_Parse(ds)) { apply_def_cam_param(neutral_bacpac, dj, "--insp"); cJSON_Delete(dj); } free(ds); }
+      }
+      auto *cm = neutral_bacpac.sampler->getCalibMap();
+      const double used = (cm && cm->calibPpB > 0) ? (cm->calibmmpB / cm->calibPpB) : NAN;
+      LOGE("--insp: scale from %s -- mmpp=%.9f mm/px",
+           src == S_LOCAL ? "this machine (data/lens_calib.json)" :
+           src == S_RECORD ? "the .xreps record" :
+           src == S_FILE ? calibSpec : "the def's cam_param", used);
     }
     // acv -> cv: full cv::Mat path through the engine entry (the acvImage `img`
     // shim above is now only kept for the `bacpac` calibration side-effects
