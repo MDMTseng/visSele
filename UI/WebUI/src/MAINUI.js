@@ -1403,6 +1403,57 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
       );
     })}
 
+    <Divider>靜置檢驗 (SI)</Divider>
+
+    {/* SI is NOT in the block above, and that is the point: those numbers are
+        the tracking window's, read by the reducer, and SI's tracking window is
+        deliberately off -- the core has already averaged the PICTURE, and
+        averaging the measurements again on top of it is a second average that
+        no saved image can be replayed against.
+
+        These go to the core as ST INSP_SI_PARAM. They are pushed on entering
+        SI, so changing one here takes effect the next time the mode is
+        entered. */}
+    {(() => {
+      const k = 'SI_MODE_PARAM';
+      const eff = { ...((System_Setting||{})[k] || {}), ...(st_machine_custom_setting[k] || {}) };
+      const setF = (field, v, intOnly) => {
+        const cur = {...(st_machine_custom_setting[k] || {})};
+        if (v === null || v === undefined || v === '') delete cur[field];
+        else { const n = intOnly ? parseInt(v) : parseFloat(v);
+               if (!Number.isFinite(n) || n < 0) return; cur[field] = n; }
+        set_st_machine_custom_setting({...st_machine_custom_setting, [k]: cur});
+      };
+      const F = ({field, name, hint, step, intOnly}) => (
+        <div style={{marginBottom:4}}>
+          <span style={{display:'inline-block',minWidth:210}}>{name}</span>
+          <InputNumber min={0} step={step||1} precision={intOnly?0:1} inputMode="numeric"
+            style={{width:110}} value={eff[field]}
+            onChange={(v)=>setF(field,v,intOnly!==false)} />
+          <span style={{marginLeft:10,fontSize:12,color:'#888'}}>{hint}</span>
+        </div>
+      );
+      return (
+        <div style={{marginBottom:12}}>
+          <F field="avg_frames" name="平均張數 (N)" intOnly
+             hint="按下量測後累積幾張影像,平均後檢驗一次" />
+          <F field="head_skip"  name="按下後先丟棄幾張" intOnly
+             hint="吸收按壓造成的震動;這幾張的變動不算失敗" />
+          <F field="diff_global" name="變動門檻 (灰階)" step={0.5} intOnly={false}
+             hint="每像素 RMS 差。實測背景雜訊 2.1,位移 1px 動到 2% 的像素" />
+          <F field="diff_local" name="單點變動門檻 (灰階)" intOnly
+             hint="單一像素差超過就算變動" />
+          <F field="diff_skip"  name="抽樣間隔 (像素)" intOnly
+             hint="每 N 個像素取一個來比,10 = 1% 的畫面" />
+          <div style={{fontSize:12,color:'#888',lineHeight:1.7,marginTop:6}}>
+            靜置檢驗由畫面上的「量測」按鈕觸發。累積過程中畫面有變動就算失敗,
+            會出一份報告說明,而不是安靜地重來。累積期間不做檢驗也不送報告,
+            只送影像;報告只在量測完成或失敗時各出一份。
+          </div>
+        </div>
+      );
+    })()}
+
     <Divider>後端位址</Divider>
 
     {/* These three arrive in machine_setting.json and, until now, could only be

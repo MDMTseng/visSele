@@ -229,7 +229,7 @@ function urlConcat(base, add) {
                   log.debug("[ld] machine_setting", data);
                   if (data[0].type == "FL") {
                     let info = data[0].data;//complete the necessary info
-                    if(info.InspectionMode!="FI_C" &&info.InspectionMode!="FI" && info.InspectionMode!="CI" )
+                    if(["FI_C","FI","CI","SI"].indexOf(info.InspectionMode)<0)
                     {
                       info.InspectionMode="CI";
                     }
