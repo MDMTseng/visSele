@@ -38,7 +38,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      std::vector<CaliperHit> *outHits, bool *outClipped,
                      SearchPointPeaks *outPeaks, float relStrength,
                      int *outRelMoved, float distDecay, SearchPointClip *outClip,
-                     int minRows, int nth)
+                     int minRows, int nth, float momentMult, SearchPointMoments *outMoments)
 {
   if (outClipped) *outClipped = false;
   if (outClip) *outClip = SearchPointClip{};
@@ -408,6 +408,46 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;
     }
   }
+  // THE SHAPE OF THE EVIDENCE, over a window wider than the one that is
+  // averaged. Peak-weighted moments of the gated candidates, about the apex.
+  // Costs a pass over a list already in memory; reads nothing from the image.
+  if (outMoments && momentMult > 0)
+  {
+    const float R = considerRange * momentMult;
+    double m0 = 0, m1 = 0, m2 = 0, m3 = 0;
+    int n = 0; float lo = 1e9f, hi = -1e9f;
+    for (auto &e : eps)
+    {
+      const float d = e.perpCoord - pMin;
+      if (d < -R || d > R) continue;
+      const double w = e.peak;
+      m0 += w; m1 += w * d; n++;
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    if (m0 > 0)
+    {
+      const double mean = m1 / m0;
+      for (auto &e : eps)
+      {
+        const float d = e.perpCoord - pMin;
+        if (d < -R || d > R) continue;
+        const double w = e.peak, u = d - mean;
+        m2 += w * u * u; m3 += w * u * u * u;
+      }
+      const double var = m2 / m0;
+      const double sd = (var > 0) ? sqrt(var) : 0.0;
+      outMoments->n = n;
+      outMoments->range = R;
+      outMoments->mass = (float)m0;
+      outMoments->mean = (float)mean;
+      outMoments->sd = (float)sd;
+      // Fisher skew; undefined for a spike, and 0 would read as "symmetric".
+      outMoments->skew = (sd > 1e-6) ? (float)((m3 / m0) / (sd * sd * sd)) : NAN;
+      outMoments->span = (n > 0) ? (hi - lo) : NAN;
+    }
+  }
+
   // How much of that answer came from the relative rule: candidates that
   // cleared min_strength (every entry of `cand` has, by construction) and sit
   // NEARER than the one chosen, but did not survive peakThresh. Zero means the

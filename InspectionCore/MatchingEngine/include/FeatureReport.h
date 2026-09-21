@@ -49,6 +49,35 @@ struct CaliperHit
 // near end where the first hit is taken. So `nearest_bad >= 0` says every
 // missing sample sat further out than the answer could ever be, and a NaN says
 // nothing eligible was missing.
+// WHAT THE CANDIDATE EDGES LOOK LIKE, as a few numbers.
+//
+// A search point reports one position. Whether that position came from a tight
+// mass of agreeing rows or from a cloud smeared over the window is not in the
+// report at all, and those are the two cases an operator most needs told apart:
+// the second is a measurement that happens to have a number.
+//
+// Moments of the gated candidates within `range` of the answer, weighted by
+// peak strength. Distances along the SEARCH axis, px. Diagnostic only -- the
+// measurement does not read them.
+//
+//   n      : how many candidates fell in the window
+//   mass   : sum of their peaks. Scales with contrast, so compare it as a
+//            RATIO against the same feature at setup, never as an absolute --
+//            that mistake is what min_strength keeps re-teaching.
+//   mean   : strength-weighted centre, relative to the reported point. Near 0
+//            when the answer sits on the mass; non-zero says the selector and
+//            the bulk of the evidence disagree.
+//   sd     : spread. THE number for "clean edge or smeared cloud".
+//   skew   : asymmetry. A clean step is near 0; a shoulder, a second edge
+//            leaking into the window or a ramp pulls it.
+//   span   : nearest-to-furthest extent of those candidates.
+struct SearchPointMoments
+{
+  int   n = 0;
+  float range = NAN;     // the window used, px (include_range * moment_mult)
+  float mass = NAN, mean = NAN, sd = NAN, skew = NAN, span = NAN;
+};
+
 struct SearchPointClip
 {
   int   samples_off = 0;        // samples that fell outside the image
@@ -418,6 +447,13 @@ typedef struct featureDef_searchPoint{
   //     it on narrow bands over straight edges (a third of the rows), and
   //     leave apex scans at 0 -- dist_decay is the filter for those.
   int   min_rows;          // default 0 (off)
+  //   moment_mult: the moment window, as a multiple of include_range.
+  //
+  //     Wide enough to see the shoulders of the edge and anything sitting just
+  //     outside the averaging band, narrow enough not to swallow the next
+  //     feature. 0 = do not compute them. Diagnostic today; the filter that
+  //     compares them against the template's is not wired yet.
+  float moment_mult;       // default 3
   //   edge_nth: WHICH edge along the search axis, when edge_method is nth.
   //
   //     A search point takes the NEAREST hit. nth walks outward instead: 1 is
@@ -472,6 +508,7 @@ typedef struct featureDef_searchPoint{
     EDGE_SET_REL_STRENGTH = 1u << 6,
     EDGE_SET_DIST_DECAY   = 1u << 7,
     EDGE_SET_MIN_ROWS     = 1u << 8,
+    EDGE_SET_MOMENT_MULT  = 1u << 9,
     // 1u << 5 was EDGE_SET_MASK_DILATE. Left as a hole rather than reused: a
     // new knob taking that bit would read as "set" on nothing, but the number
     // is in dumps and logs going back months and a reused bit makes those lie.
@@ -702,6 +739,8 @@ typedef struct FeatureReport_searchPointReport{
   // Diagnostic only; see SearchPointClip for why this cannot be rebuilt
   // afterwards from the def and the pose.
   SearchPointClip clip;
+  // The shape of the evidence behind the answer. See SearchPointMoments.
+  SearchPointMoments moments;
   // Per-edge points produced by the caliper-mode scan (one per strength-gated
   // row edge). status: 2 = within considerRange of the top (used in the final
   // average), 1 = strength-gated edge outside the consider band. Empty in

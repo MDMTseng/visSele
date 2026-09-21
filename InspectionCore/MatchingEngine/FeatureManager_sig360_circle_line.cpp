@@ -1327,7 +1327,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            &out, &str, def.id, &rep.cal_hits, &spClipped,
                            DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
                            def.rel_strength, &relMoved, def.dist_decay,
-                           &rep.clip, def.min_rows, spNth);
+                           &rep.clip, def.min_rows, spNth,
+                           def.moment_mult, &rep.moments);
       // The scale the panel needs to express an offset in the def's own units.
       if (DbgEmit("edge_profile") && eT.getBacpac() && eT.getBacpac()->sampler)
         rep.cal_peaks.mmpp = eT.getBacpac()->sampler->mmpP_ideal();
@@ -1731,6 +1732,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.alpha_keep = 0;
   searchPoint.dist_decay = 0;   // off: same answer as before it existed
   searchPoint.min_rows = 0;     // off
+  searchPoint.moment_mult = 3.0f;   // diagnostic only; 0 turns the moments off
   // Today's hard-coded rule, as the default. A def that says nothing keeps
   // exactly the behaviour it has always had.
   searchPoint.rel_strength = 0.40f;
@@ -1766,6 +1768,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("rel_strength",  featureDef_searchPoint::EDGE_SET_REL_STRENGTH,  &searchPoint.rel_strength);
       take   ("dist_decay",    featureDef_searchPoint::EDGE_SET_DIST_DECAY,   &searchPoint.dist_decay);
       takeInt("min_rows",      featureDef_searchPoint::EDGE_SET_MIN_ROWS,     &searchPoint.min_rows);
+      take   ("moment_mult",   featureDef_searchPoint::EDGE_SET_MOMENT_MULT,  &searchPoint.moment_mult);
       // mask_dilate is gone (2026-08-26). Say so rather than ignoring it: a def
       // that carries the key was tuned by somebody who believed it did
       // something, and silently dropping it is how a knob becomes folklore.

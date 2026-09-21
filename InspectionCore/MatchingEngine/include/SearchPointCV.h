@@ -92,6 +92,10 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // first-hit scan has always done. The CALLER decides
                      // whether the def asked for it (edge.method == nth),
                      // matching how the caliper path reads edge.nth.
-                     int nth = 0);
+                     int nth = 0,
+                     // momentMult: window for the candidate moments, as a
+                     // multiple of considerRange. 0 = do not compute them.
+                     float momentMult = 0.0f,
+                     SearchPointMoments *outMoments = nullptr);
 
 #endif // SEARCH_POINT_CV_H

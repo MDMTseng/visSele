@@ -497,6 +497,22 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
       cJSON_AddNumberToObject(cl, "width",  vec[j].clip.width);
       cJSON_AddNumberToObject(cl, "depth",  vec[j].clip.depth);
     }
+    // The shape of the evidence behind the point. Under `extra` with the rest
+    // of the diagnostics, so the traceability archive strips it structurally.
+    if (vec[j].moments.n > 0)
+    {
+      cJSON *ex = cJSON_GetObjectItem(spj, "extra");
+      if (!ex) { ex = cJSON_CreateObject(); cJSON_AddItemToObject(spj, "extra", ex); }
+      cJSON *mo = cJSON_AddObjectToObject(ex, "edge_moments");
+      const SearchPointMoments &M = vec[j].moments;
+      cJSON_AddNumberToObject(mo, "n",     M.n);
+      cJSON_AddNumberToObject(mo, "range", M.range);
+      cJSON_AddNumberToObject(mo, "mass",  M.mass);
+      cJSON_AddNumberToObject(mo, "mean",  M.mean);
+      cJSON_AddNumberToObject(mo, "sd",    M.sd);
+      if (M.skew == M.skew) cJSON_AddNumberToObject(mo, "skew", M.skew);
+      cJSON_AddNumberToObject(mo, "span",  M.span);
+    }
     AddCalHits2JSON(spj, vec[j].cal_hits, center_offset);
     AddSearchPeaks2JSON(spj, vec[j].cal_peaks);
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
