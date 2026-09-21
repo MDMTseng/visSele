@@ -50,7 +50,18 @@ const default_FLAG={
     diff_global: 6.0,
     diff_local: 40,
     diff_skip: 10,
+    // N: frames averaged into the one inspection.
     avg_frames: 5,
+    // Still frames thrown away before the averaging starts. The diff gate says
+    // the scene stopped changing by ITS threshold; a hand that has just let go
+    // can be under that threshold and still settling.
+    //
+    // Deliberately NOT SI_MODE_StatSettingParam.headReportSkip, even though it
+    // means the same kind of thing: that object is read by the tracking-window
+    // reducer, where headReportSkip > 0 keeps a report OUT of the statistics
+    // until it counts down. Putting SI's value there would have silently
+    // dropped every SI report from the charts.
+    head_skip: 1,
   },
   FI_MODE_StatSettingParam:{
     historyReportlimit: 100,

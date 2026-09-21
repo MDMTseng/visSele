@@ -2587,8 +2587,14 @@ struct InspectionContext {
     int    diff_local  = 40;     // single-pixel difference that means "moved", on its own
     int    diff_skip   = 10;     // sample every Nth pixel both ways (1% of the frame)
     int    avg_frames  = 5;      // frames averaged into one inspection
+    // Still frames thrown away before averaging starts. The diff gate says the
+    // scene stopped changing by ITS threshold; a hand that has just let go can
+    // be under that threshold and still settling. Requiring a few consecutive
+    // still frames first costs a few frames and removes the whole class.
+    int    head_skip   = 1;
   } si;
   int  si_stack_n = 0;           // frames in the accumulator right now
+  int  si_skip_left = 0;         // still frames still to be thrown away
   bool si_reported = false;      // this settled scene has already been measured
   bool area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
 };
@@ -6524,8 +6530,9 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
                                           : InspectionContext::INSPM_CI;
           // A session starts with nothing accumulated, whatever the last one left.
           g_inspCtx.si_stack_n = 0;
+          g_inspCtx.si_skip_left = g_inspCtx.si.head_skip;
           g_inspCtx.si_reported = false;
-          imstack.Reset();
+          si_stack.Reset();
           // Announced, because it silently changes which objects get judged.
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
             LOGI("insp session: %s -- station region %s",
@@ -8040,8 +8047,9 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           if (double *v = JFetch_NUMBER(sip, "diff_local"))  sp.diff_local  = (int)*v;
           if (double *v = JFetch_NUMBER(sip, "diff_skip"))   sp.diff_skip   = (*v >= 1) ? (int)*v : 1;
           if (double *v = JFetch_NUMBER(sip, "avg_frames"))  sp.avg_frames  = (*v >= 1) ? (int)*v : 1;
-          LOGI("INSP_SI_PARAM: diff_global=%.2f diff_local=%d skip=%d avg_frames=%d",
-               sp.diff_global, sp.diff_local, sp.diff_skip, sp.avg_frames);
+          if (double *v = JFetch_NUMBER(sip, "head_skip"))   sp.head_skip   = (*v >= 0) ? (int)*v : 0;
+          LOGI("INSP_SI_PARAM: diff_global=%.2f diff_local=%d skip=%d avg_frames=%d head_skip=%d",
+               sp.diff_global, sp.diff_local, sp.diff_skip, sp.avg_frames, sp.head_skip);
         }
       }
 
@@ -13044,25 +13052,40 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     {
       InspectionContext::SIParam &sp = g_inspCtx.si;
       int &n = g_inspCtx.si_stack_n;
+      int &skip = g_inspCtx.si_skip_left;
       bool &done = g_inspCtx.si_reported;
       if (si_stack.imgStacked.rows != capImg.rows || si_stack.imgStacked.cols != capImg.cols)
       {
-        si_stack.ReSize(capImg); n = 0; done = false;
+        si_stack.ReSize(capImg); n = 0; skip = sp.head_skip; done = false;
       }
-      else if (n > 0 && si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip))
+      // stackingC, not n: during the settle phase the stack holds one reference
+      // frame while n is still 0, and that is exactly when the comparison has
+      // to be running.
+      else if (si_stack.stackingC > 0 &&
+               si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip))
       {
         // The scene is not what we were averaging. Everything accumulated is a
-        // picture of something else; start again from this frame rather than
-        // blending across the change.
+        // picture of something else; start again rather than blending across
+        // the change -- and settle again before trusting it.
         LOG_EVERY(20, "SI: scene changed after %d frame(s) -- accumulator dropped", n);
-        si_stack.Reset(); n = 0; done = false;
+        si_stack.Reset(); n = 0; skip = sp.head_skip; done = false;
       }
       if (done)
       {
         si_measure = false;          // already measured; wait for the scene to change
       }
+      else if (skip > 0)
+      {
+        // Settling. Hold THIS frame as the reference the next one is compared
+        // against -- so the gate is frame-to-frame here -- and count nothing.
+        si_stack.Reset(); si_stack.Add(capImg); n = 0; skip--;
+        si_measure = false;
+      }
       else
       {
+        // The settle-phase reference is not one of the frames being averaged:
+        // drop it so avg_count is exactly what went into the picture.
+        if (n == 0) si_stack.Reset();
         si_stack.Add(capImg); n++;
         if (n >= (sp.avg_frames > 0 ? sp.avg_frames : 1))
         {
@@ -13760,6 +13783,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     cJSON_AddNumberToObject(si, "avg_count", imgPipe->datViewInfo.si_avg_n);
     cJSON_AddNumberToObject(si, "avg_target", g_inspCtx.si.avg_frames);
     cJSON_AddBoolToObject(si, "measured", g_inspCtx.si_reported);
+    cJSON_AddNumberToObject(si, "settling", g_inspCtx.si_skip_left);
   }
 
   // What this frame's inspection cost, same keys the II path uses so the canvas
