@@ -363,16 +363,21 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // ROW CONSENSUS. A top that only one or two rows can see is a speck, not the
   // part; discard everything within considerRange of it and look again. The
   // loop ends when a top has enough rows behind it or nothing is left.
+  // The support window is at least 3 px, whatever include_range says: per-row
+  // sub-pixel edges jitter by a pixel or two at a weak or curved edge, and with
+  // include_range unset (1 px) a 34-row band at an arc apex counted 3-4 rows
+  // of support and threw the real apex away for the next thing 9 mm out.
   if (minRows > 1)
   {
+    const float supportWin = (considerRange > 3.0f) ? considerRange : 3.0f;
     for (;;)
     {
       int support = 0;
-      for (auto &e : eps) if (e.perpCoord - pMin <= considerRange) support++;
+      for (auto &e : eps) if (e.perpCoord - pMin <= supportWin) support++;
       if (support >= minRows) break;
       std::vector<SPEdgePt> keep;
       keep.reserve(eps.size());
-      for (auto &e : eps) if (e.perpCoord - pMin > considerRange) keep.push_back(e);
+      for (auto &e : eps) if (e.perpCoord - pMin > supportWin) keep.push_back(e);
       if (dbg) fprintf(stderr, "[SPCV] top at perp %.1f had %d rows < min_rows %d -- dropped, %zu candidates left\n", pMin, support, minRows, keep.size());
       eps.swap(keep);
       if (eps.empty()) return false;

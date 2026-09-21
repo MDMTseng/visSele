@@ -404,8 +404,15 @@ typedef struct featureDef_searchPoint{
   //     include_range of it) is not the apex; drop those candidates and take
   //     the next nearest. A wire edge spans tens of rows, a speck a few.
   //
-  //     0 = off, bit-identical to before. A useful value is a fraction of the
-  //     band width in px, e.g. 5 for a 30-row band.
+  //     0 = off, bit-identical to before. Support is counted within
+  //     max(include_range, 3 px) of the top. Set it against the band, not as
+  //     a constant: rows only count if they cleared min_strength, so a
+  //     0.1 mm band (11 rows) on an oblique edge has ~9 candidates and 4 in
+  //     support -- 5 there is an NA. Measured on 10221 frame 33_729 with 5 on
+  //     every point: the 11-row band went NA and a 13 mm apex scan, whose
+  //     apex is by nature 2-4 rows wide, jumped 9 mm to the next edge. Use
+  //     it on narrow bands over straight edges (a third of the rows), and
+  //     leave apex scans at 0 -- dist_decay is the filter for those.
   int   min_rows;          // default 0 (off)
   // WHICH of the edge knobs the def actually said something about.
   //
