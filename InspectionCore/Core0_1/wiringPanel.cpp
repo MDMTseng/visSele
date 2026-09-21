@@ -3274,6 +3274,37 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   cJSON_AddItemToObject(infoJObj, "reports", reportsList);
   cJSON_AddItemToObject(infoJObj, "defInfo", deffile);
   cJSON_AddItemToObject(infoJObj, "camera_param", camera_param_data);
+  // THE LENS THAT PRODUCED THESE NUMBERS.
+  //
+  // camera_param carries the scale and nothing else, so a replay got the
+  // recording machine's millimetres and whatever lens model the replaying
+  // machine happened to have -- on a bench whose lens differs by 1.57x, a
+  // different model entirely, silently. Every caliper hit and every search
+  // point is undistorted with this before it is measured; without it the
+  // record cannot reproduce its own result.
+  //
+  // The def deliberately does NOT carry one: a recipe is not a machine. The
+  // record is the only place this is ever recoverable from.
+  if (g_lens_calib.ok)
+  {
+    if (char *_lcj = lens_calib_to_json(g_lens_calib))
+    {
+      if (cJSON *_lj = cJSON_Parse(_lcj))
+        cJSON_AddItemToObject(infoJObj, "lens_calib", _lj);
+      free(_lcj);
+    }
+  }
+  // And WHERE it was evaluated. The model is in full-sensor pixels, so the
+  // camera ROI is added to every point before the lookup; the same model with
+  // a different ROI is a different correction. Written even when zero -- an
+  // absent offset and an offset of zero are not the same claim.
+  if (neutral_bacpac.sampler)
+  {
+    acv_XY _roi = neutral_bacpac.sampler->getOriginOffset();
+    cJSON *_ro = cJSON_AddObjectToObject(infoJObj, "roi_offset");
+    cJSON_AddNumberToObject(_ro, "x", _roi.x);
+    cJSON_AddNumberToObject(_ro, "y", _roi.y);
+  }
   cJSON_AddNumberToObject(infoJObj, "time_ms", current_time_ms());
 
   // cJSON_Print is the expensive half of a report-less save, so skip it too --
@@ -14753,7 +14784,8 @@ int cp_main(int argc, char **argv)
     // machine that took it and the frame sits beside it, so replaying one has
     // to impersonate that machine: measuring a 0.008841 mm/px frame with this
     // bench's 0.013886 ruler is out by half, and nothing in the result says so.
-    std::string _recImg;
+    std::string _recImg, _recLens;
+    acv_XY _recRoi = {NAN, NAN};
     double _recPpb = NAN, _recMmpb = NAN;
     {
       const size_t L = strlen(imgPath);
@@ -14765,6 +14797,16 @@ int cp_main(int argc, char **argv)
         {
           _recPpb  = JFetch_NUMBER_ex(xj, "camera_param.ppb2b");
           _recMmpb = JFetch_NUMBER_ex(xj, "camera_param.mmpb2b");
+          // The recording machine's lens, when the record carries one. Kept as
+          // text and installed below rather than here: data/lens_calib.json is
+          // loaded after this point and would overwrite it.
+          if (cJSON *_lj = JFetch_OBJECT(xj, "lens_calib"))
+            if (char *_ls = cJSON_PrintUnformatted(_lj)) { _recLens = _ls; free(_ls); }
+          if (cJSON *_ro = JFetch_OBJECT(xj, "roi_offset"))
+          {
+            _recRoi.x = (float)JFetch_NUMBER_ex(_ro, "x");
+            _recRoi.y = (float)JFetch_NUMBER_ex(_ro, "y");
+          }
           cJSON_Delete(xj);
         }
         free(xs);
@@ -14921,6 +14963,30 @@ int cp_main(int argc, char **argv)
 
       if (src == S_RECORD)
       {
+        // Lens first, then the scale: installing a lens model pushes its own
+        // px/mm into the calib map, so the record's scale has to be written
+        // after it or it would be overwritten by the lens's.
+        if (!_recLens.empty())
+        {
+          LensCalibResult _p = lens_calib_from_json(_recLens.c_str());
+          if (_p.ok)
+          {
+            g_lens_calib = _p;
+            calib_bacpac.lensCalib = &g_lens_calib;
+            neutral_bacpac.lensCalib = &g_lens_calib;
+            g_calib_autoloaded = true;
+            LOGE("--insp: using the RECORD's lens calibration (m=%.4f px/mm, rms=%.4f px)",
+                 _p.tele.m, _p.overall_rms_px);
+          }
+          else
+            LOGE("--insp: the record carries a lens_calib but it is not usable "
+                 "-- keeping this machine's");
+        }
+        else
+          LOGE("--insp: the record carries NO lens_calib -- the record's scale "
+               "with THIS machine's lens model. Not a faithful replay.");
+        if (std::isfinite(_recRoi.x) && neutral_bacpac.sampler)
+          neutral_bacpac.sampler->setOriginOffset(_recRoi);
         auto *cm = neutral_bacpac.sampler->getCalibMap();
         if (cm) { cm->calibPpB = _recPpb; cm->calibmmpB = _recMmpb; }
       }
