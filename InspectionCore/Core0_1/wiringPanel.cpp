@@ -6581,9 +6581,19 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           // like a dead trigger wire.
           #define _TRIGLOG(mode, why) do {             CameraLayer::status _st = camera->TriggerMode(mode);             if (_st == CameraLayer::ACK)               LOGI("[insp-start] tl=%c%c -> TriggerMode(%d) %s",                    dat->tl[0], dat->tl[1], (int)(mode), why);             else               LOGE("[insp-start] tl=%c%c -> TriggerMode(%d) %s REFUSED BY CAMERA "                    "-- it stays in its previous mode and the trigger will not work",                    dat->tl[0], dat->tl[1], (int)(mode), why);           } while (0)
 
-          if (dat->tl[0] == 'C')
+          if (dat->tl[0] == 'C' || dat->tl[0] == 'S')
           {
-            _TRIGLOG(0, "continuous free-run (CI)");
+            // SI belongs with CI, not with FI: the part is placed by hand and
+            // the operator presses a button, so there is no device pulse to arm
+            // LINE0 against. Frames must arrive on their own -- the core is the
+            // one that decides when to start accumulating and when it has its N.
+            //
+            // It fell through BOTH branches before, so an SI session did not
+            // touch the camera at all and inherited whatever the LAST session
+            // left: after an FI that is mode 2, hardware trigger, and no frame
+            // ever arrives. Whether SI worked depended on what ran before it.
+            _TRIGLOG(0, dat->tl[0] == 'S' ? "continuous free-run (SI)"
+                                          : "continuous free-run (CI)");
 
             doImgProcessThread = true;
             imageQueueSkipSize=1;
