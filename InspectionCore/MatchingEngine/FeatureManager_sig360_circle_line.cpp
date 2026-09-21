@@ -4933,6 +4933,30 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   for (auto &h : report.cal_hits) {
     h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   }
+  // The scan band travels with the hits, in the same OBJECT-FRAME mm.
+  //
+  // It was emitted in image px, which is the frame the clip COUNTS are about,
+  // and that left the canvas to invert the pose itself to draw the rectangle.
+  // The UI already carries one overlay that re-derives a transform instead of
+  // reading the core's answer -- the aux point -- and it draws the cross in a
+  // different place from the number it labels. One inverse transform, here.
+  //
+  // `bar` is a DIRECTION: transform two points and subtract, rather than
+  // writing the rotation out a second time and getting the flip sign wrong.
+  if (report.clip.width > 0) {
+    const acv_XY o0 = PixDomain_TO_TemplateDomain(report.clip.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    const acv_XY o1 = PixDomain_TO_TemplateDomain(acvVecAdd(report.clip.pt, report.clip.bar),
+                                                  cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    report.clip.pt  = o0;
+    // Unit, not unit*mmpp. Transforming two points and subtracting carries the
+    // px->mm scale with it, and a "direction" whose length is 0.009 is a
+    // number waiting to be multiplied by something.
+    report.clip.bar = acvVecNormalize(acvVecSub(o1, o0));
+    report.clip.width *= mmpp;
+    report.clip.depth *= mmpp;
+    // samples_off/rows_off are counts and nearest_bad stays in px: it is the
+    // number the na_reason sentence prints, and the two must not disagree.
+  }
   report.def = def;
   return report;
 

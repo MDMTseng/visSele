@@ -55,8 +55,12 @@ struct SearchPointClip
   int   samples_total = 0;      // nS * nP -- the band the def asked for
   int   rows_off = 0;           // rows with NO in-image sample at all
   int   rows_total = 0;         // nS
-  float nearest_bad = NAN;      // perpCoord of the nearest missing sample
-  // Band geometry as USED, image px. Enough to redraw the rectangle exactly.
+  float nearest_bad = NAN;      // perpCoord of the nearest missing sample, PX
+  // Band geometry as USED, and enough to redraw the rectangle exactly.
+  //
+  // OBJECT-FRAME mm by the time it reaches the report -- the same frame as
+  // cal_hits, so an overlay draws it directly. search_point_cv fills it in the
+  // scan's own image px; SPointMatching_ReportGen converts it.
   acv_XY pt{NAN, NAN};          // band centre (the def's point, posed)
   acv_XY bar{NAN, NAN};         // unit vector along the width axis
   float  width = NAN;           // px, along bar

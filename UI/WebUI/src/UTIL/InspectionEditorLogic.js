@@ -1441,6 +1441,34 @@ export class InspectionEditorLogic {
       }
       return out;
     }
+    // THE REGION A FEATURE LOOKED IN, moved with everything else.
+    //
+    // Same transform as cal_hits_forward, and here for the same reason: the
+    // core emits it in OBJECT-FRAME mm and InspUI renders in image-frame. A
+    // direction gets the rotation WITHOUT the translation -- a bar vector with
+    // the object centre added to it points somewhere else entirely.
+    function scanClipForward(cl) {
+      if (!cl || oriBase) return cl;
+      const f = flip_f, cx = InspResult.cx, cy = InspResult.cy;
+      return {
+        ...cl,
+        x: cl.x * cos_v - f * cl.y * sin_v + cx,
+        y: cl.x * sin_v + f * cl.y * cos_v + cy,
+        bar_x: cl.bar_x * cos_v - f * cl.bar_y * sin_v,
+        bar_y: cl.bar_x * sin_v + f * cl.bar_y * cos_v,
+      };
+    }
+    // The nominal circle the radial calipers were placed on. Centre only: r0
+    // and len are lengths, and the canvas is not scaled.
+    function calGeomForward(g) {
+      if (!g || oriBase) return g;
+      const f = flip_f, cx = InspResult.cx, cy = InspResult.cy;
+      return {
+        ...g,
+        c0x: g.c0x * cos_v - f * g.c0y * sin_v + cx,
+        c0y: g.c0x * sin_v + f * g.c0y * cos_v + cy,
+      };
+    }
     function pointInvTrans(_pt)
     {
       let pt={x:_pt.x,y:_pt.y};
@@ -1512,6 +1540,12 @@ export class InspectionEditorLogic {
           if (_hits) {
             eObject.cal_hits = cal_hits_forward(_hits);
           }
+          // WHERE the calipers searched, so an NA can be drawn rather than
+          // only named: each hit sits on this circle and swept +-len along the
+          // ray from its centre.
+          const _geom = inspAdjObj.extra && inspAdjObj.extra.cal_geom;
+          if (_geom) eObject.cal_geom = calGeomForward(_geom);
+          else delete eObject.cal_geom;
         }
         break;
 
@@ -1558,6 +1592,12 @@ export class InspectionEditorLogic {
           if (_hits) {
             eObject.cal_hits = cal_hits_forward(_hits);
           }
+          // The band this scan actually swept, AFTER the pose and the anchor
+          // morph. Carried for every scan, not only a failing one: an NA is
+          // the case that needs it, but a measurement 0.5 mm from where the
+          // def put it is worth seeing the window for too.
+          if (inspAdjObj.clip) eObject.scan_clip = scanClipForward(inspAdjObj.clip);
+          else delete eObject.scan_clip;
           // {
           //   let vec = this.shapeVectorParse(eObject, shapeList);
           //   let line ={
@@ -1645,7 +1685,10 @@ export class InspectionEditorLogic {
     // a shape the core never reported has no status at all.
     if (adjusted.inspection_status === INSPECTION_STATUS.SUCCESS) return adjusted;
     const keep = { ...orig };
-    for (const k of ['inspection_status', 'na_reason', 'cal_hits']) {
+    // scan_clip/cal_geom belong on this list for the same reason na_reason
+    // does: they describe the FRAME's attempt, not the def, and the NA that
+    // drops the geometry is exactly the case they exist to explain.
+    for (const k of ['inspection_status', 'na_reason', 'cal_hits', 'scan_clip', 'cal_geom']) {
       if (adjusted[k] !== undefined) keep[k] = adjusted[k];
       else delete keep[k];
     }

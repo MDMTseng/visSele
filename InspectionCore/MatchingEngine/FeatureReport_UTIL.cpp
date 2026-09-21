@@ -487,9 +487,11 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
       // Absent = nothing was missing inside the candidate columns.
       if (vec[j].clip.nearest_bad == vec[j].clip.nearest_bad)
         cJSON_AddNumberToObject(cl, "nearest_bad", vec[j].clip.nearest_bad);
-      // Image px, same frame as cal_hits before the object-frame conversion.
-      cJSON_AddNumberToObject(cl, "px",     vec[j].clip.pt.x);
-      cJSON_AddNumberToObject(cl, "py",     vec[j].clip.pt.y);
+      // OBJECT-FRAME mm, the same frame as cal_hits, so an overlay draws the
+      // rectangle straight from these. Named x/y for that reason: they were
+      // px/py, which reads as pixels and is what they used to be.
+      cJSON_AddNumberToObject(cl, "x",      vec[j].clip.pt.x);
+      cJSON_AddNumberToObject(cl, "y",      vec[j].clip.pt.y);
       cJSON_AddNumberToObject(cl, "bar_x",  vec[j].clip.bar.x);
       cJSON_AddNumberToObject(cl, "bar_y",  vec[j].clip.bar.y);
       cJSON_AddNumberToObject(cl, "width",  vec[j].clip.width);

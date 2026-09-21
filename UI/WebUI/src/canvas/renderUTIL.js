@@ -59,6 +59,32 @@ const NA_REASON_COLOR  = 'rgba(120, 132, 143, 0.95)';
 // reason. Generous: the marker is small and the operator is aiming with a mouse
 // on a machine, not a stylus.
 const NA_HOVER_RADIUS_PX = 18;
+// The region an NA looked in. Two colours, because the first question about a
+// failed scan is which KIND of failure it was: the window was where it should
+// be and the edge was not there (neutral), or the window ran off the picture
+// and the answer could not have been in it (warning). Fainter than the marker
+// -- it is context for the feature, not a second feature.
+const NA_REGION_COLOR     = 'rgba(120, 132, 143, 0.75)';
+const NA_REGION_OFF_COLOR = 'rgba(232, 120, 48, 0.95)';
+// The clipped-window caveat, in the core's own words.
+//
+// The core writes na_reason only when it REFUSES, and it no longer refuses a
+// clipped band. So the one case the operator now sees most -- an answer
+// measured from a window that ran off the picture -- would have a box drawn
+// for it and nothing to say when pointed at. Same numbers the refusal used
+// to print, same shape of sentence, so the two read as one family.
+function scanClipNote(clip) {
+  if (!clip || !(clip.samples_off > 0)) return null;
+  const pct = clip.samples_total > 0
+    ? (100 * clip.samples_off / clip.samples_total).toFixed(1) : '?';
+  const nb = clip.nearest_bad;
+  const side = !isFinite(nb) ? 'none' : (nb < 0 ? 'NEAR side' : 'far side');
+  const near = isFinite(nb) ? `${nb > 0 ? '+' : ''}${nb.toFixed(0)}px` : 'n/a';
+  return `scan window off-frame: ${pct}% of samples (${clip.samples_off}/${clip.samples_total}), `
+       + `${clip.rows_off}/${clip.rows_total} rows, nearest ${near} (${side}) `
+       + `-- measured from what was in frame`;
+}
+
 const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
@@ -823,7 +849,15 @@ class renderUTIL {
       this.naDim = 0;
       // The reason is NOT greyed -- it is the one thing on an NA that should
       // catch the eye -- so it goes outside the filter, after the shapes.
-      if (greyed) list.forEach((o) => this.drawNAReason(ctx, o));
+      if (greyed) list.forEach((o) => { this.drawNARegion(ctx, o); this.drawNAReason(ctx, o); });
+      // A SUCCESSFUL scan whose window ran off the picture still shows it.
+      //
+      // A clipped band is measured now rather than refused, which is the right
+      // default -- the edge was usually in frame and the part is where the
+      // station puts it. But "measured from what was in frame" is a caveat on
+      // the number, and a caveat nobody can see is not one. Only when clipped:
+      // drawing every healthy scan's window would bury the ones that matter.
+      else list.forEach((o) => this.drawNARegion(ctx, o, true));
     };
 
     // ---- pass 1: measurements, underneath ----------------------------------
@@ -840,7 +874,10 @@ class renderUTIL {
       this.drawShapeList(ctx, measureNA, naColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
       if (useF) ctx.filter = savedFilter;
       this.naDim = 0;
-      measureNA.forEach((o) => this.drawNAReason(ctx, o));
+      // A measure has no region of its own -- it is arithmetic over features.
+      // drawNARegion draws nothing for one, and the features it refers to are
+      // NA in their own right and draw theirs in pass 2.
+      measureNA.forEach((o) => { this.drawNARegion(ctx, o); this.drawNAReason(ctx, o); });
     }
 
     // ---- pass 2: construction primitives, still underneath -----------------
@@ -854,6 +891,82 @@ class renderUTIL {
     drawPrims(primNA, true);
   }
 
+  // WHERE A FAILED FEATURE LOOKED.
+  //
+  // An NA says the machine did not get an answer. It does not say whether it
+  // looked in the right place, and on a deformed part or a pose that is a few
+  // tenths out those are completely different problems with completely
+  // different fixes -- one is the recipe's edge settings, the other is the
+  // window. The record carries the geometry the scan actually used (after the
+  // pose AND the anchor morph), so the screen can stop making the operator
+  // imagine it: `scan_clip` for a search point's band, `cal_geom` + `cal_hits`
+  // for the radial calipers of an arc.
+  //
+  // Geometry, not text, and therefore drawn for EVERY NA rather than on hover:
+  // two outlines near each other stay readable where two sentences do not (see
+  // drawNAReason for what that cost). The numbers behind it -- how much of the
+  // band was off the picture, how near -- stay in the hover sentence, which
+  // the core already writes.
+  drawNARegion(ctx, eObject, onlyIfClipped = false) {
+    if (!eObject) return;
+    const clip = eObject.scan_clip, geom = eObject.cal_geom;
+    if (!clip && !geom) return;
+    if (onlyIfClipped && !(clip && clip.samples_off > 0)) return;
+    const save = { s: ctx.strokeStyle, f: ctx.fillStyle, w: ctx.lineWidth, d: ctx.getLineDash() };
+    ctx.lineWidth = this.getPrimitiveSize() * 0.5;
+
+    if (clip && isFinite(clip.x) && isFinite(clip.y) && clip.width > 0) {
+      // The band: width along the bar, depth along the search axis. Dashed,
+      // so it never reads as a measured edge.
+      const bx = clip.bar_x, by = clip.bar_y;
+      const bn = Math.hypot(bx, by) || 1;
+      const ux = bx / bn, uy = by / bn;      // along the band
+      const vx = -uy, vy = ux;               // along the search
+      const hw = clip.width / 2, hd = clip.depth / 2;
+      const off = clip.samples_off > 0;
+      ctx.strokeStyle = off ? NA_REGION_OFF_COLOR : NA_REGION_COLOR;
+      ctx.setLineDash([this.getPrimitiveSize() * 1.5, this.getPrimitiveSize() * 1.5]);
+      ctx.beginPath();
+      const corner = (a, b) => [clip.x + ux * a + vx * b, clip.y + uy * a + vy * b];
+      const c0 = corner(-hw, -hd), c1 = corner(hw, -hd), c2 = corner(hw, hd), c3 = corner(-hw, hd);
+      ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]);
+      ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]);
+      ctx.closePath(); ctx.stroke();
+      // WHICH END IT SEARCHED FROM. A first-hit scan takes the nearest edge,
+      // so the near edge of the band is the half that decides the answer, and
+      // a band drawn without it is a rectangle that could have been swept
+      // either way. Solid, on the near edge only.
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]);
+      ctx.stroke();
+    }
+
+    if (!onlyIfClipped && geom && isFinite(geom.c0x) && isFinite(geom.c0y) && geom.len > 0) {
+      // Each caliper swept +-len along its own radius. cal_hits carries where
+      // each one sat -- including the ones that found nothing, which is the
+      // set that matters here -- so the rays are drawn from those and not from
+      // a re-derived arc span the report does not contain.
+      const hits = eObject.cal_hits;
+      if (hits && hits.length) {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = NA_REGION_COLOR;
+        ctx.beginPath();
+        for (const h of hits) {
+          const dx = h.x - geom.c0x, dy = h.y - geom.c0y;
+          const n = Math.hypot(dx, dy);
+          if (!(n > 0)) continue;
+          const ex = dx / n, ey = dy / n;
+          ctx.moveTo(h.x - ex * geom.len, h.y - ey * geom.len);
+          ctx.lineTo(h.x + ex * geom.len, h.y + ey * geom.len);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash(save.d);
+    ctx.lineWidth = save.w; ctx.strokeStyle = save.s; ctx.fillStyle = save.f;
+  }
+
   // The core's reason for an NA, written beside the shape.
   //
   // Here rather than in each shape module: only search_point and aux_point ever
@@ -861,7 +974,9 @@ class renderUTIL {
   // between "NA" and "NA because the scan window is off-frame" is the
   // difference between an hour of guessing and a fix.
   drawNAReason(ctx, eObject) {
-    if (!eObject || !eObject.na_reason) return;
+    if (!eObject) return;
+    const reasonText = eObject.na_reason || scanClipNote(eObject.scan_clip);
+    if (!reasonText) return;
     const anchor = eObject.pt1 || eObject.pt || eObject.center;
     if (!anchor || !isFinite(anchor.x) || !isFinite(anchor.y)) return;
     // The label convention, not drawText().
@@ -897,7 +1012,9 @@ class renderUTIL {
     const saveFill = ctx.fillStyle, saveStroke = ctx.strokeStyle;
     const saveLW = ctx.lineWidth, saveFont = ctx.font;
     const off = this.getPointSize() * 1.2;
-    ctx.fillStyle = NA_REASON_COLOR;
+    // An answer with a caveat is not a failure: colour the marker like the
+    // window it is about, not like an NA.
+    ctx.fillStyle = eObject.na_reason ? NA_REASON_COLOR : NA_REGION_OFF_COLOR;
     ctx.strokeStyle = "black";
     ctx.lineWidth = this.getPrimitiveSize() * 0.35;
     ctx.beginPath();
@@ -905,15 +1022,31 @@ class renderUTIL {
     ctx.fill();
     ctx.stroke();
 
+    // The band is a second place to point at.
+    //
+    // The marker sits on the feature's own point, and for a wide scan that can
+    // be millimetres from the rectangle drawn for it -- the two total-width
+    // scans on 10221 look 3-4 mm away from the edge they measure, by design.
+    // An operator who wants to know why that box is where it is points AT THE
+    // BOX. Whichever of the two was hovered is where the sentence is written,
+    // so the text never appears somewhere the pointer is not.
     let hovered = false;
+    let label = anchor;
     try {
       const h = this.hoverScreen;
       if (h) {
         const m = ctx.getTransform();
-        const sx = m.a * anchor.x + m.c * anchor.y + m.e;
-        const sy = m.b * anchor.x + m.d * anchor.y + m.f;
-        const dx = sx - h.x, dy = sy - h.y;
-        hovered = (dx * dx + dy * dy) <= NA_HOVER_RADIUS_PX * NA_HOVER_RADIUS_PX;
+        const clip = eObject.scan_clip;
+        const spots = [anchor];
+        if (clip && isFinite(clip.x) && isFinite(clip.y)) spots.push(clip);
+        for (const p of spots) {
+          const sx = m.a * p.x + m.c * p.y + m.e;
+          const sy = m.b * p.x + m.d * p.y + m.f;
+          const dx = sx - h.x, dy = sy - h.y;
+          if ((dx * dx + dy * dy) <= NA_HOVER_RADIUS_PX * NA_HOVER_RADIUS_PX) {
+            hovered = true; label = p; break;
+          }
+        }
       }
     } catch (e) { hovered = false; }
 
@@ -925,8 +1058,8 @@ class renderUTIL {
       ctx.font = this.getFontStyle(1);
       ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier * 0.02;
       ctx.save();
-      ctx.translate(anchor.x + off, anchor.y - off);
-      this.draw_Text(ctx, eObject.na_reason, fontPx, 0, 0);
+      ctx.translate(label.x + off, label.y - off);
+      this.draw_Text(ctx, reasonText, fontPx, 0, 0);
       ctx.restore();
     }
     ctx.font = saveFont; ctx.lineWidth = saveLW;
