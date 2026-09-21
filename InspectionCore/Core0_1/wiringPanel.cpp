@@ -2551,7 +2551,16 @@ struct InspectionContext {
   //    describe the station, not the product).
   InspRegionCfg insp_region;
   std::vector<CleanRegionCfg> clean_regions;
-  bool full_inspection = false;
+  // WHICH INSPECTION MODE this session is, by name rather than by a flag.
+  //
+  // It was `bool full_inspection`, set from `dat->tl[0] == 'F'` -- so every
+  // mode that is not FI was CI by construction, including one that does not
+  // exist yet. A third mode added against that shape does not fail, it
+  // silently runs as CI, which is the worst way for a new mode to not work.
+  // The enum makes an unrecognised command name a thing that can be refused
+  // and said out loud.
+  enum InspMode { INSPM_CI = 0, INSPM_FI };
+  InspMode insp_mode = INSPM_CI;
   bool area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
 };
 static InspectionContext g_inspCtx;
@@ -3485,7 +3494,16 @@ static InspRegionCfg &g_insp_region = g_inspCtx.insp_region;   // P0 alias
 //
 // So: filter in FI, show everything in CI. Set by the CI/FI session handler,
 // read by the per-frame code that publishes the region onto the bacpac.
-static bool &g_full_inspection = g_inspCtx.full_inspection;   // P0 alias
+static InspectionContext::InspMode &g_insp_mode = g_inspCtx.insp_mode;   // P0 alias
+// The name this session announced itself with. One place to add a mode to.
+static const char *insp_mode_name(InspectionContext::InspMode m)
+{
+  switch (m) {
+    case InspectionContext::INSPM_FI: return "FI";
+    case InspectionContext::INSPM_CI: return "CI";
+  }
+  return "?";
+}
 
 // Temporary bypass of BOTH machine-level area gates: the station
 // `inspection_region` and the `clean_regions`. Off by default.
@@ -6467,11 +6485,15 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           // Which mode this session is. The station region no longer keys off
           // it -- a configured region is enforced in CI as well, so setup sees
           // what production sees. Only the bypass turns it off.
-          g_full_inspection = (dat->tl[0] == 'F');
+          // The full two-letter name, not tl[0]: see InspMode. checkTL already
+          // compares both letters, so this is the same question asked the same
+          // way as the dispatch above.
+          g_insp_mode = checkTL("FI", dat) ? InspectionContext::INSPM_FI
+                                           : InspectionContext::INSPM_CI;
           // Announced, because it silently changes which objects get judged.
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
             LOGI("insp session: %s -- station region %s",
-                 g_full_inspection ? "FI" : "CI",
+                 insp_mode_name(g_insp_mode),
                  g_area_gates_bypass ? "off (InspAreaBypass ON)" : "ENFORCED");
           // A session starting while the bypass is still latched from earlier
           // work is the way this ends up on in production. Say so every time,
