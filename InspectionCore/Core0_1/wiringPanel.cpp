@@ -3229,6 +3229,58 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
+// The image half of a snapshot: written to a temp name, then renamed.
+//
+// cv::imwrite writes straight to the destination, so a watcher can open a
+// half-written frame and a failure leaves a truncated one behind. Same
+// tmp+rename discipline as WriteBytesToFileAtomic. No fsync: the report that
+// follows is the completion marker, and that one is fsynced.
+static bool write_snapshot_image(const std::string &dst, const cv::Mat &image,
+                                 const char *img_extension)
+{
+  // THE FAST LOSSLESS PATH, measured on a 2592x1936 frame of 10221.
+  //
+  // Two things cost more than the format does:
+  //
+  // 1. The Mat arrives 3-channel while the sensor is mono -- the three planes
+  //    are byte-identical -- so every snapshot stored the same picture three
+  //    times: 3982 KB and 2197 ms against 2093 KB and 745 ms for the one plane
+  //    that carries information. Collapsed only when the planes really are
+  //    equal, so a colour camera keeps its colour; the check is two passes
+  //    over the buffer and is nothing beside the encode.
+  // 2. zlib's default filtering. At the same compression level the RLE
+  //    strategy is both SMALLER and FASTER on this kind of frame (2093 KB /
+  //    745 ms vs 2488 KB / 922 ms) because a machine-vision frame is mostly
+  //    flat runs. Level stays 1: OpenCV's default 6 is 4.0 s for 7% fewer
+  //    bytes, on every part.
+  //
+  // Faster still exists and was rejected: BMP/PGM are 17 ms but 4900 KB, and
+  // TIFF-LZW is 428 ms for 2580 KB. PNG is what the rest of the toolchain and
+  // every viewer already read.
+  {
+    cv::Mat wimg = image;
+    if (image.channels() == 3)
+    {
+      cv::Mat ch[3];
+      cv::split(image, ch);
+      if (cv::norm(ch[0], ch[1], cv::NORM_INF) == 0 &&
+          cv::norm(ch[1], ch[2], cv::NORM_INF) == 0)
+        wimg = ch[0];
+    }
+    std::vector<int> iparm;
+    if (img_extension && strcmp(img_extension, "png") == 0)
+      iparm = {cv::IMWRITE_PNG_COMPRESSION, 1,
+                cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE};
+    const std::string tmp = dst + ".tmp~";
+    if (!cv::imwrite(tmp.c_str(), wimg, iparm)) { remove(tmp.c_str()); return false; }
+#ifdef _WIN32
+    remove(dst.c_str());
+#endif
+    if (rename(tmp.c_str(), dst.c_str()) != 0) { remove(tmp.c_str()); return false; }
+  }
+  return true;
+}
+
 // `want_img` / `want_rep` select which halves of a snapshot are written. Both
 // true is the historical behaviour; the point of splitting them is that the
 // image is 70% of the bytes and the report is usually the evidence, so a line
@@ -3260,8 +3312,16 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   cJSON *camera_param_data = JFetch_OBJECT(camera_param, "reports[0]");
   if (camera_param_data == NULL)
     camera_param_data = JFetch_OBJECT(inspectionReport, "reports[0].cam_param");
+  // A MISSING CAMERA BLOCK IS NOT A REASON TO THROW THE EVIDENCE AWAY.
+  //
+  // This used to `return -11`: the verdict, the def and the frame were all
+  // discarded because one metadata object was absent. The record is what a
+  // decision gets argued from later; write it, and let the gap show up as a
+  // null rather than as a file nobody has.
   if (camera_param_data == NULL)
-    return -11;
+    LOGE_EVERY_N(50, "snapshot %s: no camera_param in the report -- writing the "
+                     "record WITHOUT a scale; it cannot be re-measured "
+                     "(1 line in 50)", fileName);
 
   std::string filePath(fileName);
 
@@ -3270,10 +3330,12 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   // copy to dodge a still-unsolved aliasing bug that would otherwise strip
   // reportsList from inspectionReport mid-print.
   reportsList = cJSON_Duplicate(reportsList, true);
-  camera_param_data = cJSON_Duplicate(camera_param_data, true);
   cJSON_AddItemToObject(infoJObj, "reports", reportsList);
   cJSON_AddItemToObject(infoJObj, "defInfo", deffile);
-  cJSON_AddItemToObject(infoJObj, "camera_param", camera_param_data);
+  if (camera_param_data)
+    cJSON_AddItemToObject(infoJObj, "camera_param", cJSON_Duplicate(camera_param_data, true));
+  else
+    cJSON_AddNullToObject(infoJObj, "camera_param");
   // THE LENS THAT PRODUCED THESE NUMBERS.
   //
   // camera_param carries the scale and nothing else, so a replay got the
@@ -3310,13 +3372,29 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   // cJSON_Print is the expensive half of a report-less save, so skip it too --
   // not just the write. The detach/delete still has to run either way: deffile
   // is BORROWED from the caller and must leave this function unowned.
+  // THE IMAGE LANDS FIRST, THE REPORT IS RENAMED IN LAST.
+  //
+  // It used to be the other way with a plain truncate-in-place write, so on a
+  // full disk you got a .xreps naming a frame that was never written, left
+  // behind with no cleanup -- and a reader could pick up a half-written one,
+  // because truncate-in-place has no moment where the file is either old or
+  // new. Now the .xreps APPEARING is the signal that the pair is complete,
+  // which is the contract a folder watcher needs.
+  const std::string imgFile = filePath + "." + (std::string)img_extension;
+  const std::string repFile = filePath + "." + (std::string)filename_extension;
+  if (want_img && !write_snapshot_image(imgFile, image, img_extension))
+  {
+    cJSON_DetachItemViaPointer(infoJObj, deffile);
+    cJSON_Delete(infoJObj);
+    return -2;
+  }
   int ret_write_Len = 0;
   if (want_rep)
   {
     char *jstr = cJSON_Print(infoJObj);
     cJSON_DetachItemViaPointer(infoJObj, deffile);
     cJSON_Delete(infoJObj);
-    ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath+"." + (std::string)filename_extension).c_str());
+    ret_write_Len = WriteBytesToFileAtomic((uint8_t *)jstr, strlen(jstr), repFile.c_str());
     free(jstr);
   }
   else
@@ -3325,44 +3403,12 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
     cJSON_Delete(infoJObj);
   }
   if (ret_write_Len < 0)
-    return -1;
-
-  // THE FAST LOSSLESS PATH, measured on a 2592x1936 frame of 10221.
-  //
-  // Two things cost more than the format does:
-  //
-  // 1. The Mat arrives 3-channel while the sensor is mono -- the three planes
-  //    are byte-identical -- so every snapshot stored the same picture three
-  //    times: 3982 KB and 2197 ms against 2093 KB and 745 ms for the one plane
-  //    that carries information. Collapsed only when the planes really are
-  //    equal, so a colour camera keeps its colour; the check is two passes
-  //    over the buffer and is nothing beside the encode.
-  // 2. zlib's default filtering. At the same compression level the RLE
-  //    strategy is both SMALLER and FASTER on this kind of frame (2093 KB /
-  //    745 ms vs 2488 KB / 922 ms) because a machine-vision frame is mostly
-  //    flat runs. Level stays 1: OpenCV's default 6 is 4.0 s for 7% fewer
-  //    bytes, on every part.
-  //
-  // Faster still exists and was rejected: BMP/PGM are 17 ms but 4900 KB, and
-  // TIFF-LZW is 428 ms for 2580 KB. PNG is what the rest of the toolchain and
-  // every viewer already read.
-  if (want_img)
   {
-    cv::Mat _wimg = image;
-    if (image.channels() == 3)
-    {
-      cv::Mat _ch[3];
-      cv::split(image, _ch);
-      if (cv::norm(_ch[0], _ch[1], cv::NORM_INF) == 0 &&
-          cv::norm(_ch[1], _ch[2], cv::NORM_INF) == 0)
-        _wimg = _ch[0];
-    }
-    std::vector<int> _iparm;
-    if (img_extension && strcmp(img_extension, "png") == 0)
-      _iparm = {cv::IMWRITE_PNG_COMPRESSION, 1,
-                cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE};
-    if (!cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), _wimg, _iparm))
-      return -2;
+    // A frame with no report is not evidence -- nothing says what was decided
+    // about it -- and leaving it there makes the folder cap delete a real pair
+    // to make room for it.
+    if (want_img) remove(imgFile.c_str());
+    return -1;
   }
 
   return 0;
