@@ -3156,8 +3156,9 @@ export const SNAP_POLICY_DEFAULT = {
 export function uploadSkipOf(machine_custom_setting, System_Setting) {
   const mcs = machine_custom_setting || {};
   const sys = System_Setting || {};
-  const isCI = mcs.InspectionMode == "CI";
-  const key = isCI ? "CI_MODE_UPLOAD_SKIP" : "FI_MODE_UPLOAD_SKIP";
+  // Keyed by the mode's own name rather than a CI/not-CI question: with three
+  // modes "not CI" stopped meaning FI.
+  const key = (mcs.InspectionMode || "FI") + "_MODE_UPLOAD_SKIP";
   const v = (mcs[key] !== undefined && mcs[key] !== null) ? mcs[key] : sys[key];
   const n = parseInt(v);
   return Number.isFinite(n) && n >= 1 ? n : 1;
@@ -3178,7 +3179,13 @@ export function uploadSkipOf(machine_custom_setting, System_Setting) {
 export function statSettingOf(machine_custom_setting, System_Setting, mode) {
   const mcs = machine_custom_setting || {};
   const sys = System_Setting || {};
-  const key = (mode === "CI") ? "CI_MODE_StatSettingParam" : "FI_MODE_StatSettingParam";
+  // By the mode's own name: with three modes "not CI" stopped meaning FI, and
+  // SI in particular must NOT inherit CI's tracking window -- the core already
+  // averaged the picture, and averaging the measurements again on top of it is
+  // a second average that no image can be replayed against.
+  const key = (mode === "CI") ? "CI_MODE_StatSettingParam"
+            : (mode === "SI") ? "SI_MODE_StatSettingParam"
+                              : "FI_MODE_StatSettingParam";
   return { ...(sys[key] || {}), ...(mcs[key] || {}) };
 }
 
@@ -3563,6 +3570,27 @@ class APP_INSP_MODE extends React.Component {
           INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||1000
         });
         applyInspFrameRate(this.CameraCtrl, 'FI');
+      }
+      else if (this.props.machine_custom_setting.InspectionMode == "SI") {
+        // Hand-placed, still object: the core waits for the scene to settle,
+        // averages the frames and inspects that average once. Frame rate as
+        // CI -- the camera is streaming for the settle detector, not for
+        // throughput.
+        applyInspFrameRate(this.CameraCtrl, 'CI');
+        this.props.ACT_WS_SEND_CORE_BPG( "SI", 0,
+          { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef },
+          undefined, { resolve:insp_resolve, reject:(e)=>{} });
+        // The core resets these per session, so this push is what the machine
+        // actually uses -- same contract as INSP_SNAP_POLICY.
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, {
+          INSP_SI_PARAM: {
+            ...(this.props.System_Setting || {}).SI_MODE_PARAM,
+            ...(this.props.machine_custom_setting || {}).SI_MODE_PARAM,
+          },
+          INSP_SNAP_POLICY: snapPolicyOf(this.props.machine_custom_setting),
+        });
+        this.props.ACT_StatSettingParam_Update(statSettingOf(
+          this.props.machine_custom_setting, this.props.System_Setting, "SI"))
       }
       else if (this.props.machine_custom_setting.InspectionMode == "CI") {
 

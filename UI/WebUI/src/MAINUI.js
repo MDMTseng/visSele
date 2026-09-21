@@ -1228,6 +1228,10 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     CI:"檢驗",
     FI:"全檢",
     FI_C:"觸發檢驗",
+    // Hand-placed, still object: the core waits for the scene to stop changing,
+    // averages the frames and inspects that average once. See the SI branch in
+    // InspectionUI and InspMode in wiringPanel.
+    SI:"靜置檢驗",
   }
   
   const InspectionModeOptionMenu = (
