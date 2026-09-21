@@ -2339,22 +2339,42 @@ class PerifChannel:public Data_JsonRaw_Layer
 
 class ImageStackAddUp
 {
+  // NOT recursive, and it must not need to be: every public method takes this
+  // ONCE and then works through the _-prefixed helpers, which assume it is
+  // already held.
+  //
+  // The helpers used to take it as well, and the public methods called them:
+  // ReSize -> Reset, Add -> set_1CH / addUp_1CH, Export() -> Export(out).
+  // Relocking a non-recursive std::mutex on the same thread is undefined, and
+  // here it is a straight self-deadlock -- the thread stops forever holding a
+  // lock nothing can release. SI hit it on its FIRST frame (ReSize against an
+  // empty accumulator) and took the inspection thread down with it, which is
+  // exactly what "SI hangs, CI is fine" was: CI never touches this object.
+  // The manual stacked save had the same bug in Add, waiting on a counter that
+  // could no longer advance.
   std::mutex lock;
-public:
-  int stackingC = 0;
-  // phase 3a: cv::Mat-backed (was acvImage).  imgStacked stores 24-bit
-  // accumulator values via _24BitUnion stored as 3 bytes / pixel.
-  cv::Mat imgStacked;
-  cv::Mat imgExtract;
 
-  void addUp_1CH(cv::Mat &accum, const cv::Mat &src)
+  void _set_1CH(const cv::Mat &src)
   {
-    std::lock_guard<std::mutex> guard(lock);
-    for (int i = 0; i < accum.rows; i++)
+    for (int i = 0; i < imgStacked.rows; i++)
     {
-      uchar *aRow = accum.ptr<uchar>(i);
+      uchar *aRow = imgStacked.ptr<uchar>(i);
       const uchar *sRow = src.ptr<uchar>(i);
-      for (int j = 0; j < accum.cols; j++)
+      for (int j = 0; j < imgStacked.cols; j++)
+      {
+        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
+        pixU->_3Byte.Num = sRow[j * 3];
+      }
+    }
+  }
+
+  void _addUp_1CH(const cv::Mat &src)
+  {
+    for (int i = 0; i < imgStacked.rows; i++)
+    {
+      uchar *aRow = imgStacked.ptr<uchar>(i);
+      const uchar *sRow = src.ptr<uchar>(i);
+      for (int j = 0; j < imgStacked.cols; j++)
       {
         _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
         pixU->_3Byte.Num += sRow[j * 3];
@@ -2362,20 +2382,30 @@ public:
     }
   }
 
-  void set_1CH(cv::Mat &accum, const cv::Mat &src)
+  void _export(cv::Mat &out)
   {
-    std::lock_guard<std::mutex> guard(lock);
-    for (int i = 0; i < accum.rows; i++)
+    out.create(imgStacked.rows, imgStacked.cols, CV_8UC3);
+    const int div = (stackingC == 0) ? 1 : stackingC;
+    for (int i = 0; i < out.rows; i++)
     {
-      uchar *aRow = accum.ptr<uchar>(i);
-      const uchar *sRow = src.ptr<uchar>(i);
-      for (int j = 0; j < accum.cols; j++)
+      uchar *oRow = out.ptr<uchar>(i);
+      const uchar *sRow = imgStacked.ptr<uchar>(i);
+      for (int j = 0; j < out.cols; j++)
       {
-        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
-        pixU->_3Byte.Num = sRow[j * 3];
+        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
+        int pix = pixU->_3Byte.Num / div;
+        if (pix > 255) pix = 255;
+        oRow[j * 3] = oRow[j * 3 + 1] = oRow[j * 3 + 2] = pix;
       }
     }
   }
+
+public:
+  int stackingC = 0;
+  // phase 3a: cv::Mat-backed (was acvImage).  imgStacked stores 24-bit
+  // accumulator values via _24BitUnion stored as 3 bytes / pixel.
+  cv::Mat imgStacked;
+  cv::Mat imgExtract;
 
   void clear()
   {
@@ -2387,7 +2417,7 @@ public:
   {
     std::lock_guard<std::mutex> guard(lock);
     imgStacked.create(ref.rows, ref.cols, CV_8UC3);
-    Reset();
+    stackingC = 0;
   }
 
   void Reset()
@@ -2399,38 +2429,38 @@ public:
   void Add(const cv::Mat &in)
   {
     std::lock_guard<std::mutex> guard(lock);
-    if (stackingC == 0)        { set_1CH(imgStacked, in);   stackingC++; return; }
-    if (stackingC < 100)       { addUp_1CH(imgStacked, in); stackingC++; }
+    // An Add against an accumulator of a different shape walks off the end of
+    // one of the two buffers. Sized here rather than trusting every caller.
+    if (imgStacked.rows != in.rows || imgStacked.cols != in.cols)
+    {
+      imgStacked.create(in.rows, in.cols, CV_8UC3);
+      stackingC = 0;
+    }
+    if (stackingC == 0)  { _set_1CH(in);   stackingC++; return; }
+    if (stackingC < 100) { _addUp_1CH(in); stackingC++; }
   }
 
   void Export(cv::Mat &out)
   {
     std::lock_guard<std::mutex> guard(lock);
-    out.create(imgStacked.rows, imgStacked.cols, CV_8UC3);
-    for (int i = 0; i < out.rows; i++)
-    {
-      uchar *oRow = out.ptr<uchar>(i);
-      const uchar *sRow = imgStacked.ptr<uchar>(i);
-      for (int j = 0; j < out.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
-        int pix = pixU->_3Byte.Num / (stackingC == 0 ? 1 : stackingC);
-        if (pix > 255) pix = 255;
-        oRow[j * 3] = oRow[j * 3 + 1] = oRow[j * 3 + 2] = pix;
-      }
-    }
+    _export(out);
   }
 
   void Export()
   {
     std::lock_guard<std::mutex> guard(lock);
-    Export(imgExtract);
+    _export(imgExtract);
   }
 
   bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
   {
     std::lock_guard<std::mutex> guard(lock);
     if (skipSampling < 1) skipSampling = 1;
+    // Nothing to compare against, or two pictures of different shapes: the two
+    // row pointers below would describe different things.
+    if (imgStacked.empty() ||
+        imgStacked.rows != img2.rows || imgStacked.cols != img2.cols)
+      return false;
 
     globalDiffThres *= globalDiffThres * (imgStacked.rows * imgStacked.cols / skipSampling / skipSampling);
     localDiffThres *= localDiffThres;
