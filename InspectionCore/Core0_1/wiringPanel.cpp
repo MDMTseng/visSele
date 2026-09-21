@@ -1324,6 +1324,10 @@ static void image_pipe_info_do_return(image_pipe_info &info,resourcePool<image_p
     cJSON_Delete(info.datViewInfo.report_json);
     info.datViewInfo.report_json=NULL;
   }
+  // Back to the default a non-SI frame has, so a recycled slot cannot carry an
+  // SI accumulating frame's "do not report" into the next session.
+  info.datViewInfo.si_measured = true;
+  info.datViewInfo.si_avg_n = 0;
   pool.retResrc(&info);
 }
 
@@ -12683,7 +12687,9 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // imgSendState=true;
 
       
-      bool skipInspDataTransfer=!reportSendState;
+      // An SI accumulating frame sends its picture -- the operator is watching
+      // the part settle -- and no report.
+      bool skipInspDataTransfer=!reportSendState || !headImgPipe->datViewInfo.si_measured;
       bool skipImageTransfer= !imgSendState;
       bool inspSnap=saveToSnap;
 
@@ -13070,8 +13076,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         else si_measure = false;
       }
     }
-    matchingEng.setNoCandidateFrame(clean_blocked || !si_measure);
-    if (!skip_inspection())
+    imgPipe->datViewInfo.si_measured = si_measure;
+    imgPipe->datViewInfo.si_avg_n     = g_inspCtx.si_stack_n;
+    matchingEng.setNoCandidateFrame(clean_blocked);
+    // ONCE PER N, not N cheap ones. An accumulating frame is not inspected at
+    // all. Its report object is still created below -- downstream adds fields
+    // to it -- but the packet is never sent, so there is no second report
+    // shape for the WebUI reducer to trip over: nothing arrives at all.
+    if (!skip_inspection() && si_measure)
       ret = ImgInspection(matchingEng, capImg, bacpac, frameCam, 1);
     g_lastMatchUs = perif_now_us() - _mT0;
     g_histMatch.add(g_lastMatchUs / 1000.0);
@@ -13375,7 +13387,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
      // Downstream adds fields to this object, so it must exist even when there
      // is nothing to report -- same contract the INSP_SKIP_INSPECTION path has
      // always had, now shared with the clean-gate skip.
-     imgPipe->datViewInfo.report_json = skip_inspection()
+     imgPipe->datViewInfo.report_json = (skip_inspection() || !imgPipe->datViewInfo.si_measured)
        ? cJSON_CreateObject()
        : matchingEng.FeatureReport2Json(report);
       // Dirty clean area -> the part is rejected, so it has no measurements to
@@ -13745,7 +13757,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   if (g_insp_mode == InspectionContext::INSPM_SI && imgPipe->datViewInfo.report_json)
   {
     cJSON *si = cJSON_AddObjectToObject(imgPipe->datViewInfo.report_json, "si");
-    cJSON_AddNumberToObject(si, "avg_count", g_inspCtx.si_stack_n);
+    cJSON_AddNumberToObject(si, "avg_count", imgPipe->datViewInfo.si_avg_n);
     cJSON_AddNumberToObject(si, "avg_target", g_inspCtx.si.avg_frames);
     cJSON_AddBoolToObject(si, "measured", g_inspCtx.si_reported);
   }
@@ -13841,7 +13853,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   else
   {
     
-    bool skipInspDataTransfer=false;
+    bool skipInspDataTransfer=!imgPipe->datViewInfo.si_measured;
     bool skipImageTransfer=false;
     bool inspSnap=false;
     imgPipe->dview_enq_us = perif_now_us(); // sent inline: the queue wait is nil

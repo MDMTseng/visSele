@@ -142,6 +142,18 @@ typedef struct image_pipe_info
     int finspStatus;
     int uInspStatus;
     cJSON *report_json;
+    // SI mode: was THIS frame the one that was measured?
+    //
+    // SI accumulates N frames and inspects their average once, so the frames
+    // in between have nothing to report and must not send one -- the flow is
+    // once per N, not N reports of which one has content. Carried on the pipe
+    // rather than read from the inspection context, because the send thread
+    // runs later and the context has moved on by then.
+    //
+    // TRUE by default, which is what leaves FI and CI unchanged: every frame
+    // of theirs is a measured frame.
+    bool si_measured = true;
+    int  si_avg_n = 0;
   } datViewInfo;
 } image_pipe_info;
 
