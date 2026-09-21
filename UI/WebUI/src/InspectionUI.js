@@ -3129,6 +3129,15 @@ export const SNAP_POLICY_DEFAULT = {
   OK: { img: false, rep: false },
   NG: { img: false, rep: false },
   NA: { img: false, rep: false },
+  // AUTOMATIC snapshots only. A manual save is always PNG, and the core ignores
+  // any other extension asked for by hand.
+  //
+  // PNG by default because a snapshot is the evidence for a measurement and
+  // JPEG damages it exactly where the measurement is taken: on a recorded frame
+  // of 10221 it moved the GRADIENT by up to 6 counts, against arcs whose
+  // edge.min_strength is 5. It costs 2093 KB and 745 ms against 932 KB and
+  // 78 ms (mono, RLE strategy), and that tradeoff belongs to the line.
+  img_format: 'png',
 };
 
 // How many reports go to the DB: 1 uploaded out of every N produced.
@@ -3181,6 +3190,8 @@ export function snapPolicyOf(machine_custom_setting) {
       OK: { ...SNAP_POLICY_DEFAULT.OK, ...(stored.OK || {}) },
       NG: { ...SNAP_POLICY_DEFAULT.NG, ...(stored.NG || {}) },
       NA: { ...SNAP_POLICY_DEFAULT.NA, ...(stored.NA || {}) },
+      img_format: (stored.img_format === 'jpg' || stored.img_format === 'png')
+        ? stored.img_format : SNAP_POLICY_DEFAULT.img_format,
     };
   }
   // No policy stored yet: everything off, deliberately NOT derived from the
@@ -3190,7 +3201,8 @@ export function snapPolicyOf(machine_custom_setting) {
   // core, so an older WebUI driving this core is unaffected.
   return { OK: { ...SNAP_POLICY_DEFAULT.OK },
            NG: { ...SNAP_POLICY_DEFAULT.NG },
-           NA: { ...SNAP_POLICY_DEFAULT.NA } };
+           NA: { ...SNAP_POLICY_DEFAULT.NA },
+           img_format: SNAP_POLICY_DEFAULT.img_format };
 }
 
 const SnapPolicyPanel = (props) => {
@@ -3217,7 +3229,7 @@ const SnapPolicyPanel = (props) => {
         <tbody>
           <tr style={{ color: '#888', fontSize: 12 }}>
             <td style={{ padding: '2px 10px 2px 0' }}></td>
-            <td style={{ padding: '2px 10px' }}>影像 .jpg</td>
+            <td style={{ padding: '2px 10px' }}>影像 .{pol.img_format}</td>
             <td style={{ padding: '2px 10px' }}>報告 .xreps</td>
           </tr>
           {SNAP_VERDICTS.map((v) => (
@@ -3236,6 +3248,19 @@ const SnapPolicyPanel = (props) => {
         </tbody>
       </table>
       <div style={{ marginTop: 6 }}>
+        自動存檔格式:
+        <Select size="small" value={pol.img_format} style={{ marginLeft: 6, width: 200 }}
+          onChange={(v) => {
+            const next = { ...pol, img_format: v };
+            ACT_machine_custom_setting_Update({
+              ...(machine_custom_setting || {}), FI_INSP_SNAP_POLICY: next });
+            if (CORE_ID !== undefined) SEND_ST(CORE_ID, { INSP_SNAP_POLICY: next });
+          }}>
+          <Select.Option value="png">PNG(無損,可重新量測)</Select.Option>
+          <Select.Option value="jpg">JPG(小,但邊緣會被壓壞)</Select.Option>
+        </Select>
+      </div>
+      <div style={{ marginTop: 6 }}>
         每資料夾上限:
         <InputNumber size="small" min={1} max={100000} step={1} value={maxNum}
           style={{ marginLeft: 6, width: 90 }}
@@ -3248,8 +3273,10 @@ const SnapPolicyPanel = (props) => {
       </div>
       <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
         存到 <code>data/SAMPLE/日期/配方/</code>。滿了就刪最舊的一組。
-        每組約 146 KB（影像 103 KB + 報告 43 KB），所以全開時 20 件/秒 ≈ 每天上百 GB
-        寫入——而資料夾只留最後 {maxNum} 組，其餘全部是白寫的。
+        每組 = 影像 + 報告 43 KB。實測 2592x1936 單張:PNG 2093 KB / 編碼 745 ms,
+        JPG 932 KB / 78 ms。全開時 20 件/秒 ≈ 每天上百 GB 寫入——而資料夾只留最後
+        {maxNum} 組,其餘全部是白寫的。PNG 的存檔吞吐上限約 1.3 張/秒(存檔在自己的
+        執行緒,不會卡住量測)。手動存檔一律 PNG。
       </div>
     </div>
   );

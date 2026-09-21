@@ -111,6 +111,12 @@ char* SNAP_FILE_EXTENSION="xreps";
 // ~1.3 images/s, and the comment above about an NG burst at 35 parts/s is
 // about the queue behind this.
 char* SNAP_IMG_EXTENSION="png";
+// The AUTOMATIC snapshot's image format. A manual save is always PNG -- someone
+// asked for that frame by hand, which makes it the one that gets looked at
+// closely -- but the automatic path writes on every matching part, so what it
+// costs is the line's problem and the choice is the operator's.
+// ST INSP_SNAP_POLICY.img_format.
+static std::string g_snap_img_ext = SNAP_IMG_EXTENSION;
 std::timed_mutex mainThreadLock;
 
 std::mutex matchingEnglock;
@@ -3290,14 +3296,41 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   if (ret_write_Len < 0)
     return -1;
 
-  // Compression level 1. OpenCV's PNG default is 6, which on this frame size
-  // is 4.0 s an image against 742 ms -- five times the cost for 7% fewer
-  // bytes, paid on every snapshot.
+  // THE FAST LOSSLESS PATH, measured on a 2592x1936 frame of 10221.
+  //
+  // Two things cost more than the format does:
+  //
+  // 1. The Mat arrives 3-channel while the sensor is mono -- the three planes
+  //    are byte-identical -- so every snapshot stored the same picture three
+  //    times: 3982 KB and 2197 ms against 2093 KB and 745 ms for the one plane
+  //    that carries information. Collapsed only when the planes really are
+  //    equal, so a colour camera keeps its colour; the check is two passes
+  //    over the buffer and is nothing beside the encode.
+  // 2. zlib's default filtering. At the same compression level the RLE
+  //    strategy is both SMALLER and FASTER on this kind of frame (2093 KB /
+  //    745 ms vs 2488 KB / 922 ms) because a machine-vision frame is mostly
+  //    flat runs. Level stays 1: OpenCV's default 6 is 4.0 s for 7% fewer
+  //    bytes, on every part.
+  //
+  // Faster still exists and was rejected: BMP/PGM are 17 ms but 4900 KB, and
+  // TIFF-LZW is 428 ms for 2580 KB. PNG is what the rest of the toolchain and
+  // every viewer already read.
+  if (want_img)
   {
+    cv::Mat _wimg = image;
+    if (image.channels() == 3)
+    {
+      cv::Mat _ch[3];
+      cv::split(image, _ch);
+      if (cv::norm(_ch[0], _ch[1], cv::NORM_INF) == 0 &&
+          cv::norm(_ch[1], _ch[2], cv::NORM_INF) == 0)
+        _wimg = _ch[0];
+    }
     std::vector<int> _iparm;
     if (img_extension && strcmp(img_extension, "png") == 0)
-      _iparm = {cv::IMWRITE_PNG_COMPRESSION, 1};
-    if (want_img && !cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), image, _iparm))
+      _iparm = {cv::IMWRITE_PNG_COMPRESSION, 1,
+                cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE};
+    if (!cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), _wimg, _iparm))
       return -2;
   }
 
@@ -4669,6 +4702,13 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
               break;
             }
             {
+              // A MANUAL save is always PNG. JPEG moves the gradient by up to 6
+              // counts on a recorded frame whose arcs use an edge.min_strength
+              // of 5, and a frame someone saved by hand is the one that will be
+              // measured again. The report extension is still the caller's.
+              if (img_extension != NULL && strcmp(img_extension, "png") != 0)
+                LOGE("manual save: img_extension '%s' ignored -- written as PNG "
+                     "so the frame can be measured again", img_extension);
               // RAII, not lock()/unlock(): saveInspectionSample runs imwrite,
               // which throws cv::Exception on a bad path/disk -- a naked
               // unlock after it never runs and the frame pipeline (which takes
@@ -4677,7 +4717,7 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
 
               int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
                 report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
-                img_extension!=NULL?img_extension:SNAP_IMG_EXTENSION);
+                "png");
 
               if(err==0)
               {
@@ -7826,6 +7866,21 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
             if (jr && cJSON_IsBool(jr)) g_snap_policy[v].rep = cJSON_IsTrue(jr);
             LOGI("INSP_SNAP_POLICY %s: img=%d rep=%d", _vn[v],
                  (int)g_snap_policy[v].img, (int)g_snap_policy[v].rep);
+          }
+          // img_format: "png" (default) or "jpg", AUTOMATIC snapshots only.
+          // Validated rather than accepted-and-ignored: a format the writer
+          // cannot produce would surface as a failed save on every part, which
+          // reads as a disk fault.
+          if (const char *fmt = JFetch_STRING(pol, "img_format"))
+          {
+            if (strcmp(fmt, "png") == 0 || strcmp(fmt, "jpg") == 0)
+            {
+              g_snap_img_ext = fmt;
+              LOGI("INSP_SNAP_POLICY img_format=%s (automatic snapshots)", fmt);
+            }
+            else
+              LOGE("INSP_SNAP_POLICY img_format '%s' is neither png nor jpg -- "
+                   "keeping %s", fmt, g_snap_img_ext.c_str());
           }
         }
       }
@@ -12266,7 +12321,7 @@ void InspSnapSaveThread(bool *terminationflag)
         // the count then covers only the newer half until the older files age
         // out, which errs toward keeping evidence rather than deleting it.
         const SnapPolicy _polc = g_snap_policy[snap_verdict_of(headImgPipe->datViewInfo.finspStatus)];
-        const char *_rot_ext = _polc.rep ? SNAP_FILE_EXTENSION : SNAP_IMG_EXTENSION;
+        const char *_rot_ext = _polc.rep ? SNAP_FILE_EXTENSION : g_snap_img_ext.c_str();
         int count =getFileCountInFolder(folderPath.c_str(),_rot_ext);
 
         // while(count>=InspSampleSaveMaxCount)
@@ -12336,7 +12391,7 @@ void InspSnapSaveThread(bool *terminationflag)
         {
           const SnapPolicy _pol = g_snap_policy[snap_verdict_of(headImgPipe->datViewInfo.finspStatus)];
           int _sv = saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str(),
-                                         SNAP_FILE_EXTENSION, SNAP_IMG_EXTENSION, _pol.img, _pol.rep);
+                                         SNAP_FILE_EXTENSION, g_snap_img_ext.c_str(), _pol.img, _pol.rep);
           if (_sv != 0)
             LOGE("snapshot WRITE FAILED (%d) %s -- NG evidence is being lost",
                  _sv, filePath.c_str());
