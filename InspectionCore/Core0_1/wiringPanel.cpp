@@ -2442,9 +2442,25 @@ public:
     // Kept because callers read imgExtract directly.
   }
 
-  bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
+  // How far this frame is from the running mean, in grey levels: the RMS over
+  // the sampled pixels and the single worst pixel. Both are the numbers the
+  // thresholds are compared against, so an operator setting a threshold and an
+  // operator reading a failure are looking at the same quantity.
+  //
+  // It used to return the moment it crossed either limit and report nothing.
+  // That is why a noisy setup was unexplainable: the attempt failed and the
+  // only thing anybody could see was that it had failed. The early exit saved
+  // nothing worth having -- at the default sampling this is ~50k pixels.
+  //
+  // outRms / outMaxLocal are written even when the answer is "no change", so a
+  // screen can show the noise floor while the machine sits there, which is how
+  // the threshold gets chosen in the first place.
+  bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres,
+                  int skipSampling = 10, float *outRms = NULL, float *outMaxLocal = NULL)
   {
     std::lock_guard<std::mutex> guard(lock);
+    if (outRms) *outRms = 0;
+    if (outMaxLocal) *outMaxLocal = 0;
     if (skipSampling < 1) skipSampling = 1;
     // Nothing to compare against, or two pictures of different shapes: there
     // is no answer, and "changed" would fail every attempt.
@@ -2454,12 +2470,7 @@ public:
 
     const cv::Mat &g = _gray(img2);
 
-    const double globalLimit =
-      (double)globalDiffThres * globalDiffThres *
-      ((double)accum.rows * accum.cols / skipSampling / skipSampling);
-    const int localLimit = localDiffThres * localDiffThres;
-
-    double diffSum = 0; int diffMax = 0;
+    double diffSum = 0; int diffMax = 0; long count = 0;
     for (int i = 0; i < accum.rows; i += skipSampling)
     {
       const int32_t *aRow = accum.ptr<int32_t>(i);
@@ -2470,15 +2481,20 @@ public:
         int diff = mean - (int)sRow[j];
         diff *= diff;
         diffSum += diff;
-        if (diffSum > globalLimit) return true;
-        if (diffMax < diff)
-        {
-          diffMax = diff;
-          if (diffMax > localLimit) return true;
-        }
+        count++;
+        if (diffMax < diff) diffMax = diff;
       }
     }
-    return false;
+    if (count <= 0) return false;
+
+    const float rms = (float)std::sqrt(diffSum / (double)count);
+    const float mx  = (float)std::sqrt((double)diffMax);
+    if (outRms) *outRms = rms;
+    if (outMaxLocal) *outMaxLocal = mx;
+
+    // Same comparison as before, written in the unit the numbers are in:
+    // sum(d^2) > thres^2 * count is rms > thres.
+    return (rms > globalDiffThres) || (mx > (float)localDiffThres);
   }
 
 private:
@@ -2492,6 +2508,13 @@ private:
     cv::merge(ch, out);
   }
 };
+
+// How often the preview goes out while SI is accumulating, in frames per
+// second. The part is still and the picture is not changing, so this only has
+// to be often enough to show that it IS still -- and to show movement the
+// moment there is any, which is the thing a frozen preview cannot do.
+// 0 stops the preview entirely during accumulation.
+static int SI_PREVIEW_FPS = 4;
 
 int imgStackingMaxCount=0;
 ImageStackAddUp imstack;
@@ -2631,7 +2654,27 @@ struct InspectionContext {
   // And during the accumulation any change is a FAILURE, not a restart. A
   // restart is silent: the operator sees the count sit there and learns
   // nothing. A failure is the machine saying it could not do what it was asked.
-  enum SIState { SI_IDLE = 0, SI_HEAD, SI_ACC, SI_DONE, SI_ABORT };
+  // SI_HEAD   settling: a change was just seen, these frames are dropped
+  // SI_ACC    accumulating towards avg_frames
+  // SI_READY  avg_frames consecutive unchanged frames are in hand
+  // SI_DONE   the average was measured
+  // SI_ABORT  the frame geometry changed under the accumulator
+  enum SIState { SI_IDLE = 0, SI_HEAD, SI_ACC, SI_READY, SI_DONE, SI_ABORT };
+  // A press that arrived before the picture was ready. It is not a failure and
+  // not a queue: there is one operator and one part, so the newest press is the
+  // only one worth remembering.
+  bool si_pending = false;
+  // WHAT THE GATE ACTUALLY MEASURED, kept so it can be reported.
+  //
+  // si_rms / si_max are this frame's distance from the running mean, in grey
+  // levels -- the same quantity diff_global and diff_local are compared
+  // against. They are updated on every accumulating frame including the ones
+  // that pass, because a noise floor is only useful BEFORE it fails something.
+  // si_abort_* are the values of the frame that failed, held until the next
+  // press so the operator can read them after the fact.
+  float si_rms = 0, si_max = 0;
+  float si_abort_rms = 0, si_abort_max = 0;
+  int   si_abort_at = 0;
   SIState si_state = SI_IDLE;
   bool si_trigger = false;       // set by ST, consumed by the next frame
   int  si_stack_n = 0;           // frames in the accumulator right now
@@ -3355,7 +3398,24 @@ static bool write_snapshot_image(const std::string &dst, const cv::Mat &image,
     if (img_extension && strcmp(img_extension, "png") == 0)
       iparm = {cv::IMWRITE_PNG_COMPRESSION, 1,
                 cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE};
-    const std::string tmp = dst + ".tmp~";
+    // THE TEMPORARY NAME KEEPS THE EXTENSION.
+    //
+    // imwrite picks its codec from the file extension and nothing else, so
+    // writing to "<name>.png.tmp~" asks OpenCV for a ".tmp~" writer, which does
+    // not exist -- it throws, and before that throw was caught it took the core
+    // down with it. Every snapshot has failed this way since the atomic write
+    // was introduced.
+    //
+    // ".tmp~" goes BEFORE the extension: "<name>.tmp~.png" is still obviously
+    // temporary, is still a name nothing else will produce, and is still a PNG
+    // as far as the encoder is concerned.
+    const std::string _ext = std::string(".") + (img_extension ? img_extension : "png");
+    std::string tmp = dst;
+    if (tmp.size() > _ext.size()
+        && tmp.compare(tmp.size() - _ext.size(), _ext.size(), _ext) == 0)
+      tmp.insert(tmp.size() - _ext.size(), ".tmp~");
+    else
+      tmp += ".tmp~" + _ext;
     if (!cv::imwrite(tmp.c_str(), wimg, iparm)) { remove(tmp.c_str()); return false; }
 #ifdef _WIN32
     remove(dst.c_str());
@@ -3450,6 +3510,18 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
     cJSON *_ro = cJSON_AddObjectToObject(infoJObj, "roi_offset");
     cJSON_AddNumberToObject(_ro, "x", _roi.x);
     cJSON_AddNumberToObject(_ro, "y", _roi.y);
+  }
+  // HOW THIS PICTURE WAS MADE.
+  //
+  // An SI record is an average of N frames, and the image in it is that
+  // average -- not one of the frames. Nothing in the record said so, so a
+  // replay of it could not tell an averaged picture from a single one, and the
+  // whole claim SI makes about its own measurements was missing from the only
+  // artefact that outlives the run. The block is the same one the live report
+  // carries: state, avg_count, avg_target, and the variation the gate measured.
+  {
+    cJSON *si_src = cJSON_GetObjectItem(inspectionReport, "si");
+    if (si_src) cJSON_AddItemToObject(infoJObj, "si", cJSON_Duplicate(si_src, true));
   }
   cJSON_AddNumberToObject(infoJObj, "time_ms", current_time_ms());
 
@@ -4185,6 +4257,34 @@ static void encode_acvImage_jpeg(const cv::Mat &img, int jpegQ,
   cv::imencode(".jpg", encode_src, out, params);
 }
 
+// A KEPT SAMPLE IS KEPT TO BE MEASURED AGAIN, SO IT IS LOSSLESS.
+//
+// The live stream is JPEG because it is looked at and thrown away. A kept
+// sample is the opposite: the whole reason it exists is that somebody will
+// re-run the def against it, and JPEG moves the gradient by up to 6 counts on
+// a frame whose arcs use an edge.min_strength of 5 -- the measurement would
+// come back different from the one that was recorded, which makes the record
+// worse than useless.
+//
+// Format 3 is PNG. It is self-describing, so the decoder does not need the
+// channel count the JPEG formats (1 = BGR, 2 = grayscale) have to carry.
+//
+// The cost is memory: about 2 MB a frame against 0.75 MB, so ten samples is
+// 20 MB rather than 7.5 MB. Level 1 + RLE for the same reason the snapshot
+// writer uses them -- on a machine-vision frame they are both smaller and
+// faster than the defaults.
+static void encode_acvImage_png(const cv::Mat &img,
+                                std::vector<uint8_t> &out, uint8_t &fmt)
+{
+  cv::Mat src = img;
+  if (_looks_grayscale(img) && img.channels() != 1)
+    cv::extractChannel(img, src, 0);
+  const std::vector<int> params = { cv::IMWRITE_PNG_COMPRESSION, 1,
+                                    cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE };
+  cv::imencode(".png", src, out, params);
+  fmt = 3;
+}
+
 // Opt-in self-check for the pre-encode path: re-encode inline and compare.
 // Doubles the encode cost, so it is off unless INSP_IM_ENCODE_VERIFY=1.
 static bool im_encode_verify()
@@ -4651,7 +4751,28 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
       void *target;
       int type = getDataFromJson(json, "stream", &target);
       if (type == cJSON_False)
+      {
         unsubscribeStream(peer);
+        // THE INSPECTION MODE ENDS WITH THE SESSION.
+        //
+        // It is set at every CI/FI/SI start and was never cleared, so after an
+        // SI session the core still believed it was in SI -- and SI holds back
+        // preview frames while its accumulator counts. Leaving inspection for
+        // the main screen therefore left every frame held: no template preview,
+        // no live picture, a core that looked wedged while it was running
+        // perfectly and answering everything else.
+        //
+        // Reset here because unsubscribing IS how the WebUI says it has left.
+        if (stream_subscribers.empty())
+        {
+          g_insp_mode = InspectionContext::INSPM_CI;
+          g_inspCtx.si_state = InspectionContext::SI_IDLE;
+          g_inspCtx.si_pending = false;
+          g_inspCtx.si_trigger = false;
+          g_inspCtx.si_stack_n = 0;
+          g_inspCtx.si_skip_left = 0;
+        }
+      }
       else
         subscribeStream(peer);
       LOGI("SB stream subscribe=%d peer=%p subscribers=%zu",
@@ -4886,13 +5007,71 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
               // this lock per frame in the cache swap) hangs forever.
               std::lock_guard<std::mutex> _cache_guard(lastDatViewCache_lock);
 
-              int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
-                report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
-                "png");
+              // A SAVE THAT THROWS MUST NOT TAKE THE CORE WITH IT.
+              //
+              // saveInspectionSample runs imwrite and cJSON_Print; imwrite
+              // throws cv::Exception on a path it cannot write, a codec it
+              // cannot find, or a Mat it cannot make sense of. Nothing on the
+              // way out of here caught it, so it unwound through the websocket
+              // callback and out of the process -- measured 2026-09-22: the
+              // operator pressed 檢測快照 and the machine went down, which is a
+              // far worse outcome than a failed save.
+              //
+              // An empty image is checked first because it is the one case that
+              // is not exceptional: in SI the cache holds only measured frames,
+              // and before the first 量測 there may be nothing in it at all.
+              int err = 0;
+              if (lastDatViewCache->img.empty())
+              {
+                err = -1;
+              }
+              else
+              {
+                try {
+                  err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
+                    report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
+                    "png");
+                }
+                catch (const cv::Exception &e) {
+                  err = -30;
+                  LOGE("snapshot %s: imwrite threw -- %s", fileName, e.what());
+                }
+                catch (const std::exception &e) {
+                  err = -31;
+                  LOGE("snapshot %s: threw -- %s", fileName, e.what());
+                }
+                catch (...) {
+                  err = -32;
+                  LOGE("snapshot %s: threw a non-std exception", fileName);
+                }
+              }
 
               if(err==0)
               {
                 session_ACK=true;
+              }
+              else
+              {
+                // WHY IT FAILED, not just that it did.
+                //
+                // This branch was silent: the WebUI put up "儲存報告 ... 失敗"
+                // and the core said nothing at all, so the only way to find out
+                // which of half a dozen refusals fired was to read the function.
+                //  -1  the frame has no image
+                // -30/-31/-32 it threw: OpenCV, std, or something else
+                // -10  the report carries no reports[0].reports -- in SI that is
+                //      an accumulating frame, whose report is deliberately empty
+                // -20/-21 the image or the report could not be written
+                if (err == -10 && g_insp_mode == InspectionContext::INSPM_SI)
+                  snprintf(err_str, sizeof(err_str),
+                           "SI: nothing has been measured yet -- press 量測 first, "
+                           "then the snapshot saves that average and its report");
+                else
+                  snprintf(err_str, sizeof(err_str),
+                           "snapshot save failed (%d) %s", err, fileName);
+                LOGE("%s -- cached frame: measured=%d report=%s",
+                     err_str, (int)lastDatViewCache->datViewInfo.si_measured,
+                     lastDatViewCache->datViewInfo.report_json ? "present" : "NULL");
               }
             }
           }
@@ -6571,6 +6750,7 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           // A session starts with nothing accumulated, whatever the last one left.
           g_inspCtx.si_state = InspectionContext::SI_IDLE;
           g_inspCtx.si_trigger = false;
+          g_inspCtx.si_pending = false;
           g_inspCtx.si_stack_n = 0;
           g_inspCtx.si_skip_left = 0;
           si_stack.Reset();
@@ -10007,6 +10187,19 @@ static int insp_sample_match(cJSON *report_json, int frame_verdict)
 static void insp_sample_consider(image_pipe_info *p)
 {
   if (!p || !p->datViewInfo.report_json) return;
+  // IN SI, A SAMPLE IS AN AVERAGE, NOT A FRAME.
+  //
+  // This is called for every frame that reaches the data-view thread, which in
+  // SI is mostly frames the accumulator is still counting: nothing inspected
+  // them, so their report is empty and their verdict is NA. The kept-sample
+  // panel filled up with ten of those, a tenth of a second apart, every one of
+  // them NA -- and the one picture in that run that WAS measured, the average,
+  // was one entry among them if it got in at all.
+  //
+  // A sample is kept so it can be re-measured later. An accumulating frame
+  // cannot be: it is not what the machine judged, and the record would not say
+  // what it was.
+  if (g_insp_mode == InspectionContext::INSPM_SI && !p->datViewInfo.si_measured) return;
   int gi; bool room;
   {
     std::lock_guard<std::mutex> lk(g_sample_lock);
@@ -10019,7 +10212,7 @@ static void insp_sample_consider(image_pipe_info *p)
   if (p->img.empty()) return;
   // Encode outside the lock: the one cost of a kept sample, paid once.
   InspSampleRec r;
-  encode_acvImage_jpeg(p->img, DataView_JPEG_quality > 0 ? DataView_JPEG_quality : 85, r.jpg, r.jpg_fmt);
+  encode_acvImage_png(p->img, r.jpg, r.jpg_fmt);
   r.w = p->img.cols; r.h = p->img.rows;
   r.ts_ms = (uint64_t)current_time_ms();
   r.verdict = (int)snap_verdict_of(p->datViewInfo.finspStatus);
@@ -10420,12 +10613,52 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       
       lastImgSendTime=cur_ms;
       avgInterval=cur_avgInterval;
-      if(pureSendImg==false)
+      // Same rule as the held path below: in SI an accumulating frame has no
+      // report, and a cache entry with no report is one the snapshot save and
+      // the resend both have to refuse.
+      if(pureSendImg==false
+         && (g_insp_mode != InspectionContext::INSPM_SI
+             || imgPipe->datViewInfo.si_measured))
         image_pipe_info_resendCache_swap_and_gc(*imgPipe,bpg_pi.resPool);
       // lastImgSendTime=t;
     }
 
   } while (false);
+
+  // THE CACHE IS NOT THE TRANSFER.
+  //
+  // lastDatViewCache -- the frame a resend replays and the frame 檢測快照 saves
+  // -- was only ever updated inside the send block above. That was harmless
+  // while every frame was sent. It stopped being harmless the moment SI began
+  // holding frames back: nothing was sent, so nothing was cached, and 檢測快照
+  // answered "no data-view frame yet; nothing to save" on a machine that was
+  // looking at a perfectly good picture.
+  //
+  // So a held frame still updates the cache -- EXCEPT that it must not displace
+  // a MEASURED one. In SI the measured average is the only frame anybody wants
+  // a snapshot of; letting the next accumulating frame overwrite it would swap
+  // the picture the numbers came from for a raw frame taken a fraction of a
+  // second later, which is the same substitution the hold on the screen exists
+  // to prevent.
+  if (imgPipe)
+  {
+    // IN SI, ONLY A MEASURED FRAME IS WORTH KEEPING.
+    //
+    // An accumulating frame carries no report at all -- that is deliberate,
+    // nothing inspected it -- so caching one makes the snapshot save fail with
+    // -10 ("no reports[0].reports") and makes a resend replay a picture with no
+    // verdict on it. The frame worth replaying and worth saving is the average
+    // that was actually measured, and in SI those are different frames.
+    //
+    // Outside SI every frame is measured, so this is the behaviour it always
+    // had. Before the first press of 量測 the cache stays as it was, which is
+    // why the save says so plainly rather than writing an empty record.
+    const bool worth_caching =
+      (g_insp_mode != InspectionContext::INSPM_SI) || imgPipe->datViewInfo.si_measured;
+    if (*skipImageTransfer && worth_caching)
+      image_pipe_info_resendCache_swap_and_gc(*imgPipe, bpg_pi.resPool);
+  }
+
   _wImg = perif_now_us();
 
   if( *skipInspDataTransfer==false ||*skipImageTransfer==false)//if any of them are sent
@@ -12768,7 +13001,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // An SI accumulating frame sends its picture -- the operator is watching
       // the part settle -- and no report.
       bool skipInspDataTransfer=!reportSendState || !headImgPipe->datViewInfo.si_report;
-      bool skipImageTransfer= !imgSendState;
+      bool skipImageTransfer= !imgSendState || headImgPipe->datViewInfo.si_no_image;
       bool inspSnap=saveToSnap;
 
       // LOGE("repSend:%d imgSend:%d inspSnap:%d",reportSendState,imgSendState,inspSnap);
@@ -13119,69 +13352,161 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     bool si_report  = true;      // send its report packet
     if (g_insp_mode == InspectionContext::INSPM_SI)
     {
+      // THE AVERAGE IS ALWAYS BEING BUILT. THE PRESS ONLY SAYS WHEN TO READ IT.
+      //
+      // It used to start on the press: settle, then count to avg_frames, then
+      // measure. So every part cost the operator the whole accumulation --
+      // seconds of standing still in front of a machine that had been looking
+      // at that same still part the entire time and throwing the frames away.
+      //
+      // Now the accumulator runs whenever SI is the mode. Any change resets it,
+      // so what it holds is always N CONSECUTIVE UNCHANGED FRAMES or nothing --
+      // the same guarantee the old one gave, made continuously instead of on
+      // demand. A press with that in hand measures on this frame. A press
+      // without it is remembered and spends itself the moment the picture
+      // settles, which is the only honest answer to "measure it now" when it is
+      // still moving.
       InspectionContext::SIParam &sp = g_inspCtx.si;
       int &n = g_inspCtx.si_stack_n;
       int &skip = g_inspCtx.si_skip_left;
       InspectionContext::SIState &st = g_inspCtx.si_state;
+      const int want = (sp.avg_frames > 0 ? sp.avg_frames : 1);
       si_measure = false; si_report = false;
 
       if (g_inspCtx.si_trigger)
       {
         g_inspCtx.si_trigger = false;
-        si_stack.ReSize(capImg);          // also clears it
-        n = 0; skip = sp.head_skip;
-        st = (skip > 0) ? InspectionContext::SI_HEAD : InspectionContext::SI_ACC;
-        LOGI("SI: triggered -- %d frame(s) to average, %d dropped first", sp.avg_frames, skip);
-      }
-      else if (si_stack.imgStacked.rows != capImg.rows || si_stack.imgStacked.cols != capImg.cols)
-      {
-        // The frame size changed under us; nothing accumulated describes this.
-        si_stack.ReSize(capImg); n = 0;
-        if (st == InspectionContext::SI_HEAD || st == InspectionContext::SI_ACC)
-          st = InspectionContext::SI_ABORT;
+        g_inspCtx.si_pending = true;
+        g_inspCtx.si_abort_rms = g_inspCtx.si_abort_max = 0;
+        g_inspCtx.si_abort_at = 0;
+        LOGI("SI: measure requested -- %d of %d frame(s) in hand", n, want);
       }
 
-      if (st == InspectionContext::SI_HEAD)
+      if (si_stack.imgStacked.rows != capImg.rows || si_stack.imgStacked.cols != capImg.cols)
       {
-        // Settling after the press. Hold this frame as the reference the next
-        // one is compared against; a change here is expected, not a failure.
+        // The frame geometry changed under the accumulator; nothing it holds
+        // describes this picture.
+        si_stack.ReSize(capImg);
+        n = 0; skip = 0;
+        st = InspectionContext::SI_ACC;
+      }
+
+      // --- the background accumulator ---------------------------------------
+      float _rms = 0, _mx = 0;
+      const bool moved =
+        (n > 0 && si_stack.stackingC > 0 &&
+         si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip,
+                             &_rms, &_mx));
+      g_inspCtx.si_rms = _rms;
+      g_inspCtx.si_max = _mx;
+
+      if (moved)
+      {
+        // Start again from this frame. head_skip frames are dropped first: a
+        // scene that has just stopped moving can be under the threshold and
+        // still settling, and the numbers say so -- they are kept for the
+        // report whether or not anybody is waiting on them.
+        if (n >= want) LOGI("SI: the scene changed -- the average is stale, rebuilding");
+        g_inspCtx.si_abort_rms = _rms;
+        g_inspCtx.si_abort_max = _mx;
+        g_inspCtx.si_abort_at  = n;
+        si_stack.Reset(); n = 0;
+        skip = sp.head_skip;
+        st = (skip > 0) ? InspectionContext::SI_HEAD : InspectionContext::SI_ACC;
+      }
+
+      if (skip > 0)
+      {
+        // Settling. This frame is the reference the next one is compared
+        // against and nothing else; it is not one of the averaged frames.
         si_stack.Reset(); si_stack.Add(capImg); n = 0;
         if (--skip <= 0) { skip = 0; st = InspectionContext::SI_ACC; }
       }
-      else if (st == InspectionContext::SI_ACC)
+      else if (n < want)
       {
-        if (si_stack.stackingC > 0 && n > 0 &&
-            si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip))
+        if (n == 0) si_stack.Reset();
+        si_stack.Add(capImg); n++;
+        st = (n >= want) ? InspectionContext::SI_READY : InspectionContext::SI_ACC;
+      }
+      else if (st != InspectionContext::SI_DONE)
+      {
+        // Full and unchanged: hold it. Adding more would average across a
+        // longer and longer window for no gain, and the frames after the Nth
+        // are what the stability check is made of.
+        st = InspectionContext::SI_READY;
+      }
+
+      // --- spend the press --------------------------------------------------
+      if (g_inspCtx.si_pending && n >= want)
+      {
+        cv::Mat avg; si_stack.Export(avg);
+        if (!avg.empty())
         {
-          // ANY change during the accumulation fails the attempt. Averaging
-          // across it would produce a picture of neither position, and
-          // restarting quietly would leave the operator watching a counter
-          // that never finishes with nothing said.
-          LOGE("SI: scene changed after %d of %d frame(s) -- attempt failed",
-               n, sp.avg_frames);
-          si_stack.Reset(); n = 0;
-          st = InspectionContext::SI_ABORT;
-          si_report = true;              // tell somebody
-        }
-        else
-        {
-          // The settle reference is not one of the averaged frames.
-          if (n == 0) si_stack.Reset();
-          si_stack.Add(capImg); n++;
-          if (n >= (sp.avg_frames > 0 ? sp.avg_frames : 1))
-          {
-            // The measured image REPLACES the frame, so the report, the
-            // preview and the snapshot all refer to what was measured.
-            cv::Mat avg; si_stack.Export(avg);
-            if (!avg.empty()) imgPipe->img = avg;
-            st = InspectionContext::SI_DONE;
-            si_measure = true; si_report = true;
-            LOGI("SI: measuring the average of %d frame(s)", n);
-          }
+          // The measured image REPLACES the frame, so the report, the preview
+          // and the snapshot all refer to what was measured.
+          imgPipe->img = avg;
+          g_inspCtx.si_pending = false;
+          st = InspectionContext::SI_DONE;
+          si_measure = true; si_report = true;
+          LOGI("SI: measuring the average of %d frame(s)", n);
         }
       }
-      // SI_IDLE / SI_DONE / SI_ABORT: nothing until the next press.
+
+      // Every other frame measures nothing; the picture still goes.
+
+      // THE PROGRESS HAS TO LEAVE THE CORE -- BUT NOT ONCE A FRAME.
+      //
+      // Only the finished average used to send anything, so while the machine
+      // was settling and counting it said nothing at all: the operator pressed
+      // a button and got silence. These reports carry no measurement
+      // (report_json is an empty object; see si_measured below), so nothing
+      // downstream counts them as inspections -- they carry the si block, and
+      // that is the point.
+      //
+      // The accumulator now runs continuously, so "send whenever it is not
+      // idle" would be a packet for every frame forever. What a screen needs is
+      // the CHANGES: the count moving, the state moving, a press still waiting.
+      // A still part at its ceiling sends nothing, which is most of the time.
+      {
+        static InspectionContext::SIState _pst = InspectionContext::SI_IDLE;
+        static int _pn = -1;
+        static bool _ppend = false;
+        if (st != _pst || n != _pn || g_inspCtx.si_pending != _ppend) si_report = true;
+        _pst = st; _pn = n; _ppend = g_inspCtx.si_pending;
+      }
     }
+    // ALMOST NOTHING IS HAPPENING, SO ALMOST NOTHING IS SENT.
+    //
+    // While the accumulator counts, every frame is of the same still part --
+    // so sending all of them costs an encode, a transfer and a decode per
+    // frame to show a picture that is not changing. The measured average
+    // always goes; the rest are sampled at SI_PREVIEW_FPS.
+    //
+    // Sampled rather than stopped: a preview frozen through the settle looks
+    // exactly like a stalled machine, and whether the part is still moving is
+    // the one thing the operator needs to see while waiting. Four frames a
+    // second answers that for about a fifth of the traffic.
+    {
+      bool hold = false;
+      // SI_IDLE means no SI session is running, whatever the mode still says.
+      // Belt as well as braces: a held preview is invisible until somebody
+      // notices the screen has stopped, which is the worst way to find a bug.
+      if (g_insp_mode == InspectionContext::INSPM_SI && !si_measure
+          && g_inspCtx.si_state != InspectionContext::SI_IDLE)
+      {
+        static uint64_t _lastPrev = 0;
+        if (SI_PREVIEW_FPS <= 0) hold = true;
+        else
+        {
+          const uint64_t now_ms = current_time_ms();
+          const uint64_t gap = 1000 / SI_PREVIEW_FPS;
+          if ((now_ms - _lastPrev) < gap) hold = true;
+          else _lastPrev = now_ms;
+        }
+      }
+      imgPipe->datViewInfo.si_no_image = hold;
+    }
+
     imgPipe->datViewInfo.si_measured = si_measure;
     imgPipe->datViewInfo.si_report    = si_report;
     imgPipe->datViewInfo.si_avg_n     = g_inspCtx.si_stack_n;
@@ -13864,11 +14189,28 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   if (g_insp_mode == InspectionContext::INSPM_SI && imgPipe->datViewInfo.report_json)
   {
     cJSON *si = cJSON_AddObjectToObject(imgPipe->datViewInfo.report_json, "si");
-    static const char *_stn[] = { "idle", "settling", "accumulating", "measured", "aborted" };
+    static const char *_stn[] = { "idle", "settling", "accumulating", "ready", "measured", "aborted" };
     cJSON_AddStringToObject(si, "state", _stn[(int)g_inspCtx.si_state]);
     cJSON_AddNumberToObject(si, "avg_count", imgPipe->datViewInfo.si_avg_n);
     cJSON_AddNumberToObject(si, "avg_target", g_inspCtx.si.avg_frames);
     cJSON_AddBoolToObject(si, "measured", imgPipe->datViewInfo.si_measured);
+    // A press that has not been spent yet: the screen has to be able to say
+    // "waiting for it to settle" rather than look like it missed the button.
+    cJSON_AddBoolToObject(si, "pending", g_inspCtx.si_pending);
+    // The gate's own numbers, in grey levels, next to the thresholds they were
+    // compared against -- so the screen can show the noise floor while nothing
+    // is wrong, and say by how much when something is.
+    cJSON_AddNumberToObject(si, "rms",       g_inspCtx.si_rms);
+    cJSON_AddNumberToObject(si, "max_local", g_inspCtx.si_max);
+    cJSON_AddNumberToObject(si, "thres_rms",   g_inspCtx.si.diff_global);
+    cJSON_AddNumberToObject(si, "thres_local", g_inspCtx.si.diff_local);
+    if (g_inspCtx.si_state == InspectionContext::SI_ABORT)
+    {
+      cJSON *ab = cJSON_AddObjectToObject(si, "abort");
+      cJSON_AddNumberToObject(ab, "rms",       g_inspCtx.si_abort_rms);
+      cJSON_AddNumberToObject(ab, "max_local", g_inspCtx.si_abort_max);
+      cJSON_AddNumberToObject(ab, "at_frame",  g_inspCtx.si_abort_at);
+    }
   }
 
   // What this frame's inspection cost, same keys the II path uses so the canvas
@@ -13963,7 +14305,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
     
     bool skipInspDataTransfer=!imgPipe->datViewInfo.si_report;
-    bool skipImageTransfer=false;
+    bool skipImageTransfer=imgPipe->datViewInfo.si_no_image;
     bool inspSnap=false;
     imgPipe->dview_enq_us = perif_now_us(); // sent inline: the queue wait is nil
     InspResultAction(imgPipe, &skipInspDataTransfer, &skipImageTransfer,&inspSnap, &doPassDown);

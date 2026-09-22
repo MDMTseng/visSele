@@ -909,6 +909,21 @@ function StateReducer(newState, action) {
               // build to report.
               newState.edit_info = { ...newState.edit_info,
                 station: GetObjElement(action,["data","station"]),
+                // SI PROGRESS, and it has to land HERE rather than on
+                // inspReport.
+                //
+                // An accumulating SI frame carries no measurement -- the core
+                // sends an empty report object with only this block on it --
+                // so it has no `type`, and EVENT_Inspection_Report below
+                // returns on the first line without building inspReport at
+                // all. The button was reading inspReport.si, which therefore
+                // never appeared: the operator pressed 量測 and the screen
+                // said nothing, all the way through a successful run and,
+                // worse, through a failed one.
+                //
+                // Sibling of station, for the same reason station is one: it
+                // describes the FRAME, not any object located in it.
+                si: GetObjElement(action,["data","si"]),
                 // WHICH LOCALIZER RAN -- from the core, not from the def.
                 //
                 // A def asking for shape_based gets it only if shape training

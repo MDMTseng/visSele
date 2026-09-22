@@ -1,6 +1,7 @@
 // WebSocket + BPG transport for the core connection. Relocated verbatim from
 // script.jsx (Path A): same behavior, deps (comp, StoreX) injected via constructor.
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
+import { configureOverlay } from 'JSSRCROOT/canvas/overlayKit';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -242,6 +243,26 @@ function urlConcat(base, add) {
 
                     info.__priv={
                       path:machineSettingPath
+                    }
+
+                    // OVERLAY SIZING IS A PROPERTY OF THE MACHINE, NOT OF THIS BROWSER.
+                    //
+                    // overlayKit already had a tuning path, but it persists to
+                    // localStorage -- per browser profile, invisible to anyone
+                    // else, and gone the moment somebody opens the UI from a
+                    // different machine or a cleared profile. That is the exact
+                    // opposite of "every screen in the building draws the same
+                    // weights". Read here instead, from the one file the
+                    // machine's settings live in, at the one place it is loaded.
+                    //
+                    // persist:false on purpose: the file is the record, and
+                    // writing a copy into localStorage as well would let a stale
+                    // browser copy outlive a change to the file.
+                    if (info.OVERLAY_SIZE && typeof info.OVERLAY_SIZE === 'object') {
+                      try {
+                        configureOverlay({ size: info.OVERLAY_SIZE }, { persist: false });
+                        log.info("[ld] overlay sizing from machine_setting.json", info.OVERLAY_SIZE);
+                      } catch (e) { log.warn("[ld] OVERLAY_SIZE rejected", e); }
                     }
 
                     if(info.inspection_db_ws_url!==undefined)

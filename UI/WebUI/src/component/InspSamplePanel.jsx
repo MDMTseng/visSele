@@ -119,7 +119,8 @@ function Detail({ rec, sendBPG, saveDir, defName }) {
       <Button size="small" icon={<SaveOutlined />} loading={saving} onClick={() => {
         setSaving(true);
         saveRecordAsXreps(rec, sendBPG, saveDir, defName)
-          .then((stem) => setSaved({ ok: true, text: '已存 ' + stem + '.xreps / .jpg' }))
+          .then((r) => { const [stem, ext] = String(r).split('|');
+                         setSaved({ ok: true, text: '已存 ' + stem + '.xreps / ' + ext }); })
           .catch((e) => setSaved({ ok: false, text: '存檔失敗:' + (e && e.message || e) }))
           .finally(() => setSaving(false));
       }}>存成 xreps</Button>

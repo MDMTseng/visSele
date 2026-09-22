@@ -2252,6 +2252,18 @@ class CanvasComponent extends React.Component {
       // updateImgOnly keeps the previous edit_DB_info, i.e. the overlay keeps
       // matching what is on screen, while statistics and upload still see every
       // report through redux, untouched.
+      // FREEZE AFTER INSPECTION.
+      //
+      // The measured picture is the one the numbers on screen were taken from.
+      // Left live, it is replaced by the next frame within a fraction of a
+      // second, so what the operator reads the result against is a DIFFERENT
+      // picture from the one that was measured -- and in SI, where the whole
+      // point is that one averaged image was inspected, that is the only image
+      // worth looking at.
+      //
+      // Held until the next press, which is the next thing the operator does
+      // anyway. Off by default and remembered per browser: it is a way of
+      // working, not a machine setting.
       const _imgChanged = (this.pre_img !== props.img);
       // Consumed by the first image after the request, whatever it is: a resend
       // that never arrives must not leave this armed for a genuinely new frame.
@@ -2261,8 +2273,20 @@ class CanvasComponent extends React.Component {
       {
         // updateImgOnly is exactly what a resend wants: take the new picture,
         // keep the overlay that was already matched to it.
-        this.ec_canvas.EditDBInfoSync(props._edit_info,
-                                      /*updateImgOnly=*/ !_imgChanged || _isResend);
+        //
+        // HELD: the whole sync is skipped, image and overlay together.
+        //
+        // The first attempt cleared _imgChanged instead, which does the
+        // opposite of what it reads like -- a false _imgChanged selects
+        // updateImgOnly, and updateImgOnly TAKES THE NEW PICTURE. The frame
+        // went through exactly as before. No argument to this call means "no
+        // new picture"; not calling it is how that is said.
+        //
+        // Everything after this point still runs, so a rank or settings change
+        // is reflected on the held frame instead of waiting for the release.
+        if (!props.siFrozen)
+          this.ec_canvas.EditDBInfoSync(props._edit_info,
+                                        /*updateImgOnly=*/ !_imgChanged || _isResend);
         // THE LIST BESIDE THE PICTURE IS PART OF THE PICTURE.
         //
         // EditDBInfoSync froze the reports belonging to this frame (its own
@@ -2276,7 +2300,7 @@ class CanvasComponent extends React.Component {
         // Hand it the same frozen array. No second clone -- this is the one the
         // canvas just made -- and the list now re-renders once per IMAGE
         // instead of once per report, which is fewer renders, not more.
-        if (_imgChanged && !_isResend && props.onFrameReports)
+        if (_imgChanged && !_isResend && !props.siFrozen && props.onFrameReports)
           props.onFrameReports(this.ec_canvas.frameReportList);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
@@ -3741,6 +3765,15 @@ class APP_INSP_MODE extends React.Component {
 
     this.state = {
       frameIR: undefined,
+      // FREEZE AFTER INSPECTION. siHoldAfter is the operator's choice and is
+      // remembered per browser; siFrozen is whether a measured picture is being
+      // held right now, and is never remembered -- a session must not start
+      // showing a frame from yesterday.
+      siHoldAfter: (() => {
+        try { return localStorage.getItem('SI_HOLD_AFTER') === '1'; }
+        catch (e) { return false; }
+      })(),
+      siFrozen: false,
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
       onROISettingCallBack:undefined,
@@ -3843,6 +3876,23 @@ class APP_INSP_MODE extends React.Component {
     }
   }
 
+  // HOLD THE MEASURED PICTURE.
+  //
+  // Called from componentDidUpdate, not from the button's render: setState
+  // during a render is dropped, which is exactly what the toggle did -- it
+  // looked switched on and nothing ever held.
+  //
+  // The edge, not the level: an SI report says state 'measured' on the one
+  // frame that was inspected, but the screen re-renders many times while that
+  // is the newest report, so acting on the level would re-freeze after every
+  // manual thaw.
+  _siHoldCheck(prevProps) {
+    if (!this.state.siHoldAfter || this.state.siFrozen) return;
+    const si = this.props.siState, was = prevProps && prevProps.siState;
+    const measured = (r) => !!(r && r.state === 'measured' && r.measured === true);
+    if (measured(si) && !measured(was)) this.setState({ siFrozen: true });
+  }
+
   // CI-only idle watchdog. Called from componentDidUpdate with each fresh
   // inspection report (already gated to CI there). Two exit triggers, both
   // time-based:
@@ -3904,8 +3954,9 @@ class APP_INSP_MODE extends React.Component {
     this.setState({ measureDisplayRank: ranks.length ? ranks[0] : Infinity });
   }
 
-  componentDidUpdate() {
+  componentDidUpdate(prevProps) {
     this._seedViewRank();
+    this._siHoldCheck(prevProps);
     if (this.props.machine_custom_setting.InspectionMode== "CI")
       this.checkAutoExitForCI(this.props.inspectionReport);
 
@@ -4178,25 +4229,94 @@ class APP_INSP_MODE extends React.Component {
   // label is what the machine is actually doing, not what this button asked
   // for a moment ago.
   siTriggerButton(style) {
-    const si = ((this.props.inspectionReport || {}).si) || {};
+    const si = this.props.siState || {};
     const st = si.state || 'idle';
-    const busy = (st === 'settling' || st === 'accumulating');
+    const n = si.avg_count || 0, target = si.avg_target || 0;
+    // THE PICTURE IS BUILT IN THE BACKGROUND; THE BUTTON ONLY READS IT.
+    //
+    // So "busy" is no longer "is it accumulating" -- it is accumulating almost
+    // all the time. It is "is there a press that has not been spent yet",
+    // which is the only state the operator is actually waiting through.
+    const ready = (st === 'ready' || st === 'measured');
+    const busy = !!si.pending;
+    const ab = si.abort || {};
+    const f1 = (v) => (typeof v === 'number' ? v.toFixed(1) : '?');
+
+    // THE FAILURE HAS TO SAY BY HOW MUCH.
+    //
+    // "有變動" is unactionable on a noisy setup, and a noisy setup is exactly
+    // where this fails: if the threshold sits below the noise floor, no part
+    // will ever pass and the operator has no way to find that out from the
+    // machine. Both numbers the gate compares are here, next to the thresholds
+    // they were compared against, so the answer "your threshold is too tight"
+    // is readable off the screen instead of guessed at.
     const label = busy
-      ? `量測中 ${si.avg_count || 0}/${si.avg_target || 0}`
-      : (st === 'aborted' ? '重試（上次有變動）' : '量測');
-    return (
+      ? `等待靜止 ${n}/${target}`
+      : (ready ? '量測' : `量測（累積中 ${n}/${target}）`);
+
+    // The noise floor, while nothing is wrong. This is how the threshold gets
+    // chosen: watch it sit at 2 with the part still, and 6 is a sane gate; watch
+    // it sit at 7 and the gate is the problem, not the part.
+    const noiseNote = (typeof si.rms === 'number')
+      ? `目前變動 ${f1(si.rms)}，門檻 ${f1(si.thres_rms)}。` : '';
+    const tip = busy
+      ? `已按下，等畫面靜止。目前積了 ${n}/${target} 張，`
+        + `畫面一有變動就歸零。${noiseNote}`
+      : (ready
+          ? `已累積 ${n}/${target} 張靜止影像，按下立即檢驗。${noiseNote}`
+          : `畫面還在變動，目前 ${n}/${target} 張。`
+            + `現在按也可以，會等静止後自動檢驗。${noiseNote}`
+            + `若零件確實沒動，是門檻低於雜訊底線，到設定頁調高。`);
+
+    const btn = (
       <Button
         key="SITRIG"
         style={style}
+        size="large"
         type="primary"
-        danger={st === 'aborted'}
+        danger={false}
         loading={busy}
         onClick={() => {
           if (this.props.CORE_ID === undefined) return;
+          // A new measurement means the held picture is the old answer.
+          if (this.state.siFrozen) this.setState({ siFrozen: false });
           this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { INSP_SI_TRIGGER: true });
         }}>
         {label}
       </Button>
+    );
+
+    const wrapped = tip ? <Tooltip title={tip}>{btn}</Tooltip> : btn;
+
+    // The toggle lives beside the button because it changes what pressing the
+    // button leaves on the screen, and nowhere else in the app would explain
+    // that.
+    const frozen = this.state.siFrozen;
+    const toggle = (
+      <Tooltip key="SIFRZ" title={
+        '\u91cf\u6e2c\u5b8c\u6210\u5f8c\u505c\u4f4f\u756b\u9762\uff0c\u986f\u793a\u88ab\u6aa2\u9a57\u7684\u90a3\u5f35\u5e73\u5747\u5f71\u50cf\uff0c'
+        + '\u4e0d\u518d\u8ddf\u8457\u6700\u65b0\u5f71\u50cf\u66f4\u65b0\u3002\u4e0b\u4e00\u6b21\u6309\u4e0b\u91cf\u6e2c\u6642\u89e3\u9664\u3002'}>
+        <Button
+          size="large"
+          type={this.state.siHoldAfter ? 'primary' : 'default'}
+          ghost={this.state.siHoldAfter && !frozen}
+          icon={<PictureOutlined />}
+          style={{ height: style && style.height, marginLeft: 8 }}
+          onClick={() => {
+            const on = !this.state.siHoldAfter;
+            this.setState({ siHoldAfter: on, siFrozen: on ? this.state.siFrozen : false });
+            try { localStorage.setItem('SI_HOLD_AFTER', on ? '1' : '0'); } catch (e) { }
+          }}>
+          {frozen ? '\u7dad\u6301\u4e2d' : '\u7dad\u6301'}
+        </Button>
+      </Tooltip>
+    );
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ flex: 1 }}>{wrapped}</div>
+        {toggle}
+      </div>
     );
   }
 
@@ -4637,11 +4757,11 @@ class APP_INSP_MODE extends React.Component {
         <Tooltip title="檢測快照:這一幀的影像 + 它的檢測報告（.png + .xreps，可回放）">
           {this.inspSnapshotButton()}
         </Tooltip>
-        {this.props.machine_custom_setting.InspectionMode === "SI" ? (
-          <Tooltip title="靜置檢驗:按下後累積 N 張影像平均,再檢驗一次。過程中畫面有變動就算失敗">
-            {this.siTriggerButton()}
-          </Tooltip>
-        ) : null}
+        {/* The SI trigger is NOT in this toolbar -- it is the wide bar across
+            the bottom of the screen, below the canvas. It is the one control
+            the operator uses on every single part, with a hand that has just
+            let go of that part, and it was a small button in a row of eight
+            icons. See the render below. */}
       </div>
 
       {/* Not a toolbar control -- a panel that lives wherever it is mounted. */}
@@ -4681,6 +4801,10 @@ class APP_INSP_MODE extends React.Component {
             <ComponentBoundary name="InspectionCanvas" fallbackHeight="60vh">
               <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
                 onFrameReports={this.onFrameReportsBound}
+                // Hold the measured picture. Owned by this screen, because it is
+                // the screen the operator reads the result on; the canvas only
+                // has to know whether to take the next frame.
+                siFrozen={this.state.siFrozen}
 
                 edit_info={this.props.edit_info}
                 onROISettingCallBack={this.state.onROISettingCallBack}
@@ -4708,6 +4832,22 @@ class APP_INSP_MODE extends React.Component {
 
 
         </div>
+
+        {/* THE SI TRIGGER, across the bottom of the screen.
+            Fixed rather than in the flow: the canvas and the stats table split
+            the height between them and both scroll, so anything in the flow
+            below them is off-screen at the ratios the machine actually runs
+            at. The operator presses this once per part and must not have to
+            look for it. */}
+        {this.props.machine_custom_setting.InspectionMode === "SI" ? (
+          <div style={{ position: 'fixed', bottom: 18, left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 'min(560px, 76vw)', zIndex: 30 }}>
+            {this.siTriggerButton({ width: '100%', height: 56, fontSize: 20,
+                                    fontWeight: 600, boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })}
+          </div>
+        ) : null}
+
         <Modal {...this.state.modalInfo} visible={this.state.modalInfo!==undefined}> 
           {this.state.modalInfo===undefined?null:
             ((typeof this.state.modalInfo.children === 'function')?
@@ -4805,6 +4945,9 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     CORE_ID: state.ConnInfo.CORE_ID,
     WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
     inspectionReport: state.UIData.edit_info.inspReport,
+    // SI progress. Not inspectionReport.si -- an accumulating frame carries no
+    // measurement, so it never becomes an inspReport. See the reducer.
+    siState: state.UIData.edit_info.si,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
 
