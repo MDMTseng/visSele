@@ -29,6 +29,47 @@
 // mean the watchdog cannot rescue a session whose reports have stalled while
 // the camera keeps grabbing.
 
+// THE WINDOWS ARE THE MACHINE'S, NOT THE BUILD'S.
+//
+// Seconds, because that is what somebody standing at a machine says out loud,
+// and because minutes cannot express the twenty-second window that makes this
+// testable. Stored in machine_custom_setting so it persists and belongs to the
+// machine rather than to a browser.
+//
+// ZERO MEANS NEVER. A site that does not want its machines walking off the
+// inspection screen has to be able to say so, and the alternative -- a very
+// large number -- is a thing to get wrong by one digit. Each trigger is
+// separately switchable, because they are separately annoying: the same-object
+// one fires while somebody examines a part, the no-object one does not.
+//
+// Anything that is not a finite number at or above zero falls back to the
+// default rather than disabling the watchdog: a corrupted settings file must
+// not quietly turn off the thing that stops a machine running all night.
+export const AUTO_EXIT_DEFAULT_S = { noObj: 300, sameObj: 300, siIdle: 300 };
+
+export const AUTO_EXIT_KEYS = {
+  noObj: 'AUTO_EXIT_NO_OBJ_S',
+  sameObj: 'AUTO_EXIT_SAME_OBJ_S',
+  siIdle: 'AUTO_EXIT_SI_IDLE_S',
+};
+
+export function autoExitSecondsOf(setting) {
+  const out = {};
+  for (const k of Object.keys(AUTO_EXIT_DEFAULT_S)) {
+    const v = setting ? setting[AUTO_EXIT_KEYS[k]] : undefined;
+    const n = Number(v);
+    out[k] = (v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n >= 0)
+      ? Math.floor(n) : AUTO_EXIT_DEFAULT_S[k];
+  }
+  return out;
+}
+
+// The same, in the milliseconds the rules take.
+export function autoExitWindowsOf(setting) {
+  const s = autoExitSecondsOf(setting);
+  return { noObjMs: s.noObj * 1000, sameObjMs: s.sameObj * 1000, siIdleMs: s.siIdle * 1000 };
+}
+
 // Returns { reason, noObjSince, remainMs } -- reason is 'no_obj', 'same_obj' or
 // null, and remainMs is how long the soonest trigger has left (null when no
 // clock is running, so there is nothing to count down).
@@ -64,9 +105,13 @@ export function autoExitDecision({
   // before the operator has put anything down.
   let since = noObjSince;
   if (!hasObject) {
-    if (since == null) return { reason: null, noObjSince: t, remainMs: noObjMs };
-    if (t - from(since) > noObjMs) return { reason: 'no_obj', noObjSince: since, remainMs: 0 };
-    note(from(since) + noObjMs);
+    // The clock is still kept while the trigger is off, so switching it back on
+    // does not hand the operator a streak that started before they did.
+    if (since == null) return { reason: null, noObjSince: t, remainMs: noObjMs > 0 ? noObjMs : null };
+    if (noObjMs > 0) {
+      if (t - from(since) > noObjMs) return { reason: 'no_obj', noObjSince: since, remainMs: 0 };
+      note(from(since) + noObjMs);
+    }
   } else {
     since = null;
   }
@@ -77,7 +122,7 @@ export function autoExitDecision({
   // (the reducer ages them out), so an entry that is present with an old
   // add_time_ms IS an object that has persisted that long. repeatTime cannot be
   // used for this -- it saturates at maxReportRepeat and then stops counting.
-  if (Array.isArray(trackingWindow)) {
+  if (sameObjMs > 0 && Array.isArray(trackingWindow)) {
     for (const e of trackingWindow) {
       if (!e || !Number.isFinite(e.add_time_ms)) continue;
       if (t - from(e.add_time_ms) > sameObjMs)
@@ -116,6 +161,7 @@ export function siAutoExitDecision({ now, lastActivityAt, idleMs = 300000 } = {}
   // No activity recorded yet means the screen has only just opened, and the
   // clock has not started. Exiting on that would leave before the operator had
   // reached for the first part.
+  if (idleMs <= 0) return { reason: null, remainMs: null };
   if (!Number.isFinite(lastActivityAt)) return { reason: null, remainMs: idleMs };
   const left = lastActivityAt + idleMs - t;
   return { reason: left <= 0 ? 'si_idle' : null, remainMs: Math.max(0, left) };

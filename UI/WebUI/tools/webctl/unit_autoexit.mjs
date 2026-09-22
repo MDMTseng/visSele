@@ -12,7 +12,9 @@
 // ("it keeps kicking me out"), while one that never fires is reported as
 // nothing at all, because the machine simply runs.
 import { autoExitDecision, autoExitApplies,
-         siAutoExitDecision, siAutoExitApplies } from '../../src/UTIL/autoExitRule.mjs';
+         siAutoExitDecision, siAutoExitApplies,
+         autoExitSecondsOf, autoExitWindowsOf,
+         AUTO_EXIT_DEFAULT_S } from '../../src/UTIL/autoExitRule.mjs';
 
 let fails = 0;
 const check = (c, w) => { if (!c) { console.log('  FAIL ' + w); fails++; } return c; };
@@ -222,6 +224,42 @@ console.log('SI idles on the operator, not on the picture:');
   // driven by different things and neither is a fallback for the other.
   check(autoExitApplies('SI') === false, 'the object rule must not apply in SI');
   console.log('  eligibility / first-open / boundary / countdown / no crossover');
+}
+
+console.log('the windows are the machine\'s setting, in seconds:');
+{
+  const D = AUTO_EXIT_DEFAULT_S;
+  check(autoExitSecondsOf({}).noObj === D.noObj, 'an unset machine is not on the default');
+  check(autoExitSecondsOf(undefined).siIdle === D.siIdle, 'no setting object at all threw the default away');
+  check(autoExitSecondsOf({ AUTO_EXIT_NO_OBJ_S: 20 }).noObj === 20, 'a set value was ignored');
+  check(autoExitWindowsOf({ AUTO_EXIT_NO_OBJ_S: 20 }).noObjMs === 20000, 'seconds were not converted');
+
+  // Junk must fall back to the default, NOT to zero. A corrupted settings file
+  // turning the watchdog off is the silent failure: nobody reports a machine
+  // that simply keeps running.
+  for (const bad of ['', null, undefined, 'abc', NaN, -5, {}]) {
+    const r = autoExitSecondsOf({ AUTO_EXIT_NO_OBJ_S: bad });
+    check(r.noObj === D.noObj, `${JSON.stringify(bad)} gave ${r.noObj}, expected the default`);
+  }
+
+  // Zero is a real answer and must survive.
+  check(autoExitSecondsOf({ AUTO_EXIT_NO_OBJ_S: 0 }).noObj === 0, 'zero was overwritten by the default');
+
+  // ... and it means never, for each trigger independently.
+  const off = call({ now: 1e9, hasObject: false, noObjSince: 1, noObjMs: 0 });
+  check(off.reason === null, `zero still exited (${off.reason})`);
+  check(off.remainMs === null, 'a disabled trigger still offers a countdown');
+  const offSame = call({ now: 1e9, hasObject: true, sameObjMs: 0,
+                         trackingWindow: [{ add_time_ms: 1 }] });
+  check(offSame.reason === null, 'zero still exited on same_obj');
+  check(siAutoExitDecision({ now: 1e9, lastActivityAt: 1, idleMs: 0 }).reason === null,
+        'zero still exited in SI');
+
+  // One trigger off must not disable the other.
+  const mixed = call({ now: 1e9, hasObject: true, noObjMs: 0, sameObjMs: 60000,
+                       trackingWindow: [{ add_time_ms: 1 }] });
+  check(mixed.reason === 'same_obj', 'switching one trigger off disabled the other');
+  console.log('  default / junk falls back / zero survives / zero means never / independent');
 }
 
 console.log('the defaults are the shipped policy:');

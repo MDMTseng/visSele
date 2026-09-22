@@ -82,7 +82,8 @@ import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
 import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
 import { autoExitDecision, autoExitApplies,
-         siAutoExitDecision, siAutoExitApplies } from 'UTIL/autoExitRule.mjs';
+         siAutoExitDecision, siAutoExitApplies,
+         autoExitWindowsOf } from 'UTIL/autoExitRule.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -3211,7 +3212,18 @@ export function statSettingOf(machine_custom_setting, System_Setting, mode) {
   const key = (mode === "CI") ? "CI_MODE_StatSettingParam"
             : (mode === "SI") ? "SI_MODE_StatSettingParam"
                               : "FI_MODE_StatSettingParam";
-  return { ...(sys[key] || {}), ...(mcs[key] || {}) };
+  const merged = { ...(sys[key] || {}), ...(mcs[key] || {}) };
+
+  // SI TAKES ITS RESULT IMMEDIATELY, because nothing will come along to take it
+  // later. The tracking window retires a report when the NEXT one pushes it
+  // out, which works in FI and CI where parts keep arriving -- but SI measures
+  // once, on a press, and then the core stops reporting until the scene
+  // changes. So the one report of the part sat in the window and was never
+  // uploaded, until the operator happened to move the part.
+  //
+  // Set here, where the mode is known, rather than sniffed for in the reducer.
+  if (mode === "SI") merged.flushImmediately = true;
+  return merged;
 }
 
 export function snapPolicyOf(machine_custom_setting) {
@@ -3775,8 +3787,9 @@ class APP_INSP_MODE extends React.Component {
     // user puts objects on the plate and the camera streams + re-inspects the
     // same scene forever. If nobody is there (no object) or the same object just
     // sits stuck, the machine burns power/heat computing the same frame over and
-    // over. So: no object for NO_OBJ_MS, OR the same object persisting for
-    // SAME_OBJ_MS, flashes a reason then exits inspection mode entirely.
+    // over. So: no object for the no-object window, OR the same object
+    // persisting for the same-object one, flashes a reason then exits
+    // inspection mode entirely. Both windows are set in 設定, in seconds.
     // Both are time-based (epoch ms), so they're robust to render cadence.
     //
     // FIVE MINUTES, from thirty seconds and sixty. The field asked: the old
@@ -3784,8 +3797,9 @@ class APP_INSP_MODE extends React.Component {
     // setting a part up, reading a result, or fetching the next tray is doing
     // none of those things to the picture. Being thrown back to the main screen
     // mid-job costs more than the few minutes of idle camera it saved.
-    this.NO_OBJ_MS = 5 * 60 * 1000;   // no object on the plate -> idle line
-    this.SAME_OBJ_MS = 5 * 60 * 1000; // same object sitting there -> nobody here
+    // The windows are the machine's, set in 設定 in seconds and read fresh
+    // every time they are used -- an operator changing them must not have to
+    // leave the screen and come back for it to take effect.
     this._noObjSince = null;          // epoch ms when the no-object streak began
     // TOUCHING THE CANVAS IS BEING THERE. Both clocks run from this as well as
     // from their own start, so the question stops being "has the picture
@@ -3797,7 +3811,6 @@ class APP_INSP_MODE extends React.Component {
     // SI's idle clock. A press, or a touch, is somebody being here; nothing
     // about the picture counts, because a still part in front of the camera is
     // what SI is FOR.
-    this.SI_IDLE_MS = 5 * 60 * 1000;
     this._lastSIActivityAt = Date.now();
     this._siIdleTimer = null;
     this._autoExiting = false;      // latch: flashing + leaving
@@ -3967,7 +3980,7 @@ class APP_INSP_MODE extends React.Component {
     const d = siAutoExitDecision({
       now: Date.now(),
       lastActivityAt: Math.max(this._lastSIActivityAt, this._lastInteractAt),
-      idleMs: this.SI_IDLE_MS,
+      idleMs: autoExitWindowsOf(this.props.machine_custom_setting).siIdleMs,
     });
     const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
       ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
@@ -3978,9 +3991,9 @@ class APP_INSP_MODE extends React.Component {
   // CI-only idle watchdog. Called from componentDidUpdate with each fresh
   // inspection report (already gated to CI there). Two exit triggers, both
   // time-based:
-  //  - no object on the plate for NO_OBJ_MS, or
+  //  - no object on the plate for the no-object window, or
   //  - the SAME object (reducer tracking-window identity, matched by orientation/
-  //    area/position) still present after SAME_OBJ_MS, i.e. user walked off and
+  //    area/position) still present after the same-object one -- user walked off and
   //    left a part sitting there.
   checkAutoExitForCI(report) {
     if (this._autoExiting) return;
@@ -3991,7 +4004,8 @@ class APP_INSP_MODE extends React.Component {
     const tw = this.props.reportStatisticState && this.props.reportStatisticState.trackingWindow;
     const d = autoExitDecision({
       now: Date.now(), hasObject: hasObj, noObjSince: this._noObjSince,
-      trackingWindow: tw, noObjMs: this.NO_OBJ_MS, sameObjMs: this.SAME_OBJ_MS,
+      trackingWindow: tw,
+      ...autoExitWindowsOf(this.props.machine_custom_setting),
       lastInteractAt: this._lastInteractAt,
     });
     this._noObjSince = d.noObjSince;
