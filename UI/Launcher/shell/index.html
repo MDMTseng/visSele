@@ -10,6 +10,19 @@
   <link rel="stylesheet" href="shell.css">
 </head>
 <body>
+  <!-- THE FIRST THING ON THE SCREEN, and on a running machine the only thing.
+       The panels behind it are an engineer's tools: versions, paths, a log.
+       An operator arriving at a line does not need any of it and should not be
+       looking at it, so it is covered. It uncovers itself the moment there IS
+       something to decide -- an incomplete setup, a core that would not start,
+       an update to answer -- and otherwise only for somebody who taps three
+       times, which is the deliberate act of asking for the tools. -->
+  <div id="splash" class="splash hidden">
+    <div class="splash-brand">XCEPTION <span>tech</span></div>
+    <div class="splash-main" id="splashMain"></div>
+    <div class="splash-hint" id="splashHint"></div>
+  </div>
+
   <header>
     <div class="brand">XCEPTION <span>tech</span></div>
     <div class="ident" id="ident"></div>

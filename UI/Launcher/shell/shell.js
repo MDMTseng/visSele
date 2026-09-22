@@ -29,9 +29,37 @@ function appendLog(text, cls) {
   if (atBottom) logEl.scrollTop = logEl.scrollHeight;
 }
 
+// --- splash ------------------------------------------------------------------
+//
+// Up from the moment the shell loads. It comes down for exactly three things,
+// and all three are "a human now has to see something":
+//
+//   a banner       the setup is incomplete, or the core did not start, or it
+//                  exited. Every one of those is a reason the panels behind
+//                  are the right screen.
+//   a modal        a question. Answering it is the only thing to do.
+//   three taps     somebody asking for the tools.
+//
+// It does NOT come down when the core starts normally: the window navigates to
+// the application UI and the whole shell goes with it.
+let splashDown = false;
+
+function splashUp() {
+  if (splashDown) return;
+  const sp = $('splash');
+  if (sp) sp.className = 'splash';
+}
+function splashOff() {
+  splashDown = true;
+  const sp = $('splash');
+  if (sp) sp.className = 'splash hidden';
+}
+
 // --- banner ------------------------------------------------------------------
 
 function banner(level, title, detail) {
+  // Anything worth a banner is worth the operator seeing the panel it sits on.
+  splashOff();
   const b = $('banner');
   b.className = 'banner ' + level;
   b.replaceChildren(el('div', 'title', title));
@@ -285,6 +313,8 @@ function closeModal() {
 }
 
 function openModal(title, buildBody, actions) {
+  // A question cannot be asked from behind the splash.
+  splashOff();
   closeModal();
   const back = el('div');
   back.id = 'modal';
@@ -633,20 +663,28 @@ let taps = [];
 
 function gateOpen() { return gateDeadline > Date.now(); }
 
+// The countdown and the invitation live ON the splash now, not in a strip
+// inside the panel stack -- the panel stack is what the splash is covering, so
+// a message there would have been written to a screen nobody was looking at.
 function paintGate() {
+  const main = $('splashMain'), hint = $('splashHint');
   if (!gateOpen()) {
     clearInterval(gateTimer); gateTimer = null;
     if ($('gate')) $('gate').className = 'gate hidden';
+    // The window is normally navigating to the application about now. If it is
+    // not -- the start was held, or something is about to raise a banner --
+    // the splash stays up and says the plain thing rather than a stale count.
+    if (main) main.textContent = '';
+    if (hint) hint.textContent = '連點三下進入設定模式';
     return;
   }
+  splashUp();
   const left = Math.ceil((gateDeadline - Date.now()) / 1000);
   const got = taps.length;
-  $('gate').className = 'gate';
-  $('gate').replaceChildren(
-    el('div', 'gate-main', `啟動中… ${left} 秒`),
-    el('div', 'gate-hint', got
-      ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
-      : `連點三下進入設定模式`));
+  if (main) main.textContent = `啟動中… ${left} 秒`;
+  if (hint) hint.textContent = got
+    ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
+    : `連點三下進入設定模式`;
 }
 
 L.onSetupGate((info) => {
@@ -658,13 +696,24 @@ L.onSetupGate((info) => {
 });
 
 async function onGateTap() {
-  if (!gateOpen()) return;
+  // Counted whenever the splash is up, not only during the boot window.
+  //
+  // The taps used to be live only while the gate was armed, which is a few
+  // seconds at start. Past that the splash would have been a wall: the machine
+  // is sitting on the shell -- the start held for an update check, say -- and
+  // the one gesture that exists for reaching the tools did nothing. The
+  // setup-mode REQUEST still belongs to the armed window, because that is what
+  // it means: stop the start. Outside it, three taps just uncover the panels.
+  const armed = gateOpen();
+  if (!armed && splashDown) return;
   const now = Date.now();
   taps = taps.filter((t) => now - t < TAP_WINDOW_MS);
   taps.push(now);
-  if (taps.length < TAPS_NEEDED) { paintGate(); return; }
+  if (taps.length < TAPS_NEEDED) { if (armed) paintGate(); return; }
   gateDeadline = 0; taps = [];
+  splashOff();
   paintGate();
+  if (!armed) return;
   const r = await L.requestSetup();
   if (!r || !r.ok) {
     const why = (r && r.error) || '未知原因';
@@ -717,6 +766,13 @@ async function startIfHeld() {
     await L.startCore();
   } catch (e) { appendLog('啟動失敗:' + e.message, 'err'); }
 }
+
+// Up before anything is known. Everything that could take it down -- a reason,
+// a banner, an update question -- arrives after this point, so starting
+// covered and uncovering on demand is the order that never flashes the panels
+// at an operator.
+splashUp();
+paintGate();
 
 refresh().then(askOnce, askOnce);
 setInterval(refresh, 5000);

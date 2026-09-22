@@ -148,6 +148,31 @@ pre#log .lnc { color: var(--accent); }
 .note.err { color: var(--bad); }
 
 
+/* The splash. Covers everything, because that is the point -- but BELOW the
+   modal layer (z-index 100), so a question that has to be answered is never
+   hidden behind it. The shell also takes it down whenever it raises a banner
+   or opens a modal; the z-order is the second line of defence, not the first.
+
+   Sized for a glance from a step away, like the rest of this file. */
+.splash {
+  position: fixed; inset: 0; z-index: 90;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 18px;
+  /* The operator taps the screen, not a control. Nothing in here is a target. */
+  user-select: none; cursor: default;
+}
+.splash.hidden { display: none; }
+.splash-brand {
+  font-size: 46px; font-weight: 700; letter-spacing: 3px; color: var(--ink);
+}
+.splash-brand span { color: var(--accent); font-weight: 400; letter-spacing: 1px; }
+.splash-main {
+  font-size: 22px; font-weight: 600; color: var(--accent);
+  font-variant-numeric: tabular-nums; min-height: 1.5em;
+}
+.splash-hint { color: var(--ink-dim); font-size: 16px; min-height: 1.5em; }
+
 /* --- modals ---------------------------------------------------------------
    Uses the panel palette, not white. The first version set a white box and no
    text colour, so the type inherited the dark theme's light grey and came out
