@@ -107,23 +107,17 @@ drop-oldest,不對相機回壓。看畫面的人可以掉格,判定不行。
     WebUI/              ← 打包好的前端(assets/index-*.js)
 ```
 
-> ### ⚠️ 這棵樹在這台 bench 上有兩份,部署錯了不會有人告訴你
+> ### 這棵樹曾經在這台 bench 上有兩份
 >
-> `export_v2/` 底下**同時**有:
+> `export_v2/` 和 `export_v2/app/` **各自都是一個合法的 app root**。外層一度直接
+> 放著 1.1.104 / 1.1.105,而 soak 的預設 `SOAK_APP_ROOT` 就是 `export_v2`,所以它
+> 跑的是 `export_v2/1.1.104/Core/visSele.exe` —— 和 `export_v2/app/current.json`
+> 指的版本無關。外層那個連 `current.json` 都沒有,靠 `resolve()` 的 fallback 挑到
+> 唯一存在的版本,所以兩邊可以長期不一致而沒有任何跡象。
 >
-> ```
-> export_v2/
->   1.1.104/            ← soak 與 launcher 實際跑的就是這個
->   app/
->     current.json      1.1.105
->     1.1.103/ 1.1.104/ 1.1.105/
->   launcher/
-> ```
->
-> `export_v2/` 和 `export_v2/app/` **各自都是一個合法的 app root**。soak 的預設
-> `SOAK_APP_ROOT` 是 `export_v2`,所以跑的是 `export_v2/1.1.104/Core/visSele.exe`。
-> 外層那個**連 `current.json` 都沒有**,靠 `resolve()` 的 fallback 挑到唯一存在的版本
-> —— 也就是說 `export_v2/app/current.json` 寫著 1.1.105 完全不影響它。
+> 2026-09-23 那次 soak 結束後,外層的 1.1.104 / 1.1.105 都刪掉了,現在只剩
+> `export_v2/app/` 一個 app root。留著這段是因為 `SOAK_APP_ROOT` 的預設值沒變:
+> 下次有人在 `export_v2/` 直接放一個版本目錄,同樣的分歧會再長回來。
 >
 > 部署到 `export_v2/app/1.1.105/` 會**安靜地什麼都不改變**:檔案換了、app 照跑舊的,
 > 沒有任何錯誤。2026-08-27 就這樣連續三次「部署後行為沒變」,查了半天才發現。
