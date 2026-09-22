@@ -84,6 +84,7 @@ import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
 import { autoExitDecision, autoExitApplies,
          siAutoExitDecision, siAutoExitApplies,
          autoExitWindowsOf } from 'UTIL/autoExitRule.mjs';
+import { ranksOf, rankShown } from 'UTIL/measureRank.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -1658,12 +1659,7 @@ class ObjInfoList extends React.Component {
 
       let judgeInRank = judgeReports
       .map(rep=>({...rep,def:this.props.shape_def.find(def=>def.id==rep.id)}))
-      .filter(rep=>{
-        let rdef=rep.def;
-        if(rdef.rank===undefined)return true;
-        if(rdef.rank<=this.props.measureDisplayRank)return true;
-        return false;
-      });
+      .filter(rep=>rankShown(rep.def, this.props.measureDisplayRank));
 
 
       // WHAT DECIDES THE PART.
@@ -2586,7 +2582,7 @@ class DataStatsTable extends React.Component {
     let measureList = statstate.statisticValue.measureList;
 
     // console.log(measureList);
-    let measureReports = measureList.filter(m=>m.rank===undefined || m.rank<=this.props.measureDisplayRank).map((measure) =>
+    let measureReports = measureList.filter(m=>rankShown(m, this.props.measureDisplayRank)).map((measure) =>
       ({
         id: measure.id,
         name: measure.name,
@@ -3473,7 +3469,7 @@ class APP_INSP_MODE extends React.Component {
         // and the level must be applied to the rank that ends up in force.
         if (rankLimit !== undefined) {
           newShapeList = newShapeList.map((shape, idx) => {
-            if (shape.rank === undefined || shape.rank <= rankLimit) return shape;
+            if (rankShown(shape, rankLimit)) return shape;
             if (shape.quality_essential === false) return shape;
             remember(idx);
             return { ...shape, quality_essential: false };
@@ -4043,13 +4039,10 @@ class APP_INSP_MODE extends React.Component {
 
   // The ranks this def actually uses, ascending. Empty when nothing carries
   // one, which is the ordinary case for a def that was never levelled.
-  _ranksOf(shapeList) {
-    const set = new Set();
-    for (const d of (shapeList || [])) {
-      if (d && Number.isFinite(d.rank)) set.add(d.rank);
-    }
-    return [...set].sort((a, b) => a - b);
-  }
+  // An unranked measurement is a LEVEL 0 measurement, not a measurement
+  // outside the levels -- see UTIL/measureRank.mjs. A def with one ranked item
+  // and twenty unranked ones has two levels, and the slider belongs on screen.
+  _ranksOf(shapeList) { return ranksOf(shapeList); }
 
   // Start the operator at the LOWEST level the def has -- the least cluttered
   // view, which is where someone watching a running line starts. Seeded once

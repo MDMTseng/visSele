@@ -27,6 +27,7 @@ import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { CameraCtrl } from './canvas/CameraCtrl';
 import renderUTIL from './canvas/renderUTIL';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './canvas/renderConst';
+import { rankShown } from 'UTIL/measureRank.mjs';
 export { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR };
 
 // How long the core took on this frame, drawn just above the image's top-left
@@ -2388,11 +2389,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
 
-        listClone=listClone.filter(ff=>{
-          if(ff.rank===undefined)return true;
-          if(ff.rank<=this.measureDisplayRank)return true;
-          return false;
-        });
+        listClone=listClone.filter(ff=>rankShown(ff, this.measureDisplayRank));
 
 
         listClone.forEach((eObj) => {

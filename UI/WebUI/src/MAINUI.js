@@ -16,6 +16,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx, { SnapPolicyPanel_rdx, uploadSkipOf, statSettingOf } from './InspectionUI';
 import { autoExitSecondsOf, AUTO_EXIT_KEYS, AUTO_EXIT_DEFAULT_S } from 'UTIL/autoExitRule.mjs';
+import { ranksOf, rankOf } from 'UTIL/measureRank.mjs';
 
 // A labelled number field for the settings page.
 //
@@ -717,16 +718,26 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       // per-製程, in the control margin rows -- which is where an operator sets
       // them, in the margin editor. Reading one source offered an empty list
       // and no way to choose a level at all.
-      const mids = new Set((shapeListForRank||[])
-        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure).map(sh => sh.id));
+      //
+      // AND AN UNRANKED MEASURE SITS ON LEVEL 0, the same as everywhere else
+      // (UTIL/measureRank.mjs). It used to be skipped entirely, so a recipe
+      // with one ranked measure among twenty unranked ones offered a single
+      // level and no tag group at all -- while the twenty were in fact a level
+      // of their own, the one the machine falls back to. The def editor has
+      // always read a missing rank as 0; this is the last place that did not.
+      //
+      // A control-margin ROW without a rank is different and still ignored: it
+      // expresses no override, and the measure it points at has already
+      // contributed its own level above.
+      const measuresForRank = (shapeListForRank||[])
+        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure);
+      const mids = new Set(measuresForRank.map(sh => sh.id));
       const cmi = (Info_decorator||{}).control_margin_info || {};
       const ranks = [...new Set([
-        ...(shapeListForRank||[])
-          .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure && sh.rank !== undefined)
-          .map(sh => sh.rank),
+        ...ranksOf(measuresForRank),
         ...Object.values(cmi).flat()
-          .filter(r => r && r.rank !== undefined && mids.has(r.id))
-          .map(r => r.rank),
+          .filter(r => r && r.rank !== undefined && r.rank !== null && mids.has(r.id))
+          .map(r => rankOf(r)),
       ])].sort((a,b)=>a-b);
       if (ranks.length > 1) {
         new_tagGroupsPreset=[
