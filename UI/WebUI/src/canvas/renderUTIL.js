@@ -126,7 +126,14 @@ class renderUTIL {
       base_Size: 2.5,
       size_Multiplier: 1,
       mmpp: 0.1,
-      font_Base_Size: 1,
+      // 1 until the labels were typeset correctly (draw_Text). At a 1 px font
+      // the rasteriser rounds every stem, every cap height and every advance
+      // up to whole pixels before the old code magnified the result, so the
+      // text came out roughly 40% larger than the size asked for. Typeset at
+      // the right size it is suddenly the size it was always configured to be,
+      // which on screen reads as "the font shrank". This is the size it had
+      // been looking like for years; it is now the size it IS.
+      font_Base_Size: 1.6,
       font_Style: "bold ",
       
 
@@ -176,8 +183,75 @@ class renderUTIL {
   get_mmpp() {
     return this.renderParam.mmpp;
   }
+  // DEVICE pixels -> world units. Everything downstream draws in world units,
+  // so this is the one place the choice of unit has to be made.
+  _pxToWorld(px) {
+    const k = this.camCtrl.GetCameraScale();
+    return (k > 0) ? (px / k) : px;
+  }
+
+  // THE CANVAS IS BACKED BY DEVICE PIXELS, AND A STYLE CONSTANT MUST NOT BE.
+  //
+  // The camera scale is device pixels per world unit, so any constant divided
+  // by it is being stated in DEVICE pixels -- and then the same number draws
+  // half as thick on a 200% display as on a 100% one. That is precisely the
+  // property that stops two machines producing the same picture, so the
+  // 'screen' constants are read as CSS pixels and converted here.
+  _dpr() {
+    return (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  }
+
+  // Millimetres ON THE DISPLAY -> device pixels.
+  //
+  // The CSS pixel is defined as 1/96 inch, so 96/25.4 CSS pixels make a
+  // millimetre of glass, and a device pixel is a CSS pixel divided by the
+  // device pixel ratio. That chain is exact only as far as the OS scaling
+  // describes the panel it is driving; where it does not, OVERLAY.size
+  // .panel_ppi states the panel's real pixels per inch and is used directly.
+  _screenMmToPx(mm) {
+    const ppi = (OVERLAY.size || {}).panel_ppi;
+    if (ppi > 0) return mm * ppi / 25.4;
+    return mm * (96 / 25.4) * this._dpr();
+  }
+
+  // The canvas short edge in device pixels, for unit:'view'. hostCanvas is
+  // handed over by the canvas component; without it 'view' cannot be resolved
+  // and the screen constants are used instead, which is the safe direction.
+  _viewShortEdge() {
+    const c = this.hostCanvas;
+    if (!c || !c.width || !c.height) return 0;
+    return Math.min(c.width, c.height);
+  }
+
+  // The floor and ceiling, applied in device pixels. Outside the band the size
+  // stops tracking whatever it was tracking and holds a constant screen size,
+  // so the overlay neither vanishes nor takes over at the ends of the range.
+  _clampPx(px, lo, hi) {
+    return this._pxToWorld(Math.min(hi, Math.max(lo, px)));
+  }
+
   getPrimitiveSize() {
-    return this.renderParam.base_Size * this.renderParam.size_Multiplier/ this.camCtrl.GetCameraScale();
+    const S = OVERLAY.size || {};
+    const lo = S.px_min ?? 1.2, hi = S.px_max ?? 24;
+    const mult = this.renderParam.size_Multiplier;
+
+    if (S.unit === 'mm') {
+      const mm = (S.primitive_mm ?? 0.10) * mult;
+      const px = mm * this.camCtrl.GetCameraScale();
+      return (px >= lo && px <= hi) ? mm : this._clampPx(px, lo, hi);
+    }
+    if (S.unit === 'screen_mm') {
+      // Straight to device pixels: the size is a property of the glass, so
+      // nothing about the picture or the zoom enters into it.
+      return this._clampPx(this._screenMmToPx((S.primitive_screen_mm ?? 0.66) * mult), lo, hi);
+    }
+    if (S.unit === 'view') {
+      const edge = this._viewShortEdge();
+      if (edge > 0)
+        return this._clampPx((S.primitive_permille ?? 3.1) / 1000 * edge * mult, lo, hi);
+      // no canvas yet -- fall through to the screen constants
+    }
+    return this._pxToWorld(this.renderParam.base_Size * mult * this._dpr());
   }
 
   getPointSize() {
@@ -193,16 +267,41 @@ class renderUTIL {
     return this.getPrimitiveSize();
   }
 
+  // Despite the name it returns WORLD units -- draw_Text multiplies by it.
   getFontHeightPx(size = this.renderParam.font_Base_Size) {
-    return 1.5*size * this.renderParam.size_Multiplier*16/ this.camCtrl.GetCameraScale();;
+    const S = OVERLAY.size || {};
+    const lo = S.font_px_min ?? 9, hi = S.font_px_max ?? 96;
+    const mult = this.renderParam.size_Multiplier;
+
+    if (S.unit === 'mm') {
+      const mm = (S.font_mm ?? 0.95) * size * mult;
+      const px = mm * this.camCtrl.GetCameraScale();
+      return (px >= lo && px <= hi) ? mm : this._clampPx(px, lo, hi);
+    }
+    if (S.unit === 'screen_mm') {
+      return this._clampPx(this._screenMmToPx((S.font_screen_mm ?? 6.35) * size * mult), lo, hi);
+    }
+    if (S.unit === 'view') {
+      const edge = this._viewShortEdge();
+      if (edge > 0)
+        return this._clampPx((S.font_permille ?? 30) / 1000 * edge * size * mult, lo, hi);
+    }
+    return this._pxToWorld(1.5 * size * mult * 16 * this._dpr());
   }
 
   getFixSizingReg() {
     return 1;//50 / this.camCtrl.GetCameraScale();
   }
 
+  // Arial has no CJK, and a measure's name can be anything the operator typed.
+  // Without the fallbacks the browser picks its own, which is how 正 came out
+  // in a serif next to Arial digits.
+  static get FONT_FAMILY() {
+    return "Arial, 'Noto Sans TC', 'Microsoft JhengHei', 'PingFang TC', sans-serif";
+  }
+
   getFontStyle(size_px = this.getFontHeightPx()) {
-    return this.renderParam.font_Style + size_px + "px Arial";
+    return this.renderParam.font_Style + size_px + "px " + renderUTIL.FONT_FAMILY;
   }
 
   setEditor_db_obj(editor_db_obj) {
@@ -451,7 +550,61 @@ class renderUTIL {
       if (this.viewFlip) { ctx.scale(1, -1); ctx.rotate(_r); }
       else ctx.rotate(-_r);
     }
-    ctx.scale(scale, scale);
+    // TYPESET AT THE SIZE IT WILL APPEAR, NOT AT 1 PX AND NOT AT 100.
+    //
+    // Every caller set `ctx.font = this.getFontStyle(1)` -- a ONE PIXEL font --
+    // and this then did ctx.scale(fontPx, fontPx) to bring it up to size. A
+    // glyph is laid out at the font size, so at 1 px every advance width and
+    // every outline coordinate is rounded to something near a whole pixel
+    // before the scale magnifies the error twentyfold. That is the doubled,
+    // overlapping, evenly-pitched lettering the overlay used to show:
+    // "[3]lik|jop|pos|pof" with the stems landing on top of each other.
+    //
+    // The obvious repair -- typeset at a fixed large size and scale DOWN --
+    // trades one artefact for another. Curve flattening and stroke geometry
+    // are resolved against a tolerance in USER space, so a 100 px glyph shrunk
+    // to a twentieth comes out visibly faceted: straight little steps all
+    // along every round, which reads as a broken or low-resolution edge.
+    //
+    // So typeset at the size it is actually going to occupy ON SCREEN. Read
+    // the world-to-device scale off the transform, size the font in device
+    // pixels, and the residual scale is ~1 -- rounding and flattening both
+    // happen at the resolution the glyph is drawn at, which is the only place
+    // they are harmless.
+    const _tf = (typeof ctx.getTransform === 'function') ? ctx.getTransform() : null;
+    const devScale = _tf ? (Math.hypot(_tf.a, _tf.b) || 1) : 1;
+    let BASE = scale * devScale;
+    if (!isFinite(BASE) || BASE <= 0) BASE = 16;
+    // Clamped so a wildly zoomed view cannot ask for a font size no rasteriser
+    // will cache. Outside the clamp the old scaling takes over and the text is
+    // illegibly small or huge anyway.
+    BASE = Math.min(512, Math.max(6, BASE));
+    const s = scale / BASE;
+    // lineWidth is in USER units, so the scale multiplies it. The outline has
+    // to come out the thickness it always did: it used to be stroked at `lw`
+    // under a scale of `scale`, i.e. lw*scale on screen, so under a scale of
+    // scale/BASE it is lw*BASE.
+    const lw = ctx.lineWidth;
+    ctx.scale(s, s);
+    ctx.font = this.renderParam.font_Style + BASE + "px " + renderUTIL.FONT_FAMILY;
+    // AN OUTLINE THINNER THAN A PIXEL IS NOT A THIN OUTLINE, IT IS A BROKEN ONE.
+    //
+    // Because BASE is the glyph's size in device pixels, s cancels the world
+    // scale exactly and ctx.lineWidth here IS device pixels. lw*BASE is the
+    // width this outline has always had, and measured off a screenshot it
+    // comes out well under one pixel on a lot of the glyph: a sub-pixel stroke
+    // is rasterised as partial coverage, so the outline turns into a grey haze
+    // whose darkness follows the angle of the stroke it is tracing. Along a
+    // curve that reads as an edge that keeps breaking up -- which is what it
+    // was, on the text AND on every thin indication line next to it.
+    //
+    // A floor of 1.2 px, never a ceiling: wherever the outline was already a
+    // pixel or more this changes nothing at all.
+    ctx.lineWidth = Math.max(lw * BASE, 1.2);
+    // Round joins, because the alternative on a glyph's corners is a miter
+    // spike longer than the stroke is wide.
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
     ctx.fillText(text, 0, 0);
     ctx.strokeText(text, 0, 0);
     ctx.restore();

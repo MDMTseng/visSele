@@ -23,6 +23,8 @@ import InstInspUI_rdx from './InstInspUI';
 
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
+import Select from 'antd/lib/select';
+import { configureOverlay, OVERLAY_DEFAULTS } from 'JSSRCROOT/canvas/overlayKit';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack, dictLookUp} from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.main');
@@ -1402,6 +1404,71 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
         </div>
       );
     })}
+
+    <Divider>畫面標註尺寸</Divider>
+
+    {/* THE HOUSE STYLE, and it belongs in the machine's file.
+        Every stroke width in the overlay is a multiple of one root size, and
+        every label size of one root font size. Stating those two in
+        millimetres OF SCREEN is what makes two machines with different panels
+        and different resolutions draw the same picture -- a pixel count
+        cannot, because a pixel is not the same size twice.
+
+        Written into machine_setting.json like everything else on this page, so
+        it travels with the machine and can be copied between machines. The
+        console path (window.OVERLAY_TUNE) still exists for experimenting; it
+        writes to localStorage, which is per browser profile and deliberately
+        NOT what this uses. */}
+    {(() => {
+      const k = 'OVERLAY_SIZE';
+      const cur = st_machine_custom_setting[k] || {};
+      const eff = { ...OVERLAY_DEFAULTS.size, ...cur };
+      const setF = (field, v) => {
+        const next = { ...cur };
+        if (v === null || v === undefined || v === '') delete next[field];
+        else next[field] = v;
+        set_st_machine_custom_setting({ ...st_machine_custom_setting, [k]: next });
+        // Live, so the number is judged against the picture and not guessed at.
+        try { configureOverlay({ size: next }, { persist: false }); } catch (e) { }
+      };
+      const N = ({ field, name, hint, step, min }) => (
+        <div style={{ marginBottom: 4 }}>
+          <span style={{ display: 'inline-block', minWidth: 210 }}>{name}</span>
+          <InputNumber min={min === undefined ? 0 : min} step={step || 0.01}
+            style={{ width: 110 }} value={eff[field]}
+            onChange={(v) => setF(field, v)} />
+          <span style={{ marginLeft: 10, fontSize: 12, color: '#888' }}>{hint}</span>
+        </div>
+      );
+      const mmMode = eff.unit === 'screen_mm';
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ display: 'inline-block', minWidth: 210 }}>尺寸基準</span>
+            <Select style={{ width: 230 }} value={eff.unit}
+              onChange={(v) => setF('unit', v)}
+              options={[
+                { value: 'screen_mm', label: '螢幕毫米（跨機器一致）' },
+                { value: 'screen',    label: 'CSS 像素' },
+                { value: 'view',      label: '畫面比例（千分比）' },
+                { value: 'mm',        label: '零件毫米（隨縮放變）' },
+              ]} />
+          </div>
+          {mmMode ? <>
+            <N field="primitive_screen_mm" name="線寬基準 (mm)" step={0.02}
+               hint="螢幕上的實體毫米，所有線寬都是它的倍數" />
+            <N field="font_screen_mm" name="字高基準 (mm)" step={0.1}
+               hint="同上，標籤的根" />
+          </> : null}
+          <N field="stroke_scale" name="整體粗細" step={0.05}
+             hint="1.0 是 2026-09-10 之前的粗細" />
+          <N field="px_min" name="最細像素下限" step={0.1}
+             hint="低於一個像素的線會斷成灰霧" />
+          <N field="panel_ppi" name="面板實際 PPI" step={1} min={0}
+             hint="空白 = 相信作業系統縮放。OS 縮放和面板不符時才填" />
+        </div>
+      );
+    })()}
 
     <Divider>靜置檢驗 (SI)</Divider>
 
