@@ -236,6 +236,15 @@ class Updater {
     if (!fs.existsSync(zipPath)) throw new Error(`no such file: ${zipPath}`);
     const zipSize = fs.statSync(zipPath).size;
     log(`package: ${zipPath} (${(zipSize / 1048576).toFixed(1)} MB)`);
+    // SAY IT BEFORE DOING IT, not after.
+    //
+    // Every long step here used to announce itself on the way OUT, so the
+    // screen went quiet for the seconds that actually took time and then
+    // printed what had already finished. An operator watching a machine that
+    // says nothing assumes it is stuck, and the thing they do about it --
+    // clicking again, closing the window, cutting the power -- is the one
+    // thing an install must not have done to it.
+    log('正在檢查更新包…');
     log(`package sha256: ${await sha256File(zipPath)}`);
 
     const staging = path.join(this.apps.dir, STAGING);
@@ -243,8 +252,10 @@ class Updater {
     fs.mkdirSync(staging, { recursive: true });
 
     try {
-      log('extracting...');
+      log(`正在解壓 ${(zipSize / 1048576).toFixed(0)} MB，請稍候…`);
+      const _tx = Date.now();
       await extractZip(zipPath, staging);
+      log(`解壓完成 (${((Date.now() - _tx) / 1000).toFixed(1)}s)`);
 
       let root = findRoot(staging);
       if (!root) throw new Error(`no ${INFO} at the top of the package -- is this an application update?`);
@@ -351,6 +362,8 @@ class Updater {
 
         const t0 = Date.now();
         const misses = [];
+        let _done = 0;
+        const _step = Math.max(1, Math.ceil(wanted.length / 10));
         for (const rel of wanted) {
           const want = manifest.files[rel];
           let found = null;
@@ -362,6 +375,9 @@ class Updater {
           }
           if (found) put(found, rel);
           else misses.push(rel);
+          if (++_done % _step === 0 && _done < wanted.length) {
+            log(`  ${_done}/${wanted.length} (${Math.round(_done * 100 / wanted.length)}%)`);
+          }
         }
         if (misses.length) {
           throw new Error(
@@ -385,12 +401,19 @@ class Updater {
       // scripts/boot.js that the launcher is going to execute.
       if (notListed.length) throw new Error(`package has ${notListed.length} file(s) not in the manifest: ${notListed.slice(0, 5).join(', ')}`);
 
-      log(`verifying ${listed.length} files...`);
+      log(`正在逐檔比對 ${listed.length} 個檔…`);
       let checked = 0;
+      // Roughly ten updates whatever the package size. It was every 200 files,
+      // which on a 159-file package printed NOTHING between "verifying" and
+      // "verified" -- nine seconds of silence in the middle of the step that
+      // takes longest.
+      const _every = Math.max(1, Math.ceil(listed.length / 10));
       for (const rel of listed) {
         const actual = await sha256File(path.join(root, rel));
         if (actual !== manifest.files[rel]) throw new Error(`checksum mismatch on ${rel}`);
-        if (++checked % 200 === 0) log(`  ${checked}/${listed.length}`);
+        if (++checked % _every === 0 && checked < listed.length) {
+          log(`  ${checked}/${listed.length} (${Math.round(checked * 100 / listed.length)}%)`);
+        }
       }
       log(`all ${listed.length} files verified`);
 

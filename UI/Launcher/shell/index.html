@@ -17,6 +17,22 @@
        something to decide -- an incomplete setup, a core that would not start,
        an update to answer -- and otherwise only for somebody who taps three
        times, which is the deliberate act of asking for the tools. -->
+  <!-- WHAT THE MACHINE IS DOING, while it is doing it.
+       Installing an update is tens of seconds of hashing and copying during
+       which the window used to sit there saying nothing. An operator reads
+       silence as "stuck", and what they do about it -- press it again, close
+       the window, cut the power -- is exactly what must not happen to a
+       half-written version directory. So: cover the screen, name the step,
+       and say plainly that waiting is the correct action. -->
+  <div id="busy" class="busy hidden">
+    <div class="busy-box">
+      <div class="busy-title" id="busyTitle"></div>
+      <div class="busy-bar"><i></i></div>
+      <div class="busy-step" id="busyStep"></div>
+      <div class="busy-warn">請勿關閉電源或視窗</div>
+    </div>
+  </div>
+
   <div id="splash" class="splash hidden">
     <div class="splash-brand">XCEPTION <span>tech</span></div>
     <div class="splash-main" id="splashMain"></div>

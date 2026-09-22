@@ -29,6 +29,52 @@ function appendLog(text, cls) {
   if (atBottom) logEl.scrollTop = logEl.scrollHeight;
 }
 
+// --- busy ---------------------------------------------------------------------
+//
+// Installing takes tens of seconds and said nothing while it did. The log pane
+// was carrying the lines all along, but it is a small box at the bottom of a
+// page the operator may not even be looking at, and the buttons stayed live --
+// so "nothing happened" and "press it again" were the obvious readings.
+//
+// While this is up it covers the screen and swallows clicks, the step is named
+// from the installer's own log lines, and the one instruction that matters is
+// on screen: do not cut the power.
+let busyOn = false;
+// Raised by a log line rather than by a caller that will take it down again.
+// A full-screen cover with nobody responsible for removing it is worse than the
+// silence it replaced, so an unowned one ends on the install's own last word.
+let busyAuto = false;
+
+function busyStart(title, auto) {
+  busyOn = true;
+  busyAuto = !!auto;
+  const b = $('busy');
+  if (!b) return;
+  $('busyTitle').textContent = title;
+  $('busyStep').textContent = '';
+  b.className = 'busy';
+}
+function busyStep(text) {
+  if (!busyOn) return;
+  const e = $('busyStep');
+  if (e) e.textContent = text;
+}
+function busyEnd() {
+  busyOn = false;
+  busyAuto = false;
+  const b = $('busy');
+  if (b) b.className = 'busy hidden';
+}
+
+// Run something long with the cover up, and take it down whatever happens --
+// including a throw, which is the case that would otherwise leave a machine
+// showing "installing" forever.
+async function withBusy(title, fn) {
+  busyStart(title, false);
+  try { return await fn(); }
+  finally { busyEnd(); }
+}
+
 // --- splash ------------------------------------------------------------------
 //
 // Up from the moment the shell loads. It comes down for exactly three things,
@@ -391,7 +437,8 @@ function showUpdateOffer(offer) {
         closeModal();
         appendLog(`安裝 ${offer.file} …`, 'lnc');
         try {
-          const r = await withUnlock('安裝 ' + offer.version, () => L.installFromSource(offer.file));
+          const r = await withUnlock('安裝 ' + offer.version,
+            () => withBusy('正在安裝 ' + offer.version, () => L.installFromSource(offer.file)));
           if (r === undefined) { refresh(); return; }   // cancelled
           if (!r.ok) { appendLog('安裝失敗:' + r.error, 'err'); refresh(); return; }
           // Installed is not selected. Pointing at it is the second half, and
@@ -467,7 +514,8 @@ function renderUpdates(st) {
       b.disabled = true;
       appendLog(`安裝 ${p.file} …`, 'lnc');
       try {
-        const r = await withUnlock('安裝 ' + p.version, () => L.installFromSource(p.file));
+        const r = await withUnlock('安裝 ' + p.version,
+          () => withBusy('正在安裝 ' + p.version, () => L.installFromSource(p.file)));
         if (r === undefined) { b.disabled = false; return; }   // cancelled
         if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
         refresh();
@@ -635,7 +683,11 @@ $('btnStop').onclick = async () => {
 };
 
 $('btnInstall').onclick = async () => {
+  // The file picker must NOT be behind the cover -- it is a dialog the operator
+  // has to use. chooseAndInstall opens it and then installs, so the cover goes
+  // up on the first log line instead of here; see onLog below.
   const r = await L.chooseAndInstall();
+  busyEnd();
   if (r.canceled) return;
   if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
   refresh();
@@ -643,7 +695,17 @@ $('btnInstall').onclick = async () => {
 
 $('btnLogs').onclick = () => L.openFolder('logs');
 
-L.onLog(({ message }) => appendLog(message, 'lnc'));
+L.onLog(({ message }) => {
+  appendLog(message, 'lnc');
+  // The installer's own words, shown where the operator is looking. It also
+  // RAISES the cover for an install nobody could wrap -- the one started from
+  // the file picker, which has to be able to open a dialog first.
+  if (!busyOn && /^package: /.test(message)) busyStart('正在安裝更新', true);
+  busyStep(message);
+  // Only ends what it raised itself; a wrapped install is ended by its own
+  // finally, after the postinstall that follows these lines.
+  if (busyAuto && /^installed to |^install failed|REFUSED/.test(message)) busyEnd();
+});
 L.onCoreLine((line) => appendLog(line, line.startsWith('[err]') ? 'err' : undefined));
 L.onHealth(() => refresh());
 // --- the three-tap setup gate ------------------------------------------------
