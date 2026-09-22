@@ -143,3 +143,23 @@ UI/WebUI/tools/webctl/crashtest.mjs
 # vite dev server scratch (dev.sh up_dev_server)
 UI/WebUI/.vite-dev.log
 UI/WebUI/.vite-dev.pid
+
+# Ad-hoc build outputs, from the habit of exporting beside the real one to
+# compare two builds. They were never added, which is not the same as being
+# safe: one `git add -A` and 2 GB of binaries are in the history for good.
+#
+# export_v2/ is listed above by name and stays that way -- it is THE assembly
+# output and deserves to be named, not swept up by a wildcard.
+export_new/
+export_sse42/
+export_*_probe/
+
+# Overlay bundles: a bare Core+WebUI zip unzipped over a version by hand, and
+# the folder it is built from. Named by version and sha, so a wildcard is the
+# only thing that can keep up with them.
+core_overlay_*/
+core_overlay_*.zip
+overlay_webui_*.zip
+
+# Screenshots from the launcher's own test tools (tools/shot.mjs and friends).
+_*_shots/
