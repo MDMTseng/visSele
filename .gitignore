@@ -115,6 +115,8 @@ UI/WebUI/tools/webctl/compare_throttle.json
 # large ones -- 31MB on this bench after a week. The analysis belongs in a
 # write-up; the dumps do not belong in the tree.
 InspectionCore/Core0_1/crash_reports/
+InspectionCore/Core0_1/crashlog/
+**/data/crashlog/
 
 # A 73MB blob of sample data that was tracked once and should not have been.
 # Deleted from the tree here; the history still carries it.

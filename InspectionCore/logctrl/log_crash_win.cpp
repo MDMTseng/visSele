@@ -40,8 +40,8 @@ std::terminate_handler g_prev_terminate = nullptr;
  *
  * Default dump captures the stack + thread/handle/module info + referenced
  * memory (compact, usually enough for a backtrace + locals). Set
- * INSP_CRASH_FULLDUMP=1 for a full-memory dump (large). Dir from INSP_LOG_DIR,
- * else the cwd. Symbolize a MinGW build with addr2line on the exe (build with
+ * INSP_CRASH_FULLDUMP=1 for a full-memory dump (large). Written to
+ * INSP_LOG_DIR/crashlog (the machine's data/crashlog), else ./crashlog. Symbolize a MinGW build with addr2line on the exe (build with
  * RelWithDebInfo/-g for file:line); WinDbg/VS can open the .dmp directly. */
 void write_minidump(EXCEPTION_POINTERS *ep) {
     typedef BOOL (WINAPI *PMiniDumpWriteDump)(
@@ -58,16 +58,40 @@ void write_minidump(EXCEPTION_POINTERS *ep) {
 
     SYSTEMTIME st; GetLocalTime(&st);
     DWORD pid = GetCurrentProcessId();
-    const char *dir = getenv("INSP_LOG_DIR");
+
+    /* ONE PLACE FOR CRASH EVIDENCE: <INSP_LOG_DIR>/crashlog/.
+     *
+     * INSP_LOG_DIR is the machine's data directory (main.cpp sets it from the
+     * chdir= argument before the drainer is spawned), so this is
+     * data/crashlog/ -- beside the data of the machine the crash describes,
+     * and NOT beside the binary, which a version update replaces.
+     *
+     * It used to be the data directory itself, so a minidump sat loose among
+     * machine_setting.json and the recipes while the drainer's matching
+     * crash_<utc>.dump went into a subdirectory of its own. The two halves of
+     * one crash belong together: symbolicate_dump.py looks for the .dmp beside
+     * the .dump it was given and in the directory above, which is exactly this
+     * -- the .dump goes in a dated subfolder, the .dmp cannot, because dating
+     * it would mean building a two-level path inside a crash handler.
+     *
+     * CreateDirectory rather than a mkdir -p: everything above crashlog/
+     * already exists, and this runs inside a crash handler, where the less that
+     * happens the better. If it cannot be made -- read-only or full disk -- the
+     * dump goes to the parent rather than not being written at all; an
+     * awkwardly placed dump still explains the crash. */
+    const char *base = getenv("INSP_LOG_DIR");
+    if (!base || !*base) base = ".";
+    char dirbuf[MAX_PATH];
+    snprintf(dirbuf, sizeof(dirbuf), "%s\\crashlog", base);
+    const char *dir = dirbuf;
+    if (!CreateDirectoryA(dirbuf, nullptr) &&
+        GetLastError() != ERROR_ALREADY_EXISTS)
+        dir = base;
+
     char path[MAX_PATH];
-    if (dir && *dir)
-        snprintf(path, sizeof(path),
-                 "%s\\insp_crash_%lu_%04d%02d%02d_%02d%02d%02d.dmp", dir, pid,
-                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-    else
-        snprintf(path, sizeof(path),
-                 "insp_crash_%lu_%04d%02d%02d_%02d%02d%02d.dmp", pid,
-                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    snprintf(path, sizeof(path),
+             "%s\\insp_crash_%lu_%04d%02d%02d_%02d%02d%02d.dmp", dir, pid,
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
     HANDLE hFile = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                                FILE_ATTRIBUTE_NORMAL, nullptr);

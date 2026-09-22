@@ -11,7 +11,7 @@
   That one is 0xC0000374 (STATUS_HEAP_CORRUPTION), which the Windows heap raises
   as a FAIL-FAST exception -- by design that skips unhandled-exception filters
   and goes straight to Windows Error Reporting. So our handler never runs, and
-  crash_reports/<date>/ (written by the drainer, after the fact) can only ever
+  crashlog/<date>/ (written by the drainer, after the fact) can only ever
   say "Stack trace (0 frames)".
 
   WER LocalDumps is the only thing that catches it. It is read from HKLM only --

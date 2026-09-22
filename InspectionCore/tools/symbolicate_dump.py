@@ -52,9 +52,14 @@ def main():
     ap.add_argument("--addr2line", default="addr2line")
     a = ap.parse_args()
 
+    # The ring dump is in data/crashlog/<date>/ and the minidump is one level
+    # up in data/crashlog/ -- the crash handler cannot make a dated directory
+    # (see log_crash_win.cpp), so look in both rather than make the caller pass
+    # --dmp every time.
     dump_dir = os.path.dirname(os.path.abspath(a.dump))
-    dmp = a.dmp or max(glob.glob(os.path.join(dump_dir, "insp_crash_*.dmp")),
-                       key=os.path.getmtime, default=None)
+    cands = (glob.glob(os.path.join(dump_dir, "insp_crash_*.dmp"))
+             + glob.glob(os.path.join(dump_dir, "..", "insp_crash_*.dmp")))
+    dmp = a.dmp or max(cands, key=os.path.getmtime, default=None)
     if not dmp:
         sys.exit("no .dmp given and none found next to the dump")
     exe = a.exe
