@@ -81,7 +81,8 @@ import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
 import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
-import { autoExitDecision, autoExitApplies } from 'UTIL/autoExitRule.mjs';
+import { autoExitDecision, autoExitApplies,
+         siAutoExitDecision, siAutoExitApplies } from 'UTIL/autoExitRule.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -3331,6 +3332,22 @@ class APP_INSP_MODE extends React.Component {
 
   
   componentDidMount() {
+    // WHO IS STILL HERE -- listened for on the document, in the capture
+    // phase.
+    //
+    // Not on the canvas, for two reasons. The canvas consumes its own events
+    // for panning, pinching and ROI dragging, and a handler downstream of
+    // that can miss the very gestures that prove somebody is present; and
+    // wrapping it in a listening div would put an extra node into a flex
+    // layout whose heights are shared between the canvas and the stats table.
+    // Capture on the document sees everything and changes no structure.
+    //
+    // Passive: this only reads a clock and must never be able to hold up a
+    // scroll or a pinch.
+    for (const ev of ['pointerdown', 'touchstart', 'wheel', 'keydown'])
+      document.addEventListener(ev, this.noteInteractionBound, { capture: true, passive: true });
+    this._siIdleTimer = setInterval(() => this._siIdleTick(), 1000);
+
     let DefFileHash=this.props.edit_info.DefFileHash;
     // Trigger-mode policy: only CI InspMode runs the camera free-running.
     // Flip to continuous on mount and back to trigger=On on unmount so the
@@ -3670,6 +3687,7 @@ class APP_INSP_MODE extends React.Component {
 
       this.exitGate=false;
 
+
       
       this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
         if(api===undefined)return;
@@ -3681,6 +3699,9 @@ class APP_INSP_MODE extends React.Component {
 
   componentWillUnmount() {
     if (this._autoExitTimer !== null) { clearTimeout(this._autoExitTimer); this._autoExitTimer = null; }
+    for (const ev of ['pointerdown', 'touchstart', 'wheel', 'keydown'])
+      document.removeEventListener(ev, this.noteInteractionBound, { capture: true });
+    if (this._siIdleTimer !== null) { clearInterval(this._siIdleTimer); this._siIdleTimer = null; }
     this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
       if(api===undefined)return;
       api.send({type: "exit_inspection"},
@@ -3757,11 +3778,33 @@ class APP_INSP_MODE extends React.Component {
     // over. So: no object for NO_OBJ_MS, OR the same object persisting for
     // SAME_OBJ_MS, flashes a reason then exits inspection mode entirely.
     // Both are time-based (epoch ms), so they're robust to render cadence.
-    this.NO_OBJ_MS = 30 * 1000;     // no object on the plate -> idle line
-    this.SAME_OBJ_MS = 60 * 1000;   // same object stuck in view -> user walked off
-    this._noObjSince = null;        // epoch ms when the no-object streak began
+    //
+    // FIVE MINUTES, from thirty seconds and sixty. The field asked: the old
+    // numbers measured how long the PICTURE had been unchanged, and a person
+    // setting a part up, reading a result, or fetching the next tray is doing
+    // none of those things to the picture. Being thrown back to the main screen
+    // mid-job costs more than the few minutes of idle camera it saved.
+    this.NO_OBJ_MS = 5 * 60 * 1000;   // no object on the plate -> idle line
+    this.SAME_OBJ_MS = 5 * 60 * 1000; // same object sitting there -> nobody here
+    this._noObjSince = null;          // epoch ms when the no-object streak began
+    // TOUCHING THE CANVAS IS BEING THERE. Both clocks run from this as well as
+    // from their own start, so the question stops being "has the picture
+    // changed lately" and becomes "is anyone here" -- which is the one the
+    // watchdog was always meant to be asking.
+    this._lastInteractAt = Date.now();
+    this.noteInteractionBound = () => { this._lastInteractAt = Date.now(); };
+
+    // SI's idle clock. A press, or a touch, is somebody being here; nothing
+    // about the picture counts, because a still part in front of the camera is
+    // what SI is FOR.
+    this.SI_IDLE_MS = 5 * 60 * 1000;
+    this._lastSIActivityAt = Date.now();
+    this._siIdleTimer = null;
     this._autoExiting = false;      // latch: flashing + leaving
     this._autoExitTimer = null;
+    // How long before it happens the screen starts saying so. Long enough to
+    // read and react to, short enough that it is not a permanent fixture.
+    this.AUTO_EXIT_WARN_MS = 60 * 1000;
 
     this.state = {
       frameIR: undefined,
@@ -3791,7 +3834,10 @@ class APP_INSP_MODE extends React.Component {
       SettingParamInfo:undefined,
       modalInfo:undefined,
       renderObjAlignRotate:false,
-      autoExitReason:undefined
+      autoExitReason:undefined,
+      // Seconds until the idle watchdog leaves, or null when it is far enough
+      // away to be nobody's business.
+      autoExitIn: null
     };
 
     
@@ -3893,6 +3939,42 @@ class APP_INSP_MODE extends React.Component {
     if (measured(si) && !measured(was)) this.setState({ siFrozen: true });
   }
 
+  // A measurement landing counts as somebody being here too, not just the press
+  // that asked for it: a press while the scene is still moving is remembered by
+  // the core and spends itself when it settles, which can be seconds later.
+  _siNoteMeasured(prevProps) {
+    const m = (r) => !!(r && r.state === 'measured' && r.measured === true);
+    if (m(this.props.siState) && !m(prevProps && prevProps.siState))
+      this._lastSIActivityAt = Date.now();
+  }
+
+  // SI's watchdog runs on a clock of its own, not on arriving reports.
+  //
+  // The CI one is driven by reports, and SI stops sending them once the average
+  // is full and the scene is settled -- which is exactly when the machine is
+  // idle. A watchdog that goes quiet at the moment it is needed is not one.
+  //
+  // One second, which is the resolution the countdown is shown at. It runs in
+  // every mode and does nothing in the others, rather than being started and
+  // stopped as the mode changes: one timer with a guard cannot be left running
+  // by a path that forgot to stop it.
+  _siIdleTick() {
+    if (!siAutoExitApplies(this.props.machine_custom_setting.InspectionMode)) {
+      if (this.state.autoExitIn !== null) this.setState({ autoExitIn: null });
+      return;
+    }
+    if (this._autoExiting) return;
+    const d = siAutoExitDecision({
+      now: Date.now(),
+      lastActivityAt: Math.max(this._lastSIActivityAt, this._lastInteractAt),
+      idleMs: this.SI_IDLE_MS,
+    });
+    const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
+      ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
+    if (secs !== this.state.autoExitIn) this.setState({ autoExitIn: secs });
+    if (d.reason) this.autoExit(d.reason);
+  }
+
   // CI-only idle watchdog. Called from componentDidUpdate with each fresh
   // inspection report (already gated to CI there). Two exit triggers, both
   // time-based:
@@ -3910,8 +3992,19 @@ class APP_INSP_MODE extends React.Component {
     const d = autoExitDecision({
       now: Date.now(), hasObject: hasObj, noObjSince: this._noObjSince,
       trackingWindow: tw, noObjMs: this.NO_OBJ_MS, sameObjMs: this.SAME_OBJ_MS,
+      lastInteractAt: this._lastInteractAt,
     });
     this._noObjSince = d.noObjSince;
+
+    // Show it, but only whole seconds and only while it is worth watching.
+    // Reports arrive at frame rate; storing the raw milliseconds would queue a
+    // re-render of this whole screen ten times a second to change a digit that
+    // moves once. Null above the threshold, so the screen is quiet for the four
+    // minutes nobody needs to be told about.
+    const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
+      ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
+    if (secs !== this.state.autoExitIn) this.setState({ autoExitIn: secs });
+
     if (d.reason) this.autoExit(d.reason);
   }
 
@@ -3921,10 +4014,13 @@ class APP_INSP_MODE extends React.Component {
   // EXIT() does the full clean teardown after.
   autoExit(reason) {
     if (this._autoExiting) return;
-    if (!autoExitApplies(this.props.machine_custom_setting.InspectionMode)) return;
+    const _m = this.props.machine_custom_setting.InspectionMode;
+    if (!autoExitApplies(_m) && !siAutoExitApplies(_m)) return;
     this._autoExiting = true;
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSetting: { trigger_mode: 1 } });
-    const msg = (reason === "no_obj")
+    const msg = (reason === "si_idle")
+      ? "長時間未量測，自動退出檢測以節省電力"
+      : (reason === "no_obj")
       ? "長時間無物件，自動退出檢測以節省電力"
       : "物件長時間停滯，自動退出檢測以節省電力";
     this.setState({ autoExitReason: msg });
@@ -3957,6 +4053,7 @@ class APP_INSP_MODE extends React.Component {
   componentDidUpdate(prevProps) {
     this._seedViewRank();
     this._siHoldCheck(prevProps);
+    this._siNoteMeasured(prevProps);
     if (this.props.machine_custom_setting.InspectionMode== "CI")
       this.checkAutoExitForCI(this.props.inspectionReport);
 
@@ -4279,6 +4376,7 @@ class APP_INSP_MODE extends React.Component {
         onClick={() => {
           if (this.props.CORE_ID === undefined) return;
           // A new measurement means the held picture is the old answer.
+          this._lastSIActivityAt = Date.now();
           if (this.state.siFrozen) this.setState({ siFrozen: false });
           this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { INSP_SI_TRIGGER: true });
         }}>
@@ -4882,6 +4980,27 @@ class APP_INSP_MODE extends React.Component {
 
           </Menu> */}
         </>
+
+        {/* THE IDLE COUNTDOWN.
+            Only in the last minute, and only in CI, which is the only mode the
+            watchdog applies to. An operator who is about to be taken off this
+            screen should be able to see it coming and stop it -- touching the
+            screen is what stops it, so the line says so rather than leaving
+            them to guess. Above the SI button's place and out of the canvas's
+            way. */}
+        {(this.state.autoExitIn === null || this.state.autoExitReason !== undefined
+          || !(autoExitApplies(this.props.machine_custom_setting.InspectionMode)
+               || siAutoExitApplies(this.props.machine_custom_setting.InspectionMode))) ? null : (
+          <div style={{ position: 'fixed', bottom: 84, left: '50%',
+                        transform: 'translateX(-50%)', zIndex: 29,
+                        padding: '6px 14px', borderRadius: 16,
+                        background: 'rgba(0,0,0,0.62)', color: '#ffd666',
+                        fontSize: 15, whiteSpace: 'nowrap',
+                        pointerEvents: 'none' }}>
+            {'已閒置，' + this.state.autoExitIn
+             + '秒後自動退出檢測（觸碰畫面可繼續）'}
+          </div>
+        )}
 
         <Modal
           visible={this.state.autoExitReason !== undefined}
