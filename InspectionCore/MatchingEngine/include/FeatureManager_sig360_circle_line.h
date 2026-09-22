@@ -330,6 +330,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // (_ref_image_path's single underscore was the bug this avoids.)
   cJSON *shape_cache_in = NULL;        // borrowed from `root`, valid while root is
   std::string shape_cache_fp;          // fingerprint of what produced the live set
+  // Features re-extracted from the template resized by shape_match_scale, for
+  // the down-scaled coarse detector (levels only). Absent on defs generated
+  // before 2026-09-06; then the matcher coordinate-scales the full-res set.
+  std::shared_ptr<sbm::FeatureSet> shapeScaledSet;
+  float shape_scaled_at = 0.0f;        // the match_scale the scaled set was extracted at
+  bool        shape_cache_stale = false; // def's extraction knobs != the cache's stamp
   cv::Rect    shape_crop;              // crop of the sidecar that IS the template
   cv::Point2f shape_origin_in_crop{0, 0};
   std::string reference_image_name;   // optional explicit sidecar PNG (relative)
@@ -354,10 +360,31 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // Set it to a value below the real ambiguity (e.g. 30 for a part whose two
   // plausible poses differ by 180) to opt in. Costs a full measurement pass per
   // extra candidate, which is why it is opt-in rather than a new default.
+  //
+  // 2026-09-09: this is now the ONLY rule for how many poses a location offers.
+  // Poses at one place are alternates of one object when they differ by at
+  // least this angle (the two faces count as poses), ordered by coarse score;
+  // there is no separate cap, score gap, or face arbitration any more.
   float shape_nms_angle = 360.0f;
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
   float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
                                       // match (ROI refine restores full-res accuracy)
+  // Refine capture range. Both widen how much coarse pose error the ROI refine
+  // absorbs (so a coarser angle step / scale stays safe on big parts) and both
+  // can lock the wrong edge or the mirror pose on a symmetric part -- per-recipe
+  // knobs the tuner verifies, never raised by default. 0 = library defaults.
+  int   shape_roi_search   = 0;       // 1-D search half-range, full-res px (default 15)
+  float shape_roi_prescale = 0.0f;    // coarse-to-fine pre-pass factor in (0,1); 0 = off
+  float shape_roi_spacing  = 0.0f;    // ROI point min spacing: 0 off, <0 auto(ROI half), >0 px. De-overlaps ROI windows; changes measurements, per-recipe.
+  // Localization trust -> judges. Off by default: the gates are emitted in every
+  // report (trust{}) but only force the judges NA when the recipe opts in, because
+  // the poor_fit threshold must sit above that recipe's in-spec deformation
+  // (docs/SBM_TRUST_SCORE_DESIGN.md, deformation caveat; sbm_trust_budget.mjs
+  // derives it). ambiguous_pose defers to an orientation-essential judge when the
+  // recipe has one -- that judge IS how a symmetric part is legitimately resolved.
+  bool  shape_trust_na       = false;  // force judges NA on a tripped trust gate
+  float shape_trust_res_max  = 0.0f;   // poor_fit: mean normal residual, px; 0 = default 3.0 (loose)
+  float shape_trust_inl_frac = 0.0f;   // low_inliers: min inlier fraction; 0 = default 0.75
   // line2Dup feature/pyramid tuning (def-overridable). Applied to BOTH the
   // template extraction and the scene matcher so their edges stay consistent.
   int   shape_num_features = 128;     // max gradient features per template
@@ -399,6 +426,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // it. Empty when training succeeded or the def is not shape_based.
   char shape_untrained_reason[128] = {0};
   char shape_untrained_code[16] = {0};
+  // The live feature set came from a cache that stores feature levels but no
+  // ROI windows, so the matcher runs the coarse stage only (2-3 px instead of
+  // sub-pixel). Set at load, reported on EVERY frame as locate.code
+  // "coarse_only" -- an accuracy the operator did not ask for must not look
+  // like the one they did.
+  bool shape_coarse_only = false;
   vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
   vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
   // Explicit user ROI refine points (object-frame mm). When the def carries the
@@ -428,6 +461,7 @@ protected:
   int parse_arcData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_auxPointData(cJSON * auxPoint_obj);
+  int parse_auxLineData(cJSON * auxLine_obj);   // 0 ok, 1 skipped (not a two-point line), -1 error
   int parse_searchPointData(cJSON * searchPoint_obj);
   int parse_objDetectData(cJSON * objDetect_obj);
   int parse_sign360(cJSON * signature_obj);
@@ -527,6 +561,17 @@ protected:
   }
   // cJSON variant for the WS "SF" round-trip (see FeatureManager base). NULL if the
   // shape localizer has not trained.
+  // The studio's preview of what this def locates with: level-0 features and
+  // the ROI sample points, in OBJECT-FRAME mm. A member rather than a lambda
+  // inside trainShapeMatcher because BOTH ways of arriving at a trained feature
+  // set have to fill it -- extraction, and loading a self-contained def. The
+  // second one did not, and the studio, which asks the CORE for these rather
+  // than computing them itself, reported "no features extracted" for a def that
+  // was working perfectly.
+  void liftShapeForUI(const sbm::FeatureSet &fs, const cv::Rect &crop,
+                      float reg_sin, float reg_cos, float reg_flip_f,
+                      const cv::Point2f &originPx);
+
   cJSON *getShapeFeaturePointsJson() override;
   // Ensure the shape matcher's template variants are scaled for the live mmpp so a
   // def is portable across camera magnifications. Rebuilds shapeMatcher at

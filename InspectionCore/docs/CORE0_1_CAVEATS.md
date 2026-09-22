@@ -619,8 +619,10 @@ Both call `forget_pending_triggers()`, which drops queued triggers *and* the
 results computed for them. In-flight frames then report `tid=-1` and are logged
 and dropped — no fault.
 
-**Related, still open: the deadline is in pulses, the latency is in
-milliseconds.** `pressure = gate_pulse + SWITCH - SYS_STEP_COUNT` is a pulse
+**Related -- decided 2026-09-07: NOT a code item. The deadline is in pulses, the latency is in
+milliseconds.** Whoever sets the plate speed owns the budget: a speed at which the report cannot
+arrive in time is the machine's limit, not a bug; drain before changing speed to avoid the
+transition fault. Kept here as the explanation. `pressure = gate_pulse + SWITCH - SYS_STEP_COUNT` is a pulse
 budget, so raising `plate_freq` shrinks the wall-clock time to answer
 proportionally, while the host's report latency does not change at all. A run
 that is comfortable at 3000 can fault on the objects already in flight the
@@ -754,18 +756,33 @@ log: a raw TCP tap on `INSP_PERIF_CONSOLE`, crash dumps, and a hand-rolled
 websocket client. Twice a wrong conclusion was drawn from "it is not in the
 log", which only ever meant the log did not arrive.
 
-Four separate problems, all still open:
+**Status 2026-09-07** -- addressed, see the notes under each item; the section is kept
+for the reasoning.
+
+Four separate problems (status inline):
 
 1. **`persist` is OFF by default.** Logs live in a 16MB shm ring and nowhere
    else, so anything not read live is gone at restart. Workaround in use:
    `INSP_LOG_PERSIST_LEVEL=info INSP_LOG_DIR=/tmp/insplog INSP_LOG_FILE=insp`.
    That should be the default for a machine under development.
+   -> **Default is now WARN** (rotating 10 MB x 5 in the core's cwd). `INSP_LOG_PERSIST_LEVEL=off`
+   restores the old behaviour, `=info` for development. Caveat: WARN is chatty on some
+   recipes (per-frame search_point warnings, per-frame camera gamma errors): 1.2 MB in 30 s
+   on the bench. -> The repeaters are throttled (LOG*_EVERY_N: PHYLayer 1/3000, CONTOUR-locating
+   1/100, circle-fit failed 1/100, degraded morph 1/200, search_point rel_strength 1/500, SBM
+   train failed 1/50, CameraSetup 1/20).
 2. **The `inspd_log` drainer can die silently.** Observed: it started, bound
    4091, and vanished; port closed, WebUI "Core Logs" empty, and nothing
    anywhere said so. The core never notices its own drainer is gone.
+   -> **The core watches it now** (`log_start_drainer_watch`, every 5 s): on death it prints
+   `LOG DRAINER DIED` on stderr, re-enables the stderr sink, respawns the drainer (same ring,
+   nothing lost) and logs the event at ERROR. Verified: killed pid, new drainer + 4091 back
+   within 9 s. Seen live the same day: the launcher's core had been running for hours with
+   no drainer and 4091 closed.
 3. **Port 4091 serves one client at a time**, and a second connection hangs in
    the opening handshake rather than being refused. Two people (or a person and
    a tool) looking at the same machine block each other with no diagnostic.
+   -> **No longer true**: three concurrent clients each get `hello` (peers are a map). Stale.
 4. **Long records are corrupted in transport** -- already documented at
    `wiringPanel.cpp` (the reason `INSP_PERIF_CONSOLE` exists at all). A
    ~1kB `get_running_stat` reply is exactly the size that loses its tail.
@@ -979,6 +996,12 @@ stream after its one frame (same `takeCount` path). Pre-existing, and now
 self-healing on the next snap, but the two should not be used together.
 
 ## N. The caliper clamp is in def-mm; the cost it bounds is in px (2026-08-07)
+
+**Guarded 2026-09-07** (the clamp itself is unchanged): at measurement time, where the mm
+value has become px and the image is in hand, a caliper wider or longer than the image is
+logged at ERROR ("typo? capped", 1 line in 50, with the mm values) and capped at the image
+edge. Verified: width/length 500 mm on a 2592x1936 frame -> 7241/28963 px, warned, capped,
+`--insp` finished in 5 s instead of minutes. Original write-up follows.
 
 **Deferred, not fixed.** Written up because it is invisible from the outside and
 the ten QA cases it fails are now marked KNOWN, which is how a deferred defect

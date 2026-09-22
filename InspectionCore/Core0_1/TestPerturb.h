@@ -41,8 +41,10 @@ struct TestPerturb
   float gain    = 1;     // pixel *= gain
   float bias    = 0;     // pixel += bias  (in 8-bit levels)
   float noise   = 0;     // additive gaussian sigma, in 8-bit levels
+  float shift_x = 0;     // translate, image px, + is right
+  float shift_y = 0;     // translate, image px, + is down
   bool  any() const {
-    return rot_deg != 0 || scale != 1 || skew != 0 ||
+    return rot_deg != 0 || scale != 1 || skew != 0 || shift_x != 0 || shift_y != 0 ||
            gain != 1 || bias != 0 || noise > 0;
   }
 };
@@ -71,6 +73,8 @@ static inline TestPerturb test_perturb_parse(cJSON *p)
   num("gain",    0,    8,    &t.gain);
   num("bias",    -255, 255,  &t.bias);
   num("noise",   0,    128,  &t.noise);
+  num("shift_x", -4096, 4096, &t.shift_x);
+  num("shift_y", -4096, 4096, &t.shift_y);
   return t;
 }
 
@@ -81,10 +85,16 @@ static inline void test_perturb_apply(cv::Mat &img, const TestPerturb &t, int se
 {
   if (img.empty() || !t.any()) return;
 
-  if (t.rot_deg != 0 || t.scale != 1 || t.skew != 0)
+  if (t.rot_deg != 0 || t.scale != 1 || t.skew != 0 || t.shift_x != 0 || t.shift_y != 0)
   {
     const cv::Point2f c(img.cols * 0.5f, img.rows * 0.5f);
     cv::Mat M = cv::getRotationMatrix2D(c, t.rot_deg, t.scale);
+    // Translation rides on the same matrix: one resample for the whole
+    // geometric step, same as the shear below. Applied AFTER rotation/scale
+    // about the centre, so a located part should move by exactly (shift_x,
+    // shift_y) px on top of whatever the rotation did.
+    M.at<double>(0, 2) += t.shift_x;
+    M.at<double>(1, 2) += t.shift_y;
     if (t.skew != 0)
     {
       // Shear about the centre, composed with the rotation so the whole

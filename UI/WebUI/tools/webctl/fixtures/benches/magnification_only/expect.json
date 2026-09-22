@@ -1,0 +1,9 @@
+{
+  "why": "an older calibration file with no um_per_px -- m (px/mm) is the fallback",
+  "instrumentMmpp": 0.013885943136483534,
+  "editorMmpp_noSignature": 0.013885943136483534,
+  "editorMmpp_withSignature": 0.02,
+  "machine_setting": {
+    "InspectionMode": "FI"
+  }
+}

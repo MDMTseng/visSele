@@ -1,0 +1,9 @@
+{
+  "why": "a finer lens -- every measurement in a def must scale with it",
+  "instrumentMmpp": 0.0052,
+  "editorMmpp_noSignature": 0.0052,
+  "editorMmpp_withSignature": 0.02,
+  "machine_setting": {
+    "InspectionMode": "FI"
+  }
+}

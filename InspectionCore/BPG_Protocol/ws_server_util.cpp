@@ -4,6 +4,41 @@
 #include "logctrl.h"
 #include "websocket.h"
 #include <errno.h>
+#include <string.h>
+#include <stdio.h>
+
+// WINSOCK DOES NOT USE errno.
+//
+// Every failure in this file was being reported through errno and perror(),
+// which on Windows report whatever the last C-runtime call happened to leave
+// behind -- a socket error sets WSAGetLastError() and touches errno not at
+// all. So a select() that failed printed an unrelated (often stale, often
+// "No error") message, and the EINTR test below it could never be true.
+//
+// One helper, so no caller has to remember which platform it is on. The
+// buffer is per-thread: this is called from the select loop and, on the error
+// paths, from senders.
+const char *sock_err_str(void)
+{
+  static thread_local char buf[96];
+#ifdef _WIN32
+  snprintf(buf, sizeof(buf), "WSA %d", WSAGetLastError());
+#else
+  snprintf(buf, sizeof(buf), "%s", strerror(errno));
+#endif
+  return buf;
+}
+
+// Was this failure the "a signal landed on this thread" case, which is not an
+// error at all and simply wants the next iteration?
+bool sock_err_is_intr(void)
+{
+#ifdef _WIN32
+  return WSAGetLastError() == WSAEINTR;
+#else
+  return errno == EINTR;
+#endif
+}
 //////////////////////////////ws_server/////////////////////////////////////
 
 LOG_MODULE("bpg.ws");
@@ -15,20 +50,46 @@ ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(
   listenSocket = socket(AF_INET, SOCK_STREAM, 0);
   if (listenSocket == -1)
   {
-    printf("Error:create socket failed\n");
+    LOGE("ws server port %d: socket() failed (%s)", port, sock_err_str());
     return;
   }
 
+  // ADDRESS REUSE MEANS THE OPPOSITE THING ON WINDOWS.
+  //
+  // On POSIX, SO_REUSEADDR lets a restarting server rebind a port whose old
+  // connections are still in TIME_WAIT, while a second bind onto a LIVE
+  // listener is still refused. On Windows it also permits the second bind:
+  // another process takes a port that is already bound and listening, and
+  // neither side is told anything.
+  //
+  // That is what a second core did here. Measured 2026-09-10: two visSele
+  // processes both LISTENING on 0.0.0.0:4090, and all ten probe connections
+  // went to the first one. The loser is not a failed process -- it is a
+  // COMPLETE core, cameras open and every worker thread running, that will
+  // never see a client and has no way to find out. The operator gets a core
+  // that is up and a UI that behaves strangely; the session id carried in HR
+  // exists to detect the aftermath of exactly this.
+  //
+  // SO_EXCLUSIVEADDRUSE is the Windows answer for a server socket: the second
+  // bind FAILS, which is what everything downstream already handles -- init()
+  // throws, and mainLoop's retry loop says so every five seconds until the
+  // other core goes away.
   int enable = 1;
+#ifdef _WIN32
+  if (setsockopt(listenSocket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                 (char *)&enable, sizeof(int)) < 0)
+    LOGE("ws server port %d: SO_EXCLUSIVEADDRUSE failed (%s) -- a second core "
+         "could still bind this port silently", port, sock_err_str());
+#else
   if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (char *)&enable, sizeof(int)) < 0)
-  {
-    //throw -3;
-  }
+    LOGE("ws server port %d: SO_REUSEADDR failed (%s)", port, sock_err_str());
 #ifdef SO_REUSEPORT
+  // POSIX only, and deliberately NOT on the Windows path above: SO_REUSEPORT
+  // is load-balanced port sharing by design, which is the very behaviour being
+  // shut off there.
   if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEPORT, (char *)&enable, sizeof(int)) < 0)
-  {
-    //throw -3;
-  }
+    LOGE("ws server port %d: SO_REUSEPORT failed (%s)", port, sock_err_str());
+#endif
 #endif
 
   struct sockaddr_in local;
@@ -39,7 +100,10 @@ ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(
 
   if (bind(listenSocket, (struct sockaddr *)&local, sizeof(local)) < 0)
   {
-    printf("bind failed\n");
+    // Name the likely cause: this is what the operator has to act on, and
+    // "bind failed" on a buffered stdout said neither what failed nor why.
+    LOGE("ws server: bind to port %d FAILED (%s) -- another process already "
+         "holds it. Is a second core already running?", port, sock_err_str());
     close(listenSocket);
     listenSocket = -1;
     return;
@@ -47,7 +111,7 @@ ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(
 
   if (listen(listenSocket, 8) < 0)
   {
-    printf("listen failed\n");
+    LOGE("ws server: listen on port %d FAILED (%s)", port, sock_err_str());
     close(listenSocket);
     listenSocket = -1;
     return;
@@ -57,7 +121,13 @@ ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(
   FD_SET(listenSocket, &evtSet);
   fdmax = listenSocket;
 
-  printf("opened %s:%d  listenSocket:%d\n", inet_ntoa(local.sin_addr), ntohs(local.sin_port), listenSocket);
+  // Through the log ring, not printf. In production stdout is redirected to a
+  // launcher file, which makes it FULLY BUFFERED -- so the two lines that say
+  // whether the core's network layer came up at all sat in a 4 KB buffer that
+  // a crash or a kill never flushed. Neither appeared in either of the two
+  // core logs captured on 2026-09-10.
+  LOGI("ws server listening on %s:%d (socket %d)",
+       inet_ntoa(local.sin_addr), ntohs(local.sin_port), listenSocket);
 }
 
 int ws_server::disconnect(int sock)
@@ -162,9 +232,9 @@ int ws_server::runLoop(struct timeval *tv)
 
   if (select(fdmax + 1, &read_fds, NULL, NULL, tv) == -1)
   {
-    if (errno == EINTR)
+    if (sock_err_is_intr())
       return 0; // interrupted by a signal; just retry on the next iteration
-    perror("select");
+    LOGE("ws server: select failed (%s)", sock_err_str());
     return -1; // transient error: report it, but never kill the process
   }
   return runLoop(&read_fds, tv);

@@ -46,6 +46,7 @@ export function effectiveLimits(def, isFlipped) {
     LCL:   pick('LCL',   'LCL_b'),
   };
 }
+import { pickMmpp } from './mmppRule.mjs';
 import { mkLog } from 'UTIL/logger';
 import { initMeasureStatistic } from 'REDUX_STORE_SRC/reducer/spcStats';
 
@@ -365,6 +366,14 @@ export class InspectionEditorLogic {
                 edit_info.shape_match_scale = report.shape_match_scale;
               if (typeof report.shape_nms_angle === 'number')
                 edit_info.shape_nms_angle = report.shape_nms_angle;
+              if (typeof report.shape_roi_spacing === 'number')
+                edit_info.shape_roi_spacing = report.shape_roi_spacing;
+              if (typeof report.shape_trust_na === 'boolean')
+                edit_info.shape_trust_na = report.shape_trust_na;
+              if (typeof report.shape_trust_res_max === 'number')
+                edit_info.shape_trust_res_max = report.shape_trust_res_max;
+              if (typeof report.shape_min_score === 'number')
+                edit_info.shape_min_score = report.shape_min_score;
               if (typeof report.shape_weak_thres === 'number')
                 edit_info.shape_weak_thres = report.shape_weak_thres;
               if (typeof report.shape_strong_thres === 'number')
@@ -380,8 +389,21 @@ export class InspectionEditorLogic {
                 edit_info.def_image_reg = root_defFile.def_image_reg;
               // Optional user-overridden ROI-refine points (object-frame mm). Absent =>
               // the core auto-selects; an empty array here keeps "auto".
-              if (Array.isArray(report.roi_refine_points))
-                edit_info.roi_refine_points = report.roi_refine_points;
+              //
+              // Read from @__SBM_INFO__ first, the featureSet root second. They
+              // moved to sit beside localization_include/exclude, which is what
+              // they are: an input to the NEXT extraction, not something the
+              // machine reads while it runs -- a def carrying its own ROI
+              // windows locates identically with this key deleted. The root
+              // placement is still accepted so a def written before the move
+              // still opens.
+              {
+                const _sbm = Array.isArray(report.inherentfeatures)
+                  ? report.inherentfeatures.find((x) => x && x.name === '@__SBM_INFO__')
+                  : undefined;
+                const _rp = (_sbm && _sbm.roi_refine_points) || report.roi_refine_points;
+                if (Array.isArray(_rp)) edit_info.roi_refine_points = _rp;
+              }
               // The localizer's extraction regions. NOT measurement features, so
               // they never go into shapeList.
               //
@@ -532,6 +554,19 @@ export class InspectionEditorLogic {
             let obj = GetObjElement(edit_info.edit_tar_info, keyTrace, keyTrace.length - 2);
             let cand = edit_info.edit_tar_ele_cand;
 
+            // An aux_line is the line through two POINTS: a search point, a
+            // crossing, or an arc's centre -- what the core can locate as a
+            // point. A line has no single point to go through.
+            const isAuxLine = edit_info.edit_tar_info.type == SHAPE_TYPE.aux_line;
+            const pointLike = cand.shape && (cand.shape.type == SHAPE_TYPE.search_point
+              || cand.shape.type == SHAPE_TYPE.aux_point || cand.shape.type == SHAPE_TYPE.arc);
+            if (isAuxLine && !pointLike) {
+              log.info("aux_line only accepts search_point / aux_point / arc(centre), not " + (cand.shape && cand.shape.type));
+              edit_info.edit_tar_ele_trace = null;
+              edit_info.edit_tar_ele_cand = null;
+              break;
+            }
+
             log.info("GetObjElement", obj, keyTrace[keyTrace.length - 1]);
             obj[keyTrace[keyTrace.length - 1]] = {
               id: cand.shape.id,
@@ -578,7 +613,7 @@ export class InspectionEditorLogic {
                     cand.shape.type == SHAPE_TYPE.arc) {
                     //We allow these three
                   }
-                  else if (cand.shape.type == SHAPE_TYPE.line) {//Might need to check the angle if both are lines
+                  else if (cand.shape.type == SHAPE_TYPE.line || cand.shape.type == SHAPE_TYPE.aux_line) {//Might need to check the angle if both are lines
 
                   }
                   else {
@@ -596,9 +631,10 @@ export class InspectionEditorLogic {
                   }
                   break;
                 case SHAPE_TYPE.measure_subtype.angle://Has to be an line to measure
-                  if (cand.shape.type != SHAPE_TYPE.line&&cand.shape.type != SHAPE_TYPE.search_point) {
+                  if (cand.shape.type != SHAPE_TYPE.line && cand.shape.type != SHAPE_TYPE.aux_line
+                      && cand.shape.type != SHAPE_TYPE.search_point) {
                     log.info("Error: " + subtype +
-                      " Only accepts line & spoint");
+                      " Only accepts line, aux_line & spoint");
                     acceptData = false;
                   }
                   break;
@@ -649,6 +685,14 @@ export class InspectionEditorLogic {
                   break;
                 case SHAPE_TYPE.measure_subtype.angle:
                   edit_info.edit_tar_info.ref = [{}, {}];
+                  // New angles are vector angles (CT 2026-09-09): direction
+                  // vectors, a range, a nominal -- no intersection, no
+                  // quadrant. The property sheet can switch back to the
+                  // classic quadrant angle; defs that never had angle_mode
+                  // keep it.
+                  edit_info.edit_tar_info.angle_mode = 'signed';
+                  edit_info.edit_tar_info.angle_range = 'signed90';
+                  edit_info.edit_tar_info.nominal_deg = 0;
                   break;
                 default:
                   log.info("Error: " + cand + " is not in the measure_subtype list");
@@ -788,13 +832,18 @@ export class InspectionEditorLogic {
   // has no signature, so fall back to the camera calibration (cam_param.mmpb2b/ppb2b,
   // populated from the def or a camera_calibration WS report). 1 only as a last resort.
   getEditorMmpp() {
-    const m = this.getsig360info_mmpp();
-    if (Number.isFinite(m) && m > 0 && m !== 1) return m;   // a real sig360 mmpp
-    const cp = this.cameraParam;
-    if (cp && Number.isFinite(cp.mmpb2b) && Number.isFinite(cp.ppb2b) && cp.ppb2b > 0)
-      return cp.mmpb2b / cp.ppb2b;
-    return (Number.isFinite(m) && m > 0) ? m : 1;
+    // The ordering and its reasons live in mmppRule.mjs, which has no imports
+    // and a unit test. A wrong answer here measures the whole def to a
+    // consistent wrong scale and looks completely normal, so it is not a place
+    // for a chain of || written inline.
+    return pickMmpp({
+      sigMmpp: this.getsig360info_mmpp(),
+      instrumentMmpp: this.instrumentMmpp,
+      defMmpp: this.defMmpp,
+      camParam: this.cameraParam,
+    });
   }
+
 
   setsig360infoCenter(center){
 
@@ -825,10 +874,17 @@ export class InspectionEditorLogic {
       }
     });
     this.shapeCount = maxId;
+    this.refreshAuxLines(this.shapeList);
   }
 
   SetDefInfo(defInfo) {
     this.SetShapeList(defInfo.features);
+    // The scale this recipe was taught at (mmppRule step 3). Per LOAD, so a
+    // def that follows another does not inherit its predecessor's number.
+    this.defMmpp = (Number.isFinite(defInfo.mmpp) && defInfo.mmpp > 0) ? defInfo.mmpp : undefined;
+    // A TAKE's instrument scale describes the frame captured then; a freshly
+    // loaded def shows its own picture, so that scale is stale here.
+    this.instrumentMmpp = undefined;
 
     // Rebuild the shape-based localizer's feature-extraction regions
     // (localization_include / localization_exclude — object-frame mm polygon arrays)
@@ -844,6 +900,18 @@ export class InspectionEditorLogic {
     if (defInfo.cam_param && this.cameraParam === undefined) {
       this.cameraParam = defInfo.cam_param;
     }
+    // KEPT SEPARATELY, and kept even when a live camera param overwrites the
+    // rendering one: the file's cam_param carries fields the editor does not
+    // own -- exposure_time is the one that bit -- and regenerating the def from
+    // the editor's copy alone drops them.
+    //
+    // Two consequences, and the quiet one is the worse: the def's exposure_time
+    // is GONE the next time the WebUI saves, and until then every exit from the
+    // editor warns "變更的欄位 cam_param" on a def nobody touched. Saving does
+    // not settle it, because the core stamps the field back on the way out --
+    // so the round trip never converges and the warning becomes noise people
+    // learn to click through.
+    if (defInfo.cam_param) this.defCamParam = defInfo.cam_param;
     // A pure-SBM def has no sig360 block (inherentfeatures empty). Only seed
     // sig360info when a signature feature is actually present; otherwise the editor
     // frame comes from def_image_reg + cam_param (getEditorMmpp), not sig360.
@@ -1046,9 +1114,38 @@ export class InspectionEditorLogic {
       "ver": "0.0.1.0",
       "unit": "px",
       "mmpp": (sig && sig.mmpp) || this.getEditorMmpp(),
-      cam_param: (sig && sig.cam_param) || this.cameraParam,
+      // THE FILE WINS. The live camera only fills in what the def does not have.
+      //
+      // The order used to be the other way round, so the editor's copy overwrote
+      // the file's. Every sig360_circle_line inspection report calls
+      // SetCameraParamInfo(report.cam_param) (UICtrlReducer), which meant a def
+      // absorbed the camera's current numbers just by being open while the
+      // machine ran -- and then every exit warned "設定已更動" on a recipe
+      // nobody had touched. Two things wrong with that, and the warning was the
+      // lesser one: a measurement recipe was quietly re-scaling itself to
+      // whatever the camera last reported.
+      //
+      // A def with no cam_param at all (a new one) still gets the live values,
+      // which is the case the merge existed for. Changing a def's calibration is
+      // now something someone has to do on purpose rather than a side effect of
+      // running parts. Note the legacy "camera_calibration" WS report the other
+      // direction relied on is no longer emitted by the core.
+      cam_param: { ...((sig && sig.cam_param) || this.cameraParam || {}),
+                   ...(this.defCamParam || {}) },
       features: this.shapeList,
-      inherentfeatures: this.inherentShapeList
+      // SAVED AS THE FILE HAS ALWAYS HAD IT. The inherent orientation line's
+      // ref carries an id at runtime (findLostRefShapes resolves ids only,
+      // af9336eb), but every def on disk holds that ref as {name, keyTrace}.
+      // Writing the id made the round trip differ from the file, and opening
+      // test2 and pressing back said 變更的欄位:inherentfeatures (CT
+      // 2026-09-09). Strip it on the way out: the id is derivable (the
+      // signature's), the core ignores this entry, and the hash stays put.
+      inherentfeatures: (this.inherentShapeList || []).map((sh) => {
+        if (!sh || sh.type != SHAPE_TYPE.aux_line || !Array.isArray(sh.ref)) return sh;
+        const ref = sh.ref.map((r) => (r && r.name !== undefined && r.id !== undefined)
+          ? Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'id')) : r);
+        return { ...sh, ref };
+      })
     };
 
   }
@@ -1196,6 +1293,8 @@ export class InspectionEditorLogic {
     if (this.editShape !== null && this.editShape.id == id) {
       this.editShape = shape;
     }
+    // A moved point moves every aux_line through it.
+    this.refreshAuxLines(this.shapeList);
     //UpdateInherentShapeList();
     return shape;
 
@@ -1281,10 +1380,23 @@ export class InspectionEditorLogic {
       } else {
         delete eObject.cal_hits;
       }
-      ["pt1", "pt2", "pt3"].forEach((key) => {
-        if (eObject[key] === undefined) return;
-        eObject[key] = pointForwardTrans(eObject[key]);
-      });
+      // ...AND ONLY WHERE THE CANVAS IS IN IMAGE FRAME.
+      //
+      // cal_hits_forward above already asks this question (`if (!hits ||
+      // oriBase) return hits`); the shape's own points were moved regardless,
+      // and the def editor renders in OBJECT frame. So in DefConfUI an NA
+      // feature was translated by the object's position -- about (15mm, 9mm) on
+      // this part -- and left the visible area entirely. Reported from the
+      // bench as "I cannot find the primitive on screen anymore".
+      //
+      // In the object frame the def's own geometry is already the right answer:
+      // it IS where this would have been measured. Nothing to transform.
+      if (!oriBase) {
+        ["pt1", "pt2", "pt3"].forEach((key) => {
+          if (eObject[key] === undefined) return;
+          eObject[key] = pointForwardTrans(eObject[key]);
+        });
+      }
       // Carried so the overlay can say WHY next to the shape. Without it an NA
       // is a grey outline with no explanation, which is only marginally better
       // than the nothing it used to be.
@@ -1329,6 +1441,34 @@ export class InspectionEditorLogic {
       }
       return out;
     }
+    // THE REGION A FEATURE LOOKED IN, moved with everything else.
+    //
+    // Same transform as cal_hits_forward, and here for the same reason: the
+    // core emits it in OBJECT-FRAME mm and InspUI renders in image-frame. A
+    // direction gets the rotation WITHOUT the translation -- a bar vector with
+    // the object centre added to it points somewhere else entirely.
+    function scanClipForward(cl) {
+      if (!cl || oriBase) return cl;
+      const f = flip_f, cx = InspResult.cx, cy = InspResult.cy;
+      return {
+        ...cl,
+        x: cl.x * cos_v - f * cl.y * sin_v + cx,
+        y: cl.x * sin_v + f * cl.y * cos_v + cy,
+        bar_x: cl.bar_x * cos_v - f * cl.bar_y * sin_v,
+        bar_y: cl.bar_x * sin_v + f * cl.bar_y * cos_v,
+      };
+    }
+    // The nominal circle the radial calipers were placed on. Centre only: r0
+    // and len are lengths, and the canvas is not scaled.
+    function calGeomForward(g) {
+      if (!g || oriBase) return g;
+      const f = flip_f, cx = InspResult.cx, cy = InspResult.cy;
+      return {
+        ...g,
+        c0x: g.c0x * cos_v - f * g.c0y * sin_v + cx,
+        c0y: g.c0x * sin_v + f * g.c0y * cos_v + cy,
+      };
+    }
     function pointInvTrans(_pt)
     {
       let pt={x:_pt.x,y:_pt.y};
@@ -1348,9 +1488,11 @@ export class InspectionEditorLogic {
     });
 
     switch (eObject.type) {
+      case SHAPE_TYPE.aux_line:   // reported as a line: pt1/pt2 are the two located points
       case SHAPE_TYPE.line:
         {
           ["pt1", "pt2"].forEach((key) => {
+            if (eObject[key] === undefined) return;
             eObject["_"+key] = closestPointOnLine(inspAdjObj, eObject[key]);
           });
 
@@ -1398,6 +1540,12 @@ export class InspectionEditorLogic {
           if (_hits) {
             eObject.cal_hits = cal_hits_forward(_hits);
           }
+          // WHERE the calipers searched, so an NA can be drawn rather than
+          // only named: each hit sits on this circle and swept +-len along the
+          // ray from its centre.
+          const _geom = inspAdjObj.extra && inspAdjObj.extra.cal_geom;
+          if (_geom) eObject.cal_geom = calGeomForward(_geom);
+          else delete eObject.cal_geom;
         }
         break;
 
@@ -1444,6 +1592,12 @@ export class InspectionEditorLogic {
           if (_hits) {
             eObject.cal_hits = cal_hits_forward(_hits);
           }
+          // The band this scan actually swept, AFTER the pose and the anchor
+          // morph. Carried for every scan, not only a failing one: an NA is
+          // the case that needs it, but a measurement 0.5 mm from where the
+          // def put it is worth seeing the window for too.
+          if (inspAdjObj.clip) eObject.scan_clip = scanClipForward(inspAdjObj.clip);
+          else delete eObject.scan_clip;
           // {
           //   let vec = this.shapeVectorParse(eObject, shapeList);
           //   let line ={
@@ -1511,6 +1665,39 @@ export class InspectionEditorLogic {
     }
   }
 
+  // A MEASUREMENT THAT DID NOT HAPPEN MUST NOT MOVE THE DEF.
+  //
+  // CHECK writes the adjusted shapes back into the shape list -- that is the
+  // snap the operator relies on when dragging a line onto an edge. But it did it
+  // for EVERY shape, including the ones the core reported NA and the ones it did
+  // not report at all, so a failed measurement rewrote the def's own geometry
+  // with whatever the failure produced. Press CHECK twice on a primitive that
+  // cannot measure and the def has drifted twice, with nothing said.
+  //
+  // The display fields still come through: status, the reason, and the caliper
+  // hits are exactly what makes an NA legible. Only the GEOMETRY is refused.
+  //
+  // `orig` is the pre-adjust clone; `adjusted` is what the adjust produced.
+  static KeepDefGeometryIfNotMeasured(orig, adjusted) {
+    if (!adjusted) return adjusted;
+    // SUCCESS is the only status whose geometry is a measurement. NA, FAILURE
+    // and UNSET all mean "the def's own points are still the best answer", and
+    // a shape the core never reported has no status at all.
+    if (adjusted.inspection_status === INSPECTION_STATUS.SUCCESS) return adjusted;
+    const keep = { ...orig };
+    // scan_clip/cal_geom belong on this list for the same reason na_reason
+    // does: they describe the FRAME's attempt, not the def, and the NA that
+    // drops the geometry is exactly the case they exist to explain.
+    for (const k of ['inspection_status', 'na_reason', 'cal_hits', 'scan_clip', 'cal_geom']) {
+      if (adjusted[k] !== undefined) keep[k] = adjusted[k];
+      else delete keep[k];
+    }
+    // Per-frame derived fields never belong to the def; the adjust deletes them
+    // on NA and they must not survive from an earlier SUCCESS either.
+    delete keep._pt1; delete keep._pt2; delete keep.adj_pt1;
+    return keep;
+  }
+
   ShapeListAdjustsWithInspectionResult(shapeList, InspResult, oriBase = false) {
     shapeList.forEach((eObject) => {
       this.ShapeAdjustsWithInspectionResult(eObject,shapeList, InspResult, oriBase)
@@ -1546,6 +1733,24 @@ export class InspectionEditorLogic {
               pt_info.dist = tmpDist;
             }
           });
+          break;
+
+        case SHAPE_TYPE.aux_line:
+          {
+            // Its endpoints ARE other shapes' points, so offering them would
+            // never win a pick over the point they sit on. The line's own
+            // handle is its midpoint (drawn as a marker in aux_line.draw).
+            const g = (shape.pt1 && shape.pt2) ? shape : this.auxLineParse(shape, shapeList);
+            if (!g || !g.pt1 || !g.pt2) break;
+            const mid = { x: (g.pt1.x + g.pt2.x) / 2, y: (g.pt1.y + g.pt2.y) / 2 };
+            tmpDist = distance_point_point(mid, location);
+            if (pt_info.dist > tmpDist) {
+              pt_info.shape = shape;
+              pt_info.key = undefined;
+              pt_info.pt = mid;
+              pt_info.dist = tmpDist;
+            }
+          }
           break;
 
         case SHAPE_TYPE.aux_point:
@@ -1662,6 +1867,49 @@ export class InspectionEditorLogic {
 
     return point;
   }
+  // AUX LINE: the line through two located points. ref[0] / ref[1] name the
+  // points -- a search_point, an aux_point (crossing), or an arc (its centre),
+  // the same set the core's ParseLocatePosition turns into a point. Returns
+  // { pt1, pt2 } in def frame, or undefined while a ref is missing.
+  auxLineParse(aux_line, shapelist = this.shapeList) {
+    if (!aux_line || aux_line.type != SHAPE_TYPE.aux_line) return undefined;
+    const refs = aux_line.ref || [];
+    if (refs.length < 2) return undefined;
+    const pointOf = (ref) => {
+      if (!ref || ref.id === undefined) return undefined;
+      const sh = this.FindShapeObject("id", ref.id, shapelist);
+      if (sh === undefined) return undefined;
+      switch (sh.type) {
+        case SHAPE_TYPE.search_point: return this.searchPointParse(sh, shapelist);
+        case SHAPE_TYPE.aux_point:    return this.auxPointParse(sh, shapelist);
+        case SHAPE_TYPE.arc: {
+          if (!(sh.pt1 && sh.pt2 && sh.pt3)) return undefined;
+          const c = threePointToArc(sh.pt1, sh.pt2, sh.pt3);
+          return c ? { x: c.x, y: c.y } : undefined;
+        }
+        default: return undefined;
+      }
+    };
+    const a = pointOf(refs[0]), b = pointOf(refs[1]);
+    if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(b.x)) return undefined;
+    return { pt1: { x: a.x, y: a.y }, pt2: { x: b.x, y: b.y } };
+  }
+
+  // Materialise pt1/pt2 on every aux_line so everything that reads a line's
+  // endpoints (measure drawing, middle point, vector, the report merge) reads
+  // an aux_line exactly like a line. Derived, never saved: the def carries
+  // only the refs, the core recomputes from the located points. Called after
+  // every list change; refs can point forward in the list, so it runs once
+  // the whole list is in place.
+  refreshAuxLines(shapelist = this.shapeList) {
+    (shapelist || []).forEach((sh) => {
+      if (!sh || sh.type != SHAPE_TYPE.aux_line) return;
+      const g = this.auxLineParse(sh, shapelist);
+      if (g) { sh.pt1 = g.pt1; sh.pt2 = g.pt2; }
+      else { delete sh.pt1; delete sh.pt2; }
+    });
+  }
+
   searchPointParse(search_point, shapelist = this.shapeList) {
     let point = undefined;
     if (search_point.type != SHAPE_TYPE.search_point) return undefined;
@@ -1675,6 +1923,7 @@ export class InspectionEditorLogic {
       if (ref0_shape === undefined) return undefined;
       switch (ref0_shape.type) {
         case SHAPE_TYPE.line:
+        case SHAPE_TYPE.aux_line:
           {
             point = search_point.pt1;
           }
@@ -1690,6 +1939,9 @@ export class InspectionEditorLogic {
   shapeMiddlePointParse(shape, shapelist = this.shapeList) {
     switch (shape.type) {
 
+      case SHAPE_TYPE.aux_line:
+        if (!(shape.pt1 && shape.pt2)) return undefined;
+        // fall through: an aux_line with its endpoints materialised IS a line
       case SHAPE_TYPE.line:
         return { x: (shape.pt1.x + shape.pt2.x) / 2, y: (shape.pt1.y + shape.pt2.y) / 2 };
       case SHAPE_TYPE.arc:
@@ -1705,6 +1957,9 @@ export class InspectionEditorLogic {
   shapeVectorParse(shape, shapelist = this.shapeList) {
     switch (shape.type) {
 
+      case SHAPE_TYPE.aux_line:
+        if (!(shape.pt1 && shape.pt2)) return undefined;
+        // fall through, same reason as shapeMiddlePointParse
       case SHAPE_TYPE.line:
         return { x: (shape.pt2.x - shape.pt1.x), y: (shape.pt2.y - shape.pt1.y) };
       case SHAPE_TYPE.search_point:
@@ -1713,7 +1968,7 @@ export class InspectionEditorLogic {
 
           let refObj = this.FindShapeObject("id", shape.ref[0].id, shapelist);
 
-          if (refObj === undefined || refObj.type !== SHAPE_TYPE.line) return undefined;
+          if (refObj === undefined || (refObj.type !== SHAPE_TYPE.line && refObj.type !== SHAPE_TYPE.aux_line)) return undefined;
           let lineVec = this.shapeVectorParse(refObj, shapelist);
 
           if (lineVec === undefined) return undefined;
@@ -1748,15 +2003,48 @@ const default_MinRepeatInspReport = 2;
 // The edit_info fields that belong to the DEF rather than to the session, and
 // so must not survive a def switch. Read together with the reset in the def
 // loader; a new def-scoped setting added to Edit_info_Empty belongs here too.
+// The subset of DEF_SCOPED_EDIT_INFO_KEYS that belongs to the LOCALIZER rather
+// than to the measurements.
+//
+// A retake that keeps the measurement features still has to drop all of these:
+// the picture changed, so the registration, the trained features and the
+// extraction regions all describe a frame that no longer exists. Keeping any of
+// them would leave calipers placed against an origin the new image does not
+// have -- and it would still inspect, which is the failure mode this whole
+// branch keeps running into.
+export const DEF_LOCALIZER_SCOPED_KEYS = [
+  'def_image_reg', 'roi_refine_points',
+  '__shape_cache', '__shape_stale', '__shape_lastGood',
+  // Uncommitted extraction thresholds -- see __shape_weak_draft below.
+  '__shape_weak_draft', '__shape_strong_draft',
+  '__loc_include', '__loc_exclude',
+  '__img_fresh_capture', '__tmp_ref_image_path',
+];
+
 export const DEF_SCOPED_EDIT_INFO_KEYS = [
   'matching_angle_margin_deg', 'matching_angle_offset_deg', 'matching_face',
   'matching_version', 'inspection_downsample', 'sig_match_sim_thres',
   'morph_mode', 'morph_tps_lambda', 'morph_max_iter', 'morph_alpha',
   'shape_match_scale', 'shape_weak_thres', 'shape_strong_thres', 'shape_nms_angle',
+  'shape_min_score', 'shape_trust_na', 'shape_trust_res_max', 'shape_roi_spacing',
   'locating_engine', 'def_image_reg', 'roi_refine_points',
   // The trained line2Dup set and its staleness flags: another def's features
   // are worse than none, because they train a matcher that then looks right.
   '__shape_cache', '__shape_stale', '__shape_lastGood',
+  // THE EXTRACTION THRESHOLDS AS TYPED, BEFORE ANY EXTRACTION HAS USED THEM.
+  //
+  // weak/strong are inputs to feature extraction and to nothing else. Writing
+  // them into the def the moment the field changes produced a def whose stated
+  // thresholds were not the thresholds its trained features were made with --
+  // a def that describes a model it does not contain. The panel says "邊緣門檻改了
+  // 要重新生成特徵才會生效", which is true, and the file did not honour it.
+  //
+  // So the typed value lives here until 生成特徵點 comes back with a feature set
+  // that was actually extracted with it, and only then is it committed to
+  // shape_weak_thres / shape_strong_thres. defFileGeneration never reads these,
+  // so an abandoned edit cannot reach the def at all -- not by saving, not by
+  // 立即測試, not by leaving the studio.
+  '__shape_weak_draft', '__shape_strong_draft',
   // Set by 重新設定/TAKE; a def LOAD makes the on-screen image the def's own
   // again, so this belongs to the def like everything else here.
   '__img_fresh_capture', '__tmp_ref_image_path',
@@ -1808,10 +2096,24 @@ export function Edit_info_Empty() {
     morph_max_iter: undefined,
     morph_alpha: undefined,         // re-location relaxation, (0,1]; core default 1
     shape_match_scale: undefined,   // shape-locator coarse downscale, (0,1]; core default 1
+    // The score a shape match has to beat, 0-100. undefined => the core's 50.
+    // matchThreshold.js already reads this to draw headroom; until it was
+    // plumbed through it could only ever report the default.
+    shape_min_score: undefined,
     // NMS angle tolerance in degrees; undefined => the core's 360, i.e. one pose
     // per location. Listed in DEF_SCOPED_EDIT_INFO_KEYS so it resets on a def
     // switch like every other recipe setting.
     shape_nms_angle: undefined,
+    // ROI auto-pick minimum spacing (px): -1 = auto (ROI half, 15 px, windows
+    // overlap at most ~50%), 0 = off (grid cap only), >0 = px. undefined
+    // means "never set" and is WRITTEN AS -1 for a shape_based def (MISC_Util):
+    // the core's own default is off, but every recipe saved from here gets
+    // de-overlapped points unless the operator turns it off (CT 2026-09-09).
+    shape_roi_spacing: undefined,
+    // Localization trust -> judges NA. Off unless the recipe turns it on; the
+    // threshold (px of mean normal residual) is the operator's, default loose.
+    shape_trust_na: undefined,
+    shape_trust_res_max: undefined,
     locating_engine: "sig360",      // "sig360" | "shape_based" (shape = line2Dup+ROI refine)
     img: null,
     // True once TAKE has replaced the picture with a fresh capture: the saved

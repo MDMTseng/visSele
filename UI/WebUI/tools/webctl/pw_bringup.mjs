@@ -68,6 +68,60 @@ const FREQ = Number(arg('freq', 8000));
 const SHOTS = arg('shots', 'C:/Users/w2110/Downloads/pw');
 const HEADED = !!arg('headed', false);
 const NOSTART = !!arg('no-start', false);
+// Seconds to sit in the Inspection UI before closing, with a final screenshot.
+// For a bench with no board: --no-start gets you to the UI, and something else
+// (tools/webctl/_ci_prof.mjs, say) drives inspections over the WS meanwhile --
+// so the panel is photographed with real readings in it rather than empty.
+const HOLD = +arg('hold', 0) || 0;
+
+// THE SCREEN THIS ACTUALLY RUNS ON.
+//
+// The benches all used 1600x950, which is 400 px wider and 150 px taller than
+// the machine. Everything fits at that size, so nothing about fit was ever
+// tested: the sidebar's truncation and the panel's height pressure are both
+// invisible there and both real on the bench top.
+//
+// Surface Go is 1800x1200 physical at 150% scaling, so the page gets 1200x800
+// CSS pixels. That is the default here now, because a layout check on a screen
+// nobody owns is not a layout check.
+//
+//   --screen go     1200x800   (default, Surface Go at 150%)
+//   --screen wide   1600x950   (what the benches used to use)
+//   --screen 1024x768
+// The tablets on the line are mounted BOTH WAYS, so portrait is not a curiosity
+// -- it is half the machines. At 800 px wide the sidebar takes 46% of the
+// screen instead of 30%, which is a different layout problem, not a narrower
+// version of the same one.
+const SCREENS = {
+  go:     [1200, 800],    // Surface Go, landscape, 1800x1200 at 150%
+  'go-p': [800, 1200],    // the same tablet stood up
+  wide:   [1600, 950],    // what the benches used before any of this
+};
+const parseScreen = (v) => {
+  if (SCREENS[v]) return SCREENS[v];
+  const m = String(v).match(/^(\d+)x(\d+)$/);
+  if (m) return [+m[1], +m[2]];
+  console.error(`unknown screen "${v}" -- use ${Object.keys(SCREENS).join(', ')}, or WxH`);
+  process.exit(2);
+};
+const SCREEN = parseScreen(String(arg('screen', 'go')));
+
+// --screens go,go-p,wide : during --hold, resize to each and shoot it.
+//
+// One run, one dataset, one session -- the only difference between the shots is
+// the window, which is what makes them comparable. Re-running the whole bringup
+// per size costs 40 s each and gives you a different set of parts every time.
+//
+// CAVEAT, and it is a real one: a resize is not a reload. Text truncation,
+// sidebar width and how many entries fit are all trustworthy this way. Anything
+// that sized itself once -- the canvas backing store, ecCanvas's transform, a
+// layout captured into useState -- may not re-derive, so judge the CANVAS only
+// from a run that started at that size.
+const SCREENS_LIST = (() => {
+  const v = arg('screens', '');
+  if (v === '' || v === true) return null;
+  return String(v).split(',').map((x) => [x.trim(), parseScreen(x.trim())]);
+})();
 // Seconds to keep watching AFTER the machine is up. A bring-up that checks
 // once and declares success is checking the easiest moment there is: the
 // machine can fault seconds later and did (error 1 at 30 rpm arrives ~100s in).
@@ -162,7 +216,7 @@ if (!haveBoard) console.log('note: no dev console on :' + PORT + ' -- skipping t
 
 // ---- browser -------------------------------------------------------------
 const browser = await chromium.launch({ headless: !HEADED });
-const ctx = await browser.newContext({ viewport: { width: 1600, height: 950 } });
+const ctx = await browser.newContext({ viewport: { width: SCREEN[0], height: SCREEN[1] } });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => console.log('  [pageerror]', e.message.slice(0, 110)));
 if (CONSOLE) {
@@ -210,6 +264,34 @@ const clickIcon = (icon, nth = 0) => page.evaluate(({ icon, nth }) => {
   }
   return false;
 }, { icon, nth });
+
+// Is this label on screen at all, as its own leaf element?
+const onScreen = (label) => page.evaluate((label) => {
+  for (const e of document.querySelectorAll('*')) {
+    if (e.children.length || !e.offsetParent) continue;
+    if ((e.innerText || '').trim() === label) return true;
+  }
+  return false;
+}, label);
+
+// PRESS SKIP UNTIL THE MODAL GOES.
+//
+// On a carousel bench there is no camera to reconnect to, so "相機重連中" sits
+// there forever with a skip button nobody pressed, and everything behind it is
+// unclickable. lib_enter.mjs has had this for a while; this script grew its own
+// flow and never picked it up, which cost two runs blaming the 製程 instead.
+const skipCamModal = async (budgetMs = 15000) => {
+  const t0 = Date.now();
+  for (;;) {
+    const open = await page.evaluate(() =>
+      [...document.querySelectorAll('.ant-modal-wrap')].some((w) =>
+        w.getBoundingClientRect().height > 50 && getComputedStyle(w).display !== 'none'));
+    if (!open) return true;
+    if (Date.now() - t0 > budgetMs) return false;
+    await clickText('跳過相機連線');
+    await sleep(700);
+  }
+};
 
 const playEnabled = () => page.evaluate(() => {
   const p = [...document.querySelectorAll('button')].find((b) => b.querySelector('[class*=caret-right]'));
@@ -526,11 +608,38 @@ await page.evaluate((name) => {
 await sleep(5000);
 await shot('recipe');
 
+// THE CAMERA MODAL COMES BACK AFTER THE RECIPE LOADS, and this script never
+// looked for it -- see the comment on the play check below.
+await skipCamModal();
+
 console.log(`[4] 製程 = ${PROCESS}   (must be one the recipe declares)`);
 if (!await clickText(PROCESS)) await fail(`製程 "${PROCESS}" not on screen -- is it in this recipe's 已設定範圍?`);
 await sleep(1500);
-if (await playEnabled() === false)
-  await fail(`play is still disabled after 製程 "${PROCESS}" -- that 製程 is outside the recipe's range`);
+// SAY WHAT IS ACTUALLY WRONG.
+//
+// This used to report "that 製程 is outside the recipe's range" for any
+// disabled play button, which is one possible cause stated as the only one.
+// The real cause on a carousel bench is almost always the "相機重連中" modal
+// sitting over the screen with its skip button unpressed -- the 製程 was
+// selected and highlighted the whole time. Cost: two runs and a wrong lead,
+// 2026-09-17. Check for the modal first, and if play is still dead, name what
+// was actually observed instead of guessing at why.
+if (await playEnabled() === false) {
+  await skipCamModal();
+  await sleep(1200);
+}
+if (await playEnabled() === false) {
+  const blocked = await page.evaluate(() =>
+    [...document.querySelectorAll('.ant-modal-wrap')]
+      .filter((w) => w.getBoundingClientRect().height > 50
+                  && getComputedStyle(w).display !== 'none')
+      .map((w) => (w.innerText || '').trim().slice(0, 80)));
+  await fail('play is still disabled'
+    + ` (製程 "${PROCESS}" was clicked`
+    + (await onScreen(PROCESS) ? ' and is on screen' : ' but is NOT on screen') + ')'
+    + (blocked.length ? ` -- a modal is over the page: ${JSON.stringify(blocked)}`
+                      : ' -- no modal is up, so look at the recipe/製程 pairing'));
+}
 
 console.log(`[5] 檢測方式 = ${MODE}`);
 if (!await clickText(MODE)) await fail(`檢測方式 "${MODE}" not on screen`);
@@ -855,6 +964,56 @@ if (haveBoard) {
   console.log('PASS: machine is running, parts reaching the gate, no fault raised');
 } else {
   console.log('PASS (UI only): no console, so the machine side was not verified');
+}
+
+if (HOLD > 0) {
+  console.log(`[hold] staying in the UI for ${HOLD}s -- drive inspections now`);
+  await sleep(HOLD * 1000);
+  if (SCREENS_LIST) {
+    for (const [name, [w, h]] of SCREENS_LIST) {
+      await page.setViewportSize({ width: w, height: h });
+      await sleep(1200);
+      // OUT TO THE MAIN UI AND BACK IN, at the new size.
+      //
+      // A resize alone moves the boxes but not the picture: the canvas sized its
+      // backing store and ecCanvas derived its transform when the Inspection UI
+      // mounted, and neither re-derives because the window changed. The first
+      // run of this loop produced three shots whose sidebars were right and
+      // whose images were all in the wrong place at the wrong scale.
+      //
+      // Leaving and re-entering remounts it, which is also what an operator
+      // does when they rotate the tablet, so it is the state worth
+      // photographing rather than a convenience.
+      if (!await clickIcon('anticon-arrow-left')) {
+        console.log(`[hold] ${name}: no way back to the main UI -- shooting the resize as-is`);
+      } else {
+        await sleep(2500);
+        // LEAVING CLEARS THE SELECTION. Coming back out drops 製程 and 檢測方式,
+        // and play then refuses with 「製程」至少要選 1 個 -- which arrives as a
+        // modal, so the next iteration cannot even find the back arrow and the
+        // whole loop photographs the main menu. Re-pick them, the same two the
+        // cold path picks.
+        await clickText(PROCESS);
+        await sleep(900);
+        await clickText(MODE);
+        await sleep(900);
+        if (!await clickIcon('anticon-caret-right')) {
+          console.log(`[hold] ${name}: could not re-enter the Inspection UI`);
+        } else {
+          await sleep(7000);
+          await page.evaluate(() => {
+            const x = document.querySelector('.ant-drawer-close');
+            if (x && x.offsetParent) x.click();
+          });
+          await sleep(1500);
+        }
+      }
+      console.log(`[hold] ${name} ${w}x${h}`);
+      await shot(`held_${name}_${w}x${h}`);
+    }
+  } else {
+    await shot('held');
+  }
 }
 
 await browser.close();

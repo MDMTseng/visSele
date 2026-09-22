@@ -29,9 +29,83 @@ function appendLog(text, cls) {
   if (atBottom) logEl.scrollTop = logEl.scrollHeight;
 }
 
+// --- busy ---------------------------------------------------------------------
+//
+// Installing takes tens of seconds and said nothing while it did. The log pane
+// was carrying the lines all along, but it is a small box at the bottom of a
+// page the operator may not even be looking at, and the buttons stayed live --
+// so "nothing happened" and "press it again" were the obvious readings.
+//
+// While this is up it covers the screen and swallows clicks, the step is named
+// from the installer's own log lines, and the one instruction that matters is
+// on screen: do not cut the power.
+let busyOn = false;
+// Raised by a log line rather than by a caller that will take it down again.
+// A full-screen cover with nobody responsible for removing it is worse than the
+// silence it replaced, so an unowned one ends on the install's own last word.
+let busyAuto = false;
+
+function busyStart(title, auto) {
+  busyOn = true;
+  busyAuto = !!auto;
+  const b = $('busy');
+  if (!b) return;
+  $('busyTitle').textContent = title;
+  $('busyStep').textContent = '';
+  b.className = 'busy';
+}
+function busyStep(text) {
+  if (!busyOn) return;
+  const e = $('busyStep');
+  if (e) e.textContent = text;
+}
+function busyEnd() {
+  busyOn = false;
+  busyAuto = false;
+  const b = $('busy');
+  if (b) b.className = 'busy hidden';
+}
+
+// Run something long with the cover up, and take it down whatever happens --
+// including a throw, which is the case that would otherwise leave a machine
+// showing "installing" forever.
+async function withBusy(title, fn) {
+  busyStart(title, false);
+  try { return await fn(); }
+  finally { busyEnd(); }
+}
+
+// --- splash ------------------------------------------------------------------
+//
+// Up from the moment the shell loads. It comes down for exactly three things,
+// and all three are "a human now has to see something":
+//
+//   a banner       the setup is incomplete, or the core did not start, or it
+//                  exited. Every one of those is a reason the panels behind
+//                  are the right screen.
+//   a modal        a question. Answering it is the only thing to do.
+//   three taps     somebody asking for the tools.
+//
+// It does NOT come down when the core starts normally: the window navigates to
+// the application UI and the whole shell goes with it.
+let splashDown = false;
+
+function splashUp() {
+  if (splashDown) return;
+  const sp = $('splash');
+  if (sp) sp.className = 'splash';
+}
+function splashOff() {
+  splashDown = true;
+  const sp = $('splash');
+  if (sp) sp.className = 'splash hidden';
+}
+
 // --- banner ------------------------------------------------------------------
 
 function banner(level, title, detail) {
+  // Anything worth a banner is worth the operator seeing the panel it sits on.
+  splashOff();
   const b = $('banner');
   b.className = 'banner ' + level;
   b.replaceChildren(el('div', 'title', title));
@@ -235,6 +309,149 @@ function renderPlan(st) {
     `以上全部來自該版本的 ${st.bootRel} —— 啟動器本身不含任何執行檔名稱、參數、埠號或目錄結構。`));
 }
 
+// EVERY ACTION THAT CHANGES WHAT RUNS GOES THROUGH HERE.
+//
+// Asking at the moment of the click, rather than gating the buttons, is the
+// point: a disabled button with a padlock somewhere else makes people hunt for
+// the unlock and then click everything while it is open. This way the prompt
+// arrives attached to the thing it is protecting, and it says which thing.
+//
+// Unlocking lasts the launcher run, so a sequence -- install, then select --
+// asks once. Closing the launcher relocks.
+let unlockedNow = false;
+function withUnlock(what, run) {
+  if (unlockedNow) return run();
+  return new Promise((resolve) => {
+    let word = '';
+    openModal('需要密碼', (b) => {
+      b.appendChild(el('div', 'note', `${what} 會改變下次啟動執行的版本。`));
+      b.appendChild(el('div', 'note', '這只是防止誤觸,不是安全機制。'));
+      const inp = document.createElement('input');
+      inp.type = 'password';
+      inp.className = 'modalInput';
+      inp.placeholder = '密碼';
+      inp.oninput = () => { word = inp.value; };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+      b.appendChild(inp);
+      setTimeout(() => inp.focus(), 0);
+    }, [
+      { label: '取消', onClick: () => { closeModal(); resolve(undefined); } },
+      { label: '確定', primary: true, onClick: () => go() },
+    ]);
+    async function go() {
+      const r = await L.unlock(word);
+      if (!r.ok) { appendLog(r.error || '密碼不對', 'err'); return; }
+      unlockedNow = true;
+      closeModal();
+      resolve(await run());
+    }
+  });
+}
+
+// ---------------------------------------------------------------- modals --
+//
+// Built here rather than sitting in index.html because both are transient and
+// carry data: leaving an empty dialog in the markup means a second place that
+// has to be kept in step with what fills it.
+function closeModal() {
+  const m = document.getElementById('modal');
+  if (m) m.remove();
+}
+
+function openModal(title, buildBody, actions) {
+  // A question cannot be asked from behind the splash.
+  splashOff();
+  closeModal();
+  const back = el('div');
+  back.id = 'modal';
+  back.className = 'modalBack';
+  const box = el('div', 'modalBox');
+  box.appendChild(el('h2', 'modalTitle', title));
+  const body = el('div', 'modalBody');
+  buildBody(body);
+  box.appendChild(body);
+  const foot = el('div', 'modalFoot');
+  for (const a of actions) {
+    const b = el('button', a.primary ? 'primary' : 'ghost', a.label);
+    b.onclick = a.onClick;
+    foot.appendChild(b);
+  }
+  box.appendChild(foot);
+  back.appendChild(box);
+  // Click outside = dismiss, same as 稍後再說: the question comes back next
+  // start unless it was skipped, so closing it is never destructive.
+  back.onclick = (e) => { if (e.target === back) closeModal(); };
+  document.body.appendChild(back);
+}
+
+// WHY A VERSION DID NOT TAKE. Opened from the "!" on its row.
+function showFailure(version, fail) {
+  openModal(`${version}${fail.refused ? ' 不適用於這台機器' : ' 安裝後置作業失敗'}`, (b) => {
+    b.appendChild(el('div', 'modalReason', fail.reason || '(沒有留下原因)'));
+    const meta = [];
+    if (fail.at) meta.push(new Date(fail.at).toLocaleString());
+    if (fail.tries) meta.push(`已嘗試 ${fail.tries} 次`);
+    if (meta.length) b.appendChild(el('div', 'note', meta.join(' · ')));
+    b.appendChild(el('div', 'note', fail.refused
+      ? '這是套件本身拒絕,不是安裝出錯。重試不會成功 —— 需要另一個套件。'
+      : '版本已安裝並通過驗證,只是機器還沒準備好,所以沒有被啟用。修好原因後可以重試。'));
+  }, [{ label: '關閉', primary: true, onClick: closeModal }]);
+}
+
+// THE UPDATE QUESTION. Raised at start-up when release.json points somewhere
+// else; the answer is always the operator's.
+function showUpdateOffer(offer) {
+  if (!offer || !offer.version) return;
+  let skip = false;
+  openModal('有新的版本可以安裝', (b) => {
+    b.appendChild(el('div', 'modalReason',
+      `${offer.current || '(未指定)'}  →  ${offer.version}`));
+    b.appendChild(el('div', 'note', offer.file));
+    b.appendChild(el('div', 'note',
+      '安裝後下次重新啟動時才生效,不會中斷正在進行的檢測。'));
+    if (offer.failure) {
+      b.appendChild(el('div', 'note err',
+        `這一版先前試過並失敗:${offer.failure.reason || '(沒有留下原因)'}`));
+    }
+    // SKIP IS PART OF THE ANSWER, not a separate menu somewhere. Without it the
+    // same question returns at every start and people learn to dismiss it
+    // without reading -- which is how a real update gets missed later.
+    const row = el('label', 'modalSkip');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.onchange = () => { skip = cb.checked; };
+    row.appendChild(cb);
+    row.appendChild(el('span', null, `跳過這一版,不要再問 ${offer.version}`));
+    b.appendChild(row);
+  }, [
+        { label: '稍後再說', onClick: async () => {
+        if (skip) { try { await L.setSkipped(offer.version, true); } catch (e) { /* shown in log */ } }
+        closeModal();
+        // The start was HELD for this question, so answering it has to release
+        // the hold -- otherwise "later" means the line stays down until someone
+        // finds the 啟動 button.
+        await startIfHeld();
+        refresh();
+      } },
+    { label: '安裝', primary: true, onClick: async () => {
+        closeModal();
+        appendLog(`安裝 ${offer.file} …`, 'lnc');
+        try {
+          const r = await withUnlock('安裝 ' + offer.version,
+            () => withBusy('正在安裝 ' + offer.version, () => L.installFromSource(offer.file)));
+          if (r === undefined) { refresh(); return; }   // cancelled
+          if (!r.ok) { appendLog('安裝失敗:' + r.error, 'err'); refresh(); return; }
+          // Installed is not selected. Pointing at it is the second half, and
+          // it is what makes the next start use it.
+          const sel = await L.retrySetup(offer.version);   // already unlocked by the install above
+          appendLog(sel.ok ? `${offer.version} 已設為現行 -- 下次重新啟動時生效`
+                           : '安裝後置作業未完成:' + sel.error, sel.ok ? 'lnc' : 'err');
+        } catch (e) { appendLog('安裝失敗:' + e.message, 'err'); }
+        refresh();
+      } },
+  ]);
+}
+
 function renderUpdates(st) {
   const g = $('updateSrc');
   g.replaceChildren();
@@ -256,15 +473,23 @@ function renderUpdates(st) {
   g.appendChild(cell);
   g.appendChild(pickBtn);
 
-  if (u.release) {
-    g.appendChild(el('div', 'k', 'release.json'));
-    const rc = el('div', 'v', u.release.version);
-    rc.appendChild(el('div', 'note',
-      u.release.version === st.current ? '這台機器已經指向這一版。'
-        : `這台機器目前指向 ${st.current || '(未指定)'} —— 安裝後按「設為現行」才會切換。`));
-    g.appendChild(rc);
-    g.appendChild(el('div'));
-  }
+  // CHECK, not apply. The label has to carry that distinction, because
+  // "automatic update" is read as "it might restart the machine at any time"
+  // and that is the one thing this never does.
+  g.appendChild(el('div', 'k', '啟動時檢查'));
+  const chk = el('div', 'v', st.checkUpdates ? '開' : '關');
+  chk.appendChild(el('div', 'note', st.checkUpdates
+    ? '開啟時若 release.json 指向別的版本，會跳出詢問。裝不裝是你決定。'
+    : '不檢查，也不會詢問。這張表仍然可以手動安裝。'));
+  g.appendChild(chk);
+  const chkBtn = el('button', 'ghost small', st.checkUpdates ? '關閉' : '開啟');
+  chkBtn.disabled = st.core.running;
+  chkBtn.onclick = async () => {
+    chkBtn.disabled = true;
+    try { await L.setCheckUpdates(!st.checkUpdates); refresh(); }
+    catch (e) { appendLog('設定失敗：' + e.message, 'err'); refresh(); }
+  };
+  g.appendChild(chkBtn);
 
   const tb = $('updatePkgs').querySelector('tbody');
   tb.replaceChildren();
@@ -289,7 +514,9 @@ function renderUpdates(st) {
       b.disabled = true;
       appendLog(`安裝 ${p.file} …`, 'lnc');
       try {
-        const r = await L.installFromSource(p.file);
+        const r = await withUnlock('安裝 ' + p.version,
+          () => withBusy('正在安裝 ' + p.version, () => L.installFromSource(p.file)));
+        if (r === undefined) { b.disabled = false; return; }   // cancelled
         if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
         refresh();
       } catch (e) { appendLog('安裝失敗:' + e.message, 'err'); refresh(); }
@@ -319,6 +546,24 @@ function renderVersions(st) {
       if (st.lastGood && st.lastGood.version === v.version) tagTd.appendChild(el('span', 'tag good', '已驗證'));
       if (st.previous === v.version) tagTd.appendChild(el('span', 'tag prev', '前一版'));
       if (!v.valid) tagTd.appendChild(el('span', 'tag bad', '不完整'));
+      // A VERSION THAT WAS TRIED AND DID NOT TAKE.
+      //
+      // Hung off the row rather than shown as one global 'last failure',
+      // because the list is what somebody browses and the question they have
+      // is about the row under the cursor. Click for the reason -- the mark
+      // says there is something to know, the detail says what.
+      const fail = (st.updateState && st.updateState.failures)
+        ? st.updateState.failures[v.version] : null;
+      if (fail) {
+        const bang = el('span', 'tag bad', fail.refused ? '! 不適用' : '! 安裝後失敗');
+        bang.style.cursor = 'pointer';
+        bang.title = '點選看詳細';
+        bang.onclick = () => showFailure(v.version, fail);
+        tagTd.appendChild(bang);
+      }
+      if (st.updateState && st.updateState.skipped.includes(v.version)) {
+        tagTd.appendChild(el('span', 'tag prev', '已跳過'));
+      }
       tr.appendChild(tagTd);
 
       const note = [];
@@ -330,12 +575,31 @@ function renderVersions(st) {
       tr.appendChild(el('td', 'note', note.join(' · ')));
 
       const act = el('td', 'act');
+      // Retry is manual and only offered where it can work: a refusal is the
+      // package saying 'not this machine', and asking again cannot change it.
+      if (fail && !fail.refused && v.valid) {
+        const rb = el('button', 'ghost small', '重試安裝後作業');
+        rb.disabled = st.core.running;
+        rb.onclick = async () => {
+          rb.disabled = true;
+          appendLog(`重試 ${v.version} 的安裝後置作業…`, 'lnc');
+          try {
+            const r = await withUnlock('重試 ' + v.version, () => L.retrySetup(v.version));
+            if (r === undefined) { rb.disabled = false; return; }   // cancelled
+            appendLog(r.ok ? `${r.version} 完成,下次重新啟動時生效`
+                           : '仍然失敗:' + r.error, r.ok ? 'lnc' : 'err');
+          } catch (e) { appendLog('重試失敗:' + e.message, 'err'); }
+          refresh();
+        };
+        act.appendChild(rb);
+      }
       if (!v.current && v.valid) {
         const b = el('button', 'ghost small', '設為現行');
         b.disabled = st.core.running;
         b.onclick = async () => {
           try {
-            await L.selectVersion(v.version);
+            const done = await withUnlock('切換到 ' + v.version, () => L.selectVersion(v.version));
+            if (done === undefined) return;   // cancelled
             appendLog(`現行版本切換為 ${v.version}`, 'lnc');
             refresh();
           } catch (e) { appendLog('切換失敗:' + e.message, 'err'); }
@@ -419,7 +683,11 @@ $('btnStop').onclick = async () => {
 };
 
 $('btnInstall').onclick = async () => {
+  // The file picker must NOT be behind the cover -- it is a dialog the operator
+  // has to use. chooseAndInstall opens it and then installs, so the cover goes
+  // up on the first log line instead of here; see onLog below.
   const r = await L.chooseAndInstall();
+  busyEnd();
   if (r.canceled) return;
   if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
   refresh();
@@ -427,7 +695,17 @@ $('btnInstall').onclick = async () => {
 
 $('btnLogs').onclick = () => L.openFolder('logs');
 
-L.onLog(({ message }) => appendLog(message, 'lnc'));
+L.onLog(({ message }) => {
+  appendLog(message, 'lnc');
+  // The installer's own words, shown where the operator is looking. It also
+  // RAISES the cover for an install nobody could wrap -- the one started from
+  // the file picker, which has to be able to open a dialog first.
+  if (!busyOn && /^package: /.test(message)) busyStart('正在安裝更新', true);
+  busyStep(message);
+  // Only ends what it raised itself; a wrapped install is ended by its own
+  // finally, after the postinstall that follows these lines.
+  if (busyAuto && /^installed to |^install failed|REFUSED/.test(message)) busyEnd();
+});
 L.onCoreLine((line) => appendLog(line, line.startsWith('[err]') ? 'err' : undefined));
 L.onHealth(() => refresh());
 // --- the three-tap setup gate ------------------------------------------------
@@ -447,20 +725,28 @@ let taps = [];
 
 function gateOpen() { return gateDeadline > Date.now(); }
 
+// The countdown and the invitation live ON the splash now, not in a strip
+// inside the panel stack -- the panel stack is what the splash is covering, so
+// a message there would have been written to a screen nobody was looking at.
 function paintGate() {
+  const main = $('splashMain'), hint = $('splashHint');
   if (!gateOpen()) {
     clearInterval(gateTimer); gateTimer = null;
     if ($('gate')) $('gate').className = 'gate hidden';
+    // The window is normally navigating to the application about now. If it is
+    // not -- the start was held, or something is about to raise a banner --
+    // the splash stays up and says the plain thing rather than a stale count.
+    if (main) main.textContent = '';
+    if (hint) hint.textContent = '連點三下進入設定模式';
     return;
   }
+  splashUp();
   const left = Math.ceil((gateDeadline - Date.now()) / 1000);
   const got = taps.length;
-  $('gate').className = 'gate';
-  $('gate').replaceChildren(
-    el('div', 'gate-main', `啟動中… ${left} 秒`),
-    el('div', 'gate-hint', got
-      ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
-      : `連點三下進入設定模式`));
+  if (main) main.textContent = `啟動中… ${left} 秒`;
+  if (hint) hint.textContent = got
+    ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
+    : `連點三下進入設定模式`;
 }
 
 L.onSetupGate((info) => {
@@ -472,15 +758,36 @@ L.onSetupGate((info) => {
 });
 
 async function onGateTap() {
-  if (!gateOpen()) return;
+  // Counted whenever the splash is up, not only during the boot window.
+  //
+  // The taps used to be live only while the gate was armed, which is a few
+  // seconds at start. Past that the splash would have been a wall: the machine
+  // is sitting on the shell -- the start held for an update check, say -- and
+  // the one gesture that exists for reaching the tools did nothing. The
+  // setup-mode REQUEST still belongs to the armed window, because that is what
+  // it means: stop the start. Outside it, three taps just uncover the panels.
+  const armed = gateOpen();
+  if (!armed && splashDown) return;
   const now = Date.now();
   taps = taps.filter((t) => now - t < TAP_WINDOW_MS);
   taps.push(now);
-  if (taps.length < TAPS_NEEDED) { paintGate(); return; }
+  if (taps.length < TAPS_NEEDED) { if (armed) paintGate(); return; }
   gateDeadline = 0; taps = [];
+  splashOff();
   paintGate();
+  if (!armed) return;
   const r = await L.requestSetup();
-  if (!r || !r.ok) appendLog(`[launcher] 設定模式未開啟:${(r && r.error) || '未知原因'}`, 'err');
+  if (!r || !r.ok) {
+    const why = (r && r.error) || '未知原因';
+    appendLog(`[launcher] 設定模式未開啟:${why}`, 'err');
+    // ON THE SCREEN, not only in the log. The operator who taps three times is
+    // standing at a machine; every setup control is about to grey out because
+    // the core is still up, and a line in a scrolling log is not an answer to
+    // "why did the panel die".
+    banner('bad', '設定模式未開啟', why + '\n'
+                 + '核心仍在執行,所以設定功能維持鎖住。可以先按「停止」,'
+                 + '停下來之後設定功能就會解開。');
+  }
 }
 // Capture phase, so a tap on a button counts too -- the operator is tapping the
 // screen, not aiming at anything.
@@ -488,5 +795,46 @@ document.addEventListener('pointerdown', onGateTap, true);
 
 L.onReason((reason) => showReason(reason));
 
-refresh();
+// ASKED, NOT PUSHED.
+//
+// The launcher used to send the update question as an event the moment it had
+// worked one out, and it arrived before this script had registered a listener
+// for it -- so the modal simply never appeared, while every other part of the
+// path tested fine. Asking once we are up has no ordering to get wrong.
+//
+// Once per shell session, not per refresh: refresh runs every five seconds and
+// a dialog that reappears after being closed is not a question, it is a
+// hostage situation.
+let offerAsked = false;
+async function askOnce() {
+  if (offerAsked) return;
+  offerAsked = true;
+  let o = null;
+  try { o = await L.updateOffer(); }
+  catch (e) { appendLog('檢查更新失敗:' + e.message, 'err'); }
+  if (o) { showUpdateOffer(o); return; }
+  // Nothing waiting: if the start was held for this check, let it go now.
+  await startIfHeld();
+}
+
+// The main process holds the start when it has an update to ask about, and
+// tells us so in the status. Releasing it is the shell's job, because the shell
+// is what asked the question.
+async function startIfHeld() {
+  try {
+    const st = await L.status();
+    if (!st || !st.startHeld || (st.core && st.core.running)) return;
+    appendLog('繼續啟動…', 'lnc');
+    await L.startCore();
+  } catch (e) { appendLog('啟動失敗:' + e.message, 'err'); }
+}
+
+// Up before anything is known. Everything that could take it down -- a reason,
+// a banner, an update question -- arrives after this point, so starting
+// covered and uncovering on demand is the order that never flashes the panels
+// at an operator.
+splashUp();
+paintGate();
+
+refresh().then(askOnce, askOnce);
 setInterval(refresh, 5000);

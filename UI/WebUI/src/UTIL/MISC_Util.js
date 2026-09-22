@@ -1,6 +1,5 @@
 import JSum from 'jsum';
-import { seedCaliper, seedEdge, arcSagittaPx, ARC_MIN_SAGITTA_PX,
-         SEARCH_POINT_EDGE_SEED } from '../shapes/_caliperSeed';
+import { convertShapeForShapeBased } from '../shapes/_caliperSeed';
 
 
 
@@ -212,6 +211,13 @@ export { CircularCounter, ConsumeQueue } from './structures';
 
 
 
+// refPngPathOf moved to defNaming.mjs so it can be unit-tested in plain Node
+// (this file pulls in the logger and half the editor). Re-exported here
+// because every existing import site names MISC_Util.
+import { refPngPathOf } from './defNaming.mjs';
+export { refPngPathOf };
+
+
 // Stamp the reference-image FULL path onto a def-INFO object before sending it to the
 // core for inspection (live/WS path). The saved .hydef stays path-free; the core reads
 // "_ref_image_path" (highest priority) to train the shape locator without guessing the
@@ -235,7 +241,7 @@ export function stampRefImagePath(deffile, edit_info) {
   }
   if (edit_info && edit_info.__img_fresh_capture) return deffile;
   if (deffile && deffile.featureSet && deffile.featureSet[0] && edit_info && edit_info.defModelPath) {
-    deffile.featureSet[0]._ref_image_path = String(edit_info.defModelPath).replace(/\.[^.]+$/, '') + '.png';
+    deffile.featureSet[0]._ref_image_path = refPngPathOf(edit_info.defModelPath);
   }
   return deffile;
 }
@@ -349,6 +355,25 @@ export function defFileGeneration(edit_info)
   // does not care keeps hashing and diffing exactly as before.
   if (typeof edit_info.shape_nms_angle === 'number' && edit_info.shape_nms_angle !== 360)
     report.featureSet[0].shape_nms_angle = edit_info.shape_nms_angle;
+  // ROI auto-pick minimum spacing. Written only when the def carries it or
+  // the operator set it: migration seeds -1 (auto), and a def that never had
+  // it must serialize byte-for-byte as before, or merely opening it in the
+  // editor reads as "settings changed" on the way out (CT 2026-09-09). The
+  // core's auto-pick already spaces points regardless of this key; the key
+  // governs the match-time dedup of stored points.
+  if (typeof edit_info.shape_roi_spacing === 'number')
+    report.featureSet[0].shape_roi_spacing = edit_info.shape_roi_spacing;
+  // Trust -> judges NA: written only when ON, so every def that never touched it
+  // keeps hashing exactly as before. The threshold rides along only when it is set.
+  if (edit_info.shape_trust_na === true) {
+    report.featureSet[0].shape_trust_na = true;
+    if (typeof edit_info.shape_trust_res_max === 'number' && edit_info.shape_trust_res_max > 0)
+      report.featureSet[0].shape_trust_res_max = edit_info.shape_trust_res_max;
+  }
+  // Acceptance gate for the shape locator, 0-100. The core takes it only when
+  // > 0 (JFetch guard), so 0 means "keep the default", not "accept anything".
+  if (typeof edit_info.shape_min_score === 'number' && edit_info.shape_min_score > 0)
+    report.featureSet[0].shape_min_score = edit_info.shape_min_score;
   if (typeof edit_info.shape_weak_thres === 'number')
     report.featureSet[0].shape_weak_thres = edit_info.shape_weak_thres;
   if (typeof edit_info.shape_strong_thres === 'number')
@@ -398,46 +423,19 @@ export function defFileGeneration(edit_info)
         // lines SUCCESS with 10 hits each and confidence 86.5, and all 8 search
         // points NA, taking 4 of the 7 judgements down with them. The def trains,
         // loads, locates, and measures nothing that depends on a point.
-        if (s && s.type === 'search_point' && s.locating !== 'caliper') {
-          const c = { ...s, locating: 'caliper' };
-          if (!c.edge) c.edge = { ...SEARCH_POINT_EDGE_SEED };
-          // min_strength is required in caliper mode; a def carrying an edge
-          // block without it is NA'd by name. Fill only that.
-          else if (typeof c.edge.min_strength !== 'number')
-            c.edge = { ...c.edge, min_strength: SEARCH_POINT_EDGE_SEED.min_strength };
-          return c;
-        }
-        if (!s || (s.type !== 'line' && s.type !== 'arc') || s.locating === 'caliper') return s;
-        // An arc taught nearly collinear does not get converted, it gets LEFT in
-        // contour mode -- which the core then refuses under shape_based, by name.
-        // That refusal is the point. Converting it produces a number rather than
-        // an error: measured on BCG-20X40X53 [13][1], caliper returns r=0.49mm
-        // against contour's 0.20mm, and its neighbour returns SUCCESS with a
-        // radius half again too big. A wrong radius that passes is worse than a
-        // def that will not train, because only one of the two gets noticed.
-        // Small sagitta <=> distant circumcentre <=> the search rays run nearly
-        // parallel instead of fanning around the bend; see _caliperSeed.
-        if (s.type === 'arc') {
-          const sag = arcSagittaPx(s, report.featureSet[0].mmpp);
-          if (sag !== null && sag < ARC_MIN_SAGITTA_PX) {
-            console.warn('[def] arc id=' + s.id + ' (' + (s.name || '') + ') taught sagitta ' +
-              sag.toFixed(1) + 'px -- left in contour mode; it needs re-teaching, not converting');
-            return s;
-          }
-        }
-        const c = { ...s, locating: 'caliper' };
-        // seedCaliper/seedEdge, never a local copy: this path and the offline
-        // converter must produce the same def, and this is the path a migration
-        // actually takes -- saving under shape_based converts every primitive
-        // without the user opening one. The copy that used to sit here measured
-        // an ARC's caliper width from the CHORD (arcSweep understates by more
-        // the tighter the bend) and searched every shape `falling` (an arc
-        // usually measures an inner radius, where falling takes the wrong side
-        // of the wire: -0.11mm on every R1.0 in the corpus). Both were fixed in
-        // _caliperSeed and measured there; this call site never followed.
-        if (!c.caliper) c.caliper = seedCaliper(s);
-        if (!c.edge) c.edge = seedEdge(s);
-        return c;
+        // ONE function, shared with the migration (which converts the editor's
+        // own shapes so the canvas and property sheet show what will be saved)
+        // and with the offline converter. An arc taught nearly collinear is LEFT
+        // in contour mode -- the core then refuses it by name, and that refusal
+        // is the point: converting it produces a wrong radius that passes
+        // (measured on BCG-20X40X53 [13][1]: 0.49mm against contour's 0.20mm).
+        // This site is now the safety net for a def edited after migration;
+        // normally everything is already converted and this is a no-op.
+        const r = convertShapeForShapeBased(s, report.featureSet[0].mmpp);
+        if (r.action === 'left_contour_arc')
+          console.warn('[def] arc id=' + s.id + ' (' + (s.name || '') + ') taught sagitta ' +
+            r.sagittaPx.toFixed(1) + 'px -- left in contour mode; it needs re-teaching, not converting');
+        return r.shape;
       });
     }
     // Pure-SBM feature-extraction region (object-frame mm polygons). The user authors
@@ -478,11 +476,19 @@ export function defFileGeneration(edit_info)
       report.featureSet[0].localization_include = inclPolys;
     }
     if (exclPolys.length) report.featureSet[0].localization_exclude = exclPolys;
-    // ROI-refine sample points (object-frame mm). ALWAYS emitted for shape_based (even
-    // []) so the core treats the def as explicit: it uses exactly these, and an empty
-    // list means NO ROI refine (coarse only). "自動產生 ROI 點" fills it from the core.
-    report.featureSet[0].roi_refine_points =
-      Array.isArray(edit_info.roi_refine_points) ? edit_info.roi_refine_points : [];
+    // ROI-refine sample points (object-frame mm). Emitted ONLY when the operator
+    // placed some. The core reads an ABSENT key as "auto-select" and an EMPTY
+    // ARRAY as "explicitly none" -- and "none" means the extraction bakes no ROI
+    // windows into the cache, which is the old, coarse-only format.
+    //
+    // This used to write [] unconditionally, so a def migrated and generated
+    // by the book came out coarse-only, and the banner then called it an old
+    // format. Measured 2026-09-04 on test2: 升級 -> 生成特徵點 -> 存檔 gave a
+    // cache with levels and no roi, fp "...|ao0.0000", and the core ran it on
+    // the sig360 fallback. There is no "explicitly none" any more: 清除 in the
+    // studio means back to auto.
+    if (Array.isArray(edit_info.roi_refine_points) && edit_info.roi_refine_points.length)
+      report.featureSet[0].roi_refine_points = edit_info.roi_refine_points;
   }
   // def_image_reg LIVES IN featureSet[0] as of 2026-08-26. It used to sit at the
   // def top level, and that cost two things.
@@ -563,18 +569,26 @@ export function defFileGeneration(edit_info)
     const _fs = report.featureSet[0];
     const _incl = _fs.localization_include;
     const _excl = _fs.localization_exclude;
-    if (edit_info.__shape_cache || _incl || _excl) {
+    // ROI refine points join them. All three are inputs to the next extraction
+    // and none of them is read while the machine runs -- a def carrying its own
+    // ROI windows locates identically with roi_refine_points deleted, measured
+    // to the last digit. Grouping them says which half of the def they belong
+    // to; the cache beside them is the OUTPUT of the extraction they configure.
+    const _roi = _fs.roi_refine_points;
+    if (edit_info.__shape_cache || _incl || _excl || _roi) {
       const _inh = Array.isArray(_fs.inherentfeatures) ? _fs.inherentfeatures : [];
       const _entry = { id: SBM_INFO_ID, type: 'sbm_info', name: SBM_INFO_NAME };
       if (edit_info.__shape_cache) _entry.shape_cache = edit_info.__shape_cache;
       if (_incl) _entry.localization_include = _incl;
       if (_excl) _entry.localization_exclude = _excl;
+      if (_roi) _entry.roi_refine_points = _roi;
       _fs.inherentfeatures = _inh
         .filter((e) => !(e && e.name === SBM_INFO_NAME))
         .concat([_entry]);
     }
     delete _fs.localization_include;
     delete _fs.localization_exclude;
+    delete _fs.roi_refine_points;
   }
   // The legacy placement is removed rather than mirrored: two copies of one
   // value is how they come to disagree, and the core prefers the new one

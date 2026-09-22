@@ -12,7 +12,9 @@
 //     core runs ONE caliper along the search vector — see search_point.js).
 //   - `ref[0]` slot — references one line shape; clicking enters ref-pick mode
 //     via onTracePick(["ref", "0"]).
-import React from 'react';
+import { B } from './bounds';
+import React, { useEffect } from 'react';
+import { EdgeProfileView } from './EdgeProfileView.jsx';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
   RefSlot, StepButton, NumberTweakActions, translate,
@@ -25,6 +27,7 @@ const wrap360 = (v) => ((Number(v) % 360) + 360) % 360;
 
 export function SearchPointPropertySheet({
   shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'search_point',
+  lockCaliper = false, onProbeEdges, mmpp = 0,
 }) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
@@ -48,6 +51,31 @@ export function SearchPointPropertySheet({
     update(patch);
   };
 
+  // Edge-profile probe. The payload belongs to THIS shape and to the window
+  // geometry currently on screen, so it is dropped whenever either moves --
+  // stale evidence under a live slider is worse than no evidence.
+  const [edgeProfile, setEdgeProfile] = React.useState(null);
+  const [probeBusy, setProbeBusy]     = React.useState(false);
+  const [probeNote, setProbeNote]     = React.useState(null);
+  const spGeom = JSON.stringify([shape.id, shape.locating, shape.margin, shape.width]);
+  useEffect(() => { setEdgeProfile(null); setProbeNote(null); }, [spGeom]);
+  const runProbe = () => {
+    if (!onProbeEdges) return;
+    setProbeBusy(true); setProbeNote(null);
+    onProbeEdges(shape)
+      .then((p) => { setEdgeProfile(p); })
+      .catch((e) => { setEdgeProfile(null); setProbeNote(String(e && e.message || e)); })
+      .finally(() => setProbeBusy(false));
+  };
+
+  // Locked defs are caliper-only, so a shape that arrives as contour is put
+  // right rather than left in a state the def cannot measure. Same effect as
+  // the line and arc sheets.
+  useEffect(() => {
+    if (lockCaliper && shape.locating !== 'caliper') flipLocating('caliper');
+    // eslint-disable-next-line
+  }, [lockCaliper, shape.id]);
+
   const t = (key) => translate(dict, dictTheme, key);
   const defaultTweak = { mul: [1.5], add: [0.1] };
 
@@ -67,20 +95,29 @@ export function SearchPointPropertySheet({
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('search_point')}</span></Row>
     <TextField label={t('name')} value={shape.name}
       onCommit={(name) => update({ name })} />
-    <NumberField label={t('margin')} value={shape.margin}
+    <NumberField {...B.margin} label={t('margin')} value={shape.margin}
       onCommit={(margin) => update({ margin })}
       tweak={defaultTweak} />
-    <NumberField label={t('width')} value={shape.width}
+    <NumberField {...B.width} label={t('width')} value={shape.width}
       onCommit={(width) => update({ width })}
       tweak={defaultTweak} />
-    <NumberField label={t('angleDeg')} value={shape.angleDeg}
+    <NumberField {...B.angleDeg} label={t('angleDeg')} value={shape.angleDeg}
       onCommit={(v) => update({ angleDeg: wrap360(v) })}
       quickActions={angleActions} />
     <SwitchField label={t('search_far')}
       checked={!!shape.search_far}
       onChange={(v) => update({ search_far: v })} />
-    <DropdownField label={t('locating')} value={shape.locating || 'contour'}
-      options={['contour', 'caliper']} onChange={flipLocating} />
+    {/* A CHOICE THE DEF CANNOT HONOUR IS NOT A CHOICE.
+        On a shape_based def there is no contour to follow -- the core says so
+        at load ("CONTOUR locating ... cannot be measured by the shape locator
+        ... they will report nothing, silently") -- so contour is not an option,
+        it is a way to switch a feature off without being told. The line and arc
+        sheets have hidden it since lockCaliper existed; this one never received
+        the prop, so the search point kept offering it. */}
+    {!lockCaliper &&
+      <DropdownField label={t('locating')} value={shape.locating || 'contour'}
+        options={['contour', 'caliper']} optionLabel={(v) => t('opt_' + v)}
+        onChange={flipLocating} />}
     <SwitchField label={t('locating_anchor')}
       checked={!!shape.locating_anchor}
       onChange={(v) => update({ locating_anchor: v })} />
@@ -88,30 +125,39 @@ export function SearchPointPropertySheet({
       checked={!!shape.anchor_corner}
       onChange={(v) => update({ anchor_corner: v })} />}
 
-    {shape.locating === 'caliper' && <Section label="edge">
-      <DropdownField label="method" value={shape.edge?.method}
-        options={EDGE_METHODS}
+    {(lockCaliper || shape.locating === 'caliper') && <Section label={t('edge')}>
+      <DropdownField label={t('method')} value={shape.edge?.method}
+        options={EDGE_METHODS} optionLabel={(v) => t('opt_' + v)}
         onChange={(method) => updateSub('edge', { method })} />
-      <DropdownField label="polarity" value={shape.edge?.polarity}
-        options={EDGE_POLARITIES}
+      <DropdownField label={t('polarity')} value={shape.edge?.polarity}
+        options={EDGE_POLARITIES} optionLabel={(v) => t('opt_' + v)}
         onChange={(polarity) => updateSub('edge', { polarity })} />
-      <NumberField label="nth" value={shape.edge?.nth} step={1}
+      <NumberField {...B.nth} label={t('nth')} value={shape.edge?.nth}
         onCommit={(nth) => updateSub('edge', { nth })}
         tweak={{ add: [1] }} />
-      <NumberField label="min_strength" value={shape.edge?.min_strength}
+      <NumberField {...B.min_strength} label={t('min_strength')} value={shape.edge?.min_strength}
         onCommit={(min_strength) => updateSub('edge', { min_strength })}
         tweak={defaultTweak} />
-      <NumberField label="include_range" value={shape.edge?.include_range}
+      {onProbeEdges && <EdgeProfileView
+        profile={edgeProfile} busy={probeBusy} note={probeNote}
+        shape={shape} mmpp={mmpp} onApply={(patch) => onUpdate({ ...shape, ...patch })}
+        minStrength={shape.edge?.min_strength}
+        manualOffset={shape.edge?.manual_offset}
+        onChange={(min_strength) => updateSub('edge', { min_strength })}
+        onOffset={(manual_offset) => updateSub('edge',
+          { manual_offset: Number(manual_offset.toFixed(5)) })}
+        onProbe={runProbe} />}
+      <NumberField {...B.include_range} label={t('include_range')} value={shape.edge?.include_range}
         onCommit={(include_range) => updateSub('edge', { include_range })}
         tweak={defaultTweak} />
-      <NumberField label="manual_offset" value={shape.edge?.manual_offset}
+      <NumberField {...B.manual_offset} label={t('manual_offset')} value={shape.edge?.manual_offset}
         onCommit={(manual_offset) => updateSub('edge', { manual_offset })}
         tweak={defaultTweak} />
     </Section>}
 
     <Section label={t('ref') || 'ref'}>
       <Row label={t('0') || '0'}>
-        <RefSlot refEntry={refEntry} shapeList={shapeList}
+        <RefSlot emptyLabel={t('pick_ref')} refEntry={refEntry} shapeList={shapeList}
           onPick={() => onTracePick && onTracePick(['ref', '0'])} />
       </Row>
     </Section>

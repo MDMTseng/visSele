@@ -61,6 +61,12 @@
   /* 1 and it will fill whole space left if no flex value are set to other children*/
   /* background: gold; */
   overflow: auto;
+  /* A flex item's min-height defaults to auto -- "at least as tall as my
+     content" -- which stops this box shrinking to its flex share. Kept because
+     it is correct, though it was not what caused the six pixels of overflow
+     here: that was the canvas sitting on a text baseline. See the canvas rule
+     in basis.css. */
+  min-height: 0;
 }
 
 .flex_footer {
@@ -222,6 +228,27 @@
 {
   color:rgb(100,100, 100);
  
+}
+
+/* Connected, not yet usable: the port is open, the device has not answered.
+   Amber like offline because both mean "do not rely on this yet", but a class
+   of its own -- offline is the absence of a link and this is a link that has
+   not proved itself, and the day those want to look different this is where
+   it is done. Pulsing, because unlike offline it is expected to end. */
+.color-pending-anim svg, .color-pending-anim span
+{
+  color:rgb(250, 173, 20);
+  animation: color-pending-anim-key 1.2s ease-in-out infinite;
+}
+
+@keyframes color-pending-anim-key {
+  0%   {color: rgb(250, 173, 20);}
+  50%  {color: rgb(255, 214, 122);}
+  100% {color: rgb(250, 173, 20);}
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .color-pending-anim svg, .color-pending-anim span { animation: none; }
 }
 
 
@@ -691,3 +718,41 @@ body.sp_Style.blockS  {
 .variation2:hover span:after {
   color: #80e1ff;
 }
+
+
+/* uInsp control panel: wide, and against the right edge.
+   Alignment belongs on the WRAP, not on .ant-modal: antd centres the dialog
+   with `margin: 0 auto` and positions it with a `top` on the modal itself, so
+   an inline right/position on the dialog fights both. Flexing the wrap moves
+   the dialog without touching the rules antd owns, and it keeps working when
+   the dialog is resized.
+   Right rather than centred because this panel is read WHILE watching the
+   machine view it used to cover -- numbers on one side, the thing they describe
+   on the other. */
+.uinsp-modal-right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 16px 16px 16px 0;
+}
+.uinsp-modal-right .ant-modal {
+  top: 0;
+  margin: 0;
+  padding-bottom: 0;
+  max-width: calc(100vw - 32px);
+  /* On a Surface Go the requested width is wider than the screen, and the cap
+     above is what makes that safe -- the dialog shrinks instead of pushing the
+     page sideways. Stated because the width prop and this line are one
+     decision: raise the width, this is what keeps it from breaking small. */
+}
+
+/* Def editor: primitive buttons as a two-column grid (DefConfUI PRIM_GRID). */
+.prim-grid { display: flex; flex-wrap: wrap; width: 100%; height: auto !important; min-height: 0 !important; overflow: visible; }
+.prim-grid .prim-btn {
+  float: left; box-sizing: border-box;
+  width: 50%; height: 44px; margin: 0; padding: 0 6px;
+  display: flex; align-items: center; justify-content: flex-start;
+  font-size: 14px;
+}
+.prim-grid .prim-btn > svg { flex: 0 0 auto; margin-right: 6px; }
+.prim-grid .prim-btn > p { margin: 0; padding: 0; white-space: nowrap; }

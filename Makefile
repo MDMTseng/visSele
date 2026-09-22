@@ -1,14 +1,14 @@
 
-domake:CORE Launcher
+# The v1 launcher (UI/Electron_XPLAT) and its targets were removed 2026-09-23.
+domake:CORE
 
 CORE:build_APP_Core export_APP_Core zip_APP_Core
-Launcher:build_APP_Launcher export_APP_Launcher zip_APP_Launcher
 
 
-EXPORT_ALL: export_APP_Core export_APP_Launcher 
+EXPORT_ALL: export_APP_Core
 
-domake_ALL:build export_APP_Core zip_APP_Core export_APP_Launcher zip_APP_Launcher
-.PHONY:CORE Launcher export_APP_Core export_APP_Launcher zip_APP_Core
+domake_ALL:build export_APP_Core zip_APP_Core
+.PHONY:CORE export_APP_Core zip_APP_Core
 
 
 build_APP_Core: 
@@ -18,9 +18,6 @@ build_APP_Core:
 	(cd UI/WebUI; npm run build )
 	(cd UI/InspectionMonitor/; npm run build )
 
-
-build_APP_Launcher: 
-	cd UI/Electron_XPLAT; npm run packaging ;
 
 
 
@@ -40,39 +37,30 @@ export_APP_Core:
 	(cd $(abspath .)/InspectionCore/Core0_1/ ; make -f Makefile_mods export_binary EXPORT_PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core)
 
 	
+	# scripts/ no longer carries a GraphQL server: DB/apollo_gql_server and the
+	# v1 launcher script that started it were deleted 2026-09-23, dead since 2021.
 	#Export scripts
 	cp -r scripts $(EXP_APP_Core_Folder)
 	
 	-@mkdir -p $(EXP_APP_Core_Folder)/scripts/InspMonitor
 	cp -r UI/InspectionMonitor/build/* $(EXP_APP_Core_Folder)/scripts/InspMonitor
 
-	-@mkdir -p $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
-	cp -r DB/apollo_gql_server/schema $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
-	cp -r DB/apollo_gql_server/server $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
-	cp -r DB/apollo_gql_server/node_modules $(EXP_APP_Core_Folder)/scripts/
 	
 
 	
 	
-export_APP_Launcher:
-	#Export APP_Launcher
-	-@mkdir -p $(EXPFolder)/APP_Launcher
-	cd UI/Electron_XPLAT; sh export.sh ../../$(EXPFolder)/APP_Launcher
 
 
 	
 UPDATE_APP_Core_NAME=
 	
-UPDATE_APP_Launcher_NAME=
 
 ifeq ($(OS),Windows_NT)
 	UPDATE_APP_Core_NAME=update_win
-	UPDATE_APP_Launcher_NAME=APPL_win
 else
 	UNAME_S := $(shell uname -s)
 	ifeq ($(UNAME_S),Darwin)
 		UPDATE_APP_Core_NAME=update_mac
-		UPDATE_APP_Launcher_NAME=APPL_mac
 	endif
 endif
 
@@ -85,18 +73,15 @@ zip_APP_Core:
 
 
 	
-zip_APP_Launcher:
-	-@cd $(EXPFolder) ; rm -r $(UPDATE_APP_Launcher_NAME) $(UPDATE_APP_Launcher_NAME).zip
-	cd $(EXPFolder) ;python ../MakeUtil.py --type=zip --src_dir=APP_Launcher --dst_path=$(UPDATE_APP_Launcher_NAME).zip
 
 
 # =============================================================================
 # v2 launcher (UI/Launcher) -- separate targets on purpose
 # =============================================================================
 #
-# The v1 targets above are untouched: UI/Electron_XPLAT still builds and
-# packages exactly as before, so a machine can be serviced with either shell
-# while the new one is being proven.
+# There are no v1 launcher targets any more: UI/Electron_XPLAT was removed once
+# the v2 launcher had been shipping for several releases, so this is the only
+# shell. They existed as a fallback while it was being proven.
 #
 # The v2 package differs from update_win.zip in three ways:
 #

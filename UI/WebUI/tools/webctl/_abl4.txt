@@ -1,0 +1,18 @@
+(node:14924) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/w2110/Documents/workspace/visSele/UI/WebUI/src/shapes/_edgeAuto.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\w2110\Documents\workspace\visSele\UI\WebUI\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+node:fs:484
+    return binding.readFileUtf8(path, stringToFlags(options.flag));
+                   ^
+
+Error: ENOENT: no such file or directory, open 'C:\Users\w2110\Documents\workspace\visSele\InspectionCore\Core0_1\data\ok32_10625_2200300483_sbm.hydef'
+    at Object.readFileSync (node:fs:484:20)
+    at file:///C:/Users/w2110/Documents/workspace/visSele/UI/WebUI/tools/webctl/_fleet_auto.mjs:25:32 {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'C:\\Users\\w2110\\Documents\\workspace\\visSele\\InspectionCore\\Core0_1\\data\\ok32_10625_2200300483_sbm.hydef'
+}
+
+Node.js v24.19.0

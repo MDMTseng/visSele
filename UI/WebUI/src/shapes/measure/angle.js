@@ -8,11 +8,328 @@ import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import dclone from 'clone';
 import { mkLog } from "UTIL/logger";
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 const log = mkLog("editor.shapes");
 
 // canvasCtrl: angle refs two lines or search_points (intersection).
 export function availableRefShapes(shapeList) {
-  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'aux_line' || s.type === 'search_point');
+}
+
+// SIGNED MODE (parallelism / squareness): the rotation from line A (the
+// reference) to line B, modulo 180, minus the nominal, wrapped into
+// (-90, 90]. Same formula as the core's ANGLE judge (signed_mode branch);
+// change both or neither. CCW-positive in the def frame (y-down canvas: the
+// atan2 sign is the same one the core uses on the image, so they agree).
+export const ANGLE_RANGES = [
+  { key: 'signed90',  label: '±90 平行度',      hint: '線 B 相對線 A 的轉角,−90~+90,線不分頭尾。平行 = 0。' },
+  { key: 'abs90',     label: '0~90 銳角',       hint: '兩線間的銳角,無正負。' },
+  { key: 'deg180',    label: '0~180',           hint: 'A 逆時針轉到 B,0~180,線不分頭尾。' },
+  { key: 'signed180', label: '±180 向量',       hint: '把線當有頭尾的向量(pt1→pt2),−180~+180。' },
+  { key: 'deg360',    label: '0~360 向量',      hint: 'A 逆時針轉到 B,0~360,向量有頭尾。' },
+  { key: 'supp',      label: '補角 180−θ',      hint: '180 減去 0~180 的角。' },
+  { key: 'comp',      label: '餘角 90−θ',       hint: '90 減去銳角。' },
+];
+const wrap180 = (v) => { v = v % 180; if (v > 90) v -= 180; else if (v <= -90) v += 180; return v; };
+const wrap360 = (v) => { v = v % 360; if (v > 180) v -= 360; else if (v <= -180) v += 360; return v; };
+const pos180  = (v) => { v = v % 180; if (v < 0) v += 180; return v; };
+const pos360  = (v) => { v = v % 360; if (v < 0) v += 360; return v; };
+// Same seven readings as the core's ANGLE judge (signed_mode branch).
+export function vectorAngleDeg(a1, a2, nominal, range) {
+  const d = (a2 - a1) * 180 / Math.PI - (nominal || 0);
+  switch (range) {
+    case 'abs90':     return Math.abs(wrap180(d));
+    case 'deg180':    return pos180(d);
+    case 'signed180': return wrap360(d);
+    case 'deg360':    return pos360(d);
+    case 'supp':      return 180 - pos180(d);
+    case 'comp':      return 90 - Math.abs(wrap180(d));
+    default:          return wrap180(d);
+  }
+}
+export function signedAngleDeg(a1, a2, nominal) { return vectorAngleDeg(a1, a2, nominal, 'signed90'); }
+
+// The overlay for signed mode. There is no vertex to draw at (parallel lines
+// have none), so everything anchors on the label point: a dashed stub along
+// A's direction, a solid stub along B's, a small arc arrow between them whose
+// direction IS the sign, and a faint tie from the label point to each line so
+// the two lines being compared are unmistakable. The arc is drawn with a
+// minimum opening (15 deg) because the real angle is usually well under 1 deg
+// and would be invisible; the text carries the true value.
+function drawSigned(ctx, shape, subObjs, renderer, sctx, A0, A1, B0, B1) {
+  const { measValueAdjStr } = sctx;
+  const aA = Math.atan2(A1.y - A0.y, A1.x - A0.x);
+  const aB = Math.atan2(B1.y - B0.y, B1.x - B0.x);
+  const nominal = shape.nominal_deg || 0;
+  const range = shape.angle_range || 'signed90';
+  const measureDeg = vectorAngleDeg(aA, aB, nominal, range);
+  const shownDeg = (shape.inspection_value !== undefined) ? shape.inspection_value : measureDeg;
+  const P = shape.pt1;
+  const ps = renderer.getPrimitiveSize();
+  const toRad = Math.PI / 180;
+  const refA = aA + nominal * toRad;          // the datum direction (A rotated by the nominal)
+  const raw = wrap360((aB - refA) / toRad);
+
+  const K = overlayKit(ctx, renderer);
+
+  const TAGS = { signed90: '±90', abs90: '0~90', deg180: '0~180', signed180: '±180', deg360: '0~360', supp: '補角', comp: '餘角' };
+  const measValueAdjStrTag = ' ' + (TAGS[range] || '±90');
+
+  // This is the classic angle overlay -- the same arc-with-one-arrowhead the
+  // quadrant mode has always drawn, in the caller's colour -- with only what
+  // the vector mode actually needs added on top:
+  //   * the sweep starts at the DATUM direction (A + nominal), so the drawn
+  //     arc is the reading, and the arrowhead's direction IS the sign;
+  //   * each range sweeps its own span, so 補角/餘角 draw the angle they
+  //     report rather than the raw one;
+  //   * parallel lines have no vertex, so the arc then centres on the label
+  //     point instead of vanishing to infinity.
+  let sDeg, eDeg;
+  switch (range) {
+    case 'abs90':     { sDeg = 0; eDeg = wrap180(raw); break; }
+    case 'deg180':    { sDeg = 0; eDeg = pos180(raw); break; }
+    case 'signed180': { sDeg = 0; eDeg = wrap360(raw); break; }
+    case 'deg360':    { sDeg = 0; eDeg = pos360(raw); break; }
+    case 'supp':      { sDeg = pos180(raw); eDeg = 180; break; }
+    case 'comp':      { const d = wrap180(raw); const sg = Math.sign(d) || 1; sDeg = d; eDeg = sg * 90; break; }
+    default:          { sDeg = 0; eDeg = wrap180(raw); break; }
+  }
+
+
+  // WHERE THE ANGLE IS DRAWN.
+  //
+  // With a usable vertex the arc goes on it, and each side's extension runs
+  // ALONG ITS OWN LINE from the end of the real segment, through the vertex,
+  // out past the arc -- which is what an extension line means.
+  //
+  // Near-parallel lines have no vertex on screen. The old fallback centred the
+  // arc on the label point with a minimum radius, which made the arc a dot and
+  // turned the two extensions into a V pointing at the label -- neither line
+  // extended, nothing to read. So the label point becomes a LOCAL vertex: the
+  // two directions are drawn as rays from it at a fixed radius, each tied back
+  // to its own line by a dotted line from the foot of the perpendicular. The
+  // rays are the lines' directions, the arc between them is the reading.
+  // A vertex is only worth drawing on when the angle is actually READ there.
+  // The construction is always the same one, and it is the one a person draws
+  // by hand: continue each line, dotted and collinear, past the end of the
+  // real segment until the two meet; put the arc on that vertex; run a leader
+  // from the arc to the label. The label's distance from the vertex IS the
+  // radius, so where the operator parks it decides how big the arc is.
+  //
+  // There is deliberately no second style. A local arc drawn near the label,
+  // tied to the lines by perpendiculars, was tried and is wrong: those
+  // perpendicular ties are not extension lines, they cross the lines instead
+  // of continuing them, and nothing on the canvas then says where the angle
+  // actually is.
+  let V = intersectPoint(A0, A1, B0, B1);
+  const vOK = V && Number.isFinite(V.x) && Number.isFinite(V.y)
+              && Math.hypot(V.x - P.x, V.y - P.y) <= OVERLAY.angle.vertex_max_ps * ps;
+  const dist = vOK ? Math.max(Math.hypot(P.x - V.x, P.y - V.y), 10 * ps) : 0;
+
+  // ===========================================================================
+  // ONE CONSTRUCTION, DRAWN IN ITS OWN FRAME
+  //
+  // Everything below is built at the vertex with the DATUM ALONG +x, and a
+  // canvas transform puts it on the part. That is the whole design, and it is
+  // what makes the rest of this function have no special cases.
+  //
+  // WHY. The measurement is defined in the OBJECT's frame -- the core measures
+  // a part detected as 反 as if it were not mirrored -- while the lines are
+  // drawn where they sit in the IMAGE. A mirror reverses the sense of rotation,
+  // so the two disagree in sign and agree exactly in magnitude: measured on a
+  // real frame, aA 161.83 deg and aB 168.21 deg is a +6.38 deg turn on screen
+  // against the core's -6.38, with viewFlip false.
+  //
+  // Every attempt to patch that downstream failed, and each failed differently:
+  // sweeping the reported sign from the datum draws the other wedge entirely;
+  // swapping the sweep's ends fixes the arrowhead but leaves every other angle
+  // in the function still living in the image frame; and the 180-degree "which
+  // side" flip then has to be reasoned about twice. They were all the same bug
+  // wearing different clothes.
+  //
+  // In the local frame there is nothing to reconcile. mir folds the handedness
+  // into the transform, so `mir * eDeg` -- eDeg being the turn measured off the
+  // drawn lines -- IS the reading the core reported, for 正 and 反 alike. The
+  // arc sweeps it, the arrowhead follows it, and ccw is just its sign.
+  //
+  // Text is drawn AFTER this transform is popped, or it would come out
+  // mirrored. So would anything else that must stay upright.
+  // ===========================================================================
+  const mir = renderer.objIsFlipped ? -1 : 1;
+  const cRef = Math.cos(refA), sRef = Math.sin(refA);
+  // image -> local: undo the translation to V, undo the datum rotation, then
+  // the mirror. The exact inverse of the ctx transform applied below.
+  const toLocal = (q) => {
+    const dx = q.x - V.x, dy = q.y - V.y;
+    return { x: dx * cRef + dy * sRef, y: mir * (-dx * sRef + dy * cRef) };
+  };
+
+  // The two rays, as local angles. sDeg/eDeg are offsets from the datum, so the
+  // datum rotation is already accounted for by the transform; only handedness
+  // remains.
+  let s0 = mir * sDeg * toRad;
+  let e0 = mir * eDeg * toRad;
+
+  const Pl = vOK ? toLocal(P) : { x: dist, y: 0 };
+  const labelLocal = Math.atan2(Pl.y, Pl.x);
+
+  // WHICH SIDE OF THE VERTEX. Vertical angles are equal, so the same reading
+  // can be drawn on either side of the crossing -- and one of them is the side
+  // the part and the label are on. Drawn on the far side the construction walks
+  // off into empty image. Both rays flip together, so the reading is untouched;
+  // only the side changes.
+  if (vOK) {
+    const mid = (s0 + e0) / 2;
+    if (Math.cos(labelLocal - mid) < 0) { s0 += Math.PI; e0 += Math.PI; }
+  }
+
+  // A fraction of a degree is invisible as an arc. Below min_draw_deg the arc is
+  // opened out to that much so the direction still reads; the text carries the
+  // true value.
+  const minSpan = (OVERLAY.angle.min_draw_deg || 0) * toRad;
+  let e0d = e0;
+  if (Math.abs(e0 - s0) < minSpan) e0d = s0 + Math.sign(e0 - s0 || 1) * minSpan;
+
+  const TWO_PI = Math.PI * 2;
+  const norm = (a) => { a = a % TWO_PI; return a < 0 ? a + TWO_PI : a; };
+  // The label's bearing in the IMAGE, kept for the text's own rotation below --
+  // the text is drawn outside the local frame and must follow the radius as it
+  // appears on screen.
+  const labelTheta = vOK ? Math.atan2(P.y - V.y, P.x - V.x) : NaN;
+
+  ctx.save();
+  if (vOK) {
+    ctx.save();
+    ctx.translate(V.x, V.y);
+    ctx.rotate(refA);
+    if (mir < 0) ctx.scale(1, -1);
+
+    // AN EXTENSION LINE IS THE LINE, CONTINUED -- so it is built from the line's
+    // own direction and from nothing else. The vertex is the origin here, which
+    // is the other thing this frame buys: the run is simply from the real
+    // segment out to whichever of the origin and the arc's end is furthest,
+    // drawn on BOTH sides because the operator can drag the label past the far
+    // end of the segment.
+    const A0l = toLocal(A0), A1l = toLocal(A1), B0l = toLocal(B0), B1l = toLocal(B1);
+    const O = { x: 0, y: 0 };
+    for (const [ang, L0, L1] of [[s0, A0l, A1l], [e0d, B0l, B1l]]) {
+      const dir = Math.atan2(L1.y - L0.y, L1.x - L0.x);
+      const ux = Math.cos(dir), uy = Math.sin(dir);
+      const t = (q) => (q.x - L0.x) * ux + (q.y - L0.y) * uy;
+      const at_t = (tt) => ({ x: L0.x + tt * ux, y: L0.y + tt * uy });
+      const segLo = Math.min(t(L0), t(L1)), segHi = Math.max(t(L0), t(L1));
+      const E = { x: (dist + 3 * ps) * Math.cos(ang), y: (dist + 3 * ps) * Math.sin(ang) };
+      const lo = Math.min(segLo, t(O), t(E)), hi = Math.max(segHi, t(O), t(E));
+      if (lo < segLo - 1e-9) K.construction(at_t(lo), at_t(segLo));
+      if (hi > segHi + 1e-9) K.construction(at_t(segHi), at_t(hi));
+    }
+
+    // THE LEAD-OUT. The label sets the radius but the operator is free to park
+    // it outside the swept angle, and then the arc and its number sit apart with
+    // nothing joining them. Continue the arc from whichever end is nearer, out
+    // to the label's own bearing -- but only while that stays SHORT, by angle
+    // and by the length it actually draws. A far vertex makes the radius huge,
+    // and a "small" 35 deg connector then sweeps across the frame. Past either
+    // cap, a straight leader: what a drawing uses, and unmistakable.
+    const fromStart = norm(labelLocal - s0);
+    const swept = norm(e0d - s0);
+    const inside = (e0d >= s0) ? (fromStart <= swept)
+                               : (norm(s0 - labelLocal) <= norm(s0 - e0d));
+    if (!inside) {
+      const gapEnd = norm((e0d >= s0) ? labelLocal - e0d : e0d - labelLocal);
+      const gapStart = norm((e0d >= s0) ? s0 - labelLocal : labelLocal - s0);
+      const gap = Math.min(gapEnd, gapStart);
+      const nearEnd = gapEnd <= gapStart;
+      ctx.save();
+      ctx.strokeStyle = K.withAlpha(K.C.reading, OVERLAY.alpha.faint);
+      ctx.lineWidth = K.lw * K.S.thin_w;
+      ctx.setLineDash(K.dash('tie'));
+      const lenOK = (gap * dist) <= OVERLAY.angle.lead_arc_max_len_ps * ps;
+      if (gap <= OVERLAY.angle.lead_arc_max_deg * toRad && lenOK) {
+        ctx.beginPath();
+        if (nearEnd) ctx.arc(0, 0, dist, e0d, labelLocal, e0d < s0);
+        else         ctx.arc(0, 0, dist, labelLocal, s0, e0d < s0);
+        ctx.stroke();
+      } else {
+        const from = nearEnd ? e0d : s0;
+        K.seg({ x: dist * Math.cos(from), y: dist * Math.sin(from) }, Pl);
+      }
+      ctx.restore();
+    }
+
+    // The reading itself: one arc, one arrowhead, and the arrowhead's direction
+    // IS the sign.
+    ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+    ctx.lineWidth = K.lw * K.S.line_w;
+    ctx.setLineDash(K.dash('meas'));
+    renderer.drawArcArrow(ctx, 0, 0, dist, s0, e0d, e0d < s0);
+    ctx.setLineDash([]);
+    ctx.restore();
+  } else {
+    // Truly parallel, or a vertex so far out that drawing to it is nonsense.
+    // There is no angle to draw, so draw none -- just say which two lines the
+    // number came from, and let the text carry it.
+    K.construction(K.projOn(P, A0, A1), P);
+    K.construction(K.projOn(P, B0, B1), P);
+  }
+
+  // TEMPORARY DIAGNOSTIC -- window.__ANGLE_DEBUG__ = true in the console.
+  // Kept because three plausible explanations for this bug were argued from
+  // screenshots and every one was contradicted by the next clue; the numbers
+  // settled it in a single round trip. sweep_local_deg is the one that matters:
+  // it is the reading, and it should equal core_value for 正 and 反 alike.
+  if (typeof window !== 'undefined' && window.__ANGLE_DEBUG__) {
+    const D = (v) => (typeof v === 'number' ? +v.toFixed(2) : v);
+    // eslint-disable-next-line no-console
+    console.log('[angle]', measureLabelName(shape), {
+      range, flipped: mir < 0,
+      core_value: D(shape.inspection_value),
+      js_measureDeg: D(measureDeg),
+      sweep_local_deg: D((e0d - s0) * 180 / Math.PI),
+      sDeg: D(sDeg), eDeg: D(eDeg),
+      label_local_deg: D(labelLocal * 180 / Math.PI),
+      vOK, radius_ps: D(dist / ps),
+    });
+  }
+
+  renderer.drawpoint(ctx, P);
+  ctx.restore();
+
+  const fontPx = renderer.getFontHeightPx();
+  ctx.font = renderer.getFontStyle(1);
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  // Lay the text along the radius it hangs off, the way a drawing does -- and
+  // flip it end-for-end when that would put it upside down, so it is always
+  // read left-to-right. draw_Text cancels the VIEW rotation to keep text
+  // upright, so the view's own rotation is added back here; without that the
+  // label would follow the radius in image space and not on screen.
+  if (OVERLAY.angle.label_follows_radius && Number.isFinite(labelTheta) && !renderer.viewFlip) {
+    let th = labelTheta + (renderer.viewRotation || 0);
+    th = Math.atan2(Math.sin(th), Math.cos(th));
+    if (th > Math.PI / 2 || th < -Math.PI / 2) th += Math.PI;
+    ctx.rotate(th);
+  }
+  ctx.strokeStyle = "black";
+  const fmt = (v) => (v > 0 ? '+' : '') + v.toFixed(renderer.fixedDigit.A) + 'º';
+  let measureValue;
+  if (shape.inspection_value !== undefined) {
+    const iv = shape.inspection_value;
+    const marginPC = (iv > shape.value)
+      ? (iv - shape.value) / (shape.USL - shape.value)
+      : -(iv - shape.value) / (shape.LSL - shape.value);
+    renderer.drawInspMeasureInfoText(ctx, measureLabelName(shape), fmt(iv), marginPC, fontPx);
+    measureValue = iv;
+  } else {
+    renderer.drawDefMeasureInfoText(ctx, measureLabelName(shape),
+      fmt(shape.value),
+      "L:" + fmt(shape.LSL) + " U:" + fmt(shape.USL),
+      "Now:" + fmt(measureDeg) + measValueAdjStrTag + measValueAdjStr,
+      fontPx);
+    measureValue = measureDeg;
+  }
+  ctx.restore();
+  return measureValue;
 }
 
 export function draw(ctx, shape, subObjs, renderer, sctx) {
@@ -40,6 +357,10 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                   //console.log(shape,subObjs,obj0_pt2,obj1_pt2);
 
                   
+                  if (shape.angle_mode === 'signed')
+                    return drawSigned(ctx, shape, subObjs, renderer, sctx,
+                                      subObjs[0].pt1, obj0_pt2, subObjs[1].pt1, obj1_pt2);
+
                   let srcPt =
                     intersectPoint(subObjs[0].pt1, obj0_pt2, subObjs[1].pt1, obj1_pt2);
                   // Parallel lines have no vertex, so there is no angle to draw
@@ -197,7 +518,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
                       (shape.inspection_value - shape.value) / (shape.USL - shape.value) :
                       -(shape.inspection_value - shape.value) / (shape.LSL - shape.value);
                     renderer.drawInspMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       (shape.inspection_value).toFixed(renderer.fixedDigit.A) + "º",
                       marginPC,fontPx);
                     measureValue=shape.inspection_value;
@@ -206,7 +527,7 @@ export function draw(ctx, shape, subObjs, renderer, sctx) {
             
                     
                     renderer.drawDefMeasureInfoText(ctx,
-                      shape.name,
+                      measureLabelName(shape),
                       ""+shape.value.toFixed(renderer.fixedDigit.A) + "º",
                       "L:" + shape.LSL.toFixed(renderer.fixedDigit.A) + "º U:" + shape.USL.toFixed(renderer.fixedDigit.A) + "º",
                       "Now:" + (measureDeg).toFixed(renderer.fixedDigit.A) + "º" + measValueAdjStr,

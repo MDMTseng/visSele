@@ -1,0 +1,1840 @@
+// SBM Studio v2 -- the Surface Go layout, running beside the original.
+//
+// A COPY, deliberately. The old studio stays reachable and untouched so a
+// machine on the line can fall back to it the moment this one misbehaves;
+// that is worth more right now than not duplicating ~800 lines. The two are
+// expected to converge and one of them to be deleted -- until then, a fix
+// that matters must be applied to BOTH files, and this comment is the only
+// thing that will remind anyone of that.
+//
+// What is NOT duplicated: HookCanvasComponent and every pure helper
+// (sbmSweep, sbmInspectResult, matchThreshold, MISC_Util) are imported from
+// where they already live, so the parts with an answer have one copy.
+// Self-contained SBM localization "studio": a hook-driven canvas (no global redux
+// state machine) + an SBM-only toolbar, hosted in a full-screen modal. All drawing and
+// interaction live in `sbmDrawHook`; the committed data still lives in the def
+// (localization polygons in @__SBM_INFO__ via edit_info.__loc_include /
+// __loc_exclude, plus def_image_reg -- NOT in shapeList), so the existing save
+// (defFileGeneration) round-trips unchanged. See InspectionCore/docs/sbm_setup_studio_plan.md.
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { Button, InputNumber, Select, Modal } from 'antd';
+
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import { defFileGeneration, stampRefImagePath, SBM_INFO_NAME } from 'UTIL/MISC_Util';
+import { refPngPathOf } from 'UTIL/defNaming.mjs';
+import { inspectSummary } from './sbmInspectResult';
+import { useDefImages } from 'UTIL/useDefImages';
+import Tooltip from 'antd/lib/tooltip';
+import { SWEEP_AXES, SWEEP_ALL_ORDER, sweepValues, perturbFor, sweepRow, sweepVerdict } from './sbmSweep';
+import { acceptanceFloor, headroom } from 'UTIL/matchThreshold';
+import { imageCentre, expectedPosition } from './sbmExpectPose.mjs';
+import { HookCanvasComponent } from './SBMStudio';
+
+// THE APP IS LIGHT, AND THIS PANEL HAD BEEN WRITTEN FOR A DARK ONE.
+//
+// ink was #e8eaed -- near-white text -- which only reads on a dark ground.
+// The modal's ground is white, so every label in the rail was pale grey on
+// white: legible on the bench where it was written, washed out on the
+// machine. The panel now takes its colours from the app's own theme
+// (style/sp_style.css: theme_color_1 #82CBCB, theme_color_2 #5191a5) and
+// PAINTS ITS OWN GROUND, so it no longer depends on what the host happens to
+// be.
+//
+// accent is the deeper #5191a5, not #82CBCB: the light teal is a fill, not a
+// text colour -- it fails contrast on white at any size worth reading.
+const P = { ink: '#1f2529', dim: '#6b7780', line: '#dde3e5',
+            ground: '#ffffff', panel: '#f3f7f7',
+            accent: '#5191a5', accentSoft: '#82CBCB',
+            ok: '#389e0d', bad: '#cf1322',
+            badBg: '#fff1f0', okBg: '#f6ffed' };
+
+// ── Draw the reference image into the canvas world frame. ──────────────────────
+// Normal (object) frame: rectify by def_image_reg so object-frame-mm overlays land on
+// the part. Raw frame (locline tool): only scale by mmpp, so world == image-mm and the
+// drawn localization line yields def_image_reg directly.
+function drawImage(g, canvas, reg, mmpp, rawFrame) {
+  const sec = canvas.secCanvas;
+  if (!sec || sec.width === 0) return;
+  const ctx = g.ctx;
+  ctx.save();
+  if (!rawFrame) {
+    ctx.scale(1, reg.isFlipped ? -1 : 1);
+    ctx.rotate(reg.angle || 0);
+    ctx.translate(-(reg.cx || 0), -(reg.cy || 0));
+  }
+  ctx.scale(mmpp, mmpp);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sec, 0, 0);
+  ctx.restore();
+}
+
+function poly(ctx, pts, close) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  if (close) ctx.closePath();
+}
+
+// ── The SBM scene draw. Everything is in object-frame mm (== world), except in
+// locline mode where we show the raw image to author def_image_reg. ────────────
+function drawScene(g, canvas, ctx_state) {
+  const { reg, mmpp, shapeList, work, featPts, roiPts, tool, insp } = ctx_state;
+  const ctx = g.ctx;
+  const scale = canvas.camera.GetCameraScale() || 100;
+  const lw = 1.6 / scale, pr = 2.4 / scale;
+  const rawFrame = (tool === 'locline');
+
+  drawImage(g, canvas, reg, mmpp, rawFrame);
+
+  if (rawFrame) {
+    // Only the in-progress localization line (image-mm).
+    if (work.line) {
+      const { o, t } = work.line;
+      ctx.lineWidth = lw; ctx.strokeStyle = '#ffab00';
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(t.x, t.y); ctx.stroke();
+      ctx.fillStyle = '#ff6d00'; ctx.beginPath(); ctx.arc(o.x, o.y, pr * 1.6, 0, 7); ctx.fill();
+    }
+    return;
+  }
+
+  // include / exclude regions (filled).
+  for (const s of shapeList) {
+    if (s.type !== 'loc_include' && s.type !== 'loc_exclude') continue;
+    const pts = s.points || []; if (pts.length < 2) continue;
+    const inc = (s.type === 'loc_include');
+    poly(ctx, pts, true);
+    ctx.fillStyle = inc ? 'rgba(0,200,80,0.16)' : 'rgba(255,70,70,0.20)';
+    ctx.fill();
+    ctx.lineWidth = lw; ctx.strokeStyle = inc ? '#00c853' : '#ff5252'; ctx.stroke();
+  }
+
+  // generated line2Dup feature points (blue) from the round-trip — what the localizer
+  // keys on. (The auto ROI selection is NOT drawn here; "自動產生 ROI 點" turns it into
+  // editable orange points instead.)
+  if (featPts) {
+    ctx.fillStyle = '#29b6f6';
+    for (const p of (featPts.features || [])) { ctx.beginPath(); ctx.arc(p.x, p.y, pr * 0.8, 0, 7); ctx.fill(); }
+  }
+
+  // ROI refine points (orange squares) — the ONLY ROI representation; saved as
+  // roi_refine_points. Empty = no ROI refine.
+  if (roiPts && roiPts.length) {
+    ctx.strokeStyle = '#ff9100'; ctx.lineWidth = lw * 1.4;
+    for (const p of roiPts) ctx.strokeRect(p.x - pr * 1.8, p.y - pr * 1.8, pr * 3.6, pr * 3.6);
+  }
+
+  // TEST RESULT: where the core actually measured, in the frame the core used.
+  //
+  // Drawn LAST so it sits over the regions and the feature points -- when this
+  // is on screen it is the thing being looked at. Each row gets a ring at the
+  // measured position and, for a row whose def shape is on the canvas, a stem
+  // back to where the def put it: the stem IS the measurement, and a long one
+  // is visible without reading a number.
+  if (insp && insp.located) {
+    // Every located object gets a marker at the pose the core put it, drawn in
+    // the CANVAS's frame -- same transform the picture got. These land on the
+    // parts. The def's own shapes stay where the def says they are, so when the
+    // two are far apart the picture is telling you the part is not where the
+    // recipe expects, which is the thing worth seeing.
+    for (const P of (insp.poses || [])) {
+      if (!P.at || !Number.isFinite(P.at.x)) continue;
+      ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = lw * 1.2;
+      ctx.beginPath(); ctx.arc(P.at.x, P.at.y, pr * 4, 0, 7); ctx.stroke();
+      // A stub along the found 0-degree axis, so a rotated or flipped match
+      // reads as a direction and not only as a number in the panel.
+      //
+      // Direction from the two transformed points, never from an angle
+      // recomposed here. Length in SCREEN terms like every other marker on this
+      // canvas -- the first version used 3 mm, which at this def's ~0.009 mm/px
+      // is about 340 px and ran off the edge of the frame.
+      if (P.axis && Number.isFinite(P.axis.x)) {
+        const dx = P.axis.x - P.at.x, dy = P.axis.y - P.at.y;
+        const n = Math.hypot(dx, dy);
+        if (n > 1e-9) {
+          // 3 mm in WORLD units, back at the operator's request: a long line
+          // reads as a bearing across the frame, which is what it is for. It
+          // was briefly made screen-proportional because it ran off the edge --
+          // but that was the direction being wrong, not the length.
+          const L = 3;
+          ctx.beginPath(); ctx.moveTo(P.at.x, P.at.y);
+          ctx.lineTo(P.at.x + (dx / n) * L, P.at.y + (dy / n) * L);
+          ctx.stroke();
+        }
+      }
+    }
+
+    for (const r of insp.rows) {
+      if (!r.at) continue;
+      const col = r.ok ? '#00e676' : '#ff1744';
+      ctx.strokeStyle = col; ctx.lineWidth = lw * 1.6;
+      ctx.beginPath(); ctx.arc(r.at.x, r.at.y, pr * 2.2, 0, 7); ctx.stroke();
+      if (!r.ok) {                                   // an X, so a failure reads without colour
+        const e = pr * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(r.at.x - e, r.at.y - e); ctx.lineTo(r.at.x + e, r.at.y + e);
+        ctx.moveTo(r.at.x + e, r.at.y - e); ctx.lineTo(r.at.x - e, r.at.y + e);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // localization origin (object (0,0)) + 0° axis.
+  ctx.lineWidth = lw; ctx.strokeStyle = '#ffab00';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(2, 0); ctx.stroke();   // +x axis, 2mm
+  ctx.fillStyle = '#ff6d00'; ctx.beginPath(); ctx.arc(0, 0, pr * 1.6, 0, 7); ctx.fill();
+
+  // in-progress polygon.
+  if (work.poly && work.poly.length) {
+    const p = work.poly;
+    ctx.beginPath(); ctx.moveTo(p[0].x, p[0].y);
+    for (let i = 1; i < p.length; i++) ctx.lineTo(p[i].x, p[i].y);
+    if (work.cursor) ctx.lineTo(work.cursor.x, work.cursor.y);
+    ctx.lineWidth = lw; ctx.strokeStyle = '#ffd54f'; ctx.stroke();
+    ctx.fillStyle = '#ffd54f';
+    for (const v of p) { ctx.beginPath(); ctx.arc(v.x, v.y, pr, 0, 7); ctx.fill(); }
+  }
+}
+
+// The registration a press-at-o / release-at-t drag means. Shared by the mouse
+// path and the dev test API below, so the automated journey commits exactly what
+// a person's drag commits -- a test that rebuilt this arithmetic itself would go
+// on passing after the real one changed.
+export function regFromDrag(o, t) {
+  return { cx: o.x, cy: o.y, angle: -Math.atan2(t.y - o.y, t.x - o.x), isFlipped: false };
+}
+
+// ── The SBM control (mouse) logic. ─────────────────────────────────────────────
+function ctrlScene(g, canvas, ctx_state) {
+  const { tool, work, roiPts, onPoly, onReg, onRoi } = ctx_state;
+  const st = g.mouseStatus;
+  const scale = canvas.camera.GetCameraScale() || 100;
+
+  // Touch devices fire touchend -> onmouseup AND a synthetic mouseup, so one physical
+  // release produces TWO mouse-up edges. That double-toggled a ROI point off right after
+  // adding it (and double-added polygon vertices). Swallow a 2nd mouse-up within 200ms.
+  if (g.mouseEdge && st.status === 0) {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    if (now && now - (work.lastUpMs || 0) < 200) return;
+    work.lastUpMs = now;
+  }
+
+  if (tool === 'roi') {
+    // roi mode captures the drag (no camera pan), so any press→release places a point
+    // at the release position; clicking on an existing point removes it.
+    if (g.mouseEdge && st.status === 0) {                  // mouse-up
+      const p = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
+      const pts = (roiPts || []).map((q) => ({ x: q.x, y: q.y }));
+      const closeW = 14 / scale;
+      const idx = pts.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) < closeW);
+      if (idx >= 0) pts.splice(idx, 1);                     // click on a point removes it
+      else pts.push(p);                                     // else add a new override point
+      onRoi(pts);
+    }
+    return;
+  }
+
+  if (tool === 'include' || tool === 'exclude') {
+    work.cursor = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
+    if (g.mouseEdge && st.status === 0) {                 // mouse-up edge
+      const movedPx = Math.hypot(st.x - st.px, st.y - st.py);
+      if (movedPx < 6) {                                  // a click, not a pan-drag
+        const p = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
+        if (work.poly.length >= 3) {
+          const f = work.poly[0];
+          const closeW = 12 / scale;                       // ~12px in world units
+          if (Math.hypot(p.x - f.x, p.y - f.y) < closeW) {
+            onPoly(tool === 'include' ? 'loc_include' : 'loc_exclude', work.poly.slice());
+            work.poly = []; work.cursor = null; return;
+          }
+        }
+        work.poly.push(p);
+      }
+    }
+  } else if (tool === 'locline') {
+    if (st.status === 1) {
+      work.line = { o: { x: g.pmouseOnCanvas.x, y: g.pmouseOnCanvas.y },
+                    t: { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y } };
+    } else if (g.mouseEdge && st.status === 0 && work.line) {
+      const { o, t } = work.line;
+      // A CLICK is not a registration. atan2(0,0) is 0, so releasing without
+      // dragging used to write angle: 0 and move the origin to wherever the
+      // pointer happened to be -- silently replacing a registration somebody
+      // measured. And because angle_offset_deg is in the shape cache's
+      // fingerprint, that also invalidates the trained features: the def then
+      // falls back to sig360 and still locates, so nothing looks wrong.
+      //
+      // 12 px in world units, the same threshold the polygon tool uses to
+      // decide a click from a drag.
+      const minLen = 12 / (canvas.camera.GetCameraScale() || 100);
+      if (Math.hypot(t.x - o.x, t.y - o.y) < minLen) { work.line = null; return; }
+      // NEGATED, because def_image_reg.angle is in ROTATE space and this drag
+      // measures an IMAGE angle. DefConfUI writes the field as `angle:
+      // reg.rotate` straight off an inspection report, and the canvas rectifies
+      // by rotating the image by +angle -- which only lands the part on the
+      // world x-axis if angle is MINUS the image angle. Storing the raw atan2
+      // here rectified by 2x the drawn angle, invisibly, because every def on
+      // this bench has a registration angle of ~0. See imageAngleOf().
+      onReg(regFromDrag(o, t));
+      work.line = null;
+    }
+  }
+}
+
+// ── The studio view. ───────────────────────────────────────────────────────────
+// The verdict of a test run. Three things, in the order they are worth reading:
+// did it find the part, is it where you said it was, and which primitives
+// failed and why.
+function InspectPanel({ insp, onClear }) {
+  const row = { display: 'flex', justifyContent: 'space-between', fontSize: 11 };
+  if (!insp.located) {
+    // A failure gets MORE room than a success, not less. It is the case the
+    // operator is stuck on, and "定位失敗" alone tells them nothing they did not
+    // already know from the blank canvas.
+    const L = insp.locate;
+    const gap = L && Number.isFinite(L.best) && Number.isFinite(L.thres)
+      ? L.thres - L.best : null;
+    return <div style={{ fontSize: 11, marginTop: 4, border: '1px solid #a61d24',
+                         borderRadius: 4, padding: 6, background: P.badBg }}>
+      <div style={{ color: P.bad, fontWeight: 600, marginBottom: 3 }}>定位失敗</div>
+      <div style={{ color: '#a84a3f', lineHeight: 1.5 }}>{insp.why}</div>
+      {gap !== null && <div style={{ color: '#a84a3f', marginTop: 4 }}>
+        差距很小的話,先看照明和 matching 參數;差很多通常是特徵範圍或 coarse scale。
+      </div>}
+      {L && L.candidates === 0 && !Number.isFinite(L.best) &&
+        <div style={{ color: '#a84a3f', marginTop: 4 }}>
+          先按「🔵 生成特徵點」看有沒有抽到特徵——沒有特徵就不會有候選。
+        </div>}
+      <Button size="small" type="link" onClick={onClear}>清除</Button>
+    </div>;
+  }
+  const d = insp.poseDelta;
+  // 0.05mm / 0.2deg: not a spec, a legibility threshold -- below it the number
+  // is the locator's own noise and colouring it red would train people to
+  // ignore the colour. Anything the operator actually cares about is coarser.
+  const poseOff = d && (d.dist > 0.05 || Math.abs(d.dDeg) > 0.2 || d.flipDiffers);
+  const bad = insp.rows.filter((r) => !r.ok);
+  return <div style={{ marginTop: 4 }}>
+    {insp.poses.length > 1 &&
+      <div style={{ ...row, color: '#ffd54f' }}>
+        <span>找到 {insp.poses.length} 個物件</span>
+        <span style={{ fontSize: 10 }}>下面的數字是第 1 個</span>
+      </div>}
+    <div style={row}>
+      <span>相似度 similarity</span>
+      <b style={{ color: insp.pose.similarity >= 0.9 ? '#00c853' : '#ff9100' }}>
+        {(insp.pose.similarity ?? 0).toFixed(4)}</b>
+    </div>
+    {d && <div style={row}>
+      <span title="核心找到的位姿 vs 你畫的定位線。這個差就是定位誤差。">定位偏差</span>
+      <b style={{ color: poseOff ? '#ff9100' : '#00c853' }}>
+        {d.dist.toFixed(3)}mm / {d.dDeg.toFixed(2)}°{d.flipDiffers ? ' ⚠翻面不同' : ''}</b>
+    </div>}
+    <div style={row}>
+      <span>量測</span>
+      <b><span style={{ color: P.ok }}>{insp.counts.ok} OK</span>
+        {insp.counts.na > 0 && <span style={{ color: '#ff1744' }}>　{insp.counts.na} NA</span>}
+        {insp.counts.ng > 0 && <span style={{ color: '#ff1744' }}>　{insp.counts.ng} NG</span>}
+      </b>
+    </div>
+    {bad.length > 0 && <div style={{ marginTop: 3, maxHeight: 150, overflowY: 'auto' }}>
+      {bad.map((r) => <div key={r.type + r.id} style={{ fontSize: 11, color: P.bad,
+                            borderTop: '1px solid #333', padding: '2px 0' }}>
+        <b>#{r.id}</b> {r.name || r.type}
+        <div style={{ color: '#c77' }}>{r.reason}</div>
+      </div>)}
+    </div>}
+    <Button size="small" type="link" onClick={onClear}>清除疊圖</Button>
+  </div>;
+}
+
+// Shared by both views: how bad is a step. 0 fine, 1 worth a look, 2 bad,
+// 3 not located. Position in px, angle in deg; the worse of the two decides.
+function stepSeverity(r) {
+  if (!r.located) return 3;
+  const p = Number.isFinite(r.posErrPx) ? r.posErrPx : 0;
+  const a = Number.isFinite(r.residual) ? Math.abs(r.residual) : 0;
+  const f = Number.isFinite(r.faceRatio) ? r.faceRatio : 0;   // other face / this face
+  if (p > 5 || a > 2 || f > 0.95) return 2;
+  if (p > 2 || a > 0.5 || f > 0.85) return 1;
+  return 0;
+}
+const fmtFace = (r) => (Number.isFinite(r.faceRatio) ? r.faceRatio.toFixed(2) : '—');
+const SEV_BG = ['#f6ffed', '#fff7e6', '#fff1f0', '#fff1f0'];
+const SEV_INK = [P.ink, '#b26a00', P.bad, P.bad];
+const fmtVal = (r) => {
+  if (r.axis === 'base') return '原圖';
+  const A = SWEEP_AXES[r.axis] || {};
+  const v = r.value;
+  return (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2)) + (A.unit || '');
+};
+const axisName = (ax) => ((SWEEP_AXES[ax] || {}).label || ax).split(' ')[0];
+// What the bubble says for one step.
+function StepDetail({ r }) {
+  return <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+    <div><b>{axisName(r.axis === 'base' ? 'rot' : r.axis)}</b> {fmtVal(r)}</div>
+    {r.located ? <>
+      <div>分數 {r.sim.toFixed(3)}</div>
+      <div>位置誤差 {Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(2) + ' px' : '—'}</div>
+      <div>角度誤差 {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(3) + '°' : '—'}
+        {Number.isFinite(r.moved) ? <span style={{ color: '#bbb' }}>(施加 {r.expected.toFixed(2)}°,量到 {r.moved.toFixed(3)}°)</span> : null}
+        {r.signSuspect ? ' ⚠ 符號反了' : ''}</div>
+      <div>正反面分數比 {fmtFace(r)}
+        <span style={{ color: '#bbb' }}>{Number.isFinite(r.faceRatio) ? '(另一面最佳分 / 選中分;越接近 1 越分不出正反)' : '(核心沒看到另一面的候選)'}</span></div>
+    </> : <div style={{ color: '#ff7875' }}>定位失敗{r.why ? ':' + r.why : ''}</div>}
+  </div>;
+}
+
+// THE OVERVIEW GRID (全部掃描): one column per axis, one row per step index,
+// each cell the position error in px coloured by the worse of the two errors;
+// the bubble carries the value, score and both errors. A step's value differs
+// per axis (row 3 is -6 deg for rotation and 0.94x for scale), which is why
+// the row is an index and the value lives in the bubble.
+function SweepGrid({ sweep, big = false }) {
+  const axes = sweep.axes || [];
+  const base = sweep.rows.find((r) => r.axis === 'base');
+  const byAxis = {};
+  for (const r of sweep.rows) if (r.axis !== 'base') (byAxis[r.axis] = byAxis[r.axis] || []).push(r);
+  const n = Math.max(0, ...axes.map((ax) => (byAxis[ax] || []).length));
+  // In the rail eight columns have to fit ~300 px: tight cells, no horizontal
+  // scroll. In the pop-out (big) there is room for the imposed value as well.
+  const cell = big
+    ? { padding: '4px 6px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+        border: '1px solid ' + P.line, minWidth: 96, cursor: 'default', fontSize: 12.5 }
+    : { padding: '2px 2px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+        border: '1px solid ' + P.line, minWidth: 30, cursor: 'default', fontSize: 10.5 };
+  const Cell = ({ r }) => {
+    if (!r) return <td style={{ ...cell, color: P.line }}>·</td>;
+    const sev = stepSeverity(r);
+    // Three lines per cell: position error px / angle error deg / face ratio.
+    const line = { display: 'block', lineHeight: 1.15 };
+    return <Tooltip title={<StepDetail r={r} />} mouseEnterDelay={0.05}>
+      <td style={{ ...cell, background: SEV_BG[sev], color: SEV_INK[sev], padding: big ? '4px 6px' : '2px 1px' }}>
+        {r.located ? <>
+          {big && <span style={{ ...line, color: P.accent, marginBottom: 2 }}>{fmtVal(r)}</span>}
+          {/* The coarse score first: it is what the acceptance threshold is
+              set against, so this column of numbers IS the threshold decision. */}
+          <span style={{ ...line, fontWeight: 600 }}>{Number.isFinite(r.sim) ? r.sim.toFixed(3) : '·'}</span>
+          <span style={line}>{Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(big ? 2 : 1) + (big ? ' px' : '') : '·'}</span>
+          <span style={{ ...line, color: r.signSuspect ? '#ffab00' : undefined }}>
+            {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(2) + '°' : '·'}</span>
+          <span style={{ ...line, color: P.dim }}>{fmtFace(r)}</span>
+        </> : '✗'}
+      </td>
+    </Tooltip>;
+  };
+  return <div style={{ overflowX: 'auto', marginTop: 3 }}>
+    <table style={{ fontSize: big ? 12.5 : 10.5, borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+      <thead><tr style={{ color: P.dim }}>
+        <th style={{ ...cell, border: 'none', textAlign: 'right', width: big ? 40 : 26 }}>#</th>
+        {axes.map((ax) => <th key={ax} style={{ ...cell, border: 'none' }}
+          title={(SWEEP_AXES[ax] || {}).label}>{axisName(ax)}</th>)}
+      </tr></thead>
+      <tbody>
+        {base && <tr style={{ background: '#eaf3f6' }}>
+          <td style={{ ...cell, color: P.accent, textAlign: 'right' }}>原圖</td>
+          <Tooltip title={<StepDetail r={base} />}><td colSpan={axes.length} style={{ ...cell, color: base.located ? P.ink : P.bad }}>
+            {base.located ? `分數 ${base.sim.toFixed(3)}` : '定位失敗'}</td></Tooltip>
+        </tr>}
+        {Array.from({ length: n }, (_, i) => <tr key={i}>
+          <td style={{ ...cell, color: P.dim, textAlign: 'right' }}>{i + 1}</td>
+          {axes.map((ax) => <Cell key={ax} r={(byAxis[ax] || [])[i]} />)}
+        </tr>)}
+      </tbody>
+    </table>
+    <div style={{ fontSize: 11, color: P.dim, marginTop: 3 }}>
+      每格四行:<b>分數</b> / 位置誤差 px / 角度誤差 ° / 正反面分數比(另一面最佳分 ÷ 選中分,越接近 1 越分不出正反;— = 沒看到另一面)。
+      分數那行是門檻的依據:整張表最低的分數再留些餘裕,就是 min score 可以設的位置。
+      底色取最差者:橘 &gt;2px、&gt;0.5° 或比值 &gt;0.85;紅 &gt;5px、&gt;2° 或 &gt;0.95;✗ 定位失敗。指到格子看細節。
+    </div>
+  </div>;
+}
+
+// Single-axis view: one row per step with the numbers spelled out.
+function SweepTable({ sweep }) {
+  const cell = { padding: '2px 6px', borderTop: '1px solid ' + P.line, whiteSpace: 'nowrap' };
+  const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+  return <div style={{ maxHeight: 260, overflow: 'auto', marginTop: 3 }}>
+    <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
+      <thead><tr style={{ color: P.dim }}>
+        <th style={{ ...num, borderTop: 'none' }}>值</th>
+        <th style={{ ...num, borderTop: 'none' }}>分數</th>
+        <th style={{ ...num, borderTop: 'none' }}>位置誤差 px</th>
+        <th style={{ ...num, borderTop: 'none' }}>角度誤差 °</th>
+        <th style={{ ...num, borderTop: 'none' }} title="另一面最佳分 ÷ 選中分">正反比</th>
+      </tr></thead>
+      <tbody>
+        {sweep.rows.map((r, i) => {
+          const isBase = r.axis === 'base'; const sev = stepSeverity(r);
+          return <Tooltip key={i} title={<StepDetail r={r} />} mouseEnterDelay={0.05}>
+            <tr style={{ background: isBase ? '#eaf3f6' : SEV_BG[sev] }}>
+              <td style={{ ...num, color: isBase ? P.accent : P.ink }}>{fmtVal(r)}</td>
+              <td style={{ ...num, color: r.located ? P.ink : P.bad }}>{r.located ? r.sim.toFixed(3) : '失敗'}</td>
+              <td style={{ ...num, color: SEV_INK[sev] }}>{Number.isFinite(r.posErrPx) ? r.posErrPx.toFixed(2) : (r.located ? '—' : '')}</td>
+              <td style={{ ...num, color: r.signSuspect ? '#ffab00' : SEV_INK[sev] }}>
+                {Number.isFinite(r.residual) ? (r.residual >= 0 ? '+' : '') + r.residual.toFixed(3) : (r.located ? '—' : '')}{r.signSuspect ? ' ⚠' : ''}</td>
+              <td style={{ ...num, color: P.dim }}>{r.located ? fmtFace(r) : ''}</td>
+            </tr>
+          </Tooltip>;
+        })}
+      </tbody>
+    </table>
+  </div>;
+}
+
+function SweepPanel({ sweep, floor }) {
+  // The pop-out: the same grid, big, in its own modal ABOVE the studio (which
+  // is itself a modal), so the numbers can be read without squinting at the rail.
+  const [popped, setPopped] = useState(false);
+  if (!sweep) return null;
+  const all = sweep.axis === 'all';
+  const verdicts = sweep.verdicts || {};
+  const verdictBlock = (size) => (Object.keys(verdicts).length > 0
+    ? <div style={{ fontSize: size, color: P.accent, margin: '4px 0', lineHeight: 1.6 }}>
+        {(sweep.axes || []).map((ax) => verdicts[ax]
+          ? <div key={ax}>{all ? <b>{axisName(ax)}:</b> : null} {verdicts[ax]}</div> : null)}
+      </div> : null);
+  return <div style={{ marginTop: 4 }}>
+    <div style={{ fontSize: 11, color: P.dim, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span>{sweep.done}/{sweep.total}{sweep.aborted ? '(已中止)' : ''}</span>
+      <span>門檻 {floor.toFixed(2)}</span>
+      <span style={{ flex: 1 }} />
+      {all && <a onClick={() => setPopped(true)} style={{ fontSize: 11 }}>⤢ 放大檢視</a>}
+    </div>
+    {all ? <SweepGrid sweep={sweep} /> : <SweepTable sweep={sweep} />}
+    {/* The per-axis verdict sentences are the single-axis view's; the grid
+        already says it all and the sentences only pushed the panel down. */}
+    {!all && verdictBlock(11)}
+    {all && <Modal open={popped} onCancel={() => setPopped(false)} footer={null} zIndex={3000}
+        width="min(1180px, 96vw)" style={{ top: 24 }} destroyOnClose
+        title={<span>強健性掃描 · 總表 <span style={{ fontSize: 12, color: P.dim, marginLeft: 8 }}>
+          {sweep.done}/{sweep.total} · 門檻 {floor.toFixed(2)} · 每格:施加值 / <b>分數</b> / 位置誤差 / 角度誤差 / 正反面分數比</span></span>}>
+      <div style={{ color: P.ink }}>
+        {(() => {
+          const ok = sweep.rows.filter((r) => r.located && Number.isFinite(r.sim)).map((r) => r.sim);
+          const lost = sweep.rows.filter((r) => !r.located).length;
+          if (!ok.length) return null;
+          const mn = Math.min(...ok), mx = Math.max(...ok);
+          return <div style={{ fontSize: 13, marginBottom: 8, padding: '6px 10px', background: P.panel, borderRadius: 4 }}>
+            分數範圍 <b>{mn.toFixed(3)} ～ {mx.toFixed(3)}</b>(定位到的 {ok.length} 步{lost ? `,失敗 ${lost} 步` : ''}),
+            目前 min score 門檻 <b>{floor.toFixed(2)}</b>;最低分距門檻 <b style={{ color: mn - floor < 0.1 ? P.bad : P.ok }}>{(mn - floor).toFixed(3)}</b>。
+            想讓這整張表都過又留餘裕,門檻可以設在 {Math.max(0.05, mn - 0.1).toFixed(2)} 左右。
+          </div>;
+        })()}
+        <SweepGrid sweep={sweep} big />
+      </div>
+    </Modal>}
+    {sweep.rows.some((r) => r.signSuspect) &&
+      <div style={{ fontSize: 11, color: '#ffab00', marginTop: 3, lineHeight: 1.5 }}>
+        ⚠ 角度誤差約等於施加值的兩倍 — 這是角度符號反了,不是定位差了兩倍。
+      </div>}
+  </div>;
+}
+
+// The same test across every sample beside the def. One row per image, and the
+// summary line is the sentence somebody would otherwise have to assemble by
+// hand: how many located, and the worst pose offset among them.
+function BatchPanel({ batch, onClear }) {
+  if (!batch) return null;
+  const done = batch.rows.filter((r) => r.sum);
+  const found = done.filter((r) => r.sum.located);
+  const offs = found.map((r) => (r.sum.poseDelta ? r.sum.poseDelta.dist : NaN))
+                    .filter(Number.isFinite);
+  return <div style={{ marginTop: 4 }}>
+    <div style={{ fontSize: 11, color: P.dim }}>
+      {batch.done}/{batch.total}{batch.aborted ? '（已中止）' : ''}
+    </div>
+    {batch.done === batch.total && <div style={{ fontSize: 11, color: P.accent,
+        margin: '3px 0', lineHeight: 1.5 }}>
+      {found.length}/{done.length} 張定位成功
+      {offs.length ? `，位姿偏差最大 ${Math.max(...offs).toFixed(3)}mm` : ''}
+      {found.length < done.length ? '　⚠ 有影像定位不到' : ''}
+    </div>}
+    <div style={{ maxHeight: 190, overflowY: 'auto', marginTop: 3 }}>
+      {batch.rows.map((r, i) => {
+        const s = r.sum, ok = s && s.located;
+        return <div key={i} style={{ borderTop: '1px solid #333', padding: '2px 0',
+                     fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden',
+                           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                           color: ok ? P.ink : P.bad }} title={r.name}>{r.name}</span>
+            {ok && <span style={{ color: P.dim }}>{s.pose.similarity.toFixed(3)}</span>}
+            {ok && s.poseDelta &&
+              <span style={{ color: s.poseDelta.dist > 0.1 ? '#b26a00' : P.dim }}>
+                {s.poseDelta.dist.toFixed(3)}mm</span>}
+            {ok && <span style={{ color: s.counts.na + s.counts.ng ? '#ff1744' : '#00c853' }}>
+              {s.counts.ok}/{s.counts.ok + s.counts.na + s.counts.ng}</span>}
+          </div>
+          {!ok && s && <div style={{ color: '#c77' }}>{s.why}</div>}
+        </div>;
+      })}
+    </div>
+    <Button size="small" type="link" onClick={onClear}>清除</Button>
+  </div>;
+}
+
+const SBM2_CSS = ".sbm2-root{flex-direction:row}.sbm2-canvas{flex:1 1 auto;min-width:0;min-height:0}.sbm2-rail{flex:0 0 330px;min-height:0}@media (max-aspect-ratio: 1/1){.sbm2-root{flex-direction:column}.sbm2-canvas{flex:0 0 44%}.sbm2-rail{flex:1 1 auto}}";
+
+export function SBMSetupView2({ sendBPG, onSave, onClose }) {
+  const dispatch = useDispatch();
+  const edit_info = useSelector((s) => s.UIData.edit_info);
+  const [tool, setTool] = useState('pan');
+  // Which block is expanded. undefined = follow the current step; -99 = the
+  // user collapsed the current one and wants nothing open.
+  const [openStep, setOpenStep] = useState(undefined);
+  // How far from its expected position a candidate may sit and still be
+  // accepted as THE part, in pixels because that is what an operator can see on
+  // the canvas. 0 turns the filter off entirely.
+  const [posTolPx, setPosTolPx] = useState(20);
+  const [featPts, setFeatPts] = useState(undefined);   // {features:[],roi:[]} from the SF round-trip
+  const featRef = useRef(undefined);                   // mirror — drawScene reads this so the
+  featRef.current = featPts;                            // overlay never goes stale across redraws
+  const [genBusy, setGenBusy] = useState(false);
+  const [roiBusy, setRoiBusy] = useState(false);   // ROI windows being re-cut after a point edit
+  const [insp, setInsp] = useState(undefined);         // inspectSummary() of the last test run
+  const [inspBusy, setInspBusy] = useState(false);
+  const [sweep, setSweep] = useState(undefined);       // {axis, from, to, steps, rows, verdict}
+  const [sweepAxis, setSweepAxis] = useState('rot');
+  const [batch, setBatch] = useState(undefined);       // {rows, done, total}
+  const [sweepRange, setSweepRange] = useState({});    // axis -> {from,to,steps}
+  const abortRef = useRef(false);
+  // The in-flight core sweep's resolver, so an abort can end the wait without
+  // waiting for the core to notice -- the core is told separately (SW abort)
+  // and stops at its next step boundary.
+  const sweepReqRef = useRef(null);
+  // Which floor a match has to clear, per the locator this def actually uses.
+  const floorInfo = acceptanceFloor(edit_info);
+  const inspRef = useRef(undefined);                   // mirror, same reason as featRef
+  inspRef.current = insp;
+  const work = useRef({ poly: [], cursor: null, line: null });
+
+  const reg = edit_info.def_image_reg || {};
+  // The def's own mm/px and the image centre in the object frame: the two
+  // things every expected-position calculation needs. Kept here so the test and
+  // the sweep cannot disagree about them.
+  const def_mmpp = (edit_info._obj && typeof edit_info._obj.getEditorMmpp === 'function')
+    ? edit_info._obj.getEditorMmpp() : 1;
+  const imgW = (edit_info.img && (edit_info.img.width || edit_info.img.w)) || 2448;
+  const imgH = (edit_info.img && (edit_info.img.height || edit_info.img.h)) || 2048;
+  // The perturbation pivots on the image centre, and the poses come back in
+  // image mm, so the pivot is the image centre in image mm. It used to be
+  // translated by the registration into an object frame the poses were not in.
+  const pivot = imageCentre(imgW, imgH, def_mmpp);
+  const obj = edit_info._obj;
+  const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
+  // NO component-level shapeList. Nothing in this studio reads it any more:
+  // the canvas is fed `locShapes`, built from edit_info.__loc_* below, and the
+  // counters read those arrays directly. Keeping a binding named shapeList
+  // around is how the counters came to be written against it in the first place.
+  // Fed to the draw hook in the shape the hook already understands, so the
+  // renderer did not have to change when the storage did.
+  const locShapes = [
+    ...((edit_info.__loc_include || []).map((poly) => ({ type: 'loc_include', points: poly }))),
+    ...((edit_info.__loc_exclude || []).map((poly) => ({ type: 'loc_exclude', points: poly }))),
+  ];
+  const roiPts = edit_info.roi_refine_points || [];
+
+  // The studio used to be stuck on whichever image was loaded when it opened.
+  // The switcher DefConfUI puts on screen is behind this modal, and a def is
+  // tested against several samples, not one -- so the studio gets its own,
+  // driven by the same hook so both move the CORE's cached image and not just
+  // their own bitmap.
+  //
+  // Switching THROWS AWAY the last test result. It was measured on a different
+  // image, and leaving it on screen (or on the canvas) next to the new one is
+  // the worst outcome available here: a verdict that looks current and is not.
+  const { imageList, currentImagePath, switchImage } = useDefImages({
+    afterLoad: () => { setInsp(undefined); setFeatPts(undefined); },
+  });
+
+  // A retake replaces the part. The feature overlay and the last test result
+  // were both measured on the PREVIOUS one, and this component is not remounted
+  // by the capture -- so they stayed on screen, drawn over the new image, as a
+  // handful of blue points belonging to a part that is no longer there.
+  const retakeRef = useRef(edit_info.__img_fresh_capture);
+  useEffect(() => {
+    if (edit_info.__img_fresh_capture && !retakeRef.current) {
+      setFeatPts(undefined); setInsp(undefined);
+    }
+    retakeRef.current = edit_info.__img_fresh_capture;
+  }, [edit_info.__img_fresh_capture]);
+
+  // ROI POINTS AND FEATURES ARE INDEPENDENT. THE WINDOWS DEPEND ON THE PICTURE.
+  //
+  // The refine stage reads a 56x56 pixel window around each point, and those
+  // windows travel inside the def (shape_cache.roi) so the machine needs no
+  // picture. Cutting them needs the reference image, and the only core path
+  // that reads it is extraction -- which is how "change a point" came to mean
+  // "press 生成特徵點 again". That is an implementation accident, not a rule:
+  // the feature levels do not depend on the points and the points do not
+  // depend on the levels. So when the points change, the studio asks the core
+  // for the windows itself, and nobody presses anything.
+  //
+  // It goes through the same SF the generate button sends, with the SAVED
+  // thresholds, so the levels come back identical (extraction is deterministic
+  // -- measured bit for bit) and only `roi` differs. Debounced, because a
+  // point is often nudged several times in a second.
+  const roiRefreshTimer = useRef(null);
+  const refreshRoiWindows = useCallback((pts) => {
+    // Nothing to refresh until features exist; generation bakes the windows
+    // for whatever points are set when it runs.
+    if (!sendBPG || !edit_info.__shape_cache) return;
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return; }
+    const _fs0 = deffile.featureSet && deffile.featureSet[0];
+    if (!_fs0) return;
+    const _sbm = Array.isArray(_fs0.inherentfeatures)
+      ? _fs0.inherentfeatures.find((x) => x && x.name === SBM_INFO_NAME) : undefined;
+    // The list as it is NOW, not as the closure remembers it.
+    delete _fs0.roi_refine_points;
+    if (_sbm) {
+      if (pts && pts.length) _sbm.roi_refine_points = pts.map((p) => ({ x: p.x, y: p.y }));
+      else delete _sbm.roi_refine_points;
+    } else if (pts && pts.length) {
+      _fs0.roi_refine_points = pts.map((p) => ({ x: p.x, y: p.y }));
+    }
+    setRoiBusy(true);
+    new Promise((resolve, reject) => sendBPG('SF', 0,
+      { definfo: deffile, regenerate: true },
+      undefined, { resolve, reject }))
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        const cache = sf && sf.data && sf.data.shape_cache;
+        if (!cache) {
+          // No picture, no windows. Say which file, because that is the fix.
+          const templ = _fs0._ref_image_path || refPngPathOf(edit_info.defModelPath || '');
+          Modal.error({
+            title: 'ROI 窗口沒有更新',
+            content: '點已經改了,但核心沒法裁出精修窗口:讀不到參考影像 ' + templ
+              + '。特徵沒有被動到。把影像放回去,或再按一次「生成特徵點」。',
+          });
+          return;
+        }
+        setFeatPts(sf.data);
+        dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: cache }));
+      })
+      .catch(() => {})
+      .finally(() => setRoiBusy(false));
+  }, [sendBPG, edit_info, dispatch]);
+
+  const onRoi = useCallback((pts) => {
+    dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: pts }));
+    if (roiRefreshTimer.current) clearTimeout(roiRefreshTimer.current);
+    roiRefreshTimer.current = setTimeout(() => { roiRefreshTimer.current = null; refreshRoiWindows(pts); }, 600);
+  }, [dispatch, refreshRoiWindows]);
+  useEffect(() => () => { if (roiRefreshTimer.current) clearTimeout(roiRefreshTimer.current); }, []);
+
+  // Regions are the localizer's, not the measurement list's.
+  //
+  // They used to be written as shapes into shapeList so this canvas could draw
+  // them like anything else. shapeList is what becomes featureSet[0].features,
+  // and an unrecognised type there fails the WHOLE def in the core -- so every
+  // def carrying a region broke full inspection. They live in edit_info now.
+  const onPoly = useCallback((type, pts) => {
+    const key = (type === 'loc_include') ? '__loc_include' : '__loc_exclude';
+    const poly = pts.map((p) => ({ x: p.x, y: p.y }));
+    // One polygon per kind, replacing whatever was there -- the same thing the
+    // old single-shape write did.
+    dispatch(DefConfAct.EditInfo_Patch({ [key]: [poly] }));
+  }, [dispatch]);
+
+  const onReg = useCallback((r) => {
+    dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), ...r } }));
+    setTool('pan');
+  }, [dispatch, edit_info]);
+
+  // The extraction thresholds, in their two states.
+  //
+  // *Saved* is what the def carries, and therefore what the trained features
+  // were made with. *Shown* is what the operator has typed. They differ only
+  // between a keystroke and the next successful generation; while they do, the
+  // panel says so and the def keeps the saved pair.
+  const weakSaved   = edit_info.shape_weak_thres ?? 50;
+  const strongSaved = edit_info.shape_strong_thres ?? 80;
+  const weakShown   = edit_info.__shape_weak_draft ?? weakSaved;
+  const strongShown = edit_info.__shape_strong_draft ?? strongSaved;
+  const weakPending   = weakShown !== weakSaved;
+  const strongPending = strongShown !== strongSaved;
+  const threshPending = weakPending || strongPending;
+
+  // "生成特徵點": push the current (in-progress) def to the core's SF command and
+  // overlay the returned line2Dup features + ROI points. Trains from the on-disk
+  // <def>.png, so a brand-new or freshly re-taken def must be saved first --
+  // see the failure branch below for why that is a rule and not a bug.
+  const genFeatures = useCallback((regenerate) => {
+    if (!sendBPG) return;
+    let deffile;
+    try {
+      // Extract with what is ON SCREEN, commit it only if that extraction
+      // works. The draft is overlaid here and nowhere else -- this is the one
+      // path on which an unextracted threshold is allowed to have an effect.
+      deffile = defFileGeneration({ ...edit_info,
+        shape_weak_thres: weakShown, shape_strong_thres: strongShown });
+      stampRefImagePath(deffile, edit_info);
+    }
+    catch (e) { return; }
+    setGenBusy(true);
+    // regenerate: true means 生成特徵點 -- extract fresh and ignore whatever
+    // cache the def carries. The auto-call when the studio opens omits it, so
+    // opening the panel SHOWS the features the def actually uses rather than
+    // quietly replacing them with a new extraction.
+    new Promise((resolve, reject) => sendBPG('SF', 0,
+      { definfo: deffile, ...(regenerate ? { regenerate: true } : {}) },
+      undefined, { resolve, reject }))
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        setFeatPts(sf && sf.data ? sf.data : { features: [], roi: [] });
+        // A GENERATION THAT PRODUCED NOTHING MUST NOT LOOK LIKE ONE THAT WORKED.
+        //
+        // The cache is only patched below when the reply carries one, so a
+        // failure already leaves the previous features alone -- which is right.
+        // What was missing is saying so: the panel went to "0" and the operator
+        // had no way to tell "this def has no features" from "the core could
+        // not read the reference image".
+        const nFeat = ((sf && sf.data && sf.data.features) || []).length;
+        const gotCache = !!(sf && sf.data && sf.data.shape_cache);
+        if (!gotCache || nFeat === 0) {
+          // The commonest cause is not a bad setting, it is that there is no
+          // template file yet.
+          //
+          // The core trains from a file on disk -- _ref_image_path, then the
+          // def's reference_image, then <def-base>.png -- and has no path that
+          // uses the image currently on screen. A def that has just been
+          // re-taken has no sidecar written yet, and stampRefImagePath
+          // deliberately refuses to point at the PREVIOUS def's picture. So
+          // "generate" cannot succeed until the def has been saved once, and
+          // saying "no features were extracted" sends someone to tune
+          // thresholds against a problem that is not about thresholds.
+          // A retake writes a scratch sidecar and sets __tmp_ref_image_path, so a
+          // fresh capture DOES have a template -- claiming otherwise sends someone
+          // off to save a file that is not the problem. Only the case with no
+          // sidecar is genuinely template-less.
+          const noTemplate = !!(edit_info && edit_info.__img_fresh_capture
+                                && !edit_info.__tmp_ref_image_path);
+          // NAME THE FILE, AND SAY WHETHER IT IS THERE.
+          //
+          // "參考影像讀不到, 或特徵範圍把零件整個排除了" is two completely
+          // different faults in one sentence, and the operator cannot tell them
+          // apart from the screen -- so they tune thresholds and redraw regions
+          // against a missing file. The core trains from a path we already
+          // know (stampRefImagePath just wrote it into the def-info), so ASK
+          // the core to read it: if it cannot, that is the answer, and if it
+          // can, the region is genuinely the thing to look at.
+          const templ = (deffile.featureSet && deffile.featureSet[0]
+                         && deffile.featureSet[0]._ref_image_path)
+                     || refPngPathOf(edit_info.defModelPath || '');
+          const say = (readable) => Modal.error({
+            title: noTemplate ? '還沒有樣板影像,無法生成特徵' : '生成特徵失敗',
+            content: noTemplate
+              ? '這張影像是剛重新擷取的,還沒有寫進磁碟。SBM 的樣板必須是檔案 —— '
+                + '存檔時才會把它寫成 <配方名>.png。先存一次檔,再回來生成特徵。'
+                + '(不會沿用前一個配方的圖:那會訓練出另一個零件的特徵,而且會匹配成功。)'
+              : nFeat === 0
+                ? (readable === false
+                    ? '讀不到樣板影像:' + templ + '。核心是從檔案訓練的,不是從畫面上這張圖。'
+                      + '這通常代表 TAKE 的暫存影像沒有寫成功,或這個配方還沒存過檔。'
+                      + '先前的特徵沒有被覆蓋。'
+                    : '樣板影像讀得到(' + templ + '),但核心沒有抽到任何特徵。'
+                      + '核心會在遮罩拿掉之後再試一次,所以最常見的原因是'
+                      + '邊緣門檻太高(現在 weak=' + (edit_info.shape_weak_thres ?? 50)
+                      + ' / strong=' + (edit_info.shape_strong_thres ?? 80)
+                      + ',在下面的「參數」裡調低再生成一次);其次才是特徵範圍把零件整個排除了。'
+                      + '核心的 log 會直接說是哪一種。先前的特徵沒有被覆蓋。')
+                : '核心抽到了特徵但沒有回傳可儲存的結果。先前的特徵沒有被覆蓋。',
+          });
+          if (noTemplate || nFeat !== 0) say(null);
+          else
+            new Promise((res, rej) => sendBPG('LD', 0, { filename: templ }, undefined,
+                                              { resolve: res, reject: rej }))
+              .then((pk) => {
+                const ld = (pk || []).map((x) => x && x.data).find((d) => d && d.cmd === 'LD');
+                say(!(ld && ld.ACK === false));
+              })
+              .catch(() => say(false));
+        }
+        // 把核心訓練出來的特徵存進 def, 之後載入不必重抽 (見 MISC_Util 的
+        // __shape_cache 說明)。點在畫面上只是視覺化, 這一行才是真的留下來的。
+        if (sf && sf.data && sf.data.shape_cache)
+          // Clearing __shape_stale is the point: these features were trained
+          // against the settings as they stand NOW, so the def is consistent
+          // again and the save guard has nothing to complain about.
+          // COMMIT POINT. The features in hand were extracted with weakShown /
+          // strongShown, so those two now describe the def truthfully and the
+          // drafts have nothing left to hold.
+          dispatch(DefConfAct.EditInfo_Patch({ __shape_cache: sf.data.shape_cache,
+                                               __shape_stale: undefined,
+                                               __shape_lastGood: undefined,
+                                               shape_weak_thres: weakShown,
+                                               shape_strong_thres: strongShown,
+                                               __shape_weak_draft: undefined,
+                                               __shape_strong_draft: undefined }));
+      })
+      .catch(() => {})
+      .finally(() => setGenBusy(false));
+  }, [sendBPG, edit_info, weakShown, strongShown]);
+
+  const captureDrag = (tool === 'locline' || tool === 'roi');
+  // "自動產生 ROI 點": ask the core for its auto-selected ROI points and put them into
+  // the editable list. Strips roi_refine_points from the sent def so the core
+  // auto-selects (otherwise it would echo back the current explicit list).
+  const autoFillRoi = useCallback(() => {
+    if (!sendBPG) return;
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return; }
+    // Strip any placed points so the core auto-selects. defFileGeneration no
+    // longer writes the key when the list is empty, but the studio may hold a
+    // placed list right now, and this button means "replace it with yours".
+    {
+      const _fs0 = deffile.featureSet && deffile.featureSet[0];
+      if (_fs0) {
+        delete _fs0.roi_refine_points;
+        const _sbm = Array.isArray(_fs0.inherentfeatures)
+          ? _fs0.inherentfeatures.find((x) => x && x.name === SBM_INFO_NAME) : undefined;
+        if (_sbm) delete _sbm.roi_refine_points;
+      }
+    }
+    setGenBusy(true);
+    // `regenerate: true`, and it is not optional. Auto-selection scores
+    // candidates by reading the image around each one; the candidates
+    // (refine_points) exist only as a by-product of extraction and are not in
+    // the cache. Without regenerate the core may not extract, and a cache with
+    // no roi cannot be loaded self-contained either -- so shape_ready stayed
+    // false and the reply was {features:[],roi:[]}. Measured 2026-09-04 on a
+    // freshly migrated test2: the button did nothing, silently, every time.
+    //
+    // The reply's cache is committed too, exactly as 生成特徵點 does: the
+    // points returned are the ones frozen INTO that cache's ROI windows, and a
+    // def whose points and windows came from different extractions is the
+    // disagreement this whole format exists to prevent.
+    new Promise((resolve, reject) => sendBPG('SF', 0,
+      { definfo: deffile, regenerate: true },
+      undefined, { resolve, reject }))
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        const roi = (sf && sf.data && sf.data.roi) || [];
+        if (!roi.length) {
+          Modal.error({
+            title: '自動產生 ROI 點失敗',
+            content: '核心沒有回傳任何 ROI 點。最常見的原因是還沒有生成特徵(第 3 步),'
+              + '或參考影像讀不到。先按「生成特徵點」確認有藍點,再回來按這裡。',
+          });
+          return;
+        }
+        const patch = { roi_refine_points: roi.map((p) => ({ x: p.x, y: p.y })) };
+        if (sf.data.shape_cache) {
+          patch.__shape_cache = sf.data.shape_cache;
+          patch.__shape_stale = undefined;
+          patch.__shape_lastGood = undefined;
+        }
+        setFeatPts(sf.data);
+        dispatch(DefConfAct.EditInfo_Patch(patch));
+      })
+      .catch((e) => {
+        Modal.error({ title: '自動產生 ROI 點失敗', content: String((e && e.message) || e || '核心沒有回應') });
+      })
+      .finally(() => setGenBusy(false));
+  }, [sendBPG, edit_info, dispatch]);
+
+  // "測試檢驗": run a REAL inspection with the current, unsaved settings and show
+  // what the machine did with them.
+  //
+  // Until this existed the studio could only be set up, never tried: you drew
+  // regions, pressed save, left, and found out somewhere else. II is the same
+  // round trip DefConfUI's CHECK uses -- the in-progress def against the core's
+  // cached image -- so this is the machine's real answer and not a preview.
+  //
+  // It deliberately does NOT touch the def, redux inspection state, or the
+  // shapes. A test you have to undo is a test nobody runs twice.
+  // ONE inspection, optionally against a deliberately degraded image.
+  //
+  // Both the single test and the robustness sweep go through here, so there is
+  // one description of what a test run IS: the current unsaved def, the core's
+  // cached image, the def's own mmpp, and nothing written back anywhere.
+  const inspectOnce = useCallback((perturb, expect) => {
+    if (!sendBPG) return Promise.reject(new Error('no link'));
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return Promise.reject(e); }
+    const img_property = {
+      // calibInfo disabled: the def's own mmpp is the scale, exactly as
+      // DefConfUI's orientation inspect does it. Letting a live calibration in
+      // would test a different machine than the one the def describes.
+      calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp },
+    };
+    if (perturb) img_property.perturb = perturb;
+
+    // TEST THE PICTURE THE DEF WAS TRAINED ON.
+    //
+    // __CACHE_IMG__ is the image loaded when DefConf was entered -- normally the
+    // def's own .png, or whichever sample the image switcher last loaded, which
+    // is exactly what a test should use.
+    //
+    // It is NOT that after a TAKE. A stream does not update __CACHE_IMG__ (the
+    // captured frame lives in the scratch sidecar that stampRefImagePath points
+    // the trainer at), so the features came from the new part and the
+    // inspection ran against the OLD one. On a bench where the two pictures
+    // look alike the scores stay high and only the reported ORIENTATION gives
+    // it away -- it is the old image's part, at the old image's angle. The
+    // robustness sweep cannot catch this at all: it goes through this same
+    // function, so it degrades and measures the same wrong image, and every
+    // residual it computes is self-consistent.
+    //
+    // So while a capture is unsaved, test the sidecar. Train and test on one
+    // picture, always.
+    const freshRef = (edit_info.__img_fresh_capture && edit_info.__tmp_ref_image_path)
+      ? edit_info.__tmp_ref_image_path : null;
+    return new Promise((resolve, reject) => sendBPG('II', 0, {
+      definfo: deffile, imgsrc: freshRef || '__CACHE_IMG__', img_property,
+    }, undefined, { resolve, reject }))
+      .then((pkts) => {
+        const rp = (pkts || []).find((p) => p.type === 'RP');
+        // The filter only applies when the caller SAYS where the part should be.
+        // Without an expected position there is nothing to compare against, and
+        // guessing one from the def would quietly reject a part that has moved
+        // for a legitimate reason -- a different sample image, say.
+        const tolMm = (posTolPx > 0 && def_mmpp > 0) ? posTolPx * def_mmpp : undefined;
+        return inspectSummary(rp && rp.data, edit_info.def_image_reg,
+                              expect ? { expect, tolMm } : undefined);
+      });
+  }, [sendBPG, edit_info, posTolPx, def_mmpp]);
+
+  // "測試檢驗": run a REAL inspection with the current, unsaved settings and show
+  // what the machine did with them.
+  //
+  // Until this existed the studio could only be set up, never tried: you drew
+  // regions, pressed save, left, and found out somewhere else. II is the same
+  // round trip DefConfUI's CHECK uses, so this is the machine's real answer and
+  // not a preview. It touches neither the def nor redux -- a test you have to
+  // undo is a test nobody runs twice.
+  const runInspect = useCallback(() => {
+    setInspBusy(true);
+    // Unperturbed, so the part must be where the def says it is. That is what
+    // makes the other three candidates on a busy frame answerable rather than
+    // just visible.
+    const expect = Number.isFinite(reg.cx) ? { x: reg.cx, y: reg.cy } : null;
+    inspectOnce(null, expect)
+      .then(setInsp)
+      .catch((e) => setInsp({ located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                              why: 'core 沒有回應:' + (e && e.message ? e.message : e) }))
+      .finally(() => setInspBusy(false));
+  }, [inspectOnce, reg.cx, reg.cy]);
+
+  // ROBUSTNESS SWEEP: degrade the scene along one axis -- or every axis, one
+  // after another -- and put the two errors that matter in a table: where the
+  // locator said the part is against where we put it, and how far its angle
+  // is from the angle we imposed.
+  //
+  // Sequential, not parallel. The core holds ONE cached image and one matching
+  // engine behind a lock, so firing the whole sweep at once would serialise in
+  // the core anyway while making the progress meaningless and the abort
+  // impossible. One at a time also means the panel can show the table building.
+  //
+  // ONE BASELINE for the whole run. The unperturbed frame is measured first
+  // and every axis's errors are read against it; measuring it again per axis
+  // would cost a run each and could hand two axes two different baselines.
+  const runAxes = useCallback(async (axes) => {
+    const plan = [];   // [{axis, value, perturb}]
+    for (const ax of axes) {
+      const A = SWEEP_AXES[ax];
+      const r = sweepRange[ax] || {};
+      const from = Number.isFinite(r.from) ? r.from : A.from;
+      const to = Number.isFinite(r.to) ? r.to : A.to;
+      const steps = Number.isFinite(r.steps) ? r.steps : A.steps;
+      // One seed per axis (a per-step seed would re-roll the noise between
+      // steps of a gain sweep and read as noise sensitivity that is not there).
+      const seed = 1 + Math.floor(Math.abs(from * 1000 + to * 37 + steps));
+      for (const v of sweepValues(ax, from, to, steps)) {
+        if (Math.abs(v - A.neutral) <= 1e-9) continue;   // the shared baseline stands in
+        plan.push({ axis: ax, value: v, perturb: perturbFor(ax, v, seed) });
+      }
+    }
+    abortRef.current = false;
+    const label = axes.length === 1 ? axes[0] : 'all';
+    setSweep({ axis: label, axes, rows: [], done: 0, total: plan.length + 1 });
+    // The baseline: unperturbed, expected where the def says the part is.
+    let base;
+    const rows = [];
+    try {
+      base = await inspectOnce(null, Number.isFinite(reg.cx) ? { x: reg.cx, y: reg.cy } : null);
+    } catch (e) { base = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 }, why: 'core 沒有回應' }; }
+    setInsp(base);   // the baseline is also the single-test result; the overlay fills in
+    rows.push({ ...sweepRow(axes[0], SWEEP_AXES[axes[0]].neutral, base, base,
+                            base.located ? { x: base.pose.cx, y: base.pose.cy } : null, def_mmpp),
+                axis: 'base' });
+    setSweep((sw) => (sw ? { ...sw, rows: [...rows], done: 1 } : sw));
+
+    // WHERE THE PART MUST BE AT EACH STEP. We chose the perturbation, so this
+    // is arithmetic rather than a guess -- and it is the only thing that
+    // distinguishes "the part, moved" from "a different object that now scores
+    // higher". Computed here, for the whole plan, because the core is not told
+    // what an axis is and must not have to be.
+    const _from = (base && base.located && base.pose)
+      ? { cx: base.pose.cx, cy: base.pose.cy }
+      : (Number.isFinite(reg.cx) ? { cx: reg.cx, cy: reg.cy } : null);
+    const expects = plan.map((s) =>
+      (_from ? expectedPosition(_from, pivot, s.perturb || {}, def_mmpp) : null));
+
+    // ONE REQUEST FOR THE WHOLE PLAN.
+    //
+    // This was a loop of `await inspectOnce(...)` -- one II per step, 73 of
+    // them for 掃描全部軸. Each II is handled inline on the core's select
+    // thread, so every step stalled everything else the core had to answer:
+    // measured 2026-09-11, worst reply gap 243 ms through a sweep, against
+    // 43 ms once the loop moved into the core. The core runs the plan on its
+    // own thread and streams one report back per step.
+    //
+    // The arithmetic did NOT move. The core is handed perturbations and returns
+    // reports; which axes, where the part should land, what counts as a failure
+    // and the per-axis verdict all stay right here.
+    const stepSummary = (rp, i) => {
+      if (!rp || rp.sweep_miss) {
+        return { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                 why: '這一步沒有定位到' };
+      }
+      const tolMm = (posTolPx > 0 && def_mmpp > 0) ? posTolPx * def_mmpp : undefined;
+      const e = expects[i];
+      return inspectSummary(rp, edit_info.def_image_reg,
+                            e ? { expect: e, tolMm } : undefined);
+    };
+
+    // Slots, not appends: reports are answered in order today, but a table that
+    // silently reorders itself if that ever stops being true is a table nobody
+    // can trust. The index is in the packet; use it.
+    const stepRows = new Array(plan.length).fill(null);
+
+    // COALESCE THE REPAINTS.
+    //
+    // Rebuilding the whole table and re-rendering it on every report froze the
+    // window for 400-500 ms at a time: 65 reports now arrive back to back in
+    // about eleven seconds, where each step used to be its own round trip and
+    // left the browser idle in between. Moving the loop into the core removed
+    // the very gaps that were hiding this.
+    //
+    // So the table repaints at most every FLUSH_MS while the sweep runs, and
+    // the final state is written unconditionally once the request settles --
+    // a dropped intermediate frame costs nothing, a dropped last one would.
+    const FLUSH_MS = 120;
+    let flushAt = 0, flushTimer = null;
+    const paint = () => {
+      flushTimer = null;
+      flushAt = Date.now();
+      const done = stepRows.filter(Boolean);
+      setSweep((sw) => (sw && sw.axis === label
+        ? { ...sw, rows: rows.concat(done), done: 1 + done.length } : sw));
+    };
+    const flush = () => {
+      if (flushTimer) return;
+      flushTimer = setTimeout(paint, Math.max(0, FLUSH_MS - (Date.now() - flushAt)));
+    };
+
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { deffile = null; }
+
+    // TEMPORARY: which path this sweep actually took. Delete once the
+    // core-side sweep is confirmed working end to end.
+    if (deffile && sendBPG) {
+      const freshRef = (edit_info.__img_fresh_capture && edit_info.__tmp_ref_image_path)
+        ? edit_info.__tmp_ref_image_path : null;
+      await new Promise((resolve) => {
+        sweepReqRef.current = resolve;
+        sendBPG('SW', 0, {
+          definfo: deffile,
+          imgsrc: freshRef || '__CACHE_IMG__',
+          img_property: { calibInfo: { type: 'disable', mmpp: deffile.featureSet[0].mmpp } },
+          perturbs: plan.map((s) => s.perturb || {}),
+        }, undefined, {
+          onPacket: (pkt) => {
+            if (!pkt) return;
+            if (pkt.type !== 'RP' || !pkt.data) return;
+            const d = pkt.data;
+            const i = d.sweep_i;
+            if (!Number.isInteger(i) || i < 0 || i >= plan.length) return;
+            stepRows[i] = sweepRow(plan[i].axis, plan[i].value,
+                                   stepSummary(d, i), base, expects[i], def_mmpp);
+            flush();
+          },
+          resolve: () => resolve(),
+          // A link error ends the sweep with whatever came back rather than
+          // hanging the panel on a promise that will never settle.
+          reject: () => resolve(),
+        });
+      });
+      sweepReqRef.current = null;
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    }
+    // Steps the core never answered are still steps: leaving holes would make
+    // an interrupted sweep look like a shorter one that passed.
+    for (let i = 0; i < plan.length; i++) {
+      if (stepRows[i]) continue;
+      stepRows[i] = sweepRow(plan[i].axis, plan[i].value,
+                             { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                               why: abortRef.current ? '已中止' : 'core 沒有回應' },
+                             base, expects[i], def_mmpp);
+    }
+    rows.push(...stepRows);
+    setSweep((sw) => (sw && sw.axis === label ? { ...sw, rows: [...rows], done: rows.length } : sw));
+    // One verdict line per axis, each read over its own rows plus the baseline.
+    const verdicts = {};
+    for (const ax of axes) {
+      const own = rows.filter((r) => r.axis === ax || r.axis === 'base')
+                      .map((r) => (r.axis === 'base' ? { ...r, value: SWEEP_AXES[ax].neutral } : r));
+      verdicts[ax] = sweepVerdict(ax, own);
+    }
+    setSweep((sw) => (sw ? { ...sw, verdicts, aborted: abortRef.current } : sw));
+  }, [sweepRange, inspectOnce, pivot, reg.cx, reg.cy, def_mmpp,
+      sendBPG, edit_info, posTolPx]);
+  const runSweep = useCallback(() => runAxes([sweepAxis]), [runAxes, sweepAxis]);
+  const runSweepAll = useCallback(() => runAxes(SWEEP_ALL_ORDER), [runAxes]);
+
+  // "跑全部影像": the same test, once per sample sitting next to the def.
+  //
+  // A sweep degrades ONE image and asks how much it survives. This asks the
+  // other question -- does the def hold up across the samples somebody actually
+  // collected -- and that is the one that gets asked out loud ("I tried five
+  // and three were off"). Until now the answer had to be assembled by switching
+  // images by hand and remembering.
+  //
+  // Sequential, and it AWAITS the switch: the core holds one cached image, so
+  // firing these together would inspect whichever image happened to be loaded.
+  const runBatch = useCallback(async () => {
+    if (!imageList.length) return;
+    const started = currentImagePath;
+    abortRef.current = false;
+    setBatch({ rows: [], done: 0, total: imageList.length });
+    const rows = [];
+    for (let i = 0; i < imageList.length; i++) {
+      if (abortRef.current) break;
+      const im = imageList[i];
+      let sum;
+      try {
+        await switchImage(im.path);
+        sum = await inspectOnce(null);
+      } catch (e) {
+        sum = { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 },
+                why: 'core 沒有回應' };
+      }
+      rows.push({ name: im.name, path: im.path, sum });
+      setBatch((b) => (b ? { ...b, rows: [...rows], done: i + 1 } : b));
+    }
+    // Put the operator back on the image they were looking at. A test that
+    // silently leaves you on the last sample is one you have to undo.
+    if (started && started !== imageList[imageList.length - 1].path) {
+      try { await switchImage(started); } catch (e) { /* best effort */ }
+    }
+    setBatch((b) => (b ? { ...b, aborted: abortRef.current } : b));
+  }, [imageList, currentImagePath, switchImage, inspectOnce]);
+
+  // DEV ONLY: author the canvas geometry directly, in world mm.
+  //
+  // Driving the canvas with a synthetic pointer works and is worth doing for
+  // ONE interaction -- it is how the fit bug was found, and it is the only way
+  // to know the tools respond to a human at all -- but it is a poor way to
+  // author SHAPES. A polygon becomes four clicks that have to be slower than
+  // the 200 ms double-release guard, land inside a view that is still settling,
+  // and close within 12 px of the first vertex; when one of those slips the
+  // test reports "the region tool is broken", which is not what happened.
+  //
+  // These go through the SAME commit callbacks the mouse path calls, so what a
+  // test writes is what a drag writes -- the geometry is supplied, the app's
+  // own logic still runs. Stripped from production with the __DEV_MODE__
+  // branches.
+  useEffect(() => {
+    if (!__DEV_MODE__ || typeof window === 'undefined') return undefined;
+    window.__SBM2_TEST__ = {
+      tool: (id) => setTool(id),
+      // o and t are the press and release points of the drag this replaces.
+      reg: (o, t) => onReg(regFromDrag(o, t)),
+      poly: (kind, pts) => onPoly(kind === 'exclude' ? 'loc_exclude' : 'loc_include', pts),
+      roi: (pts) => onRoi(pts),
+    };
+    return () => { delete window.__SBM2_TEST__; };
+  }, [onReg, onPoly, onRoi]);
+
+  const dhook = useCallback((isCtrl, g, canvas) => {
+    canvas.captureDrag = captureDrag;
+    // DEV ONLY: hand the automated journey test the live world->page mapping.
+    //
+    // The canvas pans and zooms, so a test that clicks fixed page coordinates
+    // is really asserting where the camera happened to be -- it draws the
+    // registration line across whatever the viewport shows today and fails the
+    // moment the fit changes or the window is a different shape. With this it
+    // can say "the origin is at object (0,0)" and let the same transform the
+    // renderer uses work out where that is on screen.
+    //
+    // Stripped from the production bundle with the rest of the __DEV_MODE__
+    // branches, and it only ever READS the camera.
+    if (__DEV_MODE__ && typeof window !== 'undefined') {
+      window.__SBM2_CANVAS__ = canvas;
+      // The reference image's size in world mm, so a test can aim at the PART
+      // ("the middle of the picture") rather than at a pixel of the viewport.
+      // In locline mode world == image-mm; in every other tool world is the
+      // object frame, whose origin is the registration.
+      const _sec = canvas.secCanvas;
+      window.__SBM2_IMG__ = _sec ? { wpx: _sec.width, hpx: _sec.height, mmpp,
+                                     wmm: _sec.width * mmpp, hmm: _sec.height * mmpp } : null;
+      window.__SBM2_TO_PAGE__ = (wx, wy) => {
+        const m = new DOMMatrix().setMatrixValue(canvas.worldTransform());
+        const p = m.transformPoint(new DOMPoint(wx, wy));
+        const r = canvas.canvas.getBoundingClientRect();
+        return { x: r.left + p.x * r.width / canvas.canvas.width,
+                 y: r.top + p.y * r.height / canvas.canvas.height };
+      };
+    }
+    const ctx_state = { reg, mmpp, shapeList: locShapes, work: work.current,
+      featPts: featRef.current, insp: inspRef.current,
+      roiPts, tool, onPoly, onReg, onRoi };
+    if (isCtrl) ctrlScene(g, canvas, ctx_state);
+    else drawScene(g, canvas, ctx_state);
+  }, [tool, reg, mmpp, locShapes, featPts, insp, roiPts, onPoly, onReg, onRoi]);
+
+  // Show the features the def ALREADY uses, when it has any.
+  //
+  // NOT for a def with no registration yet -- which is every def that just came
+  // out of TAKE, because Def_Retake clears def_image_reg. Two things go wrong
+  // there and they compound:
+  //
+  //   * SF is an authoring action, so with no cache it EXTRACTS. Those features
+  //     are computed against an object frame that has not been chosen yet, and
+  //     drawing the registration line is exactly what marks them stale -- so
+  //     they are guaranteed garbage within the next thirty seconds.
+  //   * with def_image_reg absent, drawImage translates by -(0,0), which puts
+  //     the object-frame origin at the IMAGE CORNER. Every one of those points
+  //     lands in the top-left corner of a picture they have nothing to do with,
+  //     and it reads as debris left over from the previous recipe.
+  //
+  // So a new object opens with a clean canvas and step 1 to do, which is what
+  // the progress bar says anyway.
+  useEffect(() => {
+    if (reg && Number.isFinite(reg.cx)) genFeatures();
+    /* eslint-disable-next-line */
+  }, []);
+
+  // Tool toggle: clicking the active tool returns to 'pan' (drag = pan, wheel = zoom),
+  // so no separate pan button is needed.
+  const TBtn = ({ id, children, ...p }) => (
+    <Button size="small" block style={{ marginBottom: 4 }} type={tool === id ? 'primary' : 'default'}
+      onClick={() => { work.current = { poly: [], cursor: null, line: null }; setTool(tool === id ? 'pan' : id); }} {...p}>
+      {children}</Button>
+  );
+
+  // COUNT AND DELETE WHERE THE REGIONS ACTUALLY LIVE.
+  //
+  // They used to be shapes in shapeList. Since the localization polygons moved
+  // into @__SBM_INFO__ / edit_info.__loc_include (they are not measurement
+  // features and the closed feature vocabulary rejected them), shapeList never
+  // contains a loc_include again -- so counting it returns 0 forever.
+  //
+  // In v1 that only showed as a "0 / 0" nobody reads. Here the progress bar is
+  // derived from it, so drawing a region left step 2 permanently unfinished:
+  // the region was on the canvas, drawn from these very arrays by locShapes
+  // twenty lines above, and the count beside it said none.
+  //
+  // The delete buttons had the same root: Shape_Set against an id that is not
+  // in the list is a no-op, so they did nothing at all, silently.
+  const inclPolys = edit_info.__loc_include || [];
+  const exclPolys = edit_info.__loc_exclude || [];
+  const nIncl = inclPolys.length;
+  const nExcl = exclPolys.length;
+  const delLast = (type) => {
+    const key = (type === 'loc_include') ? '__loc_include' : '__loc_exclude';
+    const cur = edit_info[key] || [];
+    if (cur.length) dispatch(DefConfAct.EditInfo_Patch({ [key]: cur.slice(0, -1) }));
+  };
+
+  // ── PROGRESS ───────────────────────────────────────────────────────────────
+  // Three steps, and only three. Every one is REQUIRED for the def to locate
+  // with its own locator; everything else in this panel is a tool.
+  //
+  // Making the tests a fourth step was the first draft and it was wrong: a step
+  // that gets skipped every day teaches people to ignore the progress bar, and
+  // the one thing here that must never be ignored -- 特徵已失效 -- would be
+  // ignored with it.
+  //
+  // The state is DERIVED, never a "visited" flag: a tick means the thing is
+  // actually there. A progress bar that advances by being clicked is one that
+  // lies, and this panel exists because something already lied once.
+  const stepDone = [
+    !!(reg && Number.isFinite(reg.cx)),
+    nIncl > 0,
+    !!edit_info.__shape_cache && !edit_info.__shape_stale,
+    // ROI IS A STEP, BUT IT DOES NOT GATE.
+    //
+    // It belongs in the sequence -- it is part of setting a recipe up, not a
+    // diagnostic tool -- but there is no state of it that is WRONG: no points
+    // means the matcher auto-selects, which is a complete configuration and the
+    // one most defs ship with. So it is done once there are features to refine,
+    // whether the points are explicit or automatic. A step that could never be
+    // satisfied would stop the panel from ever reading "done", and this panel
+    // exists to say when the def is finished.
+    !!edit_info.__shape_cache && !edit_info.__shape_stale,
+  ];
+  const STEP_T = ['定位', '特徵範圍', '生成特徵', 'ROI 取樣點'];
+  const curStep = stepDone.findIndex((d) => !d);          // -1 = all done
+  const shownStep = openStep !== undefined ? openStep : (curStep < 0 ? 2 : curStep);
+
+  // The active tool's instruction, drawn ON the canvas.
+  //
+  // These were title= tooltips. The target machine is a Surface Go and may be
+  // driven by touch, where hover does not exist and a tooltip is simply
+  // invisible -- including "changing this invalidates the features", which is
+  // exactly how a def silently stops using SBM. Text that has to be read cannot
+  // live in a tooltip.
+  const TOOL_HINT = {
+    pan: ['平移縮放', '拖曳＝移動視角,滾輪＝縮放。不會修改任何設定。'],
+    locline: ['定位線', '拖一條線:按下的點＝原點,放開的方向＝0° 軸。改了這個,特徵必須重新生成。'],
+    include: ['include 生成區', '點頂點圍住零件,點回第一個頂點收尾。只有框內會抽特徵。'],
+    exclude: ['exclude 避免區', '框住不要抽特徵的地方,例如會晃動的鄰件或反光。'],
+    roi: ['ROI 取樣點', '點畫面新增,點既有的點刪除。改它不影響特徵,不需要重新生成。'],
+  };
+
+
+  // 40px on everything touchable. antd size="small" is 24px, which is not
+  // reliably hittable with a finger on a 10-inch panel.
+  const H = 40;
+  const Hint = ({ children }) => (
+    <div style={{ fontSize: 12, color: P.dim, lineHeight: 1.6, margin: '2px 0 10px' }}>{children}</div>
+  );
+  const Row = ({ label, children, unit }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+      <span style={{ flex: '1 1 auto', fontSize: 13, color: P.ink }}>{label}</span>
+      {children}
+      <span style={{ flex: '0 0 44px', fontSize: 11, color: P.dim }}>{unit}</span>
+    </div>
+  );
+  const pick = (id) => { work.current = { poly: [], cursor: null, line: null };
+                         setTool(tool === id ? 'pan' : id); };
+
+  // A collapsible block. `idx` < 100 is a numbered step; >= 100 is an optional
+  // tool, which never counts toward progress.
+  const Block = ({ n, title, summary, idx, opt, children }) => {
+    const open = opt ? openStep === idx : shownStep === idx;
+    const done = !opt && stepDone[idx];
+    const now = !opt && idx === curStep;
+    return <div style={{ borderTop: opt ? '1px dashed ' + P.line : '1px solid ' + P.line }}>
+      <div role="button" tabIndex={0}
+        data-testid={'sbm2-block-' + (opt ? 'opt' : 'step') + '-' + idx}
+        data-done={done ? '1' : '0'} data-now={now ? '1' : '0'}
+        data-open={open ? '1' : '0'}
+        onClick={() => setOpenStep(open ? -99 : idx)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpenStep(open ? -99 : idx); }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 46,
+                 cursor: 'pointer', padding: '2px 0' }}>
+        <span style={{ flex: '0 0 22px', height: 22, borderRadius: 11, fontSize: 11,
+          fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: done ? P.ok : (now ? P.accent : 'transparent'),
+          border: (done || now) ? 'none' : '1px dashed ' + P.line,
+          color: (done || now) ? '#fff' : P.dim }}>{n}</span>
+        <span style={{ flex: '1 1 auto', fontSize: 14, fontWeight: 600,
+                       color: now ? '#5b9dff' : P.ink }}>{title}</span>
+        <span style={{ fontSize: 12, color: P.dim }}>{summary}</span>
+        <span style={{ flex: '0 0 18px', textAlign: 'center', color: P.dim,
+          transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>›</span>
+      </div>
+      {open ? <div style={{ padding: '0 0 8px 32px' }}>{children}</div> : null}
+    </div>;
+  };
+
+  const toolHint = TOOL_HINT[tool] || TOOL_HINT.pan;
+  const nFeat = ((featPts && featPts.features) || []).length;
+
+  // The derived state, published. "step 3 of 3" and "the features match the
+  // settings" are the assertions worth making here; that a button was clicked
+  // is not. See TEAM_HANDOFF §13.
+  return <div className="sbm2-root" data-testid="sbm2"
+    data-step={curStep < 0 ? 'done' : String(curStep + 1)}
+    data-done={stepDone.map((d) => (d ? '1' : '0')).join('')}
+    data-stale={edit_info.__shape_stale ? '1' : '0'}
+    data-features={String(nFeat)}
+    data-roi={String(roiPts.length)}
+    data-regions={nIncl + '/' + nExcl}
+    data-tool={tool}
+    style={{ display: 'flex', height: '100%', minHeight: 0, gap: 8,
+             color: P.ink, background: P.ground }}>
+    {/* Landscape: canvas | rail. Portrait: canvas above, rail below.
+        The v1 studio is height:84vh with a fixed 240px column, which overflows a
+        portrait 10-inch screen; this is flex in both directions and the canvas
+        never scrolls, so the whole image stays visible whatever the rail does. */}
+    <style>{SBM2_CSS}</style>
+
+    <div className="sbm2-canvas" style={{ position: 'relative', border: '1px solid ' + P.line,
+                                          borderRadius: 6, overflow: 'hidden' }}>
+      <HookCanvasComponent key={edit_info.img ? 'img' : 'noimg'}
+        dhook={dhook} image={edit_info.img} captureDrag={captureDrag} mmpp={mmpp} />
+
+      {edit_info.img ? null : (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', pointerEvents: 'none', color: P.dim,
+                      textAlign: 'center', lineHeight: 1.9 }}>
+          <div>尚未擷取影像<br />
+            <span style={{ fontSize: 12 }}>先在檢驗準備裡拍一張,再回來設定 SBM 定位。</span>
+          </div>
+        </div>
+      )}
+
+      {/* Tools live where they act, at 44px, and the pressed one IS the mode. */}
+      <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex',
+                    flexDirection: 'column', gap: 6, zIndex: 2 }}>
+        {[['pan', '✥'], ['locline', '✛'], ['include', '＋'], ['exclude', '－'], ['roi', '◻']]
+          .map(([id, ic]) => (
+          <div key={id} role="button" tabIndex={0} aria-pressed={tool === id}
+            data-testid={'sbm2-tool-' + id}
+            onClick={() => pick(id)}
+            style={{ width: 44, height: 44, borderRadius: 9, display: 'flex',
+              alignItems: 'center', justifyContent: 'center', fontSize: 19, cursor: 'pointer',
+              userSelect: 'none', touchAction: 'manipulation',
+              // Kept dark on purpose: these float over the camera image, not
+              // over the panel, and a light chip vanishes against a bright part.
+              background: tool === id ? P.accent : 'rgba(20,28,32,.55)',
+              border: '1px solid ' + (tool === id ? 'transparent' : 'rgba(255,255,255,.25)'),
+              color: '#f2f6f7' }}>{ic}</div>
+        ))}
+      </div>
+
+      {/* The numbers that answer "is this recipe healthy", parked in the space a
+          contain-fit leaves. Costs no rail height and is never scrolled away. */}
+      <div style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 6,
+                    zIndex: 2, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '64%' }}>
+        {insp && insp.located
+          ? <Chip2 label="分數" value={insp.pose.similarity.toFixed(3)}
+              tone={insp.pose.similarity >= floorInfo.floor ? '#7ee2a8' : '#ff9a90'} />
+          : null}
+        <Chip2 label="特徵" value={nFeat} />
+        <Chip2 label="ROI" value={roiPts.length} />
+        <Chip2 label="區域" value={nIncl + '／' + nExcl} />
+      </div>
+
+      <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10, zIndex: 2,
+        background: 'rgba(0,0,0,.75)', border: '1px solid rgba(255,255,255,.12)',
+        borderRadius: 8, padding: '8px 11px', fontSize: 12.5, lineHeight: 1.55,
+        color: '#e6eaf0', pointerEvents: 'none' }}>
+        <b style={{ color: '#fff' }}>{toolHint[0]}</b>　{toolHint[1]}
+      </div>
+    </div>
+
+    <div className="sbm2-rail" style={{ display: 'flex', flexDirection: 'column',
+                                        minWidth: 0, fontSize: 13 }}>
+
+      {/* Not a tool and not a step. A def in this state leaves here unable to use
+          its own locator, invisibly -- so it keeps the top and both exits. */}
+      {edit_info.__shape_stale &&
+        <div style={{ flex: '0 0 auto', border: '1px solid ' + P.bad, background: P.badBg,
+                      borderRadius: 8, padding: 11, marginBottom: 9 }}>
+          <div style={{ color: P.bad, fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+            ⚠ 特徵已失效</div>
+          <div style={{ color: '#a84a3f', fontSize: 12.5, lineHeight: 1.6 }}>
+            你改了定位,目前的 SBM 特徵跟它對不上了。<b style={{ color: P.bad }}>
+            這樣離開的話,這個 def 不會用 SBM 定位</b>——它會退回 sig360,而且畫面上看不出來。
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <Button danger type="primary" style={{ flex: 1, height: H }}
+              loading={genBusy} onClick={() => genFeatures(true)}>重新生成特徵</Button>
+            <Button style={{ flex: 1, height: H }} disabled={!edit_info.__shape_lastGood}
+              onClick={() => {
+                const lg = edit_info.__shape_lastGood;
+                dispatch(DefConfAct.EditInfo_Patch({
+                  def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
+                  __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
+                }));
+              }}>還原上一版</Button>
+          </div>
+        </div>}
+
+      {/* PINNED. The block below scrolls; this must not, or the reader loses
+          their place exactly when the panel is long enough to need it. */}
+      <div style={{ flex: '0 0 auto', border: '1px solid ' + P.line, borderRadius: 8,
+                    background: P.panel, padding: '9px 10px 10px', marginBottom: 9 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, letterSpacing: '.08em', color: P.dim, fontWeight: 600 }}>
+            步驟 {curStep < 0 ? STEP_T.length : curStep + 1}／{STEP_T.length}</span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
+            {curStep < 0 ? '都完成了' : STEP_T[curStep]}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {STEP_T.map((t, i) => (
+            <div key={t} role="button" tabIndex={0} data-testid={'sbm2-seg-' + i}
+              data-state={stepDone[i] ? 'done' : (i === curStep ? 'now' : 'todo')}
+              onClick={() => setOpenStep(i)}
+              onKeyDown={(e) => { if (e.key === 'Enter') setOpenStep(i); }}
+              style={{ flex: 1, height: 38, borderRadius: 6, display: 'flex',
+                alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', touchAction: 'manipulation',
+                background: stepDone[i] ? P.ok : (i === curStep ? P.accent : 'transparent'),
+                border: (stepDone[i] || i === curStep) ? 'none' : '1px solid ' + P.line,
+                color: (stepDone[i] || i === curStep) ? '#fff' : P.dim }}>
+              {stepDone[i] ? '✓' : i + 1}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* ONLY this scrolls. */}
+      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', paddingRight: 5 }}>
+
+        {imageList.length > 1 &&
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ flex: '0 0 auto', color: P.dim, fontSize: 12 }}>影像</span>
+            <Select style={{ flex: '1 1 auto', minWidth: 0 }} value={currentImagePath}
+              onChange={switchImage}
+              options={imageList.map((im) => ({ value: im.path, label: im.name }))} />
+          </div>}
+
+        <Block n="1" idx={0} title="定位"
+          summary={Number.isFinite(reg.cx)
+            ? reg.cx.toFixed(2) + ', ' + reg.cy.toFixed(2) + ' · '
+              + ((reg.angle || 0) * 180 / Math.PI).toFixed(1) + '°'
+            : '未設定'}>
+          <Button block style={{ height: H, marginBottom: 6 }}
+            type={tool === 'locline' ? 'primary' : 'default'}
+            onClick={() => pick('locline')}>✛ 拖曳設定定位線</Button>
+          <Hint>按下＝原點,放開的方向＝0° 軸。
+            <b style={{ color: P.ink }}>改了要重新生成特徵。</b></Hint>
+        </Block>
+
+        <Block n="2" idx={1} title="特徵範圍" summary={nIncl + ' ／ ' + nExcl}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <Button style={{ flex: 1, height: H }} type={tool === 'include' ? 'primary' : 'default'}
+              onClick={() => pick('include')}>＋ include</Button>
+            <Button style={{ flex: 1, height: H }} type={tool === 'exclude' ? 'primary' : 'default'}
+              onClick={() => pick('exclude')}>－ exclude</Button>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Button style={{ flex: 1, height: H }} onClick={() => delLast('loc_include')}>刪 include</Button>
+            <Button style={{ flex: 1, height: H }} onClick={() => delLast('loc_exclude')}>刪 exclude</Button>
+          </div>
+          <Hint>點頂點圍住零件,點回第一個頂點收尾。</Hint>
+        </Block>
+
+        <Block n="3" idx={2} title="生成特徵"
+          summary={edit_info.__shape_cache ? nFeat + ' 點' : '未生成'}>
+          {/* Refused, not hidden, and it says which step is missing.
+              Features are extracted relative to the object frame, so extracting
+              before there is one produces points that are stale the moment the
+              registration line is drawn -- and until then they render at the
+              image corner, where they look like leftovers from another recipe.
+              This is reachable by opening step 3 directly; the pinned next
+              button already sends an unregistered def to step 1. */}
+          <Button data-testid="sbm2-generate" block type="primary"
+            style={{ height: H, marginBottom: 6 }}
+            data-enabled={stepDone[0] ? '1' : '0'}
+            disabled={!stepDone[0]}
+            loading={genBusy} onClick={() => genFeatures(true)}>🔵 生成特徵點</Button>
+          {stepDone[0]
+            ? <Hint>把目前的定位、範圍、邊緣門檻送給 core,抽出這個配方要用的特徵點(藍)。
+                需要 &lt;配方名&gt;.png 已經在磁碟上。</Hint>
+            : <Hint><b style={{ color: '#b26a00' }}>要先做第 1 步「定位」。</b>
+                特徵是相對於定位原點抽出來的 —— 沒有原點就抽,畫出來會落在影像角落,
+                而且你一畫定位線它們就失效了。</Hint>}
+        </Block>
+
+        <Block n="4" idx={3} title="ROI 取樣點"
+          summary={(roiBusy ? '更新窗口中… ' : '') + (roiPts.length ? roiPts.length + ' 點' : '自動')}>
+          <Row label="ROI 最小間距" unit="px">
+            <InputNumber min={-1} max={200} step={1} style={{ width: 92 }}
+              value={edit_info.shape_roi_spacing ?? -1}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_roi_spacing: (typeof v === 'number') ? v : -1 }))} />
+          </Row>
+          <Hint>自動產生時,兩點至少相隔這麼遠,視窗才不會疊在一起。
+            <b style={{ color: P.ink }}>-1 = 自動</b>(一個視窗寬 30 px,視窗不重疊)、
+            <b style={{ color: P.ink }}>0 = 關</b>(只靠 5×5 格子每格最多 2 點)、正數 = 指定像素。
+            改完再按「自動產生」。</Hint>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <Button style={{ flex: 1, height: H }} loading={genBusy || roiBusy} onClick={autoFillRoi}>⚙ 自動產生</Button>
+            <Button style={{ height: H }} loading={roiBusy} onClick={() => onRoi([])}>清除</Button>
+          </div>
+          <Button block style={{ height: H }} type={tool === 'roi' ? 'primary' : 'default'}
+            data-testid="sbm2-roi-edit"
+            onClick={() => pick('roi')}>◻ 編輯 ROI 點</Button>
+          <Hint>core 用這些點做定位微調(sub-pixel)。沒放點＝由 core 自動選;「清除」就是回到自動。
+            <b style={{ color: P.ink }}>改點不影響特徵,也不用重新生成</b>——
+            點一改,精修用的像素窗口就自動從參考影像重裁進 def(所以參考影像要在磁碟上)。</Hint>
+        </Block>
+
+        <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,
+                      margin: '16px 0 2px', paddingTop: 10, borderTop: '2px solid ' + P.line }}>
+          工具 · 選用,不影響進度
+        </div>
+
+        <Block n="◈" idx={100} opt title="測試" summary="選用">
+          <Hint>這些都不是必要步驟,也不會擋住離開。它們只是幫你判斷這個配方能不能用。</Hint>
+          <Button block ghost style={{ height: H, marginBottom: 6 }}
+            loading={inspBusy} onClick={runInspect}>▶ 跑一次檢驗</Button>
+          {insp && <InspectPanel insp={insp} onClear={() => setInsp(undefined)} />}
+          {imageList.length > 1 && <>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <Button style={{ flex: 1, height: H }} onClick={runBatch}
+                disabled={!!(batch && batch.done < batch.total && !batch.aborted)}>全資料夾</Button>
+              <Button danger style={{ height: H }} onClick={() => { abortRef.current = true; }}
+                disabled={!(batch && batch.done < batch.total && !batch.aborted)}>中止</Button>
+            </div>
+            <BatchPanel batch={batch} onClear={() => setBatch(undefined)} />
+          </>}
+        </Block>
+
+        <Block n="◈" idx={101} opt title="強健性掃描" summary="選用">
+          <Select style={{ width: '100%', marginBottom: 6 }} value={sweepAxis} onChange={setSweepAxis}
+            options={Object.entries(SWEEP_AXES).map(([k, a]) => ({ value: k, label: a.label }))} />
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            {['from', 'to', 'steps'].map((f) => {
+              const A = SWEEP_AXES[sweepAxis];
+              const r = sweepRange[sweepAxis] || {};
+              return <InputNumber key={f} style={{ flex: 1, minWidth: 0 }}
+                value={r[f] !== undefined ? r[f] : A[f]}
+                step={f === 'steps' ? 1 : (A.unit === '×' ? 0.05 : 1)}
+                onChange={(v) => setSweepRange((s0) => ({ ...s0,
+                  [sweepAxis]: { ...(s0[sweepAxis] || {}), [f]: v } }))} />;
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Button style={{ flex: 1, height: H }} onClick={runSweep}
+              disabled={!!(sweep && sweep.done < sweep.total && !sweep.aborted)}>▶▶ 掃這個</Button>
+            <Button type="primary" style={{ flex: 1, height: H }} onClick={runSweepAll}
+              disabled={!!(sweep && sweep.done < sweep.total && !sweep.aborted)}
+              title="旋轉、位移、縮放、歪斜、亮度、offset、雜訊各用自己的範圍,一次掃完,同一張原圖當基準">▶▶ 全部掃描</Button>
+            <Button danger style={{ height: H }} onClick={() => { abortRef.current = true; }}
+              disabled={!(sweep && sweep.done < sweep.total && !sweep.aborted)}>中止</Button>
+          </div>
+          <Hint>{SWEEP_AXES[sweepAxis].hint}</Hint>
+          <SweepPanel sweep={sweep} floor={floorInfo.floor} />
+        </Block>
+
+        {/* ROI is NOT a step any more.
+            The core rebuilds these points from the def on every load (see
+            trainShapeMatcher's cache-hit branch), so the extracted features never
+            depended on them. Treating a ROI edit as "the features are now stale"
+            was over-strict, and it made an optional refinement feel destructive.
+            NOTE: the reducer still marks the cache stale on roi_refine_points --
+            until that is changed, this label is the intent and not yet the
+            behaviour. */}
+
+        <Block n="⚙" idx={103} opt title="參數" summary="選用">
+          <Row label="位置容差" unit="px">
+            <InputNumber min={0} max={500} step={5} style={{ width: 92 }}
+              data-testid="sbm2-postol"
+              value={posTolPx} onChange={(v) => setPosTolPx(v || 0)} />
+          </Row>
+          <Hint>檢驗和掃描只接受<b style={{ color: P.ink }}>落在預期位置附近</b>的那個候選,
+            其餘視為干擾。擾動量是我們自己給的,所以預期位置算得出來 —— 靠位置認人,
+            不是靠分數名次。<b style={{ color: P.ink }}>設 0 關閉</b>(關掉就退回「取最高分」,
+            畫面上有幾顆就報幾顆)。</Hint>
+          <Row label="min score 門檻" unit="0–100">
+            <InputNumber min={1} max={99} step={1} style={{ width: 92 }}
+              value={edit_info.shape_min_score ?? 50}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_min_score: v }))} />
+          </Row>
+          <Hint>分數低於這個值就當作沒找到。
+            <b style={{ color: P.ink }}>改它不用重新生成特徵。</b></Hint>
+          <Row label="coarse scale" unit="0–1">
+            <InputNumber min={0.1} max={1} step={0.1} style={{ width: 92 }}
+              value={edit_info.shape_match_scale ?? 0.3}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_match_scale: v }))} />
+          </Row>
+          <Row label="angle ±" unit="度">
+            <InputNumber min={0} max={180} step={5} style={{ width: 92 }}
+              value={edit_info.matching_angle_margin_deg ?? 180}
+              onChange={(v) => dispatch(DefConfAct.Matching_Angle_Margin_Update(v))} />
+          </Row>
+          <Row label="NMS 角度" unit="度">
+            <InputNumber min={1} max={360} step={5} style={{ width: 92 }}
+              value={edit_info.shape_nms_angle ?? 360}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_nms_angle: v }))} />
+          </Row>
+          <Hint>同一顆料的候選姿態要相差幾度才算不同姿態。候選數量就由這個值決定:
+            <b style={{ color: P.ink }}>360 = 只留分數最高的一個</b>;設 10 就會保留每隔 10° 的姿態
+            (正反面也算姿態),量測依<b style={{ color: P.ink }}>粗定位分數</b>由高到低逐一試,
+            第一個通過方向必要量測的就是答案。沒有方向必要量測時永遠取第一個。</Hint>
+          <Row label="定位信任" unit="">
+            <Select style={{ width: 92 }} value={edit_info.shape_trust_na === true ? 1 : 0}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_trust_na: v === 1 }))}
+              options={[{ value: 0, label: '關' }, { value: 1, label: '開' }]} />
+          </Row>
+          {edit_info.shape_trust_na === true && (
+            <Row label="殘差上限" unit="px">
+              <InputNumber min={0.3} max={20} step={0.5} style={{ width: 92 }}
+                value={edit_info.shape_trust_res_max ?? 3}
+                onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_trust_res_max: v }))} />
+            </Row>
+          )}
+          <Hint>開了以後,定位器對姿態沒信心(擬合殘差超過上限、或對上的點太少)時,
+            這顆物件的判定全部改成 <b style={{ color: P.ink }}>NA</b>,不會 PASS。預設關;
+            上限預設 3 px 很寬鬆,只抓明顯鎖錯邊的情況。零件本身會變形的,上限要留餘裕。</Hint>
+          <Row label="face" unit="">
+            <Select style={{ width: 92 }} value={edit_info.matching_face ?? 1}
+              onChange={(v) => dispatch(DefConfAct.Matching_Face_Update(v))}
+              options={[{ value: 1, label: '正面' }, { value: -1, label: '反面' },
+                        { value: 0, label: '兩面' }]} />
+          </Row>
+          <div style={{ borderTop: '1px solid ' + P.line, margin: '10px 0 8px' }} />
+          <Row label="weak 弱邊" unit="1–255">
+            <InputNumber min={1} max={255} step={5} style={{ width: 92 }}
+              data-testid="sbm2-weak" data-pending={weakPending ? '1' : '0'}
+              value={weakShown}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ __shape_weak_draft: v }))} />
+          </Row>
+          <Row label="strong 強邊" unit="1–255">
+            <InputNumber min={1} max={255} step={5} style={{ width: 92 }}
+              data-testid="sbm2-strong" data-pending={strongPending ? '1' : '0'}
+              value={strongShown}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ __shape_strong_draft: v }))} />
+          </Row>
+          {threshPending
+            ? <Hint><b style={{ color: '#ff7875' }}>尚未生成</b>：目前的特徵仍是用
+                weak {weakSaved} / strong {strongSaved} 抽出來的。按
+                <b style={{ color: P.ink }}>生成特徵點</b>才會採用新的門檻，
+                在那之前存檔也不會寫進 def。</Hint>
+            : <Hint>邊緣門檻改了<b style={{ color: P.ink }}>要重新生成特徵</b>才會生效。</Hint>}
+        </Block>
+      </div>
+
+      {/* PINNED. Names the next action in words -- nobody should have to read a
+          progress bar to work out which button to press. */}
+      <div style={{ flex: '0 0 auto', paddingTop: 10, marginTop: 8,
+                    borderTop: '1px solid ' + P.line }}>
+        <div style={{ fontSize: 10.5, letterSpacing: '.1em', color: P.dim, fontWeight: 600,
+                      marginBottom: 6 }}>{curStep < 0 ? '完成' : '下一步'}</div>
+        {curStep < 0
+          ? <Button data-testid="sbm2-next" data-action="close" type="primary" block
+              style={{ height: 48, fontSize: 15, fontWeight: 600 }}
+              data-enabled="1"
+              data-stale={edit_info.__shape_stale ? '1' : '0'}
+              onClick={() => onClose && onClose()}>✓ 套用並離開</Button>
+          : <Button data-testid="sbm2-next"
+              data-action={curStep === 0 ? 'locline' : curStep === 1 ? 'include' : 'generate'}
+              type="primary" block style={{ height: 48, fontSize: 15, fontWeight: 600 }}
+              loading={curStep === 2 && genBusy}
+              onClick={() => {
+                setOpenStep(curStep);
+                if (curStep === 0) pick('locline');
+                else if (curStep === 1) pick('include');
+                else genFeatures(true);
+              }}>
+              {curStep === 0 ? '✛ 設定定位線' : curStep === 1 ? '＋ 畫 include 區' : '🔵 生成特徵點'}
+            </Button>}
+        {/* The button above is never disabled. A stale feature set is worth
+            saying out loud and is not worth trapping somebody in a modal for --
+            the def still locates with SBM, it just locates with the features it
+            already had. */}
+        <div style={{ fontSize: 11.5, color: edit_info.__shape_stale ? '#ff7875' : P.dim,
+                      textAlign: 'center', marginTop: 6 }}>
+          {edit_info.__shape_stale ? '要先處理上面的「特徵已失效」'
+            : curStep < 0 ? '設定即時套用到編輯暫存;回主編輯器按「存檔」才寫入磁碟。'
+            : curStep === 0 ? '原點和 0° 軸決定特徵怎麼對齊'
+            : curStep === 1 ? '只有 include 框內會抽特徵'
+            : '這一步做完就可以離開了'}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+// A canvas-corner readout: small enough to live in the letterbox a contain-fit
+// leaves, legible enough to be what somebody checks before walking away.
+function Chip2({ label, value, tone }) {
+  return <span style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 20,
+    background: 'rgba(255,255,255,.09)', border: '1px solid rgba(255,255,255,.11)',
+    color: '#d3d9e2', whiteSpace: 'nowrap' }}>
+    {label} <b style={{ color: tone || '#fff', fontWeight: 600,
+                        fontVariantNumeric: 'tabular-nums' }}>{value}</b></span>;
+}

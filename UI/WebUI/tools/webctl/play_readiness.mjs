@@ -3,19 +3,14 @@
 //
 //   node play_readiness.mjs [--url http://localhost:8081/]
 //
-// EXPECTED TO FAIL TODAY. This pins a defect rather than hiding it: the picker
-// renders `new_tagGroupsPreset` -- the base groups PLUS the recipe's
-// `已設定範圍` margin group, which carries maxCount:1 -- while readiness is
-// computed against the base `tagGroupsPreset` alone (MAINUI.js). Select two
-// margin tags and the group draws its warning triangle while play stays
-// enabled; the operator inspects with limits they did not choose, and which of
-// the two applies is decided by selection order (InspectionUI.js's .find()).
-//
-// Written as a test rather than fixed in passing because the fix is a
-// behavioural decision -- refuse to start, or drop the extra tag, or merge the
-// margins -- and that is the machine owner's call, not a side effect of adding
-// a hook. `data-reason="tags-shown-only"` is the state this asserts against:
-// readiness says yes, the rendered groups say no.
+// EXPECTED TO PASS since 2026-09-07 (MAINUI judges readiness against the
+// rendered groups; a violated group refuses play and explains). Before that it
+// pinned the defect: the picker rendered the recipe's 已設定範圍 group
+// (maxCount 1) while readiness was computed from the static preset, so two
+// selected margin tags drew a warning triangle with play still enabled, and
+// selection order decided the margin. If this fails again, that regression is
+// back. `data-reason="tags"` is what a correct refusal reports now;
+// "tags-shown-only" was the defect's signature and can no longer occur.
 //
 // Requires: vite + core + webctld. Non-destructive -- it selects tags on MAIN
 // and never presses play.
@@ -83,6 +78,8 @@ check(p.ready === allShownOk,
       `play ready=${p.ready} but the rendered groups say ${allShownOk} `
     + `(${g.filter((x) => !x.fulfilled).map((x) => x.group).join(', ') || 'all satisfied'}) `
     + `-- reason="${p.reason}"`);
+if (!allShownOk) check(p.reason === 'tags',
+      `refusal reason is "${p.reason}", expected "tags" (a violated rendered group)`);
 
 await api('/shot', { path: fails ? 'play_readiness_fail.png' : 'play_readiness.png' });
 console.log(fails ? '\nFAIL: play does not reflect the groups it shows'

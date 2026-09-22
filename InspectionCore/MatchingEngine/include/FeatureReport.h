@@ -32,6 +32,144 @@ struct CaliperHit
   float strength;
 };
 
+// How a scan band left the image, in the band's own coordinates.
+//
+// Lives here rather than beside search_point_cv that fills it: SearchPointCV.h
+// already includes this header for CaliperHit, so declaring it there and
+// referring to it from the report structs below would close an include cycle.
+//
+// Reconstructing this after the fact from the def and the pose does not work:
+// tried on seven recorded frames of 10221 BOS-LT12BH4211 and the rebuilt band
+// centre was out by up to 450 px (search depth is +-113), which turned two
+// scans that had SUCCEEDED into "30% off-frame". The geometry has to come from
+// the run that measured it.
+//
+// Coordinates match the selector's: `nearest_bad` is a perpCoord, i.e. signed
+// distance along the SEARCH axis from the def's own point, negative towards the
+// near end where the first hit is taken. So `nearest_bad >= 0` says every
+// missing sample sat further out than the answer could ever be, and a NaN says
+// nothing eligible was missing.
+// WHAT THE CANDIDATE EDGES LOOK LIKE, as a few numbers.
+//
+// A search point reports one position. Whether that position came from a tight
+// mass of agreeing rows or from a cloud smeared over the window is not in the
+// report at all, and those are the two cases an operator most needs told apart:
+// the second is a measurement that happens to have a number.
+//
+// Moments of the gated candidates within `range` of the answer, weighted by
+// peak strength. Distances along the SEARCH axis, px. Diagnostic only -- the
+// measurement does not read them.
+//
+//   n      : how many candidates fell in the window
+//   mass   : sum of their peaks. Scales with contrast, so compare it as a
+//            RATIO against the same feature at setup, never as an absolute --
+//            that mistake is what min_strength keeps re-teaching.
+//   mean   : strength-weighted centre, relative to the reported point. Near 0
+//            when the answer sits on the mass; non-zero says the selector and
+//            the bulk of the evidence disagree.
+//   sd     : spread. THE number for "clean edge or smeared cloud".
+//   skew   : asymmetry. A clean step is near 0; a shoulder, a second edge
+//            leaking into the window or a ramp pulls it.
+//   span   : nearest-to-furthest extent of those candidates.
+struct SearchPointMoments
+{
+  int   n = 0;
+  float range = NAN;     // the window used, px (include_range * moment_mult)
+  float mass = NAN, mean = NAN, sd = NAN, skew = NAN, span = NAN;
+};
+
+struct SearchPointClip
+{
+  int   samples_off = 0;        // samples that fell outside the image
+  int   samples_total = 0;      // nS * nP -- the band the def asked for
+  int   rows_off = 0;           // rows with NO in-image sample at all
+  int   rows_total = 0;         // nS
+  float nearest_bad = NAN;      // perpCoord of the nearest missing sample, PX
+  // Band geometry as USED, and enough to redraw the rectangle exactly.
+  //
+  // OBJECT-FRAME mm by the time it reaches the report -- the same frame as
+  // cal_hits, so an overlay draws it directly. search_point_cv fills it in the
+  // scan's own image px; SPointMatching_ReportGen converts it.
+  acv_XY pt{NAN, NAN};          // band centre (the def's point, posed)
+  acv_XY bar{NAN, NAN};         // unit vector along the width axis
+  float  width = NAN;           // px, along bar
+  float  depth = NAN;           // px, along the search axis (= 2*margin)
+};
+
+// THE EVIDENCE A THRESHOLD IS SET AGAINST.
+//
+// edge.min_strength decides which gradient peaks count as edges at all, and it
+// is expressed in raw gradient units -- 0..~460 on this station, depending on
+// contrast, exposure and lens. That is not a number anybody can arrive at by
+// thinking, and the defs show it: 10 is the WebUI's default, the field defs
+// carry 30, one carries 0, against real edges measuring 380-460. The floor is
+// effectively off, and something else has been silently standing in for it.
+//
+// So the panel has to show what is actually there. Not the chosen edge -- the
+// WHOLE across-edge gradient profile, ungated, including the peaks that fall
+// below the current setting. A slider can only be moved down on evidence that
+// exists below it, and the gap between the noise peaks and the real one is the
+// only thing that says where the floor belongs.
+//
+// Ungated also means the slider is a local computation: the profile carries
+// every candidate, so moving it re-picks in the browser with no round trip.
+//
+// Signed, because polarity is part of the selection (rising/falling/any) and a
+// magnitude cannot express it. Index i is at (-L + i*step) px across the edge,
+// measured from the caliper centre along the search direction.
+struct CaliperProfiles
+{
+  std::vector<std::vector<float>> grad;   // one per caliper, nAcross entries
+  std::vector<float> sel;                 // one per caliper: the sample index the selector chose, -1 = none
+  float step = 0;                         // px between samples across the edge
+  float L    = 0;                         // half-span; i=0 sits at -L
+};
+
+// The same question for a SEARCH POINT, which needs a different answer.
+//
+// A caliper averages along the edge and picks a peak out of one profile, so the
+// profile is the evidence. A search point does not average: it finds a peak per
+// ROW independently and then takes the one NEAREST the origin along the search
+// direction. What a threshold acts on there is the candidate set -- every
+// per-row peak in the window -- and two things decide the answer: how strong a
+// candidate is, and how far along the search it sits.
+//
+// So this carries the candidates themselves, ungated, rather than a curve. pos
+// is the distance along the search direction in px, increasing away from the
+// origin, so the first hit is the smallest. str is the peak height BEFORE the
+// selector's own 0.40-of-the-strongest gate, which is the whole point: a
+// threshold cannot be moved down onto candidates that were filtered out before
+// anyone could see them.
+struct SearchPointPeaks
+{
+  std::vector<float> pos;
+  std::vector<float> str;
+  // Where along the BAR the candidate sits. Not a measurement -- the scan
+  // localizes one axis -- but it is what makes the candidate cloud a SHAPE
+  // rather than a list, and the shape is the point when the edge being found is
+  // curved.
+  //
+  // Locating the apex of a shallow arc is the case: each row's first hit varies
+  // with the square of its distance from the apex, and the algorithm returns
+  // the weighted centroid of everything within include_range of the nearest
+  // hit -- which sits DEEPER than the apex, by more the wider that band is.
+  // Widening it for noise and then dialling manual_offset back by eye is the
+  // workflow that follows, and with `along` the offset is a fit rather than a
+  // judgement.
+  std::vector<float> along;
+  float span = 0;           // how far the search reaches (px)
+  float mmpp = 0;           // px -> mm, so an offset can be suggested in def units
+  // THE ANSWER, in the same frame as the candidates.
+  //
+  // Without it a panel wanting to say "the result sits N px from the apex" has
+  // to re-implement the selection -- the band, the alpha taper, the weighting --
+  // and then drifts from it at the first change. sel_pos is what the scan
+  // returned along the search direction, before manual_offset is applied, so an
+  // offset suggested against it is the whole correction and not part of one.
+  float sel_pos = 0, sel_along = 0;
+  bool  sel_ok = false;
+};
+
 
 #define FeatureManager_NAME_LENGTH 32
 
@@ -88,6 +226,11 @@ typedef struct featureDef_circle{
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (3 for circle)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // 0 = the hard inlier mask this has always used; 1 = the residual weight
+  // falls smoothly to zero at the same threshold, so a hit sitting on the edge
+  // of the band cannot swing the fit by appearing and vanishing. See
+  // CaliperParams::soft_reject.
+  float cal_soft_reject;
   // Envelope-fit mode: keep the LS-fit center, recompute the radius as
   //   0=ls    (default, no change)
   //   1=outer (max |center - hit|; min-circumscribed-radius assuming LS center)
@@ -99,6 +242,8 @@ typedef struct featureDef_circle{
   int edge_polarity;
   int edge_nth;
   float edge_min_strength;
+  float edge_rel_strength;
+  float edge_sigma;
   vector <ContourFetch::ptInfo> tmp_pt;
   Roughness_INFO ri;
 }featureDef_circle;
@@ -123,16 +268,45 @@ typedef struct featureDef_line{
   // Width/length/step are def-file mm; LineMatching_ReportGen converts them
   // to px (/= mmpp) before the matching engine consumes them.
   int locating;            // default 0
+  // ENVELOPE FIT: the DIRECTION is always least squares, only the OFFSET moves.
+  //
+  // 0 = ls      the fitted line, through the weighted centroid (unchanged)
+  // 1 = front   slid along its own normal until it touches the extreme inlier
+  //             on the normal's NEGATIVE side
+  // 2 = back    the same, on the positive side
+  //
+  // Same idea as featureDef_circle::fit_mode, where the centre stays least
+  // squares and only the radius becomes an envelope: a fit that follows the
+  // edge's direction but rests on the material rather than averaging through
+  // it. The normal is (-dir.y, dir.x) with dir oriented p0->p1, so which side
+  // is "front" is fixed by how the def drew the line.
+  int fit_mode;            // 0=ls, 1=front, 2=back
   int cal_count;           // # calipers along the line
   float cal_width;         // projection width (mm at def-level; px at use)
   float cal_length;        // search half-length across the edge (mm); <=0 => use initMatchingMargin
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (2 for line)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // 0 = the hard inlier mask this has always used; 1 = the residual weight
+  // falls smoothly to zero at the same threshold, so a hit sitting on the edge
+  // of the band cannot swing the fit by appearing and vanishing. See
+  // CaliperParams::soft_reject.
+  float cal_soft_reject;
   int edge_method;         // EdgeSelectParams::Method
   int edge_polarity;       // EdgeSelectParams::Polarity
   int edge_nth;
   float edge_min_strength;
+  float edge_rel_strength; // floor = max(min_strength, rel_strength * strongest); 0 = absolute floor
+  float edge_sigma;        // across-edge Gaussian, px; 0 = none
+  // AUX LINE: a line THROUGH TWO POINTS instead of a fitted edge. When both ids
+  // are >= 0 the line is not searched for at all -- TreeExecution resolves the
+  // two referenced points (search_point / aux_point / arc centre, whatever
+  // ParseLocatePosition can turn into a point) and the report is the line
+  // through them, pt1 -> pt2. It lives in featureLineList so every consumer
+  // that takes a line by id (angle, distance, aux_point crossing) takes it
+  // without knowing. -1 = an ordinary fitted line.
+  int aux_pt1_id = -1;
+  int aux_pt2_id = -1;
   /*
 
   We will rotate the picture to let image line contour pixel lie on horizontal position
@@ -212,6 +386,94 @@ typedef struct featureDef_searchPoint{
   // NO LONGER "0 means use the tuned default" -- see edge_set below. 0 is a
   // value the def can mean, and it is honoured.
   float alpha_keep;
+  //   rel_strength: THE RULE THAT USED TO HAVE NO NAME.
+  //
+  //     search_point_cv keeps candidates whose peak is at least this fraction
+  //     of the STRONGEST peak anywhere in the window, then takes the nearest
+  //     survivor. It was a hard-coded 0.40 with no setting and no display, and
+  //     it is load-bearing: measured on the 10155 def, three of nine search
+  //     points are held on their edge by it alone -- one of them 13.8px (192um)
+  //     from the nearest candidate that min_strength admits.
+  //
+  //     That is a threshold relative to whatever else happens to be in the
+  //     window, so a neighbouring part or a burr raises it and the measured
+  //     point can move to a different edge with nothing said. It should not
+  //     exist once min_strength is set against real evidence -- which is what
+  //     the edge-profile panel is for -- but deleting it would silently change
+  //     every def in the field that is currently leaning on it.
+  //
+  //     So it becomes a number: default 0.40, exactly today's behaviour, and 0
+  //     turns it off. Removal is now a per-def decision somebody makes on
+  //     purpose, and the core says out loud when a def is relying on it.
+  float rel_strength;      // default 0.40
+  //   dist_decay: HOW FAR FROM WHERE THE DEF SAID, IN PIXELS.
+  //
+  //     Every candidate's strength is multiplied by exp(-|d| / dist_decay),
+  //     d being its distance from the def's own point along the search axis.
+  //     A candidate further from where the edge is expected therefore has to
+  //     be proportionally stronger to be believed, and the selector stops
+  //     being a pure "nearest thing that clears the floor".
+  //
+  //     What it is for: an edge that flickers in and out at the far end of the
+  //     window -- a neighbouring part, a burr, a hair, a reflection that comes
+  //     and goes with the lighting. While it is there it can be the nearest
+  //     survivor, so the reported point jumps to it and back frame to frame,
+  //     at full strength, with a perfectly consistent-looking consider band.
+  //     Nothing in strength says it is wrong. Distance does.
+  //
+  //     0 = off, and off is bit-identical to the behaviour before this
+  //     existed. A useful value is a few times the real edge's positional
+  //     noise: large enough that the true edge never loses, small enough that
+  //     something half a window away cannot win on strength alone.
+  float dist_decay;        // default 0 (off)
+  //   min_rows: HOW MANY ROWS OF THE BAND MUST AGREE ON THE APEX.
+  //
+  //     The selector takes the nearest row edge along the search axis. A
+  //     speck or a fibre crossing the band produces an edge in one or two rows,
+  //     and if it sits nearer than the part it IS the nearest -- and the rows
+  //     of the real edge, further out than include_range, are then excluded
+  //     from the average. Nothing in strength or distance need be wrong.
+  //     min_rows says: an apex supported by fewer than this many rows (within
+  //     include_range of it) is not the apex; drop those candidates and take
+  //     the next nearest. A wire edge spans tens of rows, a speck a few.
+  //
+  //     0 = off, bit-identical to before. Support is counted within
+  //     max(include_range, 3 px) of the top. Set it against the band, not as
+  //     a constant: rows only count if they cleared min_strength, so a
+  //     0.1 mm band (11 rows) on an oblique edge has ~9 candidates and 4 in
+  //     support -- 5 there is an NA. Measured on 10221 frame 33_729 with 5 on
+  //     every point: the 11-row band went NA and a 13 mm apex scan, whose
+  //     apex is by nature 2-4 rows wide, jumped 9 mm to the next edge. Use
+  //     it on narrow bands over straight edges (a third of the rows), and
+  //     leave apex scans at 0 -- dist_decay is the filter for those.
+  int   min_rows;          // default 0 (off)
+  //   moment_mult: the moment window, as a multiple of include_range.
+  //
+  //     Wide enough to see the shoulders of the edge and anything sitting just
+  //     outside the averaging band, narrow enough not to swallow the next
+  //     feature. 0 = do not compute them. Diagnostic today; the filter that
+  //     compares them against the template's is not wired yet.
+  float moment_mult;       // default 3
+  //   edge_nth: WHICH edge along the search axis, when edge_method is nth.
+  //
+  //     A search point takes the NEAREST hit. nth walks outward instead: 1 is
+  //     the edge after the nearest, 2 the one after that. Edges are separated
+  //     by include_range -- the same grouping the apex average uses, so "the
+  //     same edge" means one thing in this scan.
+  //
+  //     Parsed since the knob existed and never passed to search_point_cv, so
+  //     a def asking for the second edge measured the first and said nothing.
+  //     Wired 2026-09-21; nothing shipped was using it (every def in the tree
+  //     carries the default 0).
+  //
+  //     WHAT IT NEEDS: edges further apart than the scan's own spread. Measured
+  //     on 10221 frame 46_274 with include_range 0.05 mm (5.6 px): points whose
+  //     band crosses the wire stepped a whole wire thickness -- id 16 by 42 px,
+  //     id 21 by 97 px -- which is the intended behaviour. On a BLURRED edge
+  //     the per-row picks spread wider than the separation, so the one edge
+  //     splits into more than one group and nth walks 4-6 px along the same
+  //     ridge instead of to the next feature. Set it against an edge you can
+  //     see is separate, not as a way to nudge a point.
   // WHICH of the edge knobs the def actually said something about.
   //
   // Every read used to be `(x > 0) ? x : default`, which makes "absent" and
@@ -243,6 +505,10 @@ typedef struct featureDef_searchPoint{
     EDGE_SET_INCLUDE_RANGE= 1u << 1,
     EDGE_SET_MANUAL_OFFSET= 1u << 2,
     EDGE_SET_ALPHA_KEEP   = 1u << 4,
+    EDGE_SET_REL_STRENGTH = 1u << 6,
+    EDGE_SET_DIST_DECAY   = 1u << 7,
+    EDGE_SET_MIN_ROWS     = 1u << 8,
+    EDGE_SET_MOMENT_MULT  = 1u << 9,
     // 1u << 5 was EDGE_SET_MASK_DILATE. Left as a hole rather than reused: a
     // new knob taking that bit would read as "set" on nothing, but the number
     // is in dumps and logs going back months and a reused bit makes those lie.
@@ -334,10 +600,32 @@ typedef struct FeatureReport_judgeDef{
   bool NGasNA;
   bool NAasNG;
 
+  enum AngleRange { ANGLE_SIGNED90 = 0, ANGLE_ABS90, ANGLE_DEG180, ANGLE_SIGNED180, ANGLE_DEG360, ANGLE_SUPP, ANGLE_COMP };
   struct data{
     struct ANGLE{
       int quadrant;
       acv_XY pt;
+      // SIGNED MODE (parallelism / squareness). The classic angle takes the
+      // two lines' intersection and the quadrant the label point sits in, and
+      // reports 0..180 -- which has no sign and, for two nearly parallel
+      // lines, no usable intersection. In signed mode the value is the
+      // rotation from line 1 (the reference) to line 2, modulo 180 (a line has
+      // no head), minus nominal_deg, wrapped into (-90, +90]. Parallelism is
+      // nominal 0, squareness nominal 90. Counter-clockwise in the part's own
+      // frame is positive (the sign follows the flip). Off = the classic
+      // behaviour, byte for byte; defs without the key never enter here.
+      bool signed_mode;
+      float nominal_deg;
+      // Which reading of the A->B rotation to report (angle_range in the def):
+      //   SIGNED90  (-90, 90]   parallelism (default of the vector mode)
+      //   ABS90     [0, 90]     acute
+      //   DEG180    [0, 180)    A to B, lines (no head)
+      //   SIGNED180 (-180, 180] vectors (head matters)
+      //   DEG360    [0, 360)    A to B counter-clockwise, vectors
+      //   SUPP      180 - DEG180  supplementary
+      //   COMP      90 - ABS90    complementary
+      // nominal_deg is subtracted from the raw rotation before the wrap.
+      int range;   // an AngleRange (declared below data; the member ANGLE hides the type name here)
     }ANGLE;
     struct CALC{
       string exp;
@@ -375,6 +663,9 @@ typedef struct FeatureReport_lineReport{
   // Per-caliper hits when locating==1 (caliper). Empty in the contour path.
   // Length == def->cal_count when populated. See Caliper.h CaliperHit.
   std::vector<CaliperHit> cal_hits;
+  // Only when DEBUG_EMIT edge_profile is on; nothing is sampled for it
+  // otherwise. See CaliperProfiles.
+  CaliperProfiles cal_prof;
 }FeatureReport_lineReport;
 
 
@@ -390,6 +681,21 @@ typedef struct FeatureReport_circleReport{
   acv_XY pt1,pt2,pt3;//mapped 3 pts on circle
   // Per-caliper hits when locating==1 (caliper); empty in the contour path.
   std::vector<CaliperHit> cal_hits;
+  CaliperProfiles cal_prof;    // see FeatureReport_lineReport
+  // Why this circle is NA. Search points have carried one since they were
+  // written; circles never did, and on a recorded frame of 10221
+  // BOS-LT12BH4211 the circles were the LARGER half of the NAs (21 of 61
+  // failing features, with the aux points that hang off them) and the only
+  // ones the record could say nothing at all about.
+  char na_reason[96] = {0};
+  // The radial search each caliper ran, so a miss can be re-examined on the
+  // picture: each caliper i in cal_hits sits on the nominal circle (c0, r0)
+  // and searched +-len along the ray from c0 through its anchor. Without this
+  // a missed caliper's anchor says WHERE it looked and nothing about the
+  // DIRECTION or REACH -- which is the difference between "the wire was 12 px
+  // away and the ray never crossed it" and "the ray crossed it and the
+  // polarity refused it". OBJECT-FRAME mm, like cal_hits. len<0 = not run.
+  struct { acv_XY c0{NAN, NAN}; float r0 = NAN, len = -1, width = 0; int polarity = -1; } cal_geom;
 }FeatureReport_circleReport;
 
 
@@ -400,7 +706,7 @@ typedef struct FeatureReport_auxPointReport{
   int status;
   // Same field, same reason, as the search point's: an NA that cannot say why
   // is as unhelpful as a silent substitution. Empty unless there is a reason.
-  char na_reason[48];
+  char na_reason[96];
 }FeatureReport_auxPointReport;
 
 
@@ -423,19 +729,39 @@ typedef struct FeatureReport_searchPointReport{
   // An NA with no reason is the same disease as a silent substitution: the
   // screen cannot explain what the machine did. Empty unless a required knob
   // was missing.
-  char na_reason[48];
+  //
+  // 96, not 48: the off-frame reason is 63 characters and was being cut at
+  // "scan window is off-frame (142 of 339 columns ha" -- losing the end of the
+  // sentence, and with it any chance of noticing that the two numbers are not
+  // what the sentence claims.
+  char na_reason[96];
+  // The scan band as it was actually used, and where it left the image.
+  // Diagnostic only; see SearchPointClip for why this cannot be rebuilt
+  // afterwards from the def and the pose.
+  SearchPointClip clip;
+  // The shape of the evidence behind the answer. See SearchPointMoments.
+  SearchPointMoments moments;
   // Per-edge points produced by the caliper-mode scan (one per strength-gated
   // row edge). status: 2 = within considerRange of the top (used in the final
   // average), 1 = strength-gated edge outside the consider band. Empty in
   // contour mode. Coords converted to OBJECT-FRAME mm by SPointMatching_ReportGen.
   std::vector<CaliperHit> cal_hits;
-  // How many of the configured scan columns had image under them, and how many
-  // were configured. A window that hangs off the frame measures from the
-  // fraction that is left and used to report SUCCESS exactly like a full one --
-  // see the coverage check in the caliper branch of SPointMatching.
+  // NOT a coverage figure, despite the name and despite what the off-frame
+  // message used to say with these two numbers in it.
+  //
+  //   cal_used  = cal_hits.size() -- strength-gated row edges REPORTED, and
+  //               capped at HITS_MAX (600) by the bound in SearchPointCV.
+  //   cal_total = the band's row count (`width` in px).
+  //
+  // So "600 of 1017" means the hit list hit its cap, not that 600 of 1017
+  // samples had image. Read as coverage it overstated a 1.2% clip as 41%, and
+  // the 600 that appeared in two records was the cap, not a measurement.
+  // Coverage now lives in `clip`, which counts samples rather than hits.
   // 0/0 = not a caliper-mode scan.
   int cal_used = 0;
   int cal_total = 0;
+  // Only when DEBUG_EMIT edge_profile is on. See SearchPointPeaks.
+  SearchPointPeaks cal_peaks;
 }FeatureReport_searchPointReport;
 
 
@@ -459,6 +785,18 @@ typedef struct FeatureReport_sig360_circle_line_single{
   bool  isFlipped;
   float scale;
   char *targetName;
+  // Localization trust (SBM refine): fit residual and how many refine points agreed.
+  // Emitted as "trust" on every located object so the operator sees why a pose is or is
+  // not trustworthy; -1 / 0 when there was no ROI refine (coarse-only). See
+  // docs/SBM_TRUST_SCORE_DESIGN.md. trust_code names a tripped gate (empty = ok).
+  float trust_residual = -1.0f;
+  float trust_alt_residual = -1.0f;  ///< best OTHER-pose residual at this location (ambiguity)
+  float trust_alt_score = -1.0f;      ///< best OTHER-pose coarse score (0..100) in this group, any face
+  float trust_face_alt_score = -1.0f; ///< best OPPOSITE-face coarse score (0..100) in this group; -1 = none seen
+  int   trust_npts = 0;
+  int   trust_ninliers = 0;
+  char  trust_code[16] = {0};
+  bool  trust_forced_na = false;     ///< recipe opted in (shape_trust_na) and this gate forced every judge NA
   
   enum FeatureReport_FeatureStatus{
       STATUS_UNSET=-100,

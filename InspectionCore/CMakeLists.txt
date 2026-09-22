@@ -53,6 +53,45 @@ option(FEATURE_OPENCV     "Build MatchingEngine against OpenCV"    ON)
 # per-file flags & defines (e.g. FEATURE_OPENCV) -- no need to #define them in source.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# --- compiler cache --------------------------------------------------------
+#
+# The builds that actually hurt here are not the one-file edits (24s) -- they
+# are the ones where NOTHING the compiler sees really changed but everything
+# gets rebuilt anyway: a header touched, a branch switched, CMakeLists edited,
+# a build directory wiped. Each of those is ~4 minutes of recompiling
+# translation units to byte-identical objects. Measured 2026-09-10: 260s.
+#
+# ccache keys on the PREPROCESSED source plus the compiler and its flags, so
+# those rebuilds become a hash lookup and a file copy, while a real edit still
+# compiles normally. Nothing about the produced binary changes.
+#
+# Opt out with INSP_NO_CCACHE=1 in the environment (e.g. to time a cold build,
+# which is the one measurement ccache makes impossible to take by accident).
+#
+# build.sh also wires ccache, but only as -D flags on a CONFIGURE, and every
+# build through dev.sh passes --no-configure -- so on a build directory that
+# was configured before ccache existed, that path had simply never run. Doing
+# it here means the cache applies to the build dir you already have.
+#
+# NOTE ON BUILD TIME: wiringPanel.cpp and logctrl.cpp report their build time
+# from __DATE__/__TIME__, and ccache refuses to cache such a TU unless told
+# to -- which would skip the single biggest file and make this pointless. So
+# the cache runs with `sloppiness = time_macros`, and a cache HIT therefore
+# reports the time of the first compile rather than this one. BUILD_GIT_HASH
+# is unaffected: it comes from build_info.h, which is a real dependency.
+if(NOT DEFINED ENV{INSP_NO_CCACHE})
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "ccache: ${CCACHE_PROGRAM}")
+  else()
+    # Said out loud rather than silently skipped: "the build got slow again" is
+    # otherwise indistinguishable from "ccache fell off the PATH".
+    message(STATUS "ccache: not found -- every rebuild will be a full compile")
+  endif()
+endif()
+
 # --- shared compile options (mirrors old FLAGS: -w -O3 + suppressions) ----
 # -w silences everything, which is how a non-void function with no return
 # survived here long enough to become a `ud2` that killed the core on a board
@@ -63,11 +102,29 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-w -Wno-sign-compare -Wno-write-strings -Wno-unused-variable)
 add_compile_options(-Werror=return-type)
 add_compile_options($<$<CONFIG:Release>:-O3>)
-# Ship Release as -O3 AND -g (debug info). The deploy bundle (build.sh) strips
-# the shipped exe and archives the separated symbols (symbols/<exe>-<sha>.debug),
-# so a field crash dump stays symbolicatable via addr2line without shipping fat
-# binaries. -g doesn't change codegen, only adds DWARF sections that get stripped.
-add_compile_options($<$<CONFIG:Release>:-g>)
+# Ship Release as -O3 AND debug info. The deploy bundle (build.sh) strips the
+# shipped exe and archives the separated symbols (symbols/<exe>-<sha>.debug), so
+# a field crash dump stays symbolicatable via addr2line without shipping fat
+# binaries. Debug info never changes codegen, only what DWARF is emitted.
+#
+# -g1, NOT -g. The only thing this project asks of its debug info is that
+# addr2line turn a crash-dump address into function + file:line, and -g1 emits
+# exactly that -- line tables and function boundaries -- while -g additionally
+# emits the full type and local-variable graph for an interactive debugger that
+# nothing here runs on a Release build.
+#
+# It is not free to keep. Measured 2026-09-10 on Core0_1/wiringPanel.cpp, the
+# 14.7k-line translation unit that dominates every core build:
+#
+#     -O3 -g    25 s   obj 5.6 MB      <- what this used to be
+#     -O3 -g1   18 s   obj 1.5 MB      <- 28% less time, 73% less object
+#     -O3       17 s   obj 0.5 MB      <- no symbolication at all
+#
+# So full DWARF was costing about a quarter of every core build to describe
+# variables nobody was going to look at. Anyone who does want to step through a
+# Release build in gdb should build that target with -g locally; this is the
+# default, not a prohibition.
+add_compile_options($<$<CONFIG:Release>:-g1>)
 
 find_package(OpenMP)
 # OpenCV is now an unconditional dependency of MatchingEngine. Provide via vcpkg.
@@ -268,38 +325,67 @@ target_link_libraries(CameraLayer PUBLIC logctrl common_lib)
 # --- shape_based_matching (line2Dup + roi_refine localizer) ----------------
 # The submodule's own CMakeLists only builds test exes against a hard-coded
 # Windows OpenCV path, so we compile the high-level API into our own static lib
-# and link it into MatchingEngine. The public surface (include/shape_matcher.h)
-# is cv::Mat + std only -- MIPP/AVX2 stays internal to these TUs, so the rest of
-# MatchingEngine need not be built with AVX2.
+# and link it into MatchingEngine.
+#
+# line2Dup carries hand-written AVX2 in its hot loops. Compiling the library
+# -mavx2 made those unconditional: correct on the machines in the field, and a
+# silent death during startup on a CPU without AVX (a Pentium Gold 4415Y --
+# Kaby Lake with AVX fused off -- 2026-09-16, no log line, no dump, exit
+# 0xC0000409). Compiling -msse4.2 instead costs 2.1x on the match path
+# (63 ms -> 139 ms, measured by tools/sbm_bench.cpp on this machine).
+#
+# So neither is the default: line2Dup.cpp is compiled TWICE, into line2Dup::avx2
+# and line2Dup::base, and __builtin_cpu_supports picks one at the first
+# makeDetector() call. Measured overhead: none -- the dispatch is one virtual
+# call per match(), not per pixel. SBM_FORCE_ISA=base|avx2 overrides it.
+#
+# Only the SIMD-carrying classes are duplicated; Feature/Template/Match are
+# compiled once and shared, so no struct ever has to be converted between the
+# two halves.
+set(_SBM_ISA_SRC contrib/shape_based_matching/line2Dup.cpp
+                 contrib/shape_based_matching/detector_adapter.cpp)
+
+add_library(sbm_isa_base OBJECT ${_SBM_ISA_SRC})
+add_library(sbm_isa_avx2 OBJECT ${_SBM_ISA_SRC})
+
 add_library(shape_based_matching STATIC
-  contrib/shape_based_matching/line2Dup.cpp
   contrib/shape_based_matching/icp_refine.cpp
   contrib/shape_based_matching/roi_refine.cpp
-  contrib/shape_based_matching/shape_matcher.cpp)
-target_include_directories(shape_based_matching PUBLIC
-  contrib/shape_based_matching
-  contrib/shape_based_matching/include
-  contrib/shape_based_matching/MIPP
-  ${OpenCV_INCLUDE_DIRS})
+  contrib/shape_based_matching/shape_matcher.cpp
+  contrib/shape_based_matching/detector_dispatch.cpp
+  $<TARGET_OBJECTS:sbm_isa_base>
+  $<TARGET_OBJECTS:sbm_isa_avx2>)
+
+foreach(_t shape_based_matching sbm_isa_base sbm_isa_avx2)
+  target_include_directories(${_t} PUBLIC
+    contrib/shape_based_matching
+    contrib/shape_based_matching/include
+    contrib/shape_based_matching/MIPP
+    ${OpenCV_INCLUDE_DIRS})
+  if(WIN32 OR MINGW OR MSYS)
+    target_compile_options(${_t} PRIVATE -Wa,-mbig-obj)   # line2Dup.cpp is large
+  endif()
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(${_t} PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+endforeach()
 target_link_libraries(shape_based_matching PUBLIC opencv_core opencv_imgproc)
-# MIPP picks the AVX2 backend off __AVX2__; -mavx2 (not -march=native) keeps the
-# binary portable across build/deploy hosts. big-obj: line2Dup.cpp is large.
-# arm64 has no AVX2 -- MIPP auto-selects NEON there, so only force the flags
-# on x86 hosts.
+
+# The two halves differ ONLY in these flags. LINE2DUP_NO_SHARED_DEFS keeps the
+# avx2 build from re-defining the plain-data serialisation the base build owns.
+# arm64 has no AVX2 and MIPP auto-selects NEON, so the split is x86-only: there
+# both objects compile portably and the dispatcher always answers "base".
+target_compile_definitions(sbm_isa_base PRIVATE LINE2DUP_ISA=base)
+target_compile_definitions(sbm_isa_avx2 PRIVATE LINE2DUP_ISA=avx2 LINE2DUP_NO_SHARED_DEFS)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-  target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
-  target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
-endif()
-if(WIN32 OR MINGW OR MSYS)
-  target_compile_options(shape_based_matching PRIVATE -Wa,-mbig-obj)
-endif()
-if(OpenMP_CXX_FOUND)
-  target_link_libraries(shape_based_matching PUBLIC OpenMP::OpenMP_CXX)
+  target_compile_options(sbm_isa_base PRIVATE -msse4.2)
+  target_compile_options(sbm_isa_avx2 PRIVATE -mavx2 -mfma)
 endif()
 
 # --- MatchingEngine --------------------------------------------------------
 add_library(MatchingEngine STATIC
   MatchingEngine/MatchingEngine.cpp MatchingEngine/MatchingCore.cpp
+  MatchingEngine/MEPhase.cpp
   MatchingEngine/FeatureManager.cpp MatchingEngine/FeatureExtractor.cpp
   MatchingEngine/ContourGrid.cpp MatchingEngine/FeatureManager_group.cpp
   MatchingEngine/SignatureTools.cpp
@@ -415,6 +501,20 @@ target_link_libraries(calib_chessboard PRIVATE MatchingEngine)
 
 # jpeg_bench -- imencode timing micro-benchmark (BGR vs grayscale, ~5MP).
 add_executable(jpeg_bench tools/jpeg_bench.cpp)
+
+# Times the SBM match path with nothing else in the frame -- in a full inspection
+# the match is a minority of the wall time, which hides an ISA difference. Run it
+# twice under SBM_FORCE_ISA=avx2 / base to compare the two halves, in speed and
+# in the pose they return.
+add_executable(sbm_bench tools/sbm_bench.cpp)
+target_link_libraries(sbm_bench PRIVATE shape_based_matching ${OpenCV_LIBS})
+
+# What arbitrary scaling of the template features costs -- separating the part
+# that is paid in discrimination (rounded coordinates collapse and jitter) from
+# the part that is paid in time (every scale adds a full set of angles).
+add_executable(sbm_scale_probe tools/sbm_scale_probe.cpp)
+target_link_libraries(sbm_scale_probe PRIVATE shape_based_matching ${OpenCV_LIBS})
+
 target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
 
 # latency_stages -- build the core's timing up one layer at a time, to find the

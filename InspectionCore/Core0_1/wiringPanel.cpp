@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "common_lib.h"   // base64_encode for the kept-sample image reply
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
@@ -60,6 +61,7 @@
 #include "BackLightFieldCalib.h"
 #include <dirent.h>
 #include <algorithm>
+#include <unordered_map>
 
 // After the system headers on purpose: sp.hpp pulls in the platform's own
 // socket/windows headers, and putting it above <sys/stat.h> left `struct stat`
@@ -96,7 +98,25 @@ LOG_MODULE("core");
 
 #define _VERSION_ "1.2"
 char* SNAP_FILE_EXTENSION="xreps";
-char* SNAP_IMG_EXTENSION="jpg";
+// PNG, not JPEG: a snapshot is the evidence for a measurement, and JPEG
+// damages it exactly where the measurement is taken. Measured on a recorded
+// 2592x1936 frame of 10221: default-quality JPEG moves the intensity by up to
+// 8 counts and the GRADIENT by up to 6.0 (mean 0.66) -- and the arcs on that
+// recipe run an edge.min_strength of 5. A record that cannot reproduce its own
+// edge decisions is not evidence.
+//
+// It costs bytes and time: 2488 KB vs 932 KB, and 742 ms vs 78 ms to encode at
+// compression level 1. Affordable because saving runs on InspSnapSaveThread,
+// so the inspection loop never waits for it -- but it does cap snapshots at
+// ~1.3 images/s, and the comment above about an NG burst at 35 parts/s is
+// about the queue behind this.
+char* SNAP_IMG_EXTENSION="png";
+// The AUTOMATIC snapshot's image format. A manual save is always PNG -- someone
+// asked for that frame by hand, which makes it the one that gets looked at
+// closely -- but the automatic path writes on every matching part, so what it
+// costs is the line's problem and the choice is the operator's.
+// ST INSP_SNAP_POLICY.img_format.
+static std::string g_snap_img_ext = SNAP_IMG_EXTENSION;
 std::timed_mutex mainThreadLock;
 
 std::mutex matchingEnglock;
@@ -120,6 +140,19 @@ int DATA_VIEW_MAX_FPS=20;
 // JPEG; only a fresh core going straight into InspectionUI got raw. The
 // receiver has handled format=1 since a7cd253d. 0 remains valid to request.
 int DataView_JPEG_quality = 85;
+// Adaptive preview pacing. The fps cap (IMG_STREAMING_MAX_FPS) is a number the
+// operator picks once; the cost of one frame is not -- 5 MP gray JPEG is ~12 ms
+// on the target and grows with the picture. When the measured encode+push cost
+// of a frame cannot sustain the cap at a sane duty cycle, the effective cap is
+// lowered to what it CAN sustain and frames are skipped, rather than letting
+// datViewQueue back up and evict (a preview running seconds behind looks like a
+// stall). Judging is untouched: this only decides which frames get a picture.
+// IMG_STREAMING_ADAPTIVE (ST) turns it off; the numbers ride in the GS reply.
+std::atomic<int>  g_streamAdaptive{1};
+static float      g_imgXferMsEma = 0.0f;     // EMA of one image encode+push, ms
+float             g_streamEffFps = 0.0f;     // the cap actually applied last frame
+std::atomic<long> g_imgAdaptiveSkips{0};     // frames skipped by the adaptive limit
+static const float kStreamDuty = 0.6f;       // spend at most this share of the interval encoding
 bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
 
 float OK_MAX_FPS=6;
@@ -186,6 +219,18 @@ static SnapVerdict snap_verdict_of(int finspStatus)
   return SNAPV_NA;
 }
 static bool snap_wants_anything(SnapVerdict v) { return g_snap_policy[v].img || g_snap_policy[v].rep; }
+
+// Kept inspection samples (in-memory evidence buffer), implemented below next
+// to the JPEG encoder it uses. Declared here because setup_machine_setting()
+// and the ST handler sit above the implementation. See
+// docs/INSP_SAMPLE_BUFFER_2026-09-04.md for the design and the decisions.
+struct image_pipe_info;
+static void  insp_sample_set_groups(cJSON *arr);       // replace the group list (NULL/empty = off)
+static bool  insp_sample_wants_any();                  // any group still has room?
+static void  insp_sample_consider(image_pipe_info *p); // match + keep, on the snapshot thread
+static cJSON *insp_sample_list_json();                 // SL reply
+static cJSON *insp_sample_get_json(uint64_t id);       // SG reply (NULL = no such id)
+static int   insp_sample_clear(const char *group_or_null);
 static bool frame_ring_active();
 
 // ---------------------------------------------------------------------------
@@ -769,6 +814,14 @@ static LatHist g_histMatchCpu;
 // frame costs can be attributed to a stage instead of guessed at.
 static LatHist g_histStage[MatchingEngine::STAGE_MAX];
 static LatHist g_histStageCpu[MatchingEngine::STAGE_MAX];
+// Named phases INSIDE a bundle member. On a one-manager def the stage histogram
+// above and g_histMatch are the same number, and neither says where the time
+// went; these do.
+static LatHist g_histPhase[mephase::PHASE_MAX];
+// Work done per frame, in the unit the cost scales with (caliper scans and
+// grayscale samples). Time alone does not transfer to a bigger part or a
+// different edge estimator; time per sample does.
+static LatHist g_histCount[mephase::COUNT_MAX];
 
 // The camera's hardware trigger count, and what it says that frameNum cannot.
 //
@@ -781,7 +834,92 @@ static LatHist g_histStageCpu[MatchingEngine::STAGE_MAX];
 // Exposed rather than logged because the log ring is not readable while a run
 // is live, which has blocked a check four times today.
 static std::atomic<uint64_t> g_camTrigCount{0};
+// SIMULATED SLOW HOST -- how long the verdict takes to come back.
+//
+// The one thing that cannot be tested by choosing settings: what the machine
+// does when the inspection itself is too slow for the deadline. The target
+// computer is weaker than this bench, so "it is fine here" says nothing about
+// it, and waiting to find out on the target is how the answer arrives as a
+// stopped line rather than as a measurement.
+//
+// Injected AFTER the match and BEFORE the verdict is dispatched, which is the
+// shape a slow host actually has: the frame arrived on time, the answer did
+// not. Delaying the capture instead would model a slow CAMERA, which is a
+// different failure with a different remedy.
+//
+// jitter is uniform +/-, because a constant delay is the one profile in which
+// a deadline is either always met or never met -- and the interesting region is
+// the one where it is sometimes met. Default off; this is never on in
+// production by accident because it has to be asked for by command or env.
+static std::atomic<int> g_debugDelayMs{0};
+static std::atomic<int> g_debugDelayJitterMs{0};
+static std::atomic<uint64_t> g_debugDelayN{0};
+
 static std::atomic<uint64_t> g_camFrameNum{0};
+
+// ---- one lit frame, with the trigger mode owned HERE ------------------------
+//
+// The WebUI used to do this itself: set trigger_mode 2, ask the board to flash
+// and pulse, set trigger_mode back. The restore was a hardcoded 1, and mode 1
+// is the mode that DISCARDS frames -- so pressing the snapshot button from
+// inside a running inspection dropped the camera out of the session's mode and
+// into the one that throws every frame away. The board kept flashing, no image
+// arrived, and clock calibration could not finish because it needs one frame
+// per sync pulse. Reported from the line as "the light flashes but nothing
+// comes in; refreshing the page fixes it" -- refreshing re-enters the session,
+// which re-issues the right mode.
+//
+// The panel could not have got this right: the correct mode to restore depends
+// on whether a session is running and which kind, and that is not the panel's
+// knowledge. It is this process's. So the sequence moves here, and the UI asks
+// for what it wants -- a lit frame -- rather than for a camera setting.
+//
+// RESTORATION IS ON A DEADLINE, not on the board answering. The failure this
+// exists to prevent is a camera left armed for a line nobody drives; a board
+// that never pulses must not be able to cause it.
+static std::mutex g_snapLock;
+static int      g_snapRestoreMode = -1;      // -1 = no snap in flight
+static uint64_t g_snapFrameMark   = 0;
+static std::chrono::steady_clock::time_point g_snapDeadline;
+
+// The camera's own trigger configuration, mapped back to the core's 0/1/2.
+// GenICam says Mode Off/On and a Source; the core says continuous / software /
+// hardware. From CameraLayer_HikRobot_Camera::TriggerMode:
+//     0 -> Mode Off,  Source SOFTWARE   (free-run, takeCount=-1)
+//     1 -> Mode On,   Source SOFTWARE   (resting, takeCount=0)
+//     2 -> Mode On,   Source LINE0      (board-driven, takeCount=-1)
+// Returns -1 when the device could not be read, and -1 is never guessed past:
+// this whole change exists because somebody guessed.
+static int cam_trigger_mode_now(CameraLayer *cam)
+{
+  if (cam == NULL) return -1;
+  int sel = -1, mode = -1, src = -1, act = -1;
+  // The RETURN CODE IS NOT THE TEST -- the fields are.
+  //
+  // GetTriggerConfig reports non-zero when ANY of the four nodes could not be
+  // read, and TriggerActivation is routinely unreadable on this camera while
+  // it is idle (measured: mode 1, source 7, activation -1, ok 0). Requiring the
+  // whole read to succeed refused every snapshot over a field this decision
+  // does not use. Each field says for itself: -1 means it could not be read,
+  // and the core's probe already documents that -1 is never a plausible value.
+  cam->GetTriggerConfig(&sel, &mode, &src, &act);
+  if (mode == 0) return 0;                 // Off -> free-run
+  if (mode == 1)
+  {
+    // SOFTWARE is the only source that means "resting"; everything else that
+    // reads back is a hardware line. Not just LINE0: TriggerMode(2) sets source
+    // 13 first ("anyway") and only falls back to LINE0, so a camera sitting in
+    // the layer's hardware mode reads 13 -- measured on this bench. Listing
+    // sources one by one refused the snapshot on the machine it was written for.
+    if (src == 7) return 1;                // On + SOFTWARE   -> resting
+    if (src >= 0) return 2;                // On + a real line -> board-driven
+  }
+  // Mode On with an UNREADABLE source is the one case that must not be
+  // guessed: 1 and 2 differ by exactly that field, and restoring the wrong one
+  // is what this whole path exists to stop.
+  return -1;
+}
+
 static std::atomic<int64_t>  g_camTrigMinusFrame{0};
 static std::atomic<uint64_t> g_camTrigValidN{0};
 
@@ -889,6 +1027,19 @@ struct SlowFrame {
 TSQueue<SlowFrame> slowFrameQueue(4);
 static std::atomic<int> g_slowSaved{0};
 static std::atomic<int> g_slowDropped{0};
+// OFF BY DEFAULT, SET LIVE, NOT PERSISTED.
+//
+// This is a diagnostic, and it was on by default at 50 ms / 40 frames per
+// process start. On this bench that came to 961 five-megapixel PNGs -- 1.0 GB
+// in data/slowframes -- because every restart of the core opened a fresh
+// 40-frame budget, and 50 ms is inside this machine's normal jitter, not
+// outside it. Decided 2026-09-04: the threshold starts at 0 (nothing is
+// saved), and the 運算核心 panel sets it over ST {INSP_SLOW_FRAME:{ms,max}}
+// for the life of the process. The env vars still seed the initial values so
+// a headless run can turn it on from the command line.
+static std::atomic<int> g_slowMs{[]{ const char *e = getenv("INSP_SLOW_FRAME_MS"); return e ? atoi(e) : 0; }()};
+static std::atomic<int> g_slowCap{[]{ const char *e = getenv("INSP_SLOW_FRAME_MAX"); return e ? atoi(e) : 40; }()};
+static std::atomic<int> g_ctrlEvery{[]{ const char *e = getenv("INSP_CTRL_FRAME_EVERY"); return e ? atoi(e) : 0; }()};
 static uint64_t g_lastMatchProcCpuUs = 0;
 // Page faults across the stage. After the announcement wait, the engine lock,
 // preemption and the allocator were each ruled out by measurement, faulting is
@@ -1022,7 +1173,10 @@ static inline void beat(ThreadBeat &b, uint64_t now_us)
 // better number anyway: it is what the CURRENT ROI, exposure and transport
 // really sustain. It is the ceiling the gate fire-rate limit has to stay
 // under -- ask for triggers faster than this and you get triggers with no
-// frames, which is what poisons the pairing.
+// frames. Those are UNANSWERED parts -- pairing is by timestamp with the window
+// clamped to half the part separation, so a missing frame cannot be matched to a
+// neighbour; its object is simply never reported, so it is not actuated and it
+// recirculates. The cost is throughput, and a stop only if it is sustained.
 double g_camMinIntervalMs = 0;
 
 // How late a cam_trig announcement has ever been relative to its own frame.
@@ -1170,6 +1324,11 @@ static void image_pipe_info_do_return(image_pipe_info &info,resourcePool<image_p
     cJSON_Delete(info.datViewInfo.report_json);
     info.datViewInfo.report_json=NULL;
   }
+  // Back to the default a non-SI frame has, so a recycled slot cannot carry an
+  // SI accumulating frame's "do not report" into the next session.
+  info.datViewInfo.si_measured = true;
+  info.datViewInfo.si_report = true;
+  info.datViewInfo.si_avg_n = 0;
   pool.retResrc(&info);
 }
 
@@ -1511,6 +1670,30 @@ class PerifChannel:public Data_JsonRaw_Layer
   // the selector, a serial protocol error), and clear_error reaches it straight
   // from the WebUI over the peripheral passthrough -- the core is not consulted
   // and would otherwise never learn the ring was emptied.
+  // WHAT THE DEVICE SAYS ABOUT ITSELF, IN THE CORE'S OWN LOG.
+  //
+  // system_info is the firmware's unsolicited "something happened to me"
+  // event -- a latched protocol error, and now the reason it last booted. It
+  // has always reached the WebUI, and the core has always been able to print
+  // it, but ONLY under INSP_PERIF_LOG. That is exactly backwards for what this
+  // event is for: the panic at 3am with nobody watching is the case where the
+  // WebUI is not open and no developer has set an environment variable, and it
+  // is the only case where the message matters.
+  //
+  // So it is logged unconditionally, at WARN, into the ring that a crash dump
+  // carries. Cheap by construction: these events are rare (a fault or a boot),
+  // and the strstr below rejects every routine reply before any parsing.
+  void tap_device_log(uint8_t *raw, int rawL)
+  {
+    if (strstr((const char *)raw, "system_info") == NULL) return;
+    cJSON *j = cJSON_Parse((const char *)raw);
+    if (j == NULL) return;
+    const cJSON *lg = cJSON_GetObjectItem(j, "log");
+    if (lg != NULL && cJSON_IsString(lg) && lg->valuestring != NULL)
+      LOGW("[perif ch=%d] device says: %s", ID, lg->valuestring);
+    cJSON_Delete(j);
+  }
+
   void tap_device_state(uint8_t *raw, int rawL)
   {
     if (machine_type != PERIF_UINSP_ESP32) return;
@@ -1868,11 +2051,17 @@ class PerifChannel:public Data_JsonRaw_Layer
 
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
+    // A frame parsed, so whatever noise came before it has ended. This is the
+    // flush point that matters: it fires once per episode, at the moment the
+    // link recovers, and costs nothing when there was no noise.
+    stray_flush("link resynchronised");
+
     if(opcode==1 )
     {
       tap_trigger_info(raw, rawL);
       tap_device_reply(raw, rawL);
       tap_device_state(raw, rawL);
+      tap_device_log(raw, rawL);
       retire_stale_triggers();
       keep_clock_warm();
       // Verbatim copy to the dev console, before any envelope or truncation.
@@ -1987,6 +2176,81 @@ class PerifChannel:public Data_JsonRaw_Layer
     // printf("Get recv_ERROR:%d\n",errorcode);
     return 0;
   }
+
+  // ---- what the device says when it is not speaking our protocol -----------
+  //
+  // An ESP32 panic prints its backtrace on this same UART, and the boot ROM
+  // that follows prints at 115200 into a port we read at 230400. Both arrive
+  // as bytes outside a frame, which until now were dropped one at a time and
+  // never logged. So a firmware crash was invisible from the core: the link
+  // went quiet, came back, and the only trace left anywhere was
+  // esp_reset_reason() sitting in a health reply nobody was asking for.
+  //
+  // ONE LINE PER EPISODE, NOT ONE PER BYTE. A reset sprays hundreds of bytes;
+  // logging each would flush the ring that holds the reason we are reading it.
+  // So the bytes accumulate here and are emitted when the noise ENDS -- either
+  // the buffer filling or the next frame that parses, i.e. the link
+  // resynchronising. No timer and no thread: both flush points are already on
+  // the RX thread, which is also the only thread that appends (recv_stray and
+  // recv_jsonRaw_data are both called from Data_Layer_Protocol::recv_data),
+  // so this needs no lock.
+  // 2 KB because of WHERE the useful part sits. A measured ESP32 panic opens
+  // with "Guru Meditation Error" and a full register dump -- around 700 bytes
+  // of A0..A15 -- and only then prints the Backtrace: line, which is the one
+  // line that says where it died. At 512 the capture stopped mid-register-dump
+  // and threw away the answer.
+  static const int STRAY_MAX = 2048;
+  char     stray_buf[STRAY_MAX];
+  int      stray_len = 0;
+  uint32_t stray_dropped = 0;   // bytes past the buffer: counted, not kept
+
+  void recv_stray(uint8_t c) override
+  {
+    if (stray_len < STRAY_MAX) stray_buf[stray_len++] = (char)c;
+    else                       stray_dropped++;
+  }
+
+  void stray_flush(const char *why)
+  {
+    if (stray_len == 0) return;
+
+    const int n = stray_len;
+    const bool more = (stray_dropped != 0);
+    stray_len = 0;
+    stray_dropped = 0;
+
+    // CHUNKED, because a log slot holds 240 bytes.
+    //
+    // The first version built one string and handed it to LOGW, and the ring
+    // cut it at the slot boundary -- so the feature that exists to preserve a
+    // panic backtrace preserved the first two lines of one. A backtrace is the
+    // part that identifies the crash, and it is at the END.
+    //
+    // Printable-ised as it goes. A panic dump is text, but the 115200 boot ROM
+    // read at 230400 is not, and raw control bytes break the ring viewer that
+    // has to read this.
+    const int CHUNK = 150;
+    char out[CHUNK * 4 + 8];
+    int  part = 0;
+    const int parts = (n + CHUNK - 1) / CHUNK;
+
+    LOGW("[perif ch=%d] %d byte(s) outside any frame%s (%s) -- the device is "
+         "talking to something that is not us; on this link that is usually an "
+         "ESP32 panic backtrace or the 115200 boot ROM. %d line(s) follow:",
+         ID, n, more ? " (+more, truncated)" : "", why, parts);
+
+    for (int base = 0; base < n; base += CHUNK) {
+      int o = 0;
+      for (int i = base; i < n && i < base + CHUNK && o < (int)sizeof(out) - 6; i++) {
+        unsigned char b = (unsigned char)stray_buf[i];
+        if (b == 0x0a || b == 0x0d)      out[o++] = ' ';
+        else if (b >= 0x20 && b < 0x7f)  out[o++] = (char)b;
+        else o += snprintf(out + o, sizeof(out) - o, "[%02x]", b);
+      }
+      out[o] = 0;
+      LOGW("[perif ch=%d] stray %d/%d: %s", ID, ++part, parts, out);
+    }
+  }
   
   void connected(Data_Layer_IF* ch){
     
@@ -2075,55 +2339,63 @@ class PerifChannel:public Data_JsonRaw_Layer
 
 class ImageStackAddUp
 {
+  // NOT recursive, and it must not need to be: every public method takes this
+  // ONCE and then works through the _-prefixed helpers, which assume it is
+  // already held. The helpers used to take it too and the public methods
+  // called them (ReSize -> Reset, Add -> set_1CH/addUp_1CH, Export() ->
+  // Export(out)), which is a self-deadlock on a plain std::mutex: the thread
+  // stops forever holding a lock nothing can release.
   std::mutex lock;
+
+  // The accumulator is a plain 32-bit integer sum, one channel.
+  //
+  // It used to be a CV_8UC3 buffer read through _24BitUnion -- three bytes per
+  // pixel reinterpreted as a 24-bit counter -- and BOTH ends of that were
+  // wrong. The source was indexed `sRow[j * 3]`, so a single-channel frame was
+  // read three times past the end of every row; and `_3BYTE { unsigned Num :
+  // 24; }` has sizeof 4, so writing the last pixel of the last row wrote a
+  // byte past the buffer. It never showed because the deadlock above meant the
+  // loops had literally never run; the first frame that reached them was an
+  // access violation (SIGSEGV in _set_1CH, 2026-09-22).
+  //
+  // A CV_32SC1 sum cannot overflow at these counts (100 frames x 255) and lets
+  // OpenCV do the adding.
+  cv::Mat accum;        // CV_32SC1, the running sum
+  cv::Mat scratch;      // CV_8UC1 view of the last frame handed in
+  int     srcChannels = 1;  // what Add was given, so Export gives it back
+
+  // One channel of 8-bit gray out of whatever the pipeline handed us. The
+  // frames here are mono carried in however many channels the camera layer
+  // happens to use, so channel 0 IS the picture.
+  const cv::Mat &_gray(const cv::Mat &in)
+  {
+    if (in.channels() == 1) { return in; }
+    cv::extractChannel(in, scratch, 0);
+    return scratch;
+  }
+
 public:
   int stackingC = 0;
-  // phase 3a: cv::Mat-backed (was acvImage).  imgStacked stores 24-bit
-  // accumulator values via _24BitUnion stored as 3 bytes / pixel.
+  // Kept for the callers that ask "is there anything in here, and what shape".
+  // It is the ACCUMULATOR, not a picture: read it through Export().
   cv::Mat imgStacked;
   cv::Mat imgExtract;
-
-  void addUp_1CH(cv::Mat &accum, const cv::Mat &src)
-  {
-    std::lock_guard<std::mutex> guard(lock);
-    for (int i = 0; i < accum.rows; i++)
-    {
-      uchar *aRow = accum.ptr<uchar>(i);
-      const uchar *sRow = src.ptr<uchar>(i);
-      for (int j = 0; j < accum.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
-        pixU->_3Byte.Num += sRow[j * 3];
-      }
-    }
-  }
-
-  void set_1CH(cv::Mat &accum, const cv::Mat &src)
-  {
-    std::lock_guard<std::mutex> guard(lock);
-    for (int i = 0; i < accum.rows; i++)
-    {
-      uchar *aRow = accum.ptr<uchar>(i);
-      const uchar *sRow = src.ptr<uchar>(i);
-      for (int j = 0; j < accum.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
-        pixU->_3Byte.Num = sRow[j * 3];
-      }
-    }
-  }
 
   void clear()
   {
     std::lock_guard<std::mutex> guard(lock);
-    if (!imgStacked.empty()) imgStacked.setTo(cv::Scalar(0,0,0));
+    if (!accum.empty()) accum.setTo(cv::Scalar(0));
+    stackingC = 0;
   }
 
   void ReSize(const cv::Mat &ref)
   {
     std::lock_guard<std::mutex> guard(lock);
-    imgStacked.create(ref.rows, ref.cols, CV_8UC3);
-    Reset();
+    accum.create(ref.rows, ref.cols, CV_32SC1);
+    accum.setTo(cv::Scalar(0));
+    imgStacked = accum;                 // same geometry, for the size checks
+    srcChannels = ref.channels() < 1 ? 1 : ref.channels();
+    stackingC = 0;
   }
 
   void Reset()
@@ -2135,77 +2407,121 @@ public:
   void Add(const cv::Mat &in)
   {
     std::lock_guard<std::mutex> guard(lock);
-    if (stackingC == 0)        { set_1CH(imgStacked, in);   stackingC++; return; }
-    if (stackingC < 100)       { addUp_1CH(imgStacked, in); stackingC++; }
+    if (in.empty()) return;
+    // Sized here rather than trusting every caller: an Add against an
+    // accumulator of another shape is what walks off the end of a buffer.
+    if (accum.rows != in.rows || accum.cols != in.cols || accum.type() != CV_32SC1)
+    {
+      accum.create(in.rows, in.cols, CV_32SC1);
+      accum.setTo(cv::Scalar(0));
+      imgStacked = accum;
+      stackingC = 0;
+    }
+    srcChannels = in.channels() < 1 ? 1 : in.channels();
+    if (stackingC >= 100) return;       // the counter's ceiling, as before
+
+    const cv::Mat &g = _gray(in);
+    if (stackingC == 0) { g.convertTo(accum, CV_32SC1); }
+    else                { cv::add(accum, g, accum, cv::noArray(), CV_32SC1); }
+    stackingC++;
+    imgStacked = accum;
   }
 
+  // The mean, back in the shape it was given. Empty if nothing was added --
+  // the caller must check, and the SI path does.
   void Export(cv::Mat &out)
   {
     std::lock_guard<std::mutex> guard(lock);
-    out.create(imgStacked.rows, imgStacked.cols, CV_8UC3);
-    for (int i = 0; i < out.rows; i++)
-    {
-      uchar *oRow = out.ptr<uchar>(i);
-      const uchar *sRow = imgStacked.ptr<uchar>(i);
-      for (int j = 0; j < out.cols; j++)
-      {
-        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
-        int pix = pixU->_3Byte.Num / (stackingC == 0 ? 1 : stackingC);
-        if (pix > 255) pix = 255;
-        oRow[j * 3] = oRow[j * 3 + 1] = oRow[j * 3 + 2] = pix;
-      }
-    }
+    _export(out);
   }
 
   void Export()
   {
     std::lock_guard<std::mutex> guard(lock);
-    Export(imgExtract);
+    _export(imgExtract);
+    // Kept because callers read imgExtract directly.
   }
 
-  bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
+  // How far this frame is from the running mean, in grey levels: the RMS over
+  // the sampled pixels and the single worst pixel. Both are the numbers the
+  // thresholds are compared against, so an operator setting a threshold and an
+  // operator reading a failure are looking at the same quantity.
+  //
+  // It used to return the moment it crossed either limit and report nothing.
+  // That is why a noisy setup was unexplainable: the attempt failed and the
+  // only thing anybody could see was that it had failed. The early exit saved
+  // nothing worth having -- at the default sampling this is ~50k pixels.
+  //
+  // outRms / outMaxLocal are written even when the answer is "no change", so a
+  // screen can show the noise floor while the machine sits there, which is how
+  // the threshold gets chosen in the first place.
+  bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres,
+                  int skipSampling = 10, float *outRms = NULL, float *outMaxLocal = NULL)
   {
     std::lock_guard<std::mutex> guard(lock);
+    if (outRms) *outRms = 0;
+    if (outMaxLocal) *outMaxLocal = 0;
     if (skipSampling < 1) skipSampling = 1;
+    // Nothing to compare against, or two pictures of different shapes: there
+    // is no answer, and "changed" would fail every attempt.
+    if (accum.empty() || stackingC <= 0 || img2.empty() ||
+        accum.rows != img2.rows || accum.cols != img2.cols)
+      return false;
 
-    globalDiffThres *= globalDiffThres * (imgStacked.rows * imgStacked.cols / skipSampling / skipSampling);
-    localDiffThres *= localDiffThres;
+    const cv::Mat &g = _gray(img2);
 
-    uint64_t diffSum = 0; int diffMax = 0; int count = 0;
-    for (int i = 0; i < imgStacked.rows; i += skipSampling)
+    double diffSum = 0; int diffMax = 0; long count = 0;
+    for (int i = 0; i < accum.rows; i += skipSampling)
     {
-      const uchar *sRow = imgStacked.ptr<uchar>(i);
-      const uchar *src2Row = img2.ptr<uchar>(i);
-      for (int j = 0; j < imgStacked.cols; j += skipSampling)
+      const int32_t *aRow = accum.ptr<int32_t>(i);
+      const uchar   *sRow = g.ptr<uchar>(i);
+      for (int j = 0; j < accum.cols; j += skipSampling)
       {
-
-        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
-        int pix = stackingC == 0 ? 0 : (pixU->_3Byte.Num / stackingC);
-        count++;
-        int diff = pix - src2Row[j * 3];
+        const int mean = aRow[j] / stackingC;
+        int diff = mean - (int)sRow[j];
         diff *= diff;
         diffSum += diff;
-        if (diffSum > globalDiffThres)
-        {
-          return true;
-        }
-        if (diffMax < diff)
-        {
-          diffMax = diff;
-          if (diffMax > localDiffThres)
-          {
-            return true;
-          }
-        }
+        count++;
+        if (diffMax < diff) diffMax = diff;
       }
     }
+    if (count <= 0) return false;
 
-    return false;
+    const float rms = (float)std::sqrt(diffSum / (double)count);
+    const float mx  = (float)std::sqrt((double)diffMax);
+    if (outRms) *outRms = rms;
+    if (outMaxLocal) *outMaxLocal = mx;
+
+    // Same comparison as before, written in the unit the numbers are in:
+    // sum(d^2) > thres^2 * count is rms > thres.
+    return (rms > globalDiffThres) || (mx > (float)localDiffThres);
+  }
+
+private:
+  void _export(cv::Mat &out)
+  {
+    if (accum.empty() || stackingC <= 0) { out.release(); return; }
+    cv::Mat mean8;
+    accum.convertTo(mean8, CV_8UC1, 1.0 / stackingC);
+    if (srcChannels <= 1) { out = mean8; return; }
+    std::vector<cv::Mat> ch((size_t)srcChannels, mean8);
+    cv::merge(ch, out);
   }
 };
 
+// How often the preview goes out while SI is accumulating, in frames per
+// second. The part is still and the picture is not changing, so this only has
+// to be often enough to show that it IS still -- and to show movement the
+// moment there is any, which is the thing a frozen preview cannot do.
+// 0 stops the preview entirely during accumulation.
+static int SI_PREVIEW_FPS = 4;
+
 int imgStackingMaxCount=0;
 ImageStackAddUp imstack;
+// SI mode's own accumulator. NOT `imstack`: that one is driven by the manual
+// stacked-save RC handler, and two features sharing one accumulator means an
+// operator saving a stack mid-run silently restarts the inspection average.
+ImageStackAddUp si_stack;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 int ws_port = 4090;
@@ -2292,7 +2608,77 @@ struct InspectionContext {
   //    describe the station, not the product).
   InspRegionCfg insp_region;
   std::vector<CleanRegionCfg> clean_regions;
-  bool full_inspection = false;
+  // WHICH INSPECTION MODE this session is, by name rather than by a flag.
+  //
+  // It was `bool full_inspection`, set from `dat->tl[0] == 'F'` -- so every
+  // mode that is not FI was CI by construction, including one that does not
+  // exist yet. A third mode added against that shape does not fail, it
+  // silently runs as CI, which is the worst way for a new mode to not work.
+  // The enum makes an unrecognised command name a thing that can be refused
+  // and said out loud.
+  enum InspMode { INSPM_CI = 0, INSPM_FI, INSPM_SI };
+  InspMode insp_mode = INSPM_CI;
+  // SI (Stable Inspection): the object is placed by hand and does not move, so
+  // the machine waits for the scene to stop changing, AVERAGES the frames it
+  // then sees, and inspects that average ONCE.
+  //
+  // Why a mode of its own rather than a CI option: CI inspects every frame and
+  // the WebUI blends the measurements afterwards in its tracking window. That
+  // costs one full inspection per frame (123 ms each here, 615 ms for five),
+  // needs the objects associated across frames -- which is where a few px of
+  // vibration splits one part into two reports -- and leaves the uploaded
+  // number matching no single image. Averaging the PICTURE instead costs
+  // 5.35 ms a frame, needs no association at all (multiple objects included),
+  // reduces the noise BEFORE edge detection rather than after, and the one
+  // image that is measured is the one the record can be replayed from.
+  struct SIParam {
+    float  diff_global = 6.0f;   // per-pixel RMS difference (8-bit levels) that means "moved"
+    int    diff_local  = 40;     // single-pixel difference that means "moved", on its own
+    int    diff_skip   = 10;     // sample every Nth pixel both ways (1% of the frame)
+    int    avg_frames  = 5;      // frames averaged into one inspection
+    // Still frames thrown away before averaging starts. The diff gate says the
+    // scene stopped changing by ITS threshold; a hand that has just let go can
+    // be under that threshold and still settling. Requiring a few consecutive
+    // still frames first costs a few frames and removes the whole class.
+    // Frames dropped right after the press, before the change gate starts.
+    // Pressing a button on a screen can shake what the screen is bolted to,
+    // and that shake is not the operator's fault. Changes during these frames
+    // are tolerated; after them, any change fails.
+    int    head_skip   = 1;
+  } si;
+  // SI is TRIGGERED, not automatic. The operator places the part and presses a
+  // button; that press is the statement "it is placed and still", which no
+  // settle detector can make on its own -- a detector cannot tell a part that
+  // has stopped moving from one the operator has not finished adjusting.
+  //
+  // And during the accumulation any change is a FAILURE, not a restart. A
+  // restart is silent: the operator sees the count sit there and learns
+  // nothing. A failure is the machine saying it could not do what it was asked.
+  // SI_HEAD   settling: a change was just seen, these frames are dropped
+  // SI_ACC    accumulating towards avg_frames
+  // SI_READY  avg_frames consecutive unchanged frames are in hand
+  // SI_DONE   the average was measured
+  // SI_ABORT  the frame geometry changed under the accumulator
+  enum SIState { SI_IDLE = 0, SI_HEAD, SI_ACC, SI_READY, SI_DONE, SI_ABORT };
+  // A press that arrived before the picture was ready. It is not a failure and
+  // not a queue: there is one operator and one part, so the newest press is the
+  // only one worth remembering.
+  bool si_pending = false;
+  // WHAT THE GATE ACTUALLY MEASURED, kept so it can be reported.
+  //
+  // si_rms / si_max are this frame's distance from the running mean, in grey
+  // levels -- the same quantity diff_global and diff_local are compared
+  // against. They are updated on every accumulating frame including the ones
+  // that pass, because a noise floor is only useful BEFORE it fails something.
+  // si_abort_* are the values of the frame that failed, held until the next
+  // press so the operator can read them after the fact.
+  float si_rms = 0, si_max = 0;
+  float si_abort_rms = 0, si_abort_max = 0;
+  int   si_abort_at = 0;
+  SIState si_state = SI_IDLE;
+  bool si_trigger = false;       // set by ST, consumed by the next frame
+  int  si_stack_n = 0;           // frames in the accumulator right now
+  int  si_skip_left = 0;         // frames dropped right after the press
   bool area_gates_bypass = (getenv("INSP_AREA_BYPASS") != NULL);
 };
 static InspectionContext g_inspCtx;
@@ -2771,7 +3157,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     {
       if (!g_camSetupFailed.empty()) g_camSetupFailed += ",";
       g_camSetupFailed += name;
-      LOGE("CameraSetup: %s NOT applied (driver returned %d)", name, (int)st);
+      LOGE_EVERY_N(20, "CameraSetup: %s NOT applied (driver returned %d) (1 line in 20)", name, (int)st);
     }
   };
   downSampSetup(camera, settingJson);
@@ -2970,6 +3356,75 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
+// The image half of a snapshot: written to a temp name, then renamed.
+//
+// cv::imwrite writes straight to the destination, so a watcher can open a
+// half-written frame and a failure leaves a truncated one behind. Same
+// tmp+rename discipline as WriteBytesToFileAtomic. No fsync: the report that
+// follows is the completion marker, and that one is fsynced.
+static bool write_snapshot_image(const std::string &dst, const cv::Mat &image,
+                                 const char *img_extension)
+{
+  // THE FAST LOSSLESS PATH, measured on a 2592x1936 frame of 10221.
+  //
+  // Two things cost more than the format does:
+  //
+  // 1. The Mat arrives 3-channel while the sensor is mono -- the three planes
+  //    are byte-identical -- so every snapshot stored the same picture three
+  //    times: 3982 KB and 2197 ms against 2093 KB and 745 ms for the one plane
+  //    that carries information. Collapsed only when the planes really are
+  //    equal, so a colour camera keeps its colour; the check is two passes
+  //    over the buffer and is nothing beside the encode.
+  // 2. zlib's default filtering. At the same compression level the RLE
+  //    strategy is both SMALLER and FASTER on this kind of frame (2093 KB /
+  //    745 ms vs 2488 KB / 922 ms) because a machine-vision frame is mostly
+  //    flat runs. Level stays 1: OpenCV's default 6 is 4.0 s for 7% fewer
+  //    bytes, on every part.
+  //
+  // Faster still exists and was rejected: BMP/PGM are 17 ms but 4900 KB, and
+  // TIFF-LZW is 428 ms for 2580 KB. PNG is what the rest of the toolchain and
+  // every viewer already read.
+  {
+    cv::Mat wimg = image;
+    if (image.channels() == 3)
+    {
+      cv::Mat ch[3];
+      cv::split(image, ch);
+      if (cv::norm(ch[0], ch[1], cv::NORM_INF) == 0 &&
+          cv::norm(ch[1], ch[2], cv::NORM_INF) == 0)
+        wimg = ch[0];
+    }
+    std::vector<int> iparm;
+    if (img_extension && strcmp(img_extension, "png") == 0)
+      iparm = {cv::IMWRITE_PNG_COMPRESSION, 1,
+                cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE};
+    // THE TEMPORARY NAME KEEPS THE EXTENSION.
+    //
+    // imwrite picks its codec from the file extension and nothing else, so
+    // writing to "<name>.png.tmp~" asks OpenCV for a ".tmp~" writer, which does
+    // not exist -- it throws, and before that throw was caught it took the core
+    // down with it. Every snapshot has failed this way since the atomic write
+    // was introduced.
+    //
+    // ".tmp~" goes BEFORE the extension: "<name>.tmp~.png" is still obviously
+    // temporary, is still a name nothing else will produce, and is still a PNG
+    // as far as the encoder is concerned.
+    const std::string _ext = std::string(".") + (img_extension ? img_extension : "png");
+    std::string tmp = dst;
+    if (tmp.size() > _ext.size()
+        && tmp.compare(tmp.size() - _ext.size(), _ext.size(), _ext) == 0)
+      tmp.insert(tmp.size() - _ext.size(), ".tmp~");
+    else
+      tmp += ".tmp~" + _ext;
+    if (!cv::imwrite(tmp.c_str(), wimg, iparm)) { remove(tmp.c_str()); return false; }
+#ifdef _WIN32
+    remove(dst.c_str());
+#endif
+    if (rename(tmp.c_str(), dst.c_str()) != 0) { remove(tmp.c_str()); return false; }
+  }
+  return true;
+}
+
 // `want_img` / `want_rep` select which halves of a snapshot are written. Both
 // true is the historical behaviour; the point of splitting them is that the
 // image is 70% of the bytes and the report is usually the evidence, so a line
@@ -3001,8 +3456,16 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   cJSON *camera_param_data = JFetch_OBJECT(camera_param, "reports[0]");
   if (camera_param_data == NULL)
     camera_param_data = JFetch_OBJECT(inspectionReport, "reports[0].cam_param");
+  // A MISSING CAMERA BLOCK IS NOT A REASON TO THROW THE EVIDENCE AWAY.
+  //
+  // This used to `return -11`: the verdict, the def and the frame were all
+  // discarded because one metadata object was absent. The record is what a
+  // decision gets argued from later; write it, and let the gap show up as a
+  // null rather than as a file nobody has.
   if (camera_param_data == NULL)
-    return -11;
+    LOGE_EVERY_N(50, "snapshot %s: no camera_param in the report -- writing the "
+                     "record WITHOUT a scale; it cannot be re-measured "
+                     "(1 line in 50)", fileName);
 
   std::string filePath(fileName);
 
@@ -3011,22 +3474,83 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   // copy to dodge a still-unsolved aliasing bug that would otherwise strip
   // reportsList from inspectionReport mid-print.
   reportsList = cJSON_Duplicate(reportsList, true);
-  camera_param_data = cJSON_Duplicate(camera_param_data, true);
   cJSON_AddItemToObject(infoJObj, "reports", reportsList);
   cJSON_AddItemToObject(infoJObj, "defInfo", deffile);
-  cJSON_AddItemToObject(infoJObj, "camera_param", camera_param_data);
+  if (camera_param_data)
+    cJSON_AddItemToObject(infoJObj, "camera_param", cJSON_Duplicate(camera_param_data, true));
+  else
+    cJSON_AddNullToObject(infoJObj, "camera_param");
+  // THE LENS THAT PRODUCED THESE NUMBERS.
+  //
+  // camera_param carries the scale and nothing else, so a replay got the
+  // recording machine's millimetres and whatever lens model the replaying
+  // machine happened to have -- on a bench whose lens differs by 1.57x, a
+  // different model entirely, silently. Every caliper hit and every search
+  // point is undistorted with this before it is measured; without it the
+  // record cannot reproduce its own result.
+  //
+  // The def deliberately does NOT carry one: a recipe is not a machine. The
+  // record is the only place this is ever recoverable from.
+  if (g_lens_calib.ok)
+  {
+    if (char *_lcj = lens_calib_to_json(g_lens_calib))
+    {
+      if (cJSON *_lj = cJSON_Parse(_lcj))
+        cJSON_AddItemToObject(infoJObj, "lens_calib", _lj);
+      free(_lcj);
+    }
+  }
+  // And WHERE it was evaluated. The model is in full-sensor pixels, so the
+  // camera ROI is added to every point before the lookup; the same model with
+  // a different ROI is a different correction. Written even when zero -- an
+  // absent offset and an offset of zero are not the same claim.
+  if (neutral_bacpac.sampler)
+  {
+    acv_XY _roi = neutral_bacpac.sampler->getOriginOffset();
+    cJSON *_ro = cJSON_AddObjectToObject(infoJObj, "roi_offset");
+    cJSON_AddNumberToObject(_ro, "x", _roi.x);
+    cJSON_AddNumberToObject(_ro, "y", _roi.y);
+  }
+  // HOW THIS PICTURE WAS MADE.
+  //
+  // An SI record is an average of N frames, and the image in it is that
+  // average -- not one of the frames. Nothing in the record said so, so a
+  // replay of it could not tell an averaged picture from a single one, and the
+  // whole claim SI makes about its own measurements was missing from the only
+  // artefact that outlives the run. The block is the same one the live report
+  // carries: state, avg_count, avg_target, and the variation the gate measured.
+  {
+    cJSON *si_src = cJSON_GetObjectItem(inspectionReport, "si");
+    if (si_src) cJSON_AddItemToObject(infoJObj, "si", cJSON_Duplicate(si_src, true));
+  }
   cJSON_AddNumberToObject(infoJObj, "time_ms", current_time_ms());
 
   // cJSON_Print is the expensive half of a report-less save, so skip it too --
   // not just the write. The detach/delete still has to run either way: deffile
   // is BORROWED from the caller and must leave this function unowned.
+  // THE IMAGE LANDS FIRST, THE REPORT IS RENAMED IN LAST.
+  //
+  // It used to be the other way with a plain truncate-in-place write, so on a
+  // full disk you got a .xreps naming a frame that was never written, left
+  // behind with no cleanup -- and a reader could pick up a half-written one,
+  // because truncate-in-place has no moment where the file is either old or
+  // new. Now the .xreps APPEARING is the signal that the pair is complete,
+  // which is the contract a folder watcher needs.
+  const std::string imgFile = filePath + "." + (std::string)img_extension;
+  const std::string repFile = filePath + "." + (std::string)filename_extension;
+  if (want_img && !write_snapshot_image(imgFile, image, img_extension))
+  {
+    cJSON_DetachItemViaPointer(infoJObj, deffile);
+    cJSON_Delete(infoJObj);
+    return -2;
+  }
   int ret_write_Len = 0;
   if (want_rep)
   {
     char *jstr = cJSON_Print(infoJObj);
     cJSON_DetachItemViaPointer(infoJObj, deffile);
     cJSON_Delete(infoJObj);
-    ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath+"." + (std::string)filename_extension).c_str());
+    ret_write_Len = WriteBytesToFileAtomic((uint8_t *)jstr, strlen(jstr), repFile.c_str());
     free(jstr);
   }
   else
@@ -3035,10 +3559,13 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
     cJSON_Delete(infoJObj);
   }
   if (ret_write_Len < 0)
+  {
+    // A frame with no report is not evidence -- nothing says what was decided
+    // about it -- and leaving it there makes the folder cap delete a real pair
+    // to make room for it.
+    if (want_img) remove(imgFile.c_str());
     return -1;
-
-  if (want_img && !cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), image))
-    return -2;
+  }
 
   return 0;
 }
@@ -3114,7 +3641,17 @@ static InspRegionCfg &g_insp_region = g_inspCtx.insp_region;   // P0 alias
 //
 // So: filter in FI, show everything in CI. Set by the CI/FI session handler,
 // read by the per-frame code that publishes the region onto the bacpac.
-static bool &g_full_inspection = g_inspCtx.full_inspection;   // P0 alias
+static InspectionContext::InspMode &g_insp_mode = g_inspCtx.insp_mode;   // P0 alias
+// The name this session announced itself with. One place to add a mode to.
+static const char *insp_mode_name(InspectionContext::InspMode m)
+{
+  switch (m) {
+    case InspectionContext::INSPM_FI: return "FI";
+    case InspectionContext::INSPM_SI: return "SI";
+    case InspectionContext::INSPM_CI: return "CI";
+  }
+  return "?";
+}
 
 // Temporary bypass of BOTH machine-level area gates: the station
 // `inspection_region` and the `clean_regions`. Off by default.
@@ -3197,10 +3734,11 @@ static void load_insp_region(cJSON *json_mac_setting)
 // code, so it stays here.
 static std::vector<CleanRegionCfg> &g_clean_regions = g_inspCtx.clean_regions;   // P0 alias
 
-static void load_clean_regions(cJSON *json_mac_setting)
+// Split so a live edit can hand over the array it has, instead of building a
+// machine_setting object around it just to have this dig the key back out.
+static void load_clean_regions_arr(cJSON *arr)
 {
   std::vector<CleanRegionCfg> out;
-  cJSON *arr = cJSON_GetObjectItem(json_mac_setting, "clean_regions");
   if (arr != NULL && cJSON_IsArray(arr))
   {
     cJSON *e = NULL;
@@ -3233,6 +3771,14 @@ static void load_clean_regions(cJSON *json_mac_setting)
     g_clean_regions = out;
   }
   LOGI("clean_regions: %d configured", (int)out.size());
+}
+
+// machine_setting.json shape. An ABSENT key still means "no clean regions" here
+// -- that is what a full setting load has to mean -- which is exactly why a
+// live edit uses the array form above and never this one.
+static void load_clean_regions(cJSON *json_mac_setting)
+{
+  load_clean_regions_arr(cJSON_GetObjectItem(json_mac_setting, "clean_regions"));
 }
 
 int InspStatusReducer(int total_status, int new_status);   // defined further down
@@ -3476,6 +4022,9 @@ void setup_machine_setting(cJSON *json_mac_setting)
            def_share_writable ? "YES (this machine publishes)" : "no");
   }
 
+  // Kept-sample groups follow the machine, not a browser (design decision).
+  insp_sample_set_groups(cJSON_GetObjectItem(json_mac_setting, "INSP_SAMPLE_GROUPS"));
+
   char *path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
 
   LOGE("setup_machine_setting::machine_setting.json path:%s", path);
@@ -3535,7 +4084,44 @@ m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
   // RC{target:"calib_files_load", ...} with the paths it wants.
 }
 
-void m_BPG_Protocol_Interface::delete_PeripheralChannel()
+// DOES THIS PORT EXIST -- without opening it.
+//
+// Opening is not a probe on this hardware. On Windows opening a COM port
+// asserts DTR/RTS, which is wired to EN on the ESP32 dev board, so "try it and
+// see" reboots the sorter every time it is tried -- the exact reset the reuse
+// path above exists to avoid. QueryDosDevice only resolves the name in the
+// object manager: no handle, no line state, microseconds.
+//
+// The answer is deliberately narrow. It says the name resolves, not that the
+// board is alive or that the port is free -- another process may hold it. It is
+// enough for the case it is here for: a port that is simply not there, because
+// the board is unplugged or enumerated as a different COM number, which is what
+// made the core tear down and rebuild the channel every 50 seconds forever.
+// The last connection description refused for a missing port, so the refusal is
+// logged on the transition and not on every 3-second retry. Touched only from
+// the WS command thread, which is the only caller of either function.
+static char g_perifLastRefused[160] = "";
+void perif_forget_last_refusal() { g_perifLastRefused[0] = 0; }
+
+static bool perif_uart_port_exists(const char *uart_name)
+{
+  if (uart_name == NULL || uart_name[0] == 0) return false;
+#ifdef _WIN32
+  // Accept both COM7 and the \\.\COM7 form the config may carry;
+  // QueryDosDevice wants the bare name.
+  const char *nm = uart_name;
+  if (strncmp(nm, "\\\\.\\", 4) == 0) nm += 4;
+  char targets[1024];
+  if (QueryDosDeviceA(nm, targets, (DWORD)sizeof(targets)) != 0) return true;
+  // ERROR_INSUFFICIENT_BUFFER means the name DID resolve, to something longer
+  // than we asked for. Only "file not found" is a real absence.
+  return GetLastError() != ERROR_FILE_NOT_FOUND;
+#else
+  return access(uart_name, F_OK) == 0;
+#endif
+}
+
+void m_BPG_Protocol_Interface::delete_PeripheralChannel(const char *why)
 {
 
   // Under the TX lock. Three threads write through perifCH -- PerifSendThread,
@@ -3565,9 +4151,22 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
     doomed = perifCH;
     perifCH = NULL;
   }
-  if (doomed)
+  // SAY NOTHING WHEN NOTHING HAPPENED.
+  //
+  // "DELETED..." was printed unconditionally, including on the calls where
+  // perifCH was already NULL and this function did not do a thing. On a machine
+  // with no board that is the ONLY thing it ever printed, once per connect
+  // attempt, forever: a screen of identical lines reporting an event that never
+  // occurred, with the one line that would have meant something (DELETING)
+  // absent precisely because nothing was there to delete.
+  if (!doomed)
   {
-    LOGI("DELETING");
+    LOGD("perif: %s asked to release the channel; there is none", why);
+    return;
+  }
+  {
+    LOGI("perif: releasing the channel to %s (%s)",
+         doomed->conn_desc[0] ? doomed->conn_desc : "(no desc)", why);
     // Ask before freeing. Everything else that writes through this channel
     // re-reads perifCH under perif_tx_lock and is therefore already safe after
     // the swap above; the synth sender captured `this` instead and is not.
@@ -3579,7 +4178,7 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
            "through `this` is a use-after-free. One abandoned channel is the "
            "cheaper failure. Only reachable with INSP_CAM_TS_SYNTH.");
   }
-  LOGI("DELETED...");
+  LOGI("perif: channel released (%s)", why);
 }
 
 
@@ -3656,6 +4255,34 @@ static void encode_acvImage_jpeg(const cv::Mat &img, int jpegQ,
   }
   std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, jpegQ };
   cv::imencode(".jpg", encode_src, out, params);
+}
+
+// A KEPT SAMPLE IS KEPT TO BE MEASURED AGAIN, SO IT IS LOSSLESS.
+//
+// The live stream is JPEG because it is looked at and thrown away. A kept
+// sample is the opposite: the whole reason it exists is that somebody will
+// re-run the def against it, and JPEG moves the gradient by up to 6 counts on
+// a frame whose arcs use an edge.min_strength of 5 -- the measurement would
+// come back different from the one that was recorded, which makes the record
+// worse than useless.
+//
+// Format 3 is PNG. It is self-describing, so the decoder does not need the
+// channel count the JPEG formats (1 = BGR, 2 = grayscale) have to carry.
+//
+// The cost is memory: about 2 MB a frame against 0.75 MB, so ten samples is
+// 20 MB rather than 7.5 MB. Level 1 + RLE for the same reason the snapshot
+// writer uses them -- on a machine-vision frame they are both smaller and
+// faster than the defaults.
+static void encode_acvImage_png(const cv::Mat &img,
+                                std::vector<uint8_t> &out, uint8_t &fmt)
+{
+  cv::Mat src = img;
+  if (_looks_grayscale(img) && img.channels() != 1)
+    cv::extractChannel(img, src, 0);
+  const std::vector<int> params = { cv::IMWRITE_PNG_COMPRESSION, 1,
+                                    cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_RLE };
+  cv::imencode(".png", src, out, params);
+  fmt = 3;
 }
 
 // Opt-in self-check for the pre-encode path: re-encode inline and compare.
@@ -3865,7 +4492,132 @@ int getImage(CameraLayer *camera, cv::Mat &dst, int trig_type=0, int timeout_ms=
 
 
 
+// ---------------------------------------------------------------------------
+// THE SELECT-THREAD STALL METER
+//
+// Every WebSocket command in this core is handled INLINE on the thread that
+// owns select(). mainLoop does select() -> ws runLoop -> recv -> BPG reassembly
+// -> toUpperLayer_dispatch, and that dispatch is ~3400 lines: it loads and
+// saves defs, walks directories, encodes JPEGs, opens and closes serial ports
+// (a path that constructs an object which THROWS when the port is absent), and
+// runs a full inspection for II. While any of that runs, nothing is accepted,
+// nothing is read, no client is serviced, and no peer teardown is processed.
+//
+// That is the thing worth restructuring, and the first step is not to move work
+// -- it is to know WHICH work. "The loop blocks" is a shape, not a measurement;
+// which packet types actually hold it, for how long, and how often decides
+// whether a queue is worth its lifetime hazards, and which handlers have to
+// stay on this thread regardless (anything touching peer lifetime).
+//
+// So: one histogram over all commands, plus a per-type table keyed by the
+// two-letter tag. Both are written only by the select thread; the GS reader
+// tolerates a torn count the same way the report-path histograms do.
+static LatHist g_histCmd;          // one handler call, wall ms
+static LatHist g_histServe;        // ONE loop turn outside select(), wall ms
+struct CmdStat { uint16_t tl = 0; uint64_t n = 0; double sum_ms = 0, max_ms = 0; };
+static CmdStat g_cmdStat[48];      // small, linear: a handful of tags exist
+static int     g_cmdStatN = 0;
+// Anything past this is worth a line in the log by itself. A command is a
+// human pressing a button; a fifth of a second of dead socket per press is the
+// point where a reload starts to feel like the core hung.
+static double  g_cmdStallLogMs = 200.0;
+
+static void cmd_stat_add(const char *tl, double ms)
+{
+  const uint16_t code = ((uint16_t)(uint8_t)tl[0] << 8) | (uint8_t)tl[1];
+  int i = 0;
+  for (; i < g_cmdStatN; i++) if (g_cmdStat[i].tl == code) break;
+  if (i == g_cmdStatN)
+  {
+    if (g_cmdStatN >= (int)(sizeof(g_cmdStat) / sizeof(g_cmdStat[0]))) return;
+    g_cmdStat[g_cmdStatN].tl = code;
+    g_cmdStatN++;
+  }
+  g_cmdStat[i].n++;
+  g_cmdStat[i].sum_ms += ms;
+  if (ms > g_cmdStat[i].max_ms) g_cmdStat[i].max_ms = ms;
+}
+
+// ---------------------------------------------------------------------------
+// SW -- THE ROBUSTNESS SWEEP, RUN IN THE CORE
+//
+// The sweep degrades one image along an axis (rotate it 10 degrees, halve the
+// gain, add noise) and asks whether the locator still finds the part, and finds
+// it in the place the perturbation says it must now be. The SBM studio's "掃描
+// 全部軸" is seven axes of 7-12 steps: 73 inspections.
+//
+// It used to be 73 separate II round trips from the WebUI. Every one of those
+// runs INLINE on the thread that owns select(), and II is the single most
+// expensive command in the core -- measured 2026-09-10 at 251 ms average, 87%
+// of all the time that thread spends not serving sockets. So a full sweep was
+// ~19 seconds during which the core accepted nothing, read nothing from any
+// other client, and processed no disconnects: heartbeats stalled, panels stopped
+// polling, and the window looked hung. The sweep was the one thing in this core
+// that turned a per-command cost into a visible outage.
+//
+// So the whole plan goes over in one request and the loop runs HERE, on its own
+// thread, streaming one RP per step back as it finishes. The select thread hands
+// the job over and returns immediately.
+//
+// WHAT IS DELIBERATELY NOT MOVED
+//   The arithmetic. Which perturbations to run, where the part is expected to
+//   land, what counts as a failure, the verdict per axis -- all of that stays in
+//   sbmSweep.js. The core is handed a LIST OF PERTURBATIONS and returns a
+//   report for each; it does not know what an axis is. That keeps the property
+//   the sweep is built on -- the perturbation is its own ground truth -- in one
+//   place, and it means tuning the ranges never needs a core build.
+//
+// WHAT IT SHARES, AND WITH WHAT
+//   The inspection itself takes matchingEnglock, exactly as II does, so a sweep
+//   step and the live inspection thread still cannot run at once. The def and
+//   the image are copied into the job before the thread starts, so the worker
+//   never touches cacheImage/tmp_buff -- the buffers several other handlers
+//   reuse on the select thread. What remains shared is neutral_bacpac, which
+//   the sweep configures once on the select thread before starting and the
+//   worker then only reads. A CI/FI session started DURING a sweep would write
+//   it; that cannot come from the one UI that can do either (different screens,
+//   and this core serves one client), so it is a documented edge rather than a
+//   guarded one.
+struct SweepJob
+{
+  std::thread             th;
+  std::atomic<bool>       running{false};
+  std::atomic<bool>       abort{false};
+  // Set by the worker as it exits so the next request can join the old thread
+  // without waiting on anything.
+  std::atomic<bool>       finished{false};
+};
+static SweepJob g_sweep;
+
+// Is the client that asked for this sweep still there?
+//
+// A sweep outlives a browser reload easily -- 19 seconds is a long time -- and
+// the peer it must answer is a pool slot that a later connection can be given.
+// Checking membership in `peers` under the same lock the CLOSING handler takes
+// is what makes "still connected" mean it at the moment of the send.
+static bool sweep_peer_alive(void *peer)
+{
+  if (peer == NULL || ifwebsocket == NULL) return false;
+  std::lock_guard<std::mutex> _g(bpg_pi.subscribersLock);
+  return ifwebsocket->peers.count((ws_conn_data *)peer) > 0;
+}
+
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
+{
+  const auto _t0 = std::chrono::steady_clock::now();
+  const char tl0 = bpgdat.tl[0], tl1 = bpgdat.tl[1];
+  const int ret = toUpperLayer_dispatch(bpgdat, peer);
+  const double _ms = std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - _t0).count();
+  g_histCmd.add(_ms);
+  { const char tl[2] = { tl0, tl1 }; cmd_stat_add(tl, _ms); }
+  if (_ms >= g_cmdStallLogMs)
+    LOGE("select thread blocked %.1f ms in [%c%c] -- no client was served for that long",
+         _ms, tl0, tl1);
+  return ret;
+}
+
+int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, void *peer)
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
 
@@ -3916,6 +4668,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     // `cJSON_Delete(json)` at the bottom of this block was removed.
     CJsonHold _json_guard(json);
     char err_str[1000] = "\0";
+    // SS is the session TERMINATOR: the WebUI closes the request the moment
+    // one arrives. A handler that accepts a job and answers later -- SW is
+    // the only one today -- must therefore NOT let the tail below fire, or
+    // the client tears the session down before the first result and every
+    // packet after it lands on a request nobody is tracking.
+    bool defer_session_ss = false;
     bool session_ACK = false;
     // Sized for the worst case, not the typical one: the reply below formats
     // err_str (1000 bytes, filled from client-supplied strings like
@@ -3993,7 +4751,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       void *target;
       int type = getDataFromJson(json, "stream", &target);
       if (type == cJSON_False)
+      {
         unsubscribeStream(peer);
+        // THE INSPECTION MODE ENDS WITH THE SESSION.
+        //
+        // It is set at every CI/FI/SI start and was never cleared, so after an
+        // SI session the core still believed it was in SI -- and SI holds back
+        // preview frames while its accumulator counts. Leaving inspection for
+        // the main screen therefore left every frame held: no template preview,
+        // no live picture, a core that looked wedged while it was running
+        // perfectly and answering everything else.
+        //
+        // Reset here because unsubscribing IS how the WebUI says it has left.
+        if (stream_subscribers.empty())
+        {
+          g_insp_mode = InspectionContext::INSPM_CI;
+          g_inspCtx.si_state = InspectionContext::SI_IDLE;
+          g_inspCtx.si_pending = false;
+          g_inspCtx.si_trigger = false;
+          g_inspCtx.si_stack_n = 0;
+          g_inspCtx.si_skip_left = 0;
+        }
+      }
       else
         subscribeStream(peer);
       LOGI("SB stream subscribe=%d peer=%p subscribers=%zu",
@@ -4072,13 +4851,32 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             return false;
           }
           std::string p = path;
-          // Has a recognized extension? OpenCV dispatches on .png/.jpg/.jpeg/.bmp/.tif/.tiff.
+          // A RECOGNISED IMAGE EXTENSION, not merely a dot.
+          //
+          // This used to ask "is there a dot after the last slash", and a
+          // recipe called "10155  3G2570090BSORTING.OK" has one. The WebUI
+          // sends the template path WITHOUT an extension and expects .png to be
+          // added; on that name nothing was added, cv::imwrite could not pick
+          // an encoder from "OK", threw, and the save came back refused. The
+          // operator got "暫存樣板影像寫入失敗" and, later and further away,
+          // 生成特徵點 failing because the template it needed was never
+          // written. Every recipe with a dot in its name was in this position.
+          //
+          // A dot is punctuation; only these six mean "already an image file".
           auto dot = p.find_last_of('.');
           auto slash = p.find_last_of("/\\");
-          bool hasExt = (dot != std::string::npos) &&
-                        (slash == std::string::npos || dot > slash) &&
-                        (dot + 1 < p.size());
-          if (!hasExt) { p += ".png"; LOGW("imwrite: no ext on %s → using %s", path, p.c_str()); }
+          bool hasExt = false;
+          if (dot != std::string::npos &&
+              (slash == std::string::npos || dot > slash) &&
+              dot + 1 < p.size())
+          {
+            std::string ext = p.substr(dot);
+            for (auto &c : ext) c = (char)tolower((unsigned char)c);
+            static const char *kImgExt[] = { ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" };
+            for (const char *e : kImgExt)
+              if (ext == e) { hasExt = true; break; }
+          }
+          if (!hasExt) { p += ".png"; LOGW("imwrite: no image ext on %s -> using %s", path, p.c_str()); }
           try {
             return cv::imwrite(p, img);
           } catch (const cv::Exception &ex) {
@@ -4215,19 +5013,84 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               break;
             }
             {
+              // A MANUAL save is always PNG. JPEG moves the gradient by up to 6
+              // counts on a recorded frame whose arcs use an edge.min_strength
+              // of 5, and a frame someone saved by hand is the one that will be
+              // measured again. The report extension is still the caller's.
+              if (img_extension != NULL && strcmp(img_extension, "png") != 0)
+                LOGE("manual save: img_extension '%s' ignored -- written as PNG "
+                     "so the frame can be measured again", img_extension);
               // RAII, not lock()/unlock(): saveInspectionSample runs imwrite,
               // which throws cv::Exception on a bad path/disk -- a naked
               // unlock after it never runs and the frame pipeline (which takes
               // this lock per frame in the cache swap) hangs forever.
               std::lock_guard<std::mutex> _cache_guard(lastDatViewCache_lock);
 
-              int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
-                report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
-                img_extension!=NULL?img_extension:SNAP_IMG_EXTENSION);
+              // A SAVE THAT THROWS MUST NOT TAKE THE CORE WITH IT.
+              //
+              // saveInspectionSample runs imwrite and cJSON_Print; imwrite
+              // throws cv::Exception on a path it cannot write, a codec it
+              // cannot find, or a Mat it cannot make sense of. Nothing on the
+              // way out of here caught it, so it unwound through the websocket
+              // callback and out of the process -- measured 2026-09-22: the
+              // operator pressed 檢測快照 and the machine went down, which is a
+              // far worse outcome than a failed save.
+              //
+              // An empty image is checked first because it is the one case that
+              // is not exceptional: in SI the cache holds only measured frames,
+              // and before the first 量測 there may be nothing in it at all.
+              int err = 0;
+              if (lastDatViewCache->img.empty())
+              {
+                err = -1;
+              }
+              else
+              {
+                try {
+                  err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
+                    report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
+                    "png");
+                }
+                catch (const cv::Exception &e) {
+                  err = -30;
+                  LOGE("snapshot %s: imwrite threw -- %s", fileName, e.what());
+                }
+                catch (const std::exception &e) {
+                  err = -31;
+                  LOGE("snapshot %s: threw -- %s", fileName, e.what());
+                }
+                catch (...) {
+                  err = -32;
+                  LOGE("snapshot %s: threw a non-std exception", fileName);
+                }
+              }
 
               if(err==0)
               {
                 session_ACK=true;
+              }
+              else
+              {
+                // WHY IT FAILED, not just that it did.
+                //
+                // This branch was silent: the WebUI put up "儲存報告 ... 失敗"
+                // and the core said nothing at all, so the only way to find out
+                // which of half a dozen refusals fired was to read the function.
+                //  -1  the frame has no image
+                // -30/-31/-32 it threw: OpenCV, std, or something else
+                // -10  the report carries no reports[0].reports -- in SI that is
+                //      an accumulating frame, whose report is deliberately empty
+                // -20/-21 the image or the report could not be written
+                if (err == -10 && g_insp_mode == InspectionContext::INSPM_SI)
+                  snprintf(err_str, sizeof(err_str),
+                           "SI: nothing has been measured yet -- press 量測 first, "
+                           "then the snapshot saves that average and its report");
+                else
+                  snprintf(err_str, sizeof(err_str),
+                           "snapshot save failed (%d) %s", err, fileName);
+                LOGE("%s -- cached frame: measured=%d report=%s",
+                     err_str, (int)lastDatViewCache->datViewInfo.si_measured,
+                     lastDatViewCache->datViewInfo.report_json ? "present" : "NULL");
               }
             }
           }
@@ -4447,6 +5310,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             cJSON_AddNumberToObject(robj, "cam_max_fps",
               g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
+            // The camera's OWN ceiling for the ROI and exposure it is carrying,
+            // beside the one observed from received frames. They answer
+            // different questions and both are worth having: cam_max_fps is
+            // what this run has demonstrated, cam_fps_limit is what the sensor
+            // says it could do -- available while idle, which is when somebody
+            // is actually choosing the gate cap. Absent from the reply when the
+            // layer cannot answer, so a reader never mistakes "unknown" for 0.
+            {
+              CameraLayer *c = NULL;
+              {
+                std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+                c = calib_bacpac.cam;
+              }
+              const double rfps = (c != NULL) ? c->GetResultingFps() : -1.0;
+              if (rfps > 0) cJSON_AddNumberToObject(robj, "cam_fps_limit", rfps);
+            }
 
             // Report-path latency distributions. Rides on perif_pairing rather
             // than a new GS item because fi_hold already polls this one -- and a
@@ -4461,6 +5340,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddItemToArray(ed, cJSON_CreateNumber(PERIF_HIST_EDGES_MS[i]));
               struct { const char *k; LatHist *h; } hs[] = {
                 { "dog",     &g_histDog     },   // watchdog wake lateness
+                { "cmd",     &g_histCmd     },   // ONE ws command handler, on the select thread
+                { "serve",   &g_histServe   },   // one whole loop turn outside select()
                 { "log",     &g_histLog     },   // the send thread's logging tail
                 { "tx_lock", &g_histTxLock  },   // contention on perif_tx_lock
                 { "tx_wire", &g_histTxWire  },   // the send call itself
@@ -4475,6 +5356,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 { "wait",    &g_histWait    },   // enqueued -> send thread pops
                 { "write",   &g_histWrite   },   // the serial write itself
                 { "e2e",     &g_histE2E     } }; // camera in -> write returned
+              // Which packet type held the select thread, keyed by its own
+              // two-letter tag. The aggregate `cmd` histogram says a stall
+              // happened; this says whose it was, which is the only form of
+              // the answer that tells you what to move off this thread.
+              {
+                cJSON *bt = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, "cmd_by_tl", bt);
+                for (int _ci = 0; _ci < g_cmdStatN; _ci++)
+                {
+                  char kb[3] = { (char)(g_cmdStat[_ci].tl >> 8),
+                                 (char)(g_cmdStat[_ci].tl & 0xFF), 0 };
+                  cJSON *o = cJSON_CreateObject();
+                  cJSON_AddItemToObject(bt, kb, o);
+                  cJSON_AddNumberToObject(o, "n", (double)g_cmdStat[_ci].n);
+                  cJSON_AddNumberToObject(o, "max_ms", g_cmdStat[_ci].max_ms);
+                  cJSON_AddNumberToObject(o, "avg_ms", g_cmdStat[_ci].n
+                    ? g_cmdStat[_ci].sum_ms / g_cmdStat[_ci].n : 0.0);
+                  cJSON_AddNumberToObject(o, "total_ms", g_cmdStat[_ci].sum_ms);
+                }
+              }
               // Bundle members, named by index: the engine does not carry
               // human names for them, and the index is what the code shows.
               for (int _si = 0; _si < MatchingEngine::lastStageN; _si++)
@@ -4490,6 +5391,32 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                 cJSON_AddNumberToObject(o, "cpu_max_ms", g_histStageCpu[_si].max_ms);
                 cJSON_AddNumberToObject(o, "cpu_avg_ms", g_histStageCpu[_si].n
                   ? g_histStageCpu[_si].sum_ms / g_histStageCpu[_si].n : 0.0);
+              }
+              // Phases carry their own names, so they are keyed by name.
+              for (int _pi = 0; _pi < mephase::n_; _pi++)
+              {
+                char kb[32];
+                snprintf(kb, sizeof(kb), "ph_%s", mephase::name_[_pi]);
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, kb, o);
+                cJSON_AddNumberToObject(o, "n", (double)g_histPhase[_pi].n);
+                cJSON_AddNumberToObject(o, "max_ms", g_histPhase[_pi].max_ms);
+                cJSON_AddNumberToObject(o, "avg_ms", g_histPhase[_pi].n
+                  ? g_histPhase[_pi].sum_ms / g_histPhase[_pi].n : 0.0);
+              }
+              // Work counters. Not milliseconds -- avg_ms here reads as
+              // "per frame", and it is the denominator the phase times are
+              // meant to be divided by.
+              for (int _ci = 0; _ci < mephase::cn_; _ci++)
+              {
+                char kb[32];
+                snprintf(kb, sizeof(kb), "cnt_%s", mephase::cname_[_ci]);
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddItemToObject(lat, kb, o);
+                cJSON_AddNumberToObject(o, "n", (double)g_histCount[_ci].n);
+                cJSON_AddNumberToObject(o, "max_ms", g_histCount[_ci].max_ms);
+                cJSON_AddNumberToObject(o, "avg_ms", g_histCount[_ci].n
+                  ? g_histCount[_ci].sum_ms / g_histCount[_ci].n : 0.0);
               }
               for (auto &e : hs)
               {
@@ -4615,6 +5542,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               // but a preview silently running ten frames behind is, and only
               // this number tells them apart.
               cJSON_AddNumberToObject(info,"dropped",(double)datViewDropCount.load());
+              // Adaptive preview pacing: what one frame costs, what cap is
+              // being applied because of it, and how many frames it skipped.
+              cJSON_AddNumberToObject(info,"img_xfer_ms",(double)g_imgXferMsEma);
+              cJSON_AddNumberToObject(info,"eff_fps",(double)g_streamEffFps);
+              cJSON_AddNumberToObject(info,"adaptive_skips",(double)g_imgAdaptiveSkips.load());
+              cJSON_AddBoolToObject(info,"adaptive",g_streamAdaptive.load() != 0);
             }
             {
               cJSON *info = cJSON_CreateObject();
@@ -4629,6 +5562,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           else if (strcmp(itemType, "snap_queue_skip_count") == 0)
           {
             cJSON_AddNumberToObject(retArr,itemType,saveInspQFullSkipCount.load());
+          }
+          else if (strcmp(itemType, "slow_frame") == 0)
+          {
+            // Settings AND counters, so the panel shows the core's state rather
+            // than what one browser last sent.
+            cJSON *o = cJSON_CreateObject();
+            cJSON_AddNumberToObject(o, "ms", g_slowMs.load());
+            cJSON_AddNumberToObject(o, "max", g_slowCap.load());
+            cJSON_AddNumberToObject(o, "ctrl_every", g_ctrlEvery.load());
+            cJSON_AddNumberToObject(o, "saved", g_slowSaved.load());
+            cJSON_AddNumberToObject(o, "dropped", g_slowDropped.load());
+            cJSON_AddItemToObject(retArr, itemType, o);
           }
           else if (strcmp(itemType, "save_snap_folder_full_delete_count") == 0)
           {
@@ -5142,6 +6087,31 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
                  " -- keeping the previous scale", _ppb, _mmpb);
           }
         }
+
+        // img_property.calibInfo.mmpp -- the FRAME's ruler, when the caller has
+        // one that is not the def's. Every editor CHECK sends the def's own mmpp
+        // here (no change for them); 載入 xrep sends the mmpp of the record the
+        // frame came from, so a picture taken at another magnification is
+        // measured to its own scale and the shape locator rescales its model
+        // (ensureShapeScale: def_mmpp/current_mmpp). Until 2026-09-07 this key
+        // was documented, sent, and never read: the def's cam_param above was
+        // the last word, so a 0.8x frame measured 0.8x short and read as
+        // poor_fit. Convention matches the def block: ppb 1, mmpb = mm per px.
+        {
+          cJSON *_ip = JFetch_OBJECT(json, "img_property");
+          cJSON *_ci = _ip ? JFetch_OBJECT(_ip, "calibInfo") : NULL;
+          double *_fm = _ci ? JFetch_NUMBER(_ci, "mmpp") : NULL;
+          if (_fm && std::isfinite(*_fm) && *_fm > 0)
+          {
+            auto *_cm = neutral_bacpac.sampler->getCalibMap();
+            const double _defm = (_cm->calibPpB > 0) ? _cm->calibmmpB / _cm->calibPpB : NAN;
+            _cm->calibPpB = 1.0;
+            _cm->calibmmpB = *_fm;
+            if (!(fabs(*_fm - _defm) < 1e-9))
+              LOGI("II calibInfo.mmpp=%.9f overrides the def's %.9f -- frame at another magnification",
+                   *_fm, _defm);
+          }
+        }
         
 
 
@@ -5189,6 +6159,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // being returned alongside, so the number and the picture agree.
             cJSON_AddNumberToObject(jobj, "insp_wall_ms", insp_wall_ms);
             cJSON_AddNumberToObject(jobj, "insp_cpu_ms",  insp_cpu_ms);
+            // WHERE THAT WENT, for this frame.
+            //
+            // insp_wall_ms is one number, and one number cannot say whether a
+            // slow CHECK is the shape matcher, the caliper windows, or a
+            // channel extract nobody suspected -- which is exactly the question
+            // the editor asks after every change it makes. The phase timers are
+            // already running (mephase, reset per FeatureMatching), so this is
+            // the same breakdown the bench profile reads, attached to the frame
+            // the operator is looking at.
+            //
+            // Names are the producers' own, so the caption cannot drift from
+            // the code. prep/sbm/morph/measure partition the match; anything
+            // else (sp_gather, sp_scan) is NESTED inside one of them and must
+            // not be added to the total -- the consumer is told which by the
+            // fact that the four sum to the match and the rest do not.
+            if (mephase::n_ > 0)
+            {
+              cJSON *ph = cJSON_CreateObject();
+              for (int _i = 0; _i < mephase::n_; _i++)
+                cJSON_AddNumberToObject(ph, mephase::name_[_i], mephase::ms_[_i]);
+              cJSON_AddItemToObject(jobj, "insp_phase_ms", ph);
+            }
             // Reported, not folded in. This is real time the editor waits, so
             // hiding it would make INST_CHECK feel slow with nothing to point
             // at -- but it is a per-PRESS cost, not a per-part one, and the
@@ -5264,6 +6256,280 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
       calib_bacpac.sampler->ignoreCalib(false);
     }
+    else if (checkTL("SW", dat)) //[S]Weep -- run a whole robustness sweep in the core
+    {
+      session_ACK = false;
+      do
+      {
+        if (json == NULL) { snprintf(err_str, sizeof(err_str), "SW: JSON parse failed"); break; }
+
+        // ABORT comes down the same command. The operator pressing stop is not
+        // a different kind of request, and giving it its own tag would mean a
+        // second place that has to know a sweep exists.
+        if (cJSON_IsTrue(cJSON_GetObjectItem(json, "abort")))
+        {
+          g_sweep.abort.store(true);
+          LOGI("SW: abort requested");
+          session_ACK = true;
+          break;
+        }
+
+        // Reap a finished worker before deciding whether one is running: the
+        // thread sets `finished` as its last act, and without this a second
+        // sweep would be refused until something else happened to join it.
+        if (g_sweep.finished.load() && g_sweep.th.joinable())
+        {
+          g_sweep.th.join();
+          g_sweep.finished.store(false);
+          g_sweep.running.store(false);
+        }
+        if (g_sweep.running.load())
+        {
+          snprintf(err_str, sizeof(err_str), "SW: a sweep is already running");
+          LOGE("%s", err_str);
+          break;
+        }
+
+        // ---- the plan ----------------------------------------------------
+        cJSON *plan = JFetch_ARRAY(json, "perturbs");
+        const int n = plan ? cJSON_GetArraySize(plan) : 0;
+        if (n <= 0) { snprintf(err_str, sizeof(err_str), "SW: no 'perturbs' array"); break; }
+        if (n > 4096) { snprintf(err_str, sizeof(err_str), "SW: %d steps is not a sweep", n); break; }
+
+        std::vector<TestPerturb> steps;
+        std::vector<int>         seeds;
+        steps.reserve(n); seeds.reserve(n);
+        for (int i = 0; i < n; i++)
+        {
+          cJSON *e = cJSON_GetArrayItem(plan, i);
+          steps.push_back(test_perturb_parse(e));
+          double *sd = e ? JFetch_NUMBER(e, "seed") : NULL;
+          seeds.push_back(sd ? (int)*sd : 0);
+        }
+
+        // ---- the def -----------------------------------------------------
+        // Copied into the job, not referenced: the request's cJSON tree is
+        // freed when this handler returns, long before the worker is done.
+        std::string defStr;
+        {
+          cJSON *defInfo = JFetch_OBJECT(json, "definfo");
+          char  *defFile = (char *)JFetch(json, "deffile", cJSON_String);
+          if (defInfo)
+          {
+            MallocHold _own(cJSON_Print(defInfo));
+            if (_own.get()) defStr = _own.str();
+          }
+          else if (defFile)
+          {
+            MallocHold _own(ReadText(defFile));
+            if (_own.get()) defStr = _own.str();
+          }
+          if (defStr.empty())
+          { snprintf(err_str, sizeof(err_str), "SW: neither 'definfo' nor a readable 'deffile'"); break; }
+        }
+
+        // ---- the image ---------------------------------------------------
+        // A PRIVATE copy. tmp_buff and cacheImage are reused by half a dozen
+        // handlers on the select thread; a worker holding a pointer into either
+        // for 19 seconds is a use-after-overwrite waiting for the operator to
+        // press anything else.
+        cv::Mat baseImg;
+        {
+          char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
+          if (imgSrcPath == NULL || strcmp(imgSrcPath, "__CACHE_IMG__") == 0)
+          {
+            cacheImage.copyTo(baseImg);
+          }
+          else
+          {
+            baseImg = cv::imread(imgSrcPath, cv::IMREAD_ANYCOLOR);
+            if (!baseImg.empty() && !baseImg.isContinuous()) baseImg = baseImg.clone();
+          }
+          if (baseImg.empty() || baseImg.cols * baseImg.rows <= 10)
+          { snprintf(err_str, sizeof(err_str), "SW: no usable image from %s",
+                     imgSrcPath ? imgSrcPath : "__CACHE_IMG__"); break; }
+        }
+
+        // ---- the same setup II does -------------------------------------
+        // Done HERE, on the select thread, so the sweep measures what a single
+        // 測試檢驗 measures. A sweep whose baseline disagrees with the single
+        // test it is compared against is worse than no sweep.
+        calib_bacpac.sampler->ignoreCalib(false);
+        neutral_bacpac.sampler->ignoreCalib(true);
+        neutral_bacpac.insp_region_x = neutral_bacpac.insp_region_y = 0;
+        neutral_bacpac.insp_region_w = neutral_bacpac.insp_region_h = 0;
+        // Same key and same shape as II's, so a client sends one object to
+        // either and gets the same working area.
+        {
+          cJSON *wa = cJSON_GetObjectItem(json, "work_region");
+          if (wa && cJSON_IsObject(wa))
+          {
+            cJSON *jx = cJSON_GetObjectItem(wa, "x"), *jy = cJSON_GetObjectItem(wa, "y");
+            cJSON *jw = cJSON_GetObjectItem(wa, "w"), *jh = cJSON_GetObjectItem(wa, "h");
+            if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy) &&
+                cJSON_IsNumber(jw) && cJSON_IsNumber(jh))
+            {
+              neutral_bacpac.insp_region_x = (float)jx->valuedouble;
+              neutral_bacpac.insp_region_y = (float)jy->valuedouble;
+              neutral_bacpac.insp_region_w = (float)jw->valuedouble;
+              neutral_bacpac.insp_region_h = (float)jh->valuedouble;
+              cJSON *jf = cJSON_GetObjectItem(wa, "fit");
+              neutral_bacpac.insp_region_fit =
+                  (cJSON_IsString(jf) && strcmp(jf->valuestring, "center") == 0)
+                      ? FeatureManager_BacPac::INSP_FIT_CENTRE
+                      : FeatureManager_BacPac::INSP_FIT_CONTAIN;
+            }
+          }
+        }
+        {
+          CJsonHold defObj(cJSON_Parse(defStr.c_str()));
+          if (defObj.get() == NULL)
+          { snprintf(err_str, sizeof(err_str), "SW: def did not parse"); break; }
+          double _ppb  = JFetch_NUMBER_ex(defObj.get(), "featureSet[0].cam_param.ppb2b");
+          double _mmpb = JFetch_NUMBER_ex(defObj.get(), "featureSet[0].cam_param.mmpb2b");
+          if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
+          {
+            neutral_bacpac.sampler->getCalibMap()->calibPpB  = _ppb;
+            neutral_bacpac.sampler->getCalibMap()->calibmmpB = _mmpb;
+          }
+        }
+        {
+          cJSON  *_ip = JFetch_OBJECT(json, "img_property");
+          cJSON  *_ci = _ip ? JFetch_OBJECT(_ip, "calibInfo") : NULL;
+          double *_fm = _ci ? JFetch_NUMBER(_ci, "mmpp") : NULL;
+          if (_fm && std::isfinite(*_fm) && *_fm > 0)
+          {
+            auto *_cm = neutral_bacpac.sampler->getCalibMap();
+            _cm->calibPpB  = 1.0;
+            _cm->calibmmpB = *_fm;
+          }
+        }
+
+        // ---- hand it over -------------------------------------------------
+        if (g_sweep.th.joinable()) g_sweep.th.join();
+        g_sweep.abort.store(false);
+        g_sweep.finished.store(false);
+        g_sweep.running.store(true);
+
+        const uint16_t pg = dat->pgID;
+        void *sweep_peer  = peer;
+        LOGI("SW: starting a %d-step sweep on a %dx%d image", n, baseImg.cols, baseImg.rows);
+
+        g_sweep.th = std::thread(
+          [this, steps, seeds, defStr, baseImg, pg, sweep_peer, n]() mutable
+          {
+            int done = 0;
+            bool aborted = false;
+            for (int i = 0; i < n; i++)
+            {
+              if (g_sweep.abort.load()) { aborted = true; break; }
+              // The client going away ends the sweep. Nobody is waiting for
+              // these numbers and each step costs a quarter of a second.
+              if (!sweep_peer_alive(sweep_peer))
+              { LOGI("SW: client left after %d/%d steps -- stopping", done, n); aborted = true; break; }
+
+              cv::Mat img = baseImg.clone();
+              if (steps[i].any()) test_perturb_apply(img, steps[i], seeds[i]);
+
+              char *jstr = NULL;
+              try
+              {
+                std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+                InspPhaseMs _phases;
+                ImgInspection_JSONStr(matchingEng, img, 1,
+                                      (char *)defStr.c_str(), &neutral_bacpac, &_phases);
+                const FeatureReport *report = skip_inspection() ? NULL : matchingEng.GetReport();
+                if (report != NULL)
+                {
+                  cJSON *jobj = matchingEng.FeatureReport2Json(report);
+                  AttachStaticInfo(jobj, this);
+                  cJSON_AddNumberToObject(jobj, "insp_wall_ms", _phases.insp_ms);
+                  cJSON_AddNumberToObject(jobj, "insp_cpu_ms",  _phases.insp_cpu_ms);
+                  // WHICH STEP THIS IS. The replies all carry the request's
+                  // pgID, so without an index the client would have to trust
+                  // arrival order across a link that also carries the live
+                  // stream. It is cheap to say instead of assume.
+                  cJSON_AddNumberToObject(jobj, "sweep_i", i);
+                  cJSON_AddNumberToObject(jobj, "sweep_n", n);
+                  jstr = cJSON_Print(jobj);
+                  cJSON_Delete(jobj);
+                }
+              }
+              catch (const std::exception &e)
+              { LOGE("SW step %d threw (%s) -- reported as a miss, sweep continues", i, e.what()); }
+              catch (...)
+              { LOGE("SW step %d threw -- reported as a miss, sweep continues", i); }
+
+              // A step that found nothing still has to be ANSWERED, or the
+              // client's table has a hole it cannot tell from a lost packet.
+              if (jstr == NULL)
+              {
+                cJSON *miss = cJSON_CreateObject();
+                cJSON_AddNumberToObject(miss, "sweep_i", i);
+                cJSON_AddNumberToObject(miss, "sweep_n", n);
+                cJSON_AddBoolToObject(miss, "sweep_miss", true);
+                jstr = cJSON_Print(miss);
+                cJSON_Delete(miss);
+              }
+              if (jstr)
+              {
+                if (sweep_peer_alive(sweep_peer))
+                {
+                  BPG_protocol_data bd = GenStrBPGData("RP", jstr);
+                  bd.pgID = pg;
+                  fromUpperLayer(bd, sweep_peer);
+                }
+                free(jstr);
+              }
+              done++;
+            }
+
+            // The closing packet, always sent: it is what turns "the table
+            // stopped growing" into "the sweep is over", and it says which.
+            if (sweep_peer_alive(sweep_peer))
+            {
+              char ss[128];
+              snprintf(ss, sizeof(ss), "{\"ACK\":true,\"done\":%d,\"total\":%d,\"aborted\":%s}",
+                       done, n, aborted ? "true" : "false");
+              BPG_protocol_data bd = GenStrBPGData("SS", ss);
+              bd.pgID = pg;
+              fromUpperLayer(bd, sweep_peer);
+            }
+            LOGI("SW: %s after %d/%d steps", aborted ? "stopped" : "finished", done, n);
+            g_sweep.running.store(false);
+            g_sweep.finished.store(true);
+          });
+
+        // From here the WORKER owns this session and will close it with its own
+        // SS when the last step is in. An abort or any error above still falls
+        // through to the tail, so a rejected sweep is answered immediately.
+        defer_session_ss = true;
+        session_ACK = true;
+      } while (false);
+    }
+    else if (checkTL("SL", dat)) //[S]ample [L]ist: what the kept-sample buffer holds (groups, counts, ids)
+    {
+      cJSON *out = insp_sample_list_json();
+      char *txt = cJSON_PrintUnformatted(out);
+      cJSON_Delete(out);
+      bpg_dat = GenStrBPGData("SL", txt);
+      bpg_dat.pgID = dat->pgID;
+      fromUpperLayer(bpg_dat, peer);
+      free(txt);
+    }
+    else if (checkTL("SG", dat)) //[S]ample [G]et: one kept record -- report + def + JPEG (base64)
+    {
+      uint64_t id = 0;
+      if (json) { double *jid = JFetch_NUMBER(json, "id"); if (jid) id = (uint64_t)*jid; }
+      cJSON *out = insp_sample_get_json(id);
+      if (!out) { out = cJSON_CreateObject(); cJSON_AddNumberToObject(out, "id", (double)id); cJSON_AddStringToObject(out, "error", "no such sample (buffer cleared or id unknown)"); }
+      char *txt = cJSON_PrintUnformatted(out);
+      cJSON_Delete(out);
+      bpg_dat = GenStrBPGData("SG", txt);
+      bpg_dat.pgID = dat->pgID;
+      fromUpperLayer(bpg_dat, peer);
+      free(txt);
+    }
     else if (checkTL("SF", dat)) //[S]hape [F]eatures: train the shape localizer from the
     {                            //  pushed def and return its feature/ROI points (object-frame mm)
       do                         //  for the SBM setup studio's "生成特徵點" visualization.
@@ -5331,7 +6597,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         free(out);
       } while (0);
     }
-    else if (checkTL("CI", dat) || checkTL("FI", dat)) //[C]ontinuous [I]nspection / [F]ull [I]nspection
+    else if (checkTL("CI", dat) || checkTL("FI", dat) || checkTL("SI", dat))
+    //[C]ontinuous / [F]ull / [S]table Inspection -- one session handler, three modes
     {
       do
       {
@@ -5493,11 +6760,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // Which mode this session is. The station region no longer keys off
           // it -- a configured region is enforced in CI as well, so setup sees
           // what production sees. Only the bypass turns it off.
-          g_full_inspection = (dat->tl[0] == 'F');
+          // The full two-letter name, not tl[0]: see InspMode. checkTL already
+          // compares both letters, so this is the same question asked the same
+          // way as the dispatch above.
+          g_insp_mode = checkTL("FI", dat) ? InspectionContext::INSPM_FI
+                     : checkTL("SI", dat) ? InspectionContext::INSPM_SI
+                                          : InspectionContext::INSPM_CI;
+          // A session starts with nothing accumulated, whatever the last one left.
+          g_inspCtx.si_state = InspectionContext::SI_IDLE;
+          g_inspCtx.si_trigger = false;
+          g_inspCtx.si_pending = false;
+          g_inspCtx.si_stack_n = 0;
+          g_inspCtx.si_skip_left = 0;
+          si_stack.Reset();
           // Announced, because it silently changes which objects get judged.
           if (g_insp_region.w > 0 && g_insp_region.h > 0)
             LOGI("insp session: %s -- station region %s",
-                 g_full_inspection ? "FI" : "CI",
+                 insp_mode_name(g_insp_mode),
                  g_area_gates_bypass ? "off (InspAreaBypass ON)" : "ENFORCED");
           // A session starting while the bypass is still latched from earlier
           // work is the way this ends up on in production. Say so every time,
@@ -5526,9 +6805,19 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           // like a dead trigger wire.
           #define _TRIGLOG(mode, why) do {             CameraLayer::status _st = camera->TriggerMode(mode);             if (_st == CameraLayer::ACK)               LOGI("[insp-start] tl=%c%c -> TriggerMode(%d) %s",                    dat->tl[0], dat->tl[1], (int)(mode), why);             else               LOGE("[insp-start] tl=%c%c -> TriggerMode(%d) %s REFUSED BY CAMERA "                    "-- it stays in its previous mode and the trigger will not work",                    dat->tl[0], dat->tl[1], (int)(mode), why);           } while (0)
 
-          if (dat->tl[0] == 'C')
+          if (dat->tl[0] == 'C' || dat->tl[0] == 'S')
           {
-            _TRIGLOG(0, "continuous free-run (CI)");
+            // SI belongs with CI, not with FI: the part is placed by hand and
+            // the operator presses a button, so there is no device pulse to arm
+            // LINE0 against. Frames must arrive on their own -- the core is the
+            // one that decides when to start accumulating and when it has its N.
+            //
+            // It fell through BOTH branches before, so an SI session did not
+            // touch the camera at all and inherited whatever the LAST session
+            // left: after an FI that is mode 2, hardware trigger, and no frame
+            // ever arrives. Whether SI worked depended on what ran before it.
+            _TRIGLOG(0, dat->tl[0] == 'S' ? "continuous free-run (SI)"
+                                          : "continuous free-run (CI)");
 
             doImgProcessThread = true;
             imageQueueSkipSize=1;
@@ -6197,6 +7486,222 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         }
         session_ACK = true;
       }
+      else if (strcmp(cmd_type, "cam_snap_lit") == 0)
+      {
+        // Take one frame with the board's light and its trigger, whatever the
+        // camera is doing right now, and put the camera back afterwards.
+        cJSON_AddStringToObject(retObj, "type", "cam_snap_lit");
+        CameraLayer *cam = NULL;
+        {
+          std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+          cam = calib_bacpac.cam;
+        }
+        if (cam == NULL)
+        {
+          cJSON_AddStringToObject(retObj, "err", "no camera");
+          session_ACK = false;
+        }
+        else
+        {
+          // The lock covers the STATE, not the hardware. Everything below it --
+          // a GenICam read, a mode change, a UART write -- takes tens of
+          // milliseconds and its own locks; holding this one across them would
+          // stall the watch thread that does the restoring, and nesting locks
+          // is what took the core down the first time this shipped.
+          bool busy = false;
+          {
+            std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+            busy = (g_snapRestoreMode >= 0);
+          }
+          if (busy)
+          {
+            // Two snaps in flight would have the second one save the first's
+            // temporary mode as the thing to restore -- and mode 2 is what the
+            // first one set. That is how "restore" becomes "leave it armed".
+            cJSON_AddStringToObject(retObj, "err", "a snapshot is already in flight");
+            session_ACK = false;
+          }
+          else
+          {
+            const int before = cam_trigger_mode_now(cam);
+            if (before < 0)
+            {
+              // Refuse rather than guess. A snapshot not taken is a button that
+              // did nothing; a wrong restore is a machine that stops seeing.
+              cJSON_AddStringToObject(retObj, "err",
+                "cannot read the camera trigger mode -- refusing to change it");
+              session_ACK = false;
+            }
+            else
+            {
+              CameraLayer::status st = cam->TriggerMode(2);
+              if (st != CameraLayer::ACK)
+              {
+                LOGE("[snap] TriggerMode(2) REFUSED; camera stays in mode %d", before);
+                cJSON_AddStringToObject(retObj, "err", "camera refused hardware trigger");
+                session_ACK = false;
+              }
+              else
+              {
+                {
+                  std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+                  g_snapRestoreMode = before;
+                  g_snapFrameMark   = g_camFrameNum.load();
+                  g_snapDeadline    = std::chrono::steady_clock::now()
+                                    + std::chrono::milliseconds(3000);
+                }
+                LOGI("[snap] mode %d -> 2 for one lit frame", before);
+                // Fire and forget: the board's own reply goes to whoever is
+                // listening on the PD path, and this must not block a WS
+                // handler for the length of a light hold.
+                // THE BOARD HAS NO "SNAP WITH LIGHT" COMMAND.
+                //
+                // The first version of this sent {"type":"cam_snap_with_light"}
+                // because that is what the WebUI helper is called -- but that
+                // helper is a CLIENT-SIDE SEQUENCE, not a firmware command, and
+                // the board simply ignored a type it does not know: no light,
+                // no pulse, no frame, and every restore logged "deadline, no
+                // frame". A name that exists on one side of a wire is not a
+                // protocol.
+                //
+                // So the sequence itself moves here, the same one PerifAPI ran:
+                // light on (with a backstop timeout), settle, pulse, settle,
+                // light off. The settles are why this is a detached thread and
+                // not inline -- a WS handler that sleeps 250ms holds up every
+                // other command on this connection, and the reply should go
+                // back the moment the sequence is under way.
+                //
+                // No lock is taken around the sends: sendcJsonTo_perifCH takes
+                // perif_tx_lock itself and works from the global rather than
+                // its argument. Taking it out here relocked a non-recursive
+                // std::mutex on the same thread, which is how the first version
+                // of this took the core down on the first press.
+                const int sent = 0;
+                std::thread([before]() {
+                  auto say = [](cJSON *j) {
+                    uint8_t buf[2000];
+                    int r = sendcJsonTo_perifCH(bpg_pi.perifCH, buf, sizeof(buf), true, j);
+                    cJSON_Delete(j);
+                    return r;
+                  };
+                  auto lightCmd = [](bool on) {
+                    cJSON *j = cJSON_CreateObject();
+                    cJSON_AddStringToObject(j, "type", "light");
+                    cJSON_AddStringToObject(j, "ch", "L1A");
+                    cJSON_AddBoolToObject(j, "on", on);
+                    // 4s backstop: the board drops the hold by itself if this
+                    // thread dies before the "off" below.
+                    cJSON_AddNumberToObject(j, "timeout_ms", on ? 4000 : 0);
+                    return j;
+                  };
+                  if (say(lightCmd(true)) < 0)
+                  {
+                    LOGE("[snap] light on failed -- no peripheral channel");
+                    return;   // the deadline restore in CamStateWatchThread cleans up
+                  }
+                  std::this_thread::sleep_for(std::chrono::milliseconds(120));
+                  cJSON *pulse = cJSON_CreateObject();
+                  cJSON_AddStringToObject(pulse, "type", "trig_cam_pulse");
+                  if (say(pulse) < 0) LOGE("[snap] trig_cam_pulse failed");
+                  std::this_thread::sleep_for(std::chrono::milliseconds(120));
+                  say(lightCmd(false));
+
+                  // RESTORE HERE, because this thread knows when the sequence is
+                  // over. The watch thread's deadline stays as the backstop for
+                  // the case this thread never gets here at all.
+                  //
+                  // Waiting for the frame counter instead does not work when the
+                  // machine is idle: g_camFrameNum only advances as frames go
+                  // through the image pipe, and outside a session nothing is
+                  // pumping it -- so every snapshot fell through to the 3s
+                  // deadline and the button reported "already in flight" for
+                  // three seconds after each press. A short settle covers the
+                  // transfer of the frame the pulse just took.
+                  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                  int restore = -1;
+                  {
+                    std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+                    if (g_snapRestoreMode >= 0) { restore = g_snapRestoreMode; g_snapRestoreMode = -1; }
+                  }
+                  if (restore >= 0)
+                  {
+                    std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+                    if (calib_bacpac.cam != NULL)
+                    {
+                      CameraLayer::status st = calib_bacpac.cam->TriggerMode(restore);
+                      if (st == CameraLayer::ACK)
+                        LOGI("[snap] restored trigger mode %d (sequence done)", restore);
+                      else
+                        LOGE("[snap] RESTORE OF MODE %d REFUSED -- the camera is still "
+                             "armed for the board's line", restore);
+                    }
+                  }
+                }).detach();
+                if (sent < 0)
+                {
+                  // The board never heard us, so nothing will pulse and nothing
+                  // will arrive. Put the camera back NOW rather than leaving it
+                  // armed for the deadline: this path knows there is no frame
+                  // coming, and the whole point is not to leave it armed.
+                  cam->TriggerMode(before);
+                  {
+                    std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+                    g_snapRestoreMode = -1;
+                  }
+                  LOGE("[snap] no peripheral channel -- restored mode %d", before);
+                  cJSON_AddStringToObject(retObj, "err", "no peripheral channel");
+                  session_ACK = false;
+                }
+                else
+                {
+                  cJSON_AddNumberToObject(retObj, "ok", 1);
+                  cJSON_AddNumberToObject(retObj, "restore_mode", before);
+                  session_ACK = true;
+                }
+              }
+            }
+          }
+        }
+      }
+      else if (strcmp(cmd_type, "insp_debug_delay") == 0)
+      {
+        // {"type":"insp_debug_delay","ms":N,"jitter_ms":J}   ms=0 turns it off
+        //
+        // Runtime rather than env-only so a test can SWEEP it: the interesting
+        // question is not "does 200ms break it" but "where is the edge", and
+        // restarting the core between points loses the run that is being
+        // measured.
+        cJSON_AddStringToObject(retObj, "type", "insp_debug_delay");
+        cJSON *jms = cJSON_GetObjectItem(json, "ms");
+        cJSON *jjt = cJSON_GetObjectItem(json, "jitter_ms");
+        if (cJSON_IsNumber(jms))
+        {
+          int v = jms->valueint;
+          if (v < 0) v = 0;
+          // 10s ceiling: past this the frame queue backs up faster than any
+          // verdict can drain it, and what is being measured stops being the
+          // deadline and starts being the queue.
+          if (v > 10000) v = 10000;
+          g_debugDelayMs.store(v);
+          if (v == 0) g_debugDelayN.store(0);
+        }
+        if (cJSON_IsNumber(jjt))
+        {
+          int v = jjt->valueint;
+          if (v < 0) v = 0;
+          if (v > 5000) v = 5000;
+          g_debugDelayJitterMs.store(v);
+        }
+        cJSON_AddNumberToObject(retObj, "ms", g_debugDelayMs.load());
+        cJSON_AddNumberToObject(retObj, "jitter_ms", g_debugDelayJitterMs.load());
+        cJSON_AddNumberToObject(retObj, "delayed_n", (double)g_debugDelayN.load());
+        // A delay left switched on is a machine that looks broken later, so it
+        // is never silent: this rides in the reply and in the log.
+        if (g_debugDelayMs.load() > 0)
+          LOGW("[debug] inspection delay ACTIVE: %d ms +/-%d -- NOT a production setting",
+               g_debugDelayMs.load(), g_debugDelayJitterMs.load());
+        session_ACK = true;
+      }
       else if (strcmp(cmd_type, "log_dump") == 0)
       {
         // WebUI "flight recorder" snapshot: ask the drainer to dump the entire
@@ -6690,6 +8195,33 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         LOGI("inspection_region: live edit applied (not saved to disk)");
       }
 
+      // The clean regions get the same treatment, for the same reason.
+      //
+      // The station box applied as it was dragged; the clean regions did not,
+      // so adding one and drawing it changed the picture and nothing else --
+      // the operator had to press 套用並存檔 before the machine would look at
+      // it, which is the "I added a clean area and nothing happened" report.
+      // Half the fix had been done and the other half was still open.
+      //
+      // An ARRAY, and the array is authoritative: what arrives replaces the
+      // set. An empty array therefore means "no clean regions" and is the
+      // correct way to clear the last one -- unlike MachineSetting, where an
+      // ABSENT key means the same thing and so a partial patch wipes them by
+      // accident. The difference is that here the caller is always stating the
+      // whole set on purpose.
+      //
+      // Runtime only. machine_setting.json is still written by 套用並存檔 alone,
+      // so an experiment abandoned mid-edit dies with the process instead of
+      // becoming the machine's configuration -- and the panel marks itself
+      // unsaved meanwhile, because live and saved are now genuinely different
+      // states and the operator has to be able to see which one they are in.
+      cJSON *cleanLive_JSON = cJSON_GetObjectItem(json, "CleanRegionsLive");
+      if (cleanLive_JSON && cJSON_IsArray(cleanLive_JSON))
+      {
+        load_clean_regions_arr(cleanLive_JSON);
+        LOGI("clean_regions: live edit applied (not saved to disk)");
+      }
+
       // Legacy shape, still honoured: one bool per verdict meaning "both parts".
       // A WebUI older than INSP_SNAP_POLICY sends these, and a machine must not
       // change what it records because the screen in front of it was updated.
@@ -6727,7 +8259,82 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             LOGI("INSP_SNAP_POLICY %s: img=%d rep=%d", _vn[v],
                  (int)g_snap_policy[v].img, (int)g_snap_policy[v].rep);
           }
+          // img_format: "png" (default) or "jpg", AUTOMATIC snapshots only.
+          // Validated rather than accepted-and-ignored: a format the writer
+          // cannot produce would surface as a failed save on every part, which
+          // reads as a disk fault.
+          if (const char *fmt = JFetch_STRING(pol, "img_format"))
+          {
+            if (strcmp(fmt, "png") == 0 || strcmp(fmt, "jpg") == 0)
+            {
+              g_snap_img_ext = fmt;
+              LOGI("INSP_SNAP_POLICY img_format=%s (automatic snapshots)", fmt);
+            }
+            else
+              LOGE("INSP_SNAP_POLICY img_format '%s' is neither png nor jpg -- "
+                   "keeping %s", fmt, g_snap_img_ext.c_str());
+          }
         }
+      }
+
+      // SI mode's settle-and-average parameters:
+      //   ST { "INSP_SI_PARAM": { "diff_global":6.0, "diff_local":40,
+      //                           "diff_skip":10, "avg_frames":5 } }
+      // Absent members are left alone, like INSP_SNAP_POLICY.
+      //
+      // diff_global/diff_local are 8-bit levels, compared against the running
+      // average -- not the previous frame -- so a slow drift is caught as well
+      // as a jump. Measured on this bench: background noise sigma is 2.1
+      // levels and a 1 px shift of the part moves 2% of the pixels, so 6
+      // (about 3 sigma) sits between "still" and "moved" with orders of
+      // magnitude to spare.
+      {
+        cJSON *sip = JFetch_OBJECT(json, "INSP_SI_PARAM");
+        if (sip)
+        {
+          InspectionContext::SIParam &sp = g_inspCtx.si;
+          if (double *v = JFetch_NUMBER(sip, "diff_global")) sp.diff_global = (float)*v;
+          if (double *v = JFetch_NUMBER(sip, "diff_local"))  sp.diff_local  = (int)*v;
+          if (double *v = JFetch_NUMBER(sip, "diff_skip"))   sp.diff_skip   = (*v >= 1) ? (int)*v : 1;
+          if (double *v = JFetch_NUMBER(sip, "avg_frames"))  sp.avg_frames  = (*v >= 1) ? (int)*v : 1;
+          if (double *v = JFetch_NUMBER(sip, "head_skip"))   sp.head_skip   = (*v >= 0) ? (int)*v : 0;
+          LOGI("INSP_SI_PARAM: diff_global=%.2f diff_local=%d skip=%d avg_frames=%d head_skip=%d",
+               sp.diff_global, sp.diff_local, sp.diff_skip, sp.avg_frames, sp.head_skip);
+        }
+      }
+
+      // The SI press:  ST { "INSP_SI_TRIGGER": true }
+      //
+      // A flag consumed by the next frame, not an action taken here: this runs
+      // on the WS thread and the accumulator belongs to the inspection thread.
+      {
+        auto trig = getDataFromJson(json, "INSP_SI_TRIGGER", NULL);
+        if (trig == cJSON_True)
+        {
+          if (g_insp_mode != InspectionContext::INSPM_SI)
+            LOGE("INSP_SI_TRIGGER ignored -- this session is %s, not SI",
+                 insp_mode_name(g_insp_mode));
+          else
+          {
+            g_inspCtx.si_trigger = true;
+            LOGI("INSP_SI_TRIGGER: next frame starts the accumulation");
+          }
+        }
+      }
+
+      // Kept samples, live:
+      //   ST { "INSP_SAMPLE_GROUPS": [ {name, cap, rotate, verdict, measures:{"<judge id>":"OK|NG|NA|*"}} ] }
+      //   ST { "INSP_SAMPLE_CLEAR": true | "<group name>" }
+      // A whole-list replace (the groups are the question; a partial edit of a
+      // question is not a question), and it empties the buffer.
+      if (cJSON *sg = cJSON_GetObjectItem(json, "INSP_SAMPLE_GROUPS"))
+        if (cJSON_IsArray(sg)) insp_sample_set_groups(sg);
+      if (cJSON *sc = cJSON_GetObjectItem(json, "INSP_SAMPLE_CLEAR"))
+      {
+        int n = 0;
+        if (cJSON_IsString(sc)) n = insp_sample_clear(sc->valuestring);
+        else if (cJSON_IsTrue(sc)) n = insp_sample_clear(NULL);
+        LOGI("INSP_SAMPLE_CLEAR: %d record(s) dropped", n);
       }
 
 
@@ -6737,6 +8344,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         if(num)
         {
           InspSampleSaveMaxCount=(int)*num;
+        }
+      }
+
+      // Slow-frame evidence: ST {"INSP_SLOW_FRAME": {"ms": 80, "max": 40, "reset": true}}
+      // ms <= 0 turns it off. Absent members are left alone, like INSP_SNAP_POLICY.
+      // `reset` zeroes the saved/dropped counters, which also reopens the cap.
+      // Read back through GS "slow_frame" -- the one core knob that does.
+      {
+        cJSON *sfj = JFetch_OBJECT(json, "INSP_SLOW_FRAME");
+        if (sfj)
+        {
+          cJSON *jm = cJSON_GetObjectItem(sfj, "ms");
+          cJSON *jx = cJSON_GetObjectItem(sfj, "max");
+          cJSON *jc = cJSON_GetObjectItem(sfj, "ctrl_every");
+          cJSON *jr = cJSON_GetObjectItem(sfj, "reset");
+          if (jm && cJSON_IsNumber(jm)) g_slowMs.store(jm->valuedouble > 0 ? (int)jm->valuedouble : 0);
+          if (jx && cJSON_IsNumber(jx)) g_slowCap.store(jx->valuedouble > 0 ? (int)jx->valuedouble : 0);
+          if (jc && cJSON_IsNumber(jc)) g_ctrlEvery.store(jc->valuedouble > 0 ? (int)jc->valuedouble : 0);
+          if (jr && cJSON_IsTrue(jr)) { g_slowSaved.store(0); g_slowDropped.store(0); }
+          LOGI("INSP_SLOW_FRAME: ms=%d max=%d ctrl_every=%d saved=%d dropped=%d",
+               g_slowMs.load(), g_slowCap.load(), g_ctrlEvery.load(),
+               g_slowSaved.load(), g_slowDropped.load());
         }
       }
 
@@ -6800,6 +8429,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       // raw-RGBA wire format; 1-100 switches to JPEG with that quality.  The
       // format chosen is signalled in the first byte of the metadata sub-frame
       // (0 = raw, 1 = JPEG); the WebUI must check this byte and decode either.
+      // IMG_STREAMING_ADAPTIVE: 1 (default) lowers the effective fps cap to what
+      // the measured frame cost can sustain; 0 = the cap is the cap.
+      {
+        cJSON *ad = cJSON_GetObjectItem(json, "IMG_STREAMING_ADAPTIVE");
+        if (ad && (cJSON_IsBool(ad) || cJSON_IsNumber(ad)))
+        {
+          g_streamAdaptive.store(cJSON_IsTrue(ad) || (cJSON_IsNumber(ad) && ad->valuedouble != 0) ? 1 : 0);
+          LOGI("IMG_STREAMING_ADAPTIVE=%d", g_streamAdaptive.load());
+        }
+      }
       double *jpegQ = JFetch_NUMBER(json, "IMG_STREAMING_JPEG_QUALITY");
       if (jpegQ)
       {
@@ -6971,11 +8610,38 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else
           {
+            // ASK BEFORE DEMOLISHING.
+            //
+            // delete_PeripheralChannel() used to run first and the open second,
+            // so a CONNECT naming a port that is not there destroyed a channel
+            // and built nothing -- and the client retries, so this repeated for
+            // as long as the board stayed unplugged. The log showed a screen of
+            // bare "DELETED..." lines about 50 s apart and nothing about why.
+            if (uart_name != NULL && !perif_uart_port_exists(uart_name))
+            {
+              // ONCE PER SITUATION, not once per attempt.
+              //
+              // The client retries every 3 s, so logging this on every refusal
+              // filled the operator's log with one sentence and pushed
+              // everything else off the screen. The reason travels to the panel
+              // in err_str below, which is where somebody is actually looking;
+              // the log only needs to mark the transition. A different port, or
+              // a connect that succeeds in between, makes it new again.
+              if (strcmp(g_perifLastRefused, desc) != 0)
+              {
+                snprintf(g_perifLastRefused, sizeof(g_perifLastRefused), "%s", desc);
+                LOGE("perif CONNECT: %s is not present -- refusing without "
+                     "touching the current channel (further attempts on this "
+                     "port are silent)", desc);
+              }
+              snprintf(err_str, sizeof(err_str), "%s 不存在", uart_name);
+              break;
+            }
             if (sameDesc)
               LOGE("perif CONNECT: same port %s but the link is suspect "
                    "(tx_fail:%d) -- reopening instead of reusing", desc,
                    g_perifTxFail.load());
-            delete_PeripheralChannel();
+            delete_PeripheralChannel("CONNECT: reopening the port");
             if(uart_name != NULL)
             {
               try{
@@ -6985,7 +8651,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
               }
               catch(std::runtime_error &e){
-
+                // Swallowed silently before. The channel is already gone by
+                // this point, so this is the only line that can say why the
+                // client is about to be told nothing opened.
+                LOGE("perif CONNECT: opening %s failed: %s", desc, e.what());
               }
             }
             else if(IP != NULL)
@@ -6996,6 +8665,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
               }
               catch(std::runtime_error &e){
+                LOGE("perif CONNECT: connecting %s failed: %s", desc, e.what());
               }
             }
           }
@@ -7004,6 +8674,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             if(!reuse)
             {
+              perif_forget_last_refusal();
               perifCH=new PerifChannel();
               perifCH->ID=avail_CONN_ID;
               perifCH->setDLayer(PHYLayer);
@@ -7087,23 +8758,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               // is no valid wiring with cat_ng >= cat_ok, so nothing legitimate
               // is being turned away.
               else if (perifCH->machine_type == PERIF_UINSP_ESP32 &&
-                       (perifCH->cat_ng >= perifCH->cat_ok ||
+                       (perifCH->cat_ng == perifCH->cat_ok ||
                         perifCH->cat_ok < 1 || perifCH->cat_ok > 3 ||
                         perifCH->cat_ng < 1 || perifCH->cat_ng > 3))
               {
-                LOGE("perif conn_info REFUSED: cat_ng=%d cat_ok=%d -- cat_ng "
-                     "must be the LOWER selector and both must be 1..3. The "
-                     "device breaks a duplicated verdict by keeping the smaller "
-                     "cat, so this wiring would promote an NG to OK. Sorting "
-                     "stays OFF.",
+                LOGE("perif conn_info REFUSED: cat_ng=%d cat_ok=%d -- both must "
+                     "be 1..3 and DIFFERENT (the same selector cannot tell an "
+                     "NG from an OK). Sorting stays OFF.",
                      perifCH->cat_ng, perifCH->cat_ok);
                 perifCH->cat_ok = 0;
                 perifCH->cat_ng = 0;
               }
               else if (perifCH->machine_type == PERIF_UINSP_ESP32)
               {
-                LOGI("perif sorting: OK->SEL%d  NG->SEL%d",
-                     perifCH->cat_ok, perifCH->cat_ng);
+                // Any order. The firmware breaks a duplicated verdict for one
+                // object by keeping the SMALLER cat, which used to force
+                // cat_ng < cat_ok; the send thread now refuses to follow an NG
+                // with an OK for the same tid (perif_tid_guard), so the wiring
+                // may put OK on SEL1 and NG on SEL3 (2026-09-08).
+                LOGI("perif sorting: OK->SEL%d  NG->SEL%d%s",
+                     perifCH->cat_ok, perifCH->cat_ng,
+                     perifCH->cat_ng > perifCH->cat_ok
+                       ? "  (NG is the higher selector: the core, not the device, keeps NG over a later OK)" : "");
               }
             }
 
@@ -7156,7 +8832,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             session_ACK = false;
 
-            LOGE("PHYLayer is not able to eatablish");
+            LOGE_EVERY_N(3000, "PHYLayer is not able to eatablish (1 line in 3000; every poll retries)");
             sprintf(err_str, "PHYLayer is not able to eatablish");
           }
 
@@ -7183,7 +8859,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           if(CONN_ID==-1 || perifCH->ID == CONN_ID)
           {//disconnect
-            delete_PeripheralChannel();
+            delete_PeripheralChannel("DISCONNECT from the client");
             session_ACK = true;
             // Same event-driven push as CONNECT: the watcher's 1s sample can
             // miss a disconnect that something reconnects right away.
@@ -7305,12 +8981,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     // Bounded as well as sized (see tmp's declaration): the buffer is big
     // enough today, and a future err_str growth must truncate instead of
     // silently smashing the stack again.
-    snprintf(tmp, sizeof(tmp), "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
-            dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
-    bpg_dat = GenStrBPGData("SS", tmp);
-    bpg_dat.pgID = dat->pgID;
+    if (!defer_session_ss)
+    {
+      snprintf(tmp, sizeof(tmp), "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+              dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
+      bpg_dat = GenStrBPGData("SS", tmp);
+      bpg_dat.pgID = dat->pgID;
 
-    fromUpperLayer(bpg_dat, peer);
+      fromUpperLayer(bpg_dat, peer);
+    }
     // (json cleanup handled by _json_guard RAII added at the top of this block)
   }
   while(0);
@@ -7420,8 +9099,15 @@ int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *
 // "<dir>/<base>.hydef" -> "<dir>/<base>.png"
 static std::string def_sidecar_png(const std::string &defPath)
 {
+  // The dot has to be in the FILE NAME. "data/v1.2/part" has a dot, in the
+  // directory, and cutting there gives "data/v1.png" -- a path in the wrong
+  // folder, named after half a version number. Same family as the template
+  // writer's extension test: a dot is punctuation, not a marker.
   size_t dot = defPath.find_last_of('.');
-  return (dot == std::string::npos ? defPath : defPath.substr(0, dot)) + ".png";
+  size_t slash = defPath.find_last_of("/\\");
+  bool inName = dot != std::string::npos &&
+                (slash == std::string::npos || dot > slash);
+  return (inName ? defPath.substr(0, dot) : defPath) + ".png";
 }
 static std::string path_basename(const std::string &p)
 {
@@ -7724,6 +9410,32 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down = NULL);
 
+// Pool slots lent to the camera layer through CameraLayer::FrameSink and not
+// yet delivered: SDK-thread borrow -> frame thread claim, matched by the
+// buffer pointer the layer hands back in CurrentFramePtr(). A slot that is
+// borrowed but never delivered (driver drops the frame after the copy) would
+// leak here; the layer's queue does not drop, so the only such path is
+// shutdown, and 30 slots at shutdown do not matter.
+static std::mutex g_sinkPendingLock;
+static std::unordered_map<const uint8_t*, image_pipe_info*> g_sinkPending;
+
+static uint8_t* frameSinkBorrow(void *ctx, size_t bytes, int width, int height, int channels)
+{
+  (void)ctx;
+  static std::atomic<int> calls{0}, nulls{0};
+  int c_ = ++calls;
+  image_pipe_info *p = bpg_pi.resPool.fetchResrc();
+  if (p == NULL) { int z = ++nulls; if (z == 1 || (z % 500) == 0) fprintf(stderr, "[frame-sink] pool empty at borrow (%d of %d calls)\n", z, c_); return NULL; }
+  try {
+    p->img.create(height, width, channels == 1 ? CV_8UC1 : CV_8UC3);
+  } catch (...) { bpg_pi.resPool.retResrc(p); return NULL; }
+  if ((size_t)p->img.total() * p->img.elemSize() < bytes || !p->img.isContinuous())
+  { bpg_pi.resPool.retResrc(p); return NULL; }
+  std::lock_guard<std::mutex> _g(g_sinkPendingLock);
+  g_sinkPending[p->img.data] = p;
+  return p->img.data;
+}
+
 CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
   if (type != CameraLayer::EV_IMG)
@@ -7797,7 +9509,21 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   // Take a buffer if one is free, otherwise drop THIS frame and come back for
   // the next one; the pipeline stays current instead of falling behind by
   // however long the slowest consumer took.
-  image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc();
+  // Did this frame arrive already inside one of our slots (frame sink)?
+  image_pipe_info *headImgPipe = NULL;
+  bool inPlace = false;
+  {
+    const uint8_t *cur = cl_obj.CurrentFramePtr();
+    std::lock_guard<std::mutex> _g(g_sinkPendingLock);
+    if (cur) { auto it = g_sinkPending.find(cur);
+      if (it != g_sinkPending.end()) { headImgPipe = it->second; g_sinkPending.erase(it); inPlace = true; } }
+  }
+  // Install the sink on first contact, so from the next frame on the SDK copy
+  // lands in the pool directly. Self-installing here rather than at the three
+  // connect sites: one place, and only for a layer that actually delivers.
+  static const bool sinkOff = (getenv("INSP_NO_FRAME_SINK") != NULL);   // A/B switch for the two-copy path
+  if (!sinkOff && cl_obj.frameSink == NULL) { cl_obj.SetFrameSink(frameSinkBorrow, NULL); LOGI("frame sink installed: SDK copy lands in the pool slot"); fprintf(stderr, "[frame-sink] installed\n"); }
+  if (headImgPipe == NULL) headImgPipe = bpg_pi.resPool.fetchResrc();
   if (headImgPipe == NULL)
   {
     int n = ++poolEmptyDropCount;
@@ -7834,8 +9560,21 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   // create() reuses the pooled buffer when size/type is unchanged (skippable
   // after the first frame), so the camera writes directly into the pool slot.
   int _ch = (finfo.channelCount == 1) ? 1 : 3;
-  tmp_img->create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
-  auto ret=cl_obj.ExtractFrame(tmp_img->data, _ch, finfo.width*finfo.height);
+  CameraLayer::status ret;
+  if (inPlace)
+  {
+    // The SDK copy already wrote the frame into this slot's Mat (frameSinkBorrow
+    // created it with the frame's own geometry). Nothing to extract.
+    ret = (tmp_img->rows == finfo.height && tmp_img->cols == finfo.width && tmp_img->channels() == _ch)
+          ? CameraLayer::ACK : CameraLayer::NAK;
+    static std::atomic<int> inPlaceN{0};
+    int n_ = ++inPlaceN; if (n_ == 1 || (n_ % 1000) == 0) { LOGI("frame in place (no ExtractFrame copy): %d frames", n_); fprintf(stderr, "[frame-sink] in place: %d frames\n", n_); }
+  }
+  else
+  {
+    tmp_img->create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
+    ret=cl_obj.ExtractFrame(tmp_img->data, _ch, finfo.width*finfo.height);
+  }
 
   // A refused frame is not a frame. ExtractFrame's status was ignored here, so
   // an unfilled -- or zero-sized -- buffer went straight on to be converted
@@ -8338,6 +10077,258 @@ int perif_status_to_cat(const PerifChannel *pc, int uInspStatus)
 
 float avgInterval=0;
 uint64_t lastImgSendTime=0;
+
+// ============================================================================
+// Kept inspection samples -- "show me the ones where measure 10 failed but
+// measure 3 passed", asked on the inspection screen without stopping the line.
+//
+// Design (docs/INSP_SAMPLE_BUFFER_2026-09-04.md): groups of per-measurement
+// conditions plus one on the frame verdict; FIRST MATCH WINS like a firewall
+// chain; no match = dropped; fill-and-stop by default (a ring loses the part
+// you just saw), per-group opt-in to rotate; lives in core memory as JPEG
+// (full-res frames raw would be 145-300 MB); matching is per FRAME (any object
+// in it), config comes from machine_setting.json and is pushable live via ST.
+// ============================================================================
+struct InspSampleCond { int judge_id; int want; };   // want: 0 OK, 1 NG, 2 NA, 3 any
+struct InspSampleGroup
+{
+  std::string name;
+  int  cap = 20;
+  bool rotate = false;
+  int  verdict = 3;                 // 0 OK, 1 NG, 2 NA (SnapVerdict order), 3 any
+  std::vector<InspSampleCond> conds;
+};
+struct InspSampleRec
+{
+  uint64_t id, ts_ms;
+  int group, verdict;
+  std::string report, def;          // the frame's report + the def it was judged with
+  std::vector<uint8_t> jpg; uint8_t jpg_fmt = 0;
+  int w = 0, h = 0;
+};
+static std::mutex g_sample_lock;
+static std::vector<InspSampleGroup> g_sample_groups;
+static std::vector<std::vector<InspSampleRec>> g_sample_store;
+static uint64_t g_sample_next_id = 1;
+static std::atomic<long> g_sample_kept{0}, g_sample_dropped_full{0};
+
+static int sample_want_of(const char *w)
+{
+  if (!w) return 3;
+  if (strcmp(w, "OK") == 0) return 0;
+  if (strcmp(w, "NG") == 0) return 1;
+  if (strcmp(w, "NA") == 0) return 2;
+  return 3;
+}
+static int sample_class_of_status(int st)
+{
+  typedef FeatureReport_sig360_circle_line_single FR;
+  if (st == FR::STATUS_SUCCESS) return 0;
+  if (st == FR::STATUS_NA) return 2;
+  return 1;
+}
+
+static void insp_sample_set_groups(cJSON *arr)
+{
+  std::vector<InspSampleGroup> gs;
+  if (arr && cJSON_IsArray(arr))
+  {
+    cJSON *g = NULL;
+    cJSON_ArrayForEach(g, arr)
+    {
+      if (!cJSON_IsObject(g)) continue;
+      InspSampleGroup G;
+      char *nm = JFetch_STRING(g, "name");
+      G.name = nm ? nm : ("group" + std::to_string(gs.size() + 1));
+      G.cap = (int)JFetch_NUMBER_ex(g, "cap", 20);
+      if (G.cap < 1) G.cap = 1; if (G.cap > 200) G.cap = 200;
+      G.rotate = JFetch_TRUE(g, "rotate");
+      G.verdict = sample_want_of(JFetch_STRING(g, "verdict"));
+      cJSON *ms = cJSON_GetObjectItem(g, "measures");
+      if (ms && cJSON_IsObject(ms))
+      {
+        cJSON *m = NULL;
+        cJSON_ArrayForEach(m, ms)
+          if (m->string && cJSON_IsString(m))
+            G.conds.push_back({ atoi(m->string), sample_want_of(m->valuestring) });
+      }
+      gs.push_back(G);
+    }
+  }
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  // A changed group list starts over: the records were filed by rules that no
+  // longer exist, and "which group did that one go to" must have one answer.
+  g_sample_groups = gs;
+  g_sample_store.assign(gs.size(), {});
+  LOGI("INSP_SAMPLE_GROUPS: %d group(s)%s", (int)gs.size(), gs.empty() ? " (kept samples OFF)" : "");
+  for (size_t i = 0; i < gs.size(); i++)
+    LOGI("  [%zu] %s cap=%d rotate=%d verdict=%d conds=%zu", i, gs[i].name.c_str(), gs[i].cap,
+         (int)gs[i].rotate, gs[i].verdict, gs[i].conds.size());
+}
+
+static bool insp_sample_wants_any()
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  for (size_t i = 0; i < g_sample_groups.size(); i++)
+    if (g_sample_groups[i].rotate || (int)g_sample_store[i].size() < g_sample_groups[i].cap) return true;
+  return false;
+}
+
+// First group whose rule the frame satisfies, or -1. A frame satisfies a group
+// when its verdict matches and SOME object in it satisfies every measurement
+// condition (per object, not across objects).
+static int insp_sample_match(cJSON *report_json, int frame_verdict)
+{
+  cJSON *objs = JFetch_ARRAY(report_json, "reports[0].reports");
+  for (size_t gi = 0; gi < g_sample_groups.size(); gi++)
+  {
+    const InspSampleGroup &G = g_sample_groups[gi];
+    if (G.verdict != 3 && G.verdict != frame_verdict) continue;
+    if (G.conds.empty()) return (int)gi;
+    if (!objs) continue;
+    cJSON *o = NULL;
+    cJSON_ArrayForEach(o, objs)
+    {
+      cJSON *js = cJSON_GetObjectItem(o, "judgeReports");
+      bool all = true;
+      for (const InspSampleCond &c : G.conds)
+      {
+        bool found = false; int cls = -1;
+        cJSON *j = NULL;
+        if (js) cJSON_ArrayForEach(j, js)
+        {
+          cJSON *jid = cJSON_GetObjectItem(j, "id");
+          if (jid && (int)jid->valuedouble == c.judge_id)
+          { found = true; cJSON *st = cJSON_GetObjectItem(j, "status"); cls = st ? sample_class_of_status((int)st->valuedouble) : 2; break; }
+        }
+        if (!found) cls = 2;                     // a judge that never ran is NA
+        if (c.want != 3 && c.want != cls) { all = false; break; }
+      }
+      if (all) return (int)gi;
+    }
+  }
+  return -1;
+}
+
+static void insp_sample_consider(image_pipe_info *p)
+{
+  if (!p || !p->datViewInfo.report_json) return;
+  // IN SI, A SAMPLE IS AN AVERAGE, NOT A FRAME.
+  //
+  // This is called for every frame that reaches the data-view thread, which in
+  // SI is mostly frames the accumulator is still counting: nothing inspected
+  // them, so their report is empty and their verdict is NA. The kept-sample
+  // panel filled up with ten of those, a tenth of a second apart, every one of
+  // them NA -- and the one picture in that run that WAS measured, the average,
+  // was one entry among them if it got in at all.
+  //
+  // A sample is kept so it can be re-measured later. An accumulating frame
+  // cannot be: it is not what the machine judged, and the record would not say
+  // what it was.
+  if (g_insp_mode == InspectionContext::INSPM_SI && !p->datViewInfo.si_measured) return;
+  int gi; bool room;
+  {
+    std::lock_guard<std::mutex> lk(g_sample_lock);
+    if (g_sample_groups.empty()) return;
+    gi = insp_sample_match(p->datViewInfo.report_json, (int)snap_verdict_of(p->datViewInfo.finspStatus));
+    if (gi < 0) return;
+    room = g_sample_groups[gi].rotate || (int)g_sample_store[gi].size() < g_sample_groups[gi].cap;
+  }
+  if (!room) { g_sample_dropped_full++; return; }
+  if (p->img.empty()) return;
+  // Encode outside the lock: the one cost of a kept sample, paid once.
+  InspSampleRec r;
+  encode_acvImage_png(p->img, r.jpg, r.jpg_fmt);
+  r.w = p->img.cols; r.h = p->img.rows;
+  r.ts_ms = (uint64_t)current_time_ms();
+  r.verdict = (int)snap_verdict_of(p->datViewInfo.finspStatus);
+  r.group = gi;
+  { char *t = cJSON_PrintUnformatted(p->datViewInfo.report_json); if (t) { r.report = t; free(t); } }
+  {
+    std::lock_guard<std::mutex> _cfg(snap_cfg_lock);
+    if (cache_deffile_JSON) { char *t = cJSON_PrintUnformatted(cache_deffile_JSON); if (t) { r.def = t; free(t); } }
+  }
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  if (gi >= (int)g_sample_store.size()) return;            // groups replaced meanwhile
+  auto &bucket = g_sample_store[gi];
+  if ((int)bucket.size() >= g_sample_groups[gi].cap)
+  {
+    if (!g_sample_groups[gi].rotate) { g_sample_dropped_full++; return; }
+    bucket.erase(bucket.begin());
+  }
+  r.id = g_sample_next_id++;
+  bucket.push_back(std::move(r));
+  g_sample_kept++;
+}
+
+static cJSON *insp_sample_list_json()
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  cJSON *root = cJSON_CreateObject();
+  cJSON *gs = cJSON_AddArrayToObject(root, "groups");
+  static const char *_vn[4] = { "OK", "NG", "NA", "*" };
+  for (size_t i = 0; i < g_sample_groups.size(); i++)
+  {
+    cJSON *g = cJSON_CreateObject();
+    cJSON_AddStringToObject(g, "name", g_sample_groups[i].name.c_str());
+    cJSON_AddNumberToObject(g, "cap", g_sample_groups[i].cap);
+    cJSON_AddBoolToObject(g, "rotate", g_sample_groups[i].rotate);
+    cJSON_AddStringToObject(g, "verdict", _vn[g_sample_groups[i].verdict & 3]);
+    cJSON_AddNumberToObject(g, "count", (double)g_sample_store[i].size());
+    cJSON *items = cJSON_AddArrayToObject(g, "items");
+    for (const InspSampleRec &r : g_sample_store[i])
+    {
+      cJSON *it = cJSON_CreateObject();
+      cJSON_AddNumberToObject(it, "id", (double)r.id);
+      cJSON_AddNumberToObject(it, "ts_ms", (double)r.ts_ms);
+      cJSON_AddStringToObject(it, "verdict", _vn[r.verdict & 3]);
+      cJSON_AddNumberToObject(it, "jpg_bytes", (double)r.jpg.size());
+      cJSON_AddItemToArray(items, it);
+    }
+    cJSON_AddItemToArray(gs, g);
+  }
+  cJSON_AddNumberToObject(root, "kept_total", (double)g_sample_kept.load());
+  cJSON_AddNumberToObject(root, "dropped_full", (double)g_sample_dropped_full.load());
+  return root;
+}
+
+static cJSON *insp_sample_get_json(uint64_t id)
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  for (size_t i = 0; i < g_sample_store.size(); i++)
+    for (const InspSampleRec &r : g_sample_store[i])
+      if (r.id == id)
+      {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddNumberToObject(o, "id", (double)r.id);
+        cJSON_AddNumberToObject(o, "ts_ms", (double)r.ts_ms);
+        cJSON_AddStringToObject(o, "group", g_sample_groups[i].name.c_str());
+        cJSON_AddNumberToObject(o, "w", r.w); cJSON_AddNumberToObject(o, "h", r.h);
+        // Raw JSON, not re-parsed: the report and the def go back out exactly
+        // as they were kept.
+        cJSON_AddRawToObject(o, "report", r.report.empty() ? "null" : r.report.c_str());
+        cJSON_AddRawToObject(o, "def", r.def.empty() ? "null" : r.def.c_str());
+        cJSON_AddNumberToObject(o, "jpg_fmt", r.jpg_fmt);
+        std::string b64 = base64_encode(NULL, r.jpg.data(), r.jpg.size());
+        cJSON_AddStringToObject(o, "jpg_b64", b64.c_str());
+        return o;
+      }
+  return NULL;
+}
+
+static int insp_sample_clear(const char *group_or_null)
+{
+  std::lock_guard<std::mutex> lk(g_sample_lock);
+  int n = 0;
+  for (size_t i = 0; i < g_sample_store.size(); i++)
+  {
+    if (group_or_null && g_sample_groups[i].name != group_or_null) continue;
+    n += (int)g_sample_store[i].size();
+    g_sample_store[i].clear();
+  }
+  return n;
+}
+
 void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS,bool pureSendImg)
 {
   static int frameActionID = 0;
@@ -8370,7 +10361,20 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
 
   float cur_avgInterval=avgInterval+(cur_Interval-avgInterval)*0.5;
   float cur_FPS=1000.0/cur_avgInterval;
-  bool withinMinInterval=(cur_FPS)<datViewMaxFPS;
+  // The cap the operator set, lowered to what the measured frame cost can
+  // sustain at kStreamDuty. 12 ms/frame at 60% duty sustains 50 fps -- no
+  // effect on a 20 fps cap; a 40 ms frame (big picture, slow machine) sustains
+  // 15 and the cap follows it down instead of the queue filling.
+  float effMaxFPS = datViewMaxFPS;
+  bool adaptiveLimited = false;
+  if (g_streamAdaptive.load() && g_imgXferMsEma > 0.0f)
+  {
+    const float sustainable = 1000.0f * kStreamDuty / g_imgXferMsEma;
+    if (sustainable < effMaxFPS) { effMaxFPS = sustainable < 1.0f ? 1.0f : sustainable; adaptiveLimited = true; }
+  }
+  g_streamEffFps = effMaxFPS;
+  bool withinMinInterval=(cur_FPS)<effMaxFPS;
+  if (!withinMinInterval && adaptiveLimited) g_imgAdaptiveSkips++;
 
   // LOGI("cur_avgInterval:%0.2f cur_FPS:%0.2f datViewMaxFPS:%0.2f",cur_avgInterval,cur_FPS,datViewMaxFPS);
   
@@ -8507,6 +10511,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }
 
     clock_t img_t = clock();
+    const uint64_t _imgWall0 = perif_now_us();   // wall, for the adaptive pacing (clock() is not wall on every libc)
     // thread_local, not static: this function runs on the ActionThread (live
     // preview) AND on the WS thread (LAST_FRAME_RESEND), and a shared buffer
     // meant one thread's ImageDownSampling could reallocate the Mat while the
@@ -8534,9 +10539,34 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         // DL:1 -> downScale is a no-op, so skip the per-pixel calib sampling AND
         // the downscale buffer copy entirely; hand the working image straight to
         // the encoder. (No calibration is applied to the live full-res view.)
-        iminfo.offsetX = 0;
-        iminfo.offsetY = 0;
-        iminfo.img = &capImg;
+        //
+        // THE CROP APPLIES HERE TOO. It used to be honoured only on the DL>=2
+        // branch, so a full-res view encoded the whole 5 MB frame whatever
+        // ImageTransferSetup.crop said -- and the encode is the largest single
+        // cost on the view path (9 ms here, several times that on a 2-core
+        // target). A cv::Mat header over the crop rectangle costs no copy:
+        // imencode walks a non-continuous ROI row by row. The WebUI already
+        // places the tile by offsetX/offsetY at every scale, and fullWidth /
+        // fullHeight still describe the frame. IGNORE_DYNAMIC_VIEW leaves the
+        // crop at its full-frame default, so that path is unchanged.
+        static thread_local cv::Mat dl1_roi;
+        int cx = std::max(0, std::min(ImageCropX, capImg.cols - 1));
+        int cy = std::max(0, std::min(ImageCropY, capImg.rows - 1));
+        int cw = std::min(ImageCropW, capImg.cols - cx);
+        int ch = std::min(ImageCropH, capImg.rows - cy);
+        if (cw >= 8 && ch >= 8 && (cx > 0 || cy > 0 || cw < capImg.cols || ch < capImg.rows))
+        {
+          dl1_roi = capImg(cv::Rect(cx, cy, cw, ch));
+          iminfo.offsetX = cx;
+          iminfo.offsetY = cy;
+          iminfo.img = &dl1_roi;
+        }
+        else
+        {
+          iminfo.offsetX = 0;
+          iminfo.offsetY = 0;
+          iminfo.img = &capImg;
+        }
       }
       else
       {
@@ -8599,18 +10629,62 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       // subscribers is the number this packet was actually delivered to.
       // pushToSubscribers is a fan-out to a list, so "sent" with an empty list
       // is indistinguishable from "not sent" unless the count is printed.
-      LOG_EVERY(50, "img transfer(DL:%d) %fms pgID:%d subscribers:%zu", _downSampLevel,
-           ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000,
-           bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
+      {
+        const float ms = (float)(perif_now_us() - _imgWall0) / 1000.0f;
+        g_imgXferMsEma = (g_imgXferMsEma <= 0.0f) ? ms : (g_imgXferMsEma * 0.8f + ms * 0.2f);
+      }
+      LOG_EVERY(50, "img transfer(DL:%d) %fms (ema %.1f ms, eff cap %.1f fps, adaptive skips %ld) pgID:%d subscribers:%zu", _downSampLevel,
+           ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000, g_imgXferMsEma, g_streamEffFps,
+           g_imgAdaptiveSkips.load(), bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
       
       lastImgSendTime=cur_ms;
       avgInterval=cur_avgInterval;
-      if(pureSendImg==false)
+      // Same rule as the held path below: in SI an accumulating frame has no
+      // report, and a cache entry with no report is one the snapshot save and
+      // the resend both have to refuse.
+      if(pureSendImg==false
+         && (g_insp_mode != InspectionContext::INSPM_SI
+             || imgPipe->datViewInfo.si_measured))
         image_pipe_info_resendCache_swap_and_gc(*imgPipe,bpg_pi.resPool);
       // lastImgSendTime=t;
     }
 
   } while (false);
+
+  // THE CACHE IS NOT THE TRANSFER.
+  //
+  // lastDatViewCache -- the frame a resend replays and the frame 檢測快照 saves
+  // -- was only ever updated inside the send block above. That was harmless
+  // while every frame was sent. It stopped being harmless the moment SI began
+  // holding frames back: nothing was sent, so nothing was cached, and 檢測快照
+  // answered "no data-view frame yet; nothing to save" on a machine that was
+  // looking at a perfectly good picture.
+  //
+  // So a held frame still updates the cache -- EXCEPT that it must not displace
+  // a MEASURED one. In SI the measured average is the only frame anybody wants
+  // a snapshot of; letting the next accumulating frame overwrite it would swap
+  // the picture the numbers came from for a raw frame taken a fraction of a
+  // second later, which is the same substitution the hold on the screen exists
+  // to prevent.
+  if (imgPipe)
+  {
+    // IN SI, ONLY A MEASURED FRAME IS WORTH KEEPING.
+    //
+    // An accumulating frame carries no report at all -- that is deliberate,
+    // nothing inspected it -- so caching one makes the snapshot save fail with
+    // -10 ("no reports[0].reports") and makes a resend replay a picture with no
+    // verdict on it. The frame worth replaying and worth saving is the average
+    // that was actually measured, and in SI those are different frames.
+    //
+    // Outside SI every frame is measured, so this is the behaviour it always
+    // had. Before the first press of 量測 the cache stays as it was, which is
+    // why the save says so plainly rather than writing an empty record.
+    const bool worth_caching =
+      (g_insp_mode != InspectionContext::INSPM_SI) || imgPipe->datViewInfo.si_measured;
+    if (*skipImageTransfer && worth_caching)
+      image_pipe_info_resendCache_swap_and_gc(*imgPipe, bpg_pi.resPool);
+  }
+
   _wImg = perif_now_us();
 
   if( *skipInspDataTransfer==false ||*skipImageTransfer==false)//if any of them are sent
@@ -9149,6 +11223,8 @@ void PerifConsoleThread(bool *terminationflag)
           { "tx_lock",   &g_histTxLock   },
           { "tx_wire",   &g_histTxWire   },
           { "write",     &g_histWrite    },
+          { "cmd",       &g_histCmd      },
+          { "serve",     &g_histServe    },
           { "log",       &g_histLog      },
           { "dog",       &g_histDog      },
           { "e2e",       &g_histE2E      } };
@@ -9801,6 +11877,33 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
                      (long long)f_ts);
               }
 
+              // perif_tid_guard: never let an OK follow an NG for the same
+              // object. The device resolves a duplicate by keeping the smaller
+              // cat, which is only "keep the NG" when NG is wired to the lower
+              // selector. Doing it here makes the wiring free. A second verdict
+              // for one tid is rare (two frames inside one pairing window) but
+              // it is exactly the case that lets a defective part through.
+              {
+                static long long _g_tid[64];
+                static int       _g_cat[64];
+                static bool      _g_init = false;
+                if (!_g_init) { for (int i = 0; i < 64; i++) { _g_tid[i] = -1; _g_cat[i] = 0; } _g_init = true; }
+                const int slot = (int)(((unsigned long long)msg.tid) % 64u);
+                if (msg.tid >= 0 && pc->cat_ng != 0 && pc->cat_ok != 0)
+                {
+                  if (_g_tid[slot] == msg.tid && _g_cat[slot] == pc->cat_ng && cat == pc->cat_ok)
+                  {
+                    LOGE("perif: tid=%lld already told NG (SEL%d); a later OK (SEL%d) is NOT sent",
+                         (long long)msg.tid, pc->cat_ng, pc->cat_ok);
+                    tx_skip = true;
+                  }
+                  else if (_g_tid[slot] != msg.tid || cat == pc->cat_ng)
+                  {
+                    _g_tid[slot] = msg.tid; _g_cat[slot] = cat;
+                  }
+                }
+              }
+
               if (tx_skip)
               {
                 // Deliberately not counted as an error here -- the point is to
@@ -9820,8 +11923,14 @@ static void perifDeliverResult(PerifResultMsg &msg, size_t depthAtPop,
               // needed to tell a report that was never sent from one that was
               // sent too late -- the two causes of err=2, which look identical
               // from the device end.
-              if (getenv("INSP_PERIF_LOG"))
-                LOGI("[perif TX] report tid=%lld cat=%d", (long long)msg.tid, cat);
+              // Always on, one line per part: the line to read when "the
+              // screen says OK and the machine does nothing". status is the
+              // frame verdict (0 OK, -1 NG, -128 NA), cat the selector the
+              // device was told (cat_ok / cat_ng from conn_info, 0 = NA), ret
+              // the UART write (<0 = not delivered).
+              LOGI("[perif TX] tid=%lld status=%d -> cat=%d (%s) ret=%d",
+                   (long long)msg.tid, msg.uInspStatus, cat,
+                   msg.uInspStatus == 0 ? "OK" : msg.uInspStatus == -1 ? "NG" : "NA", ret);
             }
             else
             {
@@ -10193,6 +12302,58 @@ void CamStateWatchThread(bool *terminationflag)
   {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
+    // The camera's ceiling is REPORTED (perif_pairing.cam_fps_limit) and not
+    // pushed to the board from here.
+    //
+    // Pushing it meant this process knew that a peripheral wants an fps figure,
+    // in what units, in what message, and on what cadence -- peripheral policy
+    // living in the half of the system that is supposed to be about cameras and
+    // inspection. The board's admission rules are not this process's business,
+    // and every future board would have added another branch here.
+    //
+    // The WebUI relays it instead, off the perif_pairing poll it already runs.
+    // That is not a weaker path than this one was: bpg_pi.perifCH is created
+    // and destroyed with the WS clients, so a push from here already required a
+    // UI to be connected -- it only hid the dependency. See
+    // PerifAPI.queryLinkHealthNow.
+
+    // ---- put the camera back after a lit snapshot ----
+    //
+    // Whichever comes first: the frame arrived, or the deadline passed. The
+    // deadline is the point -- a board that never pulses must not be able to
+    // leave the camera armed for a line nobody drives, which is the state that
+    // makes a machine stop seeing with nothing in the log.
+    {
+      int restore = -1; bool by_frame = false;
+      {
+        std::lock_guard<std::mutex> _snap_guard(g_snapLock);
+        if (g_snapRestoreMode >= 0)
+        {
+          by_frame = (g_camFrameNum.load() > g_snapFrameMark);
+          if (by_frame || std::chrono::steady_clock::now() > g_snapDeadline)
+          {
+            restore = g_snapRestoreMode;
+            g_snapRestoreMode = -1;
+          }
+        }
+      }
+      if (restore >= 0)
+      {
+        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+        if (calib_bacpac.cam != NULL)
+        {
+          CameraLayer::status st = calib_bacpac.cam->TriggerMode(restore);
+          if (st == CameraLayer::ACK)
+            LOGI("[snap] restored trigger mode %d (%s)", restore,
+                 by_frame ? "frame arrived" : "deadline, no frame");
+          else
+            LOGE("[snap] RESTORE OF MODE %d REFUSED -- the camera is still armed "
+                 "for the board's line and will not deliver frames until the "
+                 "next session sets a mode", restore);
+        }
+      }
+    }
+
     // ---- camera half ----
     int st;
     bool present;
@@ -10206,17 +12367,46 @@ void CamStateWatchThread(bool *terminationflag)
                    : (int)CameraLayer::NAK;
     }
 
-    if (!(primed && st == last_status && present == last_present))
+    // THE CEILING BELONGS IN THE CHANGE KEY, because it moves for reasons the
+    // status and presence flags cannot see.
+    //
+    // ResultingFrameRate answers for the ROI and exposure in force, so it moves
+    // whenever either is changed -- and neither touches cam_status or present.
+    // Without it in the key, an operator shrinking the ROI changes what the
+    // camera can deliver and nothing rings; whoever cares finds out on their
+    // next scheduled poll, which is 30s away.
+    //
+    // Ringing here rather than telling a board about it: this is the camera
+    // summary changing, which is this process's own business and its own
+    // existing doorbell. What anyone does with the news is theirs.
+    //
+    // Banded at 2%, not compared exactly: the node has its own jitter, and a
+    // doorbell that rings on noise is a poll with extra steps.
+    static double last_fps = -1.0;
+    double fps_now = -1.0;
+    {
+      CameraLayer *c = NULL;
+      {
+        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+        c = calib_bacpac.cam;
+      }
+      if (c != NULL) fps_now = c->GetResultingFps();
+    }
+    const bool fps_moved = (fps_now > 0) &&
+      (last_fps <= 0 || fabs(fps_now - last_fps) > last_fps * 0.02);
+
+    if (!(primed && st == last_status && present == last_present && !fps_moved))
     {
       const bool announce = primed;   // first pass only establishes the baseline
       primed = true;
       last_status = st;
       last_present = present;
+      if (fps_now > 0) last_fps = fps_now;
       if (announce)
       {
         const size_t subs = bpg_pi.streamSubscriberCount();
-        LOGI("camera state changed: cam_status=%d present=%d (subscribers=%u)",
-             st, (int)present, (unsigned)subs);
+        LOGI("camera state changed: cam_status=%d present=%d fps=%.2f (subscribers=%u)",
+             st, (int)present, fps_now, (unsigned)subs);
         if (subs != 0)
           pushCamStateDoorbell(st, present);
       }
@@ -10531,6 +12721,9 @@ void InspSnapSaveThread(bool *terminationflag)
       frame_ring_push(headImgPipe->img,
                       headImgPipe->datViewInfo.report_json,
                       headImgPipe->datViewInfo.finspStatus);
+      // Kept samples: match the frame against the groups and keep it (JPEG) if
+      // a group wants it. Same thread as the disk snapshot: off the hot path.
+      insp_sample_consider(headImgPipe);
       // LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->datViewInfo.report_json);
       //report save
       //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
@@ -10625,7 +12818,7 @@ void InspSnapSaveThread(bool *terminationflag)
         // the count then covers only the newer half until the older files age
         // out, which errs toward keeping evidence rather than deleting it.
         const SnapPolicy _polc = g_snap_policy[snap_verdict_of(headImgPipe->datViewInfo.finspStatus)];
-        const char *_rot_ext = _polc.rep ? SNAP_FILE_EXTENSION : SNAP_IMG_EXTENSION;
+        const char *_rot_ext = _polc.rep ? SNAP_FILE_EXTENSION : g_snap_img_ext.c_str();
         int count =getFileCountInFolder(folderPath.c_str(),_rot_ext);
 
         // while(count>=InspSampleSaveMaxCount)
@@ -10695,7 +12888,7 @@ void InspSnapSaveThread(bool *terminationflag)
         {
           const SnapPolicy _pol = g_snap_policy[snap_verdict_of(headImgPipe->datViewInfo.finspStatus)];
           int _sv = saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, defSnap, headImgPipe->img, filePath.c_str(),
-                                         SNAP_FILE_EXTENSION, SNAP_IMG_EXTENSION, _pol.img, _pol.rep);
+                                         SNAP_FILE_EXTENSION, g_snap_img_ext.c_str(), _pol.img, _pol.rep);
           if (_sv != 0)
             LOGE("snapshot WRITE FAILED (%d) %s -- NG evidence is being lost",
                  _sv, filePath.c_str());
@@ -10810,7 +13003,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // travel on the same queue; what differs is what the snapshot thread
       // does with them.
       if (snap_wants_anything(snap_verdict_of(headImgPipe->datViewInfo.finspStatus))
-          || frame_ring_active())
+          || frame_ring_active() || insp_sample_wants_any())
         saveToSnap = true;
 
       // LOGI("ONNGNA:%f %f %f",OK_MAX_FPS,NG_MAX_FPS,NA_MAX_FPS);
@@ -10831,8 +13024,10 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // imgSendState=true;
 
       
-      bool skipInspDataTransfer=!reportSendState;
-      bool skipImageTransfer= !imgSendState;
+      // An SI accumulating frame sends its picture -- the operator is watching
+      // the part settle -- and no report.
+      bool skipInspDataTransfer=!reportSendState || !headImgPipe->datViewInfo.si_report;
+      bool skipImageTransfer= !imgSendState || headImgPipe->datViewInfo.si_no_image;
       bool inspSnap=saveToSnap;
 
       // LOGE("repSend:%d imgSend:%d inspSnap:%d",reportSendState,imgSendState,inspSnap);
@@ -11173,8 +13368,180 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     //
     // Set every frame, both ways: the flag is state on the managers, so a
     // false here is what releases the engine after a blocked frame.
+    // ---- SI: the operator presses, N frames are averaged, one inspection ----
+    //
+    // Frames that are not the completed average are not inspected at all and
+    // send no report; the picture still goes, because the operator is watching
+    // the part while it is being measured. The abort frame DOES send one: a
+    // failure nobody is told about is the same as no failure.
+    bool si_measure = true;      // inspect this frame
+    bool si_report  = true;      // send its report packet
+    if (g_insp_mode == InspectionContext::INSPM_SI)
+    {
+      // THE AVERAGE IS ALWAYS BEING BUILT. THE PRESS ONLY SAYS WHEN TO READ IT.
+      //
+      // It used to start on the press: settle, then count to avg_frames, then
+      // measure. So every part cost the operator the whole accumulation --
+      // seconds of standing still in front of a machine that had been looking
+      // at that same still part the entire time and throwing the frames away.
+      //
+      // Now the accumulator runs whenever SI is the mode. Any change resets it,
+      // so what it holds is always N CONSECUTIVE UNCHANGED FRAMES or nothing --
+      // the same guarantee the old one gave, made continuously instead of on
+      // demand. A press with that in hand measures on this frame. A press
+      // without it is remembered and spends itself the moment the picture
+      // settles, which is the only honest answer to "measure it now" when it is
+      // still moving.
+      InspectionContext::SIParam &sp = g_inspCtx.si;
+      int &n = g_inspCtx.si_stack_n;
+      int &skip = g_inspCtx.si_skip_left;
+      InspectionContext::SIState &st = g_inspCtx.si_state;
+      const int want = (sp.avg_frames > 0 ? sp.avg_frames : 1);
+      si_measure = false; si_report = false;
+
+      if (g_inspCtx.si_trigger)
+      {
+        g_inspCtx.si_trigger = false;
+        g_inspCtx.si_pending = true;
+        g_inspCtx.si_abort_rms = g_inspCtx.si_abort_max = 0;
+        g_inspCtx.si_abort_at = 0;
+        LOGI("SI: measure requested -- %d of %d frame(s) in hand", n, want);
+      }
+
+      if (si_stack.imgStacked.rows != capImg.rows || si_stack.imgStacked.cols != capImg.cols)
+      {
+        // The frame geometry changed under the accumulator; nothing it holds
+        // describes this picture.
+        si_stack.ReSize(capImg);
+        n = 0; skip = 0;
+        st = InspectionContext::SI_ACC;
+      }
+
+      // --- the background accumulator ---------------------------------------
+      float _rms = 0, _mx = 0;
+      const bool moved =
+        (n > 0 && si_stack.stackingC > 0 &&
+         si_stack.DiffBigger(capImg, sp.diff_global, sp.diff_local, sp.diff_skip,
+                             &_rms, &_mx));
+      g_inspCtx.si_rms = _rms;
+      g_inspCtx.si_max = _mx;
+
+      if (moved)
+      {
+        // Start again from this frame. head_skip frames are dropped first: a
+        // scene that has just stopped moving can be under the threshold and
+        // still settling, and the numbers say so -- they are kept for the
+        // report whether or not anybody is waiting on them.
+        if (n >= want) LOGI("SI: the scene changed -- the average is stale, rebuilding");
+        g_inspCtx.si_abort_rms = _rms;
+        g_inspCtx.si_abort_max = _mx;
+        g_inspCtx.si_abort_at  = n;
+        si_stack.Reset(); n = 0;
+        skip = sp.head_skip;
+        st = (skip > 0) ? InspectionContext::SI_HEAD : InspectionContext::SI_ACC;
+      }
+
+      if (skip > 0)
+      {
+        // Settling. This frame is the reference the next one is compared
+        // against and nothing else; it is not one of the averaged frames.
+        si_stack.Reset(); si_stack.Add(capImg); n = 0;
+        if (--skip <= 0) { skip = 0; st = InspectionContext::SI_ACC; }
+      }
+      else if (n < want)
+      {
+        if (n == 0) si_stack.Reset();
+        si_stack.Add(capImg); n++;
+        st = (n >= want) ? InspectionContext::SI_READY : InspectionContext::SI_ACC;
+      }
+      else if (st != InspectionContext::SI_DONE)
+      {
+        // Full and unchanged: hold it. Adding more would average across a
+        // longer and longer window for no gain, and the frames after the Nth
+        // are what the stability check is made of.
+        st = InspectionContext::SI_READY;
+      }
+
+      // --- spend the press --------------------------------------------------
+      if (g_inspCtx.si_pending && n >= want)
+      {
+        cv::Mat avg; si_stack.Export(avg);
+        if (!avg.empty())
+        {
+          // The measured image REPLACES the frame, so the report, the preview
+          // and the snapshot all refer to what was measured.
+          imgPipe->img = avg;
+          g_inspCtx.si_pending = false;
+          st = InspectionContext::SI_DONE;
+          si_measure = true; si_report = true;
+          LOGI("SI: measuring the average of %d frame(s)", n);
+        }
+      }
+
+      // Every other frame measures nothing; the picture still goes.
+
+      // THE PROGRESS HAS TO LEAVE THE CORE -- BUT NOT ONCE A FRAME.
+      //
+      // Only the finished average used to send anything, so while the machine
+      // was settling and counting it said nothing at all: the operator pressed
+      // a button and got silence. These reports carry no measurement
+      // (report_json is an empty object; see si_measured below), so nothing
+      // downstream counts them as inspections -- they carry the si block, and
+      // that is the point.
+      //
+      // The accumulator now runs continuously, so "send whenever it is not
+      // idle" would be a packet for every frame forever. What a screen needs is
+      // the CHANGES: the count moving, the state moving, a press still waiting.
+      // A still part at its ceiling sends nothing, which is most of the time.
+      {
+        static InspectionContext::SIState _pst = InspectionContext::SI_IDLE;
+        static int _pn = -1;
+        static bool _ppend = false;
+        if (st != _pst || n != _pn || g_inspCtx.si_pending != _ppend) si_report = true;
+        _pst = st; _pn = n; _ppend = g_inspCtx.si_pending;
+      }
+    }
+    // ALMOST NOTHING IS HAPPENING, SO ALMOST NOTHING IS SENT.
+    //
+    // While the accumulator counts, every frame is of the same still part --
+    // so sending all of them costs an encode, a transfer and a decode per
+    // frame to show a picture that is not changing. The measured average
+    // always goes; the rest are sampled at SI_PREVIEW_FPS.
+    //
+    // Sampled rather than stopped: a preview frozen through the settle looks
+    // exactly like a stalled machine, and whether the part is still moving is
+    // the one thing the operator needs to see while waiting. Four frames a
+    // second answers that for about a fifth of the traffic.
+    {
+      bool hold = false;
+      // SI_IDLE means no SI session is running, whatever the mode still says.
+      // Belt as well as braces: a held preview is invisible until somebody
+      // notices the screen has stopped, which is the worst way to find a bug.
+      if (g_insp_mode == InspectionContext::INSPM_SI && !si_measure
+          && g_inspCtx.si_state != InspectionContext::SI_IDLE)
+      {
+        static uint64_t _lastPrev = 0;
+        if (SI_PREVIEW_FPS <= 0) hold = true;
+        else
+        {
+          const uint64_t now_ms = current_time_ms();
+          const uint64_t gap = 1000 / SI_PREVIEW_FPS;
+          if ((now_ms - _lastPrev) < gap) hold = true;
+          else _lastPrev = now_ms;
+        }
+      }
+      imgPipe->datViewInfo.si_no_image = hold;
+    }
+
+    imgPipe->datViewInfo.si_measured = si_measure;
+    imgPipe->datViewInfo.si_report    = si_report;
+    imgPipe->datViewInfo.si_avg_n     = g_inspCtx.si_stack_n;
     matchingEng.setNoCandidateFrame(clean_blocked);
-    if (!skip_inspection())
+    // ONCE PER N, not N cheap ones. An accumulating frame is not inspected at
+    // all. Its report object is still created below -- downstream adds fields
+    // to it -- but the packet is never sent, so there is no second report
+    // shape for the WebUI reducer to trip over: nothing arrives at all.
+    if (!skip_inspection() && si_measure)
       ret = ImgInspection(matchingEng, capImg, bacpac, frameCam, 1);
     g_lastMatchUs = perif_now_us() - _mT0;
     g_histMatch.add(g_lastMatchUs / 1000.0);
@@ -11203,29 +13570,29 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         g_histStage[_si].add(MatchingEngine::lastStageMs[_si]);
         g_histStageCpu[_si].add(MatchingEngine::lastStageCpuMs[_si]);
       }
+      // Every claimed phase is added, including the ones this frame spent 0 in
+      // -- a phase that only records when it is entered has an average over a
+      // different denominator than its neighbours, which is precisely the
+      // comparison being made.
+      for (int _pi = 0; _pi < mephase::n_; _pi++)
+        g_histPhase[_pi].add(mephase::ms_[_pi]);
+      for (int _ci = 0; _ci < mephase::cn_; _ci++)
+        g_histCount[_ci].add(mephase::cval_[_ci]);
     }
     {
       // Threshold, cap and queue depth are all bounded so a bad run cannot
       // fill the disk or stall inspection: over the cap it simply stops, and a
       // full queue drops rather than waits.
-      static const double _slowMs = []{
-        const char *e = getenv("INSP_SLOW_FRAME_MS");
-        return e ? atof(e) : 50.0;
-      }();
-      static const int _slowCap = []{
-        const char *e = getenv("INSP_SLOW_FRAME_MAX");
-        return e ? atoi(e) : 40;
-      }();
+      // Live values (see g_slowMs): the panel changes them mid-run.
+      const double _slowMs = (double)g_slowMs.load();
+      const int _slowCap = g_slowCap.load();
       const double _mms = g_lastMatchUs / 1000.0;
       // A CONTROL frame, every INSP_CTRL_FRAME_EVERY-th frame regardless of
       // timing. Without one, "the slow frames are black" says nothing -- if
       // every frame is black then black is this run's normal, not the cause.
       // Same paired-baseline rule the burst ladder was built around, and the
       // one nearly skipped here.
-      static const int _ctrlEvery = []{
-        const char *e = getenv("INSP_CTRL_FRAME_EVERY");
-        return e ? atoi(e) : 0;
-      }();
+      const int _ctrlEvery = g_ctrlEvery.load();
       static uint64_t _frameN = 0;
       static int _ctrlSaved = 0;
       _frameN++;
@@ -11248,6 +13615,29 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         if (!slowFrameQueue.push(sf)) g_slowDropped.fetch_add(1);
       }
     }
+    // The simulated slow host, if one was asked for. Placed here so it is
+    // inside everything that measures the inspection -- the latency the board
+    // sees, the report timestamps, the deadline -- exactly as real work would
+    // be. A delay applied outside the measured region would produce a machine
+    // that misses its deadline while every number says it did not.
+    {
+      const int _dms = g_debugDelayMs.load();
+      if (_dms > 0)
+      {
+        int _j = g_debugDelayJitterMs.load();
+        int _sleep = _dms;
+        if (_j > 0)
+        {
+          // rand() is fine: this is a test fixture, not a simulation, and the
+          // property that matters is "sometimes over, sometimes under".
+          _sleep += (rand() % (2 * _j + 1)) - _j;
+          if (_sleep < 0) _sleep = 0;
+        }
+        g_debugDelayN.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(_sleep));
+      }
+    }
+
     // NULL on BOTH skipped paths. GetReport() returns the engine's LAST report,
     // so reading it after an inspection that did not run would publish the
     // PREVIOUS part's measurements as this frame's. The verdict path is
@@ -11455,7 +13845,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
      // Downstream adds fields to this object, so it must exist even when there
      // is nothing to report -- same contract the INSP_SKIP_INSPECTION path has
      // always had, now shared with the clean-gate skip.
-     imgPipe->datViewInfo.report_json = skip_inspection()
+     imgPipe->datViewInfo.report_json = (skip_inspection() || !imgPipe->datViewInfo.si_measured)
        ? cJSON_CreateObject()
        : matchingEng.FeatureReport2Json(report);
       // Dirty clean area -> the part is rejected, so it has no measurements to
@@ -11467,6 +13857,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       // does not honour the flag -- it is a walk over one or two JSON arrays.
       if (clean_blocked)
         blank_located_objects(imgPipe->datViewInfo.report_json);
+      // One line per inspected frame, always on: the verdict the device will
+      // get and WHY. objs = located objects in the report; clean = the
+      // clean_regions status (0 = clean); the flags name the rejection.
+      {
+        int nobj = -1;
+        cJSON *_r0 = JFetch_OBJECT(imgPipe->datViewInfo.report_json, "reports[0]");
+        cJSON *_ol = _r0 ? cJSON_GetObjectItem(_r0, "reports") : NULL;
+        if (_ol && cJSON_IsArray(_ol)) nobj = cJSON_GetArraySize(_ol);
+        LOGI("[verdict] frame status=%d (%s) objs=%d clean=%d%s%s",
+             stat, stat == 0 ? "OK" : stat == -1 ? "NG" : "NA", nobj, clean_stat,
+             clean_blocked ? " CLEAN_REGION_DIRTY->rejected" : "",
+             (nobj == 0 && !clean_blocked) ? " NO_OBJECT_AT_STATION" : "");
+      }
       g_lastRepJsonUs = perif_now_us() - _jT0;
       g_histRepJson.add(g_lastRepJsonUs / 1000.0);
     }
@@ -11801,6 +14204,40 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     }
     cJSON_AddItemToObject(imgPipe->datViewInfo.report_json, "station", st);
   }
+  // WHERE THIS MEASUREMENT CAME FROM, in SI mode.
+  //
+  // The number in an SI report is taken from an average of several frames, so
+  // the report has to say how many -- a value averaged over five still frames
+  // and one taken from a single frame it happened to catch are not the same
+  // claim, and nothing else in the record can tell them apart. Emitted on
+  // every SI frame, including the ones that measured nothing (avg_count is
+  // then how far the accumulator has got), so a screen can show it filling.
+  if (g_insp_mode == InspectionContext::INSPM_SI && imgPipe->datViewInfo.report_json)
+  {
+    cJSON *si = cJSON_AddObjectToObject(imgPipe->datViewInfo.report_json, "si");
+    static const char *_stn[] = { "idle", "settling", "accumulating", "ready", "measured", "aborted" };
+    cJSON_AddStringToObject(si, "state", _stn[(int)g_inspCtx.si_state]);
+    cJSON_AddNumberToObject(si, "avg_count", imgPipe->datViewInfo.si_avg_n);
+    cJSON_AddNumberToObject(si, "avg_target", g_inspCtx.si.avg_frames);
+    cJSON_AddBoolToObject(si, "measured", imgPipe->datViewInfo.si_measured);
+    // A press that has not been spent yet: the screen has to be able to say
+    // "waiting for it to settle" rather than look like it missed the button.
+    cJSON_AddBoolToObject(si, "pending", g_inspCtx.si_pending);
+    // The gate's own numbers, in grey levels, next to the thresholds they were
+    // compared against -- so the screen can show the noise floor while nothing
+    // is wrong, and say by how much when something is.
+    cJSON_AddNumberToObject(si, "rms",       g_inspCtx.si_rms);
+    cJSON_AddNumberToObject(si, "max_local", g_inspCtx.si_max);
+    cJSON_AddNumberToObject(si, "thres_rms",   g_inspCtx.si.diff_global);
+    cJSON_AddNumberToObject(si, "thres_local", g_inspCtx.si.diff_local);
+    if (g_inspCtx.si_state == InspectionContext::SI_ABORT)
+    {
+      cJSON *ab = cJSON_AddObjectToObject(si, "abort");
+      cJSON_AddNumberToObject(ab, "rms",       g_inspCtx.si_abort_rms);
+      cJSON_AddNumberToObject(ab, "max_local", g_inspCtx.si_abort_max);
+      cJSON_AddNumberToObject(ab, "at_frame",  g_inspCtx.si_abort_at);
+    }
+  }
 
   // What this frame's inspection cost, same keys the II path uses so the canvas
   // reads one shape in both UIs.
@@ -11893,8 +14330,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   else
   {
     
-    bool skipInspDataTransfer=false;
-    bool skipImageTransfer=false;
+    bool skipInspDataTransfer=!imgPipe->datViewInfo.si_report;
+    bool skipImageTransfer=imgPipe->datViewInfo.si_no_image;
     bool inspSnap=false;
     imgPipe->dview_enq_us = perif_now_us(); // sent inline: the queue wait is nil
     InspResultAction(imgPipe, &skipInspDataTransfer, &skipImageTransfer,&inspSnap, &doPassDown);
@@ -12047,7 +14484,54 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       {
         if (bpg_pi.camera)
           bpg_pi.camera->TriggerMode(1);
-        bpg_pi.delete_PeripheralChannel();
+
+        // ASK THE BOARD TO KEEP ITS COUNTS, BEFORE WE LET GO OF IT.
+        //
+        // The sorter's counters are incremented with the blow -- the actuation
+        // and the count are one event -- so they live on the board and only the
+        // board can persist them. It deliberately does NOT write flash on a
+        // normal stop (that write landed in the middle of the plate's decel
+        // ramp and made it skip), and its host-link watchdog only fires while
+        // the machine is RUNNING. So one sequence saves nothing: stop the
+        // machine, then close the app. Nothing faults, nobody times out, and
+        // the next core start reopens the port -- which pulses DTR, which
+        // resets the board, which loses the shift's counts.
+        //
+        // This is the host closing that gap on its way out. Best effort by
+        // construction: we are about to drop the channel, so there is no reply
+        // to wait for.
+        //
+        // THE DEVICE MAY REFUSE, AND THAT IS NOT A LOSS. It declines while the
+        // plate is turning, because writing flash under a decel ramp is the
+        // fault this whole change is about. Refused means the machine was still
+        // RUNNING when the host went away -- which is precisely the case the
+        // board's own host-link watchdog exists for: no inbound frame for
+        // host_timeout_ms (we arm it at 1000 above) -> INSPECTION_ERROR
+        // (HOST_LINK_TIMEOUT) -> the counters are saved on the way into ERROR.
+        // At ~1s that lands with seconds to spare before any restart can reopen
+        // the port and reset the board.
+        //
+        // So the two paths partition the cases rather than overlapping: this
+        // one covers a host leaving a STOPPED machine, where nothing times out
+        // and nobody would otherwise save; the watchdog covers a host leaving a
+        // RUNNING one.
+        // Twice, for the same reason the RESYNC path sends RESET twice: one
+        // frame lost to a resync here costs the shift's counts.
+        //
+        // The real fix is upstream of all this -- stop the port open from
+        // resetting the board at all -- and when that lands this becomes a
+        // belt-and-braces line rather than the only thing holding the counts.
+        if (bpg_pi.perifCH != NULL)
+        {
+          static const char save_cnt[] = "{\"type\":\"save_counters\"}";
+          std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
+          bpg_pi.perifCH->send_json_string(0, (uint8_t *)save_cnt,
+                                           (int)strlen(save_cnt), 0);
+          LOGI("perif: last client gone -- save_counters sent before releasing "
+               "the channel");
+        }
+
+        bpg_pi.delete_PeripheralChannel("the last WS client closed");
       }
       MT_UNLOCK("ws CLOSING");
     }
@@ -12452,6 +14936,22 @@ int mainLoop(bool realCamera = false)
   //   LOGI(">>>");
   // }
 
+  // NEVER SERVE WITHOUT A LISTENER.
+  //
+  // The retry loop above catches the exception init() throws when the port
+  // could not be taken, so reaching here normally means a socket exists. This
+  // is the belt: every path below -- get_fd_set(), findMaxFd(), select() --
+  // takes the listen socket as a given, and with a -1 in the set select fails
+  // on every turn forever while the process looks perfectly healthy from the
+  // outside. A core that cannot be reached is not a degraded core; it is a
+  // machine that is not running, and it should say so and stop.
+  if (ifwebsocket->get_socket() < 0)
+  {
+    LOGE("main loop: no listening socket on port %d -- refusing to run. "
+         "Another core is almost certainly already using it.", ws_port);
+    return -1;
+  }
+
   ifwebsocket->setUpperLayer(&bpg_pi);
   bpg_pi.setLink(ifwebsocket);
   // mjpegS = new MJPEG_Streamer2(7603);
@@ -12493,13 +14993,32 @@ int mainLoop(bool realCamera = false)
     tv.tv_usec = 200000;
     if (select(maxfd + 1, &fd_s, NULL, NULL, &tv) == -1)
     {
-      if (errno == EINTR)
+      // errno, not WSAGetLastError, is what this used to read -- and Winsock
+      // sets neither errno nor anything perror can see. So on Windows the
+      // EINTR test below could never be true and the message described some
+      // unrelated CRT call. Both now come from the socket layer itself.
+      if (sock_err_is_intr())
         continue; // interrupted by a signal; just retry
-      perror("select");
+      // Rate-limited: a select that fails does so on EVERY turn, so an
+      // unconditional log here writes a few thousand identical lines a second
+      // into the ring and evicts the history that would explain it.
+      static int _selFail = 0;
+      if ((_selFail++ % 500) == 0)
+        LOGE("main loop: select failed (%s) -- %d so far, still serving",
+             sock_err_str(), _selFail);
       continue; // transient error: keep serving instead of killing the process
     }
 
-    ifwebsocket->runLoop(&fd_s, NULL);
+    // What one turn of servicing costs, end to end -- accept + recv + reassembly
+    // + every handler that fired this turn. g_histCmd says how long a single
+    // command took; this says how long the socket layer was actually unattended,
+    // which is the number a queue would have to improve.
+    {
+      const auto _s0 = std::chrono::steady_clock::now();
+      ifwebsocket->runLoop(&fd_s, NULL);
+      g_histServe.add(std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - _s0).count());
+    }
   }
 
   // Teardown, on the main thread instead of inside the signal handler.
@@ -12895,9 +15414,20 @@ int cp_main(int argc, char **argv)
     // deliberately exempt (it publishes the region as zero-size); CHECK was
     // exempt from nothing, purely because a startup line reached further than
     // its comment claimed.
+    // Both region kinds, like the live path (:3681). Until 2026-09-07 this loaded
+    // only inspection_region, so a def measured offline and live could disagree
+    // with no warning (AUDIT_BACKLOG P2).
+    //
+    // INSP_CLEAN_REGIONS=0 skips ONLY the clean-area gate (the station rectangle
+    // still applies); INSP_AREA_BYPASS=1 skips both. Whatever is active is said
+    // out loud below, because the failure mode of a station gate is an EMPTY
+    // REPORT that looks exactly like a locate miss and costs an afternoon.
+    const bool insp_clean_gate =
+      !(std::getenv("INSP_CLEAN_REGIONS") && std::getenv("INSP_CLEAN_REGIONS")[0] == '0');
     if (cJSON *ms_json = ReadJson("data/machine_setting.json"))
     {
       load_insp_region(ms_json);
+      if (insp_clean_gate) load_clean_regions(ms_json);
       cJSON_Delete(ms_json);
     }
     // INSP_AREA_BYPASS=1 reaches this path too. There is no wire here to flip
@@ -12919,6 +15449,56 @@ int cp_main(int argc, char **argv)
     neutral_bacpac.insp_region_fit = g_insp_region.fit;
     if (ai + 3 >= argc) { LOGE("--insp needs <image> <def> <out.json>"); return 2; }
     char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
+    // --calib <def|local|PATH>: WHOSE RULER measures this frame. Scanned rather
+    // than positional because argv[ai+4] is already the optional perturb JSON.
+    const char *calibSpec = NULL;
+    for (int k = ai + 4; k + 1 < argc; k++)
+      if (strcmp(argv[k], "--calib") == 0) { calibSpec = argv[k + 1]; break; }
+    // A .xreps is a RECORD, not a picture. It carries the camera_param of the
+    // machine that took it and the frame sits beside it, so replaying one has
+    // to impersonate that machine: measuring a 0.008841 mm/px frame with this
+    // bench's 0.013886 ruler is out by half, and nothing in the result says so.
+    std::string _recImg, _recLens;
+    acv_XY _recRoi = {NAN, NAN};
+    double _recPpb = NAN, _recMmpb = NAN;
+    {
+      const size_t L = strlen(imgPath);
+      if (L > 6 && strcmp(imgPath + L - 6, ".xreps") == 0)
+      {
+        char *xs = ReadText(imgPath);
+        if (!xs) { LOGE("--insp: cannot read record %s", imgPath); return 3; }
+        if (cJSON *xj = cJSON_Parse(xs))
+        {
+          _recPpb  = JFetch_NUMBER_ex(xj, "camera_param.ppb2b");
+          _recMmpb = JFetch_NUMBER_ex(xj, "camera_param.mmpb2b");
+          // The recording machine's lens, when the record carries one. Kept as
+          // text and installed below rather than here: data/lens_calib.json is
+          // loaded after this point and would overwrite it.
+          if (cJSON *_lj = JFetch_OBJECT(xj, "lens_calib"))
+            if (char *_ls = cJSON_PrintUnformatted(_lj)) { _recLens = _ls; free(_ls); }
+          if (cJSON *_ro = JFetch_OBJECT(xj, "roi_offset"))
+          {
+            _recRoi.x = (float)JFetch_NUMBER_ex(_ro, "x");
+            _recRoi.y = (float)JFetch_NUMBER_ex(_ro, "y");
+          }
+          cJSON_Delete(xj);
+        }
+        free(xs);
+        const std::string base(imgPath, L - 6);
+        static const char *EXT[] = {"png", "jpg", "jpeg", "bmp"};
+        struct stat _ist;
+        for (const char *e : EXT)
+        {
+          const std::string cand = base + "." + e;
+          if (stat(cand.c_str(), &_ist) == 0) { _recImg = cand; break; }
+        }
+        if (_recImg.empty())
+        { LOGE("--insp: no frame beside %s (.png/.jpg/.jpeg/.bmp)", imgPath); return 3; }
+        LOGE("--insp: %s is a record -- frame %s, its camera_param ppb2b=%g mmpb2b=%g",
+             imgPath, _recImg.c_str(), _recPpb, _recMmpb);
+        imgPath = (char *)_recImg.c_str();
+      }
+    }
     // Reject non-regular def files (FIFO/socket/dir/char-device). ReadText() on
     // a FIFO blocks indefinitely waiting for a writer/EOF -> hang.
     {
@@ -12932,6 +15512,43 @@ int cp_main(int argc, char **argv)
     cv::Mat cvSrc;
     if (loadImageCv(imgPath, cvSrc) != 0)
     { LOGE("--insp: cannot load image %s", imgPath); return 3; }
+
+    // THE CALIBRATION THE LIVE CORE HAS AND THIS PATH DID NOT.
+    //
+    // mainLoop autoloads data/lens_calib.json at startup, and field_calib
+    // arrives over the WebUI's calib_files_load RPC. --insp is handled in
+    // cp_main and returns before mainLoop ever runs, so it measured with NO
+    // distortion model and no bright/dark field -- the only camera numbers it
+    // had were the def's own cam_param.
+    //
+    // That made offline replay useless for the question it is most wanted for:
+    // a recorded frame replayed here produced NAs of its own, and there was no
+    // way to tell those apart from the ones the machine actually saw. Measured
+    // on 10221 BOS-LT12BH4211: 14 recorded frames replayed, 4 matched and 10
+    // differed, with the differences overwhelmingly OK -> NA, which is what an
+    // edge refine does when it has no lens model.
+    //
+    // Same files, same order, same failure handling as the live path; a missing
+    // file is a warning, not a refusal, because the offline gate is also used
+    // on machines that have neither.
+    {
+      struct stat _c_st;
+      if (stat("data/lens_calib.json", &_c_st) == 0)
+      {
+        if (load_lens_calib("data/lens_calib.json"))
+          g_calib_autoloaded = true;
+        else
+          LOGE("--insp: data/lens_calib.json did not load -- measuring WITHOUT "
+               "a lens distortion model");
+      }
+      else
+        LOGE("--insp: no data/lens_calib.json -- measuring WITHOUT a lens "
+             "distortion model; results will not match the live machine");
+      // field_calib is on-demand even live (the WebUI asks for it), so its
+      // absence is normal rather than notable.
+      if (stat("data/field_calib.json", &_c_st) == 0)
+        load_field_calib("data/field_calib.json");
+    }
     // Optional 5th argument: the same perturbation II accepts, as JSON.
     //
     //   visSele --insp img.png def.hydef out.json '{"rot_deg":5,"noise":8}'
@@ -12976,18 +15593,88 @@ int cp_main(int argc, char **argv)
     // does (~4814) -- otherwise img2ideal divides by an uninit RNormalFactor and
     // returns NaN, poisoning every edge refine (lines/circles/search points).
     // Legacy LoadCameraCalibrationFile removed -- sampler->calibMap is now
-    // primed by load_lens_calib (triggered by the WebUI's calib_files_load
-    // RPC). The def's cam_param.ppb2b / mmpb2b override below still applies
-    // when present for backward compat with old hydef files.
+    // primed by load_lens_calib (triggered by the WebUI's calib_files_load RPC).
+    //
+    // WHOSE RULER. This used to be one answer -- the def's -- applied always,
+    // which is right for exactly one of the three things --insp is asked to do.
+    //
+    //   local (default) : a picture taken on THIS machine, measured with this
+    //                     machine's calibration. load_lens_calib already pushed
+    //                     it, so this is simply not overriding it.
+    //   record          : a .xreps replay. Impersonate the machine that took
+    //                     it, the way the II handler does with
+    //                     img_property.calibInfo.mmpp.
+    //   def             : the def's own cam_param, the old behaviour, kept for
+    //                     reproducing an earlier run.
+    //   <path>          : a named lens_calib.json.
+    //
+    // The default is local because a bare image is most often this machine's.
+    // It is announced either way: the scale decides every millimetre reported,
+    // and a silent choice between three of them is how a 1.57x error travels.
     {
-      char *ds = ReadText(defPath);
-      if (ds) { cJSON *dj = cJSON_Parse(ds);
-        if (dj) {
-          apply_def_cam_param(neutral_bacpac, dj, "--insp");
-          cJSON_Delete(dj);
-        }
-        free(ds);
+      enum ScaleSrc { S_LOCAL, S_RECORD, S_DEF, S_FILE };
+      ScaleSrc src = S_LOCAL;
+      if (calibSpec && strcmp(calibSpec, "def") == 0)        src = S_DEF;
+      else if (calibSpec && strcmp(calibSpec, "local") == 0) src = S_LOCAL;
+      else if (calibSpec)                                    src = S_FILE;
+      else if (std::isfinite(_recPpb) && _recPpb > 0 &&
+               std::isfinite(_recMmpb) && _recMmpb > 0)      src = S_RECORD;
+
+      if (src == S_FILE)
+      {
+        if (!load_lens_calib(calibSpec))
+        { LOGE("--insp: --calib %s did not load -- refusing to measure at an unknown scale", calibSpec); return 6; }
+        g_calib_autoloaded = true;
       }
+      else if (src == S_LOCAL && !g_calib_autoloaded)
+      {
+        // No local calibration to be local to. The def's is the only
+        // self-consistent scale left; say that it is a fallback, not a choice.
+        LOGE("--insp: --calib local, but this machine has no usable "
+             "data/lens_calib.json -- falling back to the def's cam_param");
+        src = S_DEF;
+      }
+
+      if (src == S_RECORD)
+      {
+        // Lens first, then the scale: installing a lens model pushes its own
+        // px/mm into the calib map, so the record's scale has to be written
+        // after it or it would be overwritten by the lens's.
+        if (!_recLens.empty())
+        {
+          LensCalibResult _p = lens_calib_from_json(_recLens.c_str());
+          if (_p.ok)
+          {
+            g_lens_calib = _p;
+            calib_bacpac.lensCalib = &g_lens_calib;
+            neutral_bacpac.lensCalib = &g_lens_calib;
+            g_calib_autoloaded = true;
+            LOGE("--insp: using the RECORD's lens calibration (m=%.4f px/mm, rms=%.4f px)",
+                 _p.tele.m, _p.overall_rms_px);
+          }
+          else
+            LOGE("--insp: the record carries a lens_calib but it is not usable "
+                 "-- keeping this machine's");
+        }
+        else
+          LOGE("--insp: the record carries NO lens_calib -- the record's scale "
+               "with THIS machine's lens model. Not a faithful replay.");
+        if (std::isfinite(_recRoi.x) && neutral_bacpac.sampler)
+          neutral_bacpac.sampler->setOriginOffset(_recRoi);
+        auto *cm = neutral_bacpac.sampler->getCalibMap();
+        if (cm) { cm->calibPpB = _recPpb; cm->calibmmpB = _recMmpb; }
+      }
+      else if (src == S_DEF)
+      {
+        char *ds = ReadText(defPath);
+        if (ds) { if (cJSON *dj = cJSON_Parse(ds)) { apply_def_cam_param(neutral_bacpac, dj, "--insp"); cJSON_Delete(dj); } free(ds); }
+      }
+      auto *cm = neutral_bacpac.sampler->getCalibMap();
+      const double used = (cm && cm->calibPpB > 0) ? (cm->calibmmpB / cm->calibPpB) : NAN;
+      LOGE("--insp: scale from %s -- mmpp=%.9f mm/px",
+           src == S_LOCAL ? "this machine (data/lens_calib.json)" :
+           src == S_RECORD ? "the .xreps record" :
+           src == S_FILE ? calibSpec : "the def's cam_param", used);
     }
     // acv -> cv: full cv::Mat path through the engine entry (the acvImage `img`
     // shim above is now only kept for the `bacpac` calibration side-effects
@@ -13005,6 +15692,39 @@ int cp_main(int argc, char **argv)
     // that is std::terminate: measured exit 134 (SIGABRT) on a def with a judge
     // missing "subtype". --insp is what the QA harness drives, so a bad def
     // aborted the run instead of returning the documented "bad def" code.
+    // The clean-area gate, exactly as the live frame path runs it (:11808): a
+    // dirty region does not skip the inspection, it makes the engine inspect
+    // with NO candidate objects (FeatureManager::no_candidate_frame), so the
+    // report keeps its shape and simply has zero located objects.
+    cJSON *insp_station_clean = NULL;
+    bool insp_clean_blocked = false;
+    {
+      bool have_clean;
+      { std::lock_guard<std::mutex> _g(g_station_cfg_lock); have_clean = !g_clean_regions.empty(); }
+      if (g_area_gates_bypass)
+        LOGE("--insp: station: INSP_AREA_BYPASS -- no region, no clean gate");
+      else
+        LOGE("--insp: station: inspection_region %.0fx%.0f at (%.0f,%.0f) fit=%d, %d clean region(s)%s",
+             g_insp_region.w, g_insp_region.h, g_insp_region.x, g_insp_region.y, g_insp_region.fit,
+             have_clean ? (int)g_clean_regions.size() : 0,
+             insp_clean_gate ? "" : " (INSP_CLEAN_REGIONS=0: clean gate skipped)");
+      if (have_clean && insp_clean_gate && !g_area_gates_bypass)
+      {
+        cv::Mat gray;
+        if (cvSrc.channels() == 1) gray = cvSrc; else cv::cvtColor(cvSrc, gray, cv::COLOR_BGR2GRAY);
+        float cr_mmpp = neutral_bacpac.sampler ? neutral_bacpac.sampler->mmpP_ideal() : 0.0f;
+        acv_XY cr_off = neutral_bacpac.sampler ? neutral_bacpac.sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+        insp_station_clean = cJSON_CreateArray();
+        int cs = eval_clean_regions(gray, cr_mmpp, cr_off, insp_station_clean);
+        typedef FeatureReport_sig360_circle_line_single FR;
+        insp_clean_blocked = (cs == FR::STATUS_NA || cs == FR::STATUS_FAILURE || cs == FR::STATUS_BAD);
+        if (insp_clean_blocked)
+          LOGE("--insp: a clean region is DIRTY (stat %d): the frame is inspected with no candidate "
+               "objects, so the report will have ZERO objects. This is the station gate, not a "
+               "locate failure. INSP_CLEAN_REGIONS=0 skips the gate, INSP_AREA_BYPASS=1 skips the "
+               "station entirely.", cs);
+      }
+    }
     try
     {
      for (int li = 0; li < loopN; ++li) {
@@ -13015,6 +15735,16 @@ int cp_main(int argc, char **argv)
     {
       LOGE("--insp: def parse failed: %s", ex.what());
       return 4;   // documented: 4 = bad def
+    }
+    // The gate is applied AFTER DefRead: DefRead builds the FeatureManager from
+    // the def, and no_candidate_frame lives on that manager, so a flag set before
+    // it is gone by the time the frame is matched. Same order as live (train,
+    // then flag, then FeatureMatching), at the cost of one extra inspection.
+    if (insp_clean_blocked)
+    {
+      matchingEng.setBacPac(&neutral_bacpac);
+      matchingEng.setNoCandidateFrame(true);
+      matchingEng.FeatureMatching(cvSrc);
     }
     // Speed profile: INSP_PROF=N times the per-frame INSPECTION only (FeatureMatching:
     // localize + morph + measure), with the def already trained -- the recurring
@@ -13036,8 +15766,33 @@ int cp_main(int argc, char **argv)
     const FeatureReport *report = skip_inspection() ? NULL
                                 : matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
+    matchingEng.setNoCandidateFrame(false);
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
     AttachStaticInfo(jobj, &bpg_pi);
+    // Same `station` block the live report carries (:12511), so a consumer can
+    // tell "gate refused the frame" from "nothing was there".
+    if (insp_station_clean)
+    {
+      cJSON *st = cJSON_CreateObject();
+      if (insp_clean_blocked)
+        cJSON_AddNumberToObject(st, "clean_err", (int)FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT);
+      cJSON_AddItemToObject(st, "clean", insp_station_clean);
+      cJSON_AddItemToObject(jobj, "station", st);
+    }
+    {
+      // The hint that would have saved the afternoon: an empty report while any
+      // station config was active.
+      cJSON *reps = cJSON_GetObjectItem(jobj, "reports");
+      int nobj = 0;
+      if (reps && cJSON_IsArray(reps))
+        for (cJSON *g = reps->child; g; g = g->next)
+        { cJSON *r = cJSON_GetObjectItem(g, "reports"); if (r && cJSON_IsArray(r)) nobj += cJSON_GetArraySize(r); }
+      if (nobj == 0 && !g_area_gates_bypass)
+        LOGE("--insp: report has 0 objects while the station config was applied (%s). If the part is "
+             "in the picture, try INSP_AREA_BYPASS=1 (no station) or INSP_CLEAN_REGIONS=0 (no clean "
+             "gate) to tell the gate from a locate miss.",
+             insp_clean_blocked ? "clean region dirty" : "inspection_region only");
+    }
     char *jstr = cJSON_Print(jobj);
     FILE *fp = fopen(outPath, "wb");
     if (fp) {
@@ -13050,6 +15805,70 @@ int cp_main(int argc, char **argv)
     else LOGE("--insp: cannot write %s", outPath);
     cJSON_Delete(jobj);
     free(jstr);
+    return 0;
+  }
+
+  // Headless SBM feature regeneration -- a DEBUG / bench tool, the command-line
+  // twin of the studio's 生成特徵點 (the SF handler above):
+  //   visSele --sbm-train <def.hydef> <out.hydef>
+  // Reads the def, extracts line2Dup features from its reference image inside
+  // the same ShapeExtractWindow the SF handler opens, and writes the def back
+  // with the fresh shape_cache in @__SBM_INFO__. It refuses to overwrite its
+  // input unless INSP_SBM_TRAIN_INPLACE=1: the fleet's defs are published from
+  // one place (HANDOVER D2), and this must not become a second extraction path
+  // that quietly runs on every machine.
+  for (int ai = 1; ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--sbm-train") != 0) continue;
+    if (ai + 2 >= argc) { LOGE("--sbm-train needs <def.hydef> <out.hydef>"); return 2; }
+    const char *defPath = argv[ai + 1], *outPath = argv[ai + 2];
+    if (strcmp(defPath, outPath) == 0 && !std::getenv("INSP_SBM_TRAIN_INPLACE"))
+    { LOGE("--sbm-train: refusing to overwrite the input def; give a different <out> or INSP_SBM_TRAIN_INPLACE=1"); return 2; }
+    char *jsonStr = ReadText(defPath);
+    if (!jsonStr) { LOGE("--sbm-train: cannot read %s", defPath); return 3; }
+    cJSON *fp = NULL;
+    try
+    {
+      std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+      matchingEng.ResetFeature();
+      ShapeExtractWindow _extract_ok(true);   // force: ignore the def's cache, extract fresh
+      MallocHold injected_ctx(def_stamp_context(jsonStr, defPath));
+      matchingEng.AddMatchingFeature(injected_ctx.get() ? injected_ctx.str() : jsonStr);
+      fp = matchingEng.GetShapeFeaturePoints();
+    }
+    catch (const std::exception &ex)
+    {
+      LOGE("--sbm-train: def parse / extraction failed: %s", ex.what());
+      free(jsonStr); return 4;
+    }
+    cJSON *cache = fp ? cJSON_DetachItemFromObject(fp, "shape_cache") : NULL;
+    if (fp) cJSON_Delete(fp);
+    if (!cache)
+    {
+      LOGE("--sbm-train: no shape_cache came back -- is the def shape_based, and is its reference "
+           "image (<def>.png / reference_image) readable?");
+      free(jsonStr); return 4;
+    }
+    cJSON *def = cJSON_Parse(jsonStr);
+    free(jsonStr);
+    if (!def) { LOGE("--sbm-train: def is not JSON"); cJSON_Delete(cache); return 4; }
+    cJSON *fs0 = cJSON_GetArrayItem(cJSON_GetObjectItem(def, "featureSet"), 0);
+    cJSON *inh = fs0 ? cJSON_GetObjectItem(fs0, "inherentfeatures") : NULL;
+    cJSON *sbm = NULL, *e = NULL;
+    if (inh) cJSON_ArrayForEach(e, inh)
+    {
+      cJSON *nm = cJSON_GetObjectItem(e, "name");
+      if (cJSON_IsString(nm) && strcmp(nm->valuestring, "@__SBM_INFO__") == 0) { sbm = e; break; }
+    }
+    if (!sbm) { LOGE("--sbm-train: def has no @__SBM_INFO__ feature to carry the cache"); cJSON_Delete(def); cJSON_Delete(cache); return 4; }
+    if (cJSON_GetObjectItem(sbm, "shape_cache")) cJSON_ReplaceItemInObject(sbm, "shape_cache", cache);
+    else cJSON_AddItemToObject(sbm, "shape_cache", cache);
+    char *out = cJSON_Print(def);
+    cJSON_Delete(def);
+    FILE *fo = fopen(outPath, "wb");
+    if (!fo) { LOGE("--sbm-train: cannot write %s", outPath); free(out); return 4; }
+    fwrite(out, 1, strlen(out), fo); fclose(fo); free(out);
+    LOGE("--sbm-train: wrote %s (fresh shape_cache from %s)", outPath, defPath);
     return 0;
   }
 

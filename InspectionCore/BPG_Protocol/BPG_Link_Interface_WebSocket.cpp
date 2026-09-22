@@ -31,6 +31,12 @@ void BPG_Link_Interface_WebSocket::init(int port)
   server = new ws_server(port, this);
   if (server->get_socket() < 0)
   {
+    // Free it before throwing. A throw from a constructor body skips this
+    // object's destructor, so the ws_server allocated a line ago leaked --
+    // once per attempt, and the caller's reaction to this throw is to sleep
+    // five seconds and try again, forever.
+    delete server;
+    server = NULL;
     throw std::invalid_argument("WS Server INIT Failed..");
   }
 
@@ -46,6 +52,11 @@ int BPG_Link_Interface_WebSocket::findMaxFd()
 {
 
   return server->findMaxFd();
+}
+
+int BPG_Link_Interface_WebSocket::get_socket()
+{
+  return server ? server->get_socket() : -1;
 }
 
 fd_set BPG_Link_Interface_WebSocket::get_fd_set()

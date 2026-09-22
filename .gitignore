@@ -36,11 +36,8 @@ InspectionCore/contrib/wfqueue/makefile
 InspectionCore/CoreHub/CMakeFiles
 cmake_install.cmake
 InspectionCore/CoreHub/Makefile
-UI/Electron_XPLAT/release-builds
 InspectionCore/contrib/aravis/test/arvTool/arvtool
 InspectionCore/contrib/smem_channel/test/node_napi/build/
-UI/Electron_XPLAT/build
-UI/Electron_XPLAT/app_setup_info.json
 InspectionCore/Core0_1/visSele
 InspectionCore/Core0_1/CMakeFiles/
 InspectionCore/Core0_1/Makefile
@@ -68,7 +65,6 @@ Peripheral/MStepperECat/.sync/
 venv/
 InspectionCore/CoreHub/playground
 InspectionCore/CoreHub/PluginTemp
-UI/Electron_XPLAT/build_
 InspectionCore/contrib/cJSONPP/test/build
 InspectionCore/CoreHub/PluginRemote/
 InspectionCore/MatchingEngine/build/
@@ -102,3 +98,48 @@ export_v2/
 # scratch log from a hand-run core
 InspectionCore/Core0_1/core.log
 UI/Launcher/release-builds
+
+# Bench soak artefacts -- outputs, not sources. The tools that make them are
+# tracked; the megabytes of samples they produce are not.
+UI/WebUI/dist-soak/
+UI/WebUI/tools/webctl/soak_logs/
+UI/WebUI/tools/webctl/soak_auto.jsonl
+UI/WebUI/tools/webctl/proc_track.json
+UI/WebUI/tools/webctl/compare_throttle.json
+
+# Crash dumps written by the running core, one folder per day. Outputs, and
+# large ones -- 31MB on this bench after a week. The analysis belongs in a
+# write-up; the dumps do not belong in the tree.
+InspectionCore/Core0_1/crash_reports/
+InspectionCore/Core0_1/crashlog/
+**/data/crashlog/
+
+# A 73MB blob of sample data that was tracked once and should not have been.
+# Deleted from the tree here; the history still carries it.
+InspectionCore/Core0_1/data.zip
+
+# Working directory created by samples/bringup/run.sh -- a machine's own state,
+# same reason data/ is ignored.
+samples/bringup/run/
+
+# ...but samples/bringup/data/ IS the sample, not a machine's state, and the
+# bare `data` rule near the top of this file matches a directory of that name at
+# ANY depth. It silently swallowed the whole bring-up dataset out of the commit
+# that added it: the tree looked complete locally and a fresh clone got run.sh
+# and frames/ with nothing to run them on.
+!samples/bringup/data/
+!samples/bringup/data/**
+
+# One-off probes written while chasing something on the bench. They are named
+# for the hunt, not for what they check, and they assume whatever the machine
+# happened to be doing that afternoon -- so they are scratch, and a `git add -A`
+# over tools/webctl swept seven of them in (e44497ea) before this line existed.
+UI/WebUI/tools/webctl/_*.mjs
+UI/WebUI/tools/webctl/blow_probe.mjs
+UI/WebUI/tools/webctl/mid_probe.mjs
+UI/WebUI/tools/webctl/shot_oldver.mjs
+UI/WebUI/tools/webctl/crashtest.mjs
+
+# vite dev server scratch (dev.sh up_dev_server)
+UI/WebUI/.vite-dev.log
+UI/WebUI/.vite-dev.pid

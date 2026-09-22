@@ -3,13 +3,22 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString, shapeDefFingerprint } from 'UTIL/MISC_Util';
-import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
+import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,DEF_LOCALIZER_SCOPED_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
 import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
+import { convertShapeForShapeBased } from '../../shapes/_caliperSeed';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
 import { mkLog } from 'UTIL/logger';
 import dclone from 'clone';
+
+// Reports whose statistics have already been taken.
+//
+// A WeakSet rather than a field on the report, because these objects are
+// uploaded verbatim: a bookkeeping flag set here would become a column in every
+// database row. Weak, so retiring a report never keeps it alive -- the entry
+// disappears with the report itself.
+const _retiredReports = new WeakSet();
 import JSum from 'jsum'
 
 import {GetDefaultSystemSetting} from 'JSSRCROOT/info.js';
@@ -277,16 +286,22 @@ function StateReducer(newState, action) {
                     srep_inWindow.isCurObj = false;
                   });
 
-                  //Check if the trackingWindow object is timeout(from tracking window)
-                  reportStatisticState.trackingWindow =
-                    reportStatisticState.trackingWindow.filter((srep_inWindow) => {
-                      let tdiff = currentTime_ms - srep_inWindow.time_ms;
-                      if (tdiff < statSetting.keepInTrackingTime_ms) {
-                        return true;
-                      }
-                      //if the time is longer than 4s then remove it from matchingWindow
-                      if (srep_inWindow.repeatTime > statSetting.minReportRepeat
-                        && srep_inWindow.headSkipTime == 0) {
+                  // RETIRING A REPORT: its statistics are taken, it enters the
+                  // history, and it goes on newAddedReport, which is what the
+                  // database upload consumes.
+                  //
+                  // Lifted out of the filter below so it can also be called the
+                  // moment a report arrives -- see the SI flush after the
+                  // matching block. It was reachable ONLY from that filter,
+                  // which runs when the NEXT report arrives, and that is a
+                  // promise SI does not keep: it measures once and then falls
+                  // silent, so the one report of the part sat in the window
+                  // forever and was never uploaded. Moving the part eventually
+                  // shook it loose, which is why it looked intermittent rather
+                  // than broken.
+                  const _retire = (srep_inWindow) => {
+                        if (_retiredReports.has(srep_inWindow)) return;
+                        _retiredReports.add(srep_inWindow);
                         // The SAME per-製程 override the verdict is graded
                         // against further down (cur_MarginInfo -> resultGrading).
                         // The statistics used to read the ROOT shapes instead, so
@@ -349,6 +364,23 @@ function StateReducer(newState, action) {
                         }
 
                         reportStatisticState.newAddedReport.push(srep_inWindow);
+                  };
+
+                  //Check if the trackingWindow object is timeout(from tracking window)
+                  reportStatisticState.trackingWindow =
+                    reportStatisticState.trackingWindow.filter((srep_inWindow) => {
+                      // Already retired by the immediate flush: it was kept only
+                      // so the panel had something to show, and its statistics
+                      // were taken then. Drop it without counting it twice.
+                      if (_retiredReports.has(srep_inWindow)) return false;
+                      let tdiff = currentTime_ms - srep_inWindow.time_ms;
+                      if (tdiff < statSetting.keepInTrackingTime_ms) {
+                        return true;
+                      }
+                      //if the time is longer than 4s then remove it from matchingWindow
+                      if (srep_inWindow.repeatTime > statSetting.minReportRepeat
+                        && srep_inWindow.headSkipTime == 0) {
+                        _retire(srep_inWindow);
                       }
                       else {
                         log.error("the current data only gets few samples, ignore",
@@ -757,6 +789,25 @@ function StateReducer(newState, action) {
 
                     });
 
+                    // SI: TAKE THE RESULT NOW, NOT WHEN THE NEXT ONE ARRIVES.
+                    //
+                    // flushImmediately is set for modes that do not blend at all
+                    // (see statSettingOf). For those the tracking window is a
+                    // display buffer and nothing else, so there is nothing to
+                    // wait for -- and in SI there is nothing to wait FOR, because
+                    // the measurement is one-shot and the report stream stops
+                    // until the operator does something.
+                    //
+                    // The report is KEPT in the window after being retired so the
+                    // panel beside the picture still has it to show; the guard in
+                    // the filter above stops it being counted a second time.
+                    if (statSetting.flushImmediately) {
+                      reportStatisticState.trackingWindow.forEach((srep_inWindow) => {
+                        if (srep_inWindow.repeatTime > statSetting.minReportRepeat
+                          && srep_inWindow.headSkipTime == 0) _retire(srep_inWindow);
+                      });
+                    }
+
                     //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
                     //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
                     reportStatisticState.trackingWindow =
@@ -863,7 +914,13 @@ function StateReducer(newState, action) {
             break;
             
           case UISEV.Image_Update:
-            newState.edit_info = { ...newState.edit_info, img: action.data };
+            // fromStream: this frame was PUSHED by a running stream rather than
+            // requested by a screen. One slot carries both -- a def's own
+            // picture, a CHECK result, and every viewfinder frame -- so the
+            // difference has to travel with the image.
+            newState.edit_info = { ...newState.edit_info,
+              img: (action.data && action.FROM_LIVE_STREAM === true)
+                ? { ...action.data, fromStream: true } : action.data };
             break;
 
 
@@ -902,6 +959,21 @@ function StateReducer(newState, action) {
               // build to report.
               newState.edit_info = { ...newState.edit_info,
                 station: GetObjElement(action,["data","station"]),
+                // SI PROGRESS, and it has to land HERE rather than on
+                // inspReport.
+                //
+                // An accumulating SI frame carries no measurement -- the core
+                // sends an empty report object with only this block on it --
+                // so it has no `type`, and EVENT_Inspection_Report below
+                // returns on the first line without building inspReport at
+                // all. The button was reading inspReport.si, which therefore
+                // never appeared: the operator pressed 量測 and the screen
+                // said nothing, all the way through a successful run and,
+                // worse, through a failed one.
+                //
+                // Sibling of station, for the same reason station is one: it
+                // describes the FRAME, not any object located in it.
+                si: GetObjElement(action,["data","si"]),
                 // WHICH LOCALIZER RAN -- from the core, not from the def.
                 //
                 // A def asking for shape_based gets it only if shape training
@@ -916,6 +988,10 @@ function StateReducer(newState, action) {
                   wall_ms:  GetObjElement(action,["data","insp_wall_ms"]),
                   cpu_ms:   GetObjElement(action,["data","insp_cpu_ms"]),
                   build_ms: GetObjElement(action,["data","def_build_ms"]),
+                  // The per-phase breakdown of THIS frame, names as the core
+                  // produced them. Absent against an older core, and then the
+                  // caption simply has one less line.
+                  phase_ms: GetObjElement(action,["data","insp_phase_ms"]),
                 } };
 
               //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
@@ -952,13 +1028,46 @@ function StateReducer(newState, action) {
             }
             break;
 
+          case DefConfAct.EVENT.Instrument_Mmpp_Set: {
+            // Dropping the old signature is half the fix and the less obvious
+            // half. getEditorMmpp reads sig360info FIRST, and a retake does not
+            // clear it -- so without this the previous def's mmpp keeps winning
+            // and the number set here would never be read. The signature also
+            // describes a part that is no longer in the picture.
+            // Assigned, not Setsig360info(null): that setter dereferences
+            // sig360info.reports[0] on its first line. The def loader's own
+            // no-signature branch does exactly this.
+            newState.edit_info._obj.sig360info = null;
+            newState.edit_info._obj.instrumentMmpp = action.data;
+            newState.edit_info.inherentShapeList =
+              newState.edit_info._obj.UpdateInherentShapeList();
+            break;
+          }
+
           case DefConfAct.EVENT.Def_Retake: {
             // Same key set the def loader resets, for the same reason: another
             // def's recipe settings are worse than none, because they configure
             // a locator that then looks right.
+            //
+            // keepMeasurements narrows that to the LOCALIZER's keys: the picture
+            // changed, so registration / trained features / extraction regions
+            // are gone whatever happens, but the calipers and the matching
+            // parameters were authored against the part, not against the frame,
+            // and re-drawing them for every retake is the thing this mode exists
+            // to avoid.
+            const _keep = !!(action.data && action.data.keepMeasurements);
             const _blank = Edit_info_Empty();
-            for (const k of DEF_SCOPED_EDIT_INFO_KEYS) newState.edit_info[k] = _blank[k];
-            newState.edit_info._obj.SetShapeList([]);
+            const _keys = _keep ? DEF_LOCALIZER_SCOPED_KEYS : DEF_SCOPED_EDIT_INFO_KEYS;
+            for (const k of _keys) newState.edit_info[k] = _blank[k];
+            if (_keep) {
+              // The localization polygons live in the shape list and belong to
+              // the localizer, so they go with it -- everything else stays.
+              newState.edit_info._obj.SetShapeList(
+                (newState.edit_info._obj.shapeList || []).filter(
+                  (sh) => !(sh && (sh.type === 'loc_include' || sh.type === 'loc_exclude'))));
+            } else {
+              newState.edit_info._obj.SetShapeList([]);
+            }
             newState.edit_info.edit_tar_info = null;
             newState.edit_info.inherentShapeList = newState.edit_info._obj.UpdateInherentShapeList();
             // What is on screen is no longer the saved def's reference image, so
@@ -1135,6 +1244,48 @@ function StateReducer(newState, action) {
               if (action.data === 'sig360' || action.data === 'shape_based') {
                 newState.edit_info = { ...newState.edit_info, locating_engine: action.data };
               }
+              // THE PRIMITIVES FOLLOW THE ENGINE, HERE, IN THE EDITOR'S OWN SHAPES.
+              //
+              // shape_based has no contour grid, so every line/arc/search point
+              // must locate by caliper. That conversion used to live only in
+              // defFileGeneration, on the OUTPUT: what the core got and what the
+              // file said were converted, what the canvas and the property sheet
+              // showed were not. Right after 升級 some primitives drew as caliper
+              // (the ones the core's reply had attached hits to), the rest as
+              // contour, and the caliper fields were empty boxes -- until a save
+              // and a reload made the file the truth. Reported 2026-09-04.
+              //
+              // Here, because this is the one place the engine changes: the
+              // migration button, the settings radio, TAKE and the studio opener
+              // all dispatch this. Same function as the save path, so the two
+              // cannot disagree; the save path stays as the safety net for a
+              // primitive drawn after the flip. Flat arcs are LEFT contour and
+              // listed in __primitive_migration for the UI to name -- they need
+              // re-teaching, and converting them measures a wrong radius that
+              // passes (see _caliperSeed).
+              if (action.data === 'shape_based' && newState.edit_info._obj
+                  && Array.isArray(newState.edit_info._obj.shapeList)) {
+                const _obj = newState.edit_info._obj;
+                const mmpp = _obj.getEditorMmpp ? _obj.getEditorMmpp() : 1;
+                const converted = [], left = [];
+                let changed = false;
+                const next = _obj.shapeList.map((s) => {
+                  const r = convertShapeForShapeBased(s, mmpp);
+                  const label = (s && (s.name || ('id ' + s.id))) || '?';
+                  if (r.action === 'converted') { converted.push(label); changed = true; }
+                  else if (r.action === 'left_contour_arc') left.push(label);
+                  return r.shape;
+                });
+                if (changed) {
+                  _obj.SetShapeList(next);
+                  newState.edit_info.edit_tar_info = null;
+                  newState.edit_info.__decorator.list_id_order =
+                    UpdateListIDOrder(newState.edit_info.__decorator.list_id_order, _obj.shapeList);
+                  newState.edit_info.inherentShapeList = _obj.UpdateInherentShapeList();
+                }
+                if (changed || left.length)
+                  newState.edit_info.__primitive_migration = { converted, leftContourArcs: left, at: Date.now() };
+              }
               break;
             }
 
@@ -1150,21 +1301,36 @@ function StateReducer(newState, action) {
                 // CHANGING THE REGISTRATION OR THE ROI POINTS INVALIDATES THE
                 // TRAINED FEATURES — but do NOT throw them away.
                 //
-                // The core fingerprints __shape_cache over the reference image,
-                // the extraction thresholds, the ROI points AND
-                // def_image_reg.angle, so after a change the cache no longer
-                // matches and the def falls back to sig360.
+                // The core no longer refuses a cache whose fingerprint has
+                // moved -- it loads it and warns. So this flag no longer means
+                // "the def is about to fall back to sig360"; it means the
+                // features, and the crop and origin that came with them, are
+                // older than the registration on screen, and that registration
+                // is therefore not in effect yet.
                 //
-                // Deleting it was the first fix and it made things worse: the
-                // def then leaves the studio with NO features at all, which is
-                // strictly less recoverable than a stale set. Keep the last one
-                // that WORKED, together with the settings it was trained
-                // against, so there is always something to go back to.
+                // Still worth tracking, for two reasons: it is the only thing
+                // that can tell the operator a setting is waiting for a
+                // generation, and __shape_lastGood is the revert.
+                //
+                // Deleting the cache was the first fix and it made things
+                // worse: the def then leaves the studio with NO features at
+                // all, which is strictly less recoverable than an older set.
+                // Keep the last one that WORKED, together with the settings it
+                // was trained against, so there is always something to go back
+                // to.
                 //
                 // Nothing here decides what to do about it. The save path does,
                 // because that is the last moment a def can still be fixed.
-                const touched = ['def_image_reg', 'roi_refine_points']
-                  .filter((k) => k in action.data);
+                // roi_refine_points is NOT here, and that is the point.
+                //
+                // They are attached to the feature set after extraction, never
+                // fed into it, and the core rebuilds them from the def on every
+                // cache load -- so moving one has never changed a feature. It
+                // was listed anyway, which meant adding a refine point marked
+                // the whole set stale and demanded a regeneration that produced
+                // byte-identical features. The core's fingerprint dropped them
+                // in the same change.
+                const touched = ['def_image_reg'].filter((k) => k in action.data);
                 if (touched.length && newState.edit_info.__shape_cache
                     && !newState.edit_info.__shape_stale) {
                   newState.edit_info.__shape_stale = touched.join('+');

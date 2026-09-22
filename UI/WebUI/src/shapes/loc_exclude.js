@@ -11,5 +11,5 @@ export function applyDefaults(shape) { return applyDefaultsRegion(shape); }
 export function availableRefShapes() { return availableRefShapesRegion(); }
 export function fitCameraCenter(shape) { return fitCameraCenterRegion(shape); }
 
-export const draw = makeDraw('#ff5252');           // red = exclude
+export const draw = makeDraw('exclude');           // red = exclude
 export const PropertySheet = makePropertySheet('loc_exclude');

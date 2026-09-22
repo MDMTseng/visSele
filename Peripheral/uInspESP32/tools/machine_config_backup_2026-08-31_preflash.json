@@ -1,0 +1,161 @@
+{
+ "ver": "0.0.0 Alpha",
+ "name": "uInspESP32",
+ "stage_pulse_offset": {
+  "L1A_on": 8000,
+  "L1A_off": 8040,
+  "CAM1_on": 8010,
+  "CAM1_off": 8030,
+  "L2A_on": 9317,
+  "L2A_off": 9384,
+  "CAM2_on": 9317,
+  "CAM2_off": 9384,
+  "SWITCH": 29900,
+  "SEL1_on": 30000,
+  "SEL1_off": 31000,
+  "SEL2_on": 30010,
+  "SEL2_off": 31010,
+  "SEL3_on": 30020,
+  "SEL3_off": 31020
+ },
+ "plate": {
+  "freq": 0,
+  "accel": 2000,
+  "pulses_per_rev": 70400,
+  "diameter_mm": 240,
+  "stepper_en_active": 1,
+  "stepper_dir": 0,
+  "speed_band_pct": 0
+ },
+ "gate": {
+  "min_detect_sep_us": 14286,
+  "gate_ref": "trailing",
+  "pulse_min_width": 120,
+  "pulse_max_width": 1000,
+  "debounce_rise": 2,
+  "debounce_fall": 2,
+  "min_detect_dist_um": 1703
+ },
+ "cam": {
+  "report_match_ts": true,
+  "match_window_us": 5000,
+  "match_tolerance_mm": 0,
+  "match_tolerance_mm_eff": 0,
+  "recal_idle_ms": 10000,
+  "cal_pulse_us": 600,
+  "drift_comp": true
+ },
+ "stage_pulse_width_us": {
+  "CAM1": 1000,
+  "L1A": 2000,
+  "CAM2": 3333,
+  "L2A": 3333,
+  "SEL1": 50000,
+  "SEL2": 50000,
+  "SEL3": 50000
+ },
+ "stage_pulse_center": {
+  "CAM1": 0,
+  "L1A": 0,
+  "CAM2": 0,
+  "L2A": 0,
+  "SEL1": 0,
+  "SEL2": 0,
+  "SEL3": 0
+ },
+ "skip_policy": {
+  "mode": "stop_only",
+  "stop_after": 5,
+  "nomatch_stop_after": 8
+ },
+ "io_armed": true,
+ "io_on_level": {
+  "L1A": 0,
+  "CAM1": 0,
+  "L2A": 0,
+  "CAM2": 0,
+  "SEL1": 0,
+  "SEL2": 0,
+  "SEL3": 0,
+  "FEEDER": 0
+ },
+ "machine_id": "uI-E8232CB267AC",
+ "cfg_from_nvs": true,
+ "host_timeout_ms": 1000,
+ "io_map": [
+  {
+   "name": "L1A",
+   "pin": 16,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "CAM1",
+   "pin": 17,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "L2A",
+   "pin": 18,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "CAM2",
+   "pin": 19,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "SEL1",
+   "pin": 25,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "SEL2",
+   "pin": 26,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "SEL3",
+   "pin": 32,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "FEEDER",
+   "pin": 21,
+   "dir": "out",
+   "on_level": 0
+  },
+  {
+   "name": "GATE",
+   "pin": 27,
+   "dir": "in"
+  },
+  {
+   "name": "STEPPER_PLS",
+   "pin": 22,
+   "dir": "out"
+  },
+  {
+   "name": "STEPPER_DIR",
+   "pin": 23,
+   "dir": "out"
+  },
+  {
+   "name": "STEPPER_EN",
+   "pin": 13,
+   "dir": "out"
+  }
+ ],
+ "cfg_crc": 1015489339,
+ "cfg_stale_n": 2,
+ "cfg_stale_keys": "skip_policy.nomatch_stop_after,io_map",
+ "cfg_stale_values": "skip_policy.nomatch_stop_after=8,io_map=<568 bytes>",
+ "id": null,
+ "ack": true
+}

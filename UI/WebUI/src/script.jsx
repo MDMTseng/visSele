@@ -15,6 +15,7 @@ import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
 import {CameraParamPanel} from './component/CameraParamPanel.jsx';
 import {CoreStatusPanel} from './component/CoreStatusPanel.jsx';
 import {DBStatusPanel} from './component/DBStatusPanel.jsx';
+import OrphanDefFinder from './component/OrphanDefFinder.jsx';
 
 // Ask the CAMERA what its trigger configuration is, right now.
 //
@@ -81,7 +82,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue,PostfixExpCalc,Exp2PostfixExp,round,dictLookUp,CircularCounter} from 'UTIL/MISC_Util';
+import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue,PostfixExpCalc,Exp2PostfixExp,round,dictLookUp,CircularCounter,defFileGeneration} from 'UTIL/MISC_Util';
 import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -94,7 +95,7 @@ import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
-import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
+import { persistPending, deletePending, getPendingBySource, pendingInsertCount, deletePendingBySource, purgedCount } from 'UTIL/inspDBQueue';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
@@ -184,12 +185,21 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   });
   // Test hooks for the diagnostics ring buffer + local failed-insert queue.
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
-  window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount };
+  window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount, deletePendingBySource, purgedCount };
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
-  window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
+  window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue, defFileGeneration }; // pure utils for QA
   // Live view of the perif link store (a function, so it's always current).
-  import('./perif/PerifAPI').then(m => { window.__GP_PERIF_LINKS__ = m.getPerifLinksSnapshot; });
+  //
+  // getPerifAPI comes with it: the peripheral is the half of the machine a
+  // browser-driven check cannot otherwise reach, and the backlight is the
+  // obvious case -- a CI check against a dark plate proves nothing, and the
+  // only way to light it from outside the panel is this handle. QA-only, same
+  // as every other __GP_ hook here, and stripped from production with them.
+  import('./perif/PerifAPI').then(m => {
+    window.__GP_PERIF_LINKS__ = m.getPerifLinksSnapshot;
+    window.__GP_PERIF__ = m.getPerifAPI;
+  });
   window.__GP_LOG__ = log; // loglevel module — for QA to verify the diag ring captures loglevel output
 }
 
@@ -273,6 +283,13 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
       // because a machine that may not be sorting deserves red, not grey.
       case "WS_SUSPECT":
         return "color-error-anim";
+      // The port is open and the device has not yet proved it is there --
+      // no answered PING, or no configuration read back. Green would say the
+      // machine is ready to sort when nobody has heard from it, and grey would
+      // say it is absent when the link may be seconds from coming up. Its own
+      // colour, because it is its own state.
+      case "WS_PENDING":
+        return "color-pending-anim";
       default:
         return "color-noresource-anim";
         break;
@@ -292,17 +309,39 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   // peripheral row's click -- 全檢設備v2「設定/診斷」叫不出面板就是這個。
   const _linkToConn = (link, id) => {
     if (!link || (link.state === 'DISCONNECTED' && link.connInfo === undefined)) return undefined;
-    const t = link.state === 'CONNECTED' ? 'WS_CONNECTED'
+    // CONNECTED only means the core opened the port. Until the device has
+    // answered a PING and (where it owns its config) handed its settings back,
+    // it is PENDING -- see the store-shape note in PerifAPI.js.
+    const pending = link.pingSeen === false || link.cfgSeen === false;
+    const t = link.state === 'CONNECTED' ? (pending ? 'WS_PENDING' : 'WS_CONNECTED')
       : link.state === 'SUSPECT' ? 'WS_SUSPECT'
       : 'WS_DISCONNECTED';
-    return { id, type: t, brief_info: link.state === 'SUSPECT' ? '連線異常' : undefined };
+    // Say WHICH half is missing. "連線中" for both would send whoever is
+    // standing at the machine to look at the cable when the cable is fine and
+    // the board simply has not answered get_setup yet.
+    const brief = t === 'WS_SUSPECT' ? '連線異常'
+      : t !== 'WS_PENDING' ? undefined
+      : link.pingSeen === false ? '尚未回應' : '讀取設定中';
+    return { id, type: t, brief_info: brief };
   };
   const uInspConn      = _linkToConn(usePerifLink(ConnInfo.uInsp_API_ID),      ConnInfo.uInsp_API_ID);
   const uInspESP32Conn = _linkToConn(usePerifLink(ConnInfo.uInspESP32_API_ID), ConnInfo.uInspESP32_API_ID);
   const SLIDConn       = _linkToConn(usePerifLink(ConnInfo.SLID_API_ID),       ConnInfo.SLID_API_ID);
   const CNCConn        = _linkToConn(usePerifLink(ConnInfo.CNC_API_ID),        ConnInfo.CNC_API_ID);
 
-  return [
+  // A GRID, not a row of floated buttons.
+  //
+  // In flow layout a tile that is one line taller than its neighbours does not
+  // just look wrong, it pushes the tiles after it into a column down the side:
+  // the row breaks where the tall one ends. A grid gives every tile a cell of
+  // its own, the columns are decided by the container's width rather than by
+  // the labels, and a tall tile only makes ITS OWN ROW taller. Nothing a name
+  // does can move a tile into a different column.
+  //
+  // auto-fill + minmax means the same code lays out the wide system panel
+  // (gridSize 100 -> as many columns as fit) and the narrow edge strip
+  // (gridSize 30 inside a 50px button -> one column).
+  const tiles = [
     [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
@@ -317,9 +356,10 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     .map(([textName, conn_info, icon,froceAppear],idx)=>{
       let brief_info= GetObjElement(conn_info,["brief_info"]);
       return(
-      <Button size="large" key={`stat ${textName} ${idx}`} style={gridStyle} 
+      <Button size="large" key={`stat ${textName} ${idx}`} style={gridStyle}
       type="text" //disabled={!systemConnectState.core}
-      className={"s HXA "+connectionStatus2CSSColor(conn_info)} 
+      title={[textName, brief_info].filter(Boolean).join(' — ')}
+      className={"s HXA "+connectionStatus2CSSColor(conn_info)}
       onClick={()=>onItemClick(conn_info)}>
         <div 
           className={"antd-icon-sizing veleX"} 
@@ -328,12 +368,35 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           {icon}
         </div>
             {(showText==false)?null:
-              <>
-                <span className="veleX" style={{whiteSpace:"normal", wordBreak:"break-word", textAlign:"center", lineHeight:1.15, display:"block"}}>{textName}<br/>{brief_info}</span>
+              // EXACTLY TWO LINES, always. One for the name, one for the brief
+              // state -- a non-breaking space when there is none, so a tile
+              // without state is not a line shorter than its neighbours.
+              //
+              // The state line may NOT wrap. It carries whatever the device
+              // calls itself, and BMP_CAM in a 100px tile broke as "BMP_CA /
+              // M": three lines, a tile taller than the row, and the tiles
+              // after it pushed into a column down the side. A name is short
+              // CJK and fits; a state string is arbitrary, so it truncates
+              // with an ellipsis and says the rest on the tile's title.
+              <span className="veleX"
+                style={{textAlign:"center", lineHeight:1.15, display:"block", width:"100%"}}>
+                <span style={{display:"block", whiteSpace:"normal", wordBreak:"break-word"}}>
+                  {textName}
+                </span>
+                <span style={{display:"block", whiteSpace:"nowrap",
+                              overflow:"hidden", textOverflow:"ellipsis"}}>
+                  {brief_info || ' '}
+                </span>
+              </span>}
+      </Button>)});
 
-              </>}
-      </Button>)})
-
+  return (
+    <div style={{ display: 'grid',
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))`,
+                  justifyItems: 'center', alignItems: 'start', gap: 2 }}>
+      {tiles}
+    </div>
+  );
 }
 
                     
@@ -630,6 +693,8 @@ class APPMasterX extends React.Component {
         dispatch(act)
       },
       ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
+      // Plain payload, no BPG envelope -- what the DB sockets take.
+      ACT_WS_SEND_PLAIN: (id, data, return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id, data, return_cb)),
       ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
       ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
       ACT_System_Setting_Update: (sysSetting) => dispatch({type:"System_Setting_Update",data:sysSetting}),
@@ -640,6 +705,10 @@ class APPMasterX extends React.Component {
       showSM_graph: state.UIData.showSM_graph,
       stateMachine: state.UIData.sm,
       CORE_ID: state.ConnInfo.CORE_ID,
+      // For the orphan finder in the 設定DB modal: where the machine keeps its
+      // recipes, and where its database lives.
+      machine_custom_setting: state.UIData.machine_custom_setting,
+      edit_info: state.UIData.edit_info,
       Insp_DB_W_ID: state.ConnInfo.Insp_DB_W_ID,
       DefFile_DB_W_ID:state.ConnInfo.DefFile_DB_W_ID,
       CAM1_ID:state.ConnInfo.CAM1_ID,
@@ -670,7 +739,7 @@ class APPMasterX extends React.Component {
   }
 
 
-  WSDataDispatch(pkts) {
+  WSDataDispatch(pkts, unsolicited = false) {
     // Camera-state doorbell (core CamStateWatchThread): the core pushes this
     // tiny GS batch whenever the camera's health CHANGES. It is a doorbell,
     // not a data update -- re-run the normal camera_info query immediately so
@@ -680,6 +749,17 @@ class APPMasterX extends React.Component {
     if (doorbell) {
       log.info("[cam-doorbell] camera state changed, re-querying", doorbell.data.camera_state);
       if (this.camStatQuery) this.camStatQuery.pokeNow();
+      // The camera's frame-rate ceiling is part of what just changed (the core
+      // has it in the doorbell's change key), and the board sizes its admission
+      // cap from it under gate.cam_mode "auto". Re-read perif_pairing now so the
+      // relay in queryLinkHealthNow forwards it, instead of the board carrying
+      // a stale ceiling until the 30s safety-net poll.
+      //
+      // Which direction that matters in: a ROI made SMALLER leaves the board
+      // slower than it needs to be, costing throughput. A ROI made LARGER, or a
+      // longer exposure, leaves it asking for frames the camera can no longer
+      // deliver -- unanswered parts, and sustained, a stop.
+      pokeLinkHealthNow();
     }
     // Perif-link doorbell (core pgID 0xCA12): the link summary changed --
     // counters moving, suspect flip, channel gone. Re-read perif_pairing now
@@ -692,7 +772,13 @@ class APPMasterX extends React.Component {
     let acts = {
       type: "ATBundle",
       ActionThrottle_type: "express",
-      data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined),
+      data: pkts.map(pkt => {
+        const act = BPG_Protocol.map_BPG_Packet2Act(pkt);
+        // Marks a frame nobody asked for. The editor canvases use it to stay
+        // on the picture the operator is working on; the live views ignore it.
+        if (act && unsolicited) act.FROM_LIVE_STREAM = true;
+        return act;
+      }).filter(act => act !== undefined),
       //rawData:req_pkt
     };
     //console.log(pkts,acts);
@@ -950,6 +1036,47 @@ class APPMasterX extends React.Component {
         armed();
       }
 
+      // THROW THE BACKLOG AWAY, both copies of it.
+      //
+      // Two stores hold unsent records and clearing one of them is worse than
+      // clearing neither: leave cQ and the records upload anyway (the button
+      // lied); leave IndexedDB and the next reconnect replays what was just
+      // deleted (the button lied slower). So drain the live queue FIRST -- while
+      // it holds entries the socket can still be sending them -- then delete the
+      // durable copies, then let replays run again.
+      //
+      // A record already on the wire may still be inserted at the far end. There
+      // is no take-backs on a send that left; the count returned is what was
+      // removed here, not a promise about what the remote DB now holds.
+      purgePending()
+      {
+        this._purgeEpoch = (this._purgeEpoch || 0) + 1;
+        const wasReplaying = this._replaying;
+        this._replaying = true;          // block a new replay across the gap
+        let fromQueue = 0;
+        try {
+          while (true) {
+            const item = this.cQ.deQ();
+            if (item === undefined) break;
+            fromQueue++;
+            try { if (item.reject) item.reject("已由操作人員刪除"); }
+            catch (e) { /* a waiter that throws must not stop the purge */ }
+          }
+        } catch (e) { log.error("purge: draining the live queue failed", e); }
+
+        return deletePendingBySource(this.id)
+          .then((fromDisk) => {
+            log.warn("DB_WS[" + this.id + "] operator purged " + fromQueue
+              + " queued + " + fromDisk + " buffered record(s)");
+            return { fromQueue, fromDisk };
+          })
+          .catch((e) => {
+            log.error("purge: deleting the local buffer failed", e);
+            throw e;
+          })
+          .finally(() => { this._replaying = wasReplaying ? true : false; });
+      }
+
       _doReplay()
       {
         // Replay in CHUNKS, yielding between them.
@@ -969,7 +1096,18 @@ class APPMasterX extends React.Component {
             log.info("DB_WS[" + this.id + "] replaying " + items.length + " buffered inserts");
             const CHUNK = 200;
             let i = 0;
+            // `items` outlives the task that read it. If an operator purges the
+            // queue between two chunks, the rest of this list is records that no
+            // longer exist -- and re-queuing them would undo the deletion one
+            // chunk at a time, which looks exactly like the delete button not
+            // working. Stamp the epoch and stop when it moves.
+            const epoch = this._purgeEpoch || 0;
             const pump = () => {
+              if ((this._purgeEpoch || 0) !== epoch) {
+                log.info("DB_WS[" + this.id + "] replay abandoned at " + i
+                  + "/" + items.length + " -- the queue was purged");
+                return;
+              }
               const end = Math.min(i + CHUNK, items.length);
               for (; i < end; i++) {
                 const it = items[i];
@@ -1020,6 +1158,30 @@ class APPMasterX extends React.Component {
       getDataQueueCount()
       {
         return this.cQ.size();
+      }
+
+      // A QUESTION, NOT A RECORD.
+      //
+      // send() exists to insert: it stamps
+      //   { dbcmd: { db_action: "insert" }, data }
+      // around whatever it is given, persists it to IndexedDB first, and retries
+      // it until the server confirms. Handing it a query therefore does the
+      // worst possible thing -- it wraps the question in an insert envelope and
+      // WRITES IT, so asking "is this def present?" created an empty document in
+      // DefineFile (2026-09-17T04:42:02Z, still there) and the caller got an
+      // insert ACK back instead of an answer.
+      //
+      // So queries go out here instead: straight down the tracked socket, no
+      // envelope of ours, no queue, no persistence. The reply is matched by
+      // req_id like any other and resolves this promise.
+      //
+      // Nothing durable about it, deliberately -- a question whose answer
+      // arrives after a reconnect is a question worth asking again, not one
+      // worth replaying.
+      query(obj)
+      {
+        if (!this.websocket) return Promise.reject(new Error("no socket"));
+        return this.websocket.send_obj({ ...obj });
       }
 
       send(info)
@@ -1677,6 +1839,20 @@ class APPMasterX extends React.Component {
                       view_fn:()=><>
                         <DBStatusPanel id={_dbId} title={_title} connInfo={_ci}
                           getObj={(cb)=>this.props.ACT_WS_GET_OBJ(_dbId, cb)} />
+                        {/* Only on 設定DB. Orphans are a def problem, the fix is
+                            a def upload, and this is the socket it goes out on
+                            -- putting it under 檢測DB would be a control that
+                            does not belong to the link it is filed under. */}
+                        {_dbId === this.props.DefFile_DB_W_ID ? (
+                          <OrphanDefFinder
+                            machineSetting={this.props.machine_custom_setting}
+                            defFolder={(() => {
+                              const p = this.props.edit_info && this.props.edit_info.defModelPath;
+                              return p ? p.substr(0, p.lastIndexOf('/') + 1) : 'data/';
+                            })()}
+                            BPG_Channel={(...args) => this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, ...args)}
+                            DB_SEND={(data) => this.props.ACT_WS_SEND_PLAIN(_dbId, data)} />
+                        ) : null}
                         <details style={{marginTop:10}}>
                           <summary style={{cursor:"pointer", color:"#888"}}>連線資訊(原始)</summary>
                           <pre style={{maxHeight:240, overflow:"auto", fontSize:11}}>

@@ -31,6 +31,17 @@ const DEFAULTS = {
   // should be editing this file.
   splashHoldMs: 3000,
 
+    // Start the application as soon as the launcher is up.
+  //
+  // True on a machine on the line: power on, inspect, no one present to press
+  // anything. False is for a bench or a service visit, where the launcher IS
+  // the thing you came to use and starting the core just takes the window away.
+  //
+  // It is NOT the answer to "an update is waiting". That case is handled on its
+  // own below, because an operator who is about to be asked a question should
+  // not have the screen replaced while the question is still being computed.
+  autoStart: true,
+
   // Where installed application versions live, and the current.json that says
   // which one runs. Operator-settable: it may belong on a data drive, or be
   // shared between accounts. Defaults to <userData>/apps.
@@ -107,6 +118,19 @@ const DEFAULTS = {
   // pathIssues().
   updateSource: null,
 
+  // Look in updateSource at start-up and ASK if something is waiting.
+  //
+  // Checking is not applying. This decides whether the launcher looks and
+  // raises the question; the answer is always the operator's, on the prompt,
+  // every time. There is deliberately no setting that installs without being
+  // asked -- an update nobody chose the moment for is the thing the whole
+  // next-start rule exists to prevent.
+  //
+  // On by default: a machine that silently stops noticing new versions is a
+  // machine that quietly falls behind the fleet, and nobody finds out until
+  // they are comparing behaviour between two units.
+  checkUpdates: true,
+
   // --- supervision --------------------------------------------------------
   // These are launcher behaviour, not application layout. Anything the
   // APPLICATION knows better -- its control port, how long it needs to become
@@ -177,6 +201,8 @@ class Config {
   get updateSource() {
     return this.values.updateSource || null;
   }
+
+  get checkUpdates() { return this.values.checkUpdates !== false; }
 
   // The paths that would let one job of this launcher destroy another's data.
   //

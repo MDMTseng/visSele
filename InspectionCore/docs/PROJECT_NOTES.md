@@ -21,7 +21,9 @@ Monorepo `/Users/mdm/workspace/visSele/`:
 - **`UI/WebUI`** — the operator web UI (webpack dev server, ~:8080). Connects to the
   core over BPG/WebSocket. Has a **"check golden sample"** feature that runs the real
   inspection on the stored golden image (great for testing without a camera).
-- **`UI/WebUI2`, `UI/InspectionMonitor`, `Electron_XPLAT`** — other UI pieces.
+- **`UI/WebUI2`, `UI/InspectionMonitor`** — other UI pieces. (`Electron_XPLAT`,
+  the v1 launcher, and `DB/InspQueryServer` were removed 2026-09-23: both were
+  dead, and between them carried 213 of the repo's 610 dependency alerts.)
 - **`Peripheral/`** — ESP32 / stepper / EtherCAT motion + sensor firmware.
 
 ### The measurement engine (where the rework lives)

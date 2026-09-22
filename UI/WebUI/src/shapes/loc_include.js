@@ -11,5 +11,5 @@ export function applyDefaults(shape) { return applyDefaultsRegion(shape); }
 export function availableRefShapes() { return availableRefShapesRegion(); }
 export function fitCameraCenter(shape) { return fitCameraCenterRegion(shape); }
 
-export const draw = makeDraw('#00c853');           // green = include
+export const draw = makeDraw('include');           // green = include
 export const PropertySheet = makePropertySheet('loc_include');

@@ -576,7 +576,85 @@ export function isTagFulFillRequrement(tags,tagGroupsInfo)
     return true
   },true)
 }
-export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,size="large"}) => {
+// The same rule as isTagFulFillRequrement, but it says WHICH groups fail and
+// how, so the operator can be told instead of staring at a grey play button.
+// One entry per violated group: over max (mutually exclusive tags both picked)
+// or under min (a required group left empty), with the tags that matched.
+export function tagGroupViolations(tags,tagGroupsInfo)
+{
+  const list=Array.isArray(tags)?tags:[];
+  const out=[];
+  for(const group of tagGroupsInfo){
+    const matched=list.filter((t)=>group.tags.indexOf(t)>-1);
+    if(group.maxCount!==undefined && matched.length>group.maxCount)
+      out.push({name:group.name,kind:'max',matched,maxCount:group.maxCount});
+    else if(group.minCount!==undefined && matched.length<group.minCount)
+      out.push({name:group.name,kind:'min',matched,minCount:group.minCount});
+  }
+  return out;
+}
+// TAGS THIS OPERATOR KEEPS TYPING, so they stop having to.
+//
+// Two lists, one storage. RECENT is written by use -- a tag typed into the box
+// goes in, most recent first -- and PINNED is written by the operator, and
+// outranks recency: a pin is a statement that this one matters regardless of
+// when it was last needed.
+//
+// localStorage, per browser, because that is what "this operator's shortcuts"
+// means. It is a convenience: every read and write is guarded, and the whole
+// feature is absent rather than broken if storage is unavailable (a private
+// window, blocked site data). Nothing here changes what a def contains.
+// TODAY, as a tag: 20260917.
+//
+// LOCAL date, not UTC. The operator's day is the one the shift runs on, and on
+// this side of the world UTC rolls over mid-afternoon -- a batch tagged after
+// that would carry tomorrow's date, which is exactly the kind of error nobody
+// finds until they are looking for the batch a month later.
+function todayTag() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return String(d.getFullYear()) + p(d.getMonth() + 1) + p(d.getDate());
+}
+
+const LS_RECENT = 'visSele.tags.recent.v1';
+const LS_PINNED = 'visSele.tags.pinned.v1';
+// Ten. Short on purpose: this list is a shortcut, and a shortcut stops being
+// one at the point you have to read it. Past ten the pin is the only thing that
+// reliably finds a tag, and the pin is not capped.
+const RECENT_CAP = 10;
+
+function lsRead(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x) : [];
+  } catch (_) { return []; }
+}
+function lsWrite(key, list) {
+  try { localStorage.setItem(key, JSON.stringify(list)); } catch (_) { /* no-op */ }
+}
+// Most recent first, no duplicates, capped.
+//
+// A PINNED tag does not count against the cap and is never evicted by it: the
+// cap is there to keep the recency list short, and dropping something the
+// operator explicitly kept would be the cap overruling them.
+function rememberTags(tags) {
+  const prev = lsRead(LS_RECENT);
+  const pins = new Set(lsRead(LS_PINNED));
+  const next = [...tags];
+  for (const t of prev) if (!next.includes(t)) next.push(t);
+  // Count only the unpinned ones against the cap; the pinned ones are kept
+  // wherever they fall, because they are shown from the pinned list anyway and
+  // evicting them here would lose the recency order they come back in with if
+  // the operator ever unpins one.
+  let kept = 0;
+  lsWrite(LS_RECENT, next.filter((t) => pins.has(t) || ++kept <= RECENT_CAP));
+}
+
+// newTagFooter: keep the 新標籤 input OUT of the scrolling list and pin it to
+// the bottom of this box. Without it the input is the last thing in the list, so
+// it scrolls away exactly when the list is long enough to make typing a new tag
+// the reasonable thing to do.
+export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,size="large",newTagFooter=false}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
   const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
   const MachTag = useSelector(state => state.UIData.MachTag);
@@ -585,11 +663,57 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
  
   
   const [newTagStr,setNewTagStr]=useState([]);
+  const [tagBoxOpen,setTagBoxOpen]=useState(false);
+  const [pinned,setPinned]=useState(()=>lsRead(LS_PINNED));
+  const [recent,setRecent]=useState(()=>lsRead(LS_RECENT));
+  const addTags=(list)=>{
+    const add=list.filter((t)=>!inspOptionalTag.includes(t));
+    if(add.length) ACT_InspOptionalTag_Update([...inspOptionalTag,...add]);
+    rememberTags(list);
+    setRecent(lsRead(LS_RECENT));
+  };
+  const togglePin=(tag)=>{
+    const next = pinned.includes(tag) ? pinned.filter((t)=>t!==tag) : [tag,...pinned];
+    setPinned(next); lsWrite(LS_PINNED,next);
+  };
+  // Pinned first, then recent; a tag already selected is dropped -- offering a
+  // shortcut to something that is already on is a row that can only disappoint.
+  // Typing filters both, so the box doubles as completion.
+  const shortcutTags = (()=>{
+    const q = (typeof newTagStr==='string' ? newTagStr : '').trim().toLowerCase();
+    const seen = new Set();
+    const out = [];
+    // Everything the preset groups already offer is one tap away above, so it
+    // is not a shortcut -- it would only make this list a second copy of that
+    // one. What IS worth seeding: tags this machine and this def already carry
+    // and the groups do NOT, which is precisely the set somebody typed by hand.
+    const inGroups = new Set();
+    for (const g of tagGroups) for (const t of (g.tags || [])) inGroups.add(t);
+    const seeded = [...(MachTag || []), ...(defFileTag || [])]
+      .filter((t) => typeof t === 'string' && t && !inGroups.has(t));
+    for (const t of [...pinned, ...recent, ...seeded]) {
+      if (seen.has(t)) continue; seen.add(t);
+      if (inspOptionalTag.includes(t)) continue;
+      if (q && !t.toLowerCase().includes(q)) continue;
+      out.push(t);
+    }
+    return out;
+  })();
+  // Split, because the pinned ones are pinned to the BOX and not just to the
+  // front of a list: a list that has to be scrolled has lost the point of
+  // pinning by the time it is long enough to need scrolling.
+  const pinnedTags = shortcutTags.filter((t)=>pinned.includes(t));
+  const otherTags  = shortcutTags.filter((t)=>!pinned.includes(t));
 
   let warnIcon =<WarningOutlined style={{color:"#ff8b20"}}/>;
   let acceptIcon =<CheckOutlined style={{color:"#5191a5"}}/>;
 
-  let returnUI= <div className={className}>
+  let returnUI= <div className={className}
+    style={newTagFooter ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
+    {/* The groups scroll; the input below them does not. A plain wrapper when
+        the footer is off, so nothing changes for the other callers. */}
+    <div style={newTagFooter
+      ? { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } : undefined}>
     {
     tagGroups.map((group,g_idx)=>{
       let matchCount=inspOptionalTag.reduce((count,tag)=>(group.tags.indexOf(tag)>-1)?count+1:count,0);
@@ -648,6 +772,26 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
                   let newTags=[...inspOptionalTag,tag];
                   ACT_InspOptionalTag_Update(newTags);
                 }
+                else if(group.maxCount===1)
+                {
+                  // PICK-ONE GROUPS REPLACE RATHER THAN REFUSE.
+                  //
+                  // 檢測等級 and 已設定範圍 allow one tag, and a click on a
+                  // second one used to do nothing at all -- no movement, no
+                  // message. The operator had to work out for themselves that
+                  // the way to change the answer was to unset the old one
+                  // first, which is two actions and a guess for what reads as
+                  // one choice.
+                  //
+                  // Only for maxCount 1. Where several are allowed there is no
+                  // answer to "which of them did you mean to drop", and
+                  // choosing one on the operator's behalf would silently
+                  // discard something they set on purpose; those groups still
+                  // refuse, which is at least honest.
+                  let newTags=inspOptionalTag.filter((t)=>group.tags.indexOf(t)<0);
+                  newTags.push(tag);
+                  ACT_InspOptionalTag_Update(newTags);
+                }
                 else
                 {
                   //Over size pass
@@ -664,8 +808,108 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
       ]})
 
     }
-    <Divider orientation="left"></Divider>
+    </div>
+    <Divider orientation="left" style={newTagFooter ? { margin: '8px 0' } : undefined}></Divider>
+    {/* UPWARDS, because the input is at the bottom of the panel: a list that
+        opened downwards would open off the end of it. Absolutely positioned so
+        it covers the list rather than pushing it, which would move everything
+        the operator can see at the moment they are trying to aim at it. */}
+    <div style={{ position: 'relative', flex: '0 0 auto' }}>
+      {tagBoxOpen ? (
+        <div
+          // onMouseDown, not onClick: blur fires first and would close the box
+          // before the click landed. preventDefault keeps focus in the input,
+          // so several tags can be picked in a row without re-opening it.
+          onMouseDown={(e)=>e.preventDefault()}
+          style={{ position: 'absolute', bottom: '100%', left: 0, right: 0,
+                   marginBottom: 6, maxHeight: 230,
+                   display: 'flex', flexDirection: 'column',
+                   background: '#fff', border: '1px solid #d9d9d9',
+                   borderRadius: 4, boxShadow: '0 -4px 14px rgba(0,0,0,0.12)',
+                   padding: '6px 8px', zIndex: 20, textAlign: 'left' }}>
+          {/* Today is always first and is never a shortcut that has to be
+              earned: it is the one tag whose value is known in advance and
+              needed on most batches.
+              
+              Not pinnable, deliberately -- a pin stores a STRING, so pinning
+              this would pin 20260917 and hand it to somebody in October. It
+              does not need pinning either: it is already at the top, every day.
+              
+              Hidden once it is on, like every other row here. */}
+          {!inspOptionalTag.includes(todayTag()) ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6,
+                          flex: '0 0 auto',
+                          padding: '0 0 5px', marginBottom: 5,
+                          borderBottom: '1px solid #f0f0f0' }}>
+              {/* The blue fill is the label. "今天" spelled out beside it was a
+                  second way of saying the same thing, on a panel where the
+                  whole complaint was wasted space -- the date format and the
+                  one coloured tag already say which row this is. */}
+              <Tag color="blue" onClick={()=>{ addTags([todayTag()]); setNewTagStr(''); }}
+                   style={{ cursor: 'pointer', margin: 0 }}>{todayTag()}</Tag>
+            </div>
+          ) : null}
+
+          {/* A feature with nothing in it yet looks like a broken one. Say what
+              fills it instead of showing an empty box -- this is the first
+              thing an operator meets here, and it is the only place the rule
+              ("what you type is remembered") is written down. */}
+          {shortcutTags.length === 0 ? (
+            <div style={{ fontSize: 12, color: '#8c8c8c', lineHeight: 1.7, padding: '2px 0' }}>
+              還沒有其他常用標籤。<br/>
+              在下面打字加入的標籤會記在這裡，下次點一下就好；<br/>
+              點★可以釘選，釘選的永遠排在最前面。
+            </div>
+          ) : null}
+          {/* One row, written once and used by both halves -- the pinned block
+              and the scrolling one differ in WHERE they sit, not in what a row
+              looks like. */}
+          {[['pin', pinnedTags], ['rest', otherTags]].map(([which, list]) => (
+            list.length ? (
+              <div key={which}
+                style={which === 'pin'
+                  // Fixed: no scrolling, never squeezed, and a rule under it so
+                  // it reads as a section rather than as the first few of a
+                  // longer list.
+                  ? { flex: '0 0 auto', display: 'flex', flexWrap: 'wrap', gap: '2px 8px',
+                      borderBottom: otherTags.length ? '1px solid #f0f0f0' : undefined,
+                      paddingBottom: otherTags.length ? 5 : 0,
+                      marginBottom: otherTags.length ? 5 : 0 }
+                  // Everything else scrolls, and only this part does.
+                  : { flex: '1 1 auto', minHeight: 0, overflowY: 'auto',
+                      display: 'flex', flexWrap: 'wrap', gap: '2px 8px',
+                      alignContent: 'flex-start' }}>
+                {list.map((t)=>{
+                  const isPin = pinned.includes(t);
+                  return (
+                    // A CHIP, not a row. These tags are two or three characters
+                    // and a row each spent the whole width of the panel on one
+                    // of them -- eight tags filled a box that could have held
+                    // thirty. inline-flex keeps the star bound to its own tag
+                    // while the group wraps like the text it is.
+                    <div key={t} style={{ display: 'inline-flex', alignItems: 'center',
+                                          gap: 3 }}>
+                      {/* The pin is its own target, away from the tag, so
+                          reaching for one is never a miss on the other. */}
+                      <span onClick={()=>togglePin(t)} title={isPin ? '取消釘選' : '釘選'}
+                            style={{ cursor: 'pointer', fontSize: 12, lineHeight: '20px',
+                                     color: isPin ? '#faad14' : '#d9d9d9',
+                                     flex: '0 0 auto' }}>
+                        {isPin ? '★' : '☆'}
+                      </span>
+                      <Tag onClick={()=>{ addTags([t]); setNewTagStr(''); }}
+                           style={{ cursor: 'pointer', margin: 0 }}>{t}</Tag>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null
+          ))}
+        </div>
+      ) : null}
     <Input placeholder="新標籤"
+      onFocus={()=>setTagBoxOpen(true)}
+      onBlur={()=>setTagBoxOpen(false)}
       onChange={(e)=>{
         let newStr=e.target.value;
         //e.target.setSelectionRange(0, newStr.length)
@@ -682,14 +926,22 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
         // a trailing space, and neither matches anything a def carries.
         const newTag = e.target.value.split(",").map((s)=>s.trim()).filter(Boolean);
         if(newTag.length===0){ setNewTagStr(""); return; }
-        ACT_InspOptionalTag_Update([...inspOptionalTag,...newTag]);
+        // Through addTags, so anything typed joins the shortcut list -- that is
+        // the whole point: the second time this tag is needed it is one tap.
+        addTags(newTag);
         setNewTagStr("");
       }}
-      className={"width3 "+((inspOptionalTag.find((str)=>str==newTagStr))?"error":"")}
+      // 80% in the footer: it is the only thing on its row there and a quarter
+      // of the panel is a box too small to read a typed tag back out of.
+      // width3 elsewhere, where it sits at the end of a wrapped list.
+      className={(newTagFooter ? "" : "width3 ")
+                 + ((inspOptionalTag.find((str)=>str==newTagStr))?"error":"")}
+      style={newTagFooter ? { width: '80%', flex: '0 0 auto' } : undefined}
       allowClear
       value={newTagStr}
       // prefix={<Icon type="tags"/>}
     />
+    </div>
     </div>
   
   return returnUI;

@@ -22,7 +22,7 @@
 // gain nothing.
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip, Switch } from 'antd';
+import { Button, InputNumber, Divider, Select, Popconfirm, Tooltip, Switch, Popover, Slider } from 'antd';
 import { AimOutlined, DeleteOutlined, SaveOutlined, PlusOutlined } from '@ant-design/icons';
 import log from 'loglevel';
 
@@ -74,6 +74,89 @@ const EMPTY_REGION = { x: 0, y: 0, w: 0, h: 0 };
 // Before the first report there is no origin to have. {0,0} is the honest
 // answer for that window: the panel has nothing to place a box against yet.
 const ORIGIN_UNKNOWN = { x: 0, y: 0 };
+// DECLARED AT MODULE SCOPE, and they have to be.
+//
+// A component declared inside a render body is a new component TYPE on every
+// render: React cannot match it to the previous tree, so it unmounts the old
+// subtree and mounts a fresh one. Every input inside then loses focus the
+// moment anything re-renders the panel -- and the station poll re-renders it
+// about once a second, which is why a threshold could not be typed into while
+// the machine was running.
+//
+// The prose that used to sit between every control lives behind these "?"s. It
+// was three paragraphs for two controls, and once a station is set up nobody
+// reads it again -- but the day you do need it, it is a hover away.
+const Q = ({ children }) => (
+  <Tooltip title={<div style={{ maxWidth: 300, fontSize: 12 }}>{children}</div>}>
+    <span style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
+      borderRadius: '50%', fontSize: 10, lineHeight: '13px', width: 14, height: 14,
+      display: 'inline-block', textAlign: 'center', marginLeft: 4 }}>?</span>
+  </Tooltip>
+);
+const Row = ({ children, gap = 6 }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'wrap',
+                margin: '2px 0' }}>{children}</div>
+);
+// A row that may NOT wrap. The sidebar is about 225px and a wrapping row does
+// not save space, it spends it: the one control that does not fit drops onto a
+// line of its own and the region costs an extra row. Everything in here is
+// sized to fit that width, and the flexible parts shrink instead.
+const TightRow = ({ children, gap = 3 }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap',
+                margin: '2px 0', minWidth: 0 }}>{children}</div>
+);
+const HINT = { fontSize: 11, color: '#888' };
+
+// The dark threshold is a GREY LEVEL, and a grey level is not a number anybody
+// knows by heart -- it is found by moving it until the region reads clean and
+// the dirt does not. Typing 128, looking, typing 131, looking is that search
+// done the slow way. Clicking the field opens a slider over the full 0-255 and
+// every drag pushes the value live, so the measured area beside it moves while
+// the handle does.
+//
+// The number stays editable underneath, for the case where it IS known --
+// copied off another station, say.
+function ThreshField({ value, onChange, title }) {
+  const v = Number.isFinite(value) ? value : 128;
+  return <Popover trigger="click" placement="right"
+    content={<div style={{ width: 190, padding: '2px 4px' }}>
+      <div style={{ ...HINT, marginBottom: 2 }}>暗門檻(灰階) {v}</div>
+      <Slider min={0} max={255} value={v} onChange={(x) => onChange(Math.round(x))}
+              marks={{ 0: '0', 128: '128', 255: '255' }} />
+    </div>}>
+    <InputNumber size="small" style={{ width: 40, flex: '0 0 auto' }} value={v}
+      min={0} max={255} title={title}
+      onChange={(x) => onChange(Math.round(x || 0))} />
+  </Popover>;
+}
+
+// The area limit gets the same treatment, with one difference: it has no fixed
+// full scale. mm² of dirt is whatever this region and this lens make it, so the
+// slider spans 0 to twice the current value -- enough headroom to loosen the
+// limit, fine enough to move it a hair -- with a 0.5 floor so a limit sitting
+// at 0 still has something to drag along.
+//
+// The range is FROZEN while the popover is open. Recomputing it from the live
+// value would move the scale under the handle on every drag, which makes the
+// control feel like it is fighting back.
+function AreaField({ value, onChange, title }) {
+  const [openMax, setOpenMax] = useState(0.5);
+  const v = Number.isFinite(value) ? value : 0;
+  const step = openMax <= 1 ? 0.001 : 0.01;
+  return <Popover trigger="click" placement="right"
+    onOpenChange={(o) => { if (o) setOpenMax(Math.max(0.5, v * 2)); }}
+    content={<div style={{ width: 190, padding: '2px 4px' }}>
+      <div style={{ ...HINT, marginBottom: 2 }}>暗面積上限 {v.toFixed(3)} mm²</div>
+      <Slider min={0} max={openMax} step={step} value={Math.min(v, openMax)}
+              onChange={(x) => onChange(parseFloat(Number(x).toFixed(4)))}
+              marks={{ 0: '0', [openMax]: String(parseFloat(openMax.toFixed(2))) }} />
+    </div>}>
+    <InputNumber size="small" style={{ width: 48, flex: '0 0 auto' }} step={0.01}
+      value={value} min={0} title={title}
+      onChange={(x) => onChange(x)} />
+  </Popover>;
+}
+
 const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
 const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
   ? { ...r, x: r.x - o.x, y: r.y - o.y } : r;
@@ -81,6 +164,22 @@ const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
 // browser that has one keeps it forever -- harmless now that nothing reads it,
 // but it would reappear as a mystery in devtools years from now.
 try { localStorage.removeItem('visSele.station.draft.v1'); } catch (e) { /* ignore */ }
+
+// HIDE-WHEN-CLEAN is a VIEW preference, so unlike the bypass switch above it
+// does belong in localStorage.
+//
+// The bypass reads its state from the report because it is a property of the
+// CORE -- a remembered value there would lie about what the machine is doing.
+// This one changes nothing the core can see; it is one operator deciding how
+// much of their own screen the background boxes may have. Per browser is
+// exactly the right scope, and losing it costs a click.
+const LS_HIDE_CLEAN = 'visSele.station.hide_clean.v1';
+const readHideClean = () => {
+  try { return localStorage.getItem(LS_HIDE_CLEAN) === '1'; } catch (e) { return false; }
+};
+const writeHideClean = (v) => {
+  try { localStorage.setItem(LS_HIDE_CLEAN, v ? '1' : '0'); } catch (e) { /* ignore */ }
+};
 
 // A drag gives two opposite corners in any order; a region is an origin + size.
 function rectFromDrag(info) {
@@ -129,7 +228,7 @@ function RectFields({ rect, onChange, showNumbers }) {
  *   onSave(setting) persist                 (SV data/machine_setting.json)
  *   onBypass(bool)  stop/resume enforcing   (ST { InspAreaBypass })
  */
-export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyRegionLive, onSave, onBypass }) {
+export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyRegionLive, onApplyCleanLive, onSave, onBypass }) {
   // Empty until the core's machine setting arrives. Never pre-seeded from a
   // stored draft -- see the note at the top of this file.
   const [region, setRegion] = useState(EMPTY_REGION);
@@ -155,10 +254,34 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // only consulted when there is no truth to be had, and it never suppresses a
   // report that disagrees (which is how another browser's change, or a core
   // restart that cleared the flag, shows up here).
+  //
+  // "Until a report can answer" means until a report arrives that is NEWER THAN
+  // THE CLICK -- not merely until one has ever arrived. Keying it on the latter
+  // made the switch dead in the ordinary case: once any inspection has run, the
+  // last report sits in the store forever, so `reported` was never null and
+  // always beat the echo, while `area_bypass` in it could only change when a
+  // new object came through. Toggle the switch with the line idle and nothing
+  // moved. The report object is replaced wholesale on every update, so its
+  // identity is the clock: the first station object that is not the one we were
+  // looking at when the operator clicked is the first one that can have heard
+  // about the click.
   const [bypassEcho, setBypassEcho] = useState(false);
+  const echoSince = useRef(null);      // the station object present at click time
+  const echoing = useRef(false);
+  if (echoing.current && station !== echoSince.current) {
+    // A newer report exists; it is the truth again, whatever it says.
+    echoing.current = false;
+    echoSince.current = null;
+  }
   const reported = station ? !!station.area_bypass : null;
-  const bypassed = reported !== null ? reported : bypassEcho;
-  const bypassUnconfirmed = reported === null;
+  const bypassed = echoing.current || reported === null ? bypassEcho : reported;
+
+  const askBypass = (v) => {
+    echoSince.current = station;
+    echoing.current = true;
+    setBypassEcho(v);
+    if (onBypass) onBypass(v);
+  };
   const origin = (station && Array.isArray(station.roi_origin))
     ? { x: Math.round(station.roi_origin[0]), y: Math.round(station.roi_origin[1]) }
     : ORIGIN_UNKNOWN;
@@ -180,6 +303,8 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     setRegion({ ...EMPTY_REGION, ...(machineSetting.inspection_region || {}) });
     setClean(Array.isArray(machineSetting.clean_regions) ? machineSetting.clean_regions : []);
   }, [machineSetting, dirty]);
+
+  const [hideClean, setHideClean] = useState(readHideClean);
 
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
@@ -206,9 +331,16 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
         clean: clean.map((c, i) => ({ ...toCanvas(c, o),
                                       key: c.name || ('clean' + (i + 1)),
                                       name: c.name || ('淨空' + (i + 1)) })),
+        // The canvas still receives every region. Hiding is a DRAW decision
+        // made where the dirty state is known, because that state arrives with
+        // the image and not through here -- filtering the list at this end
+        // would mean deciding with whatever verdict happened to be current when
+        // React last ran this effect, which is the image-pairing race the
+        // comment above is about.
+        hideClean,
       });
     }
-  }, [ecCanvas, region, clean, origin.x, origin.y, bypassed, aiming]);
+  }, [ecCanvas, region, clean, origin.x, origin.y, bypassed, aiming, hideClean]);
 
   // Drag-to-set. The canvas clears its own callback after one drag, so aiming
   // is a one-shot: press the target, drag once, done. That is deliberate --
@@ -250,6 +382,18 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // cannot be forgotten by one of them -- which is exactly how the drag ended
   // up being the only editor that did not apply.
   const editRegion = (next) => { setDirty(true); setRegion(next); liveRegion(next); };
+  // The clean regions push live too, for the reason the station box does: the
+  // canvas redraws the new box at once while the core kept judging against the
+  // previous set until the save, so "I added a clean area and nothing happened"
+  // was the whole experience of adding one. Half this fix had been done.
+  //
+  // Takes the NEXT list rather than reading `clean`, because setClean is
+  // asynchronous -- reading state here would push the list as it was BEFORE
+  // this edit, which is the same bug one step removed.
+  const liveClean = (next) => {
+    if (typeof onApplyCleanLive === 'function') onApplyCleanLive(next);
+  };
+  const editClean = (next) => { setDirty(true); setClean(next); liveClean(next); };
   const edit = (fn) => { setDirty(true); fn(); };
   // "Cleared" has to be a VALUE, not a missing key.
   //
@@ -279,8 +423,12 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // That is exactly what happened when this panel was mounted somewhere that
   // never received the canvas. Refuse to arm, and say so.
   const canAim = !!(ecCanvas && typeof ecCanvas.SetROISettingCallBack === 'function');
-  const AimBtn = ({ target, children }) => (
+  // A plain function, CALLED (aimBtn(...)), not a component used as <AimBtn/>.
+  // Same reason as Q and Row above: as an inline component type it would
+  // remount its subtree on every render.
+  const aimBtn = (target, children, style) => (
     <Button size="small" icon={<AimOutlined />} disabled={!canAim}
+      style={style}
       title={canAim ? undefined : '畫布尚未就緒'}
       type={aiming === target ? 'primary' : 'default'}
       onClick={() => setAiming(aiming === target ? null : target)}>
@@ -288,48 +436,59 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     </Button>
   );
 
-  // Collapsed by default. This is setup, not monitoring: it is touched when the
-  // machine is being commissioned and not once per shift, so it must not sit
-  // between the operator and the counters they actually watch. The one-line
-  // summary is enough to tell at a glance that a region IS set -- which is the
-  // only thing about it that matters while parts are running.
-  const summary = (region.w > 0 && region.h > 0)
-    ? `${region.w}×${region.h} @${region.x},${region.y}`
-    : '未設定(不限制)';
+  // COLLAPSED, THIS COSTS ONE DIVIDER AND SAYS ONE THING.
+  // (operator request, 2026-09-17)
+  //
+  // Collapsed is the default and how this panel spends almost all of its life:
+  // it is setup, touched while the machine is being commissioned and not once
+  // per shift, so it must not sit between the operator and the counters they
+  // actually watch.
+  //
+  // It used to cost two lines -- a "工位區域" divider drawn by InspectionUI,
+  // then a summary row under it carrying the geometry, the clean-region count
+  // and an unsaved marker. So the divider moved in here and the row became its
+  // text, and then the text was cut to the one fact that changes what the
+  // machine does to a part: whether the region is being enforced.
+  //
+  // Both cuts were the same lesson. On the 1200 px screen this runs on, that
+  // summary ran past the sidebar and the item that got clipped was the LAST
+  // one -- 判定暫停. Carrying less is what keeps it visible.
   const header = (
-    <div onClick={() => setOpen(!open)}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-               fontSize: 11, padding: '2px 8px', userSelect: 'none' }}>
-      <span style={{ color: '#888' }}>{open ? '▾' : '▸'}</span>
-      <span style={{ color: '#888' }}>工位</span>
-      <span style={{ color: (region.w > 0 && region.h > 0) ? '#00b0ff' : '#888' }}>{summary}</span>
-      {clean.length ? <span style={{ color: '#ffab00' }}>· 淨空 {clean.length}</span> : null}
-      {dirty ? <span style={{ color: '#d48806' }}>· 未存檔</span> : null}
-      {/* The panel is collapsed by default, so this has to be legible without
-          opening it. A machine that has quietly stopped enforcing its station
-          is exactly the state nobody should have to expand a panel to find. */}
-      {/* Kept short on purpose: the sidebar is ~225px and the summary already
-          carries the geometry and the clean-region count, so a longer label
-          wraps the header onto a second line. */}
-      {bypassed ? <span style={{ color: '#c33', fontWeight: 'bold' }}>· 判定暫停</span> : null}
-    </div>
+    <Divider orientation="center" className="Antd_Divider_Small_Text_Tight"
+      onClick={() => setOpen(!open)}
+      style={{ margin: '2px 0', cursor: 'pointer', userSelect: 'none' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+        <span style={{ color: '#888' }}>{open ? '▾' : '▸'}</span>
+        {/* UNSAVED IS A STAR ON THE HEADING. (operator request, 2026-09-17)
+            Everything on this panel now applies to the running machine the
+            moment it is edited -- the station box and, since today, the clean
+            regions. So live and saved are genuinely different states, and the
+            one the operator cannot otherwise see is 'this machine is running'
+            'on something that is not in its file'. A restart would silently
+            undo it. One character, in front of the name, on the line that is
+            on screen anyway. */}
+        <span style={{ color: dirty ? '#d48806' : '#888', fontWeight: dirty ? 'bold' : 'normal' }}>
+          {dirty ? '*' : ''}工位區域</span>
+        {/* WHETHER IT IS ENFORCING, and nothing else. (operator request, 2026-09-17)
+            
+            This line used to carry the geometry, the clean-region count and an
+            unsaved marker as well. On the 1200 px screen the machine actually
+            runs on, that ran past the sidebar and the LAST item was the one
+            that got clipped -- which was 判定暫停, the only one of them that
+            changes what the machine does to a part. Carrying less means the
+            thing worth seeing is always visible.
+            
+            The rest has not gone anywhere: open the panel and the geometry, the
+            clean regions and the unsaved state are all there, which is where
+            you are anyway if you are about to change one of them. */}
+        {bypassed
+          ? <span style={{ color: '#c33', fontWeight: 'bold' }}>· 判定暫停</span>
+          : <span style={{ color: '#3a3' }}>· 判定中</span>}
+      </span>
+    </Divider>
   );
 
   if (!open) return header;
-  // The prose that used to sit between every control is behind a "?" now. It was
-  // three paragraphs for two controls, and once a station is set up nobody reads
-  // it again -- but the day you do need it, it is a hover away instead of gone.
-  const Q = ({ children }) => (
-    <Tooltip title={<div style={{ maxWidth: 300, fontSize: 12 }}>{children}</div>}>
-      <span style={{ cursor: 'help', color: '#888', border: '1px solid #bbb',
-        borderRadius: '50%', fontSize: 10, lineHeight: '13px', width: 14, height: 14,
-        display: 'inline-block', textAlign: 'center', marginLeft: 4 }}>?</span>
-    </Tooltip>
-  );
-  const Row = ({ children, gap = 6 }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'wrap',
-                  margin: '3px 0' }}>{children}</div>
-  );
 
   // Only worth screen space when it DISAGREES. In sync it is one tick; out of
   // sync it is the most important line in the panel, because the boxes look
@@ -345,13 +504,14 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
   // latches it until restart -- left on. The switch shows what is happening.
   const bypassRow = (
     <Row>
-      <Switch size="small" checked={bypassed}
-        onChange={(v) => { setBypassEcho(v); if (onBypass) onBypass(v); }} />
+      <Switch size="small" checked={bypassed} onChange={askBypass} />
       <span style={{ fontSize: 12, color: bypassed ? '#c33' : '#888' }}>暫停區域判定</span>
-      {/* Says which of the two it is showing. Without this the switch cannot
-          distinguish "the core confirms this" from "nobody has reported yet". */}
-      {bypassUnconfirmed ? (
-        <span style={{ fontSize: 11, color: '#888' }}>(未執行檢測,尚無回報)</span>
+      {/* Which of the two the switch is showing: the core's own answer, or what
+          was just asked for and not yet confirmed by a report. */}
+      {echoing.current || reported === null ? (
+        <span style={{ fontSize: 11, color: '#888' }}>
+          {station ? '(等待下一次檢測回報)' : '(未執行檢測,尚無回報)'}
+        </span>
       ) : null}
       <Q>
         暫時停用<b>工位框</b>與<b>淨空區域</b>兩項判定,讓不在工位上的影像也能量測。<br/><br/>
@@ -368,20 +528,9 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
     {header}
 
     {bypassRow}
-    {/* Stated as a banner and not just a switch position: while this is on the
-        machine is not doing the job the station exists for. It also has to say
-        the overlay is gone -- an empty image is otherwise indistinguishable
-        from a station that was never set up. */}
-    {bypassed ? (
-      <div style={{ fontSize: 11, color: '#c33', border: '1px solid #c33',
-                    borderRadius: 3, padding: '3px 6px', margin: '3px 0' }}>
-        工位框與淨空區域<b>目前不生效</b>,畫面上的框也一併隱藏(設定仍在,按「拉框設定」
-        會暫時顯示)。核心重啟即恢復。
-      </div>
-    ) : null}
 
     <Row>
-      <AimBtn target="region">拉框設定</AimBtn>
+      {aimBtn('region', '拉框設定')}
       <Select size="small" style={{ width: 112 }}
         value={region.fit === 'center' ? 'center' : 'contain'}
         onChange={(v) => editRegion({ ...region, fit: v })}
@@ -416,42 +565,74 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onApplyR
          NA = 視野被污染,這顆量不準,繞回重測。<br/>NG = 這顆本身不良,吹掉。</Q>
     </Divider>
 
+    <Row>
+      <Switch size="small" checked={hideClean}
+        onChange={(v) => { setHideClean(v); writeHideClean(v); }} />
+      <span style={{ fontSize: 12, color: '#888' }}>畫面隱藏淨空框</span>
+      <Q>只是不畫,判定照常。<br/>
+         有雜物的那一框仍然會出現 — 否則就等於把零件被擋下的原因藏起來。<br/>
+         設定用的拉框在這個開關關掉時才看得到。</Q>
+    </Row>
+
     {clean.map((c, i) => {
       const m = station && Array.isArray(station.clean)
         ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
+      const setC = (patch) => editClean(clean.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+      const measured = m && Number.isFinite(m.dark_area_mm2) ? m.dark_area_mm2 : undefined;
       return (
-        <div key={i} style={{ borderLeft: '2px solid #ffab00', paddingLeft: 5, marginBottom: 5 }}>
-          <Row>
-            <AimBtn target={i}>{c.name || ('淨空' + (i + 1))}</AimBtn>
-            {m ? <span style={{ fontSize: 11, color: m.dirty ? '#c33' : '#389e0d' }}>
-              {m.dirty ? '有雜物 ' : '乾淨 '}{Number(m.dark_area_mm2).toFixed(4)}mm²
-            </span> : <span style={{ fontSize: 11, color: '#888' }}>{c.w > 0 ? '等待影像' : '尚未框選'}</span>}
-            <Popconfirm title="刪除?" onConfirm={() => edit(() => setClean(clean.filter((_, k) => k !== i)))}>
+        <div key={i} style={{ borderLeft: '2px solid #ffab00', paddingLeft: 5, marginBottom: 3 }}>
+          {/* Two rows, not three: the on_fail choice used to wrap onto its own
+              line because the threshold row could not hold it, so every region
+              cost a third of the panel. */}
+          <TightRow>
+            {aimBtn(i, c.name || ('淨空' + (i + 1)),
+                    { flex: '1 1 auto', minWidth: 0, overflow: 'hidden' })}
+            {m ? <span style={{ fontSize: 11, whiteSpace: 'nowrap',
+                                color: m.dirty ? '#c33' : '#389e0d' }}>
+              {m.dirty ? '髒' : '淨'}{Number(m.dark_area_mm2).toFixed(3)}
+            </span> : <span style={{ ...HINT, whiteSpace: 'nowrap' }}>
+              {c.w > 0 ? '待影像' : '未框選'}</span>}
+            <Popconfirm title="刪除?" onConfirm={() => editClean(clean.filter((_, k) => k !== i))}>
               <Button size="small" danger type="text" icon={<DeleteOutlined />}
-                style={{ padding: '0 4px', marginLeft: 'auto' }} />
+                style={{ padding: 0, width: 18, flex: '0 0 auto' }} />
             </Popconfirm>
-          </Row>
-          <Row gap={4}>
-            <span style={{ fontSize: 11, color: '#888' }}>暗</span>
-            <InputNumber size="small" style={{ width: 58 }} value={c.dark_thresh ?? 128}
-              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: Math.round(v || 0) } : x))))} />
-            <span style={{ fontSize: 11, color: '#888' }}>≤</span>
-            <InputNumber size="small" style={{ width: 68 }} step={0.01} value={c.dark_area_max}
-              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_area_max: v } : x))))} />
-            <span style={{ fontSize: 11, color: '#888' }}>mm²</span>
-            <Select size="small" style={{ width: 96 }} value={c.on_fail === 'ng' ? 'ng' : 'na'}
-              onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, on_fail: v } : x))))}
-              options={[{ value: 'na', label: '→NA' }, { value: 'ng', label: '→NG' }]} />
-          </Row>
+          </TightRow>
+          <TightRow>
+            <span style={HINT}>暗</span>
+            <ThreshField value={c.dark_thresh ?? 128}
+              title="低於這個灰階的像素算「暗」— 點一下用滑桿調"
+              onChange={(v) => setC({ dark_thresh: v })} />
+            <span style={HINT}>≤</span>
+            <AreaField value={c.dark_area_max}
+              title="暗面積上限 (mm²) — 點一下用滑桿調"
+              onChange={(v) => setC({ dark_area_max: v })} />
+            <span style={{ ...HINT, whiteSpace: 'nowrap' }}>mm²</span>
+            {/* Setting this threshold meant reading the measured area off the
+                panel and retyping it, which is slow and how a decimal point
+                goes missing. Only offered when there IS a measurement, and it
+                is an arrow rather than a word because the row has no room for
+                a word. */}
+            {measured !== undefined ? (
+              <Button size="small" type="link"
+                style={{ fontSize: 13, padding: 0, width: 18, height: 20, flex: '0 0 auto' }}
+                title={'把目前量到的 ' + measured.toFixed(4) + ' mm² 填進上限'}
+                onClick={() => setC({ dark_area_max: parseFloat(measured.toFixed(4)) })}>←</Button>
+            ) : null}
+            <Select size="small" style={{ width: 60, flex: '0 0 auto', marginLeft: 'auto' }}
+              value={c.on_fail === 'ng' ? 'ng' : 'na'}
+              title={c.on_fail === 'ng' ? '超出 → NG,吹掉' : '超出 → NA,繞回重測'}
+              onChange={(v) => setC({ on_fail: v })}
+              options={[{ value: 'na', label: 'NA' }, { value: 'ng', label: 'NG' }]} />
+          </TightRow>
           {nums ? <RectFields rect={c} showNumbers
-            onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} /> : null}
+            onChange={(r) => setC(r)} /> : null}
         </div>
       );
     })}
 
     <Row>
       <Button size="small" type="text" icon={<PlusOutlined />} style={{ padding: '0 4px' }}
-        onClick={() => edit(() => setClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }]))}>
+        onClick={() => editClean([...clean, { x: 0, y: 0, w: 0, h: 0, dark_thresh: 128, on_fail: 'na' }])}>
         新增淨空區域</Button>
     </Row>
 

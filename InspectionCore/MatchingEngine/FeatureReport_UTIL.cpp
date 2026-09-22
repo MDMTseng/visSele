@@ -175,10 +175,44 @@ cJSON* JudgeReportVector2JSON(const vector< FeatureReport_judgeReport> &judges ,
 // that does not need the overlay.
 static std::map<std::string, bool> g_dbg_emit = {
     {"cal_hits", true},
+    // The threshold-setting evidence. Off until a panel asks for it.
+    {"edge_profile", false},
 };
+
+// DEBUG_EMIT=name[,name...] turns payloads on for a whole process, once, at
+// first use. The ST command is the live switch and stays the one the WebUI
+// uses; this exists because --insp has no command channel at all, so without it
+// an offline run -- the CI check, a bench comparison, this file's own
+// verification -- cannot see a payload that is off by default.
+//
+// A leading "-" turns one off, so a default-on payload can be dropped the same
+// way: DEBUG_EMIT=-cal_hits,edge_profile
+static void dbg_emit_env_once()
+{
+  static bool done = false;
+  if (done) return;
+  done = true;
+  const char *e = getenv("DEBUG_EMIT");
+  if (!e || !*e) return;
+  std::string cur;
+  std::string all(e);
+  all.push_back(',');
+  for (char c : all)
+  {
+    if (c != ',') { if (c != ' ') cur.push_back(c); continue; }
+    if (cur.empty()) continue;
+    bool on = true;
+    if (cur[0] == '-') { on = false; cur.erase(0, 1); }
+    auto f = g_dbg_emit.find(cur);
+    if (f == g_dbg_emit.end()) LOGW("DEBUG_EMIT env: unknown payload \"%s\"", cur.c_str());
+    else { f->second = on; LOGI("DEBUG_EMIT env %s=%d", cur.c_str(), (int)on); }
+    cur.clear();
+  }
+}
 
 bool DbgEmit(const char *name)
 {
+  dbg_emit_env_once();
   auto it = g_dbg_emit.find(name);
   return (it != g_dbg_emit.end()) && it->second;
 }
@@ -209,13 +243,20 @@ static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, 
   if (!DbgEmit("cal_hits")) return;
   if (hits.empty()) return;
   cJSON *arr = cJSON_CreateArray();
+  // Appended with a tail pointer, not cJSON_AddItemToArray: that one walks
+  // the list from the head on every call, so N hits cost N^2/2 pointer
+  // chases. At the ~600 hits a search point may now report that is nothing;
+  // at the tens of thousands it reported before the cap in SearchPointCV it
+  // was the whole frame time.
+  cJSON *tail = NULL;
   for (const CaliperHit &h : hits) {
     cJSON *o = cJSON_CreateObject();
     cJSON_AddNumberToObject(o, "x", h.pt.x - center_offset.x);
     cJSON_AddNumberToObject(o, "y", h.pt.y - center_offset.y);
     cJSON_AddNumberToObject(o, "st", h.status);
     cJSON_AddNumberToObject(o, "s",  h.strength);
-    cJSON_AddItemToArray(arr, o);
+    if (!tail) arr->child = o; else { tail->next = o; o->prev = tail; }
+    tail = o;
   }
   // UNDER "extra", not beside the measurement. The archive strips that one key
   // (see UTIL/dbRecord.js in the WebUI), so nothing here is ever written to the
@@ -227,6 +268,90 @@ static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, 
     cJSON_AddItemToObject(parent, "extra", extra);
   }
   cJSON_AddItemToObject(extra, "cal_hits", arr);
+}
+
+// The across-edge gradient behind every caliper on this primitive, ungated.
+//
+//   edge_profile: { step, L, g: [[...],[...]] }
+//
+// g[i] is caliper i, in the same order as cal_hits, so the panel can pair a
+// profile with the hit it produced. Sample j of a profile sits at
+// (-L + j*step) px across the edge, measured from that caliper's centre along
+// its search direction. Signed: the sign is the polarity the selector matches
+// on (rising = dark->light), and folding it away would make polarity
+// unsettable from the picture.
+//
+// A caliper that found NOTHING still emits its profile. That is the case the
+// operator most needs to see -- "nothing passed the floor" and "there is no
+// edge here" look identical in the measurement and completely different in the
+// profile.
+//
+// Default OFF and it stays off outside recipe setup: at nAcross 67 this is
+// ~670 numbers per primitive, which is an order more than cal_hits.
+static void AddCalProfile2JSON(cJSON *parent, const CaliperProfiles &prof)
+{
+  if (!DbgEmit("edge_profile")) return;
+  if (prof.grad.empty()) return;
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "step", prof.step);
+  cJSON_AddNumberToObject(o, "L", prof.L);
+  cJSON *g = cJSON_CreateArray();
+  for (const std::vector<float> &one : prof.grad)
+    cJSON_AddItemToArray(g, cJSON_CreateFloatArray(one.data(), (int)one.size()));
+  cJSON_AddItemToObject(o, "g", g);
+  // Which sample the selector chose per caliper (-1 = none). The panel used
+  // to guess this as "the strongest peak of the polarity", which is wrong
+  // for first/last/nth and for a stronger neighbouring edge.
+  if (prof.sel.size() == prof.grad.size())
+    cJSON_AddItemToObject(o, "sel", cJSON_CreateFloatArray(prof.sel.data(), (int)prof.sel.size()));
+  cJSON *extra = cJSON_GetObjectItem(parent, "extra");
+  if (!extra)
+  {
+    extra = cJSON_CreateObject();
+    cJSON_AddItemToObject(parent, "extra", extra);
+  }
+  cJSON_AddItemToObject(extra, "edge_profile", o);
+}
+
+// The search-point form of the same payload:
+//
+//   edge_profile: { kind: "peaks", span, p: [...], s: [...] }
+//
+// Entry i is one candidate: p[i] px along the search direction from the near
+// end (so the first hit is the smallest p), s[i] its peak gradient. Ungated --
+// including the ones the selector's own 0.40-of-the-strongest rule drops, which
+// are exactly the ones a person needs to see to know whether the floor is
+// doing the work or that rule is.
+//
+// Same key as the caliper form deliberately: one thing to ask for, one place to
+// look, and `kind` says which shape arrived. A caliper profile has no `kind`.
+static void AddSearchPeaks2JSON(cJSON *parent, const SearchPointPeaks &pk)
+{
+  if (!DbgEmit("edge_profile")) return;
+  if (pk.pos.empty()) return;
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddStringToObject(o, "kind", "peaks");
+  cJSON_AddNumberToObject(o, "span", pk.span);
+  cJSON_AddNumberToObject(o, "mmpp", pk.mmpp);
+  cJSON_AddItemToObject(o, "p", cJSON_CreateFloatArray(pk.pos.data(), (int)pk.pos.size()));
+  cJSON_AddItemToObject(o, "s", cJSON_CreateFloatArray(pk.str.data(), (int)pk.str.size()));
+  // a[i] is p[i]'s position along the bar: the pair makes the candidate cloud a
+  // curve, which is what an apex can be fitted to.
+  if (pk.along.size() == pk.pos.size())
+    cJSON_AddItemToObject(o, "a", cJSON_CreateFloatArray(pk.along.data(), (int)pk.along.size()));
+  // The point the scan actually returned, in the candidates' own frame.
+  if (pk.sel_ok)
+  {
+    cJSON_AddNumberToObject(o, "sel_p", pk.sel_pos);
+    cJSON_AddNumberToObject(o, "sel_a", pk.sel_along);
+  }
+  cJSON *extra = cJSON_GetObjectItem(parent, "extra");
+  if (!extra)
+  {
+    extra = cJSON_CreateObject();
+    cJSON_AddItemToObject(parent, "extra", extra);
+  }
+  cJSON_AddItemToObject(extra, "edge_profile", o);
 }
 
 cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, acv_XY center_offset)
@@ -249,9 +374,27 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
       cJSON_AddItemToObject(cfj,"pt2",acv_acv_XY2JSON(vec[j].pt2));
       cJSON_AddItemToObject(cfj,"pt3",acv_acv_XY2JSON(vec[j].pt3));
     }
+    else if(vec[j].na_reason[0] != 0)
+    {
+      cJSON_AddStringToObject(cfj, "na_reason", vec[j].na_reason);
+    }
     // Emit caliper-mode per-caliper hits even on STATUS_NA — the user wants to
     // see where the calipers tried and failed when the fit didn't converge.
     AddCalHits2JSON(cfj, vec[j].cal_hits, center_offset);
+    if (vec[j].cal_geom.len >= 0 && DbgEmit("cal_hits"))
+    {
+      cJSON *extra = cJSON_GetObjectItem(cfj, "extra");
+      if (!extra) { extra = cJSON_CreateObject(); cJSON_AddItemToObject(cfj, "extra", extra); }
+      cJSON *g = cJSON_CreateObject();
+      cJSON_AddNumberToObject(g, "c0x", vec[j].cal_geom.c0.x - center_offset.x);
+      cJSON_AddNumberToObject(g, "c0y", vec[j].cal_geom.c0.y - center_offset.y);
+      cJSON_AddNumberToObject(g, "r0", vec[j].cal_geom.r0);
+      cJSON_AddNumberToObject(g, "len", vec[j].cal_geom.len);
+      cJSON_AddNumberToObject(g, "width", vec[j].cal_geom.width);
+      cJSON_AddNumberToObject(g, "pol", vec[j].cal_geom.polarity);
+      cJSON_AddItemToObject(extra, "cal_geom", g);
+    }
+    AddCalProfile2JSON(cfj, vec[j].cal_prof);
 
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
 
@@ -320,7 +463,58 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
     {
       cJSON_AddStringToObject(spj, "na_reason", vec[j].na_reason);
     }
+    // THE BAND, WHENEVER IT WAS CLIPPED -- including (especially) when the
+    // scan was refused and there is no point to report.
+    //
+    // A refused scan is exactly the case somebody has to be able to look at
+    // afterwards, and it is the case that carried the least. Rebuilding the
+    // rectangle from the def and the pose was tried and does not work: on
+    // seven recorded frames the rebuilt centre was out by up to 450 px against
+    // a search depth of +-113, which made two scans that had SUCCEEDED look
+    // 30% off-frame. Written here so nobody has to reconstruct it.
+    // Emitted for EVERY caliper-mode scan, not only clipped ones: the band is
+    // where the scan looked after pose AND morph, and a "no edge in the band"
+    // NA is unreadable without it.
+    if (vec[j].clip.width > 0)
+    {
+      cJSON *cl = cJSON_AddObjectToObject(spj, "clip");
+      cJSON_AddNumberToObject(cl, "samples_off",   vec[j].clip.samples_off);
+      cJSON_AddNumberToObject(cl, "samples_total", vec[j].clip.samples_total);
+      cJSON_AddNumberToObject(cl, "rows_off",      vec[j].clip.rows_off);
+      cJSON_AddNumberToObject(cl, "rows_total",    vec[j].clip.rows_total);
+      // Signed distance along the SEARCH axis: negative is the near side, where
+      // the first hit is taken and where a missing sample can hide the answer.
+      // Absent = nothing was missing inside the candidate columns.
+      if (vec[j].clip.nearest_bad == vec[j].clip.nearest_bad)
+        cJSON_AddNumberToObject(cl, "nearest_bad", vec[j].clip.nearest_bad);
+      // OBJECT-FRAME mm, the same frame as cal_hits, so an overlay draws the
+      // rectangle straight from these. Named x/y for that reason: they were
+      // px/py, which reads as pixels and is what they used to be.
+      cJSON_AddNumberToObject(cl, "x",      vec[j].clip.pt.x);
+      cJSON_AddNumberToObject(cl, "y",      vec[j].clip.pt.y);
+      cJSON_AddNumberToObject(cl, "bar_x",  vec[j].clip.bar.x);
+      cJSON_AddNumberToObject(cl, "bar_y",  vec[j].clip.bar.y);
+      cJSON_AddNumberToObject(cl, "width",  vec[j].clip.width);
+      cJSON_AddNumberToObject(cl, "depth",  vec[j].clip.depth);
+    }
+    // The shape of the evidence behind the point. Under `extra` with the rest
+    // of the diagnostics, so the traceability archive strips it structurally.
+    if (vec[j].moments.n > 0)
+    {
+      cJSON *ex = cJSON_GetObjectItem(spj, "extra");
+      if (!ex) { ex = cJSON_CreateObject(); cJSON_AddItemToObject(spj, "extra", ex); }
+      cJSON *mo = cJSON_AddObjectToObject(ex, "edge_moments");
+      const SearchPointMoments &M = vec[j].moments;
+      cJSON_AddNumberToObject(mo, "n",     M.n);
+      cJSON_AddNumberToObject(mo, "range", M.range);
+      cJSON_AddNumberToObject(mo, "mass",  M.mass);
+      cJSON_AddNumberToObject(mo, "mean",  M.mean);
+      cJSON_AddNumberToObject(mo, "sd",    M.sd);
+      if (M.skew == M.skew) cJSON_AddNumberToObject(mo, "skew", M.skew);
+      cJSON_AddNumberToObject(mo, "span",  M.span);
+    }
     AddCalHits2JSON(spj, vec[j].cal_hits, center_offset);
+    AddSearchPeaks2JSON(spj, vec[j].cal_peaks);
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
 
   }
@@ -378,6 +572,7 @@ cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
       acv_LineFit2JSON(lfj,vec[j].line,center_offset);
     AddCalHits2JSON(lfj, vec[j].cal_hits, center_offset);
+    AddCalProfile2JSON(lfj, vec[j].cal_prof);
     cJSON_AddItemToArray(detectedLines_jarr, lfj );
   }
   return detectedLines_jarr;
@@ -427,6 +622,22 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   cJSON_AddNumberToObject(report_jobj, "rotate", report.rotate);
   cJSON_AddBoolToObject(report_jobj, "isFlipped", report.isFlipped);
   cJSON_AddNumberToObject(report_jobj, "similarity", report.similarity);
+  // Localization trust: fit residual (px), refine points, agreeing inliers, and the
+  // tripped gate (empty = ok). Always emitted for a located object. SBM_TRUST_SCORE_DESIGN.md.
+  {
+    cJSON *tr = cJSON_CreateObject();
+    cJSON_AddNumberToObject(tr, "residual", report.trust_residual);
+    if (report.trust_alt_residual >= 0.0f) cJSON_AddNumberToObject(tr, "alt_residual", report.trust_alt_residual);
+    // Coarse scores of the runner-up poses (0..100, same scale as the matcher's
+    // similarity x100): the best other pose, and the best pose of the other face.
+    if (report.trust_alt_score >= 0.0f)      cJSON_AddNumberToObject(tr, "alt_score", report.trust_alt_score);
+    if (report.trust_face_alt_score >= 0.0f) cJSON_AddNumberToObject(tr, "face_alt_score", report.trust_face_alt_score);
+    cJSON_AddNumberToObject(tr, "npts", report.trust_npts);
+    cJSON_AddNumberToObject(tr, "inliers", report.trust_ninliers);
+    if (report.trust_code[0]) cJSON_AddStringToObject(tr, "code", report.trust_code);
+    if (report.trust_forced_na) cJSON_AddTrueToObject(tr, "forced_na");
+    cJSON_AddItemToObject(report_jobj, "trust", tr);
+  }
 
   acv_XY offset = {0};
   const vector<FeatureReport_circleReport> &detectedCircle = *report.detectedCircles;

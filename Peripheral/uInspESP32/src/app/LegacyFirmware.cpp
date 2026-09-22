@@ -255,6 +255,45 @@ float PLATE_FREQ_CURRENT=0;
 // (set_setup "plate_accel", persisted). <=0 means jump instantly.
 float SYS_FREQ_ACCEL=2000;
 bool SYS_STEPPER_DISABLED=false;
+// Ramp stall guard -- see the ramp service. A pass longer than this did not
+// spend that time ramping, so it is not charged to the ramp.
+static const float RAMP_STALL_DT_MAX = 0.060f;   // seconds
+// Reported in get_running_stat. Not decoration: this is the meter that says
+// whether the loop is being blocked long enough to matter, and by how much. A
+// rising count with the machine otherwise healthy is the early warning for the
+// class of fault that a 500 Hz frequency step used to be the late one for.
+uint32_t RAMP_STALLS=0;
+float    RAMP_STALL_DT_WORST=0.0f;
+// WHAT THE MOTOR ACTUALLY FEELS.
+//
+// ramp_stalls counts a cause; these measure the effect, and the effect is the
+// thing that breaks a stepper. A frequency discontinuity is an acceleration
+// spike, and it does not care which code path produced it -- a blocked loop, a
+// setpoint written from the host, jog braking, the transition into ERROR. A
+// meter on the stall only ever sees the one source somebody thought of.
+//
+// COMMANDED is exact and free: the ramp already computes the new frequency, so
+// the difference over the same dt it used is the acceleration it just asked
+// for. After the stall fix this can no longer exceed SYS_FREQ_ACCEL by way of
+// the ramp, which makes it a clean alarm rather than a statistic -- anything
+// above the configured accel means something OTHER than the ramp wrote the
+// plate frequency.
+//
+// MEASURED comes from SYS_STEP_COUNT, i.e. from the pulses that actually went
+// out, and is the honest answer to "did it do what it was told". The two
+// diverging is its own signal.
+//
+// Its one blind spot, stated rather than hidden: the sampler lives in the same
+// loop as the ramp, so a stall stops it too and that window is reported as its
+// average, not its peak. The discontinuity we care about lands just AFTER the
+// stall, which is inside the next sample.
+//
+// NO JERK. A trapezoidal profile steps acceleration from 0 to SYS_FREQ_ACCEL in
+// one pass, so jerk is unbounded at every ramp corner by construction and the
+// peak would be pinned there forever, carrying no information. It becomes worth
+// measuring if the profile ever goes S-curve, and not before.
+float ACCEL_CMD_MAX=0.0f;     // |dF/dt| commanded, Hz/s
+float ACCEL_MEAS_MAX=0.0f;    // |dF/dt| from the pulses, Hz/s
 
 // 15/s was the old machine's rate; production runs ~30/s and bursts higher, so
 // a 66ms floor silently merged adjacent parts. 4ms still rejects the double
@@ -271,6 +310,115 @@ bool SYS_STEPPER_DISABLED=false;
 // plate_freq asks for. Physical speed is zero by construction rather than by
 // trusting the driver to honour an enable pin.
 volatile bool DRY_RUN=false;
+// SELECTOR TEST MODE -- for putting the blow where the part is.
+//
+// Setting SEL*_on by eye is hard for a reason that is not about the number: a
+// run where every part is blown gives no way to tell WHICH part each puff
+// belonged to. Every blow looks like every other, so an offset a whole part out
+// looks exactly like a correct one.
+//
+// 1 = ALL   every verdict becomes the chosen selector. Good for finding the
+//           blow at all, and for checking the pulse width against the part.
+// 2 = ALT   alternate the chosen selector and NA, so the plate comes out as a
+//           comb. Half a part of error stops being invisible: the wrong
+//           alternate gets taken, and that is a difference anybody can see
+//           without instruments.
+//
+// A COMMAND, NOT A SETTING, deliberately -- the same choice set_dry_run makes.
+// This overrides real verdicts, so it must not be able to reach NVS and come
+// back after a power cycle on a machine somebody believes is sorting properly.
+// It lives in RAM, it dies on reset, and it is reported everywhere the state is.
+volatile int      SEL_TEST_MODE=0;      // 0 off, 1 all, 2 alternate, 3 middle
+volatile int      SEL_TEST_SEL=1;       // which selector to fire
+volatile uint32_t SEL_TEST_N=0;         // parts it has decided for
+// MIDDLE mode's second state: the disc turns with NOTHING being blown until
+// somebody presses start, then exactly one part is sorted and it returns here.
+//
+// A blow test wants ONE puff with un-blown parts beside it, so the spread can
+// be read off what did and did not move. "all" and "alt" cannot show that --
+// every part, or every other part, is in the air, and there is nothing left on
+// the plate to compare against. Three parts placed touching, one puff on the
+// middle one, and the answer is the two that stayed.
+volatile bool     SEL_TEST_ARMED=false; // middle mode: start pressed, waiting
+// Said out loud on every change and in every status reply. A machine sorting on
+// a test pattern must never be mistakable for one sorting on its verdicts, and
+// the person who left it on is usually not the person who finds it.
+#define SEL_TEST_MODE_NAME() (SEL_TEST_MODE==1 ? "all" \
+                            : SEL_TEST_MODE==2 ? "alternate" \
+                            : SEL_TEST_MODE==3 ? "middle" : "off")
+#define LOGW_SEL_TEST() djrl.dbg_printf( \
+  "SEL TEST MODE ACTIVE: %s -> SEL%d -- verdicts are NOT being sorted", \
+  SEL_TEST_MODE_NAME(), SEL_TEST_SEL)
+
+// IT REDIRECTS SORTING DECISIONS; IT DOES NOT INVENT THEM -- EXCEPT IN MIDDLE.
+//
+// In "all" and "alt", only a verdict that would have been sorted anyway (1/2/3)
+// is replaced; NA, SKIP and UNSET pass through untouched. Middle mode is the
+// one exception and says why at the point it makes it: the parts are placed by
+// hand and some of the NA are the thing being tested.
+//
+// SOME NA IS A DECISION NOT TO ACTUATE, not a failure to judge. Parts that are
+// touching or too close together are marked NA precisely because a blow there
+// would take the wrong one. Overriding that in test mode makes the machine do
+// the exact thing the verdict was protecting against -- and it would do it
+// while somebody is head-down watching the disc, which is when it is least
+// likely to be noticed. That is the reason this rule exists; the two below are
+// only why it also makes the pattern better.
+//
+//   An NA slot often has no part in it at all. Blowing it puts a puff on empty
+//   plate, and when the whole exercise is deciding whether the puff lands on
+//   the part, a puff with no part is the most misleading thing on the disc.
+//
+//   In ALT it is worse than wasteful. If an NA consumed a phase the comb would
+//   come out irregular, and the comb's regularity IS the measurement: half a
+//   part of error is read off the teeth being wrong, which needs the teeth to
+//   be right when the offset is right.
+//
+// So the alternation counter advances only on parts that were actually judged.
+static inline int selTestVerdict(int real)
+{
+  if(SEL_TEST_MODE == 0) return real;
+
+  // MIDDLE MODE COUNTS AND BLOWS REGARDLESS OF THE VERDICT, and is the only
+  // mode that does. Handled above the guard below, deliberately.
+  //
+  // That guard exists because on a production disc the machine cannot know WHY
+  // a part came out NA, and "parts touching" is one of the reasons -- blowing
+  // there takes the wrong one. In middle mode none of that holds: the parts
+  // were placed by hand, one at a time, by the person standing over the disc,
+  // and SOME OF THOSE NA ARE THE THING BEING TESTED -- deliberately touching
+  // parts, put there to see what the puff does to them.
+  //
+  // Skipping them would also break the count the operator is working from. They
+  // placed three parts and asked for the second; if the second happens to be NA
+  // the puff would silently move to the third, and the spread would be measured
+  // against a part nobody meant.
+  //
+  // One puff, on the part they counted to, whatever the verdict says about it.
+  if(SEL_TEST_MODE == 3)
+  {
+    // HOLD, then the SECOND part judged after start, then HOLD again.
+    //
+    // The second and not the first: the point is a puff with an un-blown part
+    // on EACH side of it. The first part after start has nothing ahead of it,
+    // so a spread that reaches forward would have nothing to land on and the
+    // test would only measure half of what it is for.
+    //
+    // Every part counts here, including NA -- see the note above. That is the
+    // opposite of what ALT does, and for the opposite reason: ALT runs on a
+    // production disc where an NA slot is often empty, and counting one would
+    // put a puff on bare plate. Here the operator put every part there on
+    // purpose and knows what each one is.
+    if(!SEL_TEST_ARMED) return 0xFFFF;                   // hold: nothing sorted
+    if(++SEL_TEST_N < 2) return 0xFFFF;
+    SEL_TEST_ARMED = false;                              // one shot, back to hold
+    return SEL_TEST_SEL;
+  }
+
+  if(real != 1 && real != 2 && real != 3) return real;   // not a sort; leave it
+  if(SEL_TEST_MODE == 1) return SEL_TEST_SEL;
+  return (SEL_TEST_N++ & 1) ? SEL_TEST_SEL : 0xFFFF;     // alternate with NA
+}
 
 // 30000us = 33/s. This was 4000us (250/s), which is faster than ANY camera
 // configuration measured on this machine -- 5420us (184.5 fps) at the
@@ -386,6 +534,25 @@ typedef struct pipeLineInfo{
   // gate->report latency stat. Wraps every ~71 min; a single latency sample
   // never spans that, so unsigned subtraction stays correct.
   uint32_t trig_us;
+  // A CLOCK SAMPLE WEARING A PART'S CLOTHES.
+  //
+  // Set on an injected object that exists only to give the timestamp matcher
+  // something to place, so the offset can be refreshed on an idle line. It goes
+  // through the ordinary gate and the ordinary registration order -- which is
+  // the whole reason for it: the sync-pulse path (calFireNow) bypasses that
+  // order, and everything expensive about calibration is the machinery that
+  // bypass needs to stay out of a real part's way. A queued object needs none
+  // of it; it simply queues.
+  //
+  // Stealth means three things, and all three are needed for it to be honest:
+  //   unseen by the line     -- no light. An idle machine flashing on a timer
+//                            reads as a fault, and
+  //                 the frame's TIMESTAMP is what is wanted, not its content
+  //   no blow    -- there is no part there to eject
+  //   no counts  -- it must not dilute the production tally. That tally is what
+  //                 "不可檢錯" is audited against, so an object nobody put on
+  //                 the plate must not appear in it.
+  uint8_t stealth;
   // Device clock at the instant THIS object's camera trigger fired. Full 64
   // bits, unlike trig_us: the offset arithmetic against the camera's own clock
   // would otherwise have to handle a 71-minute wrap, and 8 bytes x 100 objects
@@ -485,6 +652,8 @@ struct CamClockSync
   // climbing means the offset really is moving.
   uint32_t rejected = 0, rebuilds = 0;
   uint16_t consec_reject = 0;
+  // Misses too large to be a clock. See gate().
+  uint32_t far_miss = 0;
   // Set when the clock has been lost and the machine must stop. Raised here,
   // acted on at the call site, which is where SYS_STATE_Transfer lives.
   bool     fault_pending = false;
@@ -579,7 +748,7 @@ struct CamClockSync
   {
     valid=false; offset_us=0; boot_n=0;
     last_resid_us=0; max_resid_us=0;
-    learned=rejected=rebuilds=0; consec_reject=0;
+    learned=rejected=rebuilds=0; consec_reject=0; far_miss=0;
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
@@ -664,6 +833,42 @@ struct CamClockSync
   void gate(uint64_t cam_ts, uint64_t nearest_cam_us, int64_t nearest_delta)
   {
     if(!valid) return;
+    // A MISS THIS LARGE IS NOT EVIDENCE ABOUT THE CLOCK.
+    //
+    // The offset is re-measured from every accepted report, so it is never more
+    // than one report old -- about 50ms at 20 parts/s -- and the drift it can
+    // accumulate in that time is 50ms x 50us/s = 2.5us. Three orders of
+    // magnitude inside the window. A clock error therefore reaches the window
+    // edge gradually or not at all; it cannot jump, because crystals do not.
+    //
+    // What DOES land a whole object-spacing away is a report for an object that
+    // has since been retired. Pushed to its limit the host answers late, the
+    // part passes SWITCH unanswered and is swept, and the report arrives to find
+    // its object gone -- so `nearest` is a NEIGHBOUR, one spacing off, tens of
+    // milliseconds outside a 3ms window. Two of those in a row halted the
+    // machine on CAM_CLOCK_LOST, and the operator's report is exactly that: it
+    // happens when the system is pushed to the limit.
+    //
+    // The reasoning is already written down here for the calibration case --
+    // "the frame is accounted for; it is simply not evidence about the clock"
+    // -- and guarded with a tombstone. It is equally true for a retired real
+    // part and was never applied to one.
+    //
+    // Four windows is the separation, and it is not a tuned number: drift can
+    // reach single-digit microseconds between reports, and a neighbouring slot
+    // is at least one admission interval away, which the layer-one cap keeps
+    // above twice the window by construction. Anything in between is genuinely
+    // ambiguous and is still counted as a real miss.
+    if(nearest_delta > (int64_t)TOL_US * 4)
+    {
+      far_miss++;
+      miss_delta_last_us = nearest_delta;
+      if(nearest_delta > miss_delta_max_us) miss_delta_max_us = nearest_delta;
+      // consec_reject deliberately NOT advanced, and deliberately not reset
+      // either: this frame says nothing either way, so it should leave the
+      // clock's own tally exactly as it found it.
+      return;
+    }
     if(nearest_delta > TOL_US)
     {
       rejected++;
@@ -900,6 +1105,10 @@ uint32_t STAT_MAX_RESET_REQ=0;
 // orphan is a late/duplicate report with nothing to pair to, a window miss is
 // the clock. Neither is cleared by reset_stat_maximum: they are counts.
 uint32_t NOMATCH_ORPHAN_N=0, NOMATCH_WINDOW_N=0, CONSEC_NOMATCH=0;
+// Reports that arrived after their object had been swept. See the NOMATCH
+// classification: counted, never escalated, because the part they belong to was
+// already counted once as UNANSWERED.
+uint32_t NOMATCH_LATE_N=0;
 // Consecutive tolerated NOMATCHes before the machine stops anyway. 8 is
 // deliberately well under the pipeline depth (~22 registered objects) so a
 // genuinely lost pipeline halts long before a full lap of unjudged parts.
@@ -1011,6 +1220,14 @@ volatile int host_timeout_ms=0;
 // is not a stored number, it is a host having actually connected and said so.
 // The core sends comm_lost_backup on every CONNECT.
 volatile bool COMM_LOST_BACKUP=false;
+// Times the host has gone quiet while the machine was NOT running and the
+// counts were written because of it. Reported in get_running_stat: a normal
+// shift should show this stepping once per shutdown and never during a run.
+uint32_t HOSTLOSS_SAVES=0;
+// Armed when the machine comes off a run; fires when the plate is ACTUALLY at
+// rest. See SYS_STATE::IDLE and countersRestService.
+bool     CNT_SAVE_AT_REST=false;
+uint32_t RESTSAVE_SAVES=0;
 
 // Attack instantly, decay slowly: a maximum that FOLLOWS THE ENVELOPE instead of
 // latching on one event and then saying nothing.
@@ -1128,6 +1345,353 @@ volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 // count there is no way to tell whether it is doing nothing or throwing away
 // half the parts.
 volatile uint32_t GATE_REJ_RATE=0;    // faster than min_detect_sep_us
+// SECOND-LAYER ADMISSION: the HOST's rate, not the camera's.
+//
+// min_detect_sep_us above is a hard floor on the interval between two adjacent
+// admitted parts, and it is set from what the CAMERA can deliver. That is not
+// the only limit. The other one is the machine that has to look at the frames,
+// and it fails in a completely different shape: the camera either produces a
+// frame or does not, but a host that is behind still answers -- late. Late is
+// the expensive failure here. It arrives after SWITCH, which is an unjudged
+// part (error 2), or after its slot has been swept, which is a report that
+// matches no object -- the two outcomes the line actually sees.
+//
+// A hard floor cannot see that coming, because it only ever looks at ONE gap.
+// A burst of two parts 8ms apart is fine if the ten before them were 60ms
+// apart; a steady 30ms stream is not fine even though no single gap is short.
+// What the host is up against is the AVERAGE arrival rate over the depth of
+// its own pipeline, so that is what this measures: a first-order low-pass on
+// the interval between admitted parts, tested against a floor of its own.
+//
+// The filter runs on ADMITTED intervals, and a rejection deliberately does not
+// commit. That makes it a control loop rather than a switch: while the average
+// is too fast nothing is admitted, so the next interval is longer, so the
+// average climbs, so admission resumes -- settling at the floor instead of
+// oscillating between all and nothing. A part turned away here is not lost; it
+// stays on the plate, no camera fires for it, no SWITCH task is scheduled, and
+// it comes round again on the next lap.
+//
+// 0 disables it, and that is the default: this must not change the behaviour
+// of a machine whose setup file predates it.
+// LAYER ONE, WITH THE SAME THREE STATES AS LAYER TWO.
+//
+// min_detect_sep_us is the camera's limit and it was always typed in, which
+// makes it wrong in a specific and invisible way: shrinking the ROI raises what
+// the camera can deliver, and the gate stays where it was. The throughput is
+// left on the table and nothing says so. Raising the exposure moves it the
+// other way, and then the number is wrong in the direction that produces
+// triggers with no frames.
+//
+// The camera knows. ResultingFrameRate is its own answer for the ROI and
+// exposure in force, and the core pushes it here as `cam_limit` -- the one
+// quantity in this chain the board cannot measure for itself.
+//
+// STALE MEANS FALL BACK, NOT CARRY ON. If the core stops talking, the last
+// figure is a fact about a camera nobody is watching any more, so after the
+// timeout the manual cap governs again. Falling back to the configured value is
+// conservative in the direction that matters: the manual cap was set by a
+// person for this machine, and the failure being avoided -- a gate opened wider
+// than the camera can feed.
+//
+// WHAT THAT COSTS, stated correctly: a trigger with no frame is an UNANSWERED part, not a
+// mis-paired one. Pairing is by timestamp and the window is clamped to
+// min_detect_sep_us/2, so adjacent objects' windows cannot overlap and a frame
+// can only land in one of them -- the firmware says the only exception is
+// min_detect_sep_us < 400us, i.e. 2500 parts/s, which is unreachable. The
+// missing frame simply leaves its object unreported: not actuated, recirculated,
+// counted, and escalating only through the consecutive-unanswered threshold.
+//
+// This comment used to say it poisoned the pairing. That was true when frames
+// were matched by order and tid; it has not been true since matching moved to
+// timestamps, and an over-stated hazard is not harmless -- it argues for
+// conservatism that the machine does not need and hides the cost that is real,
+// which is throughput and, sustained, a stop.
+volatile bool     GATE_CAM_AUTO=false;
+volatile uint32_t GATE_CAM_FPS_MHZ=0;         // last figure from the core
+volatile int64_t  GATE_CAM_FPS_MS=0;          // when it arrived
+volatile int32_t  GATE_CAM_MARGIN_PCT=90;     // admit at this % of the ceiling
+// Settable so the fallback can be OBSERVED. At the shipped 90s it cannot be:
+// the peripheral console lives inside the core, so stopping the core removes
+// the only way to ask the board anything, and querying over serial resets the
+// board and clears the very state under test. Set it below the core's 30s
+// heartbeat and the value expires between heartbeats with the core still
+// running -- so both directions, falling back and recovering, are visible from
+// a machine that is otherwise untouched.
+//
+// A test hook that changes the thing being tested is worth nothing, so this one
+// changes only WHEN the existing rule fires, not what it does.
+volatile int32_t GATE_CAM_STALE_MS=90000;     // 3 missed heartbeats
+volatile uint32_t GATE_PROC_SEP_US=0;        // floor on the filtered interval
+volatile int      GATE_PROC_IIR_SHIFT=3;     // 1/8 per sample (~8-part memory)
+volatile uint32_t GATE_PROC_AVG_US=0;        // the filter state, for the panel
+volatile uint32_t GATE_REJ_LOAD=0;           // turned away by this layer
+
+// THE FLOOR, CHOSEN BY THE QUEUE INSTEAD OF BY A PERSON.
+//
+// proc_sep_us above has to be typed in, and the number depends on the host: it
+// differs per computer, and it moves with the recipe, the ROI and the exposure.
+// So the setting most likely to be wrong is the one that has to be measured by
+// hand on every machine, and it is silently wrong -- too slow costs throughput,
+// too fast costs the thing it was added to prevent.
+//
+// The queue already knows. pipe.waiting is objects registered and not yet
+// answered, and it is the INTEGRAL of (arrival - service): it grows exactly
+// when the host is behind, whatever the latency numbers say.
+//
+// NOT its level, though. Little's law puts a healthy machine at L = lambda * W
+// -- at 21/s with ~430ms from gate to answer that is ~9 objects with nothing
+// wrong. A threshold on the level would have to know the speed and the stage
+// offsets, i.e. be characterised per machine, which is the problem being
+// solved. The GROWTH RATE needs none of that.
+//
+// And growth gives the answer directly rather than by groping. Admitting at r
+// while the queue grows at dW/dt means the host is serving at
+//
+//     s = r - dW/dt
+//
+// so the interval that would just keep up is 1/s. This aims a little slower
+// than that, and only ever ADDS to the manual floor -- the auto term cannot
+// make admission faster than what was configured, so its worst failure is
+// being more conservative than asked, never less.
+//
+// Off by default, like proc_sep_us: a machine whose setup predates this must
+// behave exactly as it did.
+// ONE DECISION, NOT FIVE SETTINGS.
+//
+// The throttle grew five keys -- proc_sep_us, proc_iir_shift, proc_auto,
+// proc_auto_max_us, proc_auto_rho_pct -- and a person setting up a machine has
+// exactly one thing to decide: should the feed be limited by the host, and if
+// so, does the machine work it out or does someone type it in. Everything else
+// is either a filter constant nobody should touch or a runaway bound that only
+// matters when something is already wrong.
+//
+// So the settable face is a mode and a rate:
+//
+//     gate.proc_mode    "off" | "manual" | "auto"
+//     gate.proc_rate_hz  parts per second, for "manual"
+//
+// IN THE UNIT PEOPLE THINK IN. Every other key here is microseconds of
+// interval, and every caller was dividing 1000000 by something before it could
+// say what it meant -- the panel did, the tests did, and the one place that
+// forgot would have been wrong by a factor nobody would notice. The interval
+// stays underneath as proc_sep_us because that is what the gate compares
+// against; it is derived here, once.
+//
+// The manual floor no longer applies underneath "auto". It was there so the
+// auto term could never admit faster than a configured cap, but
+// min_detect_sep_us -- the camera's own limit, layer one -- already guarantees
+// that and applies in every mode. Two settings enforcing one rule is how they
+// end up disagreeing.
+volatile bool     GATE_PROC_AUTO=false;
+volatile uint32_t GATE_PROC_AUTO_ADD_US=0;     // what the loop has added
+volatile uint32_t GATE_PROC_AUTO_MAX_US=1000000; // 1s = 1/s, the runaway bound
+volatile uint32_t GATE_PROC_AUTO_CAP_N=0;      // times it sat at the bound
+volatile int32_t  GATE_PROC_DW_MQ=0;           // queue growth, milli-objects/s
+// Utilisation, in percent, and the target to hold it at.
+//
+// THE QUEUE IS THE WRONG SIGNAL TO STEER BY, and the reason is structural
+// rather than a matter of tuning: queue length is the INTEGRAL of
+// (arrival - service). Below saturation it barely moves, so there is no signal
+// in the region where there is still time to act; above saturation it diverges,
+// so there is no bound. It carries information exactly where it is too late.
+//
+// rho = lambda * service_time is the same fact stated as a cause instead of an
+// effect. It is bounded, it has usable resolution across the whole range, and
+// holding it at 0.8 means the queue never starts growing at all. From the bench
+// sweep, with the queue still reading zero unjudged throughout:
+//
+//     delay  0ms   service ~34ms  21/s -> rho 0.71   healthy
+//     delay 19ms   service ~53ms  21/s -> rho 1.11   already past the line
+//     delay 45ms   service ~79ms  21/s -> rho 1.66   halted
+//
+// rho crossed 1 at the 19ms point and said so in a number. The queue said
+// nothing there and everything at 45ms, which is the shape described above.
+//
+// The service time used here is the board's own REP_CAMLAT mean over the
+// sample window. That is exact while unsaturated and an OVER-estimate once a
+// backlog forms (it then contains queueing delay as well as service). The bias
+// is toward throttling harder when already behind, which is the safe
+// direction -- and the honest fix, having the core report its idle fraction
+// directly, can replace this estimate without changing the loop around it.
+volatile int32_t  GATE_PROC_RHO_PCT=0;         // measured, 100 = saturated
+volatile int32_t  GATE_PROC_RHO_TARGET=80;     // hold it here
+volatile uint32_t GATE_PROC_SVC_US=0;          // service time this window
+// PROBING UPWARD, because the estimate is an upper bound and the loop's own
+// throttling stops it from ever being corrected.
+//
+// svc is derived from REPORT LATENCY, and latency is not the cost of a part.
+// Camera transfer, inspection and the serial return overlap, so throughput is
+// set by the slowest stage while latency is their sum: using it as the service
+// time understates capacity by the pipeline depth. Measured on the target
+// machine 2026-09-01 -- mean latency 67.2ms, so the loop settled at
+// 67.2/0.8 = 84ms = 11.9/s and reported 13, while the same machine ran
+// steadily at a hand-set 20/s, i.e. 50ms a part. Depth about 1.35.
+//
+// The board could see this and does not, because of a fixed point it creates
+// itself: inter-departure only equals the service time while the host is
+// BACKLOGGED, and a loop that has throttled to 13 guarantees it never is. So
+// min(latency, inter-departure) picks latency, latency is the over-estimate,
+// and the estimate that could correct it never gets a measurement. The machine
+// does not discover it can go faster because it never tries.
+//
+// The same panel showed why it should have tried: pipe.waiting was 9 against
+// Little's law L = 20.3/s x 0.461s = 9.4 -- every object in transit, none
+// queued. Nothing was struggling.
+//
+// So: additive increase while there is demonstrably no queue, multiplicative
+// backoff when one appears. TCP's answer to the identical problem -- the
+// bottleneck cannot be computed, only probed -- and it settles just past the
+// point where a queue begins, which is exactly where inter-departure becomes
+// the accurate estimator. The two mechanisms correct each other.
+// THE OTHER WAY TO SOLVE THE SAME PROBLEM: state the bias instead of finding it.
+//
+// The probe discovers the pipeline depth by testing for it. This declares it:
+// admit at MEAN service time x discount, and let a person set the discount
+// once. Nothing hunts, nothing settles, the number on the screen is the number
+// that was asked for -- which on a production machine is worth something the
+// adaptive version cannot offer.
+//
+// It is a ratio, and that is why it is worth having rather than going back to
+// typing an absolute rate. The pipeline depth is a property of how the host
+// overlaps transfer and inspection; it barely moves when the recipe changes,
+// while the absolute rate moves with every one. So this is the per-machine
+// constant that has a chance of staying correct.
+//
+// Calibrating it on the target machine: mean 82.5ms against a hand-verified
+// stable 50ms is 60%; the probe independently settled around 59ms, i.e. 71%.
+// So the honest range is 60-75 and the two methods agree to within the margin
+// somebody would leave anyway.
+//
+// 0 = off, and off is the default: the adaptive loop stays the behaviour a
+// machine gets without being asked. When set, the backstop still overrides --
+// a declared discount is a claim about the host, not permission to ignore a
+// queue that is actually growing.
+volatile int32_t  GATE_PROC_CAPACITY_PCT=0;
+volatile bool     GATE_PROC_PROBE=true;        // additive increase, on by default
+volatile uint32_t GATE_PROC_PROBE_UP_N=0;      // steps taken upward
+volatile uint32_t GATE_PROC_BACKOFF_N=0;       // times a queue pushed back
+// The other half of the service estimate: how far apart the ANSWERS are.
+//
+// Report latency and inter-departure are each exact in one regime and wrong in
+// the other, and they are wrong in opposite directions -- so the smaller of the
+// two is right in both:
+//
+//   host not saturated  latency  = service exactly (nothing is queued)
+//                       departure spacing = the ARRIVAL interval, >= service
+//   host saturated      latency  = queueing + service, an over-estimate
+//                       departure spacing = service exactly (answers are
+//                                           back to back; the core cannot
+//                                           emit faster than it works)
+//
+// min() picks the exact one each time without needing to detect which regime
+// the machine is in -- which matters because detecting it is the hard part.
+// This removes the one weakness of the latency-only estimate (over-stating
+// service once a backlog forms) and it needs nothing from the core: both
+// timestamps are the board's own clock at the moment a report arrived.
+// MEDIANS, NOT MEANS. The report time is spiky -- measured on the target
+// machine, mean 61.3ms against a worst of 252.9ms -- and a mean over a short
+// window is not robust to that: with ~10 reports in a 500ms window, one 372ms
+// outlier among 60ms neighbours lifts the mean to 91ms, a 1.5x jump from a
+// single part. That is a poor number to size a throttle from, and it is a
+// dangerous one to feed the "latency doubled means the job changed" rule, which
+// a couple of spikes could trip into a backoff nothing asked for.
+//
+// A median over a short ring ignores the tail entirely: it takes half the
+// samples to move it, which is the definition of the run of slow parts that
+// actually means something.
+//
+// It does NOT fix the bias. Latency exceeds service time by the pipeline depth
+// whatever the distribution, so the median is still an over-estimate and the
+// probe is still what corrects it. The median removes the noise; the probe
+// removes the bias. Different problems, both real.
+#define PROC_RING_N 15
+static volatile uint32_t PROC_LAT_RING[PROC_RING_N];
+static volatile uint32_t PROC_ID_RING[PROC_RING_N];
+static volatile uint8_t  PROC_LAT_I=0, PROC_LAT_N=0;
+static volatile uint8_t  PROC_ID_I=0,  PROC_ID_N=0;
+// Insertion sort on at most fifteen uint32 twice a second. The obvious
+// objection is the right one to answer out loud: this is ~50 comparisons in a
+// service that already scans RBuf, and it runs in the main loop, not the ISR.
+static uint32_t ringMedian(volatile uint32_t *ring, uint8_t n)
+{
+  if(n == 0) return 0;
+  uint32_t t[PROC_RING_N];
+  for(uint8_t i=0;i<n;i++) t[i]=ring[i];
+  for(uint8_t i=1;i<n;i++)
+  {
+    const uint32_t k=t[i]; int8_t j=(int8_t)i-1;
+    while(j>=0 && t[j]>k){ t[j+1]=t[j]; j--; }
+    t[j+1]=k;
+  }
+  return t[n/2];
+}
+volatile uint32_t GATE_PROC_SVC_MEAN_US=0;     // for comparison, not for control
+volatile uint32_t GATE_PROC_SVC_ID_US=0;       // inter-departure, EWMA
+static   uint64_t PROC_LAST_REP_US=0;
+// The effective floor. One place computes it so the gate, the reply and any
+// future reader cannot disagree about what is actually in force.
+// What layer one is actually enforcing, in one place so the gate, the reply and
+// any future reader cannot disagree about it.
+static inline uint32_t gateMinSepEff()
+{
+  if(GATE_CAM_AUTO && GATE_CAM_FPS_MHZ > 0)
+  {
+    // fps_mhz is milli-hertz; interval_us = 1e9 / fps_mhz, then de-rated.
+    const uint64_t us = (uint64_t)1000000000ULL * 100
+                      / (uint32_t)GATE_CAM_FPS_MHZ / (uint32_t)GATE_CAM_MARGIN_PCT;
+    const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+    if(now_ms - GATE_CAM_FPS_MS < GATE_CAM_STALE_MS)
+      return (uint32_t)us;
+
+    // STALE: THE SLOWER OF THE TWO, not the manual one.
+    //
+    // The first version fell back to the manual cap, on the argument that a
+    // person had chosen it for this machine. The bench disproved that on the
+    // first run it was verified: min_detect_sep_us here is 14286us = 70.0
+    // parts/s while the camera's own ResultingFrameRate is 68.9 fps, so going
+    // stale made the gate FASTER -- straight back to asking for frames the
+    // camera cannot produce, which is the failure auto exists to prevent. The
+    // fallback had been aimed in the dangerous direction by an argument that
+    // sounded careful.
+    //
+    // The last camera figure is stale as a statement about the CURRENT ROI, but
+    // as a BOUND it is still better evidence than a number typed in months ago.
+    // Taking the larger interval is safe whichever way the truth has moved: if
+    // the ROI shrank the camera is now faster and this costs a little
+    // throughput; if it grew, this is the only one of the two still pointing
+    // the right way.
+    return (us > (uint64_t)SYS_MIN_PULSE_TIME_SEP_us)
+             ? (uint32_t)us : SYS_MIN_PULSE_TIME_SEP_us;
+  }
+  return SYS_MIN_PULSE_TIME_SEP_us;
+}
+
+
+// AGAINST THE SPACING IN FORCE, not the one that was typed in.
+//
+// The window has to stay under half the part spacing or two neighbours' windows
+// overlap and a lost frame can be matched to the wrong object. That rule was
+// enforced against SYS_MIN_PULSE_TIME_SEP_us, which was the spacing -- until
+// cam_mode "auto" made the effective spacing something else.
+//
+// Auto is usually SLOWER than the manual value (this bench: manual 70.0/s,
+// camera 68.9), and slower is safe. But it is not slower by construction: a
+// camera faster than the number somebody typed gives a smaller interval. At 150
+// fps auto yields 7407us, half of which is 3703us -- under the 5000us window,
+// so the windows overlap and the one hazard this clamp exists for is reachable
+// again, this time without anyone entering a strange value.
+//
+// So the clamp reads the effective spacing, and it is re-run wherever that can
+// change: set_setup, and the arrival of a new camera figure. A guard evaluated
+// only where one of its inputs changes is not a guard.
+static inline uint32_t gateMinSepEff();
+static void clampMatchWindowToSpacing();
+
+static inline uint32_t gateProcSepEff()
+{
+  const uint32_t add = GATE_PROC_AUTO ? GATE_PROC_AUTO_ADD_US : 0;
+  return GATE_PROC_SEP_US + add;
+}
 volatile uint32_t GATE_REJ_DIST=0;    // closer than the 2mm plate-distance gate
 volatile uint32_t GATE_REJ_BUSY=0;    // no room in RBuf / the ACT schedules
 volatile uint32_t GATE_ACCEPT=0;      // registered, for a rejection ratio
@@ -1835,6 +2399,32 @@ struct ACT_INFO
     _task_;                                                           \
   }
 
+// THE SAME QUEUE, WITH NO OBJECT BEHIND IT.
+//
+// Every other actuation is anchored to the gate pulse of the part that earned
+// it. A manual blow has no part: the operator is holding the button, watching
+// the disc, and the anchor is NOW. Everything downstream is unchanged -- the
+// same ring, the same Run_ACTS, the same pins -- so the puff is the same puff
+// the machine would have produced, which is the only reason the measurement
+// transfers.
+//
+// src stays NULL, as it already does for the verdict path's own pushes, so the
+// diagnostics that walk back to a part simply find none.
+#define ACT_PUSH_TASK_AT(rb, anchorPulse, pulseOffset, _info)        \
+  {                                                                 \
+    ACT_INFO *_task_;                                               \
+    _task_ = (rb).getHead();                                        \
+    if (_task_)                                                     \
+    {                                                               \
+      _task_->gate_pulse = (anchorPulse);                           \
+      _task_->offset     = (pulseOffset);                           \
+      _task_->src        = NULL;                                    \
+      _task_->info       = _info;                                   \
+      (rb).pushHead();                                              \
+    }                                                               \
+    _task_;                                                         \
+  }
+
 //EXP:
 // ((0-1)>>1)+1
 // ((0xFF)>>1)+1
@@ -2317,6 +2907,19 @@ static bool cntSame(const MachineConfig::Counters &a,
 }
 uint32_t CNT_NVS_SKIPPED = 0;
 
+// Fires the armed save once the plate has come to a stop. Separate from
+// countersNvsService because that one performs a REQUEST; this decides when to
+// make it.
+static void countersRestService()
+{
+  if(!CNT_SAVE_AT_REST) return;
+  if(PLATE_FREQ_CURRENT != 0.0f) return;   // still coasting; nothing to do yet
+  CNT_SAVE_AT_REST = false;
+  CNT_NVS_REQ_MS = millis();
+  CNT_NVS_REQ = CNT_NVS_SAVE;
+  RESTSAVE_SAVES++;
+}
+
 static void countersNvsService()
 {
   const uint8_t req = CNT_NVS_REQ;
@@ -2534,33 +3137,51 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         SEL_SAFE_AT_MS = millis() + selHoldMs();
         OUTPUTS_SAFE_EXCEPT_SEL();
 
-        // A stop is a save point, and it has to be -- otherwise the commonest
-        // sequence there is loses the shift: run, stop, close the host. The
-        // watchdog cannot cover that one. It is deliberately blind in IDLE (a
-        // stopped plate needs no host, and firing there would turn an operator
-        // closing the host into an error), so with the save tied only to the
-        // watchdog, the counts would sit in RAM until the next core start
-        // reopened the port and rebooted the board out from under them.
+        // A NORMAL STOP DOES NOT TOUCH FLASH. Deliberately, and this is the
+        // whole point rather than an omission.
         //
-        // So the save is tied to the machine coming to rest, not to the host
-        // dying. Between this and the watchdog the three cases are covered:
-        // stopped normally -> saved here; host died mid-run -> saved by the
-        // watchdog; host died after a stop -> already saved here.
+        // A save used to be armed here, on every arrival in IDLE from a running
+        // state -- so every ordinary stop wrote NVS. It cost a real fault: the
+        // write runs in the main loop, immediately before the plate's ramp
+        // service and while the plate is still turning (IDLE re-asserts the
+        // setpoint, and set_setup{plate_freq:0} has not landed yet). The step
+        // ISR is IRAM_ATTR so it keeps emitting at the OLD rate throughout,
+        // which is exactly what makes this invisible until it bites: the plate
+        // runs smoothly through the stall, then the ramp wakes with a dt
+        // spanning the whole flash write and steps the frequency by up to
+        // SYS_FREQ_ACCEL * 0.25 = 500 Hz in one go. A stepper cannot absorb
+        // that: it skips and it rings. Reported from the floor as "every once
+        // in a while, stopping makes the plate jump and shake".
         //
-        // Only when arriving from a state that was running. Boot enters IDLE
-        // from INIT, and arming there would rewrite the record with the values
-        // just restored from it -- a flash write on every power-up, for
-        // nothing.
-        if(sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_READY  ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_RECAL  ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_SPINUP ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_CAL    ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_TEST   ||
-           sysinfo.pre_state==SYS_STATE::INSPECTION_MODE_ERROR)
-        {
-          CNT_NVS_REQ_MS = millis();
-          CNT_NVS_REQ = CNT_NVS_SAVE;
-        }
+        // It only bit sometimes because cntSame() skips the write when nothing
+        // has been counted since the stored record -- so a stop after an idle
+        // spell wrote nothing, and a stop after real production wrote.
+        //
+        // WHAT COVERS THE COUNTS NOW is the host-link watchdog, which is what
+        // was meant to all along: no valid inbound frame for host_timeout_ms
+        // while running -> INSPECTION_ERROR(HOST_LINK_TIMEOUT) -> the save on
+        // the way into ERROR. That covers a core crash and a host that goes
+        // away mid-run, which are the cases the counts actually need saving
+        // for.
+        //
+        // AND THE SAVE COMES BACK -- but after the plate has stopped, not here.
+        //
+        // The distinction is the whole fix. The danger was never the write, it
+        // was writing WHILE THE RAMP WAS RUNNING: the flash access blocks the
+        // loop, the step ISR keeps pulsing at the old rate, and the ramp then
+        // makes up the lost time in a single frequency step. At rest there is
+        // no ramp to disturb and the write costs nothing -- and it is measurably
+        // not counted as a stall either, because the ramp service returns before
+        // its stall check once current == target.
+        //
+        // So: arm here, fire in countersRestService when PLATE_FREQ_CURRENT
+        // reaches 0. That restores what the removal cost -- a shift that ends
+        // with stop, then a core crash, keeps its counts -- without putting a
+        // flash access back under a decelerating plate.
+        //
+        // cntSame() still skips a write that would store an unchanged record,
+        // so a stop with nothing counted since the last save is free.
+        CNT_SAVE_AT_REST = true;
       } //enter
       else if (i == 1)
       {
@@ -2693,6 +3314,10 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         blockNewDetectedObject=false;
         FEEDER_ON=true;
         io_drive(FEEDER_PIN, IOI_FEEDER, true);
+        // Back to work before the plate ever reached rest -- a stop that was
+        // reversed is not a stop, and leaving this armed would drop a flash
+        // write into the next deceleration instead of this one.
+        CNT_SAVE_AT_REST = false;
         // The unanswered budget belongs to the run, not to the boot. It is
         // cleared by a judged part and by reset_running_stat, and by nothing
         // else -- so a run that ended at 8 of stop_after 10 left the next one
@@ -2885,6 +3510,11 @@ uint64_t _preTime=0;
 // Consumed by the next newPulseEvent: marks that object as a clock-sync pulse.
 // Only ever set by syncPulseService, which fires with the pipeline empty.
 static uint8_t SYNC_MARK_NEXT = 0;
+// Consumed by the next injected pulse, exactly as SYNC_MARK_NEXT is. A count
+// rather than a flag: the recal fires one, but a bench tool may ask for
+// several, and a flag would silently apply to only the first.
+static volatile uint32_t PHANTOM_STEALTH_PEND = 0;
+volatile uint32_t STEALTH_EMITTED = 0;      // how many have gone out
 // When a REAL part was last registered. Sync pulses must stay out of the way
 // of production -- see syncPulseService.
 static int64_t REAL_ACCEPT_MS = 0;
@@ -2908,7 +3538,25 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // SWITCH task, so it simply recirculates for another pass. Letting it through
   // instead would ask the camera for a frame it cannot deliver, and a trigger
   // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
-  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us){GATE_REJ_RATE++;return -8;}
+  if(curTime-_preTime<gateMinSepEff()){GATE_REJ_RATE++;return -8;}
+  // Second layer: the filtered arrival rate, against the host's floor.
+  //
+  // Computed but NOT committed until the part is admitted. The first interval
+  // after a quiet period seeds the filter rather than averaging against a stale
+  // value from the previous run -- an hour-old gap low-passed with a fresh one
+  // would let a whole burst through before the average caught up.
+  {
+    const uint32_t sep = gateProcSepEff();
+    if(sep)
+    {
+      const uint32_t dt = (uint32_t)(curTime-_preTime);
+      const uint32_t avg = GATE_PROC_AVG_US
+        ? (uint32_t)(GATE_PROC_AVG_US + (((int32_t)dt-(int32_t)GATE_PROC_AVG_US)>>GATE_PROC_IIR_SHIFT))
+        : dt;
+      if(avg < sep){ GATE_REJ_LOAD++; return -10; }
+      GATE_PROC_AVG_US = avg;
+    }
+  }
   _preTime=curTime;
   NPE_MARK(0);
 
@@ -2937,6 +3585,8 @@ int IRAM_ATTR newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t m
   // slot arrives already retired and the drain frees it before it has lived.
   head->retired = 0;
   head->sync = SYNC_MARK_NEXT;
+  if(PHANTOM_STEALTH_PEND){ head->stealth = 1; PHANTOM_STEALTH_PEND--; STEALTH_EMITTED++; }
+  else                    head->stealth = 0;
   if(SYNC_MARK_NEXT==0) REAL_ACCEPT_MS = (int64_t)(esp_timer_get_time()/1000);
   SYNC_MARK_NEXT = 0;
   NPE_MARK(2);
@@ -2975,14 +3625,28 @@ int IRAM_ATTR ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
     // One coherent snapshot for this object's registration (see SPO_active).
     volatile stagePulseOffset* spo = SPO_active;
-    ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_off, 0, );
+    // The camera stages are pushed for a stealth object and the LIGHT stages are
+    // not:
+    // the trigger is what produces the (cam_ts, cam_us) pair this object exists
+    // for, and the exposure is irrelevant to a timestamp. A dark frame is the
+    // correct outcome here, not a degraded one.
+    if(pli->stealth == 0)
+    {
+      ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_on, 1, );
+      ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_off, 0, );
+    }
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_on, 1, pushLog(_task_););
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_off, 0, );
 
 
-    ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_off, 0, );
+    // BOTH lights, not just L1A. Stealth means no light on this machine, and a
+    // second station wired to a lamp would have flashed on every idle top-up --
+    // the exact thing this is for. The first version only skipped L1A.
+    if(pli->stealth == 0)
+    {
+      ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_on, 1, );
+      ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_off, 0, );
+    }
     ACT_PUSH_TASK(act_S.ACT_CAM2, pli, spo->CAM2_on, 1, );
     ACT_PUSH_TASK(act_S.ACT_CAM2, pli, spo->CAM2_off, 0, );
 
@@ -3213,7 +3877,33 @@ int IRAM_ATTR Run_ACTS(uint32_t cur_pulse)
 
       IO_TRACE_LOG(IOT_PIN_SWITCH,pli->insp_status,cur_pulse,pli->tid);
 
-      switch (pli->insp_status)
+      // A stealth object reaches SWITCH like anything else -- that is how it
+      // retires -- but decides nothing. No selector is pushed (there is no part
+      // to eject) and no counter moves, including CONSEC_UNANSWERED: an
+      // injected object that nobody answered is not evidence that the host has
+      // stopped answering, and letting it feed the stop threshold would turn
+      // the idle top-up into a source of halts. Which is the opposite of why
+      // it exists.
+      if (pli->stealth)
+      {
+        // Nothing decided. The station still RUNS -- the retirement block below
+        // sits outside this switch and runs unconditionally, so a stealth object
+        // is recycled like any other and RBuf does not leak a slot per top-up.
+        //
+        // "No blow" is not an early exit: the selector is a separate stage task
+        // (ACT_SEL1/2/3, fired at SEL*_on) and it is only ever queued from
+        // inside the switch below. Never pushing it is why nothing fires -- and
+        // why this does not show up as SEL_SUPPRESSED_N either, which counts an
+        // actuation that was asked for and not delivered.
+      }
+      else
+      // THE VERDICT IS REPLACED HERE AND NOWHERE EARLIER, so everything the
+      // host decided still happened: the part was inspected, its report was
+      // paired, the counters that describe the INSPECTION are untouched. Only
+      // the actuation is redirected. That keeps a test run readable -- NG/OK
+      // still mean what they measured -- and it keeps the substitution in one
+      // place where it is obvious.
+      switch (selTestVerdict((int)pli->insp_status))
       {
         case 1:
           CONSEC_UNANSWERED=0;
@@ -3537,6 +4227,20 @@ int HACK_cur_cmd_id=-1;
 // The buffer sizes are what they are: 256, 700, 2048, 3584. The 700 byte one
 // carries {"log": <an unbounded std::string>} plus the error history, which is
 // the message somebody reads when something has already gone wrong.
+// HOW CLOSE THE BIGGEST REPLY IS TO ITS CEILING.
+//
+// get_running_stat has outgrown a buffer twice -- 2048 once the clock
+// diagnostics went in, then 3072 when the width ones did -- and each time the
+// first symptom was somewhere else entirely: no reply at all, or a reply the
+// host truncated into valid-but-incomplete JSON that blanked the panel. The
+// margin was only ever known after it ran out.
+//
+// Recorded here because this is the one place every reply is serialised, and
+// kept as a high-water mark because the length varies with the data: counters
+// gain digits as they climb, and a float mid-ramp serialises far longer than
+// the same field reading 0. That variation is exactly why the failure is
+// intermittent and why an instantaneous reading would miss it.
+uint32_t JSON_LEN_MAX = 0;
 static bool send_json_or_error(MData_JR &jr, JsonDocument &doc,
                                uint8_t *buf, size_t bufsize, const char *what)
 {
@@ -3552,6 +4256,7 @@ static bool send_json_or_error(MData_JR &jr, JsonDocument &doc,
   else
   {
     int slen = serializeJson(doc, (char *)buf, bufsize);
+    if (slen > 0 && (uint32_t)slen > JSON_LEN_MAX) JSON_LEN_MAX = (uint32_t)slen;
     if (slen <= 0 || slen >= (int)bufsize) why = "buf_overflow";
     else return jr.send_json_string(0, buf, slen, 0) >= 0;
   }
@@ -3732,14 +4437,21 @@ bool _senseInv_=true;
 
 // Written by set_setup (main loop), read by GateSensing (ISR). Aligned int so
 // the access is atomic; volatile so the ISR does not cache a stale threshold.
-// Where the object's zero sits inside the gate pulse: trailing edge (false,
-// historical and what every shipped stage_pulse_offset was calibrated against)
-// or the pulse centre (true, immune to the sensor's fixed time response and
-// half as sensitive to part length/orientation -- see gate_ref_pulse).
+// Where the object's zero sits inside the gate pulse: the pulse centre (true,
+// immune to the sensor's fixed time response and half as sensitive to part
+// length/orientation -- see gate_ref_pulse) or the trailing edge (false, the
+// historical zero every stage_pulse_offset before 2026-09-08 was calibrated
+// against).
+//
+// DEFAULT IS CENTRE since 2026-09-08 (owner's call: the jog capture landed on
+// the part's tail, and the tail moves with plate speed). A board whose saved
+// config carries "gate_ref":"trailing" keeps it -- set_setup applies the saved
+// value -- so an existing machine does not move its stations by half a part on
+// a firmware update; only a fresh NVS gets the new default.
 //
 // Runtime and persisted, so it can be A/B'd on the machine instead of being a
 // one-way build-time decision. Changing it moves every station by half a part.
-volatile bool GATE_REF_CENTER = false;
+volatile bool GATE_REF_CENTER = true;
 volatile int  minWidth = 0;
 volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 
@@ -3873,7 +4585,7 @@ void IRAM_ATTR GateSensing()
       }
       else
       {
-        // gate_ref_pulse above: trailing by default, centre when gate_ref says
+        // gate_ref_pulse above: centre by default, trailing when gate_ref says
         // so. Everything downstream -- the object's gate_pulse, the minimum
         // distance test, the jog origin -- reads that one value, so the two
         // references cannot drift apart within a run.
@@ -4395,6 +5107,55 @@ StaticJsonDocument <3072>doc;
 // has to raise the host's limit first.
 StaticJsonDocument <3584>retdoc;
 
+// LEAVING CAPTURE MODE IS NOT OPTIONAL ON THE WAY INTO INSPECTION.
+//
+// While a jog is held the timer is on onTimerJog, and that handler does exactly
+// one job: emit steps and count them. It does NOT advance SYS_STEP_COUNT, does
+// not sense the gate, does not run Run_ACTS. Inspection entered on top of it is
+// a machine whose position counter is frozen: every actuation is anchored on a
+// gate_pulse that can never arrive, so nothing is ever blown, while the plate
+// still turns and the feeder still feeds. Nothing reports it either -- from
+// every counter's point of view no part was ever detected, so the screen shows
+// a machine calmly running with nothing to do.
+//
+// jog_arm already refuses outside IDLE. The other direction was never guarded,
+// and forgetting to release is the easiest mistake on that panel to make: the
+// mode is entered to read one number off, and the number is what the operator
+// leaves with.
+//
+// RELEASED, not refused, when releasing is safe. At a standstill this is
+// exactly what jog_end does, and "start inspecting" is not an ambiguous intent.
+// A plate still coasting is refused instead, for the same reason jog_end
+// refuses it -- the handler must not be pulled out from under a turning plate.
+static bool jogReleaseForInspection()
+{
+  if(JOG_STATE==0) return true;
+
+  PLATE_FREQ_TARGET=0;
+  JOG_MOVING=false; JOG_STOP_REQ=false;
+
+  if(JOG_ATTACHED && PLATE_FREQ_CURRENT!=0.0f)
+  {
+    retdoc["err"]="jog_still_moving";
+    retdoc["why"]="capture mode still has the plate turning";
+    retdoc["hint"]="wait for it to stop, then retry";
+    return false;
+  }
+
+  if(JOG_ATTACHED)
+  {
+    timerAttachInterrupt(timer, &onTimer, true);
+    JOG_ATTACHED=false;
+  }
+  digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);
+  JOG_STATE=0;
+  retdoc["jog_released"]=true;
+  retdoc["jog_disp"]=JOG_DISP;      // still worth reading; it is why they were there
+  djrl.dbg_printf("capture mode was still on at inspection entry -- released it "
+                  "(disp=%ld). The production ISR is back.", (long)JOG_DISP);
+  return true;
+}
+
 
 
 bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc, bool &doRsp,bool &isACK);
@@ -4596,6 +5357,14 @@ static const int64_t CAL_PULSE_TIMEOUT_MS = 1500;
 // Idle before the offset is re-measured, set_setup "cam_recal_idle_ms".
 // 0 disables. See recalService for where 10s comes from.
 int32_t  CAM_RECAL_IDLE_MS = 10000;
+// The cheap top-up and how often it is not enough. Both, because "we replaced
+// the full recal with one object" is a claim that has to be checkable: a
+// fallback count that climbs says the single sample is not landing, and that is
+// a different fault from the one this avoids.
+volatile uint32_t RECAL_STEALTH_N=0, RECAL_STEALTH_OK_N=0, RECAL_FALLBACK_N=0;
+static int64_t  RECAL_PENDING_MS  = 0;    // 0 = nothing outstanding
+static uint64_t RECAL_PENDING_EST = 0;    // est_cam_us when it was fired
+static const int32_t RECAL_STEALTH_TIMEOUT_MS = 4000;
 uint32_t CAM_RECALS = 0;
 // The match window expressed as what it is: a POSITION tolerance, in um.
 // 0 = off, keep the explicit match_window_us. See setMachineSetup for the
@@ -4735,6 +5504,11 @@ static int calFireNow()
   head->retired      = 0;
   head->stage        = 0;
   head->sync         = 1;              // only sync objects teach the offset
+  // Cleared for the same reason cam_us and retired are: RBuf is a ring, so a
+  // recycled slot arrives carrying whatever the previous occupant was. A stale
+  // `stealth` here would silence a calibration object's own light -- and a dark
+  // calibration frame is one the matcher may never place.
+  head->stealth        = 0;
   RBuf.pushHead();
 
   // Same order as trig_cam_burst's emit_at: camera line first, then the light.
@@ -4920,6 +5694,279 @@ static void calibrationCleanup()
 // / 35us/s = 143s before a returning frame would even fall outside the match
 // window, and the first frame back re-measures the offset anyway. This is a
 // precision guarantee, not a failure guard.
+// The outer loop. Deliberately slow and deliberately dull.
+//
+// TIME SCALES. The admission filter inside newPulseEvent has tau ~ 7.5 admitted
+// parts (proc_iir_shift 3). An outer loop moving the floor that filter is
+// chasing has to be much slower than it or the two fight, so this samples at
+// 500ms and moves in small steps: at 20/s that is ~10 parts per sample and
+// several seconds to take effect, five to ten times the inner loop.
+//
+// COMING BACK DOWN IS SLOWER THAN GOING UP. Backing off must be prompt -- the
+// queue is already growing when this notices. Relaxing must not be, because a
+// queue that has just stopped growing is not evidence that the host is fast
+// again; it is evidence that the throttle is working. Decaying quickly would
+// re-admit at the old rate and oscillate.
+//
+// WHAT IT CANNOT DO. It never subtracts from the manual floor, and it is capped
+// at proc_auto_max_us. The failure it is being bounded against is the dangerous
+// one: pipe.waiting also grows for reasons that are not host slowness -- a
+// camera stall, a real fault -- and an unbounded controller would throttle
+// toward zero, leaving a machine that reports no unjudged parts, no halt and no
+// production. That looks like success. So the bound exists, hitting it is
+// COUNTED, and how much has been added is reported: a loop that is working and
+// a loop that has run away must not look the same on a screen.
+static void procAutoService()
+{
+  if(!GATE_PROC_AUTO)
+  {
+    if(GATE_PROC_AUTO_ADD_US){ GATE_PROC_AUTO_ADD_US=0; GATE_PROC_DW_MQ=0; }
+    return;
+  }
+  static int64_t  last_ms = 0;
+  static int32_t  last_waiting = -1;
+  static uint32_t last_accept = 0;
+
+  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+  if(last_ms && now_ms - last_ms < 500) return;
+
+  // Only while judging. In any other state the queue is draining or empty and
+  // its slope says nothing about the host.
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY)
+  {
+    last_ms = now_ms; last_waiting = -1; last_accept = GATE_ACCEPT;
+    return;
+  }
+
+  int waiting = 0;
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p = RBuf.getTail(i);
+    if(p==NULL) break;
+    if(p->insp_status == insp_status_UNSET) waiting++;
+  }
+
+  static uint32_t last_camlat_n = 0;
+  static uint64_t last_camlat_sum = 0;
+  static int      bs_run = 0;        // consecutive samples of real queue growth
+
+  const int64_t dt_ms = last_ms ? (now_ms - last_ms) : 0;
+  if(last_waiting >= 0 && dt_ms >= 250)
+  {
+    // --- the primary signal: utilisation over this window -------------------
+    const uint32_t cl_n   = REP_CAMLAT_N;
+    const uint64_t cl_sum = REP_CAMLAT_SUM_US;
+    const uint32_t dn     = cl_n - last_camlat_n;
+    if(dn > 0)
+    {
+      GATE_PROC_SVC_MEAN_US = (uint32_t)((cl_sum - last_camlat_sum) / dn);
+      // Medians of the recent rings, not the window mean and not the EWMA: see
+      // PROC_LAT_RING. The mean is still computed and reported so the gap
+      // between them is visible -- that gap IS the spikiness, and an operator
+      // watching a throttle should be able to see whether it is sizing itself
+      // from a typical part or from a tail.
+      const uint32_t lat_us = ringMedian(PROC_LAT_RING, PROC_LAT_N);
+      const uint32_t id_us  = ringMedian(PROC_ID_RING, PROC_ID_N);
+      // See GATE_PROC_SVC_ID_US: each is exact in one regime and an
+      // over-estimate in the other, so the smaller is the service time.
+      if(lat_us > 0)
+        GATE_PROC_SVC_US = (id_us > 0 && id_us < lat_us) ? id_us : lat_us;
+      // rho uses the ADMITTED rate, because that is the one thing this loop
+      // can actually change.
+      const int32_t r_now = (int32_t)(((int64_t)(GATE_ACCEPT - last_accept) * 1000000) / dt_ms);
+      GATE_PROC_RHO_PCT = (int32_t)(((int64_t)r_now * (int64_t)GATE_PROC_SVC_US) / 10000000LL);
+    }
+    last_camlat_n = cl_n; last_camlat_sum = cl_sum;
+
+    // Queue growth in milli-objects per second, and the admitted rate over the
+    // same window. Both from counters this loop owns, so they cover exactly the
+    // same interval -- mixing a fresh queue reading with a stale rate is how a
+    // controller ends up reacting to arithmetic.
+    const int32_t dW_mq = (int32_t)(((int64_t)(waiting - last_waiting) * 1000000) / dt_ms);
+    const int32_t r_mq  = (int32_t)(((int64_t)(GATE_ACCEPT - last_accept) * 1000000) / dt_ms);
+    GATE_PROC_DW_MQ = dW_mq;
+
+    // 500 milli-objects/s of growth is the deadband: below it the queue is
+    // wandering, not climbing, and a controller that acts on wander is noise.
+    // --- what rho asks for --------------------------------------------------
+    //
+    // Hold rho at the target, i.e. admit no faster than service/target. This is
+    // PROACTIVE: it applies whether or not anything is backing up, which is the
+    // entire point of steering by the cause. Only ever added to the manual
+    // floor, never subtracted from it.
+    // The latency-derived figure, kept as a NUMBER and not as a target.
+    //
+    // Re-asserting it every sample is what made the probe useless twice: the
+    // probe lowers the throttle, this recomputes the same 82.5ms, and whichever
+    // rule runs next pulls it straight back. Two versions of that fight were
+    // written before it was clear that the estimate must not be in the steady
+    // -state loop at all -- it is biased high by the pipeline depth, so a loop
+    // that keeps returning to it keeps returning to a number the machine has
+    // already disproved.
+    //
+    // It gets exactly two jobs below: start the loop somewhere sane, and catch
+    // a change too large to be that bias.
+    uint32_t lat_want = 0;
+    if(GATE_PROC_SVC_US > 0 && GATE_PROC_RHO_TARGET > 0)
+    {
+      const uint64_t eff_us = (uint64_t)GATE_PROC_SVC_US * 100 / (uint32_t)GATE_PROC_RHO_TARGET;
+      lat_want = (eff_us > GATE_PROC_SEP_US) ? (uint32_t)(eff_us - GATE_PROC_SEP_US) : 0;
+    }
+    uint32_t want = 0;   // the backstop's ask; 0 means it is not asking
+
+    // --- the backstop: the queue is growing anyway --------------------------
+    //
+    // Kept, demoted, and fenced. rho is an estimate and can be wrong -- a
+    // stalled camera, a service time the report path does not see -- and a
+    // climbing queue is direct evidence that whatever rho believes, the machine
+    // is behind. It can only ever ask for MORE throttle than rho did.
+    //
+    // THE FENCE EXISTS BECAUSE THE FIRST VERSION HAD NONE, and the backstop ate
+    // the loop. Its deadband was a flat 0.5 objects/s, which is reasonable
+    // against an admission rate of 20/s and is pure noise against 1.4/s -- and
+    // 1.4/s is exactly where the loop sits once it has throttled. Worse, it
+    // derived the service rate as (r - dW): with r small, any wobble drove that
+    // to zero and it asked for the bound. Measured: the floor jumped 149ms ->
+    // 907ms at one step and then never came down, because every recovery window
+    // was re-inflated by the same noise. rho was asking for 33ms throughout.
+    //
+    // So the queue now has to be growing at a rate COMPARABLE TO ADMISSION, not
+    // merely non-zero; it has to do so for three samples running, so a single
+    // wobble is not evidence; and it can never ask for more than four times
+    // what rho asked for, so an estimate built on a small r cannot run away.
+    const int32_t dead_mq = (r_mq / 3 > 1000) ? (r_mq / 3) : 1000;
+    if(dW_mq > dead_mq && r_mq > 0) bs_run++; else bs_run = 0;
+    if(bs_run >= 3)
+    {
+      const int32_t s_mq = r_mq - dW_mq;          // the host's service rate
+      uint32_t bs;
+      if(s_mq <= 0)
+      {
+        // Serving nothing measurable. Do not divide by it -- ask for the bound
+        // and let the cap and its counter make that visible.
+        bs = GATE_PROC_AUTO_MAX_US;
+      }
+      else
+      {
+        const uint64_t target_us = (uint64_t)1000000000ULL * 115 / (uint32_t)s_mq / 100;
+        bs = (target_us > GATE_PROC_SEP_US) ? (uint32_t)(target_us - GATE_PROC_SEP_US) : 0;
+      }
+      // Bounded by rho's own answer. When rho has no answer at all (no reports
+      // in this window) the backstop is the only signal there is, so it stands
+      // alone -- that is the stalled-camera case it exists for.
+      if(lat_want > 0)
+      {
+        const uint32_t ceil4 = (lat_want > GATE_PROC_AUTO_MAX_US / 4)
+                             ? GATE_PROC_AUTO_MAX_US : lat_want * 4;
+        if(bs > ceil4) bs = ceil4;
+      }
+      want = bs;
+    }
+
+    // WHO IS ALLOWED TO MOVE THE THROTTLE, and when.
+    //
+    //   nothing set yet    the latency figure, as a starting point
+    //   queue growing      the backstop, fast -- this is the only steady-state
+    //                      reason to slow down, and it is evidence, not a model
+    //   latency doubled    the latency figure again: a jump that large is not
+    //                      the pipeline-depth bias, it is a different job
+    //                      (a recipe change, a slower part), and waiting for a
+    //                      queue to prove it would spend parts to learn it
+    //   otherwise, safe    the probe, slowly, downward
+    //
+    // The ordering matters more than any of the constants: everything that can
+    // raise is checked before the one thing that can lower, so a machine in
+    // trouble is never probed at.
+    // DECLARED CAPACITY, if one was set. Straight from the MEAN -- the median
+    // is the robust estimator for a loop that has to survive its own noise,
+    // but this mode is a person saying "the average part costs X and I want
+    // to run at a stated fraction of it", and the average is the quantity that
+    // sentence is about.
+    //
+    // The backstop still wins. Someone stating the capacity is telling the
+    // machine what they believe about the host; a queue growing is the machine
+    // reporting what is happening to it, and only one of those is evidence.
+    if(GATE_PROC_CAPACITY_PCT > 0 && GATE_PROC_SVC_MEAN_US > 0)
+    {
+      // FRACTION OF CAPACITY, not a multiplier on the interval. 100 means run
+      // at the rate the mean implies, 50 means half of it, and the interval is
+      // therefore mean x 100/pct -- the reciprocal, because a rate and an
+      // interval move opposite ways and the setting is named for the rate.
+      //
+      // ABOVE 100 IS NORMAL AND IS THE INTERESTING PART. Latency exceeds
+      // service time by the pipeline depth, so the mean understates what the
+      // host can do; a value of 165 is the operator saying "this machine does
+      // 65% more than the mean latency suggests", which is a true statement
+      // about the hardware rather than a number whose direction has to be
+      // remembered. The target machine calibrates to about 165 (mean 82.5ms
+      // against a hand-verified stable 50ms).
+      const uint64_t d_us = (uint64_t)GATE_PROC_SVC_MEAN_US
+                          * 100 / (uint32_t)GATE_PROC_CAPACITY_PCT;
+      uint32_t d_add = (d_us > GATE_PROC_SEP_US) ? (uint32_t)(d_us - GATE_PROC_SEP_US) : 0;
+      if(want > d_add) { d_add = want; GATE_PROC_BACKOFF_N++; }
+      if(d_add > GATE_PROC_AUTO_MAX_US)
+      {
+        d_add = GATE_PROC_AUTO_MAX_US;
+        GATE_PROC_AUTO_CAP_N++;
+      }
+      GATE_PROC_AUTO_ADD_US = d_add;
+    }
+    else if(GATE_PROC_AUTO_ADD_US == 0 && lat_want > 0)
+    {
+      GATE_PROC_AUTO_ADD_US = lat_want;   // bootstrap
+    }
+    else if(want > GATE_PROC_AUTO_ADD_US)
+    {
+      GATE_PROC_AUTO_ADD_US += (want - GATE_PROC_AUTO_ADD_US) / 2 + 1;
+      GATE_PROC_BACKOFF_N++;
+      if(GATE_PROC_AUTO_ADD_US >= GATE_PROC_AUTO_MAX_US)
+      {
+        GATE_PROC_AUTO_ADD_US = GATE_PROC_AUTO_MAX_US;
+        GATE_PROC_AUTO_CAP_N++;
+      }
+    }
+    else if(lat_want > GATE_PROC_AUTO_ADD_US * 2)
+    {
+      GATE_PROC_AUTO_ADD_US = lat_want;   // the job changed under us
+      GATE_PROC_BACKOFF_N++;
+    }
+    else if(GATE_PROC_PROBE && GATE_PROC_AUTO_ADD_US > 0
+            && waiting <= 2 && dW_mq <= 0 && bs_run == 0)
+    {
+      // 1/32 per sample at 2 samples a second is about 6% a second, so a 40%
+      // overestimate is walked off in roughly eight seconds -- fast enough to
+      // matter on a shift, slow enough that one quiet moment cannot dismantle
+      // the throttle before the queue can answer.
+      const uint32_t step = GATE_PROC_AUTO_ADD_US / 32 + 1;
+      GATE_PROC_AUTO_ADD_US -= step;
+      GATE_PROC_PROBE_UP_N++;
+    }
+  }
+
+  last_ms = now_ms; last_waiting = waiting; last_accept = GATE_ACCEPT;
+}
+
+static void clampMatchWindowToSpacing()
+{
+  const uint32_t sep = gateMinSepEff();
+  if(sep == 0) return;
+  int32_t cap = (int32_t)(sep/2);
+  if(cap < 200) cap = 200;   // the noise floor wins; see below
+  if(CamClockSync::TOL_US > cap)
+  {
+    djrl.dbg_printf("CAMSYNC window %ld us clamped to %ld us "
+                    "(spacing in force %lu us, window must stay under half)",
+                    (long)CamClockSync::TOL_US,(long)cap,(unsigned long)sep);
+    CamClockSync::TOL_US = cap;
+  }
+  // Below this the two floors conflict and no window is both matchable and
+  // safe. Say so rather than leaving a silently unsafe combination.
+  if(sep < 400)
+    djrl.dbg_printf("CAMSYNC WARNING: spacing %lu us is below twice the window "
+                    "noise floor -- a lost frame could be matched to a "
+                    "neighbour",(unsigned long)sep);
+}
+
 static void recalService()
 {
   if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
@@ -4954,10 +6001,70 @@ static void recalService()
     if(!p->sync) return;            // a real part is still in the machine
   }
 
+  // ONE STEALTH OBJECT, IN PLACE. The full RECAL is the fallback, not the plan.
+  //
+  // What this needs is one (cam_ts, cam_us) pair the matcher can place, because
+  // a valid model re-measures its offset OUTRIGHT from any in-window sample --
+  // that is how a running line keeps the offset fresh without calibrating at
+  // all. The idle top-up exists only because there are no parts to supply one.
+  // An injected object supplies one exactly the way a real part does.
+  //
+  // The full RECAL supplies it a different way, and pays for the difference:
+  // calFireNow bypasses the registration order, so it must be certain nothing
+  // real is in flight -- hence the shut gate, the held feeder, the drain guard,
+  // and CAL_RESET_PENDING, which drops the model and rebuilds it from eight
+  // samples. Dropping the model is the expensive part, and not because of the
+  // eight pulses: `valid == false` is the ONE condition under which an
+  // unplaceable report halts the machine immediately instead of being absorbed
+  // by the tolerance counters. So the routine top-up opened a window, every
+  // recal_idle_ms of idleness, in which a single stray report was a stop --
+  // to correct 0.038mm of drift.
+  //
+  // A queued object needs none of that. It goes through the ordinary gate in
+  // the ordinary order, so it cannot collide with a real part: it queues behind
+  // one. `valid` stays true throughout.
+  //
+  // Fall back only on evidence: if the sample does not land, the disagreement
+  // is no longer drift and rebuilding from scratch is the right answer.
   CAM_RECALS++;
-  djrl.dbg_printf("CAMSYNC RECAL: %llds idle, est drift %lld us -- topping up",
+  PHANTOM_STEALTH_PEND++;
+  phantomEmitOne();
+  RECAL_STEALTH_N++;
+  RECAL_PENDING_MS = now_ms;
+  RECAL_PENDING_EST = CAM_SYNC.est_cam_us;
+  djrl.dbg_printf("CAMSYNC RECAL: %llds idle, est drift %lld us -- one stealth object",
                   (long long)(idle_us/1000000),
                   (long long)(idle_us/1000000*35));
+}
+
+// Did the stealth object land? est_cam_us advances only on an ACCEPTED report, so
+// it moving is the same evidence the matcher acted on, not a proxy for it.
+//
+// The deadline is generous on purpose: the object has to travel to CAM1_on, be
+// captured, inspected and answered, and on a slow host that is the whole report
+// latency. Expiring early would fall back to the full RECAL for a machine that
+// was merely busy -- turning a cheap top-up into the expensive one exactly when
+// the machine can least afford it.
+static void recalPendingService()
+{
+  if(RECAL_PENDING_MS == 0) return;
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY){ RECAL_PENDING_MS = 0; return; }
+
+  if(CAM_SYNC.est_cam_us != RECAL_PENDING_EST)
+  {
+    RECAL_PENDING_MS = 0;
+    RECAL_STEALTH_OK_N++;
+    return;
+  }
+  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+  if(now_ms - RECAL_PENDING_MS < RECAL_STEALTH_TIMEOUT_MS) return;
+
+  RECAL_PENDING_MS = 0;
+  RECAL_FALLBACK_N++;
+  djrl.dbg_printf("CAMSYNC RECAL: stealth object did not land in %dms "
+                  "(stealth=%u ok=%u fallback=%u) -- full recal",
+                  (int)RECAL_STEALTH_TIMEOUT_MS,(unsigned)RECAL_STEALTH_N,
+                  (unsigned)RECAL_STEALTH_OK_N,(unsigned)RECAL_FALLBACK_N);
   SYS_STATE_Transfer(SYS_STATE_ACT::RECAL_START);
 }
 
@@ -5977,6 +7084,60 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }                       // end of the schema-clean body
 
   }
+  else if(strcmp(type,"save_counters")==0)
+  {
+    // THE HOST ASKING, ON ITS WAY OUT.
+    //
+    // The counts live here because they are incremented with the blow -- the
+    // actuation and the count are one event and cannot be split across a link.
+    // So the board owns them, and the board is the only thing that can persist
+    // them. But a normal stop must not write flash (see SYS_STATE::IDLE), and
+    // the host-link watchdog only fires while the machine is RUNNING. That
+    // leaves one hole: stop the machine, then close the app. Nothing is wrong,
+    // nobody times out, and the next core start reopens the port -- which
+    // pulses DTR, which resets this board, which loses the counts.
+    //
+    // This is how the host closes that hole: it asks, once, while shutting
+    // down. Shutting down is not normal operation, and by then the plate has
+    // been stopped for as long as it took somebody to click -- so the write
+    // costs nothing and endangers nothing.
+    //
+    // Not gated on cfgPersistDeny: that guards CONFIG writes, and its state
+    // test (IDLE or READY) would refuse exactly the case this exists for --
+    // a host leaving with the machine parked in ERROR still wants its counts.
+    // countersNvsService holds the real safety condition, which is the blow,
+    // and it keeps it.
+    retdoc["type"]="save_counters";
+    if(PLATE_FREQ_CURRENT!=0)
+    {
+      // REFUSED, NOT QUEUED -- and refusing is safe because something else has
+      // this case.
+      //
+      // Writing flash under a decel ramp is the fault the IDLE save was removed
+      // for, so this will not do it. And a moving plate means the host left a
+      // RUNNING machine, which is exactly what the host-link watchdog above is
+      // for: it fires at host_timeout_ms and saves on the way into ERROR. The
+      // counts are covered; they are just covered by the other path.
+      //
+      // Queueing would be the trap. The request would sit armed until the plate
+      // came to rest -- and with the host gone nothing ever commands it to, so
+      // it would either never fire or fire from under the watchdog's own ramp.
+      retdoc["err"]="plate still moving";
+      retdoc["covered_by"]="host_link_watchdog";
+      retdoc["plate_freq_current"]=PLATE_FREQ_CURRENT;
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      CNT_NVS_REQ_MS = millis();
+      CNT_NVS_REQ = CNT_NVS_SAVE;
+      // The service does the write (it still waits out any blow in flight), so
+      // the ack says "accepted", not "on flash". save_seq in get_running_stat
+      // is what says it landed.
+      retdoc["queued"]=true;
+      doRsp=rspAck=true;
+    }
+  }
   else if(strcmp(type,"save_setup")==0)
   {
     retdoc["type"]="save_setup";
@@ -5994,6 +7155,46 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       doRsp=true;
       rspAck=false;
     }
+  }
+  else if(strcmp(type,"restore_setup")==0)
+  {
+    // NVS -> RAM. The inverse of save_setup, and it has to live here.
+    //
+    // get_setup answers from RAM, so a host has nothing to read the saved
+    // values out of: the only copy of "what was last saved" is on this chip. A
+    // UI can keep a snapshot of what it last SAW saved, but the moment that
+    // button is wanted is the moment somebody has been editing, which is
+    // exactly when a snapshot taken on connect records the mess as the good
+    // values and restores it looking like it worked.
+    //
+    // begin() is the boot path: it re-reads the NVS document and applies it
+    // through setMachineSetup, whose last act is STAGE_PULSE_WIDTH_apply -- so
+    // the derived offsets come back too, not just the stored ones. apply_hw is
+    // false in there, so pins and IO arming are untouched; this restores
+    // settings, it does not re-initialise hardware.
+    //
+    // Not gated by cfgPersistDeny: that guards NVS WRITES, which disable the
+    // instruction cache while the timer ISR calls into flash. Reading does not.
+    //
+    // It does change timing for parts already on the plate, exactly as
+    // set_setup does at runtime -- same caveat, same reason it is acceptable:
+    // this is a machine-setup action, not something done mid-production.
+    retdoc["type"]="restore_setup";
+    MachineConfig::begin();
+    const bool from_nvs = MachineConfig::isLoadedFromNVS();
+    retdoc["from_nvs"]=from_nvs;
+    if(!from_nvs)
+    {
+      // begin() leaves the running values alone when there is nothing usable to
+      // load, so nothing was restored and nothing was lost. Say both.
+      retdoc["err"]="NVS holds no usable config -- nothing was changed";
+    }
+    else
+    {
+      djrl.dbg_printf("restore_setup: reloaded the saved config from NVS");
+    }
+    doRsp=true;
+    rspAck=from_nvs;
   }
   else if(strcmp(type,"clear_saved_setup")==0)
   {
@@ -6121,6 +7322,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
+    // The filter belongs to the run, for the same reason the unanswered budget
+    // does: a stale average from the previous run is not evidence about this one.
+    GATE_REJ_LOAD=0; GATE_PROC_AVG_US=0;
+    GATE_PROC_AUTO_ADD_US=0; GATE_PROC_AUTO_CAP_N=0; GATE_PROC_DW_MQ=0;
+    GATE_PROC_RHO_PCT=0; GATE_PROC_SVC_US=0;
+    GATE_PROC_PROBE_UP_N=0; GATE_PROC_BACKOFF_N=0;
+    GATE_PROC_SVC_ID_US=0; PROC_LAST_REP_US=0;
+    PROC_LAT_N=PROC_LAT_I=PROC_ID_N=PROC_ID_I=0; GATE_PROC_SVC_MEAN_US=0;
     GATE_EDGES=GATE_REJ_WIDTH=GATE_REJ_UNSTABLE=GATE_REJ_BLOCKED=0;
     GATE_REJ_STEPPER_OFF=GATE_REJ_GATE_OFF=GATE_REJ_DRYRUN=0;
     GATE_DISCARD_STOP=0;
@@ -6300,7 +7509,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         // keeps the reasons and their meaning in the same place.
         const char *why="none"; uint32_t worst=0;
         struct { const char *n; uint32_t v; } R[] = {
-          {"rate",GATE_REJ_RATE},{"width",GATE_REJ_WIDTH},
+          {"rate",GATE_REJ_RATE},{"load",GATE_REJ_LOAD},{"width",GATE_REJ_WIDTH},
           {"unstable",GATE_REJ_UNSTABLE},{"dist",GATE_REJ_DIST},
           {"busy",GATE_REJ_BUSY},{"blocked",GATE_REJ_BLOCKED},
           {"stepper_off",GATE_REJ_STEPPER_OFF},{"gate_off",GATE_REJ_GATE_OFF},
@@ -6399,6 +7608,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // WINDOW is the clock drifting out of the match window (and that one is
     // CAM_CLOCK_LOST's to escalate). CONSEC is what the stop threshold reads.
     jCountInfo["NOMATCH_ORPHAN"]=NOMATCH_ORPHAN_N;
+    // Late answers for parts already swept -- see the NOMATCH branch.
+    jCountInfo["NOMATCH_LATE"]=NOMATCH_LATE_N;
     jCountInfo["NOMATCH_WINDOW"]=NOMATCH_WINDOW_N;
     jCountInfo["NOMATCH_CONSEC"]=CONSEC_NOMATCH;
 
@@ -6407,6 +7618,27 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     retdoc["plate_freq"]=PLATE_FREQ_TARGET;      // COMMANDED
     retdoc["plate_freq_meas"]=PLATE_FREQ_MEAS;   // MEASURED
+    // Ramp passes skipped because the loop had been blocked (see the ramp
+    // service). Zero on a healthy machine. Non-zero says something is stalling
+    // the main loop long enough to have stepped the plate frequency, back when
+    // a stall was charged to the ramp -- so this is the meter for the fault
+    // class, not just for this fix.
+    // The motion diagnostics are NOT here -- see get_motion_diag.
+    //
+    // They were, and it cost the panel. Measured after adding them:
+    // json_len_max 3584 against a 3584 buffer, i.e. no headroom at all, so
+    // send_json_or_error was answering buf_overflow instead of the statistics
+    // and every number in the strip blanked until a shorter reply came round.
+    // The reply's length is not constant -- counters gain digits as they climb
+    // and a float mid-ramp serialises far longer than the same field reading
+    // zero -- which is why it only happened sometimes, and around a stop.
+    //
+    // This reply has outgrown a buffer three times now (2048, 3072, and this).
+    // Raising it again is not available: the ceiling is the HOST's, not ours --
+    // the core reads this line with `if (line.size() < 4096) line += c` and
+    // silently drops the rest, so past 4096 the truncation happens where no
+    // device-side guard can see it. get_backup_stat was split out for exactly
+    // this reason; this follows it.
     // if(SEL1_ACT_COUNTDOWN>=0)
     // {
     // }
@@ -6493,6 +7725,26 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
+      // The idle top-up, and how often the cheap form was not enough.
+      jHl["recal_stealth"]=RECAL_STEALTH_N;
+      jHl["recal_stealth_ok"]=RECAL_STEALTH_OK_N;
+      jHl["recal_fallback"]=RECAL_FALLBACK_N;
+      // WHETHER save_setup WOULD BE ACCEPTED RIGHT NOW, and if not, why.
+      //
+      // The rule has three parts (state, setpoint, plate actually stopped) and
+      // it exists for a hardware reason, not a bookkeeping one: erasing NVS
+      // disables the instruction cache, and StepGo / Run_ACTS / newPulseEvent
+      // are all flash-resident functions the timer ISR calls straight into.
+      //
+      // A UI that wants to grey out its save button has to know this, and the
+      // only two ways to know are to ask or to reimplement -- and a
+      // reimplementation of a safety rule is a copy that drifts silently the
+      // first time the rule changes. So the rule answers for itself, from the
+      // same function save_setup calls. Absent = savable.
+      {
+        const char *deny = cfgPersistDeny();
+        if(deny) jHl["cfg_persist_deny"]=deny;
+      }
 
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
@@ -6524,6 +7776,44 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       JsonObject jG=retdoc.createNestedObject("gate");
       jG["accept"]=GATE_ACCEPT;
       jG["rej_rate"]=GATE_REJ_RATE;
+      // The second layer, and the filter state it decided on. Both, because
+      // "why did throughput stop rising" needs the average as well as the count
+      // -- a rej_load that is climbing while avg sits exactly at the floor is
+      // the loop working; one climbing with avg far above it is not.
+      jG["rej_load"]=GATE_REJ_LOAD;
+      jG["proc_sep_us"]=GATE_PROC_SEP_US;
+      jG["proc_avg_us"]=GATE_PROC_AVG_US;
+      // The auto term, and enough to tell a working loop from a runaway: how
+      // much it has added, what is actually in force, the growth it is reacting
+      // to, and how often it has sat at the bound.
+      jG["proc_mode"] = GATE_PROC_AUTO ? "auto"
+                      : (GATE_PROC_SEP_US ? "manual" : "off");
+      // What the gate is actually admitting at, in the unit the setting uses,
+      // so a panel never has to invert a microsecond interval to show it.
+      {
+        const uint32_t eff = gateProcSepEff();
+        jG["proc_rate_hz"] = eff ? (1000000 / eff) : 0;
+      }
+      jG["proc_auto"]=(bool)GATE_PROC_AUTO;
+      jG["proc_auto_add_us"]=GATE_PROC_AUTO_ADD_US;
+      jG["proc_eff_us"]=gateProcSepEff();
+      jG["proc_auto_cap_n"]=GATE_PROC_AUTO_CAP_N;
+      jG["proc_dw_mq"]=GATE_PROC_DW_MQ;
+      jG["proc_rho_pct"]=GATE_PROC_RHO_PCT;
+      jG["proc_svc_us"]=GATE_PROC_SVC_US;
+      // Both inputs, not just the winner: which one is smaller says which
+      // regime the machine is in, and that is worth being able to read.
+      jG["proc_svc_id_us"]=GATE_PROC_SVC_ID_US;
+      // The window mean beside the median the loop actually uses. Far
+      // apart means a spiky report time; together means a steady one.
+      jG["proc_svc_mean_us"]=GATE_PROC_SVC_MEAN_US;
+      // Probing and backing off must be distinguishable from a loop that has
+      // settled: both counters climbing together is a controller hunting, one
+      // climbing alone is one that has found an edge and is holding it.
+      jG["proc_capacity_pct"]=GATE_PROC_CAPACITY_PCT;
+      jG["proc_probe"]=(bool)GATE_PROC_PROBE;
+      jG["proc_probe_up_n"]=GATE_PROC_PROBE_UP_N;
+      jG["proc_backoff_n"]=GATE_PROC_BACKOFF_N;
       jG["rej_dist"]=GATE_REJ_DIST;
       jG["rej_busy"]=GATE_REJ_BUSY;
       jG["disabled"]=(bool)GATE_DISABLED;
@@ -6532,7 +7822,37 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jG["freq_stable"]=SYS_FREQ_STABLE;
       // Stage clock running with the plate held still -- test rig only.
       jG["dry_run"]=(bool)DRY_RUN;
+      // Never silent, for the same reason the fault injector is not: a test
+      // pattern that outlives the person who set it is a machine sorting to a
+      // rule nobody remembers choosing.
+      if(SEL_TEST_MODE)
+      {
+        // THE WIRE NAME, not the sentence. SEL_TEST_MODE_NAME() spells the mode
+        // out for a human reading a log ("alternate", "middle"); the WebUI
+        // matches on the short form it sends ("alt", "mid"), and mixing the two
+        // makes the radio show nothing selected and hides the start button that
+        // only exists in mid.
+        retdoc["sel_test"] = SEL_TEST_MODE==1 ? "all"
+                           : SEL_TEST_MODE==2 ? "alt"
+                           : SEL_TEST_MODE==3 ? "mid" : "off";
+        retdoc["sel_test_sel"] = SEL_TEST_SEL;
+        if(SEL_TEST_MODE == 3) retdoc["sel_test_armed"] = (bool)SEL_TEST_ARMED;
+      }
       jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;      // configured
+      // ... and what is actually enforced, which differs under cam_mode auto.
+      // Both, because "the camera says 82fps" and "the gate is admitting at
+      // 70/s" are different claims and only one of them is the machine.
+      jG["min_sep_eff_us"]=gateMinSepEff();
+      jG["cam_mode"] = GATE_CAM_AUTO ? "auto" : "manual";
+      jG["cam_fps_limit"] = GATE_CAM_FPS_MHZ / 1000.0;
+      {
+        const int64_t age = (int64_t)(esp_timer_get_time()/1000) - GATE_CAM_FPS_MS;
+        jG["cam_fps_age_s"] = GATE_CAM_FPS_MHZ ? (int)(age/1000) : -1;
+        // Said out loud rather than inferred from the age: a reader should not
+        // have to know the timeout to know the value is being ignored.
+        if(GATE_CAM_AUTO && (GATE_CAM_FPS_MHZ==0 || age >= GATE_CAM_STALE_MS))
+          jG["cam_fps_stale"] = true;
+      }
       jG["max_hz"]=SYS_MIN_PULSE_TIME_SEP_us ?
                      (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
       // What the gate is enforcing right now. Equal to the configured value
@@ -6583,6 +7903,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // rejected up while resid stays small = the outlier guard doing its job.
       // rebuilds up = the offset genuinely moved and was re-learned.
       jS["rejected"]=CAM_SYNC.rejected;
+      // Misses ruled out as clock evidence -- almost always a report for an
+      // object that was swept before it arrived. Climbing while `rejected` and
+      // `rebuilds` stay flat is the host running late, not the clock drifting,
+      // and those want completely different fixes.
+      jS["far_miss"]=CAM_SYNC.far_miss;
       jS["rebuilds"]=CAM_SYNC.rebuilds;
       // Unambiguous samples emitted. `learned` should now equal this: any
       // excess means something other than a sync pulse taught the estimate.
@@ -6719,6 +8044,18 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       ACT_CAP_MAX_T         = 0;
       GATE_W_MAX            = 0;
       GATE_W_MIN            = 0xFFFFFFFFu;
+      // Both reported by this reply, and both are "since you last looked"
+      // questions rather than lifetime marks -- a spike that happened at
+      // spin-up three hours ago says nothing about the stop somebody is
+      // investigating now, and leaving it latched is exactly the failure the
+      // comment above ACCEL_CMD_MAX's declaration describes for every other max
+      // in this firmware.
+      ACCEL_CMD_MAX         = 0.0f;
+      ACCEL_MEAS_MAX        = 0.0f;
+      // The stall meters go with them, for the same reason and out of the same
+      // window. They were added without this and would have latched.
+      RAMP_STALLS           = 0;
+      RAMP_STALL_DT_WORST   = 0.0f;
       // Cleared as a PAIR -- :6304 emits them from one loop, so clearing only
       // one leaves the two arrays describing different eras with nothing
       // saying so.
@@ -6937,7 +8274,35 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         // those would put the whole uptime into the average.
         if(tarP->cam_us!=0 && now64>(int64_t)tarP->cam_us)
         {
+          // Answer-to-answer spacing, sampled here because this is the
+          // moment an answer exists. Nothing decides whether the machine is
+          // backlogged: min() in procAutoService does that, and it does it by
+          // arithmetic rather than by a threshold somebody has to choose.
+          {
+            const uint64_t rep_now = (uint64_t)now64;
+            if(PROC_LAST_REP_US)
+            {
+              const uint64_t gap = rep_now - PROC_LAST_REP_US;
+              // A gap of minutes is the line having been stopped, not a slow
+              // host; it must not be allowed to poison the average.
+              if(gap > 0 && gap < 2000000ULL)
+              {
+                const uint32_t idt = (uint32_t)gap;
+                GATE_PROC_SVC_ID_US = GATE_PROC_SVC_ID_US
+                  ? (uint32_t)(GATE_PROC_SVC_ID_US
+                      + (((int32_t)idt - (int32_t)GATE_PROC_SVC_ID_US) >> 3))
+                  : idt;
+                PROC_ID_RING[PROC_ID_I] = idt;
+                PROC_ID_I = (uint8_t)((PROC_ID_I + 1) % PROC_RING_N);
+                if(PROC_ID_N < PROC_RING_N) PROC_ID_N++;
+              }
+            }
+            PROC_LAST_REP_US = rep_now;
+          }
           uint32_t clat=(uint32_t)(now64-(int64_t)tarP->cam_us);
+          PROC_LAT_RING[PROC_LAT_I] = clat;
+          PROC_LAT_I = (uint8_t)((PROC_LAT_I + 1) % PROC_RING_N);
+          if(PROC_LAT_N < PROC_RING_N) PROC_LAT_N++;
           REP_CAMLAT_N++;
           REP_CAMLAT_SUM_US+=clat;
           if(clat>REP_CAMLAT_MAX_US)REP_CAMLAT_MAX_US=clat;
@@ -7095,19 +8460,49 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       const bool gateWatching = (cam_ts != 0 && cat != -1 && nearest != NULL);
       bool fatal;
       const char *why;
+      // A REPORT THAT OUTLIVED ITS OBJECT IS ALREADY COUNTED, ONCE.
+      //
+      // Pushed to the limit the host answers late; the part reaches SWITCH
+      // unanswered, is recorded as UNANSWERED and swept. The report then
+      // arrives to find its object gone, so `nearest` is a NEIGHBOUR a whole
+      // spacing away -- tens of milliseconds outside the window.
+      //
+      // Counting that as a nomatch escalates ONE physical event on TWO
+      // independent thresholds: it has already advanced CONSEC_UNANSWERED
+      // toward skip_policy.stop_after, and it would now also advance
+      // CONSEC_NOMATCH toward nomatch_stop_after. Two ways to halt for the same
+      // late answer, and the second one is a threshold about PAIRING, which is
+      // not what went wrong.
+      //
+      // Fixing CAM_CLOCK_LOST for this exact case moved the halt here rather
+      // than removing it -- reported from the line within the hour. Same 4x
+      // window test as the clock guard, deliberately, so the two cannot
+      // disagree about what "a whole spacing away" means.
+      //
+      // Still counted and reported: a machine where this climbs is a machine
+      // running late, and that is worth seeing. It is bounded by the unanswered
+      // threshold that already owns it.
+      const bool late_swept = (nearest != NULL && gateWatching
+                               && nearestDelta > (int64_t)CamClockSync::TOL_US * 4);
+
       if(!CAM_SYNC.valid)      { fatal = true;  why = "clock-invalid"; }
       else if(nearest == NULL) { fatal = false; why = "no-object";     NOMATCH_ORPHAN_N++; }
+      else if(late_swept)      { fatal = false; why = "late-swept";    NOMATCH_LATE_N++; }
       else if(gateWatching)    { fatal = false; why = "out-of-window"; NOMATCH_WINDOW_N++; }
       else                     { fatal = true;  why = "unwatched";     }
 
-      if(!fatal && ++CONSEC_NOMATCH >= (uint32_t)NOMATCH_STOP_AFTER)
+      // late_swept neither advances the counter nor clears it: it is not
+      // evidence that the pairing is failing, and it is not evidence that the
+      // pairing is fine either.
+      if(!fatal && !late_swept && ++CONSEC_NOMATCH >= (uint32_t)NOMATCH_STOP_AFTER)
       {
         fatal = true;
         why = "consecutive";
       }
-      djrl.dbg_printf("NOMATCH %s consec=%u orphan=%u window=%u -> %s",
+      djrl.dbg_printf("NOMATCH %s consec=%u orphan=%u window=%u late=%u -> %s",
                       why, (unsigned)CONSEC_NOMATCH,
                       (unsigned)NOMATCH_ORPHAN_N, (unsigned)NOMATCH_WINDOW_N,
+                      (unsigned)NOMATCH_LATE_N,
                       fatal ? "STOP" : "tolerated");
       if(fatal)
         SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_MATCHES_NO_OBJECT);
@@ -7366,9 +8761,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["hint"]="set plate.freq before entering inspection mode";
       doRsp=true; rspAck=false;
     }
+    else if(!jogReleaseForInspection())
+    {
+      retdoc["type"]="enter_insp_mode";
+      doRsp=true; rspAck=false;
+    }
     else
     {
       SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
+      retdoc["type"]="enter_insp_mode";
       doRsp=rspAck=true;
     }
   }
@@ -7406,6 +8807,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["err"]="io_not_configured";
       retdoc["why"]=IO_SAFE_WHY;
       retdoc["hint"]="set_setup a complete io_on_level (see get_schema)";
+      doRsp=true; rspAck=false;
+    }
+    else if(!jogReleaseForInspection())
+    {
+      retdoc["type"]="enter_insp_test_mode";
       doRsp=true; rspAck=false;
     }
     else
@@ -7531,9 +8937,191 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=true; rspAck=_gd_ok;
   }
 
+  else if(strcmp(type,"cam_limit")==0)
+  {
+    // {"type":"cam_limit","fps_mhz":N} -- pushed by the core on change and as a
+    // heartbeat. Recorded whatever the mode is, so switching to auto uses a
+    // figure that is already current instead of waiting for the next push.
+    if(doc["fps_mhz"].is<uint32_t>() || doc["fps_mhz"].is<int>())
+    {
+      const int v = doc["fps_mhz"];
+      if(v > 0)
+      {
+        GATE_CAM_FPS_MHZ = (uint32_t)v;
+        GATE_CAM_FPS_MS  = (int64_t)(esp_timer_get_time()/1000);
+        // The spacing in force may have just changed, and the match window has
+        // to stay under half of it. Cheap, and this is the only other place the
+        // effective spacing moves.
+        clampMatchWindowToSpacing();
+      }
+    }
+    // No reply: this arrives on the same link the verdicts use, and an
+    // acknowledgement for a value that changes on its own would be traffic
+    // against the machine's own deadline for no reader.
+    doRsp=false; rspAck=false;
+  }
+  else if(strcmp(type,"sel_test")==0)
+  {
+    // {"type":"sel_test","mode":"off"|"all"|"alt","sel":1..3}
+    retdoc["type"]="sel_test";
+    if(doc["sel"].is<int>())
+    {
+      const int v = doc["sel"];
+      if(v>=1 && v<=3) SEL_TEST_SEL = v;
+    }
+    // The ack is tracked, not assigned at the end. The first version set
+    // rspAck=false for a bad mode and then overwrote it with true two lines
+    // later, so an unrecognised mode came back as {"err":"...","ack":true} --
+    // a refusal wearing an acceptance, which is the exact failure this session
+    // spent an afternoon on elsewhere.
+    bool ok = true;
+    if(doc["mode"].is<const char*>())
+    {
+      const char *m = doc["mode"];
+      if(strcmp(m,"off")==0)      SEL_TEST_MODE = 0;
+      else if(strcmp(m,"all")==0) SEL_TEST_MODE = 1;
+      else if(strcmp(m,"alt")==0) SEL_TEST_MODE = 2;
+      else if(strcmp(m,"mid")==0) SEL_TEST_MODE = 3;
+      else { retdoc["err"]="mode must be off|all|alt|mid"; ok = false; }
+      // Only on a mode that was understood: restarting the phase for a typo
+      // would shift the comb the operator is lining up against.
+      //
+      // Entering middle mode DISARMS. Selecting the mode is "stop blowing so I
+      // can place the parts"; the blow is a second, deliberate press.
+      if(ok) { SEL_TEST_N = 0; SEL_TEST_ARMED = false; }
+    }
+    // {"type":"sel_test","start":true} -- arm middle mode for ONE part.
+    //
+    // Refused in any other mode rather than ignored: a start that silently does
+    // nothing is indistinguishable, from the operator's side, from a start that
+    // armed and then found no part to blow.
+    if(doc["start"].is<bool>() && doc["start"].as<bool>())
+    {
+      if(SEL_TEST_MODE == 3)
+      {
+        SEL_TEST_N = 0;
+        SEL_TEST_ARMED = true;
+        djrl.dbg_printf("SEL TEST MIDDLE: armed -- the 2nd part judged from now "
+                        "goes to SEL%d, everything else is NA", SEL_TEST_SEL);
+      }
+      else { retdoc["err"]="start needs mode mid"; ok = false; }
+    }
+    retdoc["mode"]  = SEL_TEST_MODE==1 ? "all"
+                    : SEL_TEST_MODE==2 ? "alt"
+                    : SEL_TEST_MODE==3 ? "mid" : "off";
+    retdoc["sel"]   = SEL_TEST_SEL;
+    // What the operator needs back: is it holding, or is a puff still coming?
+    if(SEL_TEST_MODE == 3)
+    {
+      retdoc["armed"] = (bool)SEL_TEST_ARMED;
+      retdoc["n"]     = (uint32_t)SEL_TEST_N;
+    }
+    if(SEL_TEST_MODE)
+      LOGW_SEL_TEST();
+    doRsp=true; rspAck=ok;
+  }
+  else if(strcmp(type,"blow")==0)
+  {
+    // {"type":"blow","sel":1..3} -- one puff, right now, from no verdict.
+    //
+    // For measuring what the air does: arrange parts however you like, watch
+    // the disc, press it when the part you want is where you want it. There is
+    // no object, no gate pulse, no pairing -- which is the point. The gate's
+    // own minimum separation (min_detect_sep_us, 30ms here) means tightly
+    // packed parts are NOT all detected, so any test that counts objects is
+    // counting something other than what the operator placed. This counts
+    // nothing.
+    //
+    // The DELAY IS THE OPERATOR'S. The puff goes out at the next tick rather
+    // than at SEL*_on, because SEL*_on is the distance from a gate pulse and
+    // there is no gate pulse. Pressing early or late is theirs to learn, and
+    // learning it is part of what the test is for.
+    //
+    // The WIDTH is the configured one (SEL*_off - SEL*_on). A puff of a
+    // different length would be a different puff, and then nothing measured
+    // here would say anything about the machine's own.
+    retdoc["type"]="blow";
+    int sel = doc["sel"].is<int>() ? (int)doc["sel"] : 1;
+    bool ok = (sel>=1 && sel<=3);
+    if(!ok) retdoc["err"]="sel must be 1..3";
+    else
+    {
+      // The same guard the verdict path uses. A manual blow that fires while
+      // the plate is stopped or dry run is on would be the one actuation on
+      // this machine that ignores them, and dry run would stop meaning dry.
+      const bool sel_ok = PLATE_RUNNING && SYS_STEPPER_DISABLED==false
+                          && DRY_RUN==false && !faultSuppressSel();
+      if(!sel_ok) { retdoc["err"]="blocked: plate stopped, dry run, or fault"; ok=false; }
+      else
+      {
+        volatile stagePulseOffset* spo = SPO_active;
+        // THE SAME TWO OFFSETS THE VERDICT PATH PUSHES, on a BACK-DATED anchor.
+        //
+        // The first version pushed ON at offset 0 and OFF at a width it worked
+        // out itself (SEL*_off - SEL*_on). The width was right and the blow was
+        // not: ACT_TRY_RUN_TASK takes the OFF task's deadline from
+        // `spo->SEL*_off`, NOT from the offset the task carries --
+        //
+        //     task->info ? task->offset : spo->SEL1_off
+        //
+        // -- so the puff closed at anchor+24531 instead of anchor+159 and ran
+        // about 150x too long. The offset that was computed so carefully was
+        // never read. A second expression of a timing that already exists is
+        // worth nothing when the machinery only ever consults the first.
+        //
+        // So push what the verdict path pushes, and move the ANCHOR instead:
+        // set it to where the gate pulse would have been for a puff that lands
+        // now. Then the standard deadlines do the arithmetic --
+        //
+        //     ON  fires at anchor + SEL*_on  == now            (no delay)
+        //     OFF fires at anchor + SEL*_off == now + width     (real width)
+        //
+        // -- and the width has ONE source, the same one the machine uses.
+        // Everything downstream (the grow/cap clamp, the suppression guards,
+        // the counters) sees an ordinary task, because it is one.
+        //
+        // The subtraction is modular and so is the comparison
+        // ((uint32_t)(cur_pulse - task->gate_pulse) >= task_off), so an anchor
+        // that wraps below zero shortly after boot still compares correctly.
+        uint32_t on = 0, off = 0;
+        switch(sel)
+        {
+          case 1: on = spo->SEL1_on; off = spo->SEL1_off; break;
+          case 2: on = spo->SEL2_on; off = spo->SEL2_off; break;
+          default:on = spo->SEL3_on; off = spo->SEL3_off; break;
+        }
+        const uint32_t anchor = SYS_STEP_COUNT - on;
+        switch(sel)
+        {
+          case 1: ACT_PUSH_TASK_AT(act_S.ACT_SEL1, anchor, on,  1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL1, anchor, off, 0); break;
+          case 2: ACT_PUSH_TASK_AT(act_S.ACT_SEL2, anchor, on,  1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL2, anchor, off, 0); break;
+          default:ACT_PUSH_TASK_AT(act_S.ACT_SEL3, anchor, on,  1);
+                  ACT_PUSH_TASK_AT(act_S.ACT_SEL3, anchor, off, 0); break;
+        }
+        const uint32_t width = off - on;
+        retdoc["sel"]   = sel;
+        retdoc["width"] = width;
+        retdoc["on"]    = on;
+        retdoc["off"]   = off;
+        djrl.dbg_printf("MANUAL BLOW: SEL%d now, %lu pulses wide (on=%lu off=%lu) "
+                        "-- no verdict, no object", sel, (unsigned long)width,
+                        (unsigned long)on, (unsigned long)off);
+      }
+    }
+    doRsp=true; rspAck=ok;
+  }
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
+    // {"type":"trig_phantom_pulse","stealth":true}
+    //
+    // stealth: no light, no blow, no counts -- see pipeLineInfo::stealth. The
+    // default is false so every existing caller keeps the object it asked for.
+    if(doc["stealth"].is<bool>() && (bool)doc["stealth"]) PHANTOM_STEALTH_PEND++;
     phantomEmitOne();
+    retdoc["type"]="trig_phantom_pulse";
+    retdoc["stealth_pending"]=(uint32_t)PHANTOM_STEALTH_PEND;
     doRsp=rspAck=true;
   }
 
@@ -7918,6 +9506,37 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
 
+  else if(strcmp(type,"get_motion_diag")==0)
+  {
+    // What the plate actually did, and how close this link is to its limits.
+    //
+    // Its own command because get_running_stat has no room left (see there).
+    // That is not only a workaround: these answer a different question, asked
+    // at a different rate. The counts are glanced at continuously while parts
+    // are moving; this is opened when somebody is investigating, and a reply
+    // nobody reads every second is a reply that costs nothing to make separate.
+    retdoc["type"]="get_motion_diag";
+
+    // Hz/s. cmd above plate_accel means something other than the ramp wrote the
+    // frequency; meas far from cmd means the plate did not follow.
+    retdoc["accel_cmd_max"]=(uint32_t)ACCEL_CMD_MAX;
+    retdoc["accel_meas_max"]=(uint32_t)ACCEL_MEAS_MAX;
+    retdoc["ramp_stalls"]=RAMP_STALLS;
+    retdoc["ramp_stall_worst_ms"]=(uint32_t)(RAMP_STALL_DT_WORST*1000.0f);
+    retdoc["plate_accel"]=SYS_FREQ_ACCEL;   // so the reader can judge cmd without a second call
+
+    // Counter durability: which path saved, and how often.
+    retdoc["hostloss_saves"]=HOSTLOSS_SAVES;
+    retdoc["restsave_saves"]=RESTSAVE_SAVES;
+
+    // The margin that this command exists because of. Reported here rather
+    // than in the reply it measures, so asking the question cannot be what
+    // pushes the answer over.
+    retdoc["json_len_max"]=JSON_LEN_MAX;
+    retdoc["json_cap"]=(uint32_t)3584;
+
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_backup_stat")==0)
   {
     // Its own command, not part of get_running_stat.
@@ -8646,6 +10265,98 @@ volatile uint32_t LOOP_PASS_T0_US=0, LOOP_PREV_GAP_US=0;
 #define SEG_END(V) do{ uint32_t _d=(uint32_t)esp_timer_get_time()-_seg_t0; \
                        if(_d>(V)) (V)=_d; }while(0)
 
+// WHY THE CHIP LAST BOOTED, SAID ONCE, WITHOUT BEING ASKED.
+//
+// esp_reset_reason() already answers this, and get_running_stat already carries
+// it -- but only to whoever asks, and the only thing that asks is the ESP32
+// panel in the WebUI while an operator has it open. So a panic at 3am reboots
+// the board, the machine recovers on its own, and by morning the evidence is
+// gone: the reason is overwritten by the next boot, error_hist lives in RAM,
+// and the panic backtrace went out the UART as noise. Nothing anywhere records
+// that it happened.
+//
+// ON THE EXISTING EVENT PATH, NOT A NEW ONE. system_info is already an
+// unsolicited event, already stamped with EVENT_SEQ so the host can detect
+// event loss, and the core already treats a line containing "system_info" as a
+// fault and logs it in full without truncation. Adding a frame type would mean
+// a new parser path on both sides for one string a day.
+//
+// AFTER THE LINK IS PROVEN, NOT AT BOOT. The board reboots at the moment the
+// host opens the port -- DTR/RTS is wired to EN on a dev board -- and at that
+// moment the boot ROM is printing 115200 into a port read at 230400. Anything
+// sent into that is lost at best, and at worst is one more thing for the host's
+// parser to resynchronise past. So this waits for a frame to arrive FROM the
+// host: that is proof the link is up, framed and at the right baud.
+//
+// Announced once per boot. A repeat would be indistinguishable from a second
+// reboot, which is the exact fact this exists to report.
+static bool BOOT_ANNOUNCED=false;
+static void bootReasonService()
+{
+  if(BOOT_ANNOUNCED) return;
+  if(djrl.rx_frames==0) return;          // the host is transmitting
+
+  // A FRAME ARRIVING IS NOT THE HOST BEING ABLE TO HEAR US.
+  //
+  // Measured, on the very crash this exists to report: the board panicked, came
+  // back, saw host frames within a second, announced PANIC -- and the host
+  // never logged it. Its parser was still in ERROR_SEC chewing through the
+  // panic backtrace this same reboot had sprayed onto the wire, and it stays
+  // there until it can resynchronise. The announcement went out into that and
+  // was eaten. What the host eventually logged was the NEXT boot (a POWERON
+  // caused by its own recovery reopening the port), i.e. the one message that
+  // says nothing was the only one that survived.
+  //
+  // Inbound traffic proves the host's transmitter. Nothing the board can see
+  // proves the host's receiver, so this waits instead: the board sends a
+  // SYSTIME heartbeat every second, and the host resynchronises on the first
+  // whole frame it gets, so a couple of seconds is several chances to recover.
+  static uint32_t link_seen_ms=0;
+  if(link_seen_ms==0) { link_seen_ms=millis(); return; }
+
+  // SAID THREE TIMES, BECAUSE ONE DELIVERY IS NOT A DELIVERY HERE.
+  //
+  // There is no acknowledgement on this path -- system_info is an unsolicited
+  // event -- and the one link this has to cross is the link that was, seconds
+  // ago, full of the panic dump that caused the reboot. Measured: a single
+  // announcement at +2.5s was still lost while the host worked its way back to
+  // a frame boundary. Repeats are harmless (the host logs a line; the fact does
+  // not change between copies) and the loss they cover is total.
+  //
+  // Three, spread out, then silence. A message that keeps repeating forever
+  // stops being a boot notice and becomes noise on a wire that is measured in
+  // milliseconds per frame.
+  static int announce_n=0;
+  static const uint32_t AT_MS[3]={2500,8000,20000};
+  if(announce_n>=3) { BOOT_ANNOUNCED=true; return; }
+  if(millis()-link_seen_ms < AT_MS[announce_n]) return;
+  announce_n++;
+
+  static const char* rr_names[]={"UNKNOWN","POWERON","EXT","SW","PANIC",
+                                 "INT_WDT","TASK_WDT","WDT","DEEPSLEEP",
+                                 "BROWNOUT","SDIO"};
+  const int rr=(int)esp_reset_reason();
+  const char* nm=(rr>=0 && rr<11)?rr_names[rr]:"?";
+
+  TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+  if(!commInfo) { announce_n--; return; }   // queue full; retry this one
+
+  // The text goes in `log`, which system_info already carries and the core
+  // already logs verbatim. POWERON is called out as the ambiguous one it is:
+  // on a dev board it is also what re-opening the serial port produces, so
+  // "the board power-cycled" and "the host opened the port" look identical
+  // here -- and only one of those is a fault.
+  static char msg[96];
+  snprintf(msg,sizeof(msg),
+           "boot: reset_reason=%d(%s)%s", rr, nm,
+           (rr==ESP_RST_POWERON||rr==ESP_RST_EXT)
+             ? " -- power cycle or a host port open, not necessarily a fault"
+             : " -- THE FIRMWARE DIED AND REBOOTED");
+  commInfo->type=TaskQ2CommInfo_Type::system_info;
+  commInfo->log=msg;
+  TaskQ2CommInfoQ.pushHead();
+}
+
 void firmwareLoop()
 {
   {
@@ -8665,8 +10376,14 @@ void firmwareLoop()
   { SEG_BEGIN();
   syncPulseService();
   spinupService();
+  procAutoService();
   recalService();
+  // Beside it, not inside it: recalService decides whether to ASK, this decides
+  // whether the asking worked. Separating them keeps the idle guard from having
+  // to re-run while a sample is outstanding.
+  recalPendingService();
   phantomTrainService();
+  bootReasonService();
   SEG_END(SEG_SVC_US); }
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.
@@ -8708,10 +10425,60 @@ void firmwareLoop()
     if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
     {
       // Parts are moving with nobody answering for them. Stopping is the whole
-      // job here; the counter save rides on the way into ERROR, which is also
-      // where every OTHER way of coming to rest saves.
+      // job here; the counter save rides on the way into ERROR.
       SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
                          (int)GEN_ERROR_CODE::HOST_LINK_TIMEOUT);
+    }
+  }
+
+  // THE HOST GOING AWAY IS ALWAYS A REASON TO KEEP THE COUNTS -- including in
+  // the states above deliberately do not cover.
+  //
+  // The block above is about STOPPING a machine nobody is answering for, so it
+  // is rightly limited to the states where parts are moving. Keeping the counts
+  // is a different question with a different answer: it matters wherever the
+  // host disappears, and the state the host most often disappears in is IDLE --
+  // the shift ends, the operator stops the machine, and then the app is closed
+  // or the core dies.
+  //
+  // Nothing used to cover that. An unconditional save on arrival in IDLE did,
+  // but it wrote flash on every ordinary stop -- under the decel ramp, which is
+  // what made the plate skip (see SYS_STATE::IDLE). A host TIMEOUT is not an
+  // ordinary stop: it happens when something has gone wrong or someone has gone
+  // home, and at that point a write is exactly what is wanted. The principle
+  // holds -- normal operation still never touches flash -- because a normal
+  // stop leaves the host alive and this never fires.
+  //
+  // NO STATE CHANGE HERE, on purpose. Pushing IDLE into ERROR would turn an
+  // operator closing the app into a fault somebody has to clear before the next
+  // run. Saving is silent and costs nothing.
+  //
+  // LATCHED, because last_rx_ms stops advancing the moment the host goes: the
+  // condition below is true on every pass from then on, and re-arming a flash
+  // write once per loop for as long as the host stays away would be far worse
+  // than the write it replaced. One save per absence, released when the host
+  // speaks again.
+  //
+  // The in-flight blow is not a special case: countersNvsService() already
+  // holds the write until SEL_SAFE_AT_MS clears, so anything mid-puff finishes
+  // and is counted before the record is taken.
+  static bool HOSTLOSS_SAVED=false;
+  if(host_timeout_ms>0 && COMM_LOST_BACKUP && !hostNeeded)
+  {
+    const uint32_t last=djrl.last_rx_ms;
+    if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
+    {
+      if(!HOSTLOSS_SAVED)
+      {
+        HOSTLOSS_SAVED=true;
+        CNT_NVS_REQ_MS = millis();
+        CNT_NVS_REQ = CNT_NVS_SAVE;
+        HOSTLOSS_SAVES++;
+      }
+    }
+    else if(last!=0)
+    {
+      HOSTLOSS_SAVED=false;   // the host is back; arm for the next absence
     }
   }
 
@@ -8976,6 +10743,9 @@ void firmwareLoop()
   // runs 1/256 as often overshoots by whatever the plate covered meanwhile.
   jogService();
   selSafeService();
+  // Decide first, then service: an armed save that becomes due on this pass
+  // should not wait a whole loop to be picked up.
+  countersRestService();
   // Immediately after, because it waits on exactly what that just cleared.
   countersNvsService();
   do{//timer freq ctrl
@@ -8993,7 +10763,17 @@ void firmwareLoop()
       if(meas_us!=0 && nowUs>meas_us+100000)
       {
         const uint32_t d=(uint32_t)(SYS_STEP_COUNT-meas_step);
+        const float prev = PLATE_FREQ_MEAS;
+        const float span = (float)(nowUs-meas_us)*1e-6f;
         PLATE_FREQ_MEAS = (float)d*1e6f/(float)(nowUs-meas_us)/2.0f;
+        // First sample after a standstill is not an acceleration: prev is the
+        // stale value from before the plate stopped, and the difference across
+        // that gap is an artefact of the gap, not of any ramp.
+        if(span>0.0f && prev>0.0f)
+        {
+          const float a = fabsf(PLATE_FREQ_MEAS - prev)/span;
+          if(a>ACCEL_MEAS_MAX) ACCEL_MEAS_MAX=a;
+        }
         meas_step=SYS_STEP_COUNT; meas_us=nowUs;
       }
       else if(meas_us==0){ meas_step=SYS_STEP_COUNT; meas_us=nowUs; }
@@ -9131,10 +10911,36 @@ void firmwareLoop()
     {
       TimerNeedsStart=true;
     }
-    // Wall-time ramp: accel is Hz/s regardless of loop speed. dt is clamped so
-    // a stall (long serial burst, NVS write) can't turn into a frequency jump.
+    // Wall-time ramp: accel is Hz/s regardless of loop speed.
+    //
+    // A STALL COSTS RAMP PROGRESS, NEVER CONTINUITY.
+    //
+    // dt used to be merely clamped to 0.25s, with a comment saying that stopped
+    // a stall turning into a frequency jump. It does not -- it BOUNDS the jump.
+    // At the default accel of 2000 Hz/s the bound is 500 Hz applied in a single
+    // pass, written straight into timerAlarmWrite while the step ISR has been
+    // running at the old rate all through the stall. That discontinuity is what
+    // the motor has to absorb, and past a certain size it does not: it skips
+    // and it rings.
+    //
+    // The mistake was treating a stall as elapsed ramp time. It is not. Nothing
+    // integrated during it -- the frequency never moved -- so the honest thing
+    // is to charge the ramp nothing for it: hold the current speed for one more
+    // pass and resume from now. The plate reaches its target a stall later,
+    // which no one can perceive; the alternative is a step change, which
+    // everyone in the room can hear.
+    //
+    // The threshold is what a healthy pass looks like with room to spare. The
+    // ramp runs every 256th loop pass, so ordinary dt is a few ms; 60ms is an
+    // order of magnitude above that and still well under the ~250ms an NVS
+    // write can take. Between the two there is nothing a working loop produces.
     if(dt<0)dt=0;
-    if(dt>0.25f)dt=0.25f;
+    if(dt>RAMP_STALL_DT_MAX)
+    {
+      RAMP_STALLS++;
+      if(dt>RAMP_STALL_DT_WORST) RAMP_STALL_DT_WORST=dt;
+      break;                      // speed held; lastRampUs is already = now
+    }
     float step=(SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL*dt : 3.4e38f;
     if(PLATE_FREQ_CURRENT>PLATE_FREQ_TARGET)
     {
@@ -9161,6 +10967,19 @@ void firmwareLoop()
     }
 
 
+
+    // The acceleration this pass just asked for, measured where it is actually
+    // committed -- against the same dt the step above used, so it is the real
+    // rate and not a per-pass delta that a slow loop would flatter.
+    {
+      static float prevCmd = 0.0f;
+      if(dt>0.0f && prevCmd>0.0f && PLATE_FREQ_CURRENT>0.0f)
+      {
+        const float a = fabsf(PLATE_FREQ_CURRENT - prevCmd)/dt;
+        if(a>ACCEL_CMD_MAX) ACCEL_CMD_MAX=a;
+      }
+      prevCmd = PLATE_FREQ_CURRENT;
+    }
 
     if(PLATE_FREQ_CURRENT==0)
     {
@@ -9266,10 +11085,26 @@ void genMachineSetup(JsonDocument &jdoc)
     jP["diameter_mm"]=plate_diameter_mm;
     jP["stepper_en_active"]=stepper_en_active;
     jP["stepper_dir"]=stepper_dir_level;
-    jP["speed_band_pct"]=SPEED_BAND_PCT;
+    // speed_band_pct IS NOT EMITTED ANY MORE. The band it configured was
+    // deleted in 3becdfd6 and nothing has read SPEED_BAND_PCT since -- every
+    // remaining mention of it in this file is a comment describing a mechanism
+    // that no longer exists. It was still being written, clamped to 50, and
+    // handed out in every backup, so it kept propagating into new config files
+    // as though it did something.
+    //
+    // Not deleted from K_PLATE, deliberately: set_setup refuses a whole
+    // document containing an unrecognised key, so removing the schema entry
+    // would make every existing backup unrestorable. Accepted and ignored is
+    // the honest state, and no longer emitting it is what stops it spreading.
+    // Same pattern as report_match_pcnt.
   }
   {
     JsonObject jGT = jdoc.createNestedObject("gate");
+    // Same shape as proc_mode, deliberately: the two layers are one idea asked
+    // twice, and an operator should not have to learn two vocabularies.
+    jGT["cam_mode"] = GATE_CAM_AUTO ? "auto" : "manual";
+    jGT["cam_margin_pct"] = GATE_CAM_MARGIN_PCT;
+    jGT["cam_stale_ms"] = GATE_CAM_STALE_MS;
     jGT["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
     jGT["gate_ref"]=GATE_REF_CENTER?"center":"trailing";
     jGT["pulse_min_width"]=minWidth;
@@ -9277,10 +11112,26 @@ void genMachineSetup(JsonDocument &jdoc)
     jGT["debounce_rise"]=DEBOUNCE_H_THRES;
     jGT["debounce_fall"]=DEBOUNCE_L_THRES;
     jGT["min_detect_dist_um"]=GATE_MIN_DIST_um;
+    // The simple face first. proc_mode and proc_rate_hz are what a UI should
+    // read and write; the rest is what they resolve to.
+    jGT["proc_mode"] = GATE_PROC_AUTO ? "auto"
+                     : (GATE_PROC_SEP_US ? "manual" : "off");
+    jGT["proc_rate_hz"] = GATE_PROC_SEP_US ? (1000000 / GATE_PROC_SEP_US) : 0;
+    jGT["proc_sep_us"]=GATE_PROC_SEP_US;
+    jGT["proc_iir_shift"]=GATE_PROC_IIR_SHIFT;
+    jGT["proc_auto"]=(bool)GATE_PROC_AUTO;
+    jGT["proc_auto_max_us"]=GATE_PROC_AUTO_MAX_US;
+    jGT["proc_auto_rho_pct"]=GATE_PROC_RHO_TARGET;
+    jGT["proc_probe"]=(bool)GATE_PROC_PROBE;
+    jGT["proc_capacity_pct"]=GATE_PROC_CAPACITY_PCT;
   }
   {
     JsonObject jCM = jdoc.createNestedObject("cam");
-    jCM["report_match_ts"]=REPORT_MATCH_TS;
+    // report_match_ts IS NOT EMITTED ANY MORE, for the same reason: timestamp
+    // matching is the only matching there is, the variable is a constant true,
+    // and no branch reads it. It is still accepted (as true) so old documents
+    // restore; cam_sync.authoritative still reports it where a diagnostic
+    // reader expects it.
     jCM["match_window_us"]=CamClockSync::TOL_US;
     // The setting, and what it currently BUYS in millimetres. The second one is
     // emitted whichever mode is in use, because the hazard the microsecond form
@@ -9472,17 +11323,38 @@ void genMachineSetup(JsonDocument &jdoc)
 // So the schema is written down once, here, and anything not in it is named
 // back to the caller. An unrecognised key is a caller that believes something
 // false about the machine, and that is worth an error rather than silence.
+// KEYS THAT ARE ACCEPTED AND DO NOTHING.
+//
+// Each of these configured a mechanism that has since been removed. They stay
+// in the schemas below because set_setup refuses a whole document containing an
+// unrecognised key, so dropping them would make existing backups unrestorable
+// -- but genMachineSetup no longer emits them, so they stop appearing in new
+// ones and die out on their own.
+//
+//   plate.speed_band_pct    the speed band, deleted 3becdfd6
+//   cam.report_match_ts     timestamp matching is now the only matching
+//   cam.report_match_pcnt   refused loudly rather than ignored, see set_setup
+//
+// If you are adding a fourth, put it here rather than leaving it to be
+// discovered by someone grepping for why a setting does nothing.
 static const char *const K_PLATE[] =
   {"freq","accel","speed_band_pct","pulses_per_rev","diameter_mm","stepper_en_active",
    "stepper_dir",NULL};
 static const char *const K_GATE[] =
   {"min_detect_sep_us","pulse_min_width","pulse_max_width","debounce_rise",
-   "debounce_fall","min_detect_dist_um","gate_ref",NULL};
+   "debounce_fall","min_detect_dist_um","gate_ref","proc_sep_us",
+   "proc_iir_shift","proc_auto","proc_auto_max_us","proc_auto_rho_pct",
+   "proc_mode","proc_rate_hz","cam_mode","cam_margin_pct","cam_stale_ms",
+   "proc_probe","proc_capacity_pct",NULL};
 static const char *const K_CAM[] =
   {"report_match_ts","report_match_pcnt","match_window_us","match_tolerance_mm",
    "match_tolerance_mm_eff","recal_idle_ms","cal_pulse_us","drift_comp",NULL};
 static const char *const K_SKIP[] =
-  {"mode","stop_after","unsafe",NULL};
+  // nomatch_stop_after was MISSING here while get_setup has emitted it since it
+  // was added. set_setup refuses a whole document containing an unrecognised
+  // key, so feeding a machine back its own get_setup output was refused -- which
+  // is exactly what a backup/restore does.
+  {"mode","stop_after","unsafe","nomatch_stop_after",NULL};
 static const char *const K_SPO[] =
   {"L1A_on","L1A_off","CAM1_on","CAM1_off","L2A_on","L2A_off","CAM2_on",
    "CAM2_off","SWITCH","SEL1_on","SEL1_off","SEL2_on","SEL2_off","SEL3_on",
@@ -9707,6 +11579,102 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(SYS_FREQ_ACCEL > 100000.0f)     SYS_FREQ_ACCEL = 100000.0f;
 
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jGT,"min_detect_sep_us");
+  if(jGT["cam_mode"].is<const char*>())
+    GATE_CAM_AUTO = (strcmp((const char*)jGT["cam_mode"],"auto")==0);
+  if(jGT["cam_stale_ms"].is<int>())
+  {
+    // Floor of 1s: below that the heartbeat interval stops being the thing
+    // under test and jitter is. No ceiling -- a long one is just a machine that
+    // trusts its core, which is the shipped default.
+    int v = jGT["cam_stale_ms"];
+    GATE_CAM_STALE_MS = (v < 1000) ? 1000 : v;
+  }
+  if(jGT["cam_margin_pct"].is<int>())
+  {
+    // Clamped: at 100% the gate asks for exactly what the camera claims it can
+    // sustain, with nothing left for jitter -- and above it, for more.
+    int v = jGT["cam_margin_pct"];
+    GATE_CAM_MARGIN_PCT = (v < 50) ? 50 : ((v > 99) ? 99 : v);
+  }
+  // proc_mode / proc_rate_hz are applied BEFORE the raw keys, so a document
+  // carrying both (a backup written by an older tool, say) ends up with the
+  // explicit low-level value rather than with whatever the mode implied.
+  if(jGT["proc_rate_hz"].is<int>())
+  {
+    const int hz = jGT["proc_rate_hz"];
+    // 0 means "no manual rate", which is what "off" is made of. Above 1000/s
+    // the interval rounds to nothing useful and the camera cap governs anyway.
+    GATE_PROC_SEP_US = (hz > 0 && hz <= 1000) ? (uint32_t)(1000000 / hz) : 0;
+  }
+  if(jGT["proc_mode"].is<const char*>())
+  {
+    const char *m = jGT["proc_mode"];
+    if(strcmp(m,"auto")==0)
+    {
+      GATE_PROC_AUTO = true;
+      // Auto stands alone; see the note at GATE_PROC_AUTO. Leaving a stale
+      // manual floor underneath it would silently raise the throttle the loop
+      // reports, and the loop would look like it had chosen that number.
+      GATE_PROC_SEP_US = 0;
+    }
+    else if(strcmp(m,"manual")==0)
+    {
+      GATE_PROC_AUTO = false; GATE_PROC_AUTO_ADD_US = 0;
+    }
+    else if(strcmp(m,"off")==0)
+    {
+      GATE_PROC_AUTO = false; GATE_PROC_AUTO_ADD_US = 0; GATE_PROC_SEP_US = 0;
+    }
+    // An unrecognised mode is refused by the schema check above, not silently
+    // treated as one of these.
+  }
+  // The raw interval still wins over the mode, so a backup restores exactly the
+  // value it recorded rather than whatever the mode implies -- EXCEPT under
+  // "auto", where a manual floor underneath the loop would silently raise the
+  // throttle the loop then reports as its own choice. A hand-written document
+  // asking for both is asking for two different things; the mode is the one
+  // that was stated in words.
+  if(!(jGT["proc_mode"].is<const char*>()
+       && strcmp((const char*)jGT["proc_mode"],"auto")==0))
+  {
+    JSON_SETIF_ABLE(GATE_PROC_SEP_US,jGT,"proc_sep_us");
+  }
+  JSON_SETIF_ABLE(GATE_PROC_AUTO_MAX_US,jGT,"proc_auto_max_us");
+  if(jGT["proc_probe"].is<bool>()) GATE_PROC_PROBE = jGT["proc_probe"];
+  if(jGT["proc_capacity_pct"].is<int>())
+  {
+    // Clamped 10..500. The wide upper bound is deliberate: values above 100 are
+    // the normal case here, and where the ceiling should sit is a property of
+    // how deeply a particular host pipelines -- not something to guess at 200
+    // and have somebody find by being silently clamped.
+    int v = jGT["proc_capacity_pct"];
+    if(v != 0) v = (v < 10) ? 10 : ((v > 500) ? 500 : v);
+    GATE_PROC_CAPACITY_PCT = v;
+  }
+  if(jGT["proc_auto_rho_pct"].is<int>())
+  {
+    // Clamped: 100 is saturation itself, where the queue is only marginally
+    // stable, and anything above it asks to be behind on purpose.
+    int v = jGT["proc_auto_rho_pct"];
+    GATE_PROC_RHO_TARGET = (v < 10) ? 10 : ((v > 95) ? 95 : v);
+  }
+  if(jGT["proc_auto"].is<bool>())
+  {
+    const bool on = jGT["proc_auto"];
+    // Turning it off drops what it had added, rather than leaving the machine
+    // throttled by a loop that is no longer running.
+    if(!on){ GATE_PROC_AUTO_ADD_US=0; GATE_PROC_DW_MQ=0; }
+    GATE_PROC_AUTO = on;
+  }
+  if(jGT["proc_iir_shift"].is<int>())
+  {
+    // Clamped, not refused -- it arrives from a field. 0 would make the "filter"
+    // the last interval alone (no memory, which is what layer 1 already is) and
+    // anything past 8 has a memory measured in minutes, so the loop would not
+    // react inside a run.
+    int v=jGT["proc_iir_shift"];
+    GATE_PROC_IIR_SHIFT = (v<1)?1:((v>8)?8:v);
+  }
   // report_match_ts is no longer settable -- see its declaration. Accepted as
   // true (a no-op), refused as false in the set_setup handler.
   // "report_match_pcnt" stays in the SCHEMA (K_CAM) but is no longer applied.
@@ -9822,26 +11790,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // rather than rejected: refusing the write would leave the machine on the
   // previous value with no obvious sign, and a narrower window is always the
   // safe direction -- it can only cause a halt, never a mis-sort.
-  if(SYS_MIN_PULSE_TIME_SEP_us > 0)
-  {
-    int32_t cap = (int32_t)(SYS_MIN_PULSE_TIME_SEP_us/2);
-    if(cap < 200) cap = 200;   // the noise floor wins; see below
-    if(CamClockSync::TOL_US > cap)
-    {
-      djrl.dbg_printf("CAMSYNC window %ld us clamped to %ld us "
-                      "(min_detect_sep_us=%lu, window must stay under half)",
-                      (long)CamClockSync::TOL_US,(long)cap,
-                      (unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
-      CamClockSync::TOL_US = cap;
-    }
-    // Below this the two floors conflict and no window is both matchable and
-    // safe. Physically unreachable (400us spacing is 2500 parts/s), but say so
-    // rather than leaving a silently unsafe combination.
-    if(SYS_MIN_PULSE_TIME_SEP_us < 400)
-      djrl.dbg_printf("CAMSYNC WARNING: min_detect_sep_us=%lu is below twice "
-                      "the window noise floor -- a lost frame could be matched "
-                      "to a neighbour",(unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
-  }
+  clampMatchWindowToSpacing();
   JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jCM,"drift_comp");
   JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jCM,"recal_idle_ms");
   JSON_SETIF_ABLE(CAL_PULSE_WIDTH_US,jCM,"cal_pulse_us");

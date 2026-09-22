@@ -1,0 +1,472 @@
+// Set the edge-strength floor by looking at the edges, not by typing a number.
+//
+// edge.min_strength is in raw gradient units. Nothing on screen has ever said
+// what those units are worth on THIS primitive, under THIS lighting, so the
+// field has been filled with whatever the default was: the WebUI seeds 10, the
+// defs in the field carry 30, one search point carries 0 -- against real edges
+// measuring ~110 through a caliper and ~420 through a search point, because the
+// two use different gradient operators. One field name, two scales, and no way
+// to see either.
+//
+// The core sends what the selector actually saw, ungated: the peaks BELOW the
+// current setting are in it too. That is the point. A threshold can only be
+// lowered onto evidence that exists below it, and what decides where it belongs
+// is the gap between the noise and the real edge -- visible here and nowhere
+// else. Ungated also means the slider is arithmetic in the browser: dragging is
+// instant and costs the machine nothing.
+//
+// TWO PLOTS, because there are two selectors.
+//
+//   caliper (line/arc)  averages along the edge and picks a peak out of one
+//                       across-edge profile. The evidence is that curve, and
+//                       the question is which calipers still find an edge.
+//   search point        finds a peak per row and takes the one NEAREST the
+//                       origin. The evidence is the candidate set, and the
+//                       question is which candidate ends up nearest -- so the
+//                       axis is distance along the search, not across the edge.
+//
+// Same slider, same commit, same 自動設定; different picture, and a different
+// sentence underneath it.
+import React, { useMemo, useRef, useState } from 'react';
+import { INPUT_STYLE, STEP_BTN_STYLE } from './primitives.jsx';
+import { edgeAuto, edgeAutoPatch } from '../_edgeAuto.js';
+
+// A peak is a local maximum of the signed gradient on the side the polarity
+// selects -- the same rule edge_select applies, so what is counted here is what
+// the core would pick, not an approximation of it.
+function peaksOf(g, polarity) {
+  const out = [];
+  for (let i = 1; i < g.length - 1; i++) {
+    const v = polarity === 'rising' ? g[i]
+            : polarity === 'falling' ? -g[i]
+            : Math.abs(g[i]);
+    const a = polarity === 'rising' ? g[i - 1]
+            : polarity === 'falling' ? -g[i - 1]
+            : Math.abs(g[i - 1]);
+    const b = polarity === 'rising' ? g[i + 1]
+            : polarity === 'falling' ? -g[i + 1]
+            : Math.abs(g[i + 1]);
+    if (v > 0 && v >= a && v >= b) out.push({ i, v });
+  }
+  return out;
+}
+
+// THE PLOT IS DRAWN AT A FIXED SIZE AND DISPLAYED AT THE PANEL'S.
+//
+// The property sheet is a narrow column -- about 250px on the bench screen --
+// and a 320px SVG in it is clipped or squeezed depending on the container. All
+// the geometry below stays in these coordinates and the viewBox does the
+// fitting, uniformly, so nothing has to be recomputed against a measured width
+// and the aspect never distorts.
+// Sized close to the column it lands in (measured 196px on the bench screen),
+// NOT to a comfortable drawing size. The viewBox scales the text along with the
+// geometry, so a 320-wide design in a 186-wide panel renders its 10px labels at
+// 5.8px -- present, and unreadable. Near 1:1 they stay legible, and a widened
+// panel makes them bigger rather than leaving a gap.
+const W = 210, H = 112, PADL = 24, PADB = 14, PADT = 7;
+
+// THE PANEL IS TRANSPARENT. THIS BLOCK CANNOT BE.
+//
+// The property sheet floats over the canvas, and the frame shows through
+// everything that does not paint its own background -- which is fine for a row
+// of white inputs and fatal for a plot and three lines of prose. On a dark or
+// busy part of the image the hint text and the grid simply disappeared.
+//
+// So the whole block sits on an opaque surface of its own, and every colour in
+// it is chosen against that surface rather than against whatever the camera is
+// looking at. Borrowed from primitives.jsx (INPUT_STYLE, STEP_BTN_STYLE) so it
+// reads as part of the sheet and follows it if those change.
+const SURFACE = {
+  background: '#fbfbfb', border: '1px solid #ddd', borderRadius: 4,
+  padding: '6px 6px 7px', margin: '4px 0',
+};
+const PLOT_STYLE = { background: '#fff', border: '1px solid #e4e4e4',
+                     borderRadius: 3, width: '100%', height: 'auto',
+                     display: 'block' };
+const INK      = '#222';                 // same as INPUT_STYLE's text
+const INK_DIM  = '#666';                 // same as SECTION_HEADER_STYLE
+const WARN     = '#c62828';              // readable on the pale surface
+const OK_LINE  = 'rgba(56,142,60,.85)';
+const BAD_LINE = 'rgba(198,40,40,.75)';
+const PICKED   = '#1565c0';              // the sheet's own accent
+// Two buttons on one row in a narrow column: each takes half, and neither is
+// allowed to wrap its label into a two-line box (which is what it did).
+const BTN = { ...STEP_BTN_STYLE, flex: 1, minWidth: 0, whiteSpace: 'nowrap',
+              height: 24, fontSize: 11.5, padding: '0 6px', lineHeight: '22px' };
+const HINT = { fontSize: 11.5, color: INK_DIM, marginTop: 4, lineHeight: 1.35 };
+
+// Weighted least squares for y = ax^2 + bx + c, by normal equations. Three
+// unknowns, so a 3x3 solve is the whole of it and a library would be a
+// dependency for nine multiplies.
+function fitParabola(x, y, w) {
+  const S = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  for (let i = 0; i < x.length; i++) {
+    const p = [x[i] * x[i], x[i], 1], wi = w[i];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) S[r][c] += wi * p[r] * p[c];
+      S[r][3] += wi * p[r] * y[i];
+    }
+  }
+  for (let col = 0; col < 3; col++) {
+    let piv = col;
+    for (let r = col + 1; r < 3; r++) if (Math.abs(S[r][col]) > Math.abs(S[piv][col])) piv = r;
+    if (Math.abs(S[piv][col]) < 1e-12) return null;
+    const t = S[col]; S[col] = S[piv]; S[piv] = t;
+    for (let r = 0; r < 3; r++) {
+      if (r === col) continue;
+      const f = S[r][col] / S[col][col];
+      for (let c = col; c < 4; c++) S[r][c] -= f * S[col][c];
+    }
+  }
+  return [S[0][3] / S[0][0], S[1][3] / S[1][1], S[2][3] / S[2][2]];
+}
+
+export function EdgeProfileView({ profile, minStrength, polarity = 'falling',
+                                  onChange, onProbe, onOffset, manualOffset,
+                                  busy, note, shape, mmpp = 0, onApply }) {
+  // ONE RULE FOR THE BUTTON AND FOR 升級. The suggestion below, the polarity
+  // it reads off the picture, sigma and the window shrink all come from
+  // _edgeAuto.js, which the upgrade flow calls on the same payload. The
+  // plots keep their own bookkeeping for colouring; the numbers that get
+  // WRITTEN come from there.
+  const auto = useMemo(() => (profile && shape) ? edgeAuto(profile, shape.edge || {}) : null,
+                       [profile, shape]);
+  const autoOk = !!(auto && auto.ok);
+  const applyAuto = (fallbackV) => {
+    if (autoOk && onApply && shape) {
+      const patch = edgeAutoPatch(shape, auto, mmpp);
+      if (patch) { onApply(patch); if (onProbe) setTimeout(onProbe, 0); return; }
+    }
+    latest.current = fallbackV; setPending(fallbackV); dirty.current = true; dragEnd();
+  };
+  const [hover, setHover] = useState(null);
+  // The dragged value lives here as well as on the shape.
+  //
+  // Committing upward is the point of the control, but committing changes the
+  // shape, and a shape change drops the inspection report -- so writing on
+  // every change made the hits on the canvas vanish the moment the thumb moved,
+  // taking away the reference the operator was comparing against. Losing the
+  // "before" is losing the point of a slider. So the value stays local until
+  // the drag ends, and `pending` is cleared when the shape's own value arrives:
+  // what is shown is either what the shape says or what is on its way there.
+  const [pending, setPending] = useState(null);
+  const committed = Math.max(0, Number(minStrength) || 0);
+  const [seen, setSeen] = useState(committed);
+  if (committed !== seen) { setSeen(committed); setPending(null); }
+  const thr = pending == null ? committed : pending;
+
+  // Set while a drag has moved the value and not yet been acted on. A drag
+  // fires onChange continuously; only its END is worth an inspection.
+  const dirty = useRef(false);
+  // The dragged value, in a ref as well as in state. dragEnd runs from an event
+  // handler that may be in the SAME tick as the setState that produced the
+  // value -- reading it from the render closure would commit the previous one.
+  const latest = useRef(null);
+
+  // LET GO AND SEE WHAT IT DID.
+  //
+  // The recolouring under the thumb is arithmetic on the payload in hand: it
+  // says which peaks clear the floor, and nothing more. What the threshold
+  // actually changes is which edge gets PICKED -- and so where the hits sit and
+  // where the fit lands -- and none of that is derivable here. So the end of a
+  // drag commits once and runs one inspection, and the canvas snaps to it.
+  //
+  // At the END, not during: a drag emits a change per pixel of travel. mouseup,
+  // touchend, pointerup, mouseleave and keyup all funnel here and collapse to a
+  // single run because `dirty` is cleared by whichever fires first -- mouseleave
+  // is there for the drag that ends outside the control.
+  const dragEnd = () => {
+    if (!dirty.current || busy) return;
+    dirty.current = false;
+    const v = latest.current;
+    if (v != null && v !== committed) onChange(v);
+    if (onProbe) onProbe();
+  };
+
+  // SEARCH POINT: candidates by distance along the search, strength up.
+  const peaks = useMemo(() => {
+    if (!profile || profile.kind !== 'peaks' || !profile.p || !profile.p.length) return null;
+    const pts = profile.p.map((pos, i) => ({ pos, str: profile.s[i] }));
+    let peak = 0;
+    for (const q of pts) if (q.str > peak) peak = q.str;
+    // WHAT THE CORE ALREADY DOES, WRITTEN DOWN.
+    //
+    // search_point_cv keeps candidates within 0.40 of the strongest anywhere in
+    // the window and takes the nearest survivor. That rule is invisible, is
+    // absolute nowhere, and moves whenever something stronger enters the
+    // window -- a neighbouring part or a burr raises the bar and the measured
+    // point can jump to another edge with nothing said. Measured on test1:
+    // three of nine search points are held on their edge by that rule alone,
+    // one of them 13.8px (192um) from the nearest candidate.
+    //
+    // So the suggestion is that same number as a fixed floor. Applying it
+    // changes nothing today and makes the rule visible, which is what has to
+    // happen before it can stop being a hidden one.
+    // THE APEX OF A CURVED EDGE, AND WHY manual_offset EXISTS.
+    //
+    // The scan returns the weighted centroid of everything within include_range
+    // of the nearest hit. On a straight edge that is the edge. On a CURVE it is
+    // not: each row's first hit grows with the square of its distance from the
+    // apex, so the centroid sits DEEPER than the apex, by more the wider the
+    // band is. Locating the apex of a shallow arc wants a wide band for noise
+    // and a narrow one for truth, and the way out has been to widen it and then
+    // dial manual_offset back by eye.
+    //
+    // The bias is not a matter of judgement. Fit the cap the candidates trace
+    // and its vertex is the apex; the distance from there to the point the core
+    // reported (sel_p, sent so this does not have to re-implement the
+    // selection and drift from it) is the offset, in px, ready to be written in
+    // the def's units. Measured on test1: 0.17 to 0.50 px, 2.4 to 6.9 um, and
+    // proportional to the band exactly as the model says.
+    let apex = null, bias = null;
+    if (profile.a && profile.a.length === pts.length && profile.sel_p !== undefined) {
+      const thrRel = 0.40 * peak;
+      const near = [];
+      let pMin = Infinity;
+      for (let i = 0; i < pts.length; i++)
+        if (pts[i].str >= thrRel && pts[i].pos < pMin) pMin = pts[i].pos;
+      for (let i = 0; i < pts.length; i++)
+        if (pts[i].str >= thrRel && pts[i].pos - pMin <= 5)
+          near.push([profile.a[i], pts[i].pos, pts[i].str]);
+      if (near.length >= 5) {
+        const c = fitParabola(near.map((q) => q[0]), near.map((q) => q[1]), near.map((q) => q[2]));
+        // Convex only: a concave or flat fit means these candidates are not a
+        // cap, and an "apex" from one would be a number with no referent.
+        if (c && c[0] > 0) {
+          apex = c[2] - (c[1] * c[1]) / (4 * c[0]);
+          bias = profile.sel_p - apex;
+        }
+      }
+    }
+    return { pts, peak: peak || 1, span: profile.span || 1, apex, bias,
+             sel: profile.sel_p, mmpp: profile.mmpp || 0,
+             suggest: Math.round(0.40 * peak) };
+  }, [profile]);
+
+  // CALIPER (line/arc): every caliper's across-edge gradient, on one scale.
+  const model = useMemo(() => {
+    if (!profile || !profile.g || !profile.g.length) return null;
+    const g = profile.g;
+    // One scale for every caliper: comparing them is most of the value, and a
+    // per-caliper autoscale would make a weak edge look like a strong one.
+    let peak = 0;
+    for (const one of g) for (const v of one) if (Math.abs(v) > peak) peak = Math.abs(v);
+    const n = g[0].length;
+    // Per caliper: the strongest peak of the selected polarity -- the one the
+    // core would pick -- and the strongest of the REST, which is what a floor
+    // set too low would let win instead.
+    const best = [], runner = [];
+    for (const one of g) {
+      const p = peaksOf(one, polarity).map((q) => q.v).sort((a, b) => b - a);
+      best.push(p.length ? p[0] : 0);
+      runner.push(p.length > 1 ? p[1] : 0);
+    }
+    // WHERE THE FLOOR BELONGS, from the two numbers that bound it.
+    //
+    //   signal = the WEAKEST edge the calipers actually found. Go above this
+    //            and a caliper stops finding its edge -- the floor may not.
+    //   noise  = the STRONGEST competing peak anywhere in the windows. Stay
+    //            below this and that peak can be picked instead, which is not a
+    //            missing measurement but a wrong one.
+    //
+    // The suggestion is the geometric mean: scale-free, so it does not drift
+    // when the lighting or the lens changes the units, and it sits in
+    // proportion rather than at a fixed offset from either side.
+    const live = best.filter((b) => b > 0);
+    const signal = live.length ? Math.min(...live) : 0;
+    const noise = runner.length ? Math.max(...runner) : 0;
+    const clean = signal > 0 && signal > noise * 1.25;
+    let suggest = clean ? Math.sqrt(signal * Math.max(noise, 1)) : signal * 0.5;
+    // Never above the weakest real edge: a suggestion that drops a caliper the
+    // moment it is applied is not a suggestion.
+    if (signal > 0) suggest = Math.min(suggest, signal * 0.85);
+    return { g, peak: peak || 1, n, best, signal, noise, clean,
+             suggest: Math.max(0, Math.round(suggest)) };
+  }, [profile, polarity]);
+
+  // The controls are identical for both plots, so they are written once.
+  const controls = (maxV, suggestV, footer) => <>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+      <input type="range" min={0} max={maxV} step={1} value={thr}
+             data-testid="edge-profile-slider"
+             onChange={(e) => {
+               const v = Number(e.target.value);
+               latest.current = v; setPending(v); dirty.current = true;
+             }}
+             onMouseUp={dragEnd} onTouchEnd={dragEnd}
+             onPointerUp={dragEnd} onMouseLeave={dragEnd} onKeyUp={dragEnd}
+             style={{ flex: 1 }} />
+      <span style={{ ...INPUT_STYLE, width: 44, flex: '0 0 44px', height: 20,
+                     lineHeight: '18px', textAlign: 'right',
+                     fontVariantNumeric: 'tabular-nums' }}>
+        {Math.round(thr)}
+      </span>
+    </div>
+    {footer}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+      <button type="button" data-testid="edge-profile-auto"
+        data-suggest={autoOk ? auto.min_strength : suggestV}
+        onClick={() => applyAuto(autoOk ? auto.min_strength : suggestV)}
+        style={BTN}>
+        自動 {autoOk ? auto.min_strength : suggestV}
+      </button>
+      <button type="button" onClick={onProbe} disabled={busy}
+        data-testid="edge-profile-recheck"
+        style={{ ...BTN, cursor: busy ? 'default' : 'pointer' }}>
+        {busy ? '檢查中…' : '重新檢查'}
+      </button>
+    </div>
+    {autoOk && <div style={HINT} data-testid="edge-profile-auto-note">
+      教學位置的邊 {auto.signal}／最強競爭 {auto.noise}
+      {Number.isFinite(auto.ratio) ? <>（餘裕 <b>{auto.ratio.toFixed(1)}×</b>）</> : '（沒有競爭峰）'}
+      {auto.kind === 'caliper' && auto.polarityChanged &&
+        <span style={{ color: WARN }}>　圖上的邊是 <b>{auto.polarity}</b>，不是目前的 {polarity}</span>}
+      {auto.kind === 'caliper' && auto.sigma > 0 && <span>　軟邊，σ {auto.sigma}px</span>}
+      {auto.lengthPx != null && <span style={{ color: WARN }}>　同強度的鄰邊在窗內，建議縮窗到 ±{auto.lengthPx.toFixed(0)}px</span>}
+      {auto.marginPx != null && <span style={{ color: WARN }}>　更近處有同強度的邊，建議縮 margin 到 {auto.marginPx.toFixed(0)}px</span>}
+      {!auto.clean && <span style={{ color: WARN }}>　邊和雜訊分不開，門檻只能保住邊</span>}
+    </div>}
+    {auto && !auto.ok && <div style={{ ...HINT, color: WARN }}>
+      教學位置附近沒有邊（{auto.reason}）；自動只能沿用舊規則。
+    </div>}
+    {note && <div style={{ ...HINT, color: WARN }}>{note}</div>}
+  </>;
+
+  if (!model && !peaks) {
+    return <div style={SURFACE}>
+      <button type="button" onClick={onProbe} disabled={busy}
+        data-testid="edge-profile-check"
+        style={{ ...BTN, flex: 'none', width: '100%',
+                 cursor: busy ? 'default' : 'pointer' }}>
+        {busy ? '檢查中…' : '檢查邊緣強度'}
+      </button>
+      {note && <div style={{ ...HINT, color: WARN }}>{note}</div>}
+      <div style={HINT}>跑一張影像，照著實際的邊緣梯度設門檻。</div>
+    </div>;
+  }
+
+  if (peaks) {
+    const { pts, peak, span, suggest, apex, bias, sel, mmpp } = peaks;
+    const px = (d) => PADL + (d / span) * (W - PADL - 6);
+    const py = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);
+    const over = pts.filter((q) => q.str >= thr);
+    // The answer: the nearest candidate that clears the floor. Everything
+    // nearer and weaker is what the floor is holding back, which is the only
+    // reason to look at this plot.
+    const chosen = over.length ? over.reduce((a, b) => (b.pos < a.pos ? b : a)) : null;
+    const held = chosen ? pts.filter((q) => q.pos < chosen.pos).length : 0;
+    return <div style={SURFACE}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={PLOT_STYLE}
+           data-testid="edge-profile-plot" data-kind="peaks"
+           data-cands={pts.length} data-pass={over.length}
+           data-first={chosen ? chosen.pos.toFixed(1) : ''}>
+        <rect x={PADL} y={py(thr)} width={W - PADL - 6} height={Math.max(0, py(0) - py(thr))}
+              fill="rgba(198,40,40,.07)" />
+        <line x1={PADL} x2={W - 6} y1={py(thr)} y2={py(thr)}
+              stroke={WARN} strokeWidth="1.2" strokeDasharray="4 3" />
+        {apex !== null && <line x1={px(apex)} x2={px(apex)} y1={PADT} y2={py(0)}
+                                stroke="#8e24aa" strokeWidth="1" />}
+        {chosen && <line x1={px(chosen.pos)} x2={px(chosen.pos)} y1={PADT} y2={py(0)}
+                         stroke={PICKED} strokeWidth="1" strokeDasharray="3 3" />}
+        {pts.map((q, k) => {
+          const isFirst = chosen && q === chosen;
+          return <circle key={k} cx={px(q.pos)} cy={py(q.str)} r={isFirst ? 4 : 2.2}
+                   fill={isFirst ? PICKED : q.str >= thr ? OK_LINE : BAD_LINE} />;
+        })}
+        <line x1={PADL} x2={W - 6} y1={py(0)} y2={py(0)} stroke="#bbb" />
+        <text x={3} y={py(thr) + 4} fontSize="9" fill={WARN}>{Math.round(thr)}</text>
+        <text x={3} y={py(peak) + 8} fontSize="9" fill={INK_DIM}>{Math.round(peak)}</text>
+        <text x={PADL} y={H - 3} fontSize="9" fill={INK_DIM}>近 0px</text>
+        <text x={W - 42} y={H - 3} fontSize="9" fill={INK_DIM}>遠 {span.toFixed(0)}px</text>
+      </svg>
+      <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35,
+                    color: chosen ? INK : WARN }}>
+        {chosen
+          ? <>首擊在 {chosen.pos.toFixed(1)}px，強度 {Math.round(chosen.str)}
+              {held > 0 && <span style={{ color: WARN }}>
+                　門檻擋下了 {held} 個更近的候選</span>}</>
+          : '這個門檻下沒有任何候選，這個 search point 會是 NA'}
+      </div>
+      {/* THE CURVE'S APEX, when the candidates trace one.
+          Absent on a straight edge, where the fit is not convex and there is
+          nothing to correct -- the panel then says nothing rather than
+          inventing a vertex for a line. */}
+      {bias !== null && Math.abs(bias) > 0.02 && <div style={{
+          marginTop: 5, paddingTop: 5, borderTop: '1px solid #e4e4e4' }}>
+        <div style={{ fontSize: 11.5, color: INK, lineHeight: 1.35 }}>
+          弧頂在 <b>{apex.toFixed(2)}px</b>，回報值 {sel.toFixed(2)}px
+          <span style={{ color: WARN }}>　差 {bias.toFixed(2)}px
+            {mmpp > 0 && '（' + (bias * mmpp * 1000).toFixed(1) + 'µm）'}</span>
+        </div>
+        {onOffset && mmpp > 0 && <button type="button"
+          data-testid="edge-profile-offset" data-offset={(-bias * mmpp).toFixed(5)}
+          onClick={() => onOffset(-bias * mmpp)}
+          style={{ ...BTN, flex: 'none', width: '100%', marginTop: 4 }}>
+          manual_offset ← {(-bias * mmpp).toFixed(4)}
+        </button>}
+        <div style={HINT}>
+          include_range 越寬雜訊越少、頂點偏差越大。紫線是擬合的弧頂。
+        </div>
+      </div>}
+      {controls(Math.ceil(peak * 1.1), suggest,
+        <div style={HINT}>
+          藍＝採用的首擊　綠＝過門檻但更遠　紅＝被擋下
+          <br />建議值＝核心內部規則（最強的 40%）寫成固定門檻
+        </div>)}
+    </div>;
+  }
+
+  const { g, peak, n, best, signal, noise, clean, suggest } = model;
+  const x = (i) => PADL + (i / (n - 1)) * (W - PADL - 6);
+  const y = (v) => PADT + (1 - v / peak) * (H - PADT - PADB);   // 0 at the bottom
+  const pass = best.filter((b) => b >= thr).length;
+  // The headroom the setting has: how far the floor could move before it starts
+  // dropping calipers that currently find their edge.
+  const weakest = best.length ? Math.min(...best.filter((b) => b > 0)) : 0;
+
+  return <div style={SURFACE}>
+    <svg viewBox={`0 0 ${W} ${H}`} style={PLOT_STYLE}
+         data-testid="edge-profile-plot" data-kind="profile"
+         data-calipers={g.length} data-pass={pass}
+         data-clean={clean ? '1' : '0'}>
+      {/* the dead zone: anything in here is not an edge at the current floor */}
+      <rect x={PADL} y={y(thr)} width={W - PADL - 6} height={Math.max(0, y(0) - y(thr))}
+            fill="rgba(198,40,40,.07)" />
+      <line x1={PADL} x2={W - 6} y1={y(thr)} y2={y(thr)}
+            stroke={WARN} strokeWidth="1.2" strokeDasharray="4 3" />
+      {g.map((one, k) => {
+        const d = one.map((v, i) => {
+          const s = polarity === 'rising' ? v : polarity === 'falling' ? -v : Math.abs(v);
+          return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(Math.max(0, s)).toFixed(1);
+        }).join(' ');
+        const on = best[k] >= thr;
+        return <path key={k} d={d} fill="none" strokeWidth={hover === k ? 2 : 1}
+                     stroke={on ? OK_LINE : BAD_LINE}
+                     onMouseEnter={() => setHover(k)} onMouseLeave={() => setHover(null)} />;
+      })}
+      <line x1={PADL} x2={W - 6} y1={y(0)} y2={y(0)} stroke="#bbb" />
+      <text x={3} y={y(thr) + 4} fontSize="9" fill={WARN}>{Math.round(thr)}</text>
+      <text x={3} y={y(peak) + 8} fontSize="9" fill={INK_DIM}>{Math.round(peak)}</text>
+      <text x={PADL} y={H - 3} fontSize="9" fill={INK_DIM}>−{profile.L.toFixed(0)}px</text>
+      <text x={W - 32} y={H - 3} fontSize="9" fill={INK_DIM}>+{profile.L.toFixed(0)}px</text>
+    </svg>
+
+    {/* Says what the setting DOES, in calipers, because that is the thing that
+        goes NA -- a fit needs min_inliers of them, not a good-looking graph. */}
+    <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.35,
+                  color: pass === g.length ? INK : WARN }}>
+      {pass}/{g.length} 個 caliper 在這個門檻下找得到邊
+      {pass === g.length && weakest > 0 &&
+        <span style={{ color: INK_DIM }}>　（最弱的一個是 {Math.round(weakest)}）</span>}
+    </div>
+    {controls(Math.ceil(peak * 1.1), suggest, <>
+      {/* SHORT, because the column is 200px and the numbers say more than the
+          sentences do. Nine lines of prose pushed the buttons below the fold and
+          repeated what the readout above had already stated. */}
+      <div style={HINT}>綠＝採用　紅＝被濾掉　·　邊 {Math.round(signal)}／雜訊 {Math.round(noise)}</div>
+      {!clean && <div style={{ ...HINT, color: WARN, marginTop: 2 }}>
+        雜訊和邊沒分開，門檻分不掉 —— 看 caliper 位置或寬度。
+      </div>}
+    </>)}
+  </div>;
+}

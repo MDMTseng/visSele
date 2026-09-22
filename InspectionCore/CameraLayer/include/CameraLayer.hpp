@@ -139,6 +139,25 @@ class CameraLayer{
     typedef CameraLayer::status (*CameraLayer_Callback)(
         CameraLayer &cl_obj, int type, void* context);
 
+    // ONE COPY, NOT TWO. A push-mode SDK recycles its buffer the moment the
+    // callback returns, so the layer must copy the frame somewhere stable
+    // before queueing it; the core then copied it AGAIN into its own pool
+    // slot (ExtractFrame). Two 5 MB passes per frame, the second of them
+    // purely to change owners -- and every pass evicts the working set the
+    // matcher is about to need. A frame sink lets the core lend the layer
+    // the destination up front: the SDK copy lands in the pool slot and the
+    // core recognises the frame by pointer (CurrentFramePtr) and skips
+    // ExtractFrame. NULL from the sink means "no slot right now": the layer
+    // falls back to its own ring and nothing downstream changes.
+    // Drivers that do not support it simply never call it.
+    typedef uint8_t* (*FrameSink)(void *ctx, size_t bytes, int width, int height, int channels);
+    FrameSink frameSink = NULL;
+    void *frameSinkCtx = NULL;
+    void SetFrameSink(FrameSink f, void *ctx) { frameSink = f; frameSinkCtx = ctx; }
+    // The buffer the frame being delivered lives in, or NULL if the driver
+    // does not expose it. Valid only inside the frame callback.
+    virtual const uint8_t* CurrentFramePtr() const { return NULL; }
+
     int triggerMode;
     protected:
 
@@ -249,6 +268,28 @@ class CameraLayer{
   // Returns 0 on success. Default: not supported by this layer.
   virtual int GetTriggerConfig(int *selector, int *mode, int *source, int *activation)
   { (void)selector; (void)mode; (void)source; (void)activation; return -1; }
+
+  // THE TRIGGER CEILING, ASKED RATHER THAN MEASURED.
+  //
+  // The gate's fire-rate cap has to sit under what the camera can actually
+  // deliver -- above it you get triggers with no frames, which does not lose a
+  // part, it poisons the host's pairing. Until now the only number available
+  // for that was cam_max_fps, derived from the shortest interval BETWEEN TWO
+  // FRAMES ACTUALLY RECEIVED. That is an observation, not a limit: it needs a
+  // run to exist at all, it reads low until something has driven the camera
+  // hard, and it is exactly unavailable at the moment somebody is sitting in
+  // front of the settings deciding what to type.
+  //
+  // ResultingFrameRate is the camera's own answer to the same question for the
+  // ROI and exposure it is carrying right now, available while idle and
+  // updating the instant either changes. It stays meaningful with
+  // AcquisitionFrameRateEnable off, which is how this camera runs under an
+  // external trigger: the node reports what the sensor can sustain, not a cap
+  // in force.
+  //
+  // Returns fps, or a negative value when the layer cannot answer -- and a
+  // negative must be shown as "unknown", never as a limit of zero.
+  virtual double GetResultingFps() { return -1.0; }
 
     virtual CameraLayer::status TriggerCount(int TYPE)
     {

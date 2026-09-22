@@ -174,10 +174,30 @@ margin:auto; float: none;
 	right:0;
 }
 
+/* Grow with the content, stop at the parent -- and SCROLL from there.
+   
+   The max-height was already the stopping rule; what was missing is what
+   happens to the rest. .s sets overflow:hidden, so the overflow was simply
+   cut: on a 537 px screen the 製程 tag list was 596 px tall and the last 79 px
+   -- four tags -- could not be reached by any means. Reported from the machine
+   as "I cannot scroll down", which is exactly what it was.
+   
+   A parent one level up carried overflow:scroll and drew a scrollbar the whole
+   time, which is how this survived: there was always a bar on screen, it just
+   belonged to a box with nothing to scroll. */
 .blockS .HXA {
 
   height: auto;
   max-height: 100%;
+  overflow-y: auto;
+  /* When the parent IS a flex column, take what is left rather than asking for
+     100% of it -- max-height alone cannot see the siblings above, so a list
+     under a header asked for the full panel and overflowed it by the header's
+     height. min-height:0 is what lets a flex item shrink below its content and
+     scroll instead of pushing. Inert wherever the parent is not flex, which is
+     everywhere else this class is used. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .blockS .WXA {
 
@@ -455,3 +475,149 @@ margin:auto; float: none;
 
 	background: none;
 }
+
+/* --- scrollbars ------------------------------------------------------------
+   Two problems, and they are not the same one.
+
+   THE LAYOUT SHIFT is the one that matters on the bench. Chromium's classic
+   scrollbar takes layout width, so the moment a panel's content grows past its
+   box every element inside shrinks by ~15 px at once -- text that fitted wraps,
+   a row that fitted overflows, and on a touch screen the control the operator
+   is reaching for moves while they reach for it.
+
+   In the Electron app this is solved properly: main.js turns on Chromium's
+   OverlayScrollbar, which draws over the content and takes no width at all.
+
+   A plain browser has no such switch, and the first version of this put
+   `scrollbar-gutter: stable` on `html` to reserve the space instead. That was
+   wrong here: html and body are height:100%, this page never scrolls, and the
+   gutter therefore held open a permanent empty strip down the right-hand side
+   for a scrollbar that can never appear. Reported from the machine the same
+   afternoon, as "the right margin has some weird space" -- which is exactly
+   what it was.
+
+   The gutter belongs on the boxes that actually scroll, and `.body` -- the one
+   that does -- already carries `overflow: scroll`, so its scrollbar is
+   permanent and its width is already in the layout. Nothing left to reserve.
+
+   THE APPEARANCE is the smaller half. The default is a wide light-grey bar
+   built for a mouse on a desktop; these are 10 px, dark enough to find on both
+   the white panels and the black strip, and they fade back when not hovered.
+   Wide enough to grab with a finger, which is the actual constraint. */
+/* Firefox and any engine on the standard properties. `thin` is the widest of
+   the two standard options and still narrower than the default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 140, 140, 0.55) transparent;
+}
+
+/* Chromium. The track stays TRANSPARENT rather than tinted: these bars sit on
+   panels that are white in one place and black in another, and a track with a
+   colour of its own is a grey stripe down one of them. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(140, 140, 140, 0.45);
+  border-radius: 6px;
+  /* The border is transparent and the background is clipped inside it, which
+     insets the visible thumb without narrowing the hit target -- the finger
+     still gets the full 10 px. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 120, 120, 0.75);
+  background-clip: content-box;
+}
+/* Where two scrollable areas meet. Left at default it is a small light square
+   in the bottom-right of every scrolling box. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* A CANVAS IS AN INLINE ELEMENT, and that costs a scrollbar.
+   
+   Inline boxes sit on the text baseline, and the line box reserves room under
+   it for descenders -- so a canvas that exactly fills its parent still makes
+   that parent a few pixels taller than itself. Measured in the inspection UI:
+   div.flex_div, content 6 px past its box, and a full-height scrollbar down the
+   right of the picture for those 6 px.
+   
+   The gap belongs to text layout, which a drawing surface is not part of, so
+   the fix is to take it out of that mode rather than to pad around it. img gets
+   the same treatment for the same reason. */
+canvas, img {
+  vertical-align: top;
+}
+
+/* --- the inspection toolbar, when the window is narrow ---------------------
+   This bar carries a back button, the recipe and its tags, the database link
+   with four counters, three view toggles and two actions. At 1600 px they sit
+   in one row. At the width the machine is actually used at -- a Surface Go, and
+   narrower still when the operator has anything beside it -- it wrapped onto
+   three ragged rows with the database button, the widest thing on it, alone on
+   the second.
+
+   Nothing here is removed. Two things are dropped in an order, and both are one
+   hover away for the whole time they are not on screen:
+
+     under 900px   the DB counters. The disconnected branch of that button
+                   already makes exactly this trade, with the same reasoning
+                   written beside it -- this extends it to the connected case,
+                   which is the one that needed it.
+     under 680px   every button's text label. Every control in this bar has an
+                   icon, checked, so this leaves a row of icons and not a row of
+                   empty buttons.
+
+   The order matters: the numbers are the first thing worth losing because they
+   are a readout, and the controls are the last because they are the reason the
+   bar exists. */
+@media (max-width: 900px) {
+  .insp-toolbar .tb-num { display: none; }
+}
+@media (max-width: 680px) {
+  /* antd puts the label in a bare <span> next to .anticon; hiding it leaves the
+     icon and collapses the button to a square. */
+  .insp-toolbar button > span:not(.anticon) { display: none; }
+  /* The recipe name is not a control and has no icon to fall back to, so it
+     keeps its text and takes the slack instead. */
+  .insp-toolbar .insp-defname { display: inline; }
+}
+
+/* ---- file browser ----------------------------------------------------- */
+/* The star is a marker, not part of the name: as a ::before it sits outside the
+   text box, so every shortcut's name starts on the same left edge as the fixed
+   entries above it and spends none of the column on decoration. */
+.fb-side .ant-menu-item.fb-fav::before { content: '\2605'; color: #faad14;
+  margin-right: 3px; font-size: 11px; }
+
+/* The column-header row is a label strip, not content: at the default height it
+   costs a whole file's worth of rows on a Surface. The rows themselves are left
+   alone -- they are what a finger has to hit. */
+.fb-side + div .ant-table-thead > tr > th { padding-top: 4px !important;
+  padding-bottom: 4px !important; line-height: 1.2; font-size: 12px; }
+
+/* The shortcut column's own padding and inter-item margin were eating more
+   width than some of the names have. Give it back to the text. */
+.fb-side .ant-menu-item { padding-left: 4px !important; padding-right: 2px !important;
+  margin-top: 0 !important; margin-bottom: 0 !important; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-side .ant-menu-inline { border-right: none; }
+
+/* Path segments: the default link button pays 15px of padding on each side for
+   text that is often three characters, so a path spends more width on gaps than
+   on the path. Only the padding goes -- nothing is shortened or elided, because
+   the middle segment you cannot read is the one you were about to click. */
+.fb-crumb { padding-left: 2px !important; padding-right: 2px !important; }
+
+/* Folder vs file at a glance: solid amber against a light grey outline. The
+   folder name also goes medium-weight, so the distinction survives even where
+   the icon column is scrolled out of view. */
+.fb-dir-ico { color: #f0a020; font-size: 16px; }
+.fb-file-ico { color: #b0b6bd; font-size: 15px; }
+tr:has(.fb-dir-ico) td:nth-child(2) { font-weight: 600; }

@@ -2,6 +2,8 @@
 
 
 import { connect } from 'react-redux';
+import InspSamplePanel from './component/InspSamplePanel.jsx';
+import { loadSampleGroups, pushSampleGroups } from './UTIL/inspSampleGroups';
 import React, { useState, useEffect,useRef } from 'react';
 import { useSelector,useDispatch } from 'react-redux';
 
@@ -23,6 +25,7 @@ import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionE
 import { usePerifConn, getPerifAPI } from './perif/PerifAPI';
 import { withPerifConns } from './perif/PerifStatus';
 import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { fileNameIssue } from 'UTIL/fileNameCheck.mjs';
 import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -35,6 +38,7 @@ const log = mkLog('ui.insp');
 import Row from 'antd/lib/row';
 import Col from 'antd/lib/col';
 import Slider from 'antd/lib/slider';
+import Tooltip from 'antd/lib/tooltip';
 import message from 'antd/lib/message';
 import Checkbox from 'antd/lib/checkbox'
 import Popover from 'antd/lib/popover';
@@ -56,6 +60,7 @@ import {
   LinkOutlined,
   ExclamationCircleOutlined,
   RedoOutlined,
+  PictureOutlined,
   ExpandOutlined,
   ArrowLeftOutlined,
   FullscreenOutlined,
@@ -76,6 +81,11 @@ import Divider from 'antd/lib/divider';
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
+import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
+import { autoExitDecision, autoExitApplies,
+         siAutoExitDecision, siAutoExitApplies,
+         autoExitWindowsOf } from 'UTIL/autoExitRule.mjs';
+import { ranksOf, rankShown } from 'UTIL/measureRank.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -149,8 +159,22 @@ function LocateNoteBanner() {
   // is not at the station -- and it is normal on an empty conveyor, so it is
   // not shouted about. Only the two fallback codes take the banner.
   const isFallback = note.code === 'untrained' || note.code === 'train_failed';
-  if (!isFallback) return null;
-  return <div style={{
+  // Coarse-only is the third: the def IS on SBM, but its features carry no ROI
+  // windows, so the refine stage never runs. Decided 2026-09-04: run it, say
+  // so. Amber, not red -- it locates, just not to the accuracy the def was
+  // designed for.
+  const isCoarse = note.code === 'coarse_only';
+  if (!isFallback && !isCoarse) return null;
+  if (isCoarse) return <div data-testid="locate-note-coarse" style={{
+      background: '#ad6800', color: '#fff', padding: '4px 10px',
+      fontSize: 13, fontWeight: 600, display: 'flex', gap: 10, alignItems: 'center' }}>
+    <span>⚠ 這個 def 只有粗定位</span>
+    <span style={{ fontWeight: 400, fontSize: 12, opacity: 0.9 }}>
+      特徵沒有 ROI 精修窗口(舊格式),定位誤差是幾個像素而不是 sub-pixel。
+      進 Shape-based 定位設定按「生成特徵點」再存檔,就會補上。
+    </span>
+  </div>;
+  return <div data-testid="locate-note-fallback" style={{
       background: '#a8071a', color: '#fff', padding: '4px 10px',
       fontSize: 13, fontWeight: 600, display: 'flex', gap: 10, alignItems: 'center' }}>
     <span>⚠ 這個 def 沒有在用 SBM 定位</span>
@@ -174,9 +198,61 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   const dispatch = useDispatch();
   const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
   const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
+  // The DEF socket, and THE SHA THE RECORDS ARE ACTUALLY FILED UNDER.
+  //
+  // Taken from the report, not from edit_info.DefFileHash. Entering inspection
+  // legitimately alters the def -- 製程 margin overrides are merged and the
+  // display level is folded into quality_essential -- and the dispatch that
+  // carries the altered def back into the store re-derives the hash from it, so
+  // DefFileHash becomes the hash of something that exists in no file and no
+  // database row (measured 2026-09-17: 9a969c82db98 on load, c20045818573 after
+  // entering).
+  //
+  // The RECORDS are unaffected by that: the def sent to the core carries the
+  // pre-dispatch hash, the core copies it into every report as
+  // subFeatureDefSha1, and that is the key the row is stored under. So the
+  // question worth asking is the one the record itself answers -- is the sha
+  // THIS ROW will carry present in the database? -- and asking it of the store
+  // instead would have reported every def as missing forever.
+  const DefFile_DB_W_ID = useSelector(state => state.ConnInfo.DefFile_DB_W_ID);
+  const DefFile_DB_CONN_INFO = useSelector(state => state.ConnInfo.DefFile_DB_W_ID_CONN_INFO);
+  const defSha = useSelector((state) => {
+    const ei = state.UIData.edit_info;
+    // InspFilingSha is stamped on entering inspection, from the hash that goes
+    // on the wire -- so it is available immediately and it is the key the rows
+    // will carry. See the note where it is set.
+    if (typeof ei.InspFilingSha === 'string' && ei.InspFilingSha.length === 40) {
+      return ei.InspFilingSha;
+    }
+    // Fallback: the reports themselves. Slower to arrive (there has to be a
+    // part first) but it is the same value read off the other end, so a session
+    // that somehow missed the stamp still gets asked about the right def.
+    const g = ei.reportStatisticState;
+    const tw = g && g.trackingWindow;
+    if (Array.isArray(tw)) {
+      for (let i = tw.length - 1; i >= 0; i--) {
+        const s0 = tw[i] && tw[i].subFeatureDefSha1;
+        if (typeof s0 === 'string' && s0.length === 40) return s0;
+      }
+    }
+    // NOT edit_info.DefFileHash. After entering inspection that is the hash of
+    // the altered def and appears in no database row, so asking about it would
+    // report every def as missing, forever.
+    return undefined;
+  });
+  const edit_info = useSelector(state => state.UIData.edit_info);
+  // To read the def BACK OFF THE DISK rather than rebuild it from memory.
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
+  const SEND_CORE = (tl,prop,data,promiseCBs) =>
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID,tl,prop,data,undefined,promiseCBs));
+  // Reaches the DB_WS instance itself, for query() -- which is NOT send(). See
+  // the note on query() in script.jsx: send() wraps its argument in an insert
+  // envelope and writes it, so asking a question through it stores the question.
+  const WS_OBJ = (id,cb) => dispatch(UIAct.EV_WS_GET_OBJ(id,cb));
 
   // How much is waiting, and how much has been thrown away.
   //
@@ -253,6 +329,195 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
 
   //   })
 
+  // IS THE DEF IN THE DATABASE? ASKED ONCE PER SHA.
+  //
+  // An inspection record carries the def's sha and nothing else about how it
+  // was judged; the def in the database is what makes it readable later. If the
+  // def was never uploaded, every record written against it is an ORPHAN --
+  // the numbers survive and attach to no specification, and the query screen
+  // says 設定檔已不在庫中.
+  //
+  // This is not hypothetical. HY_DB measured 231 orphan shas covering 322,640
+  // records (2.44%), still growing, and the machines at the top of the list
+  // this month are ours -- SAMP001, SLID001, SLID002, last seen today. The
+  // cause is exactly this: nothing ever asked.
+  //
+  // Per SHA, not per report. The same def measures hundreds of parts in a row
+  // and asking each time is waste, but a switch is the moment a new sha appears
+  // and is precisely when it has to be asked.
+  //
+  // Which also means the question is asked after the FIRST part rather than on
+  // entering: the sha is read off a report, and before there is a report there
+  // is nothing to ask about. Later than it sounds, but not too late -- the
+  // answer arrives within a part or two and an orphan stays adoptable
+  // afterwards. The alternative was asking about edit_info.DefFileHash, which
+  // after entering is the hash of the ALTERED def and appears in no database
+  // row, so every def would have reported missing, forever.
+  //
+  // It NEVER blocks the write. Losing inspection data is worse than orphaning
+  // it: an orphan can be adopted later by uploading the def, a record that was
+  // never written is gone. So this warns and nothing else.
+  const [defInDb, setDefInDb] = useState('unknown');   // unknown|known|missing|unreachable
+  const askedRef = useRef({ sha: undefined, warned: undefined });
+  const defDbConnected = GetObjElement(DefFile_DB_CONN_INFO,["type"])==="WS_CONNECTED";
+  useEffect(() => {
+    if (!defSha) { setDefInDb('unknown'); return; }
+    if (!defDbConnected) { setDefInDb('unreachable'); return; }
+    if (askedRef.current.sha === defSha) return;       // already answered for this def
+    askedRef.current.sha = defSha;
+    setDefInDb('unknown');
+    // query(), not send(). send() is the insert path: it wraps whatever it is
+    // handed in { dbcmd:{db_action:"insert"}, data } and persists it, so the
+    // first version of this asked the question THROUGH the insert queue and
+    // wrote an empty document into DefineFile for its trouble (2026-09-17
+    // 04:42:02Z, still there) -- while getting an insert ACK back with no
+    // `missing` in it, which read as 'unreachable' and showed the operator
+    // nothing. Both halves of that were silent.
+    new Promise((resolve, reject) => {
+      WS_OBJ(DefFile_DB_W_ID, (dbws) => {
+        if (!dbws || typeof dbws.query !== 'function') { reject(new Error('no db socket')); return; }
+        dbws.query({ dbcmd: { db_action: 'exists' }, data: [defSha] }).then(resolve, reject);
+      });
+      setTimeout(() => reject(new Error('exists timeout')), 12000);
+    })
+      .then((ret) => {
+        const missing = (ret && Array.isArray(ret.missing)) ? ret.missing : null;
+        if (missing === null) { setDefInDb('unreachable'); return; }
+        setDefInDb(missing.length ? 'missing' : 'known');
+      })
+      .catch(() => {
+        // A refused or dropped request is NOT "missing". Saying the def is
+        // absent because the question failed would send an operator to re-save
+        // a def that is already there, and teach them to ignore the warning.
+        setDefInDb('unreachable');
+        askedRef.current.sha = undefined;              // ask again on reconnect
+      });
+  }, [defSha, defDbConnected]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // PUSHING IT IS THE FIX; WARNING IS ONLY THE NOTICE.
+  //
+  // THE FILE ON DISK IS WHAT GETS UPLOADED. Not a def rebuilt from what is in
+  // memory -- read back through the core with LD, the same command that loaded
+  // it, and sent verbatim.
+  //
+  // It used to regenerate from edit_info, and for any recipe carrying 製程
+  // control-margin rows that could never work. Entering inspection merges those
+  // overrides and folds the display level into quality_essential, then puts the
+  // ALTERED def back into the store; the copy sent to the core keeps the file's
+  // sha as a label (see the note by InspFilingSha) so the rows file under it.
+  // So the store holds content B labelled B, the rows point at A, and
+  // regenerating could only ever produce B. The button refused -- correctly,
+  // because uploading B would leave a third sha and A still missing -- and
+  // there was no path left that worked. The advice it printed, reload the
+  // recipe, does the same thing again.
+  //
+  // Reading the file also removes a question nobody could answer from the
+  // screen: whether the thing being uploaded had been altered in memory since
+  // it was loaded. The file cannot have been.
+  const pushDef = React.useCallback(() => {
+    if (!defModelPath) {
+      Modal.error({ title: '不知道這個配方的檔案位置',
+                    content: '請回設定畫面重新載入這個配方後再試。' });
+      return;
+    }
+    if (CORE_ID === undefined) {
+      Modal.error({ title: '核心沒有連線', content: '設定檔要透過核心讀取。' });
+      return;
+    }
+    const done = (rep) => {
+      // The FILE's own sha against the sha the rows carry. They can differ:
+      // somebody edited and saved the recipe after this session started
+      // inspecting, so the file is no longer the document these records are
+      // against. Uploading it would file the wrong content under A.
+      if (rep && rep.featureSet_sha1 !== defSha) {
+        Modal.error({
+          title: '磁碟上的設定檔已經不是這一份',
+          width: 560,
+          content: (<div style={{ lineHeight: 1.9 }}>
+            <div>檔案讀回來的 sha 和正在檢驗的這一份不同,表示這個配方在檢驗開始後被存檔過。</div>
+            <div style={{ marginTop: 8 }}>
+              檢驗中 <code>{String(defSha).slice(0, 12)}…</code><br/>
+              檔案上 <code>{String(rep.featureSet_sha1).slice(0, 12)}…</code>
+            </div>
+            <div style={{ marginTop: 8, color: '#a8071a' }}>
+              上傳它會把另一份內容存成這一份的 sha。請回設定畫面重新載入這個配方,
+              再重新進入檢驗。
+            </div>
+          </div>),
+        });
+        return;
+      }
+      // Legacy bare-payload shape, the same one the save path and the
+      // inspection writer use -- the server reads a message with no dbcmd as
+      // an insert.
+      WS_SEND(DefFile_DB_W_ID, rep)
+      .then(() => {
+        setDefInDb('known');
+        message.success('設定檔已上傳,先前的檢驗資料也會接回來');
+      })
+      .catch((err) => {
+        Modal.error({
+          title: '設定檔上傳失敗',
+          content: (<div style={{ lineHeight: 1.9 }}>
+            <div>原因:{(err && err.message) ? err.message : '沒有回應'}</div>
+            <div style={{ marginTop: 8 }}>檢驗不受影響。可以再試一次,或回設定畫面存檔一次。</div>
+          </div>),
+        });
+      });
+    };
+
+    // LD is how the def was loaded in the first place, so this is the same
+    // document by the same route. Nothing is dispatched: the reply is read and
+    // dropped, because loading it into the store is exactly what must not
+    // happen -- that would restart the session's def from under it.
+    SEND_CORE('LD', 0, { deffile: defModelPath + '.' + DEF_EXTENSION }, {
+      resolve: (pkts) => {
+        const df = (pkts || []).find((p) => p && p.type === 'DF');
+        if (!df || !df.data) {
+          Modal.error({ title: '讀不到設定檔',
+                        content: defModelPath + '.' + DEF_EXTENSION + ' 沒有回傳內容。' });
+          return;
+        }
+        done(df.data);
+      },
+      reject: (e) => Modal.error({
+        title: '讀不到設定檔',
+        content: (<div style={{ lineHeight: 1.9 }}>
+          <div>{defModelPath + '.' + DEF_EXTENSION}</div>
+          <div style={{ marginTop: 8 }}>原因:{(e && e.message) ? e.message : '沒有回應'}</div>
+        </div>),
+      }),
+    });
+  }, [defModelPath, CORE_ID, defSha, DefFile_DB_W_ID]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (defInDb !== 'missing') return;
+    if (askedRef.current.warned === defSha) return;    // one dialog per def
+    askedRef.current.warned = defSha;
+    Modal.confirm({
+      title: '這個設定檔不在資料庫裡',
+      width: 560,
+      okText: '立即上傳',
+      cancelText: '稍後再說',
+      onOk: pushDef,
+      content: (<div style={{ lineHeight: 1.9 }}>
+        <div><b>檢驗照常進行,資料不會遺失。</b></div>
+        <div style={{ marginTop: 8, color: '#a8071a' }}>
+          但這段時間寫進資料庫的檢驗資料<b>接不上任何規格</b> ——
+          報告本身不含判定依據,要靠資料庫裡的設定檔才能還原。
+          之後查這批報告會顯示「設定檔已不在庫中」。
+        </div>
+        <div style={{ marginTop: 8 }}>
+          按「立即上傳」就補上了,先前那些資料也會接回來。
+          回設定畫面存檔一次也有同樣效果。
+        </div>
+        <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+          sha1 {String(defSha).slice(0, 12)}…
+        </div>
+      </div>),
+    });
+  }, [defInDb, defSha]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   let isConnected=GetObjElement(Insp_DB_W_ID_CONN_INFO,["type"])==="WS_CONNECTED";
 
       
@@ -260,12 +525,60 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   // return null;
 
 
-  return <Button type="primary" size={"large"} 
-    className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
-    icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
-        {(isConnected ? LANG_DICT.connection.server_connected : LANG_DICT.connection.server_disconnected)
-        + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip
-        + (dbQ.pending ? "  待補傳 " + dbQ.pending : "")}
+  // The button says the STATE and the counters. What the numbers mean, and what
+  // the machine is doing about a broken link, is a paragraph -- and a paragraph
+  // does not belong on a button that four numbers already share. It is a hover
+  // away instead.
+  const detail = (
+    <div style={{ maxWidth: 320, fontSize: 12, lineHeight: 1.6 }}>
+      <b>{isConnected ? "資料庫已連線" : "資料庫斷線,報告暫存中"}</b><br/>
+      {isConnected
+        ? "報告即時送出。"
+        : "報告會存在本機,連線恢復後自動補送 — 斷線期間的資料不會消失。"}
+      <br/><br/>
+      <b>{_this.sendedCounter}&lt;{_this.sendCounter}</b> 已送達 &lt; 已送出<br/>
+      <b>{_this.totalCounter}</b> 本次開機累計檢驗<br/>
+      <b>/{insert_skip}</b> 每 {insert_skip} 筆上傳 1 筆(1 = 每筆都傳)
+      {dbQ.pending ? <><br/><b>待補傳 {dbQ.pending}</b> 已暫存、等連線</> : null}
+      {dbQ.dropped ? <><br/><span style={{ color: '#ff7875' }}>
+        <b>已丟棄 {dbQ.dropped}</b> 暫存已滿,這些筆數真的沒有了</span></> : null}
+      {/* The dialog is dismissed once and then gone; this is where the state
+          stays. Hidden while the answer is 'known' -- a line saying everything
+          is fine on every hover is a line that stops being read. */}
+      {defInDb === 'missing' ? <><br/><br/><span style={{ color: '#ff7875' }}>
+        <b>設定檔不在資料庫</b> 這些檢驗之後查不到判定依據 ——
+        <a onClick={pushDef} style={{ color: '#ff7875', textDecoration: 'underline' }}>立即上傳</a></span></> : null}
+      {defInDb === 'unreachable' ? <><br/><br/><span style={{ color: '#d48806' }}>
+        <b>設定檔存在與否未知</b> 問不到設定DB,不代表它不在</span></> : null}
+    </div>
+  );
+
+  return <Tooltip title={detail} placement="bottom">
+    {/* Middle, like everything else here. The toolbar's own note says large
+        buttons spend the width the numbers need, and this was the one button
+        exempting itself from that while carrying the most text. */}
+    <Button type="primary"
+      className={ "insp-db " + (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
+      icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
+        {/* Disconnected: the label only. The counters are what the link is
+            doing, and while it is down the answer is "nothing, and none of it
+            is lost" -- which the label already says. Dropping them takes a
+            wide red bar back down to four characters in a toolbar that is
+            fighting for width, and every number is still one hover away. */}
+        {isConnected
+          ? <>{LANG_DICT.connection.server_connected}
+              {/* Dropped below 900 px by the rule in basis.css. Exactly the
+                  trade the disconnected branch above already makes, and for
+                  the same reason: on a narrow bar these four numbers cost the
+                  width the CONTROLS need, and every one of them is still in
+                  the hover. */}
+              <span className="tb-num">
+                {" " + _this.sendedCounter + "<" + _this.sendCounter + ":"
+                     + _this.totalCounter + "/" + insert_skip
+                     + (dbQ.pending ? "  待補傳 " + dbQ.pending : "")}
+              </span>
+            </>
+          : LANG_DICT.connection.server_disconnected}
         {/* Loud and separate. A discarded record is not a delayed one, and it
             must not read as another counter in the same grey run-on. */}
         {dbQ.dropped ? <span style={{ marginLeft: 8, padding: '0 6px', borderRadius: 3,
@@ -273,6 +586,7 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
           已丟棄 {dbQ.dropped}
         </span> : null}
     </Button>
+  </Tooltip>
 }
 
 
@@ -407,6 +721,29 @@ function valueInk(detailStatus, ratio, blank) {
   return { fg: "#389e0d", w: 400 };
 }
 
+// The same traffic light, for the strip's black ground.
+//
+// Not a tint of the light one -- lifted. #389e0d on black is barely a colour,
+// and #f5222d is dark enough there to lose against the badge beside it.
+//
+// A PASSING reading is WHITE, not green. Operators asked for big figures and
+// high contrast, and white on black is the most legible thing available; the
+// green would spend that contrast saying what the badge already says. NG and
+// the control-limit warning keep their colour, because those are the two the
+// eye is hunting for -- so a reject is loud twice, in the figure and in the
+// badge, and a pass is loud once, in the badge.
+function valueInkDark(detailStatus, blank) {
+  if (blank) return { fg: "#595959", w: 400 };
+  if (detailStatus === MEASURERSULTRESION.NA
+      || detailStatus === MEASURERSULTRESION.UNSET
+      || detailStatus === undefined) {
+    return { fg: "#595959", w: 400 };
+  }
+  if (NG_STATUSES.has(detailStatus)) return { fg: "#ff4d4f", w: 600 };
+  if (CAUTION_STATUSES.has(detailStatus)) return { fg: "#ffc53d", w: 600 };
+  return { fg: "#ffffff", w: 400 };
+}
+
 // Which detailStatus values count as a failure worth naming when a group is
 // collapsed. The C-variants are the caution band, which is not a failure.
 const CAUTION_STATUSES = new Set([
@@ -466,7 +803,28 @@ class ResultGroupItems extends React.PureComponent {
     // are then guaranteed to match what was actually being measured, in the
     // same order and the same slots -- which reading them back out of the
     // recipe would not guarantee.
-    const reports = (group && group.reports) || ghostReports || [];
+    // A REFERENCE ITEM IS NOT IN THIS LIST AT ALL. (operator request, 2026-09-17)
+    //
+    // quality_essential === false means the measurement is taken and shown but
+    // never decides the part. The first pass at the request blanked its reading
+    // and left the name behind; the operators meant the whole entry. They are
+    // right for this surface: the strip is the OK/NG column, every line on it
+    // is read as something that was judged, and a line that can never be judged
+    // is a permanent "why is that one always blank?".
+    //
+    // It is hidden HERE and nowhere lower, so this stays a display decision:
+    //   * finalResult is reduced over the UNFILTERED list (and already skips
+    //     non-essential items), so the part's verdict cannot move because of
+    //     this line;
+    //   * the sampling view renders through the same component as the strip
+    //     component, so an operator reading values off and writing them down
+    //     still gets every measurement including these;
+    //   * the canvas overlay still draws them, with the eye mark.
+    // The measurement is still taken, still reported, still on screen elsewhere
+    // -- what it no longer does is occupy a line in the column an operator
+    // scans for rejects.
+    const all = (group && group.reports) || ghostReports || [];
+    const reports = all.filter((r) => !r || !r.def || r.def.quality_essential !== false);
     const ghost = !group;
     // Keyed by SLOT, not by measurement name.
     //
@@ -494,26 +852,18 @@ class ResultGroupItems extends React.PureComponent {
           fullScreenToggleCallback={onFullScreen} />
       );
     }
-    // table-layout:fixed so the columns come from the colgroup and not from
-    // the content: a long measurement name must not be able to push the value
-    // column narrower on one row than on the next.
-    // separate, NOT collapse -- see the note on the row background. With
-    // border-collapse:collapse a <tr> has no background box of its own, so
-    // background-size and background-position on it are ignored and the scale
-    // floods the whole row height.
+    // A LIST OF BLOCKS, not a table.
     //
-    // (A JSX comment here instead would be a second root expression in the
-    // return, which is a parse error -- made twice now.)
+    // Each entry is now its own box with a big left-aligned reading and the
+    // verdict beside it, so there are no columns left to line up and nothing
+    // for a colgroup to fix. The table went with them: it existed to hold a
+    // name column and a value column to the same width down the page, and to
+    // give the scale row a background box of its own that border-collapse kept
+    // taking away.
     return (
-      <table style={{ width: "100%", tableLayout: "fixed",
-                      borderCollapse: "separate", borderSpacing: 0,
-                      background: "#fff" }}>
-        <colgroup>
-          <col />
-          <col style={{ width: 108 }} />
-        </colgroup>
-        <tbody>{out}</tbody>
-      </table>
+      <div style={{ background: "#000" }}>
+        {out}
+      </div>
     );
   }
 }
@@ -568,9 +918,14 @@ function ResultGroupTitle({ group, slot, collapsed, simThres, onToggle, onFullSc
                        // 0.50 floor than against a 0.90 one; the fraction of
                        // the remaining range means the same thing against both,
                        // which is what lets one rule serve two locators.
-                       color: headroom(group.similarity, simThres) >= 0.15 ? "#8c8c8c"
+                       // Grey when there is no floor to compare against: the
+                       // score is still worth showing, the colour is not a
+                       // judgement anyone can make without the threshold.
+                       color: !Number.isFinite(simThres) ? "#8c8c8c"
+                            : headroom(group.similarity, simThres) >= 0.15 ? "#8c8c8c"
                             : group.similarity >= simThres ? "#d46b08" : "#cf1322" }}
-          title={`比對分數 ${group.similarity.toFixed(4)}／接受門檻 ${simThres.toFixed(2)}`}>
+          title={`比對分數 ${group.similarity.toFixed(4)}`
+                 + (Number.isFinite(simThres) ? `／接受門檻 ${simThres.toFixed(2)}` : '')}>
           {group.similarity.toFixed(3)}
         </span>}
       {/* Only when collapsed, and it takes the slack so the badge stays put. */}
@@ -595,91 +950,6 @@ function ResultGroupTitle({ group, slot, collapsed, simThres, onToggle, onFullSc
   );
 }
 
-// One measurement, laid out for READING AND WRITING DOWN.
-//
-// The strip on the left and this are the same numbers for two different jobs.
-// On the strip an operator glances at a verdict while the machine sorts; here,
-// in sampling mode, they read the value off and record it -- so the limits and
-// the margin belong on screen, not behind a hover, and the columns have to line
-// up down the page or the digits get transcribed wrong.
-class ResultRowExpanded extends React.PureComponent {
-  render() {
-    const rep = this.props.singleInspection;
-    const def = rep.def || {};
-    const essential = GetObjElement(rep, ["def", "quality_essential"]) !== false;
-
-    // Guarded. An unmapped detailStatus threw right here and took the whole
-    // inspection panel down with it -- the error boundary replaces the screen
-    // and the operator loses the session, which is a very expensive way to
-    // report an unknown enum value.
-    let color = (OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
-                 || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).COLOR;
-    if (!essential) color = Color(color).desaturate(0.6).darken(0.5);
-
-    const numeric = (rep.value === +rep.value) ? +rep.value : undefined;
-    const unit = DEFAULT_UNIT[rep.subtype] || "";
-    const shown = numeric === undefined ? "NaN" : numeric.toFixed(3);
-
-    let ratio;
-    if (numeric !== undefined && def.value !== undefined) {
-      const span = numeric > def.value ? (def.USL - def.value) : (def.value - def.LSL);
-      if (span > 0) ratio = (numeric - def.value) / span;
-    }
-    const OUT = 1.35;
-    const pos = 50 + (ratio === undefined ? 0 : Math.max(-OUT, Math.min(OUT, ratio))) * 42;
-
-    const num = (v) => (v === undefined || v === null ? "—" : Number(v).toFixed(3));
-    const mono = { fontFamily: "ui-monospace, Consolas, monospace",
-                   fontVariantNumeric: "tabular-nums" };
-
-    return (
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 14,
-                         color: essential ? "#262626" : "#bfbfbf",
-                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {rep.name}
-          </span>
-          <span style={{ ...mono, flex: "0 0 auto", fontSize: 30, lineHeight: "34px",
-                         letterSpacing: "-0.01em", textAlign: "right", minWidth: 148,
-                         color: essential ? "#141414" : "#999" }}>
-            {shown}<span style={{ fontSize: 14, color: "#8c8c8c", marginLeft: 4 }}>{unit}</span>
-          </span>
-          <span style={{ flex: "0 0 auto", fontSize: 12, fontWeight: 600, color: "#fff",
-                         background: color, borderRadius: 3, padding: "2px 8px" }}>
-            {(OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
-              || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA]).TEXT}
-          </span>
-        </div>
-
-        <div style={{ position: "relative", height: 6, borderRadius: 3, marginTop: 7,
-                      background: essential
-                        ? "linear-gradient(90deg,#e8e8e8 0 7.6%,#bdbdbd 7.6% 8.4%,"
-                          + "#e8e8e8 8.4% 49.6%,#8c8c8c 49.6% 50.4%,#e8e8e8 50.4% 91.6%,"
-                          + "#bdbdbd 91.6% 92.4%,#e8e8e8 92.4% 100%)"
-                        : "#f0f0f0" }}>
-          {ratio === undefined ? null : (
-            <span style={{ position: "absolute", top: -2, left: `calc(${pos}% - 1.5px)`,
-                           width: 3, height: 10, borderRadius: 2, background: color,
-                           boxShadow: "0 0 0 1.5px #fff" }} />
-          )}
-        </div>
-
-        {/* The limits, spelled out. On the strip they live behind a hover
-            because there is no room; here there is, and an operator writing a
-            number down needs to see what it is being judged against. */}
-        <div style={{ ...mono, display: "flex", justifyContent: "space-between",
-                      fontSize: 11.5, color: "#8c8c8c", marginTop: 5 }}>
-          <span>{num(def.LSL)}</span>
-          <span>目標 {num(def.value)}</span>
-          <span>{ratio === undefined ? "" : "餘裕 " + (ratio >= 0 ? "+" : "") + ratio.toFixed(2)}</span>
-          <span>{num(def.USL)}</span>
-        </div>
-      </div>
-    );
-  }
-}
-
 export class InspectionResultDisplay_FullScren extends React.Component {
 
   constructor(props) {
@@ -691,6 +961,7 @@ export class InspectionResultDisplay_FullScren extends React.Component {
   }
   render() {
     const groups = this.props.groups;
+    const DICT = this.props.DICT;
     if (!Array.isArray(groups)) return null;
 
 
@@ -724,14 +995,29 @@ export class InspectionResultDisplay_FullScren extends React.Component {
                     maxHeight: "70vh", overflowY: "auto" }}>
         {groups.map((g, index) => (
           <div key={"fsc" + index}
-               style={{ border: "1px solid #e8e8e8", borderRadius: 6, overflow: "hidden" }}>
+               style={{ border: "1px solid #d9d9d9", borderRadius: 6, overflow: "hidden",
+                        background: "#000" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8,
                           padding: "8px 12px", background: "#fafafa",
-                          borderBottom: "1px solid #e8e8e8", fontSize: 14 }}>
-              <ResultGroupTitle group={g} />
+                          borderBottom: "1px solid #d9d9d9", fontSize: 14 }}>
+              <ResultGroupTitle group={g} simThres={this.props.simThres} />
             </div>
-            {g.reports.map((rep) => (
-              <ResultRowExpanded key={"x" + rep.name} singleInspection={rep} />
+            {/* THE SAME ROW THE STRIP DRAWS.
+                This view had its own renderer -- a light-themed expanded row --
+                and the strip was rebuilt dark, big-numbered and with reference
+                items dropped entirely. Two renderers for one thing means the
+                operator reads the same measurement two ways depending on which
+                view is open, and it means every future change has to be made
+                twice or the two drift again. So: one component. What fullscreen
+                has that the strip does not is room, and room is a layout
+                decision -- the grid above -- not a different way of showing a
+                number.
+                Reference items are filtered here for the same reason they are
+                filtered on the strip: they carry no verdict. */}
+            {g.reports.filter((r) => !r || !r.def || r.def.quality_essential !== false)
+                      .map((rep) => (
+              <InspectionResultDisplay key={"x" + rep.name} DICT={DICT}
+                singleInspection={rep} />
             ))}
           </div>
         ))}
@@ -955,11 +1241,14 @@ class InspectionResultDisplay extends React.PureComponent {
       // they have to be locatable without ever competing with the reading that
       // sits on top of them, and the marker has to stay the most saturated
       // thing on the row so the eye lands on it first.
-      { at: place(L.LSL), half: 1,   c: "#ffc9c7" },   // spec, the hard limits
-      { at: place(L.USL), half: 1,   c: "#ffc9c7" },
-      { at: ctlOff(L.LCL, true)  ? undefined : place(L.LCL), half: 0.8, c: "#ffe7a3" },
-      { at: ctlOff(L.UCL, false) ? undefined : place(L.UCL), half: 0.8, c: "#ffe7a3" },
-      { at: place(L.TGT), half: 0.7, c: "#cfcfcf" },   // target
+      // Darkened for the black ground: the pale pink and cream these used to be
+      // were chosen against white and glow against black, where they would
+      // out-shout the marker they exist to be read behind.
+      { at: place(L.LSL), half: 1,   c: "#8c3b3a" },   // spec, the hard limits
+      { at: place(L.USL), half: 1,   c: "#8c3b3a" },
+      { at: ctlOff(L.LCL, true)  ? undefined : place(L.LCL), half: 0.8, c: "#7a6224" },
+      { at: ctlOff(L.UCL, false) ? undefined : place(L.UCL), half: 0.8, c: "#7a6224" },
+      { at: place(L.TGT), half: 0.7, c: "#565656" },   // target
     ]) {
       if (t.at === undefined) continue;
       const at = Math.max(1.5, Math.min(98.5, t.at));
@@ -984,7 +1273,7 @@ class InspectionResultDisplay extends React.PureComponent {
     // leaves the numbers on plain white where they are easiest to read.
     const track = (essential && SCALE.length)
       ? "linear-gradient(90deg, " + SCALE.map(tick).join(", ") + ")"
-      : "#fafafa";
+      : "#1f1f1f";
 
     // Out-of-tolerance values are PINNED to the edge and drawn thicker.
     //
@@ -993,7 +1282,7 @@ class InspectionResultDisplay extends React.PureComponent {
     // value went out of spec the less of its marker was visible, and a really
     // bad one had no marker at all. That is backwards: the worse it is, the
     // more it has to show.
-    const ink = valueInk(rep.detailStatus, ratio, blank);
+    const ink = valueInkDark(rep.detailStatus, blank);
     // The marker is placed through the SAME mapping as the scale lines, so a
     // reading sitting on its limit lands on that limit's tick by construction.
     // It used to be derived from `ratio`, computed separately further up with
@@ -1013,70 +1302,100 @@ class InspectionResultDisplay extends React.PureComponent {
 
     // No bottom border here: the scale row below carries the separator, so the
     // two rows read as one entry rather than as two.
-    const cell = { padding: "3px 4px 1px", verticalAlign: "middle" };
-
-    // TWO rows per measurement: the reading, then a 9 px strip carrying the
-    // scale across both columns.
+    // ONE ENTRY IS ONE BLOCK, on black, with the reading big and the verdict
+    // beside it. (operator request, 2026-09-17)
     //
-    // The scale wants to be a band along the bottom of the row and not to run
-    // through the figures -- a red spec line landing on the "mm" of a number
-    // someone is copying out. Two attempts to do that with the row's own
-    // background failed: background-size/position are ignored on a <tr> under
-    // border-collapse:collapse, and switching to separate did not fix it
-    // either, so the gradient kept flooding the full height. A td with
-    // colSpan is not a workaround, it is simply the element that has the box
-    // we want -- and it costs two nodes.
+    // The operators compared this panel against the older machines and wanted
+    // the older one back. Asked what specifically, the answer was: big figures,
+    // high contrast, OK/NG at a glance, and not much interest in the rest.
+    // That is a clear instruction, and this is it, taken from a photo of the
+    // machine they meant:
+    //
+    //   a light rule ABOVE each entry
+    //   the measurement name, small
+    //   the reading, LARGE and LEFT-aligned, the verdict badge on its right
+    //
+    // Left-aligned because the figures are what the eye lands on, and a shared
+    // left edge down the column is easier to land on than a right one when the
+    // readings differ in width. The badge takes the right, where it forms its
+    // own column of coloured blocks -- that column IS the OK/NG answer, and it
+    // works before a single digit has been read.
+    //
+    // Two things the table version was right about are kept. The margin bar
+    // stays, at 5 px: the operators are indifferent to it, but indifference is
+    // not a reason to delete the only thing on screen that says a process is
+    // drifting BEFORE it starts rejecting. And a reference item still shows no
+    // reading -- on a strip, a number reads as something that was judged.
+    //
+    // The cost is real and worth stating plainly: this entry is taller than the
+    // table row it replaces, so fewer measurements fit on screen at once. That
+    // is the trade the operators asked for.
     const hide = (empty && !placeholder) ? "none" : undefined;
+    const verdict = OK_NG_BOX_COLOR_TEXT[rep.detailStatus]
+                 || OK_NG_BOX_COLOR_TEXT[MEASURERSULTRESION.NA];
     return (
-      <>
-      <tr style={{ display: hide }}>
-        <td style={{ ...cell, overflow: "hidden", textOverflow: "ellipsis",
-                     whiteSpace: "nowrap", fontSize: 12, color: "#595959" }}
-            title={essential ? rep.name : rep.name + "(不列入判定)"}>
-          {/* The same eye the canvas overlay already draws on these shapes, so
-              the two views name the thing the same way. A row only reaches here
-              if it is IN rank -- out-of-rank rows are filtered out upstream --
-              so this mark always means "shown, measured, and not counted",
-              never "hidden". */}
+      <div style={{ display: hide, background: "#000",
+                    borderTop: "2px solid #d9d9d9", padding: "2px 0 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 8px",
+                      fontSize: 12, lineHeight: "16px", color: "#d4d4d4",
+                      whiteSpace: "nowrap", overflow: "hidden" }}
+             title={essential ? rep.name : rep.name + "（不列入判定）"}>
+          {/* The same eye the canvas overlay draws on these shapes, so the two
+              views name the thing the same way. A row only reaches here if it
+              is IN rank, so this mark always means "shown, measured, and not
+              counted", never "hidden". */}
           {!essential && <EyeInvisibleOutlined
-              style={{ fontSize: 11, marginRight: 4, color: "#8c8c8c" }} />}
-          {rep.name}
-        </td>
-        <td style={{ ...cell, textAlign: "right", padding: "3px 6px",
-                     fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
-                     fontSize: 18, lineHeight: "20px",
-                     fontWeight: ink.w,
-                     color: ink.fg, position: "relative" }}>
+              style={{ fontSize: 11, color: "#9a9a9a", flex: "0 0 auto" }} />}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {rep.name}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 3px" }}>
           <Popover content={detailInfo} placement="bottomLeft" trigger={["click", "hover"]}>
-            <span>{shown}<span style={{ fontSize: 11, marginLeft: 2, opacity: .65 }}>
-              {blank ? "" : unit}</span></span>
+            <span style={{ flex: "1 1 auto", minWidth: 0,
+                           fontFamily: "ui-monospace, Consolas, monospace",
+                           fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em",
+                           fontSize: 22, lineHeight: "27px",
+                           fontWeight: ink.w, color: essential ? ink.fg : "#4d4d4d",
+                           whiteSpace: "nowrap", overflow: "hidden",
+                           textOverflow: "ellipsis", cursor: "pointer" }}>
+              {essential
+                ? <>{shown}<span style={{ fontSize: 13, marginLeft: 1, opacity: .7 }}>
+                    {blank ? "" : unit}</span></>
+                : "···"}
+            </span>
           </Popover>
-          {/* A TINT, NOT A COLOUR CHANGE. The reading keeps the ink its status
-              earned -- a reference dimension that is out of tolerance is still
-              red, because it IS out of tolerance -- and the wash says only that
-              it does not decide the part. Repainting it grey instead would use
-              the one colour that already means NA or empty slot, so a real NG
-              that happens not to count would look like no reading at all. */}
-          {!essential && <span style={{
-              position: "absolute", inset: 0, pointerEvents: "none",
-              background: "rgba(140,140,140,0.22)" }} />}
-        </td>
-      </tr>
-      <tr style={{ display: hide }}>
-        {/* The separator is heavier than a hairline and stands off the scale.
-            The scale is itself a row of vertical marks, so a 1 px rule tight
-            underneath joined the two into one busy band and the eye could not
-            tell where an entry ended -- which matters more here than usual,
-            because each entry is two rows and the wrong grouping reads as one
-            measurement's scale belonging to the next measurement's number. */}
-        <td colSpan={2} style={{ padding: "0 0 7px", height: 16, lineHeight: 0,
+          {/* Nothing for a blank slot or a ghost -- there is no verdict yet --
+              and nothing for a reference item, whose whole point is that it
+              does not carry one. */}
+          {!blank && essential &&
+            <span style={{ flex: "0 0 auto", minWidth: 52, textAlign: "center",
+                           fontSize: 13, fontWeight: 600, lineHeight: "21px",
+                           padding: "0 9px", borderRadius: 4, color: "#fff",
+                           background: verdict.COLOR }}>
+              {verdict.TEXT}
+            </span>}
+        </div>
+
+        {/* The margin bar, 5 px, EDGE TO EDGE AND FLUSH TO THE BOTTOM, so it
+            sits directly on the light rule that opens the next entry.
+            (operator request, 2026-09-17)
+            
+            That pairing is the point: the rule is the line between entries and
+            the bar is the last thing inside this one, so the two together read
+            as one closing edge. Inset from the sides with a gap underneath, it
+            floated in the middle of the black and looked like a third element
+            competing with the name and the reading, rather than the entry's own
+            baseline. The side padding therefore lives on the two text rows
+            above and not on the entry, which is the only way the bar can reach
+            the full width. */}
+        {!blank && <div style={{ height: 5, lineHeight: 0,
                                  background: barLayers,
                                  backgroundRepeat: "no-repeat",
                                  backgroundPosition: "top",
-                                 backgroundSize: "100% 9px",
-                                 borderBottom: "3px solid #c4c4c4" }} />
-      </tr>
-      </>
+                                 backgroundSize: "100% 5px" }} />}
+      </div>
     );
   }
 }
@@ -1388,12 +1707,7 @@ class ObjInfoList extends React.Component {
 
       let judgeInRank = judgeReports
       .map(rep=>({...rep,def:this.props.shape_def.find(def=>def.id==rep.id)}))
-      .filter(rep=>{
-        let rdef=rep.def;
-        if(rdef.rank===undefined)return true;
-        if(rdef.rank<=this.props.measureDisplayRank)return true;
-        return false;
-      });
+      .filter(rep=>rankShown(rep.def, this.props.measureDisplayRank));
 
 
       // WHAT DECIDES THE PART.
@@ -1525,7 +1839,7 @@ class ObjInfoList extends React.Component {
     }
 
     let fullScreenMODAL = <InspectionResultDisplay_FullScren
-      groups={resultGroups} DICT={this.props.DICT} visible={this.state.fullScreen}
+      groups={resultGroups} simThres={simThres} DICT={this.props.DICT} visible={this.state.fullScreen}
       onCancel={this.toggleFullscreenBound} width="90%" />;
 
     let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
@@ -1589,7 +1903,9 @@ class ObjInfoList extends React.Component {
     <SubMenu style={{ 'textAlign': 'left' }} key={"station"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
       title={
       <>
-        <Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>
+        {/* The heading lives INSIDE the panel now: collapsed, the panel is a
+            single divider carrying its own summary, which is what it cost
+            before this line was added on top of it. */}
         <StationRegionPanel
           ecCanvas={this.props.ecCanvas}
           machineSetting={this.props.machineSetting}
@@ -1610,6 +1926,15 @@ class ObjInfoList extends React.Component {
             // stale-cache overwrite onSave had to be fixed for. InspRegionLive
             // touches the station and nothing else, and never touches disk.
             this.props.WSCMD_CB("ST", 0, { InspRegionLive: region });
+          }}
+          onApplyCleanLive={(list) => {
+            // The clean regions, live, on the same terms as the station box.
+            // Always the WHOLE set: the core replaces what it has with what
+            // arrives, so an empty array is how the last one gets cleared --
+            // unlike MachineSetting, where an ABSENT key means the same thing
+            // and a partial patch therefore wipes them by accident.
+            // Runtime only; the file still changes at 套用並存檔 alone.
+            this.props.WSCMD_CB("ST", 0, { CleanRegionsLive: Array.isArray(list) ? list : [] });
           }}
           onBypass={(on) => {
             // Runtime only, and deliberately NOT part of the MachineSetting
@@ -1762,10 +2087,25 @@ class ObjInfoList extends React.Component {
         {/* `visible`, not `open` -- antd 4.22.8 (see the note on the fake-camera
             modal in script.jsx). This one was dead the same way: 設定/診斷 set
             the state and no panel ever appeared. */}
+          {/* Wider, and pinned to the right edge.
+            560 was chosen when this was a short strip of counters. It now
+            carries 運作調節 -- input + button + two readouts on one row -- and
+            at 560 every one of those rows wrapped, which puts the number that
+            justifies a field on a different line from the field. 820 still
+            wrapped the wider rows; the CSS cap below keeps this honest on a
+            narrow screen, so the number here only needs to be right for the
+            screen that has the room. Centred, it
+            also sat on top of the live image, so tuning meant reading the
+            effect through the dialog covering it.
+            Right-aligned instead: the machine view stays visible on the left
+            while the numbers are adjusted on the right, which is the way this
+            panel is actually used. */}
         <Modal visible={this.state.uInspESP32_popUp === true} title="全檢設備 v2 (uInspESP32)"
           onCancel={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
           onOk={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
-          footer={null} destroyOnClose width={560}>
+          footer={null} destroyOnClose width={1180}
+          bodyStyle={{ maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}
+          wrapClassName="uinsp-modal-right">
           {this.state.uInspESP32_popUp === true ? <UINSP_ESP32_UI/> : null}
         </Modal>
         {fullScreenMODAL}
@@ -1897,9 +2237,28 @@ class CanvasComponent extends React.Component {
 
         log.info(`stream downsample ${prev} -> ${down_samp_level} `
                + `(${oversample.toFixed(2)} sensor px per canvas px)`);
+        // A RESEND IS THE SAME FRAME, sharper. The image object that comes back
+        // is new, so _imgChanged fires and the reports would be paired again --
+        // against the live tracking window, which by then holds whatever
+        // arrived since. Zooming into a stopped stream therefore replaced both
+        // the overlay and the list with results belonging to a different part,
+        // on a picture that had not changed at all.
+        //
+        // Armed here because this is the only place that knows the next image
+        // is a repeat rather than a new one.
+        //
+        // ONLY ON THE WAY UP IN DETAIL. A smaller down_samp_level is a sharper
+        // frame and there is something to see, so ask for it. A larger one is
+        // the same picture with detail removed -- zooming out, where the sharp
+        // copy already on screen displays perfectly well. Resending it spends a
+        // full frame over the wire, a JPEG decode and a repaint to make the
+        // image worse. The stream itself still switches, so the NEXT live frame
+        // comes at the cheaper level, which is the part that was worth having.
+        const _wantSharper = down_samp_level < prev;
+        this._expectResend = _wantSharper;
         this.props.ACT_WS_SEND_CORE_BPG("ST", 0, {
           CameraSetting: { down_samp_level },
-          LAST_FRAME_RESEND: true,
+          ...(_wantSharper ? { LAST_FRAME_RESEND: true } : {}),
         });
         break;
 
@@ -1939,10 +2298,56 @@ class CanvasComponent extends React.Component {
       // updateImgOnly keeps the previous edit_DB_info, i.e. the overlay keeps
       // matching what is on screen, while statistics and upload still see every
       // report through redux, untouched.
+      // FREEZE AFTER INSPECTION.
+      //
+      // The measured picture is the one the numbers on screen were taken from.
+      // Left live, it is replaced by the next frame within a fraction of a
+      // second, so what the operator reads the result against is a DIFFERENT
+      // picture from the one that was measured -- and in SI, where the whole
+      // point is that one averaged image was inspected, that is the only image
+      // worth looking at.
+      //
+      // Held until the next press, which is the next thing the operator does
+      // anyway. Off by default and remembered per browser: it is a way of
+      // working, not a machine setting.
       const _imgChanged = (this.pre_img !== props.img);
+      // Consumed by the first image after the request, whatever it is: a resend
+      // that never arrives must not leave this armed for a genuinely new frame.
+      const _isResend = _imgChanged && this._expectResend === true;
+      if (_imgChanged) this._expectResend = false;
       if(cur__surpress_display!=true || _imgChanged)
       {
-        this.ec_canvas.EditDBInfoSync(props._edit_info, /*updateImgOnly=*/ !_imgChanged);
+        // updateImgOnly is exactly what a resend wants: take the new picture,
+        // keep the overlay that was already matched to it.
+        //
+        // HELD: the whole sync is skipped, image and overlay together.
+        //
+        // The first attempt cleared _imgChanged instead, which does the
+        // opposite of what it reads like -- a false _imgChanged selects
+        // updateImgOnly, and updateImgOnly TAKES THE NEW PICTURE. The frame
+        // went through exactly as before. No argument to this call means "no
+        // new picture"; not calling it is how that is said.
+        //
+        // Everything after this point still runs, so a rank or settings change
+        // is reflected on the held frame instead of waiting for the release.
+        if (!props.siFrozen)
+          this.ec_canvas.EditDBInfoSync(props._edit_info,
+                                        /*updateImgOnly=*/ !_imgChanged || _isResend);
+        // THE LIST BESIDE THE PICTURE IS PART OF THE PICTURE.
+        //
+        // EditDBInfoSync froze the reports belonging to this frame (its own
+        // dclone -- see frameReportList there) precisely so the overlay would
+        // stop running ahead of the image. The result list on the left was left
+        // reading the LIVE tracking window, i.e. the very thing that races: at
+        // 25-40 reports per second against ~6 images, the numbers on the left
+        // changed four or five times while one picture sat there, and none of
+        // those changes described what the operator was looking at.
+        //
+        // Hand it the same frozen array. No second clone -- this is the one the
+        // canvas just made -- and the list now re-renders once per IMAGE
+        // instead of once per report, which is fewer renders, not more.
+        if (_imgChanged && !_isResend && !props.siFrozen && props.onFrameReports)
+          props.onFrameReports(this.ec_canvas.frameReportList);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         // Mirror System_Setting.SHOW_CALIPER_HITS_INSP to the renderer; per-
@@ -2225,7 +2630,7 @@ class DataStatsTable extends React.Component {
     let measureList = statstate.statisticValue.measureList;
 
     // console.log(measureList);
-    let measureReports = measureList.filter(m=>m.rank===undefined || m.rank<=this.props.measureDisplayRank).map((measure) =>
+    let measureReports = measureList.filter(m=>rankShown(m, this.props.measureDisplayRank)).map((measure) =>
       ({
         id: measure.id,
         name: measure.name,
@@ -2547,6 +2952,137 @@ class AngledCalibrationHelper extends React.Component {
 
 }
 
+// 檢測等級 -- the OPERATOR's view of the def, and nothing else.
+//
+// Two ranks exist and they are deliberately independent:
+//
+//   the machine's   from the rankN tag. Folds into quality_essential, decides
+//                   what a part IS, and no control on this screen can move it.
+//   the operator's  this slider. Decides what is drawn, and nothing else.
+//
+// They were pinned together until now precisely so they could not drift, and
+// production asked for the pin to come off: the person at the machine wants to
+// read one level while the line keeps judging on another. So the drift is
+// allowed and REPORTED -- the note under the slider names both numbers the
+// moment they differ, and the same line goes to the log, because a screen
+// showing fewer measurements than the machine is judging on is a thing someone
+// has to be able to discover after the fact as well as during.
+// It lives in the settings modal, and that modal is built ONCE into
+// this.state.additionalUI as already-created elements (see the note on
+// CaliperHitsSwitch). So the `value` prop is frozen at the moment the gear was
+// pressed: the thumb has to be driven from the component's own state, or it
+// would not move under the operator's finger. The prop is the seed and the
+// resync-on-change, nothing more; the owner still hears every move through
+// onChange, because the owner is what filters the drawing.
+function MeasureRankSlider({ ranks, value: valueProp, machineRank, onChange }) {
+  const [value, setValue] = useState(valueProp);
+  useEffect(() => { setValue(valueProp); }, [valueProp]);
+  const move = (v) => { setValue(v); if (onChange) onChange(v); };
+
+  const marks = {};
+  for (const r of ranks) marks[r] = String(r);
+  const lo = ranks.length ? ranks[0] : 0;
+  const hi = ranks.length ? ranks[ranks.length - 1] : 0;
+  const shownCount = (v) => ranks.filter((r) => r <= v).length;
+
+  // WHAT COUNTS AS A MISMATCH WORTH SHOUTING ABOUT.
+  //
+  // No rankN tag is the normal setup: the machine judges on everything and the
+  // slider opens at the lowest level, so the operator is ALWAYS seeing less
+  // than the machine judges on. That is the intended default, not an anomaly,
+  // and a red line that is on by default is not a warning -- it is furniture
+  // people learn to read past.
+  //
+  // So the red is reserved for two settings that were each chosen and now
+  // disagree: a tag exists AND the slider sits somewhere else. The rest of the
+  // time both numbers are still stated plainly, in grey, because "what is on
+  // screen" and "what is being judged" are two different facts and the panel
+  // should never make the operator guess which one they are looking at.
+  const tagged = Number.isFinite(machineRank);
+  const conflict = tagged && value !== machineRank;
+  const hidden = ranks.filter((r) => r > value).length;
+
+  // Once per transition, not once per render.
+  const saidRef = useRef(undefined);
+  useEffect(() => {
+    const key = conflict ? `${value}/${machineRank}` : 'ok';
+    if (saidRef.current === key) return;
+    saidRef.current = key;
+    if (conflict) {
+      log.warn('[rank] 顯示等級與機器判定等級不一致',
+               { view: value, machine: machineRank });
+    }
+  }, [conflict, value, machineRank]);
+
+  if (ranks.length < 2) return null;   // nothing to choose between
+
+  return (
+    <div style={{ padding: "0 10px 6px" }}>
+      <Divider orientation="left" style={{ margin: "6px 0" }}>
+        檢測等級（顯示）
+      </Divider>
+      <Slider min={lo} max={hi} marks={marks} step={null}
+              value={Number.isFinite(value) ? value : hi}
+              onChange={move} />
+      <div style={{ fontSize: 11, color: conflict ? "#cf1322" : "#8c8c8c",
+                    lineHeight: "15px" }}>
+        {`畫面 ${value}（顯示 ${shownCount(value)} / ${ranks.length} 級）`}
+        {`，機器 ${tagged ? machineRank : "全部"}`}
+        {conflict ? " —— 兩邊各自設定過，且不一致。" : ""}
+      </div>
+      {hidden > 0 &&
+        <div style={{ fontSize: 11, color: "#8c8c8c", lineHeight: "15px" }}>
+          有 {hidden} 個等級未顯示，它們仍然參與判定。
+        </div>}
+      <div style={{ fontSize: 11, color: "#8c8c8c", lineHeight: "15px" }}>
+        只改變畫面。機器判定的等級由 rank 標籤決定（未設定＝全檢測），這個滑桿動不到它。
+      </div>
+    </div>
+  );
+}
+
+// The two ranks, on the toolbar, beside the tags.
+//
+// The slider that states them lives in the settings modal now, which is right
+// for a control pressed once a shift -- but it took the NUMBERS with it, and
+// those are not setup, they are status: "what is being judged" and "what you
+// are looking at" are two different facts, and the screen must never make the
+// operator guess which one is in front of them.
+//
+// Same conflict rule as MeasureRankSlider, deliberately: one definition of
+// "these disagree", used by the badge and by the note under the slider, so the
+// toolbar can never be calm while the modal is red.
+//
+// Machine rank comes from the rankN tag and nothing else, so it sits next to
+// the tags -- that IS where it was set.
+function RankBadge({ ranks, machineRank, viewRank, onClick }) {
+  if (!ranks || ranks.length < 2) return null;   // no choice to make; same as the slider
+
+  const tagged = Number.isFinite(machineRank);
+  const conflict = tagged && viewRank !== machineRank;
+  const shown = ranks.filter((r) => r <= viewRank).length;
+
+  return (
+    <Tooltip title={
+      <div style={{ fontSize: 12 }}>
+        <div>機器：判定用的等級,由 rankN 標籤決定(未設定＝全檢測)。</div>
+        <div>檢視：畫面顯示到第幾級,只改變畫面,動不到判定。</div>
+        {conflict ? <div style={{ marginTop: 4 }}>兩邊各自設定過,且不一致。</div> : null}
+      </div>}>
+      <span onClick={onClick}
+            style={{ cursor: onClick ? 'pointer' : 'default', fontSize: 12,
+                     lineHeight: '16px', whiteSpace: 'nowrap',
+                     padding: '1px 6px', borderRadius: 3,
+                     color: conflict ? '#cf1322' : '#8c8c8c',
+                     border: `1px solid ${conflict ? '#ffa39e' : '#f0f0f0'}`,
+                     background: conflict ? '#fff1f0' : 'transparent' }}>
+        {`機器 ${tagged ? machineRank : '全部'} · 檢視 ${viewRank}`}
+        <span style={{ opacity: 0.7 }}>{` (${shown}/${ranks.length})`}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
 function RestrictiveCircleREdit ({initR,onRChanged}){
       
   let rankMin=0;
@@ -2600,7 +3136,9 @@ function RestrictiveCircleREdit ({initR,onRChanged}){
 // only record of intent -- it is re-sent on mount to make the core agree.
 const CaliperHitsSwitch = (props) => {
   const { CORE_ID, System_Setting, SEND_ST, ACT_System_Setting_Update } = props;
-  const on = System_Setting?.EMIT_CALIPER_HITS !== false;
+  // Default OFF on the inspection screen (a per-caliper payload on every frame
+  // is bench material, not line material); the editor forces it on for itself.
+  const on = System_Setting?.EMIT_CALIPER_HITS === true;
 
   useEffect(() => {
     if (CORE_ID === undefined) return;
@@ -2661,6 +3199,15 @@ export const SNAP_POLICY_DEFAULT = {
   OK: { img: false, rep: false },
   NG: { img: false, rep: false },
   NA: { img: false, rep: false },
+  // AUTOMATIC snapshots only. A manual save is always PNG, and the core ignores
+  // any other extension asked for by hand.
+  //
+  // PNG by default because a snapshot is the evidence for a measurement and
+  // JPEG damages it exactly where the measurement is taken: on a recorded frame
+  // of 10221 it moved the GRADIENT by up to 6 counts, against arcs whose
+  // edge.min_strength is 5. It costs 2093 KB and 745 ms against 932 KB and
+  // 78 ms (mono, RLE strategy), and that tradeoff belongs to the line.
+  img_format: 'png',
 };
 
 // How many reports go to the DB: 1 uploaded out of every N produced.
@@ -2679,8 +3226,9 @@ export const SNAP_POLICY_DEFAULT = {
 export function uploadSkipOf(machine_custom_setting, System_Setting) {
   const mcs = machine_custom_setting || {};
   const sys = System_Setting || {};
-  const isCI = mcs.InspectionMode == "CI";
-  const key = isCI ? "CI_MODE_UPLOAD_SKIP" : "FI_MODE_UPLOAD_SKIP";
+  // Keyed by the mode's own name rather than a CI/not-CI question: with three
+  // modes "not CI" stopped meaning FI.
+  const key = (mcs.InspectionMode || "FI") + "_MODE_UPLOAD_SKIP";
   const v = (mcs[key] !== undefined && mcs[key] !== null) ? mcs[key] : sys[key];
   const n = parseInt(v);
   return Number.isFinite(n) && n >= 1 ? n : 1;
@@ -2701,8 +3249,25 @@ export function uploadSkipOf(machine_custom_setting, System_Setting) {
 export function statSettingOf(machine_custom_setting, System_Setting, mode) {
   const mcs = machine_custom_setting || {};
   const sys = System_Setting || {};
-  const key = (mode === "CI") ? "CI_MODE_StatSettingParam" : "FI_MODE_StatSettingParam";
-  return { ...(sys[key] || {}), ...(mcs[key] || {}) };
+  // By the mode's own name: with three modes "not CI" stopped meaning FI, and
+  // SI in particular must NOT inherit CI's tracking window -- the core already
+  // averaged the picture, and averaging the measurements again on top of it is
+  // a second average that no image can be replayed against.
+  const key = (mode === "CI") ? "CI_MODE_StatSettingParam"
+            : (mode === "SI") ? "SI_MODE_StatSettingParam"
+                              : "FI_MODE_StatSettingParam";
+  const merged = { ...(sys[key] || {}), ...(mcs[key] || {}) };
+
+  // SI TAKES ITS RESULT IMMEDIATELY, because nothing will come along to take it
+  // later. The tracking window retires a report when the NEXT one pushes it
+  // out, which works in FI and CI where parts keep arriving -- but SI measures
+  // once, on a press, and then the core stops reporting until the scene
+  // changes. So the one report of the part sat in the window and was never
+  // uploaded, until the operator happened to move the part.
+  //
+  // Set here, where the mode is known, rather than sniffed for in the reducer.
+  if (mode === "SI") merged.flushImmediately = true;
+  return merged;
 }
 
 export function snapPolicyOf(machine_custom_setting) {
@@ -2713,6 +3278,8 @@ export function snapPolicyOf(machine_custom_setting) {
       OK: { ...SNAP_POLICY_DEFAULT.OK, ...(stored.OK || {}) },
       NG: { ...SNAP_POLICY_DEFAULT.NG, ...(stored.NG || {}) },
       NA: { ...SNAP_POLICY_DEFAULT.NA, ...(stored.NA || {}) },
+      img_format: (stored.img_format === 'jpg' || stored.img_format === 'png')
+        ? stored.img_format : SNAP_POLICY_DEFAULT.img_format,
     };
   }
   // No policy stored yet: everything off, deliberately NOT derived from the
@@ -2722,7 +3289,8 @@ export function snapPolicyOf(machine_custom_setting) {
   // core, so an older WebUI driving this core is unaffected.
   return { OK: { ...SNAP_POLICY_DEFAULT.OK },
            NG: { ...SNAP_POLICY_DEFAULT.NG },
-           NA: { ...SNAP_POLICY_DEFAULT.NA } };
+           NA: { ...SNAP_POLICY_DEFAULT.NA },
+           img_format: SNAP_POLICY_DEFAULT.img_format };
 }
 
 const SnapPolicyPanel = (props) => {
@@ -2749,7 +3317,7 @@ const SnapPolicyPanel = (props) => {
         <tbody>
           <tr style={{ color: '#888', fontSize: 12 }}>
             <td style={{ padding: '2px 10px 2px 0' }}></td>
-            <td style={{ padding: '2px 10px' }}>影像 .jpg</td>
+            <td style={{ padding: '2px 10px' }}>影像 .{pol.img_format}</td>
             <td style={{ padding: '2px 10px' }}>報告 .xreps</td>
           </tr>
           {SNAP_VERDICTS.map((v) => (
@@ -2768,6 +3336,19 @@ const SnapPolicyPanel = (props) => {
         </tbody>
       </table>
       <div style={{ marginTop: 6 }}>
+        自動存檔格式:
+        <Select size="small" value={pol.img_format} style={{ marginLeft: 6, width: 200 }}
+          onChange={(v) => {
+            const next = { ...pol, img_format: v };
+            ACT_machine_custom_setting_Update({
+              ...(machine_custom_setting || {}), FI_INSP_SNAP_POLICY: next });
+            if (CORE_ID !== undefined) SEND_ST(CORE_ID, { INSP_SNAP_POLICY: next });
+          }}>
+          <Select.Option value="png">PNG(無損,可重新量測)</Select.Option>
+          <Select.Option value="jpg">JPG(小,但邊緣會被壓壞)</Select.Option>
+        </Select>
+      </div>
+      <div style={{ marginTop: 6 }}>
         每資料夾上限:
         <InputNumber size="small" min={1} max={100000} step={1} value={maxNum}
           style={{ marginLeft: 6, width: 90 }}
@@ -2780,8 +3361,10 @@ const SnapPolicyPanel = (props) => {
       </div>
       <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
         存到 <code>data/SAMPLE/日期/配方/</code>。滿了就刪最舊的一組。
-        每組約 146 KB（影像 103 KB + 報告 43 KB），所以全開時 20 件/秒 ≈ 每天上百 GB
-        寫入——而資料夾只留最後 {maxNum} 組，其餘全部是白寫的。
+        每組 = 影像 + 報告 43 KB。實測 2592x1936 單張:PNG 2093 KB / 編碼 745 ms,
+        JPG 932 KB / 78 ms。全開時 20 件/秒 ≈ 每天上百 GB 寫入——而資料夾只留最後
+        {maxNum} 組,其餘全部是白寫的。PNG 的存檔吞吐上限約 1.3 張/秒(存檔在自己的
+        執行緒,不會卡住量測)。手動存檔一律 PNG。
       </div>
     </div>
   );
@@ -2805,6 +3388,22 @@ class APP_INSP_MODE extends React.Component {
 
   
   componentDidMount() {
+    // WHO IS STILL HERE -- listened for on the document, in the capture
+    // phase.
+    //
+    // Not on the canvas, for two reasons. The canvas consumes its own events
+    // for panning, pinching and ROI dragging, and a handler downstream of
+    // that can miss the very gestures that prove somebody is present; and
+    // wrapping it in a listening div would put an extra node into a flex
+    // layout whose heights are shared between the canvas and the stats table.
+    // Capture on the document sees everything and changes no structure.
+    //
+    // Passive: this only reads a clock and must never be able to hold up a
+    // scroll or a pinch.
+    for (const ev of ['pointerdown', 'touchstart', 'wheel', 'keydown'])
+      document.addEventListener(ev, this.noteInteractionBound, { capture: true, passive: true });
+    this._siIdleTimer = setInterval(() => this._siIdleTick(), 1000);
+
     let DefFileHash=this.props.edit_info.DefFileHash;
     // Trigger-mode policy: only CI InspMode runs the camera free-running.
     // Flip to continuous on mount and back to trigger=On on unmount so the
@@ -2858,7 +3457,19 @@ class APP_INSP_MODE extends React.Component {
       // to be a 檢測等級 slider here deciding what was drawn; a viewing control
       // that hides measurements is fine, but it has to agree with the one the
       // core was told about, and a slider is a thing the core can never learn.
-      this.setState({ measureDisplayRank: rankLimit === undefined ? Infinity : rankLimit });
+      // TWO RANKS, ON PURPOSE, and they are allowed to disagree.
+      //
+      // The machine's rank is the tag, and only the tag: it folds into
+      // quality_essential above and decides what a part IS. The operator's rank
+      // is the slider in the settings panel and decides only what is on screen.
+      //
+      // The note above this line is the older design, where the display filter
+      // was pinned to the tag so the two could not drift. Production asked for
+      // them to be separable -- the person at the machine wants to look at one
+      // level while the line keeps judging on another -- so the pin is gone and
+      // a mismatch is REPORTED instead of prevented. Which is the honest trade:
+      // it can no longer be silent, and the screen says so beside the slider.
+      this.setState({ machineRank: rankLimit });
 
       // The SAME pick the grading path uses (UTIL/ctrlMarginPick.js). This one
       // decides what the core is told; that one decides what the screen shows.
@@ -2906,7 +3517,7 @@ class APP_INSP_MODE extends React.Component {
         // and the level must be applied to the rank that ends up in force.
         if (rankLimit !== undefined) {
           newShapeList = newShapeList.map((shape, idx) => {
-            if (shape.rank === undefined || shape.rank <= rankLimit) return shape;
+            if (rankShown(shape, rankLimit)) return shape;
             if (shape.quality_essential === false) return shape;
             remember(idx);
             return { ...shape, quality_essential: false };
@@ -2942,6 +3553,28 @@ class APP_INSP_MODE extends React.Component {
       this.props.ACT_WS_Define_File_Update_EXPRESS(deffile,true)
       console.log("deffile",JSON.parse(JSON.stringify(deffile)));
       deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
+
+      // THE SHA THIS SESSION WILL FILE UNDER, kept where it can still be read.
+      //
+      // DefFileHash above is the hash of the file as loaded, and it is what
+      // goes on the wire, so the core stamps it into every report as
+      // subFeatureDefSha1 and every row lands under it.
+      //
+      // It does not survive in edit_info. Entering inspection legitimately
+      // alters the def -- 製程 overrides merged, display level folded into
+      // quality_essential -- and ACT_WS_Define_File_Update_EXPRESS above
+      // reloads edit_info from the altered def, which re-derives the hash from
+      // its contents. After that line both edit_info.DefFileHash and
+      // loadedDefFile.featureSet_sha1 are the hash of something that exists in
+      // no file and no database row (measured 2026-09-17: 9a969c82db98 became
+      // c20045818573).
+      //
+      // So it is stashed under its own name, at the one moment it is still
+      // true. Anything asking "which def are these records against?" reads
+      // this -- not DefFileHash, which after this point answers a different
+      // question, and answers it with a value nothing else in the system has
+      // ever seen.
+      this.props.ACT_EditInfo_Patch({ InspFilingSha: DefFileHash });
 
 
       // Shape-based matching needs its template, and the def carries only a
@@ -2987,6 +3620,17 @@ class APP_INSP_MODE extends React.Component {
       }
       stampRefImagePath(wireDef, this.props.edit_info);
 
+      // Caliper hits: the remembered switch (default off) -- the editor turns
+      // them on for itself and hands back whatever this says on exit, but a
+      // core restart forgets, so say it again at every inspection start.
+      this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+        { DEBUG_EMIT: { cal_hits: (this.props.System_Setting || {}).EMIT_CALIPER_HITS === true } });
+
+      // Kept-sample groups for THIS def (browser localStorage, per def name).
+      // Pushed on every start, empty included: the core keeps whatever list
+      // it was last given, and the previous def's rules must not keep
+      // filing frames of this one.
+      pushSampleGroups(this.props.ACT_WS_SEND_CORE_BPG, loadSampleGroups(this.props.defModelName));
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
@@ -3022,15 +3666,33 @@ class APP_INSP_MODE extends React.Component {
           INSP_SNAP_POLICY: snapPolicyOf(this.props.machine_custom_setting),
           INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||1000
         });
-        this.CameraCtrl.setCameraSpeed_HIGHEST();
+        applyInspFrameRate(this.CameraCtrl, 'FI');
+      }
+      else if (this.props.machine_custom_setting.InspectionMode == "SI") {
+        // Hand-placed, still object: the core waits for the scene to settle,
+        // averages the frames and inspects that average once. Frame rate as
+        // CI -- the camera is streaming for the settle detector, not for
+        // throughput.
+        applyInspFrameRate(this.CameraCtrl, 'CI');
+        this.props.ACT_WS_SEND_CORE_BPG( "SI", 0,
+          { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef },
+          undefined, { resolve:insp_resolve, reject:(e)=>{} });
+        // The core resets these per session, so this push is what the machine
+        // actually uses -- same contract as INSP_SNAP_POLICY.
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, {
+          INSP_SI_PARAM: {
+            ...(this.props.System_Setting || {}).SI_MODE_PARAM,
+            ...(this.props.machine_custom_setting || {}).SI_MODE_PARAM,
+          },
+          INSP_SNAP_POLICY: snapPolicyOf(this.props.machine_custom_setting),
+        });
+        this.props.ACT_StatSettingParam_Update(statSettingOf(
+          this.props.machine_custom_setting, this.props.System_Setting, "SI"))
       }
       else if (this.props.machine_custom_setting.InspectionMode == "CI") {
 
-
-        // CI runs at 10fps (was setCameraSpeed_LOW = 2fps, too sluggish). The
-        // walk-away/idle case is now handled by the auto-exit guard, not by
-        // crawling the framerate.
-        this.CameraCtrl.setCameraFrameRate(10);
+        // The rate and the reasoning both live in inspRatePolicy.mjs now.
+        applyInspFrameRate(this.CameraCtrl, 'CI');
 
 
 
@@ -3081,6 +3743,7 @@ class APP_INSP_MODE extends React.Component {
 
       this.exitGate=false;
 
+
       
       this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
         if(api===undefined)return;
@@ -3092,6 +3755,9 @@ class APP_INSP_MODE extends React.Component {
 
   componentWillUnmount() {
     if (this._autoExitTimer !== null) { clearTimeout(this._autoExitTimer); this._autoExitTimer = null; }
+    for (const ev of ['pointerdown', 'touchstart', 'wheel', 'keydown'])
+      document.removeEventListener(ev, this.noteInteractionBound, { capture: true });
+    if (this._siIdleTimer !== null) { clearInterval(this._siIdleTimer); this._siIdleTimer = null; }
     this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
       if(api===undefined)return;
       api.send({type: "exit_inspection"},
@@ -3149,32 +3815,86 @@ class APP_INSP_MODE extends React.Component {
     super(props);
     this.ec_canvas = null;
 
+    // The reports belonging to the frame currently on screen. Set by the canvas
+    // the moment it pairs a new image (see updateCanvas), so the list beside the
+    // picture describes the picture and not whatever arrived since.
+    //
+    // Identity-checked before storing: the canvas hands over a fresh array per
+    // image, but a re-render that is not a new frame must not queue a state
+    // update that changes nothing.
+    this.onFrameReportsBound = (list) => {
+      if (list === this.state.frameIR) return;
+      this.setState({ frameIR: list });
+    };
+
     // CI auto-exit (power/overheat guard): CI is a STATIONARY inspection -- the
     // user puts objects on the plate and the camera streams + re-inspects the
     // same scene forever. If nobody is there (no object) or the same object just
     // sits stuck, the machine burns power/heat computing the same frame over and
-    // over. So: no object for NO_OBJ_MS, OR the same object persisting for
-    // SAME_OBJ_MS, flashes a reason then exits inspection mode entirely.
+    // over. So: no object for the no-object window, OR the same object
+    // persisting for the same-object one, flashes a reason then exits
+    // inspection mode entirely. Both windows are set in 設定, in seconds.
     // Both are time-based (epoch ms), so they're robust to render cadence.
-    this.NO_OBJ_MS = 30 * 1000;     // no object on the plate -> idle line
-    this.SAME_OBJ_MS = 60 * 1000;   // same object stuck in view -> user walked off
-    this._noObjSince = null;        // epoch ms when the no-object streak began
+    //
+    // FIVE MINUTES, from thirty seconds and sixty. The field asked: the old
+    // numbers measured how long the PICTURE had been unchanged, and a person
+    // setting a part up, reading a result, or fetching the next tray is doing
+    // none of those things to the picture. Being thrown back to the main screen
+    // mid-job costs more than the few minutes of idle camera it saved.
+    // The windows are the machine's, set in 設定 in seconds and read fresh
+    // every time they are used -- an operator changing them must not have to
+    // leave the screen and come back for it to take effect.
+    this._noObjSince = null;          // epoch ms when the no-object streak began
+    // TOUCHING THE CANVAS IS BEING THERE. Both clocks run from this as well as
+    // from their own start, so the question stops being "has the picture
+    // changed lately" and becomes "is anyone here" -- which is the one the
+    // watchdog was always meant to be asking.
+    this._lastInteractAt = Date.now();
+    this.noteInteractionBound = () => { this._lastInteractAt = Date.now(); };
+
+    // SI's idle clock. A press, or a touch, is somebody being here; nothing
+    // about the picture counts, because a still part in front of the camera is
+    // what SI is FOR.
+    this._lastSIActivityAt = Date.now();
+    this._siIdleTimer = null;
     this._autoExiting = false;      // latch: flashing + leaving
     this._autoExitTimer = null;
+    // How long before it happens the screen starts saying so. Long enough to
+    // read and react to, short enough that it is not a permanent fixture.
+    this.AUTO_EXIT_WARN_MS = 60 * 1000;
 
     this.state = {
+      frameIR: undefined,
+      // FREEZE AFTER INSPECTION. siHoldAfter is the operator's choice and is
+      // remembered per browser; siFrozen is whether a measured picture is being
+      // held right now, and is never remembered -- a session must not start
+      // showing a frame from yesterday.
+      siHoldAfter: (() => {
+        try { return localStorage.getItem('SI_HOLD_AFTER') === '1'; }
+        catch (e) { return false; }
+      })(),
+      siFrozen: false,
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
       onROISettingCallBack:undefined,
       // Infinity until a rankN tag says otherwise: with no level chosen,
       // rank hides nothing. 0 hid every measurement above the lowest level
       // before anyone had asked for that.
-      measureDisplayRank:Infinity,
+      // What the OPERATOR sees. Starts at the lowest rank the def actually has
+      // (set once the def is known, see _ranksOf) -- the least cluttered view,
+      // which is where an operator watching a running line starts.
+      measureDisplayRank: Infinity,
+      // What the MACHINE judges on, from the rankN tag. Display never writes
+      // this; it is here so the panel can say when the two differ.
+      machineRank: undefined,
       isInSettingUI:false,
       SettingParamInfo:undefined,
       modalInfo:undefined,
       renderObjAlignRotate:false,
-      autoExitReason:undefined
+      autoExitReason:undefined,
+      // Seconds until the idle watchdog leaves, or null when it is far enough
+      // away to be nobody's business.
+      autoExitIn: null
     };
 
     
@@ -3259,62 +3979,136 @@ class APP_INSP_MODE extends React.Component {
     }
   }
 
+  // HOLD THE MEASURED PICTURE.
+  //
+  // Called from componentDidUpdate, not from the button's render: setState
+  // during a render is dropped, which is exactly what the toggle did -- it
+  // looked switched on and nothing ever held.
+  //
+  // The edge, not the level: an SI report says state 'measured' on the one
+  // frame that was inspected, but the screen re-renders many times while that
+  // is the newest report, so acting on the level would re-freeze after every
+  // manual thaw.
+  _siHoldCheck(prevProps) {
+    if (!this.state.siHoldAfter || this.state.siFrozen) return;
+    const si = this.props.siState, was = prevProps && prevProps.siState;
+    const measured = (r) => !!(r && r.state === 'measured' && r.measured === true);
+    if (measured(si) && !measured(was)) this.setState({ siFrozen: true });
+  }
+
+  // A measurement landing counts as somebody being here too, not just the press
+  // that asked for it: a press while the scene is still moving is remembered by
+  // the core and spends itself when it settles, which can be seconds later.
+  _siNoteMeasured(prevProps) {
+    const m = (r) => !!(r && r.state === 'measured' && r.measured === true);
+    if (m(this.props.siState) && !m(prevProps && prevProps.siState))
+      this._lastSIActivityAt = Date.now();
+  }
+
+  // SI's watchdog runs on a clock of its own, not on arriving reports.
+  //
+  // The CI one is driven by reports, and SI stops sending them once the average
+  // is full and the scene is settled -- which is exactly when the machine is
+  // idle. A watchdog that goes quiet at the moment it is needed is not one.
+  //
+  // One second, which is the resolution the countdown is shown at. It runs in
+  // every mode and does nothing in the others, rather than being started and
+  // stopped as the mode changes: one timer with a guard cannot be left running
+  // by a path that forgot to stop it.
+  _siIdleTick() {
+    if (!siAutoExitApplies(this.props.machine_custom_setting.InspectionMode)) {
+      if (this.state.autoExitIn !== null) this.setState({ autoExitIn: null });
+      return;
+    }
+    if (this._autoExiting) return;
+    const d = siAutoExitDecision({
+      now: Date.now(),
+      lastActivityAt: Math.max(this._lastSIActivityAt, this._lastInteractAt),
+      idleMs: autoExitWindowsOf(this.props.machine_custom_setting).siIdleMs,
+    });
+    const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
+      ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
+    if (secs !== this.state.autoExitIn) this.setState({ autoExitIn: secs });
+    if (d.reason) this.autoExit(d.reason);
+  }
+
   // CI-only idle watchdog. Called from componentDidUpdate with each fresh
   // inspection report (already gated to CI there). Two exit triggers, both
   // time-based:
-  //  - no object on the plate for NO_OBJ_MS, or
+  //  - no object on the plate for the no-object window, or
   //  - the SAME object (reducer tracking-window identity, matched by orientation/
-  //    area/position) still present after SAME_OBJ_MS, i.e. user walked off and
+  //    area/position) still present after the same-object one -- user walked off and
   //    left a part sitting there.
   checkAutoExitForCI(report) {
     if (this._autoExiting) return;
-    const now = Date.now();
-
-    // --- no object ---
-    const hasObj = report && report.reports && report.reports.length > 0;
-    if (!hasObj) {
-      if (this._noObjSince == null) this._noObjSince = now;
-      else if (now - this._noObjSince > this.NO_OBJ_MS) {
-        this.autoExit("no_obj");
-        return;
-      }
-    } else {
-      this._noObjSince = null;
-    }
-
-    // --- same object stuck too long ---
-    // Entries remain in trackingWindow only while still being seen (the reducer
-    // ages them out keepInTrackingTime_ms after the last sighting), so a present
-    // entry with a far-past add_time_ms means the same object has persisted that
-    // long. repeatTime can't be used here -- it caps at maxReportRepeat.
+    // The decision lives in autoExitRule.mjs, which has no imports and a unit
+    // test; this keeps only the state and the effects. It is the one thing in
+    // the app that stops the camera by itself, and it had no test at all.
+    const hasObj = !!(report && report.reports && report.reports.length > 0);
     const tw = this.props.reportStatisticState && this.props.reportStatisticState.trackingWindow;
-    if (Array.isArray(tw)) {
-      for (let i = 0; i < tw.length; i++) {
-        const e = tw[i];
-        if (e && typeof e.add_time_ms === 'number' && (now - e.add_time_ms > this.SAME_OBJ_MS)) {
-          this.autoExit("same_obj");
-          return;
-        }
-      }
-    }
+    const d = autoExitDecision({
+      now: Date.now(), hasObject: hasObj, noObjSince: this._noObjSince,
+      trackingWindow: tw,
+      ...autoExitWindowsOf(this.props.machine_custom_setting),
+      lastInteractAt: this._lastInteractAt,
+    });
+    this._noObjSince = d.noObjSince;
+
+    // Show it, but only whole seconds and only while it is worth watching.
+    // Reports arrive at frame rate; storing the raw milliseconds would queue a
+    // re-render of this whole screen ten times a second to change a digit that
+    // moves once. Null above the threshold, so the screen is quiet for the four
+    // minutes nobody needs to be told about.
+    const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
+      ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
+    if (secs !== this.state.autoExitIn) this.setState({ autoExitIn: secs });
+
+    if (d.reason) this.autoExit(d.reason);
   }
+
 
   // Flash the reason for a moment, then leave inspection mode. Halt the camera
   // immediately (trigger_mode:1) so the wasteful compute stops during the flash;
   // EXIT() does the full clean teardown after.
   autoExit(reason) {
     if (this._autoExiting) return;
-    if (this.props.machine_custom_setting.InspectionMode !== "CI") return;
+    const _m = this.props.machine_custom_setting.InspectionMode;
+    if (!autoExitApplies(_m) && !siAutoExitApplies(_m)) return;
     this._autoExiting = true;
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSetting: { trigger_mode: 1 } });
-    const msg = (reason === "no_obj")
+    const msg = (reason === "si_idle")
+      ? "長時間未量測，自動退出檢測以節省電力"
+      : (reason === "no_obj")
       ? "長時間無物件，自動退出檢測以節省電力"
       : "物件長時間停滯，自動退出檢測以節省電力";
     this.setState({ autoExitReason: msg });
     this._autoExitTimer = setTimeout(() => { this._autoExitTimer = null; this.EXIT(); }, 2000);
   }
 
-  componentDidUpdate() {
+  // The ranks this def actually uses, ascending. Empty when nothing carries
+  // one, which is the ordinary case for a def that was never levelled.
+  // An unranked measurement is a LEVEL 0 measurement, not a measurement
+  // outside the levels -- see UTIL/measureRank.mjs. A def with one ranked item
+  // and twenty unranked ones has two levels, and the slider belongs on screen.
+  _ranksOf(shapeList) { return ranksOf(shapeList); }
+
+  // Start the operator at the LOWEST level the def has -- the least cluttered
+  // view, which is where someone watching a running line starts. Seeded once
+  // per def and never again: after that the slider belongs to the operator, and
+  // a def reload must not drag it back under their hand mid-shift.
+  _seedViewRank() {
+    const sig = this._ranksOf(this.props.shape_list).join(',')
+              + '|' + (this.props.shape_list || []).length;
+    if (this._viewRankSeed === sig) return;
+    this._viewRankSeed = sig;
+    const ranks = this._ranksOf(this.props.shape_list);
+    this.setState({ measureDisplayRank: ranks.length ? ranks[0] : Infinity });
+  }
+
+  componentDidUpdate(prevProps) {
+    this._seedViewRank();
+    this._siHoldCheck(prevProps);
+    this._siNoteMeasured(prevProps);
     if (this.props.machine_custom_setting.InspectionMode== "CI")
       this.checkAutoExitForCI(this.props.inspectionReport);
 
@@ -3382,12 +4176,20 @@ class APP_INSP_MODE extends React.Component {
       >
         
         
-        {/* The 檢測等級 slider stood here. It filtered what was drawn AND, until
-            the roll-up was fixed, what the screen's verdict was computed from --
-            so an operator could change a part's verdict by moving a viewing
-            control the core had never heard of. The level now arrives as a
-            rankN tag chosen with every other per-part tag, which reaches the
-            wire def and therefore both sides. */}
+        {/* The 檢測等級 slider is back where it started, and it is a VIEWING
+            control now. It once filtered what was drawn AND -- until the
+            roll-up was fixed -- what the screen's verdict was computed from, so
+            an operator could change a part's verdict by moving something the
+            core had never heard of. The machine's level now arrives as a rankN
+            tag chosen with every other per-part tag, which reaches the wire def
+            and therefore both sides; this slider cannot touch it, and the note
+            under it says so and names both numbers when they differ. */}
+        <MeasureRankSlider key="rankSlider"
+          ranks={this._ranksOf(this.props.shape_list)}
+          value={this.state.measureDisplayRank}
+          machineRank={this.state.machineRank}
+          onChange={(v) => this.setState({ measureDisplayRank: v })} />
+
         <Divider orientation="left" key="div2"></Divider>
 
         <Button key="opt uInsp" icon={<SettingOutlined/>}
@@ -3557,6 +4359,312 @@ class APP_INSP_MODE extends React.Component {
   {
     this.notifyPopUp("警告",msg)
   }
+
+  // THE SNAPSHOT BUTTON, as a method, because it is rendered from the toolbar
+  // and the toolbar is not in the same scope the sidebar menu was built in.
+  //
+  // It replaced 存影像, which saved a bare PNG of the current frame and nothing
+  // else. This one writes the .png AND the .xreps beside it -- the reports for
+  // that frame, which is what makes the picture worth keeping: a snapshot you
+  // cannot play back is a screenshot, and the operator already has one of
+  // those. Two buttons a few centimetres apart, one of them strictly worse,
+  // was the actual problem. (operator request, 2026-09-17)
+  // THE SI PRESS.
+  //
+  // SI does not decide for itself when the part is placed: a settle detector
+  // cannot tell a part that has stopped moving from one the operator has not
+  // finished adjusting. The press is that statement, and it is also what makes
+  // "any change during the accumulation is a failure" a fair rule -- the
+  // operator said it was still.
+  //
+  // Shown only in SI. The state comes from the report the core sends, so the
+  // label is what the machine is actually doing, not what this button asked
+  // for a moment ago.
+  siTriggerButton(style) {
+    const si = this.props.siState || {};
+    const st = si.state || 'idle';
+    const n = si.avg_count || 0, target = si.avg_target || 0;
+    // THE PICTURE IS BUILT IN THE BACKGROUND; THE BUTTON ONLY READS IT.
+    //
+    // So "busy" is no longer "is it accumulating" -- it is accumulating almost
+    // all the time. It is "is there a press that has not been spent yet",
+    // which is the only state the operator is actually waiting through.
+    const ready = (st === 'ready' || st === 'measured');
+    const busy = !!si.pending;
+    const ab = si.abort || {};
+    const f1 = (v) => (typeof v === 'number' ? v.toFixed(1) : '?');
+
+    // THE FAILURE HAS TO SAY BY HOW MUCH.
+    //
+    // "有變動" is unactionable on a noisy setup, and a noisy setup is exactly
+    // where this fails: if the threshold sits below the noise floor, no part
+    // will ever pass and the operator has no way to find that out from the
+    // machine. Both numbers the gate compares are here, next to the thresholds
+    // they were compared against, so the answer "your threshold is too tight"
+    // is readable off the screen instead of guessed at.
+    const label = busy
+      ? `等待靜止 ${n}/${target}`
+      : (ready ? '量測' : `量測（累積中 ${n}/${target}）`);
+
+    // The noise floor, while nothing is wrong. This is how the threshold gets
+    // chosen: watch it sit at 2 with the part still, and 6 is a sane gate; watch
+    // it sit at 7 and the gate is the problem, not the part.
+    const noiseNote = (typeof si.rms === 'number')
+      ? `目前變動 ${f1(si.rms)}，門檻 ${f1(si.thres_rms)}。` : '';
+    const tip = busy
+      ? `已按下，等畫面靜止。目前積了 ${n}/${target} 張，`
+        + `畫面一有變動就歸零。${noiseNote}`
+      : (ready
+          ? `已累積 ${n}/${target} 張靜止影像，按下立即檢驗。${noiseNote}`
+          : `畫面還在變動，目前 ${n}/${target} 張。`
+            + `現在按也可以，會等静止後自動檢驗。${noiseNote}`
+            + `若零件確實沒動，是門檻低於雜訊底線，到設定頁調高。`);
+
+    const btn = (
+      <Button
+        key="SITRIG"
+        style={style}
+        size="large"
+        type="primary"
+        danger={false}
+        loading={busy}
+        onClick={() => {
+          if (this.props.CORE_ID === undefined) return;
+          // A new measurement means the held picture is the old answer.
+          this._lastSIActivityAt = Date.now();
+          if (this.state.siFrozen) this.setState({ siFrozen: false });
+          this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { INSP_SI_TRIGGER: true });
+        }}>
+        {label}
+      </Button>
+    );
+
+    const wrapped = tip ? <Tooltip title={tip}>{btn}</Tooltip> : btn;
+
+    // The toggle lives beside the button because it changes what pressing the
+    // button leaves on the screen, and nowhere else in the app would explain
+    // that.
+    const frozen = this.state.siFrozen;
+    const toggle = (
+      <Tooltip key="SIFRZ" title={
+        '\u91cf\u6e2c\u5b8c\u6210\u5f8c\u505c\u4f4f\u756b\u9762\uff0c\u986f\u793a\u88ab\u6aa2\u9a57\u7684\u90a3\u5f35\u5e73\u5747\u5f71\u50cf\uff0c'
+        + '\u4e0d\u518d\u8ddf\u8457\u6700\u65b0\u5f71\u50cf\u66f4\u65b0\u3002\u4e0b\u4e00\u6b21\u6309\u4e0b\u91cf\u6e2c\u6642\u89e3\u9664\u3002'}>
+        <Button
+          size="large"
+          type={this.state.siHoldAfter ? 'primary' : 'default'}
+          ghost={this.state.siHoldAfter && !frozen}
+          icon={<PictureOutlined />}
+          style={{ height: style && style.height, marginLeft: 8 }}
+          onClick={() => {
+            const on = !this.state.siHoldAfter;
+            this.setState({ siHoldAfter: on, siFrozen: on ? this.state.siFrozen : false });
+            try { localStorage.setItem('SI_HOLD_AFTER', on ? '1' : '0'); } catch (e) { }
+          }}>
+          {frozen ? '\u7dad\u6301\u4e2d' : '\u7dad\u6301'}
+        </Button>
+      </Tooltip>
+    );
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ flex: 1 }}>{wrapped}</div>
+        {toggle}
+      </div>
+    );
+  }
+
+  inspSnapshotButton(style) {
+    return (
+        <Button
+          icon={<SaveOutlined />}
+          key="SVX"
+          // width:100% came from the sidebar, where it was the only thing on
+          // its row. In the toolbar it would stretch across the whole bar.
+          style={style}
+          type="primary"
+          onClick={() =>{
+
+
+
+          
+
+            let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
+
+          
+            let tag_str = (curList.length==0)?"":curList[0].tag;
+
+
+            let default_dst_Path=this.props.machine_custom_setting.InspSampleSavePath;
+          
+            if(default_dst_Path===undefined)
+            {
+              default_dst_Path="data"
+            }
+            let targetName=this.props.edit_info.DefFileName+"-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
+            //the tag might have Chinease char and it breaks the file access function for hide it for now
+            // let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
+            this.setState({
+              modalInfo:{
+                title:"快照命名",
+                onOk:()=>{
+                  // Checked here as well as shown under the box: the dialog is
+                  // generic and its OK button is not wired to this validity, so
+                  // this is what actually stops an unwritable name from being
+                  // sent. Returning leaves the dialog open with the reason
+                  // already on screen.
+                  // The core appends .xreps and .png to this name.
+                  if (fileNameIssue(this.state.modalInfo.targetName, { extensionFollows: true })) return;
+
+                  this.setState({
+                    modalInfo:{...this.state.modalInfo,confirmLoading:true}})
+
+                
+                  let name = this.state.modalInfo.targetName;
+                  let path_name = default_dst_Path+"/"+name;
+                
+                  this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                  { filename: path_name,
+                    report_extension:"xreps",
+                    img_extension:"png",
+                    make_dir:true, 
+                    type: "__LAST_DATA_VIEW_CACHE_INFO__" },undefined,
+                  {
+                    resolve:(pkts,action_ch)=>{
+                      let SS=pkts.find(pkt=>pkt.type=="SS");
+                    
+                      // console.log(SS)
+                      if(SS.data.ACK==false)
+                      {
+                        this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                      }
+                      else
+                      {
+                      
+                        this.setState({
+                          modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                      
+                        setTimeout(()=>{//close after 1s
+                          this.setState({modalInfo:undefined})
+                        },1000);
+                      }
+                
+          
+                    },
+                    reject:(e)=>{
+      
+                      this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                    }
+                  })
+
+                  if(false)//the old way
+                  this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                  { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
+                  {
+                    resolve:(pkts,action_ch)=>{
+
+                    
+                      let SS=pkts.find(pkt=>pkt.type=="SS");
+                      if(SS.data.ACK==true)
+                      {
+                        let deffile = defFileGeneration(this.props.edit_info);
+                        // console.log(curList);
+                        let reportSave = {
+                          reports:JSON.parse(JSON.stringify(curList,(key, val) => val===undefined? undefined:(val.toFixed ? Number(val.toFixed(6)) : val  ))),
+                          defInfo:deffile,
+                          camera_param:this.props.edit_info._obj.cameraParam
+                        }
+                        var enc = new TextEncoder();
+
+                      
+                
+          
+                        this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                        { filename: path_name+".xreps" },enc.encode(JSON.stringify(reportSave)),
+                        {
+                          resolve:(pkts,action_ch)=>{
+                            let SS=pkts.find(pkt=>pkt.type=="SS");
+                            if(SS.data.ACK==true)
+                            {
+                              // this.setState({modalInfo:undefined})
+
+                              // this.notifyPopUp(null,`儲存快照  ${ path_name }  成功`);
+                            
+                              this.setState({
+                                modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                            
+                              setTimeout(()=>{//close after 1s
+                                this.setState({modalInfo:undefined})
+                              },1000);
+
+                            }
+                            else
+                            {
+                              this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                            }
+                            // 
+                          
+                          },
+                          reject:(e)=>{
+                            this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                            // this.setState({modalInfo:undefined})
+                          }
+                        }
+                      
+                        )
+                      }
+                      else
+                      {
+                        this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                      }
+
+
+                    },
+                    reject:(e)=>{
+      
+                      this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                    }
+                  })
+
+
+                },
+                onCancel:()=>this.setState({modalInfo:undefined}),
+
+                targetName:targetName,
+                // The button has to LOOK unavailable. Blocking in onOk alone
+                // means a press does nothing at all, which is the same silence
+                // this check exists to remove -- and worse, because the
+                // operator has already decided they are done.
+                okButtonProps:{ disabled: !!fileNameIssue(targetName, { extensionFollows: true }) },
+                children:(modalInfo)=><>
+                路徑:{default_dst_Path}<br/>
+                名稱:
+                <Input size="small"
+                  value={modalInfo.targetName}
+                  placeholder="英數字檔名"
+                  onChange={(ev)=> this.setState({
+                    modalInfo:{...modalInfo,
+                      targetName:ev.target.value,
+                      okButtonProps:{ disabled: !!fileNameIssue(ev.target.value,
+                                                                { extensionFollows: true }) }}})}
+                />
+                {/* This box had no check at all, while the def save dialog
+                    silently refused the same characters. A name the core
+                    cannot write produces no file and no error -- see
+                    UTIL/fileNameCheck.mjs, and the note above about 製程 tags
+                    being dropped out of this name for the same reason. */}
+                {fileNameIssue(modalInfo.targetName, { extensionFollows: true })
+                  ? <div style={{color:'#a8071a',fontSize:12,marginTop:6}}>
+                      {fileNameIssue(modalInfo.targetName, { extensionFollows: true })}</div>
+                  : null}
+              
+                </>
+              }
+            })
+            return;
+          }} >檢測快照</Button>
+    );
+  }
+
   render() {
     let MenuSet = [];
     let menu_height = "HXA";//auto
@@ -3604,171 +4712,6 @@ class APP_INSP_MODE extends React.Component {
     // );
 
     
-    MenuSet.push(
-
-    //   <Button type="primary" icon={<SearchOutlined />}>
-    //   Search
-    // </Button>
-      <Button
-        icon={<SaveOutlined />}
-        key="SVX"
-        style={{width:"100%"}}
-        type="primary"
-        onClick={() =>{
-
-
-
-          
-
-          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
-
-          
-          let tag_str = (curList.length==0)?"":curList[0].tag;
-
-
-          let default_dst_Path=this.props.machine_custom_setting.InspSampleSavePath;
-          
-          if(default_dst_Path===undefined)
-          {
-            default_dst_Path="data"
-          }
-          let targetName=this.props.edit_info.DefFileName+"-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
-          //the tag might have Chinease char and it breaks the file access function for hide it for now
-          // let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
-          this.setState({
-            modalInfo:{
-              title:"快照命名",
-              onOk:()=>{
-
-                this.setState({
-                  modalInfo:{...this.state.modalInfo,confirmLoading:true}})
-
-                
-                let name = this.state.modalInfo.targetName;
-                let path_name = default_dst_Path+"/"+name;
-                
-                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                { filename: path_name,
-                  report_extension:"xreps",
-                  img_extension:"png",
-                  make_dir:true, 
-                  type: "__LAST_DATA_VIEW_CACHE_INFO__" },undefined,
-                {
-                  resolve:(pkts,action_ch)=>{
-                    let SS=pkts.find(pkt=>pkt.type=="SS");
-                    
-                    // console.log(SS)
-                    if(SS.data.ACK==false)
-                    {
-                      this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
-                    }
-                    else
-                    {
-                      
-                      this.setState({
-                        modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
-                      
-                      setTimeout(()=>{//close after 1s
-                        this.setState({modalInfo:undefined})
-                      },1000);
-                    }
-                
-          
-                  },
-                  reject:(e)=>{
-      
-                    this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
-                  }
-                })
-
-                if(false)//the old way
-                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
-                {
-                  resolve:(pkts,action_ch)=>{
-
-                    
-                    let SS=pkts.find(pkt=>pkt.type=="SS");
-                    if(SS.data.ACK==true)
-                    {
-                      let deffile = defFileGeneration(this.props.edit_info);
-                      // console.log(curList);
-                      let reportSave = {
-                        reports:JSON.parse(JSON.stringify(curList,(key, val) => val===undefined? undefined:(val.toFixed ? Number(val.toFixed(6)) : val  ))),
-                        defInfo:deffile,
-                        camera_param:this.props.edit_info._obj.cameraParam
-                      }
-                      var enc = new TextEncoder();
-
-                      
-                
-          
-                      this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                      { filename: path_name+".xreps" },enc.encode(JSON.stringify(reportSave)),
-                      {
-                        resolve:(pkts,action_ch)=>{
-                          let SS=pkts.find(pkt=>pkt.type=="SS");
-                          if(SS.data.ACK==true)
-                          {
-                            // this.setState({modalInfo:undefined})
-
-                            // this.notifyPopUp(null,`儲存快照  ${ path_name }  成功`);
-                            
-                            this.setState({
-                              modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
-                            
-                            setTimeout(()=>{//close after 1s
-                              this.setState({modalInfo:undefined})
-                            },1000);
-
-                          }
-                          else
-                          {
-                            this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
-                          }
-                          // 
-                          
-                        },
-                        reject:(e)=>{
-                          this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
-                          // this.setState({modalInfo:undefined})
-                        }
-                      }
-                      
-                      )
-                    }
-                    else
-                    {
-                      this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
-                    }
-
-
-                  },
-                  reject:(e)=>{
-      
-                    this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
-                  }
-                })
-
-
-              },
-              onCancel:()=>this.setState({modalInfo:undefined}),
-
-              targetName:targetName,
-              children:(modalInfo)=><>
-              路徑:{default_dst_Path}<br/>
-              名稱:
-              <Input size="small"
-                value={modalInfo.targetName} 
-                onChange={(ev)=> this.setState({
-                  modalInfo:{...modalInfo,targetName:ev.target.value}})}
-              />
-              
-              </>
-            }
-          })
-          return;
-        }} >檢測快照</Button>);
         
 
 
@@ -3779,8 +4722,17 @@ class APP_INSP_MODE extends React.Component {
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
+      // The 檢測等級 slider used to stand here, at the top of the live panel.
+      // It is a setup control -- pressed once a shift, if that -- and the panel
+      // beside a running line is for what the machine is doing right now, so it
+      // moved into the gear (setInspectionRankUI). What it filters is unchanged.
 
-      let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
+      // The frame-paired snapshot when there is one; the live window until the
+      // first image arrives (CI with no image, or the moment before the first
+      // frame -- an empty list there would blank a panel that has something to
+      // say).
+      let trackingWindowInfo = this.state.frameIR
+        || this.props.reportStatisticState.trackingWindow;
       //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
       MenuSet.push(
         <ObjInfoList
@@ -3858,144 +4810,146 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-    let headerUI = 
-    <>
-      
-      <Button type="primary" size={"large"} onClick={()=>this.EXIT()}>
-        <ArrowLeftOutlined />
-      </Button>
+    // THE TOOLBAR.
+    //
+    // It was twelve controls in one undifferentiated row, every one size=large,
+    // with `primary` blue on 返回, 資料圖表 and 設定ROI alike -- so the colour
+    // said nothing, and the row was wide enough to push the DB status off the
+    // edge on a 1366 screen.
+    //
+    // Now it is three groups, left to right in the order a person needs them:
+    //
+    //   WHERE AM I   back, the recipe, its tags, the rank setting
+    //   WHAT IS THE MACHINE DOING   the DB link and the locate note -- state,
+    //     not controls, and the only things here that change on their own
+    //   WHAT CAN I DO   view toggles first (they change what is on screen),
+    //     then actions (they write something)
+    //
+    // Colour means one thing: BLUE = this toggle is on. Actions are plain, and
+    // red is left for 選擇ROI中, which is a mode the canvas is in and has to be
+    // got out of. Size drops from large to middle: a toolbar is chrome, and
+    // large buttons spend the width that the numbers in the middle need.
+    const TBGap = { display: 'flex', alignItems: 'center', gap: 6 };
+    const graphOn = this.state.GraphUIDisplayMode !== 0;
+    const roiArming = this.state.onROISettingCallBack !== undefined;
+    let headerUI =
+    <div className="insp-toolbar"
+         style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
 
-      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="click">
-        <span style={{margin:"10px"}} ><FileOutlined /> {shortedModelName}</span>
-      </Popover>
-      <TagDisplay_rdx size="middle"/>
-      
-      <Tag className="large" color="gray" onClick={() =>{
-            this.setInspectionRankUI()
-          }}><SettingOutlined /></Tag>
-      {this.state.additionalUI}
+      {/* ---- where am I ------------------------------------------------- */}
+      <div style={TBGap}>
+        <Tooltip title="離開檢驗畫面">
+          <Button type="primary" onClick={()=>this.EXIT()} icon={<ArrowLeftOutlined />} />
+        </Tooltip>
+        <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>}
+                 placement="bottomLeft" trigger="click">
+          <span style={{ cursor: 'pointer', maxWidth: 180, overflow: 'hidden',
+                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <FileOutlined /> {shortedModelName}
+          </span>
+        </Popover>
+        <TagDisplay_rdx size="small"/>
+        <RankBadge ranks={this._ranksOf(this.props.shape_list)}
+                   machineRank={this.state.machineRank}
+                   viewRank={this.state.measureDisplayRank}
+                   onClick={() => this.setInspectionRankUI()} />
+        <Tooltip title="檢驗等級設定">
+          <Button size="small" icon={<SettingOutlined />}
+                  onClick={() => this.setInspectionRankUI()} />
+        </Tooltip>
+        {this.state.additionalUI}
+      </div>
 
+      {/* ---- what is the machine doing ----------------------------------- */}
+      <div style={TBGap}>
+        <LocateNoteBanner />
+        <InspectionReportInsert2DB
+          LANG_DICT={this.props.DICT}
+          onDBInsertSuccess={(data, info) => {
+          }}
+          onDBInsertFail={(data, info) => {
+            log.error(data, info);
+          }}
+          insert_skip={InspectionReportPullSkip}/>
+      </div>
 
+      {/* ---- what can I do: view toggles --------------------------------- */}
+      <div style={TBGap}>
+        <Tooltip title={this.state.renderObjAlignRotate
+          ? "目前:把標的轉正,原圖跟著轉" : "目前:原圖不轉,標的照實際角度畫"}>
+          <Button type={this.state.renderObjAlignRotate ? "primary" : "default"}
+            icon={<RedoOutlined/>}
+            onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
+            {this.state.renderObjAlignRotate ? "旋轉標的" : "不轉原圖"}
+          </Button>
+        </Tooltip>
+        <Tooltip title="切換資料圖表的大小(關 / 小 / 大)">
+          <Button type={graphOn ? "primary" : "default"} key="Info Graphs"
+            icon={<BarChartOutlined />}
+            onClick={() => {
+              this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
+              this.setState(Object.assign({}, this.state));
+            }}>圖表</Button>
+        </Tooltip>
+        <Tooltip title={roiArming ? "在影像上拉出要用的範圍" : "設定相機取像範圍(ROI)"}>
+          <Button type={roiArming ? "primary" : "default"} danger={roiArming} key="Manual ZOOM"
+            icon={<ExpandOutlined />}
+            onClick={() => {
+              // Open the sensor fully so the whole field is visible to drag on. The
+              // core persists whatever ROI it is given; nothing is mirrored locally
+              // any more (see the note where the connect-time push used to be).
+              let FullSensorROI=[0,0,99999,99999];
+              this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+              { CameraSetting: { ROI:FullSensorROI } });
 
+              this.setState({ onROISettingCallBack:(ROI_setting)=>{
+                let x = ROI_setting.start.pix.x;
+                let y = ROI_setting.start.pix.y;
+                let w = ROI_setting.end.pix.x-x;
+                let h = ROI_setting.end.pix.y-y;
+                if(w<0) { x+=w; w=-w; }
+                if(h<0) { y+=h; h=-h; }
+                let ROI = [x,y,w,h];
+                if(w<10 || h<10 ) { ROI=FullSensorROI; }
 
-      
-      {/* <Button type="primary" size={"large"} 
-      className={ ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
-      icon={this.state.DB_Conn_state == 1 ? <LinkOutlined /> : <DisconnectOutlined />} >
-          {(this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected : this.props.DICT.connection.server_disconnected)
-          + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
-      </Button> */}
-      
-      <LocateNoteBanner />
-      <InspectionReportInsert2DB 
-        // newAddedReport={this.props.reportStatisticState.newAddedReport} 
-        LANG_DICT={this.props.DICT}
-        // DBStatus,
-        // DBPushPromise,
-        onDBInsertSuccess={(data, info) => {
-          // log.info(data, info);
-        }}
-        onDBInsertFail={(data, info) => {
-          log.error(data, info);
-        }}
-        insert_skip={InspectionReportPullSkip}/>
+                // The ONLY write to the machine's stored crop, and it lands under
+                // its own key (InspectionROI). The full-sensor open above says
+                // nothing: that is the UI looking at the frame, not an operator
+                // picking a crop. DefConf and the backlight calib open the sensor
+                // fully too, for the same reason -- with a separate key none of
+                // them can reach this value even by accident.
+                this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+                {CameraSetting: { ROI, save_insp_roi:true }});
 
+                this.setState({onROISettingCallBack:undefined});
+              }})
+            }}>{roiArming ? "選擇ROI中" : "ROI"}</Button>
+        </Tooltip>
+      </div>
 
+      {/* ---- what can I do: actions -------------------------------------- */}
+      <div style={TBGap}>
+        <Tooltip title="檢驗樣本:保留的樣品、存成 xreps">
+          <Button icon={<PictureOutlined/>} onClick={()=>this.setState({samplePanel:true})}>樣本</Button>
+        </Tooltip>
+        <Tooltip title="檢測快照:這一幀的影像 + 它的檢測報告（.png + .xreps，可回放）">
+          {this.inspSnapshotButton()}
+        </Tooltip>
+        {/* The SI trigger is NOT in this toolbar -- it is the wide bar across
+            the bottom of the screen, below the canvas. It is the one control
+            the operator uses on every single part, with a hand that has just
+            let go of that part, and it was a small button in a row of eight
+            icons. See the render below. */}
+      </div>
 
-      <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
-        <RedoOutlined/>
-        {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
-      </Button>
-
-      <Button size={"large"} onClick={() => {
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T','_').replace('Z','');
-        const filename = `./data/snap_${ts}.png`;
-        this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
-          { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined,
-          {
-            resolve: (pkts) => {
-              const SS = pkts.find(p => p.type === "SS");
-              if (SS && SS.data.ACK === true) this.notifyPopUp(null, `儲存影像 ${filename}`);
-              else this.warnPopUp(`儲存影像失敗 ${filename}`);
-            },
-            reject: () => this.warnPopUp(`儲存影像失敗 ${filename}`),
-          });
-      }}>存影像</Button>
-
-
-
-
-
-
-{/* 
-      <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
-      onChange={(ev)=>
-          {
-            this.CameraCtrl.setCameraImageTransfer(ev.target.checked);
-            this.setState({});//just to kick update
-          }
-        } >{
-          "相機影像更新"
-        }</Checkbox> */}
-      
-      <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}
-      onClick={() => {
-        this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
-        this.setState(Object.assign({}, this.state));
-      }}
-      >資料圖表</Button>
-
-      <Button type={"primary"} danger={this.state.onROISettingCallBack!==undefined} key="Manual ZOOM" size={"large"}
-        onClick={() => {
-
-
-        // Open the sensor fully so the whole field is visible to drag on. The
-        // core persists whatever ROI it is given; nothing is mirrored locally
-        // any more (see the note where the connect-time push used to be).
-        let FullSensorROI=[0,0,99999,99999];
-        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        { CameraSetting: { ROI:FullSensorROI } });
-
-        this.setState({ onROISettingCallBack:(ROI_setting)=>{
-          
-          let x = ROI_setting.start.pix.x;
-          let y = ROI_setting.start.pix.y;
-          
-          let w = ROI_setting.end.pix.x-x;
-          let h = ROI_setting.end.pix.y-y;
-          if(w<0)
-          {
-            x+=w;
-            w=-w;
-          }
-          if(h<0)
-          {
-            y+=h;
-            h=-h;
-          }
-          
-          let ROI = [x,y,w,h];
-          if(w<10 || h<10 )
-          {
-            ROI=FullSensorROI;
-          }
-
-          
-          // The ONLY write to the machine's stored crop, and it lands under
-          // its own key (InspectionROI). The full-sensor open above says
-          // nothing: that is the UI looking at the frame, not an operator
-          // picking a crop. DefConf and the backlight calib open the sensor
-          // fully too, for the same reason -- with a separate key none of them
-          // can reach this value even by accident.
-          this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-          {CameraSetting: { ROI, save_insp_roi:true }});
-
-
-          this.setState({onROISettingCallBack:undefined});
-        }})
-      }} ><ExpandOutlined />
-        {this.state.onROISettingCallBack===undefined?"設定ROI":"選擇ROI中"}</Button>
-    </>
+      {/* Not a toolbar control -- a panel that lives wherever it is mounted. */}
+      <InspSamplePanel visible={this.state.samplePanel===true}
+        onClose={()=>this.setState({samplePanel:false})}
+        sendBPG={(...args)=>this.props.ACT_WS_SEND_CORE_BPG(...args)}
+        defName={this.props.defModelName}
+        saveDir={(this.props.machine_custom_setting && this.props.machine_custom_setting.InspSampleSavePath) || 'data'}
+        measures={(this.props.shape_list||[]).filter(sh=>sh.type==='measure').map(sh=>({id:sh.id,name:sh.name}))} />
+    </div>
 
 /*
     </>;*/
@@ -4024,6 +4978,11 @@ class APP_INSP_MODE extends React.Component {
           {(CanvasWindowRatio <= 0) ? null :
             <ComponentBoundary name="InspectionCanvas" fallbackHeight="60vh">
               <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
+                onFrameReports={this.onFrameReportsBound}
+                // Hold the measured picture. Owned by this screen, because it is
+                // the screen the operator reads the result on; the canvas only
+                // has to know whether to take the next frame.
+                siFrozen={this.state.siFrozen}
 
                 edit_info={this.props.edit_info}
                 onROISettingCallBack={this.state.onROISettingCallBack}
@@ -4051,6 +5010,22 @@ class APP_INSP_MODE extends React.Component {
 
 
         </div>
+
+        {/* THE SI TRIGGER, across the bottom of the screen.
+            Fixed rather than in the flow: the canvas and the stats table split
+            the height between them and both scroll, so anything in the flow
+            below them is off-screen at the ratios the machine actually runs
+            at. The operator presses this once per part and must not have to
+            look for it. */}
+        {this.props.machine_custom_setting.InspectionMode === "SI" ? (
+          <div style={{ position: 'fixed', bottom: 18, left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 'min(560px, 76vw)', zIndex: 30 }}>
+            {this.siTriggerButton({ width: '100%', height: 56, fontSize: 20,
+                                    fontWeight: 600, boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })}
+          </div>
+        ) : null}
+
         <Modal {...this.state.modalInfo} visible={this.state.modalInfo!==undefined}> 
           {this.state.modalInfo===undefined?null:
             ((typeof this.state.modalInfo.children === 'function')?
@@ -4086,6 +5061,27 @@ class APP_INSP_MODE extends React.Component {
           </Menu> */}
         </>
 
+        {/* THE IDLE COUNTDOWN.
+            Only in the last minute, and only in CI, which is the only mode the
+            watchdog applies to. An operator who is about to be taken off this
+            screen should be able to see it coming and stop it -- touching the
+            screen is what stops it, so the line says so rather than leaving
+            them to guess. Above the SI button's place and out of the canvas's
+            way. */}
+        {(this.state.autoExitIn === null || this.state.autoExitReason !== undefined
+          || !(autoExitApplies(this.props.machine_custom_setting.InspectionMode)
+               || siAutoExitApplies(this.props.machine_custom_setting.InspectionMode))) ? null : (
+          <div style={{ position: 'fixed', bottom: 84, left: '50%',
+                        transform: 'translateX(-50%)', zIndex: 29,
+                        padding: '6px 14px', borderRadius: 16,
+                        background: 'rgba(0,0,0,0.62)', color: '#ffd666',
+                        fontSize: 15, whiteSpace: 'nowrap',
+                        pointerEvents: 'none' }}>
+            {'已閒置，' + this.state.autoExitIn
+             + '秒後自動退出檢測（觸碰畫面可繼續）'}
+          </div>
+        )}
+
         <Modal
           visible={this.state.autoExitReason !== undefined}
           title={dictLookUp("WARNING", this.props.DICT)}
@@ -4115,6 +5111,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
+    ACT_EditInfo_Patch:(patch)=>dispatch(DefConfAct.EditInfo_Patch(patch)),
     ACT_WS_GET_OBJ: (api_id,callback)=>{
       // Peripheral APIs live in the module registry now (synchronous); the
       // Redux round-trip stays only for non-perif objects (DB_WS, Platform).
@@ -4147,6 +5144,9 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     CORE_ID: state.ConnInfo.CORE_ID,
     WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
     inspectionReport: state.UIData.edit_info.inspReport,
+    // SI progress. Not inspectionReport.si -- an accumulating frame carries no
+    // measurement, so it never becomes an inspReport. See the reducer.
+    siState: state.UIData.edit_info.si,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
 

@@ -80,6 +80,16 @@ const PING_STARVED_RATIO = 1.5;
 // links[id] = { state: 'DISCONNECTED'|'CONNECTING'|'CONNECTED'|'SUSPECT',
 //               connInfo, machineStatus, machineSetup, deviceState,
 //               runningStat, linkHealth (core perif_pairing.link), ... }
+//
+// CONNECTED is not the same as USABLE, and two facts separate them:
+//   pingSeen -- a PING has been ANSWERED since this connect. Until then all
+//               that happened is the core opened a port; the device has not
+//               said one word.
+//   cfgSeen  -- the board's get_setup reply has arrived, so its configuration
+//               is known. Only devices that keep their config on the board
+//               publish this (uInspESP32); undefined means "not applicable".
+// Both start false on every connect. The status bar paints CONNECTED-but-not-
+// both as its own colour rather than green -- see _linkToConn in script.jsx.
 let links = {};
 const listeners = new Set();
 
@@ -120,6 +130,8 @@ export function linkToLegacyConn(l) {
     type: (l.state === 'CONNECTED' || l.state === 'SUSPECT') ? 'WS_CONNECTED' : 'WS_DISCONNECTED',
     suspect: l.state === 'SUSPECT',
     machineStatus: l.machineStatus,
+    // Why the core would not open the link, when it said. Shown by the panel.
+    refusal: l.refusal,
     machineSetup: l.machineSetup,
     deviceState: l.deviceState,
     runningStat: l.runningStat,
@@ -162,6 +174,19 @@ let healthTimer = null;
 // and honoured when the reply arrives, never run in parallel.
 let healthInFlight = false;
 let healthPokePending = false;
+// The last ceiling actually sent to the boards, and when. See the relay below.
+let camFpsSent = 0;
+let camFpsSentAt = 0;
+// SHORTER THAN THE POLL THAT CARRIES IT. At 30000 against a 30000ms poll the
+// comparison is a race with itself: a poll arriving on time fails
+// `now - sent > 30000` by a millisecond, the heartbeat is skipped, and the next
+// chance is another 30s away. Measured before this was noticed --
+// cam_fps_age_s climbed past 30 to 43 and 50 with the relay silent, which looks
+// exactly like a broken link and was a comparison against the wrong constant.
+//
+// 25s: every scheduled poll satisfies it, and three of them still fit inside
+// the board's 90s staleness window.
+const CAM_FPS_HEARTBEAT_MS = 25000;
 function queryLinkHealthNow() {
   if (!deps.sendBPG) return;
   if (Object.keys(registry).length === 0) return;
@@ -176,7 +201,63 @@ function queryLinkHealthNow() {
     resolve: (pkts) => {
       try {
         const gs = (pkts || []).find((p) => p.type === 'GS');
-        const lk = gs && gs.data && gs.data.perif_pairing && gs.data.perif_pairing.link;
+        const pair = gs && gs.data && gs.data.perif_pairing;
+
+        // RELAY THE CAMERA'S CEILING TO THE BOARD.
+        //
+        // The board sizes its own admission cap from ResultingFrameRate when
+        // gate.cam_mode is "auto", and it is the one quantity in that chain it
+        // cannot measure: only the core can ask the camera. The core reports it
+        // here; this forwards it. Keeping the forwarding in the UI keeps
+        // peripheral-specific policy out of the core, which has no business
+        // knowing what a board wants or in what units.
+        //
+        // This poll is the right carrier and not a new timer: it already runs
+        // on a 30s cadence whenever any link is registered -- independent of
+        // whether any panel is mounted -- and the value it needs is already in
+        // the reply it is already making.
+        //
+        // Sent as a runtime FACT, not as a setting: cam_limit is transient
+        // state with an age, and writing min_detect_sep_us instead would put a
+        // measurement into the config the operator owns and could persist to
+        // NVS. If this stops arriving the board falls back on its own; it is
+        // not this relay's job to be reliable, only honest.
+        // ON CHANGE, plus a heartbeat -- not on every poll.
+        //
+        // This shares the link that carries verdicts, and the machine's deadline
+        // is made of their latency, so an unchanged value is traffic bought with
+        // the thing being protected. The poll itself can now be prompt (the
+        // camera doorbell pokes it) precisely BECAUSE sending is gated: checking
+        // often and sending rarely costs the board nothing.
+        //
+        // The heartbeat is not optional. The board decides on its own when the
+        // figure has gone stale, and it must be able to tell "the camera has not
+        // changed" from "nobody is talking to me any more" -- without one, those
+        // are the same silence.
+        const fps = pair && pair.cam_fps_limit;
+        if (fps > 0) {
+          const mhz = Math.round(fps * 1000);
+          const moved = !(camFpsSent > 0) || Math.abs(mhz - camFpsSent) > camFpsSent * 0.01;
+          const due = Date.now() - camFpsSentAt > CAM_FPS_HEARTBEAT_MS;
+          // A guard clause here would `return` out of the whole resolve
+          // callback and take the link-health handling below with it -- on
+          // every poll where the ceiling had NOT moved, which is almost all of
+          // them. Scoped, not early-returned.
+          if (moved || due) {
+            camFpsSent = mhz;
+            camFpsSentAt = Date.now();
+            Object.keys(registry).forEach((id) => {
+              const api = registry[id];
+              if (!api || typeof api.send !== 'function') return;
+            // No reply is expected or wanted: this shares the link that carries
+            // verdicts, and the machine's deadline is made of their latency.
+              try { api.send({ type: 'cam_limit', fps_mhz: mhz }, () => {}, () => {}); }
+              catch (e) { /* a link mid-teardown is not an error worth raising */ }
+            });
+          }
+        }
+
+        const lk = pair && pair.link;
         if (!lk) return;
         Object.keys(registry).forEach((id) => {
           const cur = links[id];
@@ -275,17 +356,53 @@ export class Perif_API_Base {
   connect(connInfo) {
     if (this.inReconnection == true) return false;
 
-    publish(this.id, { state: 'CONNECTING', connInfo });
+    // Nothing has been heard on this link yet, and the last connect's answer
+    // says nothing about this one -- a reconnect exists precisely because the
+    // previous link stopped working.
+    this._pingSeen = false;
+    publish(this.id, { state: 'CONNECTING', connInfo, pingSeen: false });
     this.connInfo = connInfo;
     this._applyPingTuning(connInfo);
     this.inReconnection = true;
     // Not every machine keeps its configuration on the host. See
     // loadSettingFileOnConnect.
-    if (this.loadSettingFileOnConnect()) this.LoadFileToMachine();
+    //
+    // ONCE, not once per ATTEMPT. This ran before the port was even open, so a
+    // device that is not there -- unplugged board, wrong COM port -- paid for a
+    // full LD round trip to the core, a machineSetup publish and a set_setup
+    // push on every retry, and checkReConnection retries every 3 s. The publish
+    // is the expensive half: it re-renders every subscriber, which a profile
+    // caught costing 127-161 ms of main thread per SECOND with the uInsp panel
+    // mounted, whether or not anything had changed.
+    //
+    // Reading it once is enough, because the CONNECT branch below pushes
+    // this.machineSetup with set_setup on every successful connect -- so a
+    // machine that comes back still receives the host's settings, from cache.
+    if (this.loadSettingFileOnConnect() && this.machineSetup === undefined) this.LoadFileToMachine();
     deps.sendBPG('PD', 0, { type: 'CONNECT', ...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true } }, undefined, {
       resolve: (stacked_pkts, action_channal) => {
         const PD = stacked_pkts.find((pkt) => pkt.type == 'PD');
         this.inReconnection = false;
+        // A REFUSAL IS A REPLY, and this used to drop it on the floor.
+        //
+        // The core answers a CONNECT it will not honour with an SS carrying
+        // ACK:false and the reason -- no PD at all. The block below only ever
+        // looked for the PD, so a refusal took none of the failure path: no
+        // _failN, no _nextAttemptAt, nothing published. checkReConnection
+        // therefore retried every 3 s forever, the backoff never engaged, and
+        // the panel showed a plain 未連線 while the core repeated the reason
+        // into the log a thousand times.
+        if (PD === undefined) {
+          const SS = stacked_pkts.find((pkt) => pkt.type == 'SS');
+          const why = (SS && SS.data && SS.data.errMsg) || '';
+          this.CONN_ID = undefined;
+          this.cleanUpConnection();
+          this._failN++;
+          this._nextAttemptAt = Date.now() + Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * Math.pow(2, this._failN - 1));
+          // The reason goes to the panel, which is where somebody is looking.
+          publish(this.id, { state: 'DISCONNECTED', refusal: why || undefined });
+          return;
+        }
         if (PD !== undefined) {
           const PD_data = PD.data;
           switch (PD_data.type) {
@@ -310,7 +427,18 @@ export class Perif_API_Base {
               this.CONN_ID = PD_data.CONN_ID;
               this._failN = 0;
               this._nextAttemptAt = 0;
-              publish(this.id, { state: 'CONNECTED', CONN_ID: this.CONN_ID });
+              // WHAT SUCCEEDED HERE IS THE CORE OPENING THE PORT, not the
+              // device answering. When this reconnect is the watchdog's last
+              // resort after a silent device, saying CONNECTED puts the status
+              // bar back to green on the strength of a port open -- and the
+              // device is still silent. Stay SUSPECT until a PING is answered;
+              // the recovery branch in _sendPing publishes CONNECTED then.
+              // Untouched for every other reason to connect (flag unset).
+              // refusal cleared explicitly: publish() merges, so the last
+              // refusal would otherwise outlive the connect that disproved it.
+              publish(this.id, this._reconnectAfterSilence
+                ? { state: 'SUSPECT', suspectSrc: 'local', CONN_ID: this.CONN_ID, refusal: undefined }
+                : { state: 'CONNECTED', CONN_ID: this.CONN_ID, refusal: undefined });
 
               if (this.machineSetup !== undefined) {
                 this.onBeforeSetupPush();
@@ -379,21 +507,71 @@ export class Perif_API_Base {
   // ---- machine setup ---------------------------------------------------
 
   machineSetupUpdate(newMachineInfo, doReplace = false) {
-    this.machineSetup = doReplace == true ? newMachineInfo : { ...this.machineSetup, ...newMachineInfo };
-    publish(this.id, { machineSetup: this.machineSetup });
+    const next = doReplace == true ? newMachineInfo : { ...this.machineSetup, ...newMachineInfo };
+    // A publish that carries the same settings as the last one still re-renders
+    // everything subscribed to them. Loading the file on a reconnect produced
+    // exactly that, and the panel is not cheap to draw.
+    let changed = true;
+    try { changed = JSON.stringify(next) !== JSON.stringify(this.machineSetup); } catch (_) {}
+    this.machineSetup = next;
+    if (changed) publish(this.id, { machineSetup: this.machineSetup });
     this.send(uinspRegroup({ type: 'set_setup', ...newMachineInfo }),
       (ret) => {
+        // A REFUSED WRITE USED TO LOOK EXACTLY LIKE A SUCCESSFUL ONE.
+        //
+        // set_setup refuses a WHOLE document containing a key the firmware does
+        // not know, and names the offenders back -- deliberately, because "an
+        // unrecognised key is a caller that believes something false about the
+        // machine". This threw that away under `//HACK: just assume it will
+        // work`, so the setting silently did not apply and the panel went on
+        // showing the old value as though nothing had been asked.
+        //
+        // Three separate hours went into that failure this week: a board on
+        // older firmware refusing gate.proc_capacity_pct (hunted as "the
+        // backstop must be overriding it"), nomatch_stop_after unsettable for
+        // weeks because it was missing from the schema, and a whole-config
+        // restore refused for the same reason. Every one of them presented as
+        // "the number does not change" with nothing anywhere saying why.
+        //
+        // The device already says why. This just stops discarding it.
+        if (ret && ret.ack === false) {
+          const why = ret.unknown
+            ? `這個韌體不認得 ${ret.unknown}（需要更新韌體）`
+            : (ret.err || 'set_setup 被裝置拒絕');
+          log.error('[machine-setup] set_setup REFUSED', ret);
+          // Published rather than thrown: the caller is usually a button that
+          // has already returned, and the panel is where a person is looking.
+          publish(this.id, { setupError: { why, at: Date.now(), sent: newMachineInfo } });
+          return;
+        }
         log.debug('[machine-setup] set_setup ack', ret);
-        //HACK: just assume it will work
-      }, (e) => log.warn('[machine-setup] set_setup failed', e));
+        publish(this.id, { setupError: null });
+      }, (e) => {
+        log.warn('[machine-setup] set_setup failed', e);
+        publish(this.id, { setupError: { why: String(e && e.message || e), at: Date.now(),
+                                         sent: newMachineInfo } });
+      });
   }
 
+  // RETURNS A PROMISE that settles when the reply has been APPLIED, not when
+  // the question was asked.
+  //
+  // It used to return undefined, so `.then(...)` after it ran immediately. A
+  // caller that had just changed the board's config, asked for a resync and
+  // then rebuilt its editing buffer got the buffer rebuilt from the values it
+  // already had -- and the fresh ones landed a moment later with nobody left
+  // to adopt them. Pressing the button twice worked, because the second press
+  // rebuilt from what the first one had eventually fetched.
+  //
+  // Existing callers ignore the return value and are unaffected.
   machineSetupReSync() {
     log.debug('[machine-setup] resync request');
+    return new Promise((resolve) => {
     this.send({ type: 'get_setup' },
       (ret) => {
         if (this.resyncRequiresAck() && ret['ack'] != true) {
           log.warn('[machine-setup] get_setup nak', ret);
+          resolve(null);
           return;
         }
         delete ret['type'];
@@ -405,7 +583,9 @@ export class Perif_API_Base {
         // entire configuration was filed as read-only device state.
         this.machineSetup = uinspFlatten(ret);
         this.machineSetupUpdate(this.machineSetup, true);
-      }, (e) => console.log(e));
+        resolve(this.machineSetup);
+      }, (e) => { console.log(e); resolve(null); });
+    });
   }
 
   getMachineSetup() { return this.machineSetup; }
@@ -574,6 +754,15 @@ export class Perif_API_Base {
       delete ret['st'];
       this.onPingStatus({ ...ret });
       this.PINGCount = 0;
+      // A REPLY, counted. PINGCount is not evidence of one: the ESP32
+      // override's RESYNC path zeroes it deliberately to buy the link another
+      // cycle, so "PINGCount === 0" also means "we just gave up and escalated".
+      // Reading that as health is how a dead link kept repainting itself green.
+      this._pingReplies = (this._pingReplies || 0) + 1;
+      // THE FIRST WORD FROM THE DEVICE since this connect. Published as a
+      // transition, not on every reply -- a publish per second would re-render
+      // every link consumer for a fact that changes once.
+      if (this._pingSeen !== true) { this._pingSeen = true; publish(this.id, { pingSeen: true }); }
     }, (errorInfo) => console.log(errorInfo));
   }
 
@@ -783,6 +972,10 @@ export class uInspESP32_API extends Perif_API_Base {
         publish(this.id, { state: 'SUSPECT', suspectSrc: 'local' });
         deps.sendBPG('PD', 0, { type: 'RESYNC', CONN_ID: this.CONN_ID },
           undefined, { resolve: (d) => d, reject: (d) => d });
+        // Mark where the reply counter stood, so the recovery branch below can
+        // ask "has one arrived SINCE" instead of trusting the counter this very
+        // line is about to falsify.
+        this._pingReplyMark = this._pingReplies || 0;
         this.PINGCount = 0;      // give the link one more cycle to answer
         this.triggerPing();
         return;
@@ -790,8 +983,21 @@ export class uInspESP32_API extends Perif_API_Base {
       perifLog.error('[link] RESET did not recover the link -- reconnecting '
         + '(this resets the board and ends the run)');
       this._linkResyncTries = 0;
-    } else if (this.PINGCount === 0) {
-      this._linkResyncTries = 0;   // link is healthy again
+      this._reconnectAfterSilence = true;
+    } else if (this.PINGCount === 0 && (this._pingReplies || 0) > (this._pingReplyMark || 0)) {
+      // A REPLY has arrived since the last escalation -- that, and only that,
+      // is the link being healthy again.
+      //
+      // The condition used to be `PINGCount === 0` alone, and the RESYNC branch
+      // above sets PINGCount = 0 itself. So against a device that had genuinely
+      // stopped talking the sequence was: six silent ticks -> SUSPECT + RESYNC
+      // + counter zeroed -> next tick reads the zero as health and publishes
+      // CONNECTED. The status-bar icon was red for one tick in every seven,
+      // which on screen is never. Worse, the same branch zeroed
+      // _linkResyncTries, so LINK_RESYNC_MAX was unreachable and the link sat
+      // in a RESYNC-every-7s loop that could not escalate to a reconnect.
+      this._linkResyncTries = 0;
+      this._reconnectAfterSilence = false;
       if ((links[this.id] || {}).state === 'SUSPECT' && !((links[this.id] || {}).linkHealth || {}).suspect)
         publish(this.id, { state: 'CONNECTED', suspectSrc: null });
     }
@@ -825,13 +1031,32 @@ export class uInspESP32_API extends Perif_API_Base {
     this._resyncKick();
   }
 
+  // A get_setup that always goes out, whatever the panel already holds.
+  //
+  // machineSetupReSync above is a "keep asking until we have one" loop and its
+  // first act is to stop when cfg is non-empty -- correct for its job, useless
+  // for a REFRESH. A caller that had just made the board change its own config
+  // (restore_setup) asked for a resync, got that early return, and redrew the
+  // table from the values it already had: the board was right, the screen was
+  // stale, and only a page reload showed it.
+  //
+  // Straight to the base's send, so there is one implementation of "ask and
+  // apply" and this is only about whether the question is asked.
+  refreshSetup() {
+    log.debug('[machine-setup] forced refresh');
+    return super.machineSetupReSync();
+  }
+
   _resyncKick() {
     if (Object.keys(this.cfg || {}).length > 0) {
       if (this._resyncTries > 0) {
         log.info('[uInspESP32] config resync arrived after', this._resyncTries, 'tries');
         this._resyncTries = 0;
-        publish(this.id, { cfgResyncTries: 0 });
       }
+      // Published unconditionally, including on the first kick that finds a
+      // cached cfg: cfgSeen is what the status bar reads, and leaving it unset
+      // on the one path that succeeds immediately would strand the icon.
+      publish(this.id, { cfgResyncTries: 0, cfgSeen: true });
       return;                                  // got it, stop
     }
     if (this.CONN_ID === undefined) return;    // a reconnect will restart this
@@ -840,7 +1065,7 @@ export class uInspESP32_API extends Perif_API_Base {
     // Published so the panel can say "not read yet, N tries" instead of
     // claiming the board is running compile defaults -- which is a different
     // fact, and the one that sends someone to the wrong place.
-    publish(this.id, { cfgResyncTries: this._resyncTries });
+    publish(this.id, { cfgResyncTries: this._resyncTries, cfgSeen: false });
     if (this._resyncTries === uInspESP32_API.RESYNC_FAST_TRIES) {
       log.warn('[uInspESP32] config resync still empty after',
                this._resyncTries, 'tries -- backing off, still trying');
@@ -862,8 +1087,20 @@ export class uInspESP32_API extends Perif_API_Base {
     // The gate's distance rejection. It was mapped in uinspCfg but missing
     // here, so the panel could display it and never write it.
     'min_detect_dist_um',
+    // The second admission layer: a floor on the low-pass filtered interval
+    // between admitted parts, set by what the HOST can keep up with rather than
+    // by what the camera can deliver. 0 disables it.
+    // The simple face: a mode and a rate in parts/second. The device resolves
+    // them into the interval keys below, which stay settable for backups and
+    // for the two advanced knobs no panel exposes.
+    'gate_cam_mode', 'gate_cam_margin_pct',
+    'gate_proc_mode', 'gate_proc_rate_hz', 'gate_proc_capacity_pct',
+    'gate_proc_sep_us', 'gate_proc_iir_shift',
     'stepper_en_active', 'stepper_dir',
     'unanswered_stop_after',
+    // The report-side twin of unanswered_stop_after. Settable on the device
+    // since the K_SKIP schema was corrected -- get_setup had always emitted it.
+    'nomatch_stop_after',
     'host_timeout_ms', 'pulses_per_rev', 'plate_diameter_mm',
     'stage_pulse_offset', 'io_on_level',
     // Per-station widths in MICROSECONDS -- the device converts to ticks
@@ -972,13 +1209,64 @@ export class uInspESP32_API extends Perif_API_Base {
   jogEnd() { return this.sendP({ type: 'jog_end' }); }
 
   resetRunningStat() { return this.sendP({ type: 'reset_running_stat' }); }
+
+  // NOT resetRunningStat, and the firmware says why at the command itself:
+  // reset_running_stat also calls CAM_SYNC.reset(), throwing away the clock
+  // model, which costs ~10 s of reports that cannot be placed and was measured
+  // as a halt at state 112. That makes it useless for the one thing zeroing a
+  // counter is for -- comparing two conditions. This touches the latency
+  // counters and nothing else.
+  resetLatencyStat() { return this.sendP({ type: 'reset_latency_stat' }); }
+
+  // The six slowest reports, each split into its legs (camera->report, in-pass,
+  // gap since the previous, tx, rx), plus the board's own worst main loop. This
+  // is the reply that says WHICH SIDE of the UART lost the time; the averages
+  // in get_running_stat cannot.
+  getSpikes() { return this.sendP({ type: 'get_spikes' }); }
+  // A REPLY THAT IS NOT A STAT MUST NOT REPLACE ONE THAT IS.
+  //
+  // This stored `ret` unconditionally, and a reply can resolve without being
+  // the statistics: a NAK, an error object, or -- the one that actually bit --
+  // a truncated one. The reply is close to its ceiling and the ceiling is the
+  // HOST's, not the device's: the core reads the peripheral line with
+  // `if (line.size() < 4096) line += c` and silently drops the rest, so a long
+  // reply arrives as valid JSON that is simply missing its tail. Overwriting
+  // with that blanked every number in the strip until the next poll came back
+  // short enough -- "all the numbers go blank when I stop, and recover after a
+  // few seconds".
+  //
+  // Keeping the last good value is the right behaviour on its own terms, and it
+  // makes the strip immune to this whole class of fault rather than to the one
+  // instance of it we chased. A stale count for one poll is a far smaller lie
+  // than no count at all.
+  //
+  // `count` is the test because it is what the panel reads and what a truncated
+  // tail loses. Counted and warned once per link, so a device that starts
+  // answering malformed replies says so instead of just looking quiet.
   getRunningStat() {
     return this.sendP({ type: 'get_running_stat' }).then((ret) => {
+      if (!ret || typeof ret !== 'object' || ret.count === undefined) {
+        this._statRejects = (this._statRejects || 0) + 1;
+        if (this._statRejects === 1) {
+          log.warn('[uinsp] get_running_stat reply is not a stat -- keeping the '
+                   + 'last good one. Truncated upstream, or the device NAKed: ', ret);
+        }
+        return this.runningStat;
+      }
       this.runningStat = ret;
       publish(this.id, { runningStat: ret });
       return ret;
     });
   }
+
+  // Motion diagnostics -- acceleration peaks, ramp stalls, counter-save paths,
+  // and this link's own reply-size margin.
+  //
+  // A separate command because get_running_stat has no room left: it measured
+  // 3584 bytes against a 3584 buffer, so the device was answering buf_overflow
+  // instead of the statistics. Asked only while somebody is looking at them,
+  // which is also why they were never worth carrying in the per-second reply.
+  getMotionDiag() { return this.sendP({ type: 'get_motion_diag' }); }
 
   // The enum lives in the firmware, so its text should come from there too.
   getStateNames() { return this.sendP({ type: 'get_state_names' }); }

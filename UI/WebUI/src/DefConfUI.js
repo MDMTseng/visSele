@@ -1,13 +1,14 @@
 'use strict'
 
 
+import { noteRecentDefFile } from 'UTIL/recentDefFiles';
 import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
-import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
+import { Shape_Attr_Fill, InspectionEditorLogic } from 'UTIL/InspectionEditorLogic';
 import { fieldFor, getShapeModule } from 'JSSRCROOT/shapes';
 import { applyFieldChange } from 'JSSRCROOT/shapes/_schemaHelpers';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
@@ -16,11 +17,16 @@ let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
-import { DEF_EXTENSION, defFileFilter, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION, defFileFilter, makeExtensionFilter, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { stripExtension } from 'UTIL/fileNameCheck.mjs';
 import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
-import { SBMSetupView } from './SBMStudio';
+// v2 runs BESIDE v1, not instead of it. Both buttons stay until the new one
+// has been used on a machine for a while; a studio is where a def gets its
+// locator, and losing the ability to fall back would mean a bad build blocks
+// recipe authoring outright. See the header of SBMStudio2.jsx.
+import { SBMSetupView2 } from './SBMStudio2';
 import { useDefImages } from 'UTIL/useDefImages';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -45,6 +51,7 @@ import Table  from 'antd/lib/table';
 import Checkbox from "antd/lib/checkbox";
 import InputNumber from 'antd/lib/input-number';
 import Input from 'antd/lib/input';
+import Switch from 'antd/lib/switch';
 const { CheckableTag } = Tag;
 const { TextArea } = Input;
 import Divider from 'antd/lib/divider';
@@ -54,6 +61,11 @@ import Popover from 'antd/lib/popover';
 
 
 import { useSelector,useDispatch } from 'react-redux';
+import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
+import { nextFreeName, takenNamesFrom } from 'UTIL/defNaming.mjs';
+import { mmppFromLensCalib } from 'UTIL/mmppRule.mjs';
+import { convertShapeForShapeBased } from './shapes/_caliperSeed';
+import { edgeAutoCaliper, edgeAutoSearchPoint } from './shapes/_edgeAuto.js';
 import { 
   VerticalAlignTopOutlined,
   ThunderboltOutlined,
@@ -74,6 +86,19 @@ import {
 
 } from '@ant-design/icons';
 import {RepDisplay} from './RepDisplayUI.js';
+
+// Primitive-button glyphs: 20-px line art in currentColor, one per shape type.
+// Inline so they follow the button's text colour (the swipe hover flips it).
+const _svg = (children) => <svg viewBox="0 0 20 20" width="20" height="20" fill="none"
+  stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+const PRIM_ICON = {
+  line:    _svg(<><line x1="3" y1="16" x2="17" y2="4" /><circle cx="3" cy="16" r="1.4" fill="currentColor" /><circle cx="17" cy="4" r="1.4" fill="currentColor" /></>),
+  arc:     _svg(<><path d="M3 16 A 9 9 0 0 1 17 16" /><circle cx="3" cy="16" r="1.4" fill="currentColor" /><circle cx="17" cy="16" r="1.4" fill="currentColor" /></>),
+  apoint:  _svg(<><line x1="3" y1="4" x2="17" y2="16" /><line x1="3" y1="16" x2="17" y2="4" /><circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none" /></>),
+  aline:   _svg(<><line x1="2" y1="14" x2="18" y2="6" strokeDasharray="2.5 2" /><circle cx="6" cy="12" r="1.8" fill="currentColor" stroke="none" /><circle cx="14" cy="8" r="1.8" fill="currentColor" stroke="none" /></>),
+  spoint:  _svg(<><line x1="3" y1="15" x2="17" y2="15" /><line x1="10" y1="15" x2="10" y2="5" /><path d="M7 8 L10 4 L13 8" /></>),
+  measure: _svg(<><line x1="3" y1="10" x2="17" y2="10" /><line x1="3" y1="6" x2="3" y2="14" /><line x1="17" y1="6" x2="17" y2="14" /><line x1="7" y1="8.5" x2="7" y2="11.5" /><line x1="10" y1="8.5" x2="10" y2="11.5" /><line x1="13" y1="8.5" x2="13" y2="11.5" /></>),
+};
 
 
 
@@ -220,9 +245,9 @@ class CanvasComponent extends React.Component {
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
         this.ec_canvas.SetState(ec_state);
-        // Mirrored before the draw, exactly as the inspection view does it:
-        // per-shape drawInspection reads renderer.show_caliper_hits.
-        this.ec_canvas.rUtil.show_caliper_hits = props.showCaliperHits !== false;
+        // Always on in the editor: the hits are what a setup is judged by.
+        // The inspection view mirrors its own switch; this one does not.
+        this.ec_canvas.rUtil.show_caliper_hits = true;
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
       }
@@ -1311,6 +1336,456 @@ let renderMethods = {
   },
 }
 
+// THE STUDIO'S OPENER, PUBLISHED BY THE COMPONENT THAT OWNS THE MODAL.
+//
+// Migration is two halves -- flip the engine, then go train features -- and the
+// second half has to open a modal that only DEFCONF_MODE_NEUTRAL_UI can open,
+// because the modal is its state. ACT_Migrate_To_Shape used to just CALL
+// openSBM2 from SettingUI, where the name is not in scope: the two dispatches
+// before it landed, the call threw ReferenceError, and everything after it --
+// including seeding def_image_reg from the sig360 anchor -- never ran. What the
+// operator got was the exact half-migrated def the code below warns about: a
+// shape_based def with no trained features, which falls back to sig360 and
+// looks, from the outside, like the migration never happened.
+let sbm2Opener = null;
+
+// MIGRATION, IN ONE PLACE, CALLABLE FROM ANYWHERE THAT HAS A DISPATCH.
+//
+// Flip the engine + apply the recommended fast coarse scale. anchor_corner and
+// every other setting carry over untouched. def_image_reg is already stored at
+// save; reference_image is emitted from the def name. Re-SAVE afterwards to
+// persist.
+// Open the SBM studio without changing anything first. The migration helper
+// below also opens it, but it has a def to convert on the way; a def that is
+// already shape_based and merely stored in the old format needs the studio and
+// nothing else.
+export function openShapeStudio() {
+  setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
+}
+
+export function migrateDefToShapeBased(dispatch, edit_info) {
+  // SAY WHAT THE PRIMITIVES BECOME, BEFORE THEY BECOME IT.
+  //
+  // The reducer converts the editor's shapes when the engine flips (see
+  // Locating_Engine_Update there). This computes the same answer with the same
+  // pure function, to put names on the screen: which primitives turn caliper
+  // with seeded parameters, and which arcs are too flat to convert and stay
+  // contour -- those measure NOTHING under shape_based and need re-teaching, so
+  // they are the one thing here somebody must act on.
+  const conv = [], left = [];
+  {
+    const _obj = edit_info && edit_info._obj;
+    const list = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
+    const mmpp = (_obj && _obj.getEditorMmpp) ? _obj.getEditorMmpp() : 1;
+    list.forEach((s) => {
+      const r = convertShapeForShapeBased(s, mmpp);
+      const label = (s && (s.name || ('id ' + s.id))) || '?';
+      if (r.action === 'converted') conv.push(label);
+      else if (r.action === 'left_contour_arc') left.push(label + ' (sagitta ' + r.sagittaPx.toFixed(1) + 'px)');
+    });
+  }
+  // Shown inside the final summary, not as a modal of its own: one upgrade,
+  // one report.
+  const primNote = (conv.length || left.length) ? (<div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #eee' }}>
+      <div>線、弧、搜尋點改用 <b>caliper</b> 定位(shape_based 沒有 contour 可沿),參數用預設值種下,每一個都可在屬性面板改。</div>
+      {conv.length > 0 && <div style={{ marginTop: 4, color: '#555', fontSize: 12 }}>
+        已轉換 {conv.length} 個:{conv.join(', ')}</div>}
+      {left.length > 0 && <div style={{ marginTop: 4, color: '#a8071a' }}>
+        <b>{left.length} 個弧太平,沒有轉</b>(三點近乎共線,caliper 會量出一個過關但錯的半徑):
+        {' ' + left.join(', ')}。它們在 shape_based 下<b>量不到東西</b>,要重新教。</div>}
+    </div>) : null;
+  dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
+  dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
+
+  // SEED def_image_reg FROM THE SIGNATURE ANCHOR.
+  //
+  // def_image_reg is the object frame's origin and angle, and an absent one is
+  // not a neutral default: SBMStudio's drawImage translates by -(cx, cy), so
+  // 0,0 puts the frame origin at the IMAGE CORNER. Every caliper is then placed
+  // relative to a corner, and the part rotates about a corner -- which measures
+  // fine on the reference image, where the rotation is zero, and goes wrong on a
+  // part that arrives turned. Nothing reports it.
+  //
+  // A sig360 def already carries the right answer. Its object frame is anchored
+  // at the signature centre, and the two quantities are the SAME one in the same
+  // units (EverCheckCanvasComponent's image-align path already uses one as the
+  // other's fallback), so migration can carry the frame across rather than
+  // dropping it and asking the operator to redraw a frame the def already had.
+  //
+  // Only when the def has no registration of its own -- a def that has been
+  // through the studio has one that was authored deliberately.
+  const ei = edit_info || {};
+  let seedReg = null;   // what this migration decided the frame is; read by the thunk below
+  if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
+    // THE ANGLE COMES FROM AN INSPECTION OF THE REFERENCE IMAGE, NOT FROM THE
+    // SIGNATURE.
+    //
+    // This used to read sig360info.reports[0] -- the EXTRACTOR report, i.e. the
+    // def's own signature. Its `orientation` is 0 by definition (the signature
+    // IS the frame), which EverCheckCanvasComponent already notes, so every
+    // migrated def got angle 0. On test2 the part sits at -0.0233 rad in its
+    // reference image; the object frame came out turned by 1.33 deg relative
+    // to the one every caliper was authored in, and the extracted features'
+    // fingerprint went from "ao-1.3334" to "ao0.0000". Measured 2026-09-04.
+    //
+    // DefConf runs an orientation inspect on entry (sendOrientationInspect) and
+    // the TAKE seed already reads its report -- cx, cy, `rotate`, isFlipped.
+    // Same source here. The extractor report stays as the fallback for cx/cy
+    // only, with the honest angle 0 it always had.
+    const insp = ei.inspReport && ei.inspReport.reports && ei.inspReport.reports[0];
+    const sig = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
+                && ei._obj.sig360info.reports[0];
+    let seed = null;
+    if (insp && Number.isFinite(insp.cx) && Number.isFinite(insp.cy)) {
+      seed = { cx: insp.cx, cy: insp.cy,
+               angle: Number.isFinite(insp.rotate) ? insp.rotate : 0,
+               isFlipped: !!insp.isFlipped };
+    } else if (sig && Number.isFinite(sig.cx) && Number.isFinite(sig.cy)) {
+      seed = { cx: sig.cx, cy: sig.cy, angle: 0, isFlipped: false };
+      log.warn('[migrate] no inspection report yet; def_image_reg seeded from the '
+               + 'signature with angle 0 -- redraw 定位 in the studio if the part is not level');
+    }
+    seedReg = seed;
+    if (seed) dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: seed }));
+  }
+  // THE FEATURE RANGE COMES FROM THE PART'S OWN OUTLINE.
+  //
+  // A sig360 def carries the part's silhouette as a polar signature -- one
+  // (radius, angle) sample per degree around the signature centre, measured in
+  // the object frame. That is exactly what the shape locator's include region
+  // is for, and the core already fell back to it internally when a def had no
+  // include polygon -- but silently, with nothing to see or adjust in the
+  // studio counted the range as empty. Bake it instead:
+  // the outline pushed OUT by a constant margin (a dilation, not a scale: a 5%
+  // scale about the centre grows the far tip by 5% and a point near the centre
+  // by nothing, so the margin was uneven and thin where the part bends back
+  // towards its centre), stored as the def's include polygon (object-frame
+  // mm, the same frame the operator draws one in). The margin is 5% of the
+  // part's reach or 6 px, whichever is larger. Only when the def has none; an
+  // authored range is not overwritten.
+  let seedInclude = null;
+  if (!(Array.isArray(ei.__loc_include) && ei.__loc_include.length)) {
+    const sig0 = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
+                 && ei._obj.sig360info.reports[0];
+    const sg = sig0 && sig0.signature;
+    if (sg && Array.isArray(sg.magnitude) && Array.isArray(sg.angle) && sg.magnitude.length === sg.angle.length) {
+      const mmpp = (ei._obj && typeof ei._obj.getEditorMmpp === 'function') ? ei._obj.getEditorMmpp() : 0;
+      let rMax = 0;
+      for (let i = 0; i < sg.magnitude.length; i++) if (sg.magnitude[i] > rMax) rMax = sg.magnitude[i];
+      const margin = Math.max(0.05 * rMax, (mmpp > 0 ? 6 * mmpp : 0));   // mm
+      // Radial max over a 10-degree window first (each bin takes the largest
+      // radius of itself and its five neighbours either side): a thin bent part
+      // leaves notches in a polar outline, and the fill must not follow them
+      // in. Then the constant margin.
+      const N = sg.magnitude.length, WIN = 5;   // 10-degree max window (5 bins either side), per CT 2026-09-09
+      // THE ANGLE MUST ONLY ADVANCE. sg.angle[i] is the measured angle of
+      // the contour point in bin i, and where the contour passes close to
+      // the centre it can step BACKWARDS (test2 bins 312-314 read -60.9 deg
+      // after bin 311's -49.4, at a fifth of the radius). Sorting those by
+      // angle interleaved them with the far points near -60 deg, the polygon
+      // ran in and out along that ray, and the mask showed a wedge cut at
+      // the upper right (2026-09-09). So walk the bins in order, unwrap the
+      // angle so it never decreases (a backward bin joins the previous ray),
+      // and keep one point per ray: the largest radius.
+      const pts = [];
+      let thPrev = NaN;
+      for (let i = 0; i < N; i++) {
+        let th = sg.angle[i];
+        if (!(sg.magnitude[i] > 1e-4) || !Number.isFinite(th)) continue;   // empty bin
+        let R = 0;
+        for (let k = -WIN; k <= WIN; k++) { const v = sg.magnitude[(i + k + N) % N]; if (v > R) R = v; }
+        if (Number.isFinite(thPrev)) {
+          th = thPrev + Math.atan2(Math.sin(th - thPrev), Math.cos(th - thPrev));   // unwrap next to the previous
+          if (th <= thPrev + 1e-9) {                       // same ray or backwards: merge
+            const q = pts[pts.length - 1];
+            if (R > q.R) { q.R = R; const Ro = R + margin; q.x = Ro * Math.cos(q.th); q.y = Ro * Math.sin(q.th); }
+            continue;
+          }
+        }
+        const Ro = R + margin;
+        pts.push({ th, R, x: Ro * Math.cos(th), y: Ro * Math.sin(th) });
+        thPrev = th;
+      }
+      // Already in angular order (bin order, angle strictly increasing).
+      if (pts.length >= 3) {
+        seedInclude = [pts.map((q) => ({ x: q.x, y: q.y }))];
+        dispatch(DefConfAct.EditInfo_Patch({ __loc_include: seedInclude }));
+        log.info('[migrate] include region baked from the sig360 outline: 10-deg radial max + ' + margin.toFixed(3) + ' mm margin (' + pts.length + ' pts)');
+      }
+    }
+  }
+
+  // FULLY AUTOMATIC FROM HERE. Decided 2026-09-04: the studio is for people who
+  // want to adjust something, not a step everyone has to walk through.
+  //
+  // Everything the studio did on the way to a working def has a no-hands
+  // version now: the frame is seeded above, the primitives converted in the
+  // reducer, the include region defaults to the sig360 silhouette inside the
+  // core, and ROI windows are baked at extraction when no points are placed.
+  // What remains is one SF (extract, with the def's own <name>.png as the
+  // template) and one II (the same check 快速驗證 runs) so the summary can
+  // say whether the result locates and measures -- because the one thing an
+  // automatic path must not do is finish silently on a def that will not
+  // work. Nothing is written to disk; the operator still saves.
+  //
+  // A thunk, because the dispatches above changed edit_info and the def sent
+  // to the core has to be generated from the CURRENT state, not the argument.
+  dispatch((d, getState) => {
+    // NOT TRUSTED TO BE CURRENT YET. The store runs an ActionThrottle
+    // middleware (100 ms, posEdge), so the EditInfo_Patch that seeded
+    // def_image_reg a few lines up can still be in flight when this thunk
+    // runs -- measured: state reg undefined at SF time, present 100 ms later,
+    // and the extracted features stamped "ao0.0000" against a def whose reg
+    // says -0.0233 rad. The values this migration decided are applied on top
+    // of the state explicitly, so the def the core extracts from is the one
+    // the operator will save.
+    const fresh = () => {
+      const ei = getState().UIData.edit_info;
+      const o = { ...ei, locating_engine: 'shape_based', shape_match_scale: 0.3 };
+      if (typeof o.shape_roi_spacing !== 'number') o.shape_roi_spacing = -1;   // auto de-overlap of ROI points
+      if (seedReg && (!o.def_image_reg || typeof o.def_image_reg.cx !== 'number')) o.def_image_reg = seedReg;
+      if (seedInclude && !(Array.isArray(o.__loc_include) && o.__loc_include.length)) o.__loc_include = seedInclude;
+      return o;
+    };
+    const send = (tl, data) => new Promise((resolve, reject) => {
+      const coreId = getState().ConnInfo.CORE_ID;
+      if (!coreId) return reject(new Error('核心沒有連線'));
+      d(UIAct.EV_WS_SEND_BPG(coreId, tl, 0, data, undefined, { resolve, reject }));
+    });
+    const openStudio = () => setTimeout(() => { if (sbm2Opener) sbm2Opener(true); }, 0);
+    const wait = Modal.info({ title: '升級中', content: '抽特徵、烘 ROI 窗口、對參考影像實測邊緣極性與門檻、驗證…',
+                              okButtonProps: { style: { display: 'none' } } });
+
+    let deffile;
+    try { const ei0 = fresh(); deffile = defFileGeneration(ei0); stampRefImagePath(deffile, ei0); }
+    catch (e) {
+      wait.destroy();
+      Modal.error({ title: '升級失敗', content: String((e && e.message) || e) });
+      return;
+    }
+    const templ = (deffile.featureSet[0] && deffile.featureSet[0]._ref_image_path) || '<def>.png';
+    log.info('[migrate] SF def', { reg: deffile.featureSet[0] && deffile.featureSet[0].def_image_reg, templ });
+
+    send('SF', { definfo: deffile, regenerate: true })
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        const cache = sf && sf.data && sf.data.shape_cache;
+        const nFeat = ((sf && sf.data && sf.data.features) || []).length;
+        if (!cache || !nFeat) throw Object.assign(new Error('nofeat'), { nofeat: true });
+        d(DefConfAct.EditInfo_Patch({ __shape_cache: cache, __shape_stale: undefined, __shape_lastGood: undefined }));
+        const nWin = (cache.roi && Array.isArray(cache.roi.at)) ? cache.roi.at.length : 0;
+        const runII = (ei) => {
+          const df = defFileGeneration(ei); stampRefImagePath(df, ei);
+          return send('II', { definfo: df, imgsrc: '__CACHE_IMG__',
+                              img_property: { calibInfo: { type: 'disable', mmpp: df.featureSet[0].mmpp } } });
+        };
+        const objOf = (pk) => {
+          const RP = (pk || []).find((p) => p.type === 'RP');
+          const g = RP && RP.data && RP.data.reports && RP.data.reports[0];
+          return g && g.reports && g.reports[0];
+        };
+        // POLARITY IS MEASURED. THE FLOOR IS READ OFF THE PICTURE. EACH ONLY
+        // WHERE THE FLEET SAID IT HELPS.
+        //
+        // 247 field recipes, judges OK summed, the same seed for every rule
+        // (2026-09-05, fleet_count / _fleet_hyb):
+        //   seed 1412 | polarity by narrow-band probe 1445 | + profile floor
+        //   where the edge is clean 1472 | + NA floor 1492 (sig360 1555).
+        // Deciding polarity from the profile instead (sign of the peak at the
+        // taught position) came out 14 judges WORSE than measuring it, and
+        // zeroing rel_strength, smoothing (sigma) or shrinking windows to the
+        // taught edge added nothing on the reference image -- the last two
+        // only cost field tolerance -- so none of those is applied here. The
+        // panel still shows them as suggestions (EdgeProfileView).
+        //
+        // 1. Every converted primitive is asked twice on the reference image,
+        //    `falling` and `rising`, with its search band narrowed to 0.06 mm
+        //    around the taught position and the essential judges off. The
+        //    polarity that measures there (the nearer one if both) is the
+        //    taught edge. The hit records carry no sign; this is how it is read.
+        // 2. With those polarities, one more inspection with edge_profile on.
+        //    Where the taught peak is clean (> 1.25x the strongest competitor
+        //    of its polarity) min_strength becomes the geometric mean of the
+        //    two -- the same number the panel's 自動 offers. Elsewhere the seed
+        //    stays. rel_strength is left alone.
+        // 3. The pass is kept only if the reference image is not worse than
+        //    the seed. Then, for what is still NA, min_strength drops to half
+        //    the weakest hit the picture has (>= 5).
+        const NARROW_MM = 0.06;
+        const S = BPG_Protocol.INSPECTION_STATUS;
+        const nameOf = (s) => s.name || ('id ' + s.id);
+        const isConv = (s) => s && s.locating === 'caliper' && s.edge && s.edge.polarity && conv.indexOf(nameOf(s)) >= 0;
+        const primsOf = (obj) => {
+          const m = {};
+          if (!obj) return m;
+          (obj.detectedLines || []).forEach((x) => { m[x.id] = { st: x.status, x: x.cx, y: x.cy, prof: x.extra && x.extra.edge_profile, hits: x.extra && x.extra.cal_hits }; });
+          (obj.detectedCircles || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y, prof: x.extra && x.extra.edge_profile, hits: x.extra && x.extra.cal_hits }; });
+          (obj.searchPoints || []).forEach((x) => { m[x.id] = { st: x.status, x: x.x, y: x.y, prof: x.extra && x.extra.edge_profile }; });
+          return m;
+        };
+        const taughtPt = (s) => {
+          if (s.type === 'search_point') return s.pt1;
+          if (s.type === 'line' && s.pt1 && s.pt2) return { x: (s.pt1.x + s.pt2.x) / 2, y: (s.pt1.y + s.pt2.y) / 2 };
+          return null;
+        };
+        const _obj = fresh()._obj;
+        const base = (_obj && Array.isArray(_obj.shapeList)) ? _obj.shapeList : [];
+        // Run II on a shape list without committing it to the editor.
+        const runWith = (list) => { _obj.SetShapeList(list); return runII(fresh()).then((pk) => primsOf(objOf(pk))); };
+        const noEss = (list) => list.map((s) => (s && s.orientation_essential ? { ...s, orientation_essential: false } : s));
+        const probe = (pol) => noEss(base).map((s) => {
+          if (!isConv(s)) return s;
+          const t = { ...s, edge: { ...s.edge, polarity: pol } };
+          if (s.type === 'search_point') t.margin = NARROW_MM; else t.caliper = { ...(s.caliper || {}), length: NARROW_MM };
+          return t;
+        });
+        const judgesOK = (pk) => { const o = objOf(pk); return o ? (o.judgeReports || []).filter((j) => j.status === S.SUCCESS).length : -1; };
+        const emit = (on) => { const coreId = getState().ConnInfo.CORE_ID; if (coreId) d(UIAct.EV_WS_SEND_BPG(coreId, 'ST', 0, { DEBUG_EMIT: { edge_profile: on } })); };
+        if (!base.some(isConv)) return runII(fresh()).then((pk) => ({ nFeat, nWin, pk, flipped: [], lowered: [], autoSet: 0 }));
+        return runWith(probe('falling')).then((pf) => runWith(probe('rising')).then((pr) => {
+          const flipped = [];
+          const polList = base.map((s) => {
+            if (!isConv(s)) return s;
+            const f = pf[s.id], r = pr[s.id], t = taughtPt(s);
+            const okf = !!f && f.st === S.SUCCESS, okr = !!r && r.st === S.SUCCESS;
+            let pick = null;
+            if (okf && !okr) pick = 'falling';
+            else if (okr && !okf) pick = 'rising';
+            else if (okf && okr && t && Number.isFinite(f.x) && Number.isFinite(r.x))
+              pick = (Math.hypot(r.x - t.x, r.y - t.y) < Math.hypot(f.x - t.x, f.y - t.y) - 1e-6) ? 'rising' : 'falling';
+            if (!pick || pick === s.edge.polarity) return s;
+            flipped.push(nameOf(s));
+            return { ...s, edge: { ...s.edge, polarity: pick } };
+          });
+          // 2. the floor, from the profile of each primitive at its own polarity
+          emit(true);
+          return runWith(noEss(polList)).then((pp) => {
+            emit(false);
+            let autoSet = 0;
+            const floorList = polList.map((s) => {
+              if (!isConv(s)) return s;
+              const p = pp[s.id];
+              if (!p || !p.prof) return s;
+              const res = s.type === 'search_point' ? edgeAutoSearchPoint(p.prof, s.edge) : edgeAutoCaliper(p.prof, s.edge);
+              if (!res || !res.ok || !res.clean) return s;
+              if (res.kind === 'caliper' && res.polarity !== s.edge.polarity) return s;   // picture and measurement disagree: leave it
+              if (res.min_strength === s.edge.min_strength) return s;
+              autoSet++;
+              return { ...s, edge: { ...s.edge, min_strength: res.min_strength } };
+            });
+            log.info('[migrate] polarity+floor', { flipped, autoSet });
+            // 3. keep what is not worse than the seed on the reference image
+            _obj.SetShapeList(base);
+            return runII(fresh()).then((pk0) => {
+              const k0 = judgesOK(pk0);
+              const tryList = (list) => { _obj.SetShapeList(list); return runII(fresh()).then((pk) => ({ list, pk, k: judgesOK(pk) })); };
+              return tryList(floorList).then((r1) => {
+                if (r1.k >= k0) return { list: floorList, pk: r1.pk, flipped, autoSet };
+                if (!autoSet) return { list: base, pk: pk0, flipped: [], autoSet: 0 };
+                return tryList(polList).then((r2) => (r2.k >= k0
+                  ? { list: polList, pk: r2.pk, flipped, autoSet: 0 } : { list: base, pk: pk0, flipped: [], autoSet: 0 }));
+              });
+            });
+          }, (e) => { emit(false); throw e; });
+        })).then(({ list, pk, flipped, autoSet }) => {
+          const p = primsOf(objOf(pk));
+          const na = list.filter((s) => s && s.locating === 'caliper' && s.edge && (!p[s.id] || p[s.id].st !== S.SUCCESS));
+          if (!na.length) return { nFeat, nWin, pk, flipped, lowered: [], list, autoSet };
+          const naIds = new Set(na.map((s) => s.id));
+          const zero = list.map((s) => (naIds.has(s.id) ? { ...s, edge: { ...s.edge, min_strength: 0 } } : s));
+          return runWith(zero).then((pz) => {
+            let gmin = Infinity; const lowered = [];
+            const floorOf = (m, cur) => Math.max(5, Math.min(cur, Math.floor(m * 0.5)));
+            let low = list.map((s) => {
+              if (!naIds.has(s.id) || s.type === 'search_point') return s;
+              const hs = ((pz[s.id] && pz[s.id].hits) || []).map((h) => h.s).filter(Number.isFinite);
+              if (!hs.length) return s;
+              const m = Math.min(...hs), f = floorOf(m, s.edge.min_strength);
+              if (f >= s.edge.min_strength) return s;
+              gmin = Math.min(gmin, m); lowered.push(nameOf(s) + ' ' + s.edge.min_strength + '→' + f);
+              return { ...s, edge: { ...s.edge, min_strength: f } };
+            });
+            if (gmin < Infinity) low = low.map((s) => {
+              if (!naIds.has(s.id) || s.type !== 'search_point') return s;
+              const f = floorOf(gmin, s.edge.min_strength);
+              if (f >= s.edge.min_strength) return s;
+              lowered.push(nameOf(s) + ' ' + s.edge.min_strength + '→' + f);
+              return { ...s, edge: { ...s.edge, min_strength: f } };
+            });
+            if (!lowered.length) return { nFeat, nWin, pk, flipped, lowered: [], list, autoSet };
+            _obj.SetShapeList(low);
+            return runII(fresh()).then((pk2) => (judgesOK(pk2) >= judgesOK(pk)
+              ? { nFeat, nWin, pk: pk2, flipped, lowered, list: low, autoSet } : { nFeat, nWin, pk, flipped, lowered: [], list, autoSet }));
+          });
+        }).then((r) => {
+          // Commit exactly the list the reported verification ran on.
+          _obj.SetShapeList(r.list);
+          d(DefConfAct.Shape_List_Update(r.list));
+          return r;
+        });
+      })
+      .then(({ nFeat, nWin, pk, flipped, lowered, autoSet }) => {
+        wait.destroy();
+        // Put the result on the canvas, exactly as 快速驗證 does.
+        const RP = (pk || []).find((p) => p.type === 'RP');
+        const IM = (pk || []).find((p) => p.type === 'IM');
+        [RP, IM].forEach((p) => {
+          if (!p) return;
+          const a = BPG_Protocol.map_BPG_Packet2Act(p);
+          if (a) { a.IGNORE_DEFCONF_LOCK = true; d(a); }
+        });
+        const g = RP && RP.data && RP.data.reports && RP.data.reports[0];
+        const obj = g && g.reports && g.reports[0];
+        const judges = (obj && obj.judgeReports) || [];
+        const S = BPG_Protocol.INSPECTION_STATUS;
+        const nOK = judges.filter((j) => j.status === S.SUCCESS).length;
+        const nNG = judges.filter((j) => j.status === S.FAILURE).length;
+        const nNA = judges.length - nOK - nNG;
+        const locator = g && g.locator;
+        const note = g && g.locate;
+        const bad = !obj || locator !== 'shape_based' || !!(note && note.code) || nNA > 0 || left.length > 0;
+        log.info('[migrate] auto result', { nFeat, nWin, locator, note, nOK, nNG, nNA, left });
+        Modal.confirm({
+          title: bad ? '已升級,但驗證有狀況 —— 還沒存檔' : '升級完成 —— 還沒存檔',
+          icon: null, width: 600,
+          content: (<div style={{ lineHeight: 1.8 }}>
+            <div>特徵 <b>{nFeat}</b> 點,ROI 精修窗口 <b>{nWin}</b> 個(自動選點)。</div>
+            <div>對參考影像驗證:定位 <b>{locator || '?'}</b>
+              {obj && Number.isFinite(obj.similarity) && <span>,相似度 <b>{obj.similarity.toFixed(3)}</b></span>}
+              {!obj && <b style={{ color: '#a8071a' }}>,沒有找到零件</b>}
+              ;判定 <b style={{ color: '#237804' }}>{nOK} OK</b> / <b style={{ color: '#a8071a' }}>{nNG} NG</b> / <b style={{ color: nNA ? '#a8071a' : undefined }}>{nNA} NA</b></div>
+            {note && note.code && <div style={{ color: '#a8071a' }}>定位註記 {note.code}:{note.reason}</div>}
+            {flipped && flipped.length > 0 && <div style={{ color: '#ad6800' }}>
+              邊緣極性依教學位置上的邊實測決定,改成另一邊 {flipped.length} 個:{flipped.join(', ')}</div>}
+            {autoSet > 0 && <div>邊緣門檻依參考影像的梯度剖面設定 <b>{autoSet}</b> 個(邊和競爭峰的幾何平均,同屬性面板的「自動」);其餘沿用種子。</div>}
+            {lowered && lowered.length > 0 && <div style={{ color: '#ad6800' }}>
+              預設邊緣門檻量不到,依參考影像實測降低 {lowered.length} 個:{lowered.join(', ')}</div>}
+            {primNote}
+            <div style={{ marginTop: 10, color: '#888', fontSize: 12 }}>
+              特徵範圍用的是 sig360 輪廓;有晃動的鄰件或反光要排除、或想自己挑 ROI 點,再進 studio。
+              存檔前都還沒寫到磁碟。</div>
+          </div>),
+          okText: '知道了,去存檔', cancelText: '開 studio 微調', onCancel: openStudio,
+        });
+      })
+      .catch((e) => {
+        wait.destroy();
+        if (e && e.nofeat) {
+          Modal.confirm({
+            title: '升級了,但抽不到特徵', width: 560,
+            content: (<div style={{ lineHeight: 1.8 }}>
+              <div>核心從 <code>{templ}</code> 抽不到任何特徵。最常見的是這張參考影像不在磁碟上,其次是邊緣門檻太高。</div>
+              <div style={{ marginTop: 8 }}>def 已經是 shape_based,但沒有特徵,存了也只會退回 sig360 跑。到 studio 裡看一下影像和門檻。</div>
+            </div>),
+            okText: '開 studio 處理', cancelText: '先不要', onOk: openStudio,
+          });
+        } else {
+          Modal.error({ title: '升級過程出錯', content: String((e && e.message) || e || '核心沒有回應') });
+        }
+      });
+  });
+}
+
 function SettingUI({})
 {
   
@@ -1338,47 +1813,7 @@ function SettingUI({})
   // flip the engine + apply the recommended fast coarse scale. anchor_corner and all
   // other settings are carried over untouched. def_image_reg is already stored at save;
   // reference_image is emitted from the def name. Re-SAVE afterwards to persist.
-  const ACT_Migrate_To_Shape=() => {
-    dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
-    dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
-
-    // SEED def_image_reg FROM THE SIGNATURE ANCHOR.
-    //
-    // def_image_reg is the object frame's origin and angle, and an absent one
-    // is not a neutral default: SBMStudio's drawImage translates by -(cx, cy),
-    // so 0,0 puts the frame origin at the IMAGE CORNER. Every caliper is then
-    // placed relative to a corner, and the part rotates about a corner -- which
-    // measures fine on the reference image, where the rotation is zero, and
-    // goes wrong on a part that arrives turned. Nothing reports it.
-    //
-    // A sig360 def already carries the right answer. Its object frame is
-    // anchored at the signature centre, and the two quantities are the SAME one
-    // in the same units: EverCheckCanvasComponent's image-align path notes that
-    // on test1.hydef def_image_reg.cx/cy reads 15.025, 9.305, identical to the
-    // @__SIGNATURE__ anchor, and uses one as the other's fallback. So migration
-    // can carry the frame across rather than dropping it and asking the operator
-    // to redraw a frame the def already had.
-    //
-    // Only when the def has no registration of its own -- a def that has been
-    // through the studio has one that was authored deliberately, and this must
-    // not overwrite it.
-    const ei = edit_info;
-    if (!ei.def_image_reg || typeof ei.def_image_reg.cx !== 'number') {
-      const rep = ei._obj && ei._obj.sig360info && ei._obj.sig360info.reports
-                  && ei._obj.sig360info.reports[0];
-      if (rep && Number.isFinite(rep.cx) && Number.isFinite(rep.cy)) {
-        dispatch(DefConfAct.EditInfo_Patch({
-          def_image_reg: {
-            cx: rep.cx, cy: rep.cy,
-            angle: Number.isFinite(rep.orientation) ? rep.orientation : 0,
-            // The reference image is the frame's own definition, so it is not
-            // flipped with respect to itself.
-            isFlipped: false,
-          },
-        }));
-      }
-    }
-  };
+  const ACT_Migrate_To_Shape=() => migrateDefToShapeBased(dispatch, edit_info);
 
   const DICT = useSelector(state => state.UIData.DICT);
   return [
@@ -1540,12 +1975,31 @@ function SettingUI({})
 }
 
 
-// The SBM setup studio (self-contained hook canvas + tools) lives in SBMStudio.jsx;
-// imported as SBMSetupView at the top of this file.
+// The SBM setup studio lives in SBMStudio2.jsx; SBMStudio.jsx keeps only the
+// hook canvas both versions were built on.
 
+
+// A def load in flight is only valid until something else changes the def.
+//
+// The load is a round trip: LD goes out, and when the reply lands its packets
+// are dispatched as one bundle that RE-APPLIES the whole def -- registration,
+// feature cache, image, the lot. If a retake (or another load) happened while
+// that was in the air, the bundle silently puts the OLD def back on top of it.
+//
+// That is not theoretical: TAKE pressed shortly after opening a recipe produced
+// a "new object" carrying the previous def's def_image_reg and __shape_cache,
+// with __img_fresh_capture back to false -- every measurement then pinned to an
+// origin from a frame that no longer exists, and nothing on screen says so. It
+// reproduced about one run in three in the regression suite (RESTORED by
+// ATBundle, three times, right after Def_Retake).
+//
+// So each load takes a ticket, and only the current ticket may dispatch.
+let defLoadGen = 0;
+export function invalidateDefLoads() { return ++defLoadGen; }
 
 function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch)
 {
+  const myGen = ++defLoadGen;
   function actionGen_W_IGNORE_LOCK(pkts)
   {
     return{
@@ -1574,6 +2028,11 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
     },
   })
     .then(({ pkts }) => {
+      if (myGen !== defLoadGen) {
+        log.warn('[loadDef] reply dropped -- the def changed while it was in flight',
+                 { defModelPath, myGen, now: defLoadGen });
+        return;
+      }
       dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
       // new Promise((resolve, reject) => {
@@ -1637,6 +2096,238 @@ function modShapeCleanUp(mod_shape)
 
 
 
+// The live preview inside the TAKE dialog.
+//
+// Same shape as CalibrationUI's PreviewCanvas, and for the same reason: streamed
+// frames arrive through the normal BPG pipeline into edit_info.img, and
+// Preview_CanvasComponent is the one canvas that renders that without needing a
+// def loaded. disableImageAlign because a raw live frame must not be rotated by
+// def_image_reg -- the whole point here is to see what the camera sees.
+class TakePreviewCanvas extends React.Component {
+  componentDidMount() {
+    this.ec = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.cv);
+    this.ec.disableImageAlign = true;
+    this.ec.SetStandalonePreview(this.props.mmpp);
+    this._fitted = false;
+    this.update();
+  }
+  componentWillUnmount() { if (this.ec) this.ec.resourceClean(); }
+  componentDidUpdate() { this.update(); }
+  update() {
+    if (!this.ec) return;
+    if (this.props.c_state) this.ec.SetState(this.props.c_state);
+    const img = this.props.img;
+    if (img) {
+      this.ec.SetImg(img);
+      // Fit once. Re-fitting on every frame would fight the operator's pan/zoom
+      // thirty times a second.
+      if (!this._fitted) { this.ec.scaleImageToFitScreen(); this._fitted = true; }
+    }
+    this.ec.draw();
+  }
+  onResize(w, h) { if (this.ec) { this.ec.resize(w, h); this.ec.draw(); } }
+  render() {
+    return <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <canvas ref="cv" style={{ width: '100%', height: '100%', display: 'block' }} />
+      <ReactResizeDetector handleWidth handleHeight
+        onResize={(w, h) => this.onResize(w, h)} />
+    </div>;
+  }
+}
+
+// The TAKE dialog: name the object, then choose the frame it will be built from.
+//
+// The old one was five bare buttons in a modal footer with the string "<<<不重置"
+// floating between two of them, so 立即 and 立即 were told apart only by which
+// row they sat on -- and every one committed on the first click, so a mis-press
+// reset the def.
+//
+// Nothing here dispatches def state. Name, tags and the keep switch are local;
+// the caller gets them in one go when 使用這一幀 is pressed, and cancelling
+// leaves the def as it was. The one thing that DOES escape is the live stream,
+// because frames land in edit_info.img -- see the restore on cancel.
+function TakeSetupDialog({ triggerTimeout, onGo, onCancel, onStreamStart,
+                          onStreamStop, onWaitTrigger, loadInstMmpp }) {
+  // THIS COMPONENT READS REDUX ITSELF. It must not be handed the live frame.
+  //
+  // The modal is opened by storing a React ELEMENT in state:
+  //   setModal_view({ view: <TakeSetupDialog img={edit_info.img} .../> })
+  // That element is a snapshot of the moment it was built. edit_info.img is
+  // replaced on every streamed frame, and the element is never rebuilt, so the
+  // preview showed the picture that was on screen when the dialog opened and
+  // never moved -- while the DefConf canvas behind it, which subscribes for
+  // itself, animated. Two views of the same slot disagreeing, with the live one
+  // hidden behind the dead one.
+  //
+  // useSelector subscribes THIS component, independently of whether its parent
+  // re-renders, which is the only thing that fixes a view stored in state.
+  const edit_info = useSelector((st) => st.UIData.edit_info);
+  const c_state = useSelector((st) => st.UIData.c_state);
+  const img = edit_info.img;
+  const hasImage = !!img;
+  // Initial values only: the component mounts once per opening, so reading
+  // these here is the same snapshot the props used to carry.
+  const initName = edit_info.DefFileName;
+  const initTag = edit_info.DefFileTag;
+  const [phase, setPhase] = React.useState('name');
+  const [name, setName] = React.useState(initName || '');
+  const [tag, setTag] = React.useState((initTag || []).join(','));
+  // Default OFF. This is 建立新物件 -- starting from blank is the expectation,
+  // and keeping the wrong measurements costs more than re-drawing them.
+  const [keep, setKeep] = React.useState(false);
+  const [streaming, setStreaming] = React.useState(false);
+  const [waiting, setWaiting] = React.useState(false);
+  // Which of the core's two caches holds the frame the operator is looking at.
+  const [streamed, setStreamed] = React.useState(false);
+  // WHOSE mm/px this frame is measured in. A camera frame belongs to the
+  // MACHINE's scale (lens calibration); the def's own image belongs to the def's.
+  // Two different questions from `streamed`, which only picks a cache -- a
+  // single-shot trigger is a camera frame but lands in __CACHE_IMG__.
+  const [fromCamera, setFromCamera] = React.useState(false);
+  // The machine's own mm/px, read once when the dialog opens.
+  const [instMmpp, setInstMmpp] = React.useState(undefined);
+  React.useEffect(() => {
+    if (loadInstMmpp) loadInstMmpp().then(setInstMmpp, () => {});
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // THE PREVIEW'S SCALE FOLLOWS THE PICTURE, like everything else here.
+  //
+  // The first version read `edit_info.mmpp`, which does not exist -- nothing in
+  // the app has ever written that field, and this was its only reader. So the
+  // canvas got undefined and drew with no scale at all. The def was fine, which
+  // is why it looked right everywhere except in here.
+  //
+  // A camera frame is measured in the MACHINE's scale (lens_calib.json); the
+  // def's own image in the def's, which the editor object can compute. Each
+  // falls back to the other so a missing calibration still gives a usable
+  // preview rather than none.
+  const defMmpp = (edit_info._obj && typeof edit_info._obj.getEditorMmpp === 'function')
+    ? edit_info._obj.getEditorMmpp() : undefined;
+  const ok = (v) => Number.isFinite(v) && v > 0;
+  const mmpp = fromCamera
+    ? (ok(instMmpp) ? instMmpp : defMmpp)
+    : (ok(defMmpp) ? defMmpp : instMmpp);
+
+  const nameOk = !!name.trim();
+  const busy = streaming || waiting;
+
+  if (phase === 'name') {
+    return <div style={{ maxWidth: 520 }}>
+      <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>物件名稱（必填）</div>
+      <Input data-testid="take-name" value={name} onChange={(e) => setName(e.target.value)}
+        size="large" placeholder="例如 HY-1234-A"
+        onPressEnter={() => nameOk && setPhase('capture')} />
+      <div style={{ fontSize: 12, color: '#999', margin: '12px 0 4px' }}>標籤（逗號分隔,可空白）</div>
+      <Input data-testid="take-tags" value={tag} onChange={(e) => setTag(e.target.value)}
+        size="large" placeholder="例如 客戶A,銅件,量產" />
+      <div style={{ fontSize: 11.5, color: '#888', margin: '12px 0', lineHeight: 1.7 }}>
+        下一步選一張影像。確認之後這就是一個<b>新的物件</b>,跟目前開著的配方不再有關係:
+        存檔會存成新檔案,不會蓋掉原本那個。中途取消則什麼都不會改變。
+      </div>
+      <div style={{ textAlign: 'right', borderTop: '1px solid #333', paddingTop: 12 }}>
+        <Button data-testid="take-cancel" onClick={onCancel} style={{ marginRight: 8 }}>取消</Button>
+        <Button data-testid="take-next" type="primary" disabled={!nameOk}
+          data-enabled={nameOk ? '1' : '0'}
+          onClick={() => setPhase('capture')}>下一步:選影像</Button>
+      </div>
+    </div>;
+  }
+
+  // The semantics a test needs, not just handles. Asserting "a button got
+  // clicked" proves nothing here; the questions worth asking are which cache the
+  // frame will come from, whose scale it will be measured in, and whether the
+  // panel is streaming -- and every one of those has already been wrong while
+  // the screen looked fine. See TEAM_HANDOFF §13.
+  return <div data-testid="take-capture"
+    data-phase={streaming ? 'streaming' : waiting ? 'waiting' : 'idle'}
+    data-has-image={hasImage ? '1' : '0'}
+    data-from-camera={fromCamera ? '1' : '0'}
+    data-src={streamed ? 'lastview' : 'cache'}
+    data-keep={keep ? '1' : '0'}
+    style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 10 }}>
+    <div style={{ flex: '1 1 auto', minHeight: 0, background: '#141618',
+                  border: '1px solid #333', borderRadius: 6, position: 'relative' }}>
+      {hasImage
+        ? <TakePreviewCanvas mmpp={mmpp} c_state={c_state} img={img} />
+        : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', color: '#888', lineHeight: 1.9,
+                        textAlign: 'center' }}>
+            <div>目前沒有影像<br />
+              <span style={{ fontSize: 12 }}>按「開始串流」或「等待觸發」取得一張。</span></div>
+          </div>}
+      {streaming && <div style={{ position: 'absolute', top: 10, left: 10,
+        background: '#a8071a', color: '#fff', padding: '4px 12px', borderRadius: 20,
+        fontSize: 13, fontWeight: 600 }}>● 串流中</div>}
+      {waiting && <div style={{ position: 'absolute', top: 10, left: 10,
+        background: '#d48806', color: '#fff', padding: '4px 12px', borderRadius: 20,
+        fontSize: 13, fontWeight: 600 }}>等待觸發訊號…</div>}
+    </div>
+
+    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 12,
+                  flexWrap: 'wrap' }}>
+      <div style={{ fontSize: 14, fontWeight: 600, marginRight: 4 }}>{name}</div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Switch data-testid="take-keep" checked={keep} disabled={busy} onChange={setKeep} />
+        <span style={{ fontSize: 13, color: keep ? '#e8eaed' : '#8b929c' }}>
+          {keep ? '保留量測設定' : '清除量測設定'}
+        </span>
+      </div>
+
+      <div style={{ flex: '1 1 auto' }} />
+
+      {streaming
+        ? <Button data-testid="take-stream-stop" danger type="primary" size="large"
+            style={{ height: 48, minWidth: 140 }}
+            onClick={() => { onStreamStop(); setStreaming(false); }}>■ 停止串流</Button>
+        : <>
+            <Button data-testid="take-stream-start" size="large" style={{ height: 48 }}
+              disabled={busy}
+              onClick={() => { setStreamed(true); setFromCamera(true);
+                               setStreaming(true); onStreamStart(); }}>
+              ▶ 開始串流</Button>
+            <Button data-testid="take-wait-trigger" size="large" style={{ height: 48 }}
+              disabled={busy}
+              onClick={() => {
+                setWaiting(true);
+                onWaitTrigger().then(
+                  () => { setWaiting(false); setStreamed(false); setFromCamera(true); },
+                  () => { setWaiting(false); });
+              }}>⏱ 等待觸發</Button>
+          </>}
+
+      <Button data-testid="take-use-frame" type="primary" size="large"
+        style={{ height: 48, minWidth: 150 }}
+        data-enabled={(busy || !hasImage) ? '0' : '1'}
+        disabled={busy || !hasImage}
+        onClick={() => onGo({
+          name: name.trim(),
+          tags: tag.split(',').map((t) => t.trim()).filter((t) => t.length),
+          keep,
+          srcType: streamed ? '__LAST_DATA_VIEW_CACHE_IMG__' : '__CACHE_IMG__',
+          fromCamera,
+        })}>✓ 使用這一幀</Button>
+
+      <Button data-testid="take-cancel" size="large" style={{ height: 48 }}
+        onClick={onCancel}>取消</Button>
+    </div>
+
+    <div style={{ flex: '0 0 auto', fontSize: 11.5, color: '#888', lineHeight: 1.7 }}>
+      {streaming
+        ? '停止之後,畫面上停住的那一幀就是要用的那一張。'
+        : hasImage
+          ? '「使用這一幀」會拿畫面上這一張當新物件的樣板影像。'
+          : '還沒有影像可以用。'}
+      {keep && '　保留量測設定:量測特徵和比對參數會留著,定位、SBM 特徵、特徵範圍仍然要重做。'}
+      <div style={{ marginTop: 3 }}>
+        比例尺:{fromCamera
+          ? <b style={{ color: '#5b9dff' }}>用機台的鏡頭校正（相機實拍）</b>
+          : <span>沿用這個 def 原本的 mm/px（使用現有圖像）</span>}
+      </div>
+    </div>
+  </div>;
+}
+
 function DEFCONF_MODE_NEUTRAL_UI({})
 {
   const DICT = useSelector(state => state.UIData.DICT);
@@ -1652,13 +2343,44 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Arc_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create)) };
   const ACT_Search_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create)) };
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
+  const ACT_Aux_Line_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
-  const ACT_Cache_Img_Save= (id, fileName) =>
+  // WHICH cached frame, because the core has two and they are not the same one.
+  //
+  // __CACHE_IMG__ is the image loaded on DefConf entry -- the def's own .png --
+  // and a CI/FI stream does NOT update it. __LAST_DATA_VIEW_CACHE_IMG__ is the
+  // last frame that went through the data view, i.e. what the live preview is
+  // showing. Defaulting to the former and forgetting to say so is how a
+  // "capture" ends up saving the PREVIOUS recipe's picture, with nothing on
+  // screen looking any different (see saveAlternateImage, which hit this).
+  // A FAILED TEMPLATE WRITE MUST NOT LOOK LIKE A SUCCESSFUL ONE EITHER.
+  //
+  // This is how TAKE gives the shape locator a template before the def has a
+  // name: the captured frame is written to a scratch sidecar and its path is
+  // stamped into the def-info. It was fire-and-forget, so an unwritable path or
+  // an empty core cache landed nowhere -- and the first thing the operator saw
+  // was 生成特徵失敗 in the SBM studio, several steps later, pointing at
+  // thresholds and regions that were never the problem.
+  //
+  // Same treatment as ACT_Report_Save above, for the same reason.
+  const ACT_Cache_Img_Save= (id, fileName, srcType) =>
     dispatch(UIAct.EV_WS_SEND_BPG(id, "SV", 0,
-      { filename: fileName, type: "__CACHE_IMG__" }
+      { filename: fileName, type: srcType || "__CACHE_IMG__" },
+      undefined,
+      { resolve: (darr) => {
+          const ack = (darr || []).map((p) => p && p.data)
+            .find((d) => d && d.cmd === 'SV');
+          if (ack && ack.ACK === false) {
+            log.error('[action] template-save REFUSED', fileName, ack.errMsg);
+            Modal.error({ title: '暫存樣板影像寫入失敗',
+              content: (ack.errMsg || '核心沒有給原因') + '　（' + fileName + '.png）'
+                     + ' — 接下來的「生成特徵點」會因為讀不到樣板而失敗。' });
+          }
+        },
+        reject: (e) => log.error('[action] template-save no reply', fileName, e) }
     ))
 
 
@@ -1700,13 +2422,128 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
+
+  // Opening v2, from the toolbar button AND from the end of a TAKE.
+  //
+  // A fresh capture has no registration -- the def-scoped keys were just
+  // cleared -- and every later action (generate, inspect, save) is measured
+  // against a registration that is not there yet. Rather than let that be
+  // discovered later, the studio is opened at the moment the picture arrives.
+  // Published for migrateDefToShapeBased, which needs to open this modal from
+  // outside. No dep array on purpose: openSBM2 closes over this render's
+  // dispatch/setModal_view, so a stale one would set state on an old closure.
+  useEffect(() => {
+    sbm2Opener = openSBM2;
+    return () => { if (sbm2Opener === openSBM2) sbm2Opener = null; };
+  });
+
+  const openSBM2 = (auto) => {
+        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
+        setModal_view({
+          title: auto ? "新物件 — 先設定定位" : "Shape-based 定位設定（v2）",
+          footer: null,
+          width: "96vw",
+          style: { top: 12 },
+          bodyStyle: { padding: 8, height: "86vh" },
+          // The X is guarded too, because the studio applies LIVE: closing it does
+          // not discard anything, so leaving by the corner commits exactly the
+          // same broken state as 完成 would. Greying one and leaving the other
+          // open would just be theatre.
+          //
+          // It asks rather than refuses. A def whose reference image cannot be
+          // read can never regenerate, and a modal with no way out is worse than
+          // the state it is protecting against -- so "仍要離開" stays, and the
+          // save path asks once more before anything reaches disk.
+          // Marked, because both buttons are in the toolbar and a screenshot from
+          // the line has to say which one it came from.
+          onCancel: () => {
+            // Leaving the studio re-locates the object.
+            //
+            // The studio is where the registration line, the extraction region
+            // and the trained features are set -- all three change where the
+            // core thinks the part IS. The def canvas rectifies the image
+            // against the last inspection report, so without a fresh one it
+            // goes on drawing the picture aligned to the pose from BEFORE the
+            // edits: overlays that sit next to the part instead of on it.
+            //
+            // Same call the image switcher already makes for the same reason
+            // (useDefImages afterLoad). It lives in another component, so this
+            // goes through the window event that component listens for --
+            // the pattern defconf-images-changed already uses.
+            const closeIt = () => {
+              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
+              setModal_view(undefined);
+              window.dispatchEvent(new Event('defconf-orient-now'));
+            };
+            // Auto-opened after a TAKE and still no registration: say so before
+            // letting it close. Not a refusal -- there is a way out, because a
+            // modal that cannot be left is worse than the state it guards -- but
+            // leaving here silently is how someone spends ten minutes drawing
+            // regions and measurements against an origin that is not there.
+            if (auto && !edit_info.def_image_reg) {
+              Modal.confirm({
+                title: '還沒設定定位', width: 500,
+                content: '這是新擷取的物件,還沒有定位原點和 0° 軸。'
+                       + '接下來畫的範圍、抽的特徵、量的尺寸全部都是相對於它 —— '
+                       + '現在離開的話,這些之後都要重做。',
+                okText: '留下來設定', cancelText: '仍要離開',
+                onCancel: closeIt,
+              });
+              return;
+            }
+            const lg = edit_info.__shape_lastGood;
+            if (!edit_info.__shape_stale) { closeIt(); return; }
+            // SAY WHAT ACTUALLY HAPPENS.
+            //
+            // This used to say the def would fall back to sig360 and that the
+            // screen would not show it. That was true while the core refused a
+            // cache whose fingerprint had moved; it is not true now -- the
+            // cache loads regardless, and the def still locates with SBM.
+            //
+            // The real consequence is narrower and worth stating exactly: the
+            // features, the crop and the origin all come from the cache, so a
+            // registration edited after the last generation is simply not in
+            // effect. Nothing is broken and nothing is lost; a setting is
+            // waiting for a generation. That is a warning, not a trap, so the
+            // dialog no longer stands between anyone and the door.
+            Modal.confirm({
+              title: '定位設定尚未生效', width: 500,
+              content: '定位設定改過,但特徵還是上一次生成的。SBM 定位照常運作,'
+                     + '不過它用的是舊的定位原點——新的設定要按「生成特徵點」才會生效。',
+              okText: lg ? '還原上一版並離開' : '回去生成',
+              cancelText: '仍要離開',
+              onOk: () => {
+                if (lg) {
+                  dispatch(DefConfAct.EditInfo_Patch({
+                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
+                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
+                  }));
+                  closeIt();
+                }
+                // No last-good version: stay in the studio, where 生成特徵點 is.
+              },
+              onCancel: closeIt,
+            });
+          },
+          view: <SBMSetupView2
+            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
+            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
+                             window.dispatchEvent(new Event('defconf-orient-now')); }}
+            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
+                            window.dispatchEvent(new Event('defconf-orient-now')); }}
+          />,
+        });
+  };
+
   // Save the current def (opens the file picker, then writes the .hydef + <def>.png on
   // a NEW save). Extracted from the SAVE button so the SBM studio can save in-modal too.
   const triggerSave = () => {
     if (defConf_lock_level > 2) return;
     setFileSavingCallBack((prevs, props) => (folderInfo, fileName, existed) => {
       log.debug("[file-exists]", { folderInfo, fileName, existed });
-      let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
+      // Anchored at the END and case-insensitive. A plain replace takes the
+      // FIRST occurrence anywhere in the name.
+      let fileNamePath = folderInfo.path + "/" + stripExtension(fileName, DEF_EXTENSION);
       var enc = new TextEncoder();
       // SEED def_image_reg BEFORE generating, never after.
       //
@@ -1738,40 +2575,41 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         report.name = fileName;
         ACT_DefFileName_Update(fileName);
       }
-      // The def goes to the database as well as to disk, and a failure here used
-      // to be a console.log nobody was reading.
+      // The def goes to the database as well as to disk, and the send is
+      // QUEUED, not fire-and-forget: DefFile_DB_W_ID is a DB_WS, the same class
+      // the inspection socket uses, so the record is written to IndexedDB
+      // before it is queued, replayed at construction after a reload, and
+      // deleted only when the insert is confirmed.
       //
-      // That silence is expensive in a specific way: an inspection REPORT does
-      // not carry the settings it was judged against. The def in the database is
-      // what makes an archived report interpretable later -- without it there is
-      // a verdict on record and no way to say what it meant. The local .def file
-      // is already written by the time this runs, so the save genuinely did
-      // succeed on this machine; only the shared half is missing. Say exactly
-      // that, and offer the retry, because a dropped socket is usually over by
-      // the time someone reads the dialog.
-      const pushDefToDB = (rep, pathForMsg, attempt = 1) => {
+      // Which is why there is no failure dialog here any more. There used to be
+      // one, hung on .catch, saying "本機檔案已經存好了,只有資料庫那一份沒有
+      // 送出" and offering a retry. It was wrong twice over: dataInfo.reject is
+      // never called anywhere in DB_WS, so that promise does not reject and the
+      // dialog could only ever appear if the in-memory queue refused the entry
+      // outright; and if it did appear it stated the opposite of the truth,
+      // because the record was already persisted and would go out by itself on
+      // reconnect. A dialog that tells an operator to act on something the
+      // machine is already handling teaches them to dismiss dialogs.
+      //
+      // What actually produced the orphan records was never a dropped send. It
+      // was that nothing ever ASKED whether the def was in the database before
+      // writing inspections against it -- see the exists check in
+      // InspectionUI's InspectionReportInsert2DB, and the orphan finder in the
+      // 設定DB panel for the ones already on record.
+      //
+      // The queue's own state is visible in that panel (待送、已丟棄), which is
+      // where a pending upload belongs: a number that is still true ten minutes
+      // later, not a modal that was true once.
+      const pushDefToDB = (rep, pathForMsg) => {
         DefFile_DB_SEND(rep)
-          .then((ret) => log.info("[def-db] uploaded", { path: pathForMsg, attempt }))
+          .then(() => log.info("[def-db] uploaded", { path: pathForMsg }))
           .catch((err) => {
-            const why = (err && err.message) ? err.message
-              : (typeof err === 'string' && err.length) ? err : '沒有回應';
-            log.warn("[def-db] upload failed", { path: pathForMsg, attempt, err: String(err) });
-            Modal.confirm({
-              title: '設定檔沒有上傳到資料庫',
-              content: (<div style={{ lineHeight: 1.9 }}>
-                <div><b>本機檔案已經存好了</b>（{pathForMsg}.{DEF_EXTENSION}），只有資料庫那一份沒有送出。</div>
-                <div style={{ marginTop: 8 }}>原因：{why}</div>
-                <div style={{ marginTop: 8, color: '#a8071a' }}>
-                  檢驗報告不包含當時的檢驗設定,要靠資料庫裡的設定檔才能還原一筆報告是依據什麼判定的。
-                  少了這一份,之後查這段時間的報告會查不出判定依據。
-                </div>
-                <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
-                  可以先確認右上角「設定DB」的連線狀態,再重試。
-                </div>
-              </div>),
-              okText: '重試上傳', cancelText: '先不上傳',
-              onOk: () => pushDefToDB(rep, pathForMsg, attempt + 1),
-            });
+            // Reachable only if the send could not be QUEUED at all -- the
+            // in-memory queue full, or a throw before persistence. Nothing to
+            // offer the operator here, so it is logged rather than dialogued;
+            // the panel's 待送/已丟棄 counters are the durable record of this.
+            log.error("[def-db] could not queue the def", {
+              path: pathForMsg, err: String(err) });
           });
       };
 
@@ -1840,17 +2678,51 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       //
       // Three ways out, and the third is deliberately available: an operator
       // who knows the def is being handed off mid-edit should not be trapped.
+      // Only for the shape locator. sig360 finds its own object frame from the
+      // silhouette and needs no registration line, so asking there is asking
+      // about something the def does not have and does not want.
+      const isShapeEngine = edit_info.locating_engine === 'shape_based';
+      // A NEW OBJECT WITHOUT A REGISTRATION IS NOT A HALF-FINISHED DEF, IT IS A
+      // WRONG ONE.
+      //
+      // Every measurement in the def is authored in object-frame mm, i.e.
+      // relative to def_image_reg. Save it unset and the whole feature set is
+      // pinned to a default origin that has nothing to do with the part -- and
+      // it still inspects, because sig360 locates on the silhouette, so the
+      // numbers come out plausible and wrong.
+      //
+      // Only for a capture that has never been saved (__img_fresh_capture): an
+      // OLD def legitimately may not carry one, and refusing to save those would
+      // block editing a recipe that has been running for months.
+      //
+      // Asked, not refused: the third button exists because a modal with no way
+      // out is worse than the state it protects against, and someone handing a
+      // def over mid-edit has a real reason to write it as-is.
+      if (isShapeEngine && edit_info.__img_fresh_capture && !edit_info.def_image_reg) {
+        Modal.confirm({
+          title: '這個新物件還沒設定定位',
+          width: 520,
+          content: '量測全部是相對於定位原點和 0° 軸寫下來的,現在還沒有。'
+                 + '這樣存下去,特徵和量測會釘在一個跟零件無關的原點上——'
+                 + '而且它照樣檢驗得出數字,看起來不會有錯。',
+          okText: '去設定定位',
+          cancelText: '仍要存檔',
+          onOk: () => { openSBM2(true); },
+          onCancel: () => { log.warn('[save] new capture saved with NO def_image_reg'); proceed(); },
+        });
+        return;
+      }
+
       const staleWhy = edit_info.__shape_stale;
       const lastGood = edit_info.__shape_lastGood;
-      const isShape = edit_info.locating_engine === 'shape_based';
-      if (isShape && staleWhy) {
+      if (isShapeEngine && staleWhy) {
         Modal.confirm({
-          title: 'SBM 特徵與目前設定不符',
+          title: '定位設定尚未生效',
           width: 520,
           content: '改了' + (staleWhy === 'def_image_reg' ? '定位'
                           : staleWhy === 'roi_refine_points' ? 'ROI 點' : '定位和 ROI 點')
-                 + ',現有特徵已經不適用。這樣存檔的話,這個 def 不會用 SBM 定位——'
-                 + '它會退回 sig360,而且畫面上看不出來。',
+                 + ',但特徵還是上一次生成的。存檔沒問題,SBM 定位也照常運作——'
+                 + '只是它會用舊的定位原點,新的設定要按「生成特徵點」才會生效。',
           okText: '還原上一版定位設定',
           cancelText: '仍要存檔',
           // Restoring all three together makes the cache valid again by
@@ -1863,9 +2735,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               __shape_stale: undefined, __shape_lastGood: undefined,
             }));
             Modal.info({ title: '已還原', content:
-              '定位設定與特徵都回到上一個可用的版本。請重新存檔。' });
+              '定位設定與特徵都回到上一個一致的版本。請重新存檔。' });
           },
-          onCancel: () => { log.warn('[save] saving with STALE sbm features'); proceed(); },
+          onCancel: () => { log.warn('[save] saving with features older than the registration'); proceed(); },
         });
         return;
       }
@@ -1923,13 +2795,36 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const defModelPath = edit_info.defModelPath;
   const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
+  // The station, in full-sensor pixels, for drawing. Same two keys the core
+  // reads out of machine_setting.json -- not the def's, and not converted:
+  // the station is mechanics and lives in sensor pixels at every step.
+  const stationOverlay = React.useMemo(() => {
+    const ms = machine_custom_setting || {};
+    const r = ms.inspection_region;
+    const cl = Array.isArray(ms.clean_regions) ? ms.clean_regions : [];
+    if (!(r && r.w > 0 && r.h > 0) && !cl.length) return undefined;
+    return { region: (r && r.w > 0 && r.h > 0) ? r : undefined, clean: cl };
+  }, [machine_custom_setting]);
+
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
-  
-  
+  // Where that browser opens and what it will show. The def picker is the
+  // default because it was the only caller; 載入 xrep points it at the snapshot
+  // folder with an .xreps filter instead. Both go through ONE browser -- two
+  // would be two states that can both be open.
+  const [fileSelectCfg,setFileSelectCfg]=useState(undefined);
+
+
   const [modal_view,setModal_view]=useState(undefined);
 
   const [cacheDef,setCacheDef]=useState(undefined);
   const [nowInspdata,setNowInspdata]=useState(undefined);
+  // Where the last .xreps record came from, so 載入下一個 xrep opens the same
+  // folder instead of the root: a session of checks is one folder of records.
+  const lastXrepDirRef = useRef(undefined);
+  // 快速驗證 only: is the machine's station filter (inspection_region +
+  // clean_regions) being enforced for this session? Default ENFORCED, so the
+  // quick check shows what production shows unless somebody says otherwise.
+  const [stationEnforced,setStationEnforced]=useState(true);
   // NOTE: orientation auto-inspect + multi-image switching moved to the
   // persistent <DefConfImageSwitcher/> (rendered by APP_DEFCONF_MODE) so the
   // floating switcher + orientation survive across edit submodes (this neutral
@@ -1968,10 +2863,29 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           // this threw on nearly every dirty exit. The throw came out of the
           // button's onClick, so the back button simply did nothing: no dialog,
           // no error on screen, no way to leave the page.
-          const _cut = (v) => String(JSON.stringify(v)).slice(0, 120);
-          if (_keys.length) log.warn("[exit-dirty] featureSet fields differ", _keys.map((k) => ({
-            key: k, was: _cut(_loaded[k]), now: _cut(_now[k]),
-          })));
+          // 120 chars hid the actual difference every time (a 4-entry array
+          // agrees for its first 120 chars); 4000 shows the entry that moved.
+          const _cut = (v) => String(JSON.stringify(v)).slice(0, 4000);
+          // inherentfeatures is a list of named entries with a 360-bin
+          // signature inside; its raw text is all signature, so say which
+          // ENTRY moved and which of its keys.
+          const _entryDiff = (a, b) => {
+            const A = Array.isArray(a) ? a : [], B = Array.isArray(b) ? b : [];
+            const nm = (e) => (e && (e.name || e.id)) + '';
+            const out = [];
+            for (const e of A) {
+              const f = B.find((x) => nm(x) === nm(e));
+              if (!f) { out.push({ entry: nm(e), gone: true }); continue; }
+              const ks = [...new Set([...Object.keys(e), ...Object.keys(f)])].filter((k) => !_same(e[k], f[k]));
+              if (ks.length) out.push({ entry: nm(e), keys: ks.map((k) => ({ k, was: _cut(e[k]).slice(0, 200), now: _cut(f[k]).slice(0, 200) })) });
+            }
+            for (const f of B) if (!A.find((x) => nm(x) === nm(f))) out.push({ entry: nm(f), added: true, now: _cut(f).slice(0, 300) });
+            return out;
+          };
+          if (_keys.length) log.warn("[exit-dirty] featureSet fields differ", _keys.map((k) => (
+            k === 'inherentfeatures'
+              ? { key: k, entries: _entryDiff(_loaded[k], _now[k]) }
+              : { key: k, was: _cut(_loaded[k]), now: _cut(_now[k]) })));
           else log.warn("[exit-dirty] hash differs but no featureSet field does", {
             loadedHash: edit_info.DefFileHash, nowHash: defFile_New.featureSet_sha1 });
           setModal_view({
@@ -2013,40 +2927,25 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   if(defConf_lock_level==0)
   MenuSet=MenuSet.concat(
     [
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.line]}}
-      key="LINE"
-      text="line" onClick={() => ACT_Line_Add_Mode()} />,
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.arc]}}
-      key="ARC"
-      text="arc" onClick={() => ACT_Arc_Add_Mode()} />,
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_point]}}
-      key="APOINT"
-      text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
-
-    <BASE_COM.IconButton
-      dict={DICT}
-      addClass="layout palatte-blue-8 vbox  btn-swipe"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.search_point]}}
-      key="SPOINT"
-      text="spoint" onClick={() => ACT_Search_Point_Add_Mode()} />,
-    <BASE_COM.IconButton
-      //iconType={<FormOutlined/>}
-      addClass="layout palatte-blue-8  btn-swipe"
-      key="MEASURE"
-      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure]}}
-      dict={DICT}
-      text="measure"
-      onClick={() => ACT_Measure_Add_Mode()}>
-    </BASE_COM.IconButton>,
+    // The six primitives as a two-column grid of half-width icon buttons: six
+    // full-height rows was most of the panel on a 768-px-tall bench screen.
+    <div key="PRIM_GRID" className="s prim-grid">
+      {[
+        { key: 'LINE',    type: UIAct.SHAPE_TYPE.line,         text: 'line_s',    icon: PRIM_ICON.line,    onClick: ACT_Line_Add_Mode },
+        { key: 'ARC',     type: UIAct.SHAPE_TYPE.arc,          text: 'arc_s',     icon: PRIM_ICON.arc,     onClick: ACT_Arc_Add_Mode },
+        { key: 'APOINT',  type: UIAct.SHAPE_TYPE.aux_point,    text: 'apoint_s',  icon: PRIM_ICON.apoint,  onClick: ACT_Aux_Point_Add_Mode },
+        { key: 'ALINE',   type: UIAct.SHAPE_TYPE.aux_line,     text: 'aline_s',   icon: PRIM_ICON.aline,   onClick: ACT_Aux_Line_Add_Mode },
+        { key: 'SPOINT',  type: UIAct.SHAPE_TYPE.search_point, text: 'spoint_s',  icon: PRIM_ICON.spoint,  onClick: ACT_Search_Point_Add_Mode },
+        { key: 'MEASURE', type: UIAct.SHAPE_TYPE.measure,      text: 'measure_s', icon: PRIM_ICON.measure, onClick: ACT_Measure_Add_Mode },
+      ].map((b) => (
+        <BASE_COM.IconButton
+          key={b.key} dict={DICT}
+          addClass="layout btn-swipe prim-btn"
+          style={{ backgroundColor: EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[b.type] }}
+          iconType={b.icon}
+          text={b.text} onClick={() => b.onClick()} />
+      ))}
+    </div>,
     // 物件偵測 (obj_detect) is no longer offered.
     //
     // The check it was for -- "this space must be clean" -- is done at MACHINE
@@ -2065,6 +2964,172 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     ]);
       
 
+  // VERIFY AGAINST A SAVED RECORD, with the calibration it was taken under.
+  //
+  // The image switcher already loads a sibling .png into the core's cache, and
+  // that is enough to LOOK at a def on another sample. It is not enough to
+  // measure one: a bare image carries no mm-per-pixel, so the frame gets
+  // interpreted with whatever calibration the editor happens to be holding --
+  // which, for a picture taken on another machine or before a re-calibration,
+  // is the wrong ruler and produces numbers that look entirely ordinary.
+  //
+  // A .xreps record is the pair: the report AND the camera_param of the frame
+  // it was taken from. The record is read for its camera_param, its image is
+  // inspected with the def that is open at the record's mm-per-px, and the
+  // result is shown in the quick-verify modal -- the editor's own image and
+  // camera_param are not touched (2026-09-07: the first cut loaded the frame
+  // into the editor and adopted its calibration there; the owner wanted the
+  // 檢驗 / 全檢 behaviour instead -- a check, shown in the modal).
+  function openXrepBrowser()
+  {
+    setModal_view(undefined);
+    setFileSelectCfg({
+      filter: makeExtensionFilter('xreps'),
+      path: lastXrepDirRef.current || machine_custom_setting.InspSampleSavePath || 'data/',
+    });
+    setFileSelectedCallBack(() => (filePath, fileInfo) => {
+      setFileSelectedCallBack(undefined);
+      setFileSelectCfg(undefined);
+      loadXrepForVerify(filePath, fileInfo);
+    });
+  }
+
+  function loadXrepForVerify(xrepPath, fileInfo)
+  {
+    const stem = String(xrepPath).replace(/\.xreps$/i, "");
+    const slash = Math.max(stem.lastIndexOf('/'), stem.lastIndexOf('\\'));
+    const dir = slash >= 0 ? stem.substring(0, slash) : '.';
+    const base = slash >= 0 ? stem.substring(slash + 1) : stem;
+    lastXrepDirRef.current = dir;
+
+    // The picture's EXTENSION has to be looked up, not guessed: the core's
+    // automatic NG snapshots write .jpg and the manual 檢測快照 writes .png,
+    // and the core hands imgsrc straight to cv::imread without appending
+    // anything -- so a guess that is wrong loads the report with no image and
+    // the overlay draws over a blank canvas.
+    const IMG_EXTS = ["png", "jpg", "jpeg", "bmp"];
+    ACT_WS_SEND_BPG(CORE_ID, 'FB', 0, { path: dir, depth: 1 }, undefined, {
+      resolve: (darr) => {
+        const fsInfo = darr && darr[0] && darr[0].data;
+        const files = (fsInfo && fsInfo.files) || [];
+        const fdir = (fsInfo && fsInfo.path) || dir;
+        const hit = files.find((f) => f && f.type === 'REG' && typeof f.name === 'string'
+          && IMG_EXTS.some((e) => f.name.toLowerCase() === (base + '.' + e).toLowerCase()));
+        const imgPath = hit ? (hit.path || (fdir + '/' + hit.name)) : undefined;
+        if (!imgPath) log.warn('[xrep] no image beside ' + stem + ' -- report only');
+        sendXrepLD(stem, imgPath);
+      },
+      reject: (e) => { log.warn('[xrep] folder listing failed', e); sendXrepLD(stem, undefined); }
+    });
+  }
+
+  // Read the record for its camera_param (LD with filename only: no imgsrc, so
+  // the core's __CACHE_IMG__ and the editor's canvas are left alone), then
+  // measure the record's IMAGE with the CURRENT def at the RECORD's mm-per-px
+  // and show the result in the same modal 檢驗 / 全檢 use.
+  //
+  // This is deliberately not "load the picture into the editor": the operator
+  // asked for a check of the recipe against a saved frame, the way the other
+  // two quick-verify modes check it against a live one. The editor keeps its
+  // own image and its own camera_param; the record's calibration lives only in
+  // this modal (RepDisplay's camera_param) and in the II request.
+  function sendXrepLD(stem, imgPath)
+  {
+    ACT_WS_SEND_BPG(CORE_ID, 'LD', 0, { filename: stem + '.xreps' }, undefined,
+      { resolve: (pkts) => {
+          const FL = (pkts || []).find((p) => p.type === 'FL');
+          const camParam = FL && FL.data && FL.data.camera_param;
+          if (camParam === undefined)
+            log.warn('[xrep] the record carries no camera_param -- '
+                   + 'the frame will be measured with the def mmpp');
+          if (!imgPath) {
+            log.warn('[xrep] no image beside ' + stem + ' -- nothing to verify against');
+            return;
+          }
+          runXrepVerify(camParam, imgPath);
+        },
+        reject: (e) => { log.warn('[xrep] load failed', e); }
+      });
+  }
+
+  // Measure the record's frame with the CURRENT def and the FRAME's ruler.
+  //
+  // mm-per-pixel is a property of how a frame was captured, so it comes from
+  // the record (calibInfo.mmpp, which the core applies to its sampler and the
+  // shape locator rescales its model by). Everything else -- features,
+  // tolerances, regions -- comes from the def that is open, and the record's
+  // own defInfo is ignored: it describes the def as it was back then.
+  function runXrepVerify(camParam, imgPath)
+  {
+    if (!edit_info || !edit_info._obj) return;
+    let deffile = defFileGeneration(edit_info);
+    stampRefImagePath(deffile, edit_info);
+    setCacheDef(deffile);
+    const defMmpp = deffile.featureSet[0].mmpp;
+    // The SOURCE is tracked, not inferred from the value: on a bench whose
+    // record was taken under the def's own calibration the two numbers are
+    // identical, and a label derived by comparing them would say "def" for a
+    // scale that came from the record.
+    let mmpp = defMmpp, mmppFrom = 'def';
+    if (camParam && camParam.mmpb2b > 0 && camParam.ppb2b > 0) {
+      mmpp = camParam.mmpb2b / camParam.ppb2b;
+      mmppFrom = 'record';
+    } else {
+      log.warn('[xrep] no usable mmpb2b/ppb2b in the record -- measuring with the def mmpp', defMmpp);
+    }
+    log.info('[xrep] verifying ' + imgPath + ' with mmpp=' + mmpp + ' (' + mmppFrom + ')');
+
+    setNowInspdata(undefined);
+    ACT_WS_SEND_BPG(CORE_ID, 'II', 0,
+      // down_samp_level is what makes the core send the picture back with the
+      // report (wiringPanel II: no level, no IM); 1 = full resolution, so the
+      // overlay sits on the pixels that were measured.
+      { definfo: deffile, imgsrc: imgPath,
+        img_property: { calibInfo: { type: 'disable', mmpp: mmpp }, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL } },
+      undefined,
+      { resolve: (darr) => {
+          const RP = (darr || []).find((p) => p.type === 'RP');
+          const IM = (darr || []).find((p) => p.type === 'IM');
+          const reports = GetObjElement(RP, ["data", "reports", 0, "reports"]);
+          let image = undefined;
+          if (IM !== undefined) {
+            const a = BPG_Protocol.map_BPG_Packet2Act(IM);
+            if (a !== undefined) image = a.data;
+          }
+          if (reports === undefined) log.warn('[xrep] verify returned no report', RP && RP.data);
+          // The record's ruler for the overlay too, so mm drawn over the picture
+          // agree with mm measured on it. Falls back to the editor's.
+          setNowInspdata({
+            cam_param: (camParam && camParam.mmpb2b > 0 && camParam.ppb2b > 0)
+                         ? camParam : edit_info._obj.cameraParam,
+            reports: reports,
+            image: image,
+            source: imgPath,
+            mmppFrom: mmppFrom,
+          });
+        },
+        reject: (e) => { log.warn('[xrep] verify failed', e); }
+      });
+
+    setModal_view({
+      onOk: () => setModal_view(undefined),
+      onCancel: () => setModal_view(undefined),
+      height: "80%",
+      width: "95%",
+      style: { top: "30px" },
+      className: "modal-sizing size95",
+      footer: <>
+          <span style={{ float: 'left', fontSize: 12, color: '#8b929c', display: 'flex', alignItems: 'center', height: 32 }}>
+            紀錄:{imgPath}{mmppFrom === 'record' ? `,以紀錄的 ${mmpp.toFixed(6)} mm/px 量測` : ',紀錄沒有相機參數,用 def 的 mmpp'}
+          </span>
+          <Button key="next" type="primary" onClick={() => openXrepBrowser()}>載入下一個 xrep</Button>
+          <Button key="close" onClick={() => setModal_view(undefined)}>關閉</Button>
+        </>,
+      title: null,
+      ext_sec: "INST_Inspection"
+    });
+  }
+
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
   {//FI/CI
 
@@ -2076,14 +3141,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       ev_frameRateChange: (fps) => {
       }
     });
-    if(inspMode=="CI")
-    {
-      _CameraCtrl.setCameraFrameRate(8);
-    }
-    else if(inspMode=="FI")
-    {
-      _CameraCtrl.setCameraSpeed_HIGHEST();
-    }
+    // One definition, shared with InspectionUI. These were 8 here and 10 there,
+    // and nobody had chosen either number.
+    applyInspFrameRate(_CameraCtrl, inspMode);
 
 
 
@@ -2092,6 +3152,16 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     let deffile = defFileGeneration(edit_info);
     stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
     setCacheDef(deffile);
+
+    // The station filter, stated per session rather than inherited.
+    //
+    // InspAreaBypass turns off BOTH machine-level area gates -- the station
+    // inspection_region and the clean_regions -- for the life of the process,
+    // and the core logs an ERROR on any session that starts with it latched:
+    // "this is the way it ends up on in production". So it is sent explicitly
+    // every time, both ways, and cleared unconditionally when the session ends
+    // rather than only when it was turned on here.
+    ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: !stationEnforced });
 
     let _PGID_=11004;
     ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
@@ -2135,18 +3205,28 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     function CancelNowInsp()
     {
+      // Unconditional: a bypass that outlives the screen that set it is a
+      // machine that has silently stopped enforcing its station.
+      ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: false });
+      // keep:false, and no definfo.
+      //
+      // This was keep:true with definfo:undefined, which does not stop
+      // anything: keep:true is the flag that PRESERVES the subscription,
+      // and a CI carrying neither deffile nor definfo is rejected outright
+      // ("nothing to inspect against"), so the packet never reached the
+      // group logic at all. Measured on the bench: 6.0 fps before the
+      // cancel, 6.0 fps after it, 0.0 fps after a real keep:false.
+      //
+      // The stream therefore outlived the screen and ran until the core
+      // process exited, and anything opened afterwards added its own on
+      // top -- which is what a rising image rate that nobody configured
+      // looks like.
       ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
-      {
-        _PGID_: _PGID_,
-        _PGINFO_: { keep: true },
-        definfo: undefined
-      }, undefined,
-      {
-        resolve:(darr,mainFlow)=>{
-        },
-        reject:(e)=>{
-        }
-      });
+        { _PGID_: _PGID_, _PGINFO_: { keep: false } });
+      // And stop the camera, the way InspectionUI does on its way out. Leaving
+      // it in free run keeps frames flowing into the pipeline for whatever
+      // subscribes next.
+      ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { CameraSetting: { trigger_mode: 1 } });
 
     }
 
@@ -2195,6 +3275,17 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
       className:"modal-sizing size95",
       footer:<>
+          <span style={{ float:'left', display:'flex', alignItems:'center', gap:8 }}>
+            <Switch size="small" checked={stationEnforced}
+              onChange={(v)=>{ setStationEnforced(v);
+                ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: !v }); }} />
+            <span style={{ fontSize:12, color: stationEnforced ? '#8b929c' : '#d4380d',
+                           fontWeight: stationEnforced ? 400 : 700 }}>
+              {stationEnforced
+                ? '站點範圍過濾:啟用(和生產一致)'
+                : '⚠ 站點範圍過濾已關閉 —— 站點外的物件也會被判定,clean_regions 也沒在檢查'}
+            </span>
+          </span>
           <Button key="save-alt" type="primary" onClick={saveAlternateImage}>儲存為替代影像</Button>
           <Button key="close" danger onClick={()=>{ CancelNowInsp(); setModal_view(undefined); }}>關閉</Button>
         </>,
@@ -2228,11 +3319,12 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout palatte-gold-7 vbox"
       key="LOAD"
       text="load" onClick={() => {
-        setFileSelectedCallBack(()=>(filePath) => {
-          let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
+        setFileSelectedCallBack(()=>(filePath, fileInfo) => {
+          let fileNamePath = stripExtension(filePath, DEF_EXTENSION);
 
           loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
+          noteRecentDefFile(fileNamePath, fileInfo, DEF_EXTENSION);   // was missing: 載入 here never reached 近期檔案
           setFileSelectedCallBack(undefined);
         })
 
@@ -2251,140 +3343,325 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       iconType={<CameraOutlined/>}
       dict={DICT}
       addClass="layout palatte-purple-8 vbox"
+      data-testid="take"
       key="TAKE"
       text="take" onClick={() => {
 
-        function setModal_viewAsWait()
-        {
-          setModal_view({
-            onCancel:()=>{},//disable the cancel
-            footer:[],
-              
-            view:"請稍後...."
-            })
-        }
-
+        // OPENING THIS DIALOG DISCARDS UNSAVED EDITS. That is the contract, not
+        // an accident, and cancelling does not exempt you: cancel reloads the
+        // def from disk.
+        //
+        // Building a take on top of unsaved work would mean deciding, for every
+        // path through here, which half of the editor survives -- and that is a
+        // set of states nobody would enumerate correctly. One rule instead:
+        // starting a new object starts from the last saved state.
+        //
+        // Same dirtiness test as the back button (featureSet_sha1 vs the hash
+        // the def was loaded with), deliberately: two different answers to "is
+        // this dirty" is worse than either answer.
+        const _now = defFileGeneration(edit_info);
+        const _dirty = _now.featureSet_sha1 !== edit_info.DefFileHash;
+        const _openTake = () => {
+          // CLEAR THE POST-LOAD DISPLAY LOCK, ONCE, BEFORE THE DIALOG EXISTS.
+          //
+          // While it is non-zero the reducer drops DefConf actions that are not
+          // on a three-entry whitelist -- including IMAGE actions, which is why
+          // useDefImages tags its own with IGNORE_DEFCONF_LOCK. A viewfinder
+          // streaming into that reducer throws every frame away and keeps
+          // showing the picture it opened with, and Def_Retake at the end is
+          // discarded the same way.
+          //
+          // It happens HERE and not in startStream because changing the lock
+          // re-renders this menu, which remounts the component whose state
+          // holds the modal -- so clearing it mid-stream closes the dialog. The
+          // door is the one moment where a remount costs nothing.
+          ACT_DefConf_Lock_Level_Update(0);
         // One fixed name, deliberately. A per-capture name would leave a file
         // behind for every retake in data/, and nothing would ever delete them;
         // reusing one means the previous scratch frame is overwritten by the
         // next capture, which is exactly the lifetime this needs. The leading
         // underscores keep it out of the way of the recipe names beside it.
         const TMP_REF_BASE = "data/__retake_ref";
+        const triggerTimeout = 10000;
+        // Its own group id, so stopping this stream cannot cancel somebody
+        // else's subscription (快速驗證 uses 11004, calibration 10105).
+        const TAKE_STREAM_PGID = 11007;
 
-        function triggerSnapExam(trigger_type=0,timeout=-1,doReset=true)
-        {
-          
-          setModal_viewAsWait();
+        // A NEW OBJECT MUST NOT BE ABLE TO OVERWRITE THE DEF IT CAME FROM.
+        //
+        // After this the def is a different part, so the save dialog must not
+        // open pre-filled with the previous recipe's file name. Same folder --
+        // that is where its siblings live -- new name, and a [N] suffix if
+        // something with that name is already there, picked by actually listing
+        // the folder rather than by hoping.
+        //
+        // Best effort on purpose: a failed listing falls back to the plain name
+        // and the save browser's own exists-prompt. A listing must not be able
+        // to block a capture.
+        const claimNewDefPath = (name) => new Promise((resolve) => {
+          const dir = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1) || 'data/';
+          const done = (taken) => resolve(dir + nextFreeName(name, taken));
+          try {
+            ACT_WS_SEND_BPG(CORE_ID, 'FB', 0, { path: dir, depth: 1 }, undefined, {
+              resolve: (darr) => {
+                let taken = new Set();
+                try {
+                  const files = [];
+                  for (const pkt of (darr || [])) {
+                    const d = pkt && pkt.data;
+                    const list = d && (d.files || d.list || d.content);
+                    if (list) files.push(...list);
+                  }
+                  taken = takenNamesFrom(files);
+                } catch (e) { log.warn('[take] folder listing unreadable', e); }
+                done(taken);
+              },
+              reject: () => done(new Set()),
+            });
+          } catch (e) { done(new Set()); }
+        });
+
+        // The machine's own mm/px, from the file lens calibration writes.
+        // um_per_px is what it produces; m (px/mm) is the same number inverted
+        // and is kept as a fallback for older files -- both straight out of
+        // CalibrationUI's loadInstMmpp, which is the authority for this number.
+        const loadInstrumentMmpp = () => new Promise((resolve) => {
+          try {
+            ACT_WS_SEND_BPG(CORE_ID, "LD", 0, { filename: "data/lens_calib.json" },
+              undefined, {
+                resolve: (pkts) => {
+                  const fl = (pkts || []).find(p => p.type === "FL");
+                  resolve(mmppFromLensCalib(fl && fl.data));
+                },
+                reject: () => resolve(undefined),
+              });
+          } catch (e) { resolve(undefined); }
+        });
+
+        // LIVE PREVIEW, WITHOUT RUNNING AN INSPECTION.
+        //
+        // The core streams frames only while a CI subscription is open, and CI
+        // rejects a request carrying neither deffile nor definfo. Sending the
+        // real def would work but would run the measurement engine on a part
+        // that has no features yet -- a screenful of NA over the picture the
+        // operator is trying to judge. stage_light_report is the lightweight def
+        // type CalibrationUI already streams with: raw frames, no measurement.
+        //
+        // Frames arrive through the normal pipeline into edit_info.img, which is
+        // ALSO where the def's own image lives. That is why cancelling has to put
+        // the def image back -- see restoreDefImage.
+        const startStream = () => {
+          ACT_WS_SEND_BPG(CORE_ID, "ST", 0,
+            { CameraSetting: { trigger_mode: 0, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL } });
+          ACT_WS_SEND_BPG(CORE_ID, "CI", 0, {
+            _PGID_: TAKE_STREAM_PGID,
+            _PGINFO_: { keep: true },
+            definfo: { type: "stage_light_report", grid_size: [10, 10],
+                       nonBG_thres: 100, nonBG_spread_thres: 180 },
+            IMG_ignore_calib: true,
+          });
+        };
+        // TWO things, and leaving out the second is why frames kept arriving
+        // after 停止串流: cancelling the subscription stops the core PUSHING, but
+        // the camera was put into free run by startStream and stays there,
+        // producing frames into the pipeline for anything else that is looking.
+        // CalibrationUI's cleanup does both; this did only the first.
+        //
+        // trigger_mode 1 is software trigger, i.e. the camera produces nothing
+        // until asked -- the state a static editor wants, and the same one
+        // calibration restores.
+        const stopStream = () => {
+          ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
+            { _PGID_: TAKE_STREAM_PGID, _PGINFO_: { keep: false } });
+          ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { CameraSetting: { trigger_mode: 1 } });
+        };
+
+        // CANCEL RELOADS THE DEF. It does not try to put the editor back the way
+        // it was.
+        //
+        // The contract for this whole dialog is deliberately blunt: opening it
+        // means unsaved edits are gone, and cancelling returns to the last SAVED
+        // state. The alternative -- restore the picture, keep the edits -- needs
+        // the streamed frame swapped out without disturbing edit_info, and a
+        // reply dispatched through only its IM packet the way switchImage does
+        // it. That is a third state ("cancelled, but still dirty") that nothing
+        // else in this screen has, and states nobody enumerated are where the
+        // bugs live. One rule, two outcomes, no half-restored editor.
+        //
+        // Skipped when there is nothing to go back to: after a take that has
+        // never been saved, defModelPath names a file that does not exist yet,
+        // and a failed load would leave a wiped def under a streamed frame --
+        // strictly worse than leaving the frame alone.
+        const reloadSavedDef = () => {
+          if (!defModelPath || edit_info.__img_fresh_capture) return;
+          try {
+            loadDefFile(defModelPath, ACT_DefConf_Lock_Level_Update,
+                        ACT_WS_SEND_BPG, CORE_ID, dispatch);
+          } catch (e) { log.warn('[take] could not reload the def', e); }
+        };
+
+        const closeTake = () => {
+          stopStream();
+          reloadSavedDef();
+          setModal_view(undefined);
+        };
+
+        // Wait for a plate trigger and keep the single frame it returns. The
+        // screen is frozen while it waits, which is what was asked for: this is
+        // the existing EX path, one frame, no stream.
+        const waitForTrigger = () => new Promise((resolve, reject) => {
           ACT_DefConf_Lock_Level_Update(0);
-          new Promise((resolve, reject) => {
-            ACT_WS_SEND_BPG(CORE_ID, "EX", 0, {
-              trigger_type,
-              timeout,
-              img_property:{
-                down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
-              }
+          ACT_WS_SEND_BPG(CORE_ID, "EX", 0, {
+            trigger_type: 2, timeout: triggerTimeout,
+            img_property: { down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL }
+          }, undefined, {
+            resolve: (pkts) => {
+              const SS = pkts.find(pkt => pkt.type == "SS");
+              if (SS && SS.data.ACK == true) {
+                const acts = pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt))
+                                 .filter(a => a !== undefined);
+                dispatch({ type: "ATBundle", ActionThrottle_type: "express", data: acts });
+                resolve();
+              } else { message.error("沒有等到觸發訊號"); reject(); }
             },
-              undefined, { resolve, reject });
-            //setTimeout(() => reject("Timeout"), 3000)
-          })
-            .then((pkts) => {
-              
-              let SS=pkts.find(pkt=>pkt.type=="SS");
-              if(SS.data.ACK==true)
-              {              
-                let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
-                dispatch({
-                  type: "ATBundle",
-                  ActionThrottle_type: "express",
-                  data: acts
-                })
-                setModal_view(undefined);
+            reject: (e) => { log.info(e); message.error("取像異常"); reject(); },
+          });
+        });
 
-                // Give the new capture a template file immediately.
-                //
-                // The shape locator trains from a file on disk and has no path
-                // that uses the image in memory, so before this a freshly
-                // re-taken def could not generate features at all -- and the
-                // version before THAT stamped the previous def's .png, which
-                // trained the locator on a different part and then matched
-                // successfully. Writing the core's cached frame to a scratch
-                // sidecar makes the template exist the moment the picture does.
-                //
-                // Scratch, not a real save: no .def is written, defModelPath is
-                // untouched (so the save dialog does not default to this name),
-                // and nothing is uploaded -- DefFile_DB_SEND lives in
-                // commitSave and is not on this path. The def reaches the
-                // database when the operator actually saves it.
-                if(doReset)
-                {
-                  // AFTER the capture's own actions, not before them.
-                  //
-                  // This used to be dispatched outside the promise, so it ran
-                  // before the reply arrived -- and the reply carries a
-                  // sig360_extractor report, whose reducer case runs
-                  // Edit_info_reset(). That spreads Edit_info_Empty over
-                  // edit_info, which sets __img_fresh_capture back to false. The
-                  // retake wiped its own flag, so everything keyed off it (the
-                  // sample-image switchers, the studio's stale-overlay clear)
-                  // behaved as though nothing had been re-taken.
-                  dispatch(DefConfAct.Def_Retake());
-                  ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE);
-                  // Def_Retake clears the def-scoped keys, and this is one of
-                  // them -- so it is set after, never before.
-                  dispatch(DefConfAct.EditInfo_Patch({
-                    __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
-                }
+        // Everything the confirm path shares.
+        //
+        // Order matters and is not obvious: Def_Retake clears def-scoped keys, so
+        // the name, the tags, the engine and the scratch template path are all
+        // written AFTER it.
+        const finishTake = (opt) => {
+          stopStream();
+          // CLEAR THE EDITOR LOCK FIRST, or none of this happens.
+          //
+          // While defConf_lock_level is non-zero the reducer drops every
+          // DefConf action that is not on a three-entry whitelist -- silently,
+          // by `break`ing out of the do-block before the switch. Def_Retake is
+          // not on that list, so it was discarded and the "new object" kept the
+          // previous def's registration, feature cache and name while its path
+          // and engine changed around them. Nothing reported an error; the
+          // studio simply opened with every step already green.
+          //
+          // Entering DefConf leaves the lock at 1 (the post-load display lock).
+          // The original TAKE cleared it inside triggerSnapExam, so the
+          // single-shot path worked and the stream and reuse-image paths, added
+          // later, did not. Doing it here covers all three by construction.
+          ACT_DefConf_Lock_Level_Update(0);
+          // Anything still in flight belongs to the def we are leaving behind.
+          // Without this the reply lands after the retake and puts it back.
+          invalidateDefLoads();
+          dispatch(DefConfAct.Def_Retake(!!opt.keep));
+          ACT_Cache_Img_Save(CORE_ID, TMP_REF_BASE, opt.srcType);
+          dispatch(DefConfAct.EditInfo_Patch({ __tmp_ref_image_path: TMP_REF_BASE + ".png" }));
+
+          // PUT THE CAPTURED FRAME INTO THE CORE'S CACHE TOO.
+          //
+          // Everything downstream inspects __CACHE_IMG__: the studio's 跑一次檢驗
+          // and its robustness sweep, the orientation re-inspect fired when the
+          // studio closes, and therefore what the def canvas rectifies against.
+          // A stream never updates that cache -- the captured frame only reached
+          // the scratch sidecar -- so all of them were measuring the PREVIOUS
+          // recipe's picture while the features came from the new part. On a
+          // bench where the two look alike the scores stay high and only the
+          // reported ORIENTATION gives it away: it is the old image's part, at
+          // the old image's angle. The sweep cannot catch it either, because it
+          // degrades and measures that same wrong image and stays perfectly
+          // self-consistent.
+          //
+          // Dispatching ONLY the IM packet, the way useDefImages.switchImage
+          // does. A fire-and-forget LD has no promiseCBs, so BPG_WS hands the
+          // whole reply to WSDataDispatch -- including the sig360_extractor
+          // report, whose reducer case calls Edit_info_reset and would wipe the
+          // name, tags and engine set two lines above.
+          ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
+            { imgsrc: TMP_REF_BASE + ".png", down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
+            undefined, {
+              resolve: (darr) => {
+                const IM = (darr || []).find((p) => p.type === 'IM');
+                if (!IM) { log.warn('[take] LD returned no IM; the core may not hold the new frame'); return; }
+                const a = BPG_Protocol.map_BPG_Packet2Act(IM);
+                if (a) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+              },
+              reject: (e) => log.warn('[take] could not load the captured frame into the core', e),
+            });
+          dispatch(DefConfAct.DefFileName_Update(opt.name));
+          dispatch(DefConfAct.DefFileTag_Update(opt.tags));
+          // TAKE means "this is an SBM object". It is the one surface where that
+          // is not a guess: the operator just said they are starting a new part
+          // and picked the frame to build it from.
+          dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
+
+          // SCALE FOLLOWS THE PICTURE'S OWNER.
+          //
+          // A camera frame is measured in the MACHINE's mm/px; the def's own
+          // image is measured in the def's. Def_Retake does not clear
+          // _obj.sig360info, and getEditorMmpp reads that first -- so without
+          // this a new part captured here keeps the PREVIOUS def's scale, every
+          // dimension comes out at a consistent wrong ratio, and nothing on
+          // screen looks any different. The single-shot path happened to be
+          // rescued by its own sig360 report; the stream, which runs
+          // stage_light_report with IMG_ignore_calib, produces no report at all
+          // and was silently wrong.
+          //
+          // Reusing the existing image deliberately does NOT do this: that
+          // picture really does belong to the def's scale.
+          if (opt.fromCamera) {
+            loadInstrumentMmpp().then((mmpp) => {
+              if (Number.isFinite(mmpp) && mmpp > 0) {
+                dispatch(DefConfAct.Instrument_Mmpp_Set(mmpp));
+                log.info('[take] instrument scale', { mmpp });
+              } else {
+                // Not silent. Without a lens calibration the def has no honest
+                // scale, and a def that measures in the wrong unit is worse than
+                // one that refuses to measure.
+                log.warn('[take] no lens_calib.json -- scale falls back to the camera param');
+                message.warning('讀不到鏡頭校正（data/lens_calib.json）,比例尺可能不正確');
               }
-              else
-              {
-                setModal_view({
-                  footer:[],
-                  view:"圖像獲取失敗"
-                  })
-              }
+            });
+          }
 
-            })
-            .catch((err) => {
-              log.info(err);
+          claimNewDefPath(opt.name).then((newPath) => {
+            ACT_Def_Model_Path_Update(newPath);
+            setModal_view(undefined);
+            // Deferred a tick so every dispatch above has landed; the studio
+            // reads edit_info on mount and would otherwise see the old def.
+            setTimeout(() => openSBM2(true), 0);
+          });
+        };
 
-              setModal_view({
-                footer:[],
-                view:"圖像獲取異常"
-                })
-            })
-        }
-
-        let triggerTimeout=10000;
-        let doRESET=true
         setModal_view({
-          footer:<>
-              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,false)}}>
-                立即
-              </Button>
-              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,false)}}>
-                {triggerTimeout/1000}s內觸發
-              </Button>
-              {"<<<不重置"}
-              <br/>
-              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,true)}}>
-                立即
-              </Button>
-              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,true)}}>
-                {triggerTimeout/1000}s內觸發
-              </Button>
-              <Button danger onClick={()=>setModal_view(undefined)}>
-                取消
-              </Button>
-              </>,
-            onOk: () => {
-              setModal_view(undefined);
+          title: "建立新物件",
+          footer: null,
+          width: "96vw",
+          style: { top: 12 },
+          bodyStyle: { padding: 10, height: "86vh" },
+          onCancel: () => closeTake(),
+          view: <TakeSetupDialog
+            triggerTimeout={triggerTimeout}
+            loadInstMmpp={loadInstrumentMmpp}
+            onStreamStart={startStream}
+            onStreamStop={stopStream}
+            onWaitTrigger={waitForTrigger}
+            onCancel={() => closeTake()}
+            onGo={finishTake}
+          />,
+        });
+        };
 
-              
-            },
-            onCancel: () => { console.log("onCancel");setModal_view(undefined);},
-            title: dictLookUp("WARNING", DICT),
-            view: DICT.defConf.do_you_want_to_reset_def
-          })
+        if (!_dirty) { _openTake(); return; }
+        Modal.confirm({
+          title: '目前的變更還沒存檔',
+          width: 520,
+          content: '建立新物件會從「上次存檔的狀態」開始,目前編輯中還沒存的內容會消失。'
+                 + '中途按「取消」也一樣 —— 取消是把 def 重新載入回上次存檔的樣子,'
+                 + '不是回到你現在的編輯狀態。要保留的話,先回去存檔。',
+          okText: '先回去存檔',
+          cancelText: '丟掉變更,繼續建立新物件',
+          onCancel: () => { log.warn('[take] discarding unsaved def edits'); _openTake(); },
+        });
       }} />,
     (defConf_lock_level !=0) ? null :
     <BASE_COM.IconButton
@@ -2431,6 +3708,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                   let mod_shape=dclone(shape);
                   
                   edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,shape_list, insp_rep,true);
+                  // A measurement that did not happen must not move the def.
+                  mod_shape = InspectionEditorLogic.KeepDefGeometryIfNotMeasured(shape, mod_shape);
 
                   mod_shape=modShapeCleanUp(mod_shape);
                   if(mod_shape!==undefined)
@@ -2471,83 +3750,37 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }} />,
 
     
+    // THE SBM SURFACE ONLY EXISTS FOR A DEF THAT USES THE SBM LOCATOR, AND
+    // ONLY WHILE THE DEF IS EDITABLE.
+    //
+    // It used to be unconditional, and pressing it silently switched the def to
+    // shape_based -- so a sig360 recipe could be converted by somebody who only
+    // meant to look. Conversion has consequences (features must be re-trained,
+    // the def re-saved), so it belongs to the one control that says so:
+    // -> migrate to shape_based, in the localizer settings.
+    //
+    // The lock is the second half of the same thought. defConf_lock_level != 0
+    // means the reducer drops DefConf actions that are not on a three-entry
+    // whitelist -- silently -- so the studio would open, accept a registration
+    // line, redraw itself as though it had taken it, and change nothing. An
+    // editor that cannot edit should not be reachable at all.
+    (edit_info.locating_engine !== 'shape_based' || defConf_lock_level != 0) ? null :
     <BASE_COM.IconButton
       iconType={<AimOutlined />}
       dict={DICT}
-      addClass="layout palatte-cyan-8 vbox width12"
-      key="SBMSETUP"
-      text="SBM定位設定" onClick={() => {
-        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
-        setModal_view({
-          title: "Shape-based 定位設定",
-          footer: null,
-          width: "96vw",
-          style: { top: 12 },
-          bodyStyle: { padding: 8 },
-          // The X is guarded too, because the studio applies LIVE: closing it does
-          // not discard anything, so leaving by the corner commits exactly the
-          // same broken state as 完成 would. Greying one and leaving the other
-          // open would just be theatre.
-          //
-          // It asks rather than refuses. A def whose reference image cannot be
-          // read can never regenerate, and a modal with no way out is worse than
-          // the state it is protecting against -- so "仍要離開" stays, and the
-          // save path asks once more before anything reaches disk.
-          onCancel: () => {
-            // Leaving the studio re-locates the object.
-            //
-            // The studio is where the registration line, the extraction region
-            // and the trained features are set -- all three change where the
-            // core thinks the part IS. The def canvas rectifies the image
-            // against the last inspection report, so without a fresh one it
-            // goes on drawing the picture aligned to the pose from BEFORE the
-            // edits: overlays that sit next to the part instead of on it.
-            //
-            // Same call the image switcher already makes for the same reason
-            // (useDefImages afterLoad). It lives in another component, so this
-            // goes through the window event that component listens for --
-            // the pattern defconf-images-changed already uses.
-            const closeIt = () => {
-              dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));
-              setModal_view(undefined);
-              window.dispatchEvent(new Event('defconf-orient-now'));
-            };
-            const lg = edit_info.__shape_lastGood;
-            if (!edit_info.__shape_stale) { closeIt(); return; }
-            Modal.confirm({
-              title: '特徵已失效', width: 500,
-              content: '目前的 SBM 特徵跟改過的設定對不上。這樣離開的話,這個 def 不會用 '
-                     + 'SBM 定位——它會退回 sig360,而且畫面上看不出來。',
-              okText: lg ? '還原上一版並離開' : '知道了,回去處理',
-              cancelText: '仍要離開',
-              onOk: () => {
-                if (lg) {
-                  dispatch(DefConfAct.EditInfo_Patch({
-                    def_image_reg: lg.def_image_reg, roi_refine_points: lg.roi_refine_points,
-                    __shape_cache: lg.cache, __shape_stale: undefined, __shape_lastGood: undefined,
-                  }));
-                  closeIt();
-                }
-                // No last-good version: stay in the studio, where 生成特徵點 is.
-              },
-              onCancel: closeIt,
-            });
-          },
-          view: <SBMSetupView
-            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
-            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined);
-                             window.dispatchEvent(new Event('defconf-orient-now')); }}
-            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave();
-                            window.dispatchEvent(new Event('defconf-orient-now')); }}
-          />,
-        });
-      }} />,
+      addClass="layout palatte-geekblue-8 vbox width12"
+      data-testid="sbm-studio-v2"
+      key="SBMSETUP2"
+      text="SBM定位設定 2" onClick={() => {
+        openSBM2(false);
+            }} />,
 
     <BASE_COM.IconButton
       iconType={<ThunderboltOutlined />}
       dict={DICT}
       addClass="layout palatte-purple-8 vbox width12"
       key="NOW"
+      data-testid="quick-verify"
       text="快速驗證" onClick={() => {
 
         let InspectionModeOption={
@@ -2568,12 +3801,21 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           view:<>
 
             選擇模式
-            <Button key="CI_MODE" onClick={_ => startQuickInsp("CI")}>
+            <Button key="CI_MODE" data-testid="quick-verify-ci" onClick={_ => startQuickInsp("CI")}>
               檢驗{machine_custom_setting.InspectionMode=="CI"?<StarOutlined />:null}
             </Button>
-            <Button key="FI_MODE" onClick={_ => startQuickInsp("FI")}>
+            <Button key="FI_MODE" data-testid="quick-verify-fi" onClick={_ => startQuickInsp("FI")}>
               全檢{machine_custom_setting.InspectionMode=="FI"?<StarOutlined />:null}
             </Button>
+            <div style={{ marginTop: 12, borderTop: '1px solid #333', paddingTop: 10 }}>
+              <Button key="XREP" data-testid="quick-verify-xrep"
+                onClick={_ => openXrepBrowser()}>
+                載入 xrep
+              </Button>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 6, lineHeight: 1.7 }}>
+                用存下來的檢驗記錄當輸入:以目前開的設定檢驗它的影像,尺度用<b>那張影像的相機參數</b>(mm/px),結果顯示在這個視窗,不動編輯器的影像。
+              </div>
+            </div>
           </>
         })
 
@@ -2592,7 +3834,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       <BPG_FileBrowser key="BPG_FileBrowser"
         searchDepth={4}
         className="width8 modal-sizing"
-        path={DefFileFolder} visible={fileSelectedCallBack !== undefined}
+        path={(fileSelectCfg && fileSelectCfg.path) || DefFileFolder}
+        visible={fileSelectedCallBack !== undefined}
         BPG_Channel={(...args) => ACT_WS_SEND_BPG(CORE_ID, ...args)}
         onFileSelected={(filePath, fileInfo) => {
           fileSelectedCallBack(filePath, fileInfo);
@@ -2600,9 +3843,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         onOk={(folderPath) => {
         }}
         onCancel={() => {
-          setFileSelectedCallBack(undefined)
+          setFileSelectedCallBack(undefined);
+          setFileSelectCfg(undefined);
         }}
-        fileFilter={defFileFilter}
+        fileFilter={(fileSelectCfg && fileSelectCfg.filter) || defFileFilter}
       />);
 
   }
@@ -2625,6 +3869,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           setFileSavingCallBack(undefined);
         }}
         fileFilter={defFileFilter}
+        // So "part" and "part.hydef" are recognised as the same file and the
+        // overwrite warning actually appears.
+        defaultExtension={DEF_EXTENSION}
       />);
 
   }
@@ -2644,6 +3891,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             camera_param={fallback_nowInspdata.cam_param}  
             reports={fallback_nowInspdata.reports} 
             image={fallback_nowInspdata.image}
+            stationOverlay={stationOverlay}
             IGNORE_IMAGE_FIT_TO_SCREEN={true}
             ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={true}
             BPG_Channel={(...args)=>ACT_WS_SEND_BPG(CORE_ID, ...args) }
@@ -2689,7 +3937,100 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 // which technically works (React calls it as a component) but is fragile against
 // Rules-of-Hooks tooling and confuses readers. As a top-level function component
 // it's idiomatic, lint-friendly, and easier to extract further (next: shape-slice).
-function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
+function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas,
+                       ACT_EDIT_TAR_ELE_TRACE_UPDATE,
+                       ACT_WS_SEND_BPG, CORE_ID, edit_info }) {
+  const dispatch = useDispatch();
+  // ONE primitive's edge profile, from the image already on screen.
+  //
+  // II + __CACHE_IMG__ is the request the CHECK button makes: one inspection of
+  // the frame the editor is holding. No camera, no subscription, nothing to
+  // stop afterwards.
+  //
+  // This started as a CI stream, which was wrong in three ways and each one
+  // cost something. A CI subscription is started with keep:true and ended by a
+  // separate keep:false -- sending keep:false WITH definfo does not make a
+  // one-shot, it registers like any other, so the first version left five
+  // streams running and the camera never stopped. Ending them properly still
+  // left a live stream during the measurement, and a live stream rewrites the
+  // editor's shape list every frame, so the slider's own writes were being
+  // overwritten as fast as they were made. Reaching for CancelNowInsp's
+  // trigger_mode reset to tidy up made it worse again: that is a machine-wide
+  // setting changed by a panel-local probe, and after it the property sheet
+  // stopped writing to the store at all.
+  //
+  // None of it was needed. The threshold is being set against a picture the
+  // operator is looking at, so the right frame is that one -- which also makes
+  // the probe repeatable, and makes "no object" a fact about the def rather
+  // than about the instant the button was pressed.
+  const probeEdgeProfile = (shape) => {
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return Promise.reject(new Error('def 產生失敗')); }
+
+    const off = () => ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { DEBUG_EMIT: { edge_profile: false } });
+    ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { DEBUG_EMIT: { edge_profile: true } });
+
+    return new Promise((resolve, reject) => {
+      ACT_WS_SEND_BPG(CORE_ID, "II", 0,
+        {
+          definfo: deffile,
+          imgsrc: "__CACHE_IMG__",
+          img_property: {
+            calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp },
+          },
+        },
+        undefined,
+        {
+          resolve: (pkts) => {
+            const RP = (pkts || []).find((p) => p.type === "RP");
+            // Put the report on the CANVAS too, the way CHECK and
+            // sendOrientationInspect do. A threshold change moves which edge
+            // each caliper picks, and the hits and the fitted line move with
+            // it -- so the answer the operator is judging should be the one on
+            // screen, not the one from before the drag. IGNORE_DEFCONF_LOCK
+            // because a locked def still gets to be looked at.
+            const put = (pkt) => {
+              if (pkt === undefined) return;
+              const a = BPG_Protocol.map_BPG_Packet2Act(pkt);
+              if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); }
+            };
+            put(RP);
+            put((pkts || []).find((p) => p.type === "IM"));
+            const reports = GetObjElement(RP, ["data", "reports", 0, "reports"]);
+            const one = reports && reports[0];
+            if (!one) {
+              // The core says why when it can; CHECK surfaces the same field.
+              const why = GetObjElement(RP, ["data", "reports", 0, "locate", "reason"]);
+              reject(new Error(why || '這張影像沒有偵測到物件'));
+              return;
+            }
+            // Match by id, not by index: an NA primitive is absent from the
+            // list, so position means nothing.
+            const pools = [].concat(one.detectedLines || [], one.detectedCircles || [],
+                                    one.searchPoints || []);
+            const hit = pools.find((e) => e && e.id === shape.id);
+            if (!hit) { reject(new Error('這個 primitive 沒有回報（可能是 NA）')); return; }
+            // A caliper sends a curve (g), a search point sends candidates
+            // (p/s). Accept either; the panel branches on `kind`.
+            const prof = hit.extra && hit.extra.edge_profile;
+            const usable = prof && ((prof.g && prof.g.length) || (prof.p && prof.p.length));
+            if (!usable) {
+              // Say what DID arrive. "The core did not send it" is a guess, and
+              // it was wrong the first time it was read: the payload was there
+              // and in a shape this check did not recognise.
+              reject(new Error('沒有可用的 edge_profile（extra: '
+                + Object.keys((hit && hit.extra) || {}).join(',') + '）'));
+              return;
+            }
+            resolve(prof);
+          },
+          reject: (e) => reject(e instanceof Error ? e : new Error(String(e))),
+        });
+    }).then((p) => { off(); return p; },
+            (e) => { off(); throw e; });
+  };
+
 
     const DICT = useSelector(state => state.UIData.DICT);
     // New-version (shape_based) defs: measurement primitives must use caliper locating
@@ -2749,13 +4090,37 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
       const PSheetMod = getShapeModule(edit_tar.type);
       const PSheet = PSheetMod && PSheetMod.PropertySheet;
       if (PSheet) {
+        // WHAT THE MACHINE JUST MEASURED, for the fields that want to be set
+        // from it rather than typed. Read from the report rather than from the
+        // shape: the shape carries the DEF's target, and the two must not be
+        // confused. Absent until a CHECK has run, and then the button that uses
+        // it simply does not offer itself.
+        const _measured = (() => {
+          const j = GetObjElement(edit_info, ['inspReport', 'reports', 0, 'judgeReports']);
+          if (!Array.isArray(j)) return undefined;
+          const hit = j.find((e) => e && e.id === edit_tar.id);
+          return (hit && Number.isFinite(hit.value)) ? hit.value : undefined;
+        })();
+        // The core's own stats for THIS region, when the shape is one that has
+        // them. Same rule as _measured above: read from the report, not from
+        // the shape -- the shape says what the def asks for.
+        const _measuredRegion = (() => {
+          if (edit_tar.type !== 'obj_detect') return undefined;
+          const o = GetObjElement(edit_info, ['inspReport', 'reports', 0, 'objDetects']);
+          if (!Array.isArray(o)) return undefined;
+          return o.find((e) => e && e.id === edit_tar.id);
+        })();
         UIArr.push(<PSheet
           key="propertySheet"
+          measured={_measured}
+          measuredRegion={_measuredRegion}
           shape={edit_tar}
           shapeList={shape_list}
           dict={DICT}
           dictTheme={edit_tar.type}
           lockCaliper={lockCaliper}
+          mmpp={(edit_info._obj && edit_info._obj.getEditorMmpp) ? edit_info._obj.getEditorMmpp() : 0}
+          onProbeEdges={probeEdgeProfile}
           onUpdate={(next) => ec_canvas.SetShape(next, next.id)}
           onTracePick={(keyTrace) => ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace)}
         />);
@@ -2912,6 +4277,11 @@ class APP_DEFCONF_MODE extends React.Component {
     {
       CameraSetting: { ROI:[0,0,99999,99999] },
       IMG_STREAMING_JPEG_QUALITY: 85,
+      // The editor ALWAYS wants the per-caliper hits: they are how a setup is
+      // judged. The inspection screen's switch (EMIT_CALIPER_HITS, default
+      // off) is restored on the way out, so a bench with hits off does not
+      // stay off here just because somebody turned them off on the line.
+      DEBUG_EMIT: { cal_hits: true },
     });
   }
 
@@ -2919,6 +4289,9 @@ class APP_DEFCONF_MODE extends React.Component {
     this.props.ACT_ClearImage();
 
     this.props.ACT_DefConf_Lock_Level_Update(0);
+    if (this.props.CORE_ID !== undefined)
+      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+        { DEBUG_EMIT: { cal_hits: (this.props.System_Setting || {}).EMIT_CALIPER_HITS === true } });
   }
   constructor(props) {
     super(props);
@@ -2959,7 +4332,12 @@ class APP_DEFCONF_MODE extends React.Component {
             iconType={<ArrowLeftOutlined/>}
             addClass="layout black vbox width4"
             key="<" onClick={() => this.props.ACT_Fail()} />,
-          <div key="MEASURE" className="s width8 lblue vbox">MEASURE</div>,
+          // Dark ink on the pale header. It inherits the panel's white, which was
+          // right while the panel floated over the camera image and is wrong now
+          // that it has a ground of its own -- and was already wrong here, since
+          // .lblue is rgb(204,204,238). Set locally rather than on the panel:
+          // 複製 / 刪除 / CHECK sit on dark bars and need the white they inherit.
+          <div key="MEASURE" className="s width8 lblue vbox" style={{ color: '#333' }}>MEASURE</div>,
         ];
 
 
@@ -3101,13 +4479,15 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
         {
+          const isALine = substate == UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE;
           MenuSet = [
             <BASE_COM.IconButton
               addClass="layout black vbox"
               key="<" 
             iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
-            <div key="AUX_POINT" className="s lred vbox">APOINT</div>,
+            <div key="AUX_POINT" className="s lred vbox">{isALine ? "ALINE" : "APOINT"}</div>,
           ];
 
 
@@ -3146,7 +4526,7 @@ class APP_DEFCONF_MODE extends React.Component {
             iconType={<ArrowLeftOutlined/>}
             onClick={() => this.props.ACT_Fail()} />,
 
-          <div key="EDIT_Text" className="s width8 lblue vbox">EDIT</div>,
+          <div key="EDIT_Text" className="s width8 lblue vbox" style={{ color: '#333' }}>EDIT</div>,
           <div key="HLINE" className="s HX0_1"></div>
         ]
 
@@ -3163,7 +4543,11 @@ class APP_DEFCONF_MODE extends React.Component {
             ["pt1", "pt2", "pt3"].forEach((pt_key) => {
               if (copy_shape[pt_key] === undefined) return;
 
-              let mmpp = this.props.edit_info._obj.getsig360info_mmpp();
+              // Same reason as the preview canvas: a pure-SBM def has no
+              // signature, and the raw call returns 1 -- so a copied shape
+              // would be offset by 100 MILLIMETRES instead of 100 pixels and
+              // land somewhere off the part.
+              let mmpp = this.props.edit_info._obj.getEditorMmpp();
               copy_shape[pt_key].x += mmpp*100;
               copy_shape[pt_key].y += mmpp*100;
             });
@@ -3313,6 +4697,11 @@ class APP_DEFCONF_MODE extends React.Component {
                               || '核心沒有給原因。線被拖離邊緣超過 margin 時,caliper 掃不到邊就是這個結果。',
                           });
                         }
+
+                        // Same rule as INST_CHECK: NA keeps the def's geometry
+                        // and carries only the status, the reason and the hits.
+                        mod_shape = InspectionEditorLogic.KeepDefGeometryIfNotMeasured(
+                          this.props.edit_tar_info, mod_shape);
 
                         mod_shape=modShapeCleanUp(mod_shape);
                         if(mod_shape!==undefined)
@@ -3477,11 +4866,124 @@ class APP_DEFCONF_MODE extends React.Component {
 
         <DefConfImageSwitcher />
 
-        <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
+        {/* THE PANEL PAINTS ITS OWN GROUND.
+            .overlay is `background: none` by design -- it is the class every
+            floating panel in the app uses, and most of them sit over something
+            plain. This one sits over the CAMERA IMAGE, so the frame read
+            straight through the labels: on a dark or busy part of the part
+            being inspected, "min_strength" and the section headers simply were
+            not there. Reported twice from the bench.
+            Scoped here rather than in basis.css: the fix belongs to the screen
+            whose background is a photograph, not to every overlay. */}
+        <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}
+             style={{ background: '#f2f2f2' }}>
           {MenuSet}
         </div>
 
         {AddtionalInfo}
+
+        {/* AN OLD DEF SAYS SO, ON THE PICTURE, WHERE THE WORK HAPPENS.
+            A def still on the sig360 localizer is not broken -- it inspects --
+            so nothing anywhere said it was the old one. The migration button
+            existed, in the localizer section of a scrolling settings panel,
+            which is not somewhere anyone looks unless they already know to.
+            Top centre, over the image, because that is where the operator is
+            looking and because the banner has to be impossible to mistake for
+            part of the recipe.
+            Only in NEUTRAL and only unlocked: in a drawing substate it would
+            cover the work, and under a lock the reducer drops the DefConf
+            actions the migration is made of -- silently. A button that quietly
+            does nothing is worse than no button. */}
+        {substate === UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL
+          && defModelPath
+          && this.props.defConf_lock_level == 0
+          && (this.props.edit_info.locating_engine || 'sig360') !== 'shape_based' &&
+          <div key="oldver" style={{
+                 // Below the timing caption, not on top of it. At 8 it covered
+                 // the second status line, which is where the per-phase
+                 // breakdown lands -- the one number being read while a def is
+                 // being worked on.
+                 position: 'absolute', top: 44, left: '50%', transform: 'translateX(-50%)',
+                 zIndex: 20, display: 'flex', alignItems: 'center', gap: 10,
+                 background: '#a8071a', color: '#fff', borderRadius: 4,
+                 padding: '6px 12px', fontSize: 13,
+                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>
+            <span>這是舊版定位（sig360）</span>
+            <Button size="small" danger type="primary" data-testid="upgrade-def"
+              style={{ background: '#fff', color: '#a8071a', borderColor: '#fff' }}
+              onClick={() => Modal.confirm({
+                title: '升級到 shape-based 定位（v2）',
+                width: 520,
+                content: (<div style={{ lineHeight: 1.9 }}>
+                  <div>定位引擎換成 shape_based,量測設定、anchor_corner 等其他設定<b>原封不動</b>。</div>
+                  <div style={{ marginTop: 8 }}>接著<b>自動</b>:從 &lt;配方名&gt;.png 抽特徵、烘 ROI 精修窗口、
+                    把線/弧/搜尋點改成 caliper、對參考影像驗證一次,然後給你一份結果摘要。</div>
+                  <div style={{ marginTop: 8 }}>特徵範圍用 sig360 輪廓;要排除鄰件/反光或自己挑 ROI 點,
+                    摘要上有「開 studio 微調」。</div>
+                  <div style={{ marginTop: 8, color: '#a8071a' }}>
+                    做完要<b>重新存檔</b>才算數;不存,這個 def 還是原來的 sig360。</div>
+                  <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                    存檔前都還沒有寫到磁碟,不想要的話直接離開不要存就好。</div>
+                </div>),
+                okText: '升級', cancelText: '先不要',
+                onOk: () => this.props.ACT_Migrate_To_Shape(this.props.edit_info),
+              })}>升級</Button>
+          </div>}
+
+        {/* SHAPE_BASED, BUT STORED THE OLD WAY.
+            A def whose features were saved before the format carried its own
+            ROI windows keeps the coarse feature levels and nothing else. The
+            core no longer loads that -- it refuses and asks for a regenerate --
+            but without this the operator finds out when the machine will not
+            run, which is the worst moment and the least informative place.
+            One key tells them apart: a cache written before the change has no
+            `roi`. edit_info.__shape_cache is the def's own, carried in by the
+            load (InspectionEditorLogic reads it out of @__SBM_INFO__), so this
+            is what the file says and not what some later step recomputed. */}
+        {/* NOT gated on the lock, unlike the migration banner above.
+            That one is hidden under a lock because pressing it dispatches
+            DefConf actions the reducer would drop -- a button that quietly does
+            nothing. This one states a fact about the FILE: the machine will not
+            load it. That is true whether or not the def is locked for editing,
+            and it is exactly what someone looking at a locked recipe needs to
+            know. The button is the part that needs an unlocked def, so the
+            button is what the lock hides. */}
+        {substate === UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL
+          && defModelPath
+          && (this.props.edit_info.locating_engine || 'sig360') === 'shape_based'
+          && this.props.edit_info.__shape_cache
+          && !this.props.edit_info.__shape_cache.roi &&
+          <div key="oldfmt" data-testid="oldfmt-banner" style={{
+                 position: 'absolute', top: 44, left: '50%', transform: 'translateX(-50%)',
+                 zIndex: 20, display: 'flex', alignItems: 'center', gap: 10,
+                 background: '#a8071a', color: '#fff', borderRadius: 4,
+                 padding: '6px 12px', fontSize: 13,
+                 boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}>
+            <span>這個 def 只有粗定位特徵(舊格式),機台會跑但精度只有幾個像素</span>
+            {this.props.defConf_lock_level != 0
+              ? <span style={{ opacity: 0.85 }}>（解鎖後可重新產生）</span>
+              : <Button size="small" danger type="primary" data-testid="oldfmt-def"
+              style={{ background: '#fff', color: '#a8071a', borderColor: '#fff' }}
+              onClick={() => Modal.confirm({
+                title: '重新產生特徵點（舊格式）',
+                width: 540,
+                content: (<div style={{ lineHeight: 1.9 }}>
+                  <div>這個 def 存的是<b>舊格式的特徵</b>:只有粗比對用的特徵層,
+                    沒有 ROI 精修要用的視窗和選點。</div>
+                  <div style={{ marginTop: 8 }}>機台會載入它,但<b>只做粗定位</b>(誤差幾個像素,
+                    不是 sub-pixel)。檢驗畫面會一直顯示「只有粗定位」的提示,報告裡
+                    <code>locate.code</code> 是 <code>coarse_only</code>。</div>
+                  <div style={{ marginTop: 8 }}>接著會打開「SBM定位設定」,在裡面按
+                    <b>生成特徵點</b>,然後<b>重新存檔</b>。存好之後 def 會自己帶著需要的
+                    像素,連參考影像都不用放在旁邊。</div>
+                  <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                    整批轉換用 tools/webctl/upgrade_defs.mjs —— 它走的是同一條路,
+                    而且會檢查重抽的特徵跟原本存的一致才寫回。</div>
+                </div>),
+                okText: '開始設定', cancelText: '先不要',
+                onOk: () => this.props.ACT_Open_Shape_Studio(),
+              })}>重新產生</Button>}
+          </div>}
 
 
 
@@ -3508,6 +5010,8 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
 
     ACT_DefConf_Lock_Level_Update: (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) },
 
+    ACT_Migrate_To_Shape: (edit_info) => migrateDefToShapeBased(dispatch, edit_info),
+    ACT_Open_Shape_Studio: () => openShapeStudio(),
     ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
     ACT_WS_SEND_BPG: (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args)),
     ACT_ClearImage: () => { dispatch(UIAct.EV_WS_Image_Update(null)) },

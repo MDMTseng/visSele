@@ -84,6 +84,39 @@ function relTime(entry, startedMs) {
   return { text: '00:00.000', approx: true };
 }
 
+// CLEARING IS A WATERMARK, NOT A DELETE.
+//
+// The old clear emptied the local buffer, and the buffer is not where the log
+// lives: the drainer keeps a ring and replays it on every connect, so closing
+// the drawer and opening it again brought back everything that had just been
+// cleared. The clear looked like it worked and then quietly undid itself.
+//
+// So it records a POSITION instead -- the newest producer timestamp at the
+// moment it was pressed -- and the panel hides anything at or before it. A
+// position survives a reconnect because it is the producer's clock, and it
+// survives the drawer closing because it is in localStorage.
+//
+// timeUnixNano, deliberately, and not the client receive time: a replayed line
+// is received NOW, so a receive-time watermark would hide nothing after a
+// reconnect, which is the bug this replaces. Nanoseconds since the epoch are
+// past 2^53, so the compare is BigInt and the stored value is a string.
+//
+// An entry whose timestamp cannot be read is NEVER hidden. The watermark is a
+// convenience; losing a line to it would not be.
+const LS_CLEARED = 'visSele.corelog.cleared_ns.v1';
+function nsOf(e) {
+  if (e && typeof e.timeUnixNano === 'string' && /^\d+$/.test(e.timeUnixNano)) {
+    try { return BigInt(e.timeUnixNano); } catch (_) { return null; }
+  }
+  return null;
+}
+function atOrBefore(e, markStr) {
+  if (!markStr) return false;
+  const ns = nsOf(e);
+  if (ns === null) return false;
+  try { return ns <= BigInt(markStr); } catch (_) { return false; }
+}
+
 function StatusPill({ status }) {
   const map = {
     idle:          ['gray',   'idle'],
@@ -198,6 +231,18 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
   const [minSevIdx, setMinSevIdx] = useState(2);         // index into SEVERITIES; 2 = INFO
   const [modFilter, setModFilter] = useState([]);
   const [needle, setNeedle]     = useState('');
+  // Per URL, so two machines open in two tabs do not share a clear position.
+  const [clearedNs, setClearedNs] = useState(() => {
+    try { return localStorage.getItem(LS_CLEARED + ':' + (url || '')) || ''; }
+    catch (_) { return ''; }
+  });
+  const setCleared = useCallback((v) => {
+    setClearedNs(v);
+    try {
+      const k = LS_CLEARED + ':' + (url || '');
+      if (v) localStorage.setItem(k, v); else localStorage.removeItem(k);
+    } catch (_) { /* private window, blocked storage -- the session still works */ }
+  }, [url]);
   const [paused, setPaused]     = useState(false);
   const [autoscroll, setAutoscroll] = useState(true);
 
@@ -301,6 +346,9 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
     const n = needle ? needle.toLowerCase() : null;
     const modSet = modFilter.length ? new Set(modFilter) : null;
     return entries.filter((e) => {
+      // Before the other filters: a cleared line is gone regardless of what the
+      // severity or the needle say about it.
+      if (atOrBefore(e, clearedNs)) return false;
       if (e.kind === 'gap') return true;
       if (typeof e.severityNumber === 'number' && e.severityNumber < minSn) return false;
       const mod = (e.attributes && e.attributes.module) || '';
@@ -308,7 +356,7 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
       if (n) return (e.body || '').toLowerCase().includes(n) || mod.toLowerCase().includes(n);
       return true;
     });
-  }, [entries, needle, minSn, modFilter]);
+  }, [entries, needle, minSn, modFilter, clearedNs]);
 
   const onDumpNow = useCallback(() => {
     const c = clientRef.current; if (!c) return;
@@ -365,7 +413,29 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
           <input type="checkbox" checked={autoscroll} onChange={(e) => setAutoscroll(e.target.checked)} /> follow
         </label>
         <button onClick={onDumpNow} title="寫出 log 飛行記錄快照 (crash_*.dump)">匯出 Log 快照</button>
-        <button onClick={() => { bufRef.current = []; setEntries([]); }}>clear</button>
+        {/* The buffer is NOT emptied -- that is what makes 取消清除 possible at
+            all. The lines are still there, behind the watermark, so undoing is
+            just dropping it. What undo cannot bring back is anything the ring
+            or the 5000-line cap has since aged out, which is the honest limit
+            of the feature and not worth pretending otherwise. */}
+        <button
+          title="隱藏目前為止的訊息。位置會記住，重連或重開面板不會跑回來"
+          onClick={() => {
+            // The newest producer timestamp we currently hold. Not Date.now():
+            // the panel can be behind the producer, and a wall-clock mark would
+            // hide lines that have not arrived yet.
+            let mx = null;
+            for (const e of bufRef.current) {
+              const ns = nsOf(e);
+              if (ns !== null && (mx === null || ns > mx)) mx = ns;
+            }
+            setCleared(mx === null ? '' : String(mx));
+          }}>clear</button>
+        {clearedNs ? (
+          <button
+            title="把清除位置取消，回到緩衝區裡還在的所有訊息"
+            onClick={() => setCleared('')}>取消清除</button>
+        ) : null}
       </div>
 
       {modules.length > 0 && (
@@ -419,6 +489,15 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
       <div style={{ padding: 4, fontSize: 11, opacity: 0.7 }}>
         {visible.length}/{entries.length} entries
         {entries.length >= BUFFER_CAP && ` (cap ${BUFFER_CAP}; dropping oldest)`}
+        {/* Say that lines are being withheld, and by what. A filter that is
+            remembered across sessions must not be invisible -- otherwise the
+            next person opens a quiet panel and concludes the core stopped
+            logging. */}
+        {clearedNs ? (
+          <span style={{ marginLeft: 8, color: '#c89000' }}>
+            · 已清除（隱藏 {entries.filter((e) => atOrBefore(e, clearedNs)).length} 筆）
+          </span>
+        ) : null}
       </div>
     </div>
   );

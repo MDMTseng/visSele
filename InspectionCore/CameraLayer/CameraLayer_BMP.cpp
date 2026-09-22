@@ -23,6 +23,147 @@ LOG_MODULE("cam.bmp");
 #define M_PI (3.14159265358979323846)
 #endif
 
+
+// ── The fake camera's own scale. ───────────────────────────────────────────────
+//
+// A folder of frames is a machine only if it also says WHAT SIZE THINGS ARE. The
+// pixels alone cannot: point the same file at a finer lens and nothing changes,
+// which models a part that shrank to match the instrument -- the one thing that
+// never happens in the field. What actually changes is how many pixels a part of
+// unchanged physical size covers.
+//
+// So a frame carries its own mm/px (the scene it was shot at) and the fake
+// camera carries the instrument's (FAKE_CAM_MMPP). Loading resamples by the
+// ratio, exactly as a different lens would: a camera twice as fine sees the
+// same part across twice as many pixels.
+//
+// The sensor does NOT change size -- a real one never does -- so the result is
+// centre-cropped when it grows and padded with the field's own border value
+// when it shrinks. Both are logged: a fixture that no longer fits the sensor
+// must be visible, not silently cut in half.
+//
+//   FAKE_CAM_MMPP=<mm/px>     the instrument. Unset -> no scaling at all.
+//   <frame>.json              per-frame:  {"source_mmpp": 0.0138...}
+//   frames.json               per-folder: the same key, for a whole carousel
+//
+// Absent or unparseable scene scale means 1:1 and one line saying so. Guessing
+// here would produce a fixture measured to a plausible, consistent, wrong size.
+static double fakeCamSceneKey(const std::string &imgPath, const char *key)
+{
+    auto readKey = [key](const std::string &p) -> double {
+        FILE *fh = fopen(p.c_str(), "rb");
+        if (!fh) return 0.0;
+        std::string buf;
+        char chunk[1024]; size_t n;
+        while ((n = fread(chunk, 1, sizeof(chunk), fh)) > 0) buf.append(chunk, n);
+        fclose(fh);
+        size_t at = buf.find(std::string("\"") + key + "\"");
+        if (at == std::string::npos) return 0.0;
+        at = buf.find(':', at);
+        if (at == std::string::npos) return 0.0;
+        return atof(buf.c_str() + at + 1);
+    };
+
+    size_t dot = imgPath.find_last_of('.');
+    size_t sep = imgPath.find_last_of("/\\");
+    if (dot != std::string::npos && (sep == std::string::npos || dot > sep)) {
+        double v = readKey(imgPath.substr(0, dot) + ".json");
+        if (v > 0) return v;
+    }
+    if (sep != std::string::npos)
+        return readKey(imgPath.substr(0, sep + 1) + "frames.json");
+    return 0.0;
+}
+
+// ── The fake camera's exposure. ───────────────────────────────────────────────
+//
+// Same shape as the scale above, and the same rule: WITH NOTHING SET, THE FILE
+// IS LOADED EXACTLY AS IT IS. A picture already has an exposure baked into its
+// pixels; inventing a second one on top of it, silently, is how every loaded
+// frame once came back at 1% brightness because a real machine's 50 us setting
+// was being applied to a file shot at something else entirely.
+//
+//   FAKE_CAM_EXPO_MS=<ms>     what this camera is set to. Unset -> untouched.
+//   source_exposure_ms        what the frame was shot at, in its sidecar json.
+//                             ABSENT MEANS 1 ms: a plain image with no metadata
+//                             is full brightness, which is the only reading
+//                             that leaves an unannotated fixture alone.
+//
+// brightness = camera_ms / source_ms, saturating at 255. Half the exposure is
+// half the light; twice it blows the highlights out and keeps them out, because
+// a sensor clips and a fixture that pretends otherwise would make an
+// over-exposed frame look recoverable when on the real machine it is not.
+static void fakeCamApplyExposure(cv::Mat &img, const std::string &imgPath)
+{
+    const char *env = getenv("FAKE_CAM_EXPO_MS");
+    if (env == NULL || env[0] == '\0') return;
+    const double camMs = atof(env);
+    if (!(camMs > 0)) {
+        LOGE_EVERY_N(50, "FAKE_CAM_EXPO_MS='%s' is not a time -- brightness untouched", env);
+        return;
+    }
+    double srcMs = fakeCamSceneKey(imgPath, "source_exposure_ms");
+    if (!(srcMs > 0)) srcMs = 1.0;              // 1 ms == full brightness, by definition
+
+    const double mult = camMs / srcMs;
+    if (std::fabs(mult - 1.0) < 1e-9) return;
+    cv::Mat out;
+    img.convertTo(out, img.type(), mult, 0.0);  // saturating cast, like a sensor
+    img = out;
+    LOGI_EVERY_N(50, "fake cam %.4g ms on a %.4g ms frame: brightness x%.3f%s",
+                 camMs, srcMs, mult, mult > 1.0 ? " (highlights clip)" : "");
+}
+
+static void fakeCamApplyScale(cv::Mat &img, const std::string &imgPath)
+{
+    const char *env = getenv("FAKE_CAM_MMPP");
+    if (env == NULL || env[0] == '\0') return;
+    const double camMmpp = atof(env);
+    if (!(camMmpp > 0)) {
+        LOGE_EVERY_N(50, "FAKE_CAM_MMPP='%s' is not a scale -- frames left unscaled", env);
+        return;
+    }
+    const double sceneMmpp = fakeCamSceneKey(imgPath, "source_mmpp");
+    if (!(sceneMmpp > 0)) {
+        LOGE_EVERY_N(50, "FAKE_CAM_MMPP set but %s has no source_mmpp beside it "
+                         "(<frame>.json or frames.json) -- loaded 1:1", imgPath.c_str());
+        return;
+    }
+
+    // More mm per source pixel than the camera has: the camera resolves finer,
+    // so the same object lands on MORE pixels. That is an upscale.
+    const double factor = sceneMmpp / camMmpp;
+    if (std::fabs(factor - 1.0) < 1e-9) return;
+
+    const cv::Size sensor = img.size();
+    cv::Mat scaled;
+    cv::resize(img, scaled, cv::Size(), factor, factor,
+               factor < 1.0 ? cv::INTER_AREA : cv::INTER_LINEAR);
+
+    if (scaled.cols >= sensor.width && scaled.rows >= sensor.height) {
+        const int x = (scaled.cols - sensor.width) / 2;
+        const int y = (scaled.rows - sensor.height) / 2;
+        img = scaled(cv::Rect(x, y, sensor.width, sensor.height)).clone();
+        LOGI_EVERY_N(50, "fake cam %.6g mm/px on a %.6g mm/px scene: x%.3f, "
+                         "centre-cropped to the %dx%d sensor (the part may now "
+                         "reach the border)", camMmpp, sceneMmpp, factor,
+                     sensor.width, sensor.height);
+    } else {
+        // Pad with the border value rather than black: on a backlit fixture the
+        // field IS the background, and a black frame around it would be an edge
+        // no lens produces and every feature extractor would find.
+        cv::Scalar pad = cv::mean(scaled.row(0));
+        cv::Mat out(sensor, scaled.type(), pad);
+        const int x = (sensor.width - scaled.cols) / 2;
+        const int y = (sensor.height - scaled.rows) / 2;
+        scaled.copyTo(out(cv::Rect(x, y, scaled.cols, scaled.rows)));
+        img = out;
+        LOGI_EVERY_N(50, "fake cam %.6g mm/px on a %.6g mm/px scene: x%.3f, "
+                         "padded to the %dx%d sensor with the field value",
+                     camMmpp, sceneMmpp, factor, sensor.width, sensor.height);
+    }
+}
+
 CameraLayer_BMP::CameraLayer_BMP(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context):CameraLayer(camInfo,misc,cb,context)
 {
     gaussianNoiseTable_M.resize(256);
@@ -158,7 +299,14 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
                 N = (rand() % (2*noiseRange + 1)) - noiseRange;
               for (int ch = 0; ch < channelCount; ch++) {
                 int pix = sp[ch < src_ch ? ch : 0];
-                int d = N + ((int)((((uint64_t)pix) * (uint64_t)tExp) >> 12));
+                // >>13, matching tExp's own (1<<13) == 100%. It was >>12 here
+                // and in the row-copy path below, so every CROPPED frame came
+                // out twice as bright as the same pixels do full-frame --
+                // anything above 128 saturated to white. Invisible while
+                // exposure simulation was off and the fixture was mid-grey;
+                // it surfaced the moment a fake camera exposure was asked for
+                // and the part came back at 2x the level it was set to.
+                int d = N + ((int)((((uint64_t)pix) * (uint64_t)tExp) >> 13));
                 if (d < 0) d = 0;
                 else if (d > 255) d = 255;
                 dst[j*channelCount + ch] = (uint8_t)d;
@@ -197,7 +345,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
                 N = (rand() % (2*noiseRange + 1)) - noiseRange;
               for (int c = 0; c < channelCount; c++) {
                 int pix = sp[c < src_ch ? c : 0];
-                int d = N + ((int)((((uint64_t)pix) * (uint64_t)tExp) >> 12));
+                int d = N + ((int)((((uint64_t)pix) * (uint64_t)tExp) >> 13));   // see the note above
+
                 if (d < 0) d = 0;
                 else if (d > 255) d = 255;
                 dst[j*channelCount + c] = (uint8_t)d;
@@ -462,6 +611,8 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       this->fileName = fileName;
         img_load = cv::imread(fileName.c_str(), cv::IMREAD_ANYCOLOR);
         ret = img_load.empty() ? -1 : 0;
+        if (ret == 0) { fakeCamApplyScale(img_load, fileName);
+                        fakeCamApplyExposure(img_load, fileName); }
         if (ret == 0 && !img_load.isContinuous()) img_load = img_load.clone();
 
         // A failed load is always news, and now says why it matters. A

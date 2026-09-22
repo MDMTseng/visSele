@@ -2,6 +2,7 @@
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { edgeField, drawSingleCaliperBox, drawCaliperHits } from './_caliperFields';
 export { SearchPointPropertySheet as PropertySheet } from './_propertySheet/SearchPointPropertySheet';
@@ -53,9 +54,10 @@ export function buildWhiteListKey(ctx) {
   return buildWhiteListKeyFromFields(fields, ctx);
 }
 
-// canvasCtrl: search_point refs only a line (ref[0]).
+// canvasCtrl: search_point refs a line (ref[0]) -- a fitted one or an
+// aux_line through two points; the core follows either by id.
 export function availableRefShapes(shapeList /*, subtype */) {
-  return shapeList.filter((s) => s.type === 'line');
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'aux_line');
 }
 
 // canvasCtrl: search_point's pt1 is the search target — center on it.
@@ -74,8 +76,8 @@ export function draw(ctx, shape, renderer, {
   inFullDisplay = true, shapeList = [], next_ShapeColor = null,
   skip_id_list = [], unitConvert = { unit: 'mm', mult: 1 }, drawSubObjs = false,
 } = {}) {
-  let shapeColor = SHAPE_TYPE_COLOR[type] || SHAPE_TYPE_COLOR.default;
-  shapeColor = Color(shapeColor).alpha(0.8);
+  const K = overlayKit(ctx, renderer);
+  const shapeColor = K.C.search;
 
   let db_obj = renderer.db_obj;
   let subObjs = shape.ref
@@ -102,6 +104,7 @@ export function draw(ctx, shape, renderer, {
 
   if (!isCaliper) {
     // Contour mode: legacy thick margin band + offset visualization line.
+    ctx.strokeStyle = K.withAlpha(K.C.search, OVERLAY.alpha.search * 2.6);
     ctx.lineWidth = margin * 2;
     renderer.drawReportLine(ctx, {
       x0: shape.pt1.x - vector.x, y0: shape.pt1.y - vector.y,
@@ -129,11 +132,30 @@ export function draw(ctx, shape, renderer, {
   if (drawSubObjs)
     renderer.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs, inFullDisplay);
 
-  ctx.strokeStyle = 'gray';
-  renderer.drawpoint(ctx, shape.pt1);
-  if (shape.locating_anchor) {
-    ctx.strokeStyle = 'red';
-    renderer.draw_aimcross(ctx, shape.pt1, renderer.getPointSize() * 3, 0.3);
+  // A search point IS a position -- marked with the X every point gets, not a
+  // filled dot sitting on top of it. An anchor is the same point in the datum
+  // colour: the ROLE differs, the mark does not.
+  K.crosshair(shape.pt1, shape.locating_anchor ? K.C.datum : undefined);
+  // The scan direction, in contour mode too (it used to be visible only as the
+  // caliper box's arrow, so contour points showed no polarity at all).
+  if (inFullDisplay) {
+    const sd = Math.atan2(cnormal.y, cnormal.x);
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle = K.C.search;
+    K.arrow(K.at(shape.pt1, sd, margin + 3 * K.ps), sd, K.S.arrow_head * K.ps);
+    ctx.restore();
+  }
+  // An anchor used to get MORE than a colour here: a second crosshair drawn on
+  // top of the first, plus corner ticks (anchor_corner) or a pair of axis ticks
+  // (edge anchor) saying which directions it constrains. That is gone by
+  // request -- an anchor is a search point in orange and nothing else. The
+  // 2D/1D distinction it carried still lives in the property sheet, which is
+  // where the answer is actually read; the canvas was spending marks on an
+  // image that already has plenty.
+  if (OVERLAY.label.show_primitive_names && inFullDisplay && shape.name && K.showDetail(shape.width)) {
+    const nm = shape.name + (shape.locating_anchor ? (shape.anchor_corner ? ' 錨·角點' : ' 錨·邊') : '');
+    K.chip(nm, shape.pt1.x, shape.pt1.y + K.S.chip_gap * 2 * K.ps,
+           shapeColor, OVERLAY.font.tag);
   }
 
   // Caliper-mode per-hit overlay (dots, not crosses — search_point clusters
@@ -145,11 +167,17 @@ export function draw(ctx, shape, renderer, {
   }
 }
 
-// Inspection-mode draw — just a red cross at pt1. Extracted from
-// renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.search_point.
+// Inspection-mode draw: the point the inspection actually found, marked the
+// same way the def marks the one it was told to look for -- a crosshair aimed
+// at the position, with the middle left clear so the reported pixel is visible.
 export function drawInspection(ctx, shape, renderer) {
-  ctx.strokeStyle = 'rgba(179, 0, 0,0.5)';
-  renderer.drawcross(ctx, shape.pt1, renderer.getPointSize() * 3);
+  const K = overlayKit(ctx, renderer);
+  // Anchors are orange HERE TOO. This drew the default feature yellow for every
+  // search point and never looked at locating_anchor, so a point that was
+  // orange while you were setting it up changed colour the moment the machine
+  // ran -- and orange means "this is what everything else is measured from",
+  // which is exactly the thing you want to find on an inspected frame.
+  K.crosshair(shape.pt1, shape.locating_anchor ? K.C.datum : undefined);
   ctx.lineWidth = renderer.getIndicationLineSize();
   if (renderer.show_caliper_hits !== false && shape.cal_hits) {
     drawCaliperHits(ctx, shape.cal_hits, renderer, { style: 'dot' });

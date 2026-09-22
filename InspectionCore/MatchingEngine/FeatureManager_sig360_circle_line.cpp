@@ -1,7 +1,9 @@
+#include <set>
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
 #include "JudgeCALC.h"
 #include "LabelingCV.h"
+#include "MEPhase.h"
 
 #include "SearchPointCV.h"
 #include "logctrl.h"
@@ -259,10 +261,11 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   // (* ppmm) before constructing CaliperParams. Sentinels (-1) pass through
   // and trigger downstream fallbacks ("use initMatchingMargin" / "1px step").
   cir.locating = 0; cir.cal_count = CALIPER_PARSE_DEFAULT_COUNT; cir.cal_width = CALIPER_PARSE_DEFAULT_WIDTH; cir.cal_length = -1; cir.cal_step = -1;
-  cir.cal_min_inliers = 0; cir.cal_max_error = 0;
+  cir.cal_min_inliers = 0; cir.cal_max_error = 0; cir.cal_soft_reject = 0;
   cir.fit_mode = 0;  // 0=ls, 1=outer, 2=inner (LS-center envelope variants)
   // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
   cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::FALLING;
+  cir.edge_rel_strength = 0.15f; cir.edge_sigma = 0;
   cir.edge_nth = 0; cir.edge_min_strength = 0;
   {
     char *loc = (char *)JFetch(circle_obj, "locating", cJSON_String);
@@ -274,6 +277,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
                 cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 cir.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
                 cir.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
+                cir.cal_soft_reject = JFetch_NUMBER_ex(calo, "soft_reject", 0);
                 // Clamp against pathological caliper sizes that would DoS the
                 // measurement loop (per-primitive cost ~ count * (2*width+1) *
                 // length). Real-world calipers are tens; even at these caps
@@ -288,6 +292,8 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
       cir.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       cir.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
       cir.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+      cir.edge_rel_strength = JFetch_NUMBER_ex(edgeo, "rel_strength", 0.15f);
+      cir.edge_sigma        = JFetch_NUMBER_ex(edgeo, "sigma", 0);
     }
     // Envelope fit mode — top-level on the arc def. "ls" (default) | "outer" | "inner".
     char *fm = (char *)JFetch(circle_obj, "fit_mode", cJSON_String);
@@ -695,6 +701,41 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       if (ParseMainVector(flip_f, report, judge.OBJ1_id, &vec1) != 0 ||
           ParseMainVector(flip_f, report, judge.OBJ2_id, &vec2) != 0)
       {
+        break;
+      }
+
+      if (judge.data.ANGLE.signed_mode)
+      {
+        // Direction of each line modulo 180, rotation from line 1 to line 2,
+        // minus the nominal, wrapped into (-90, 90]. No intersection, no
+        // quadrant, no label point: two parallel lines give exactly 0. The
+        // sign is CCW-positive in the part's frame: the vectors are in the
+        // image frame, and a flipped part turns the other way, so the sign
+        // follows flip_f. The UI (shapes/measure/angle.js, signedAngleDeg)
+        // computes the same formula on the def; keep the two together.
+        double a1 = atan2(vec1.y, vec1.x), a2 = atan2(vec2.y, vec2.x);
+        double d = (a2 - a1) * 180.0 / M_PI;
+        if (flip_f < 0) d = -d;
+        d -= judge.data.ANGLE.nominal_deg;
+        // The same seven readings as the UI's vectorAngleDeg (angle.js).
+        typedef FeatureReport_judgeDef R;
+        auto wrap180 = [](double v) { v = fmod(v, 180.0); if (v > 90.0) v -= 180.0; else if (v <= -90.0) v += 180.0; return v; };
+        auto wrap360 = [](double v) { v = fmod(v, 360.0); if (v > 180.0) v -= 360.0; else if (v <= -180.0) v += 360.0; return v; };
+        auto pos180  = [](double v) { v = fmod(v, 180.0); if (v < 0) v += 180.0; return v; };
+        auto pos360  = [](double v) { v = fmod(v, 360.0); if (v < 0) v += 360.0; return v; };
+        switch (judge.data.ANGLE.range)
+        {
+          case R::ANGLE_ABS90:     d = fabs(wrap180(d)); break;
+          case R::ANGLE_DEG180:    d = pos180(d); break;
+          case R::ANGLE_SIGNED180: d = wrap360(d); break;
+          case R::ANGLE_DEG360:    d = pos360(d); break;
+          case R::ANGLE_SUPP:      d = 180.0 - pos180(d); break;
+          case R::ANGLE_COMP:      d = 90.0 - fabs(wrap180(d)); break;
+          case R::ANGLE_SIGNED90:
+          default:           d = wrap180(d); break;
+        }
+        judgeReport.measured_val = (float)d;
+        notNA = true;
         break;
       }
 
@@ -1177,8 +1218,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // columns, an apex search does not. If the window is truncated the real
       // apex may be in the part that was cut, and the surviving columns then
       // agree on a DIFFERENT edge -- with full strength, a consistent consider
-      // band and a stable weighted average. That is why a clipped window is NA
-      // below rather than a slightly worse number.
+      // band and a stable weighted average. That was the case for refusing a
+      // clipped window; since 2026-09-20 it is measured by default and the
+      // clip geometry goes into the record instead (see allowClipped below).
       acv_XY off = eT.getImgOffset();
       acv_XY out; float str;
       bool ok;
@@ -1213,6 +1255,31 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGI_EVERY_N(200, "search_point: edge polarity 'any' -> bidirectional scan "
                           "(was silently 'falling' before 2026-08-25)");
       }
+      // search_far IS A POLARITY, NOT ONLY A SIDE.
+      //
+      // The legacy contour search above (locating==0) does two things for
+      // search_far: it flips `vec` -- so the scan starts from the other side
+      // -- and it passes searchDir=-1 into getContourPointsWithInLineContour,
+      // where it flips the contour-orientation test (dotP*flip_f > cosSim).
+      // The orientation test is taken against the bar vector that was just
+      // flipped, so the two cancel: legacy search_far keeps the SAME absolute
+      // edge orientation and only starts from the far side. This path
+      // inherited the vec flip alone. A flipped window reverses the gradient
+      // axis, so "falling" then names the edge of the OPPOSITE absolute
+      // orientation -- one flip where the legacy had two.
+      //
+      // Measured on 93007 8G2570062B: @search_point_2_copy_copy_copy_copy
+      // (angle +90) and ...[1] (angle -90, search_far) are a 0.15 mm wire-
+      // width pair. sig360 reads 0.147. Here both landed on the same outer
+      // edge, 0.000, and the orientation-essential judge on that pair threw
+      // the whole part away. With the polarity inverted for the search_far
+      // point: 0.149, stable from margin 0.1 to 0.45, all eight judges OK.
+      // `any` has no side and is left alone.
+      if (def.data.anglefollow.search_far)
+      {
+        if      (sp_et == SP_LIGHT_TO_DARK) sp_et = SP_DARK_TO_LIGHT;
+        else if (sp_et == SP_DARK_TO_LIGHT) sp_et = SP_LIGHT_TO_DARK;
+      }
       // What the def SAID, not what `> 0` guessed. See featureDef_searchPoint's
       // edge_set for why those are different questions.
       const uint32_t said = def.edge_set;
@@ -1230,6 +1297,20 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         break;
       }
       float edgeSuppress = def.edge_min_strength;
+      int relMoved = 0;
+      // edge.nth, on the same terms as the caliper path: an index, used when
+      // the method IS nth. It was parsed for search points and then dropped --
+      // search_point_cv was never given it -- so a def could ask for the second
+      // edge and silently measure the first, which is the failure mode that
+      // `blur` and `mask_dilate` were removed for.
+      const int spNth = (def.edge_method == EdgeSelectParams::NTH) ? def.edge_nth : 0;
+      // The other methods are not implemented here and never have been: this
+      // scan takes the nearest hit by construction. Say so rather than letting
+      // the word on the screen stand for something the machine does not do.
+      if (def.edge_method != EdgeSelectParams::FIRST && def.edge_method != EdgeSelectParams::NTH)
+        LOGW_EVERY_N(200, "search_point id=%d: edge.method is not 'first' or 'nth' -- a search "
+                          "point takes the NEAREST hit along its search axis, so the setting has "
+                          "no effect here. (1 line in 200)", def.id);
 
       // include_range is an OPTIONAL band: absent means the step is not
       // applied, and an explicit 0 means the same thing said out loud. Both
@@ -1243,7 +1324,30 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            margin, width, sp_et, edgeSuppress,
                            includeRangePx, alphaKeep,
                            eT.getBacpac(),
-                           &out, &str, def.id, &rep.cal_hits, &spClipped);
+                           &out, &str, def.id, &rep.cal_hits, &spClipped,
+                           DbgEmit("edge_profile") ? &rep.cal_peaks : nullptr,
+                           def.rel_strength, &relMoved, def.dist_decay,
+                           &rep.clip, def.min_rows, spNth,
+                           def.moment_mult, &rep.moments);
+      // The scale the panel needs to express an offset in the def's own units.
+      if (DbgEmit("edge_profile") && eT.getBacpac() && eT.getBacpac()->sampler)
+        rep.cal_peaks.mmpp = eT.getBacpac()->sampler->mmpP_ideal();
+      // SAY WHEN THE RELATIVE RULE IS THE ONE DECIDING.
+      //
+      // relMoved is set when the nearest candidate that clears min_strength is
+      // NOT the one that was measured -- i.e. the answer came from
+      // rel_strength, not from the def's own floor. That is worth knowing
+      // because rel_strength is relative to whatever else is in the window: it
+      // moves when a neighbour or a burr arrives, and the measured point can
+      // move with it. A def in that state is one edge-profile session away from
+      // not being.
+      if (relMoved > 0)
+        LOGW_EVERY_N(500, "search_point id=%d: the answer came from "
+                          "edge.rel_strength (%.2f), not from min_strength "
+                          "(%.0f) -- %d nearer candidate(s) cleared the floor "
+                          "and were dropped by the relative rule. Set the floor "
+                          "against the edge profile.",
+                     def.id, def.rel_strength, edgeSuppress, relMoved);
       // Lens correction (full-image px). A search point is a single robust
       // centroid (no line/circle fit), so undistorting the final point is the
       // exact lens correction for it. The per-column display hits are
@@ -1261,8 +1365,48 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       {
         h.pt = acvVecAdd(h.pt, off);
       }
+      // The band centre came back in the crop's frame like the hits; put it in
+      // image px so the record can redraw the rectangle where it really was.
+      rep.clip.pt = acvVecAdd(rep.clip.pt, off);
       if (ok)
       {
+        // A SEARCH POINT MEASURES ONE AXIS. THE OTHER IS NOT A MEASUREMENT.
+        //
+        // The scan finds a peak per row across the search direction and picks
+        // one; the coordinate ALONG THE BAR that comes back with it is the
+        // strength-weighted mean of the accepted rows -- "where along the bar
+        // the edge happened to be strongest". It moves with contrast, with a
+        // speck of dirt, with the threshold. Measured this session while
+        // changing nothing but a gate: one search point moved 18.5um and
+        // another 72um purely along the bar, with the edge itself unmoved.
+        //
+        // The morph already knows how to be told this: an anchor carries a 2x2
+        // precision, and an edge anchor sets w_minor = 0 so only the search
+        // normal constrains the warp (solve_tps, mode 2, which is the default).
+        // The switch is the def's `anchor_corner`, and on the 10155 def all
+        // nine search points have it TRUE -- so every one of them is feeding
+        // that unmeasured coordinate into the TPS as though it were data.
+        //
+        // Not corrected here, because forcing w_minor would silently change the
+        // warp on every def in the field -- the same reason edge.rel_strength
+        // became a number instead of being deleted. Said out loud instead, with
+        // the size of the fabricated correction, so it can be turned off per
+        // def by somebody who has looked.
+        if (def.data.anglefollow.anchor_corner)
+        {
+          const acv_XY d = acvVecSub(out, acvVecSub(pt, off));
+          const float alongBar = d.x * barVec.x + d.y * barVec.y;
+          const float mmpp_sp = eT.getBacpac() && eT.getBacpac()->sampler
+                              ? eT.getBacpac()->sampler->mmpP_ideal() : 0.f;
+          if (fabsf(alongBar) > 0.5f)
+            LOGW_EVERY_N(200, "search_point id=%d: anchor_corner=true, but a search "
+                              "point localizes ONE axis. The along-bar coordinate is "
+                              "%.2f px (%.1f um) from the anchor and is not a "
+                              "measurement -- it is going into the TPS as one. Set "
+                              "anchor_corner=false unless this scan really finds a "
+                              "corner.",
+                         def.id, alongBar, alongBar * mmpp_sp * 1000.0f);
+        }
         rep.pt = acvVecAdd(out, off);
         if (sp_lens)
         {
@@ -1297,11 +1441,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         // uncropped frame reads 1.1322mm -- 0.2mm, with nothing anywhere saying
         // the measurement rested on 3 samples out of 21.
         //
-        // Reported ALWAYS, so the number is visible before it becomes a
-        // failure; below the floor it is an NA, because a window that is mostly
-        // outside the image is missing data, and the rule this codebase settled
-        // on for missing data is to say NA rather than to guess. Same rule as
-        // edge.min_strength above.
+        // Reported ALWAYS. Whether a window that runs outside the image is
+        // refused is a policy switch (INSP_CALIPER_REFUSE_CLIPPED, default off);
+        // the counts and the band geometry are recorded either way.
         {
           rep.cal_used  = (int)rep.cal_hits.size();
           rep.cal_total = (width > 1.f) ? (int)width : 1;
@@ -1321,20 +1463,43 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           // remainder -- possibly a good number, but not the measurement that
           // was specified, and nothing downstream can tell the difference.
           //
-          // INSP_CALIPER_ALLOW_CLIPPED=1 restores the old behaviour for a
-          // machine that would rather keep its current verdicts while the
-          // counts are being looked at. The counts are reported either way.
+          // DEFAULT: a clipped band is NOT refused (2026-09-20). On 10221
+          // BOS-LT12BH4211 every recorded frame lost the two total-width scans
+          // and the top-line scan to this gate although the edge they measure
+          // was in the picture -- the band is 13 mm wide and the part sits
+          // where the station puts it. The clip geometry is in the record
+          // (`clip`) for anyone who wants to judge it afterwards, and
+          // INSP_CALIPER_REFUSE_CLIPPED=1 brings the refusal back.
           static const bool allowClipped = []{
-            const char *e = getenv("INSP_CALIPER_ALLOW_CLIPPED");
-            return e && atoi(e) != 0;
+            const char *e = getenv("INSP_CALIPER_REFUSE_CLIPPED");
+            return !(e && atoi(e) != 0);
           }();
+          if (spClipped && allowClipped)
+            LOGW_EVERY_N(50, "search_point id=%d: scan band runs off the image (%d/%d samples, nearest %+.0fpx) -- measured from what was in frame",
+                         def.id, rep.clip.samples_off, rep.clip.samples_total,
+                         (rep.clip.nearest_bad == rep.clip.nearest_bad) ? rep.clip.nearest_bad : 0.0f);
           if (spClipped && !allowClipped)
           {
             rep.pt.x = NAN; rep.pt.y = NAN;
             rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+            // Say what was actually missing, in the numbers that mean it.
+            //
+            // This line used to print cal_used/cal_total as "N of M columns had
+            // image". Those are reported EDGE HITS (capped at 600) over the
+            // band's row count -- not a coverage figure at all. On a recorded
+            // frame it read "600 of 1017", which invites "41% of the window was
+            // off-frame"; the band was 1.18% off, entirely on the far side.
+            //
+            // near/far is the part worth reading: the first hit is taken at the
+            // SMALLEST perpCoord, so missing samples at a positive perpCoord sit
+            // further out than any answer and cannot have changed it.
+            const float nb = rep.clip.nearest_bad;
             snprintf(rep.na_reason, sizeof(rep.na_reason),
-                     "scan window is off-frame (%d of %d columns had image)",
-                     rep.cal_used, rep.cal_total);
+                     "scan window off-frame: %d/%d samples, %d/%d rows, nearest %+.0fpx (%s)",
+                     rep.clip.samples_off, rep.clip.samples_total,
+                     rep.clip.rows_off, rep.clip.rows_total,
+                     (nb == nb) ? nb : 0.0f,
+                     (nb != nb) ? "none" : (nb < 0 ? "NEAR side" : "far side"));
             LOGE_EVERY_N(20, "search_point id=%d: the scan window runs off the "
                              "image (%d/%d columns) -- NA, not a partial "
                              "measurement. Widen the camera ROI or move the "
@@ -1352,8 +1517,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         // and this one has a specific meaning: the scan ran and found no edge
         // that cleared min_strength inside the band -- so the band or the floor
         // is where to look, not the def.
-        snprintf(rep.na_reason, sizeof(rep.na_reason),
-                 "no edge over min_strength in the search band");
+        if (spNth > 0)
+          snprintf(rep.na_reason, sizeof(rep.na_reason),
+                   "edge.nth=%d: fewer than %d edges over min_strength in the band",
+                   spNth, spNth + 1);
+        else
+          snprintf(rep.na_reason, sizeof(rep.na_reason),
+                   "no edge over min_strength in the search band");
       }
       LOGV("caliper spoint rep.pt:%f %f, status:%d", rep.pt.x, rep.pt.y, rep.status);
       break;
@@ -1560,6 +1730,12 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.include_range = 0;
   searchPoint.manual_offset = 0;
   searchPoint.alpha_keep = 0;
+  searchPoint.dist_decay = 0;   // off: same answer as before it existed
+  searchPoint.min_rows = 0;     // off
+  searchPoint.moment_mult = 3.0f;   // diagnostic only; 0 turns the moments off
+  // Today's hard-coded rule, as the default. A def that says nothing keeps
+  // exactly the behaviour it has always had.
+  searchPoint.rel_strength = 0.40f;
   searchPoint.edge_set = 0;
   {
     char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
@@ -1589,6 +1765,10 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       take   ("include_range", featureDef_searchPoint::EDGE_SET_INCLUDE_RANGE, &searchPoint.include_range);
       take   ("manual_offset", featureDef_searchPoint::EDGE_SET_MANUAL_OFFSET, &searchPoint.manual_offset);
       take   ("alpha_keep",    featureDef_searchPoint::EDGE_SET_ALPHA_KEEP,    &searchPoint.alpha_keep);
+      take   ("rel_strength",  featureDef_searchPoint::EDGE_SET_REL_STRENGTH,  &searchPoint.rel_strength);
+      take   ("dist_decay",    featureDef_searchPoint::EDGE_SET_DIST_DECAY,   &searchPoint.dist_decay);
+      takeInt("min_rows",      featureDef_searchPoint::EDGE_SET_MIN_ROWS,     &searchPoint.min_rows);
+      take   ("moment_mult",   featureDef_searchPoint::EDGE_SET_MOMENT_MULT,  &searchPoint.moment_mult);
       // mask_dilate is gone (2026-08-26). Say so rather than ignoring it: a def
       // that carries the key was tuned by somebody who believed it did
       // something, and silently dropping it is how a knob becomes folklore.
@@ -1702,6 +1882,54 @@ int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON *jobj)
   return 0;
 }
 
+// aux_line: { type:"aux_line", id, name, ref:[{id:A},{id:B}] } -- the line
+// through points A and B. Anything else that calls itself aux_line (the
+// editor's inherent "@__SIGNATURE__.orientation", one ref by name+keyTrace)
+// is not a two-point line and is skipped, not rejected: that entry has been
+// in every sig360 def for years and the core never read it.
+int FeatureManager_sig360_circle_line::parse_auxLineData(cJSON *jobj)
+{
+  // JFetch, not JFetEx: the Ex form THROWS on a missing path, and the
+  // inherent one-ref entry has no ref[1] at all.
+  if (JFetch_OBJECT(jobj, "ref[1]") == NULL) return 1;
+  double *a = JFetch_NUMBER(jobj, "ref[0].id");
+  double *b = JFetch_NUMBER(jobj, "ref[1].id");
+  if (a == NULL || b == NULL) return 1;
+
+  featureDef_line line;
+  line.name[0] = '\0';
+  if (char *tmpstr = json_find_name(jobj)) copyFeatureName(line.name, tmpstr);
+  double *pnum;
+  if ((pnum = JSON_GET_NUM(jobj, "id")) == NULL) return -1;
+  line.id = (int)*pnum;
+  if (line.name[0] == '\0') sprintf(line.name, "@AUXLINE_%d", line.id);
+
+  // Nothing about this line is searched for, so every search knob is inert;
+  // set them to the parser's neutral values rather than leaving them to
+  // whatever the stack held.
+  line.MatchingMarginX = 0; line.initMatchingMargin = 0;
+  line.p0 = acv_XY{0.f, 0.f}; line.p1 = acv_XY{0.f, 0.f};
+  line.cache_r0 = line.cache_r1 = 0;
+  line.lineTar = acv_Line{}; line.searchVec = acv_XY{0.f, 0.f}; line.searchEstAnchor = acv_XY{0.f, 0.f};
+  line.vertex_touch_searching = false;
+  line.locating = 0; line.fit_mode = 0;
+  line.cal_count = CALIPER_PARSE_DEFAULT_COUNT; line.cal_width = CALIPER_PARSE_DEFAULT_WIDTH;
+  line.cal_length = -1; line.cal_step = -1; line.cal_min_inliers = 0; line.cal_max_error = 0;
+  line.cal_soft_reject = 0;
+  line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
+  line.edge_rel_strength = 0.15f; line.edge_sigma = 0; line.edge_nth = 0; line.edge_min_strength = 0;
+  line.aux_pt1_id = (int)*a;
+  line.aux_pt2_id = (int)*b;
+  if (line.aux_pt1_id == line.aux_pt2_id)
+  {
+    LOGE("aux_line id=%d: both refs are feature %d -- a line needs two different points", line.id, line.aux_pt1_id);
+    return -1;
+  }
+  LOGV("feature is an aux_line:%s %d through %d and %d", line.name, line.id, line.aux_pt1_id, line.aux_pt2_id);
+  featureLineList.push_back(line);
+  return 0;
+}
+
 featureDef_line lineDefDataPrep(featureDef_line pre) //,int id, float margin, acv_XY p0, acv_XY p1)
 {
   featureDef_line &line = pre;
@@ -1773,14 +2001,25 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   // cal_width/length/step in DEF UNITS (mm); LineMatching_ReportGen converts
   // to px (/= mmpp) before the caliper engine consumes them.
   line.locating = 0; line.cal_count = CALIPER_PARSE_DEFAULT_COUNT; line.cal_width = CALIPER_PARSE_DEFAULT_WIDTH; line.cal_length = -1; line.cal_step = -1;
-  line.cal_min_inliers = 0; line.cal_max_error = 0;
+  line.cal_min_inliers = 0; line.cal_max_error = 0; line.cal_soft_reject = 0;
   // default caliper edge: dominant FALLING edge (white->dark), matching the backlit
   // dark-object-on-bright silhouette. Explicit def "edge.polarity" overrides.
   line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
+  line.edge_rel_strength = 0.15f; line.edge_sigma = 0;
   line.edge_nth = 0; line.edge_min_strength = 0;
   {
     char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) line.locating = 1;
+    line.fit_mode = 0;
+    {
+      char *fm = (char *)JFetch(line_obj, "fit_mode", cJSON_String);
+      if (fm)
+      {
+        if      (strcmp(fm, "front") == 0) line.fit_mode = 1;
+        else if (strcmp(fm, "back")  == 0) line.fit_mode = 2;
+        else                               line.fit_mode = 0;
+      }
+    }
     cJSON *calo = JFetch_OBJECT(line_obj, "caliper");
     if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", CALIPER_PARSE_DEFAULT_COUNT);
                 line.cal_width = JFetch_NUMBER_ex(calo, "width", CALIPER_PARSE_DEFAULT_WIDTH);
@@ -1788,6 +2027,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
                 line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 line.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
                 line.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
+                line.cal_soft_reject = JFetch_NUMBER_ex(calo, "soft_reject", 0);
                 // Clamp pathological caliper sizes (see parse_arcData).
                 if (line.cal_count  >  CALIPER_MAX_COUNT)  line.cal_count  = CALIPER_MAX_COUNT;
                 if (line.cal_width  >  CALIPER_MAX_WIDTH)  line.cal_width  = CALIPER_MAX_WIDTH;
@@ -1798,6 +2038,8 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
       line.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       line.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
       line.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+      line.edge_rel_strength = JFetch_NUMBER_ex(edgeo, "rel_strength", 0.15f);
+      line.edge_sigma        = JFetch_NUMBER_ex(edgeo, "sigma", 0);
     }
   }
 
@@ -2070,7 +2312,33 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
     judge.data.ANGLE.pt.x = *JFetEx_NUMBER(judge_obj, "pt1.x");
     judge.data.ANGLE.pt.y = *JFetEx_NUMBER(judge_obj, "pt1.y");
 
-    LOGV("quadrant:%d", judge.data.ANGLE.quadrant);
+    // angle_mode "signed" + nominal_deg: see the struct note. Absent = classic.
+    judge.data.ANGLE.signed_mode = false;
+    judge.data.ANGLE.nominal_deg = 0;
+    {
+      char *am = JFetch_STRING(judge_obj, "angle_mode");
+      // "signed" is the name the first build shipped with; "vector" is the
+      // same mode now that it has a range option. Both mean: direction
+      // vectors, no intersection, no quadrant.
+      if (am != NULL && (strcmp(am, "signed") == 0 || strcmp(am, "vector") == 0)) judge.data.ANGLE.signed_mode = true;
+      double *nd = JFetch_NUMBER(judge_obj, "nominal_deg");
+      if (nd != NULL) judge.data.ANGLE.nominal_deg = (float)*nd;
+      judge.data.ANGLE.range = FeatureReport_judgeDef::ANGLE_SIGNED90;
+      char *ar = JFetch_STRING(judge_obj, "angle_range");
+      if (ar != NULL)
+      {
+        typedef FeatureReport_judgeDef R;
+        if      (strcmp(ar, "abs90") == 0)     judge.data.ANGLE.range = R::ANGLE_ABS90;
+        else if (strcmp(ar, "deg180") == 0)    judge.data.ANGLE.range = R::ANGLE_DEG180;
+        else if (strcmp(ar, "signed180") == 0) judge.data.ANGLE.range = R::ANGLE_SIGNED180;
+        else if (strcmp(ar, "deg360") == 0)    judge.data.ANGLE.range = R::ANGLE_DEG360;
+        else if (strcmp(ar, "supp") == 0)      judge.data.ANGLE.range = R::ANGLE_SUPP;
+        else if (strcmp(ar, "comp") == 0)      judge.data.ANGLE.range = R::ANGLE_COMP;
+      }
+    }
+
+    LOGV("quadrant:%d signed:%d nominal:%f", judge.data.ANGLE.quadrant,
+         (int)judge.data.ANGLE.signed_mode, judge.data.ANGLE.nominal_deg);
   }
   else if (strcmp(subtype, "area") == 0)
   {
@@ -2325,6 +2593,23 @@ int FeatureManager_sig360_circle_line::parse_jobj()
              "the coarse downscale off.", *smscale, this->shape_match_scale);
     }
 
+    // Refine capture knobs (see the header). Bounds: a search under 5 px is
+    // below the coarse quantisation and over 100 px is a different algorithm.
+    double *srs = JFetch_NUMBER(root, "shape_roi_search");
+    if (srs != NULL && *srs >= 5 && *srs <= 100) this->shape_roi_search = (int)*srs;
+    else if (srs != NULL && *srs != 0) LOGE("shape_roi_search %.1f outside [5,100]; ignored", *srs);
+    double *srp = JFetch_NUMBER(root, "shape_roi_prescale");
+    if (srp != NULL && *srp > 0.1 && *srp < 1.0) this->shape_roi_prescale = (float)*srp;
+    else if (srp != NULL && *srp != 0) LOGE("shape_roi_prescale %.3f outside (0.1,1); ignored", *srp);
+    double *rsp = JFetch_NUMBER(root, "shape_roi_spacing");
+    if (rsp != NULL) this->shape_roi_spacing = (float)*rsp;   // 0 off, <0 auto, >0 px
+    // Trust -> judges (per-recipe opt-in; see the header).
+    this->shape_trust_na = JFetch_TRUE(root, "shape_trust_na");
+    double *trm = JFetch_NUMBER(root, "shape_trust_res_max");
+    if (trm != NULL && *trm > 0) this->shape_trust_res_max = (float)*trm;
+    double *tif = JFetch_NUMBER(root, "shape_trust_inl_frac");
+    if (tif != NULL && *tif > 0 && *tif <= 1.0) this->shape_trust_inl_frac = (float)*tif;
+
     // line2Dup feature/pyramid tuning (all optional; defaults preserve behavior).
     double *snf = JFetch_NUMBER(root, "shape_num_features");
     if (snf != NULL && *snf >= 8) this->shape_num_features = (int)*snf;
@@ -2494,8 +2779,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     else if (strcmp(feature_type, "aux_line") == 0)
     {
-      LOGE("TODO: feature[%d] feature[%d] ", i, feature_type);
-      return -1;
+      if (parse_auxLineData(feature) < 0)
+      {
+        LOGE("feature[%d] has error %s format", i, feature_type);
+        return -1;
+      }
     }
     else if (strcmp(feature_type, "measure_calc") == 0)
     {
@@ -2507,6 +2795,49 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       LOGE("feature[%d] has unknown type:[%s]", i, feature_type);
       return -1;
     }
+  }
+
+  // AUX LINES: give each one a DEF-FRAME p0/p1 from the def positions of the
+  // two points it goes through. The located line is built at run time from the
+  // located points (TreeExecution); this static copy exists for the one
+  // consumer that reads a line's def geometry rather than its report --
+  // ParseMainVector(def_sp), which turns a search point's angleDeg into a
+  // search direction before anything is located. Without it a search point
+  // following an aux line would get a NaN direction. Best effort: a ref that
+  // has no def position (an aux_point crossing two lines is resolved from the
+  // def lines; anything else is left at 0,0 and the search point reports NA).
+  {
+    auto defPointOf = [&](int fid, acv_XY *out) -> bool {
+      for (auto &sp : searchPointList)
+        if (sp.id == fid) { *out = sp.data.anglefollow.position; return true; }
+      for (auto &c : featureCircleList)
+        if (c.id == fid) { *out = acvCircumcenter(c.pt1, c.pt2, c.pt3); return std::isfinite(out->x) && std::isfinite(out->y); }
+      for (auto &ap : auxPointList)
+        if (ap.id == fid)
+        {
+          if (ap.subtype == featureDef_auxPoint::centre)
+          {
+            for (auto &c : featureCircleList)
+              if (c.id == ap.data.centre.obj1_id) { *out = acvCircumcenter(c.pt1, c.pt2, c.pt3); return std::isfinite(out->x) && std::isfinite(out->y); }
+            return false;
+          }
+          const featureDef_line *l1 = NULL, *l2 = NULL;
+          for (auto &l : featureLineList) { if (l.id == ap.data.lineCross.line1_id) l1 = &l; if (l.id == ap.data.lineCross.line2_id) l2 = &l; }
+          if (!l1 || !l2) return false;
+          *out = acvIntersectPoint(l1->p0, l1->p1, l2->p0, l2->p1);
+          return std::isfinite(out->x) && std::isfinite(out->y);
+        }
+      return false;
+    };
+    // Two passes, so an aux line through an aux_point that crosses another
+    // aux line still resolves (the first pass fills the inner one's p0/p1).
+    for (int pass = 0; pass < 2; pass++)
+      for (auto &l : featureLineList)
+      {
+        if (l.aux_pt1_id < 0 || l.aux_pt2_id < 0) continue;
+        acv_XY a, b;
+        if (defPointOf(l.aux_pt1_id, &a) && defPointOf(l.aux_pt2_id, &b)) { l.p0 = a; l.p1 = b; }
+      }
   }
 
   for (int j = 0; j < searchPointList.size(); j++)
@@ -2556,7 +2887,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     else if (strcmp(feature_type, "aux_line") == 0)
     {
-      //return -1;
+      // Two-point lines parse; the inherent orientation entry is skipped (1).
+      if (parse_auxLineData(feature) < 0)
+      {
+        LOGE("feature[%d] has error %s format", i, feature_type);
+        return -1;
+      }
     }
     else if (strcmp(feature_type, "sbm_info") == 0)
     {
@@ -2591,6 +2927,31 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       // vocabulary and a def an older core cannot parse does not lose a field,
       // it fails entirely -- which is the loc_include incident recorded at the
       // legacy __shape_cache read above. Accepting both costs one branch.
+      // ROI refine points belong with them, for the same reason and by the
+      // same test: nothing reads them at RUN time. A def that carries its own
+      // ROI windows locates without ever looking at this list -- measured, the
+      // report came back identical to the last digit with the key deleted. What
+      // they are is the operator's answer to "which points should the refiner
+      // use", kept so that pressing 生成特徵點 freezes the same choice again
+      // instead of falling back to auto-selection. That is an input to the next
+      // extraction, exactly like the regions below, and it was the only one of
+      // the three still sitting at the featureSet root.
+      cJSON *rp = cJSON_GetObjectItem(feature, "roi_refine_points");
+      if (rp != NULL && cJSON_IsArray(rp))
+      {
+        this->roi_pts_mm.clear();
+        cJSON *pt = NULL;
+        cJSON_ArrayForEach(pt, rp)
+        {
+          cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
+          if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
+            this->roi_pts_mm.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
+        }
+        this->roi_pts_set = true;
+        LOGI("[shape] roi_refine_points read from @__SBM_INFO__ (%d pts)",
+             (int)this->roi_pts_mm.size());
+      }
+
       cJSON *li = cJSON_GetObjectItem(feature, "localization_include");
       cJSON *le = cJSON_GetObjectItem(feature, "localization_exclude");
       if (li != NULL && cJSON_IsArray(li))
@@ -2702,11 +3063,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       strncat(names, one, sizeof(names) - strlen(names) - 1);
     };
     for (size_t i = 0; i < featureLineList.size(); i++)
-      if (featureLineList[i].locating != 1) note(featureLineList[i].name, featureLineList[i].id);
+      if (featureLineList[i].locating != 1 && featureLineList[i].aux_pt1_id < 0) note(featureLineList[i].name, featureLineList[i].id);
     for (size_t i = 0; i < featureCircleList.size(); i++)
       if (featureCircleList[i].locating != 1) note(featureCircleList[i].name, featureCircleList[i].id);
     if (nBad > 0)
-      LOGE("[shape] %d feature(s) use CONTOUR locating and cannot be measured by "
+      LOGE_EVERY_N(100, "[shape] %d feature(s) use CONTOUR locating and cannot be measured by "
            "the shape locator -- they will report nothing, silently: %s%s. "
            "Contour needs the labeled-contour grid, which only the sig360 path "
            "builds. Set locating=1 (caliper) on them, or run this def on "
@@ -2728,7 +3089,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       snprintf(shape_untrained_reason, sizeof(shape_untrained_reason),
                "SBM features not trained (sig360 fallback in use) -- open the "
                "SBM studio, press generate, and save");
-      LOGW("[shape] %s", shape_untrained_reason);
+      LOGW_EVERY_N(50, "[shape] %s (1 line in 50)", shape_untrained_reason);
     }
     else if (rc != 0)
     {
@@ -3748,6 +4109,16 @@ static bool solveDenseNxN(double M[4][4], double b[4], double x[4], int n)
   return true;
 }
 
+// Tangent precision of an edge anchor as a fraction of its normal precision.
+// See solve_tps. Env MORPH_TANGENT_FLOOR overrides for experiments.
+static double tps_tangent_floor()
+{
+  static double v = -1;
+  if (v < 0) { const char *e = getenv("MORPH_TANGENT_FLOOR"); v = (e && atof(e) >= 0) ? atof(e) : 0.1; }
+  return v;
+}
+#define TPS_TANGENT_FLOOR tps_tangent_floor()
+
 // Directional weighted least-squares similarity fit (morph mode 1).
 //
 // Each valid anchor contributes ONE scalar constraint: the displacement of its
@@ -3792,7 +4163,7 @@ int ConstrainMap::solve()
     // Throttled because the interesting part is that it is happening at all,
     // and at what rate; one line per frame would just move the spam.
     if (valid < (int)anchorPairs.size())
-      LOGW_EVERY_N(20, "locating degraded: only %d/%d valid anchors (need %d)"
+      LOGW_EVERY_N(200, "locating degraded: only %d/%d valid anchors (need %d)"
                        " -> identity morph, object measured unaligned",
                    valid, (int)anchorPairs.size(), need);
     return valid;
@@ -3822,6 +4193,25 @@ int ConstrainMap::solve()
       {
         for (int b = 0; b < 4; b++) M[a][b] += w * A[a] * A[b];
         r[a] += w * A[a] * D;
+      }
+      // Same tangent prior as solve_tps, for the same reason: two anchors with
+      // x-normals are two equations for four unknowns, and the ridge below
+      // (1e-3 of the trace) let a rotation about a far-away point satisfy both
+      // -- on frame 39_414 of 10221 that moved every other feature 1.2-1.8 mm
+      // and produced 28 NAs where the un-morphed pose had 11. The tangent row
+      // says the anchor did not move ALONG its edge, weakly, so the unobserved
+      // directions resolve to "no deformation" instead of to whatever the
+      // solver finds cheapest.
+      {
+        const double tx = -cy, ty = cx;                 // tangent
+        const double wt = (p.w_minor > 0 ? p.w_minor : TPS_TANGENT_FLOOR) * w;
+        const double At[4] = { tx * x + ty * y, ty * x - tx * y, tx, ty };
+        const double Dt = (p.w_minor > 0) ? (tx * u + ty * v) : (tx * x + ty * y); // corner: data; edge: stay
+        for (int a = 0; a < 4; a++)
+        {
+          for (int b = 0; b < 4; b++) M[a][b] += wt * At[a] * At[b];
+          r[a] += wt * At[a] * Dt;
+        }
       }
       used++;
     }
@@ -4002,10 +4392,28 @@ int ConstrainMap::solve_tps()
     if (nrm > 1e-9) { nx /= nrm; ny /= nrm; } else { nx = 1; ny = 0; }
     double wMaj = (p.weight  > 0) ? p.weight  : 1.0;  // precision along normal
     double wMin = (p.w_minor > 0) ? p.w_minor : 0.0;  // precision along tangent
+    double ux = p.to.x, uy = p.to.y;
+    // An edge anchor (w_minor == 0) says nothing about motion ALONG the edge:
+    // its first-hit lands wherever the edge is, and the tangent offset between
+    // `from` and `to` is where the operator clicked, not deformation. Left
+    // unobserved, that direction is a null space of the 2N+4 unknowns, and the
+    // 1e-6 ridge below did not hold it: on the recipe's own registration image
+    // three anchors with x-normals and <0.09 mm of data moved the frame 0.3 mm
+    // in y, and on a live frame 3.7 mm -- every caliper off the part.
+    // So give the tangent a weak observation of ZERO motion: the target is the
+    // normal-projected `to`, and the tangent precision is a fraction of the
+    // normal's. Weak enough that a corner anchor or several consistent normals
+    // still win; strong enough that "no data" means "no deformation".
+    if (wMin <= 0.0)
+    {
+      const double dn = (p.to.x - p.from.x) * nx + (p.to.y - p.from.y) * ny;
+      ux = p.from.x + nx * dn;
+      uy = p.from.y + ny * dn;
+      wMin = TPS_TANGENT_FLOOR * wMaj;
+    }
     double w11 = wMaj * nx * nx + wMin * ny * ny;
     double w22 = wMaj * ny * ny + wMin * nx * nx;
     double w12 = (wMaj - wMin) * nx * ny;
-    double ux = p.to.x, uy = p.to.y;
 
     std::fill(mx.begin(), mx.end(), 0.0);
     std::fill(my.begin(), my.end(), 0.0);
@@ -4051,7 +4459,10 @@ int ConstrainMap::solve_tps()
   S.at<double>(OB,  OB)  += gamma;                                  // b  -> 0
   S.at<double>(OTX, OTX) += gamma;                                  // tx -> 0
   S.at<double>(OTY, OTY) += gamma;                                  // ty -> 0
-  for (int j = 0; j < 2 * N; j++) S.at<double>(j, j) += 1e-6 * (sdmax + 1.0); // c -> 0 (numerical)
+  // The RBF coefficients ridge at the SAME strength as the similarity, not
+  // 1e-6 of it: they are the part of the model with the most freedom and the
+  // least data, and the previous value let them carry the whole null space.
+  for (int j = 0; j < 2 * N; j++) S.at<double>(j, j) += gamma; // c -> 0
 
   cv::Mat theta;
   if (!cv::solve(S, rhs, theta, cv::DECOMP_SVD)) return N; // singular -> fall back
@@ -4543,6 +4954,30 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   for (auto &h : report.cal_hits) {
     h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   }
+  // The scan band travels with the hits, in the same OBJECT-FRAME mm.
+  //
+  // It was emitted in image px, which is the frame the clip COUNTS are about,
+  // and that left the canvas to invert the pose itself to draw the rectangle.
+  // The UI already carries one overlay that re-derives a transform instead of
+  // reading the core's answer -- the aux point -- and it draws the cross in a
+  // different place from the number it labels. One inverse transform, here.
+  //
+  // `bar` is a DIRECTION: transform two points and subtract, rather than
+  // writing the rotation out a second time and getting the flip sign wrong.
+  if (report.clip.width > 0) {
+    const acv_XY o0 = PixDomain_TO_TemplateDomain(report.clip.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    const acv_XY o1 = PixDomain_TO_TemplateDomain(acvVecAdd(report.clip.pt, report.clip.bar),
+                                                  cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    report.clip.pt  = o0;
+    // Unit, not unit*mmpp. Transforming two points and subtracting carries the
+    // px->mm scale with it, and a "direction" whose length is 0.009 is a
+    // number waiting to be multiplied by something.
+    report.clip.bar = acvVecNormalize(acvVecSub(o1, o0));
+    report.clip.width *= mmpp;
+    report.clip.depth *= mmpp;
+    // samples_off/rows_off are counts and nearest_bad stays in px: it is the
+    // number the na_reason sentence prints, and the two must not disagree.
+  }
   report.def = def;
   return report;
 
@@ -4639,9 +5074,11 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   if (m_sections.size() == 0 && cdef.locating != 1)
   {
 
-    LOGE("Circle matching failed: resultR:%f defR:%f",
+    LOGE_EVERY_N(100, "Circle matching failed: resultR:%f defR:%f (1 line in 100)",
           cf.circle.radius, arcD.circleTar.radius);
     cr.def = plineDef;
+    snprintf(cr.na_reason, sizeof(cr.na_reason),
+             "no contour section for this arc (contour mode)");
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
     return cr;
   }
@@ -4724,6 +5161,15 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   // Points that drove the fit, in image-px (same frame as cf.circle.circumcenter).
   // Populated by either branch below; used afterward for envelope fit modes.
   std::vector<acv_XY> envelope_pts;
+  // HOW MANY CALIPERS FOUND AN EDGE, carried out of the caliper block.
+  //
+  // The failure path below cannot read `rr` -- it is scoped to that block --
+  // and cf.matching_pts is only assigned when the fit SUCCEEDS, so on failure
+  // it still holds the 0 that `acv_CircleFit cf = {}` put there. Reporting
+  // that 0 as an edge count says "the calipers found nothing" when the truth
+  // may be "they found 4 and 5 were required". -1 = the caliper path did not
+  // run at all (contour mode).
+  int cal_nValid = -1;
   if (cdef.locating == 1) // caliper/section circle fit (radial calipers)
   {
     CaliperParams cal;
@@ -4733,13 +5179,33 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     // caliper params. Sentinels (cal_length=-1, cal_step=-1) pass through.
     cal.length = (cdef.cal_length > 0) ? (cdef.cal_length * ppmm) : initMatchingMargin; // px radial search half-length
     cal.width  = cdef.cal_width * ppmm;
+    // The parse-time clamp is in def-mm and bounds nothing in px (CAVEATS §N: 64 mm
+    // is 7,000 px here). A caliper wider or longer than the picture is a typo
+    // (0.5 -> 500), and the cost it buys is minutes per frame with no error. Say so
+    // and cap at the image edge, which is the most it could ever see anyway.
+    {
+      const cv::Mat &_img = eT.getImageCv();
+      const float _lim = (float)std::max(_img.cols, _img.rows);
+      if (_img.cols > 0 && (cal.width > _lim || cal.length > _lim))
+      {
+        LOGE_EVERY_N(50, "circle id=%d: caliper width %.0f px / length %.0f px exceeds the image "
+                     "(%dx%d) -- def caliper.width/length are in mm (%.2f / %.2f); typo? capped to "
+                     "the image edge (1 line in 50)", cdef.id, cal.width, cal.length, _img.cols,
+                     _img.rows, cdef.cal_width, cdef.cal_length);
+        if (cal.width  > _lim) cal.width  = _lim;
+        if (cal.length > _lim) cal.length = _lim;
+      }
+    }
     cal.step   = (cdef.cal_step > 0) ? (cdef.cal_step * ppmm) : 1.0f;
     cal.min_inliers = cdef.cal_min_inliers;
     cal.max_error   = (cdef.cal_max_error > 0) ? (cdef.cal_max_error * ppmm) : 0;
+    cal.soft_reject = cdef.cal_soft_reject;   // unitless
     cal.edge.method       = cdef.edge_method;
     cal.edge.polarity     = cdef.edge_polarity;
     cal.edge.nth          = cdef.edge_nth;
     cal.edge.min_strength = cdef.edge_min_strength;
+    cal.edge.rel_strength = cdef.edge_rel_strength;
+    cal.edge.sigma        = cdef.edge_sigma;
     acv_XY off = eT.getImgOffset();
     acv_XY cc = acvVecSub(center, off);
     CaliperCircleResult rr;
@@ -4764,6 +5230,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       rr = caliper_locate_circle(eT.getImageCv(), cc, radius, sAngle, eAngle,
                                  cdef.cal_count, cal, eT.getBacpac(), cdef.name, off);
     }
+    cal_nValid = rr.nValid;
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
     else { cf.circle.radius = NAN; }
@@ -4775,6 +5242,12 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     // All hits (including missed) carry valid coords — Caliper.cpp stashes
     // the caliper's nominal anchor on miss.
     cr.cal_hits.reserve(rr.hits.size());
+    // Search geometry as run, object frame -- see cal_geom in FeatureReport.h.
+    cr.cal_geom.c0 = PixDomain_TO_TemplateDomain(acvVecAdd(cc, off), cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    cr.cal_geom.r0 = radius * mmpp;
+    cr.cal_geom.len = cal.length * mmpp;
+    cr.cal_geom.width = cal.width * mmpp;
+    cr.cal_geom.polarity = (int)cal.edge.polarity;
     std::vector<acv_XY> dbg_pix_hits;  // image-absolute px, for debug overlay
     std::vector<int>    dbg_pix_st;
     for (const auto &h : rr.hits) {
@@ -4786,6 +5259,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       dbg_pix_hits.push_back(pix_pt);
       dbg_pix_st.push_back(h.status);
     }
+    cr.cal_prof = std::move(rr.prof);   // see LineMatching_caliper
     // Debug dump: cropped 4x view of the caliper search arc + hits + fitted
     // circle, identical pattern to LineMatching_caliper's overlay.
     if (getenv("INSP_DUMP_CALIPER_DEBUG"))
@@ -4896,6 +5370,26 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cr.def = plineDef;
     // LOGI("Circle search failed: resultR:%f defR:%f",
     //      cf.circle.radius, cdef.circleTar.radius);
+    // Which of the two it is matters to whoever reads the record: too few
+    // points to fit at all, or enough points that would not resolve to a
+    // circle. Both used to arrive as a bare NA.
+    // SAY HOW MANY CALIPERS WERE PLACED, not just how many found an edge.
+    //
+    // caliper_locate_circle sizes its hit list to cal_count
+    // (`r.hits.assign(count, ...)`), so a def with no cal_count places ZERO
+    // calipers, finds zero edges and fails with nValid < 3 -- which arrives
+    // looking exactly like "the calipers all missed the wire". Those are
+    // completely different problems (a recipe that was never given a count vs
+    // an edge the scan could not see) and the record could not tell them
+    // apart. cal_count is printed first for that reason.
+    if (cdef.locating == 1)
+      snprintf(cr.na_reason, sizeof(cr.na_reason),
+               "circle fit failed: %d calipers placed, %d found an edge, %d needed",
+               cdef.cal_count, cal_nValid,
+               cdef.cal_min_inliers > 0 ? cdef.cal_min_inliers : 3);
+    else
+      snprintf(cr.na_reason, sizeof(cr.na_reason),
+               "circle fit failed: contour mode, no circle through the sections");
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
     return cr;
   }
@@ -5092,10 +5586,13 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   cal.step   = (lineDef.cal_step > 0) ? lineDef.cal_step : 1.0f;
   cal.min_inliers = lineDef.cal_min_inliers;
   cal.max_error   = lineDef.cal_max_error;  // already mm→px via LineMatching_ReportGen
+  cal.soft_reject = lineDef.cal_soft_reject;  // unitless, no conversion
   cal.edge.method       = lineDef.edge_method;
   cal.edge.polarity     = lineDef.edge_polarity;
   cal.edge.nth          = lineDef.edge_nth;
   cal.edge.min_strength = lineDef.edge_min_strength;
+  cal.edge.rel_strength = lineDef.edge_rel_strength;
+  cal.edge.sigma        = lineDef.edge_sigma;
 
   acv_XY off = eT.getImgOffset();
   acv_XY p0 = acvVecSub(lineDef.p0, off);
@@ -5140,6 +5637,29 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     acv_XY tdir = acvVecSub(lineDef.p1, lineDef.p0);
     if (r.dir.x * tdir.x + r.dir.y * tdir.y < 0) { r.dir.x = -r.dir.x; r.dir.y = -r.dir.y; }
 
+    // Envelope offset. The direction above is the least-squares one and stays
+    // that way; this only slides the line along its own normal until it rests
+    // on the extreme INLIER -- outliers are already rejected, and letting one
+    // define the envelope is how a speck of dirt becomes the measurement.
+    //
+    // Applied after the p0->p1 orientation on purpose: the normal, and so which
+    // side "front" means, follows the direction the def drew, not the sign the
+    // TLS solver happened to return.
+    if (lineDef.fit_mode != 0 && r.nInlier > 0)
+    {
+      const acv_XY n = { -r.dir.y, r.dir.x };
+      bool any = false; float ext = 0;
+      for (const auto &h : r.hits)
+      {
+        if (h.status != 2) continue;          // inliers only
+        const float d = (h.pt.x - r.anchor.x) * n.x + (h.pt.y - r.anchor.y) * n.y;
+        if (!any) { ext = d; any = true; }
+        else if (lineDef.fit_mode == 1) { if (d < ext) ext = d; }   // front = min
+        else                            { if (d > ext) ext = d; }   // back  = max
+      }
+      if (any) r.anchor = acvVecAdd(r.anchor, acvVecMult(n, ext));
+    }
+
     acv_XY anchor = acvVecAdd(r.anchor, off); // back to image coords
     Report.line.line.line_anchor = anchor;
     Report.line.line.line_vec = r.dir;
@@ -5165,6 +5685,11 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     ih.pt = acvVecAdd(h.pt, off);
     Report.cal_hits.push_back(ih);
   }
+  // Empty unless DEBUG_EMIT edge_profile is on. Not rebased: the profile is an
+  // across-edge series, its index already carries its own geometry (-L + i*step
+  // px along the search direction), and it has no position in the image to
+  // correct.
+  Report.cal_prof = std::move(r.prof);
   // Debug: dump the caliper input image with the search line + hit dots
   // overlaid so the user can eyeball whether the green Xs they see in the
   // WebUI match what the caliper actually returned in image-pixel space.
@@ -5286,10 +5811,24 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   // and px-after-conversion). Sentinels (cal_length=-1 "use margin",
   // cal_step=-1 "use 1px") are left alone.
   if (lineDef.locating == 1) {
+    const float _w_mm = lineDef.cal_width, _l_mm = lineDef.cal_length;
     lineDef.cal_width /= mmpp;
     if (lineDef.cal_length > 0) lineDef.cal_length /= mmpp;
     if (lineDef.cal_step   > 0) lineDef.cal_step   /= mmpp;
     if (lineDef.cal_max_error > 0) lineDef.cal_max_error /= mmpp;
+    // Same guard as the circle path: a caliper larger than the picture is a
+    // units typo, not a setting (CAVEATS §N). Loud, then capped at the image edge.
+    const cv::Mat &_img = eT.getImageCv();
+    const float _lim = (float)std::max(_img.cols, _img.rows);
+    if (_img.cols > 0 && (lineDef.cal_width > _lim || lineDef.cal_length > _lim))
+    {
+      LOGE_EVERY_N(50, "line id=%d: caliper width %.0f px / length %.0f px exceeds the image (%dx%d) "
+                   "-- def caliper.width/length are in mm (%.2f / %.2f); typo? capped to the image "
+                   "edge (1 line in 50)", lineDef.id, lineDef.cal_width, lineDef.cal_length,
+                   _img.cols, _img.rows, _w_mm, _l_mm);
+      if (lineDef.cal_width  > _lim) lineDef.cal_width  = _lim;
+      if (lineDef.cal_length > _lim) lineDef.cal_length = _lim;
+    }
   }
 
   // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);
@@ -5523,6 +6062,41 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       return rep.status;
     }
     rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
+
+    if (rep.def->aux_pt1_id >= 0 && rep.def->aux_pt2_id >= 0)
+    {
+      // The line through two located points. The points come first (they may
+      // be search points, crossings, or arc centres that have not run yet),
+      // then the line is built, never searched. NA when either point is NA or
+      // the two coincide -- a line through one point is not a line.
+      featureDef_line *def = rep.def;
+      TreeExecution(def->aux_pt1_id, singleReport, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
+      TreeExecution(def->aux_pt2_id, singleReport, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
+      acv_XY pa, pb;
+      const int ra = ParseLocatePosition(singleReport, def->aux_pt1_id, &pa);
+      const int rb = ParseLocatePosition(singleReport, def->aux_pt2_id, &pb);
+      rep.cal_hits.clear();
+      rep.line = acv_LineFit{};
+      if (ra == 0 && rb == 0 && std::isfinite(pa.x) && std::isfinite(pa.y) &&
+          std::isfinite(pb.x) && std::isfinite(pb.y) && std::hypot(pb.x - pa.x, pb.y - pa.y) > 1e-6f)
+      {
+        const float L = std::hypot(pb.x - pa.x, pb.y - pa.y);
+        rep.line.line.line_anchor = pa;
+        rep.line.line.line_vec = acv_XY((pb.x - pa.x) / L, (pb.y - pa.y) / L);
+        rep.line.end_pt1 = pa;
+        rep.line.end_pt2 = pb;
+        rep.line.matching_pts = 2;
+        rep.line.s = 0; rep.line.confidence = 0;
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+      }
+      else
+      {
+        LOGI_EVERY_N(100, "aux_line id=%d: point %d (%s) / point %d (%s) -- NA", def->id,
+                     def->aux_pt1_id, ra == 0 ? "ok" : "NA", def->aux_pt2_id, rb == 0 ? "ok" : "NA");
+      }
+      if(doPrintDBG)LOGI("AL:%d:%d",id,rep.status);
+      return rep.status;
+    }
 
     rep= LineMatching_ReportGen(
       rep.def,eT,
@@ -5797,6 +6371,36 @@ void SET_UNSET_REPORT_NA(FeatureReport_sig360_circle_line_single &srep)
 
 // Record a locate MISS on the container report, keeping the CLOSEST one.
 //
+// MORPH_DUMP=1: what the morph was given and what it does with it, per anchor.
+// The solve is silent, and when it produces a warp that throws every caliper
+// off the part there is otherwise nothing in the record to say whether the
+// anchors or the fit are at fault. Called from both matching paths.
+static void morph_dump(ConstrainMap &cm, const std::vector<featureDef_searchPoint> &searchPointList, int k)
+{
+  if (!getenv("MORPH_DUMP")) return;
+  {
+    fprintf(stderr, "[MORPH] iter=%d mode=%d valid=%d tps_valid=%d\n", k, cm.mode, cm.valid_count, (int)cm.tps_valid);
+    for (size_t j = 0; j < cm.anchorPairs.size(); j++)
+    {
+      const auto &p = cm.anchorPairs[j];
+      if (p.to.x != p.to.x) continue;
+      acv_XY c = cm.convert(p.from);
+      fprintf(stderr, "[MORPH]  sp=%d from=(%.3f,%.3f) to=(%.3f,%.3f) d=(%+.3f,%+.3f) n=(%.2f,%.2f) w=%.1f/%.1f  conv(from)=(%.3f,%.3f)\n",
+              (j < searchPointList.size()) ? searchPointList[j].id : -1,
+              p.from.x, p.from.y, p.to.x, p.to.y, p.to.x - p.from.x, p.to.y - p.from.y,
+              p.constrainVector.x, p.constrainVector.y, p.weight, p.w_minor, c.x, c.y);
+    }
+    for (size_t j = 0; j < cm.anchorPairs.size(); j++)
+    {
+      const auto &p = cm.anchorPairs[j];
+      if (p.to.x == p.to.x) continue;
+      acv_XY c = cm.convert(p.from);
+      fprintf(stderr, "[MORPH]  sp=%d (not anchor) from=(%.3f,%.3f) conv=(%.3f,%.3f) shift=%.3f mm\n",
+              (j < searchPointList.size()) ? searchPointList[j].id : -1, p.from.x, p.from.y, c.x, c.y, acvDistance(c, p.from));
+    }
+  }
+}
+
 // SingleMatching runs per candidate region, so most frames produce several
 // misses. The best of them is the useful one: it is the answer to "how far off
 // was it", and a run that reports the last candidate instead reports whichever
@@ -6271,7 +6875,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
       // Rebuild the cached morph from this iteration's anchors (no-op for mode 0).
       cm.solve();
-
+      morph_dump(cm, searchPointList, k);
       // Converged once every valid anchor moved less than the tolerance since the
       // previous iteration. (Single-iteration default never reaches this.)
       if (k + 1 < morph_max_iter)
@@ -7135,11 +7739,28 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 
 // Everything that would change the extracted features. If any of it moves, the
 // cache is stale and we re-extract -- loudly, never silently.
+// THE ROI POINTS ARE NOT PART OF THIS.
+//
+// They used to be, and it cost a re-extraction for something that does not
+// change a single extracted feature. sbm::extractFeatures never sees them: they
+// are attached to the FeatureSet afterwards as user_opt_points, and the CACHE
+// PATH ALREADY REBUILDS THEM FROM THE DEF on every load (see the note beside
+// cached.user_opt_points -- it has to, because the def may have been edited
+// since the cache was written).
+//
+// So a def whose only change was an ROI point had its whole feature set
+// invalidated, and outside the studio re-extraction is refused -- meaning the
+// def quietly fell back to sig360 for a setting that was never a feature input.
+//
+// `legacy` reproduces the old string so a cache written before this change is
+// still accepted: the features in it are correct, they were only fingerprinted
+// against something that did not belong. Remove the parameter once no def in
+// the field carries a v1-with-roi cache.
 static std::string shape_cache_fingerprint(const cv::Mat &templ,
                                            int num_features, const std::vector<int> &pyrT,
                                            float weak, float strong,
                                            const std::vector<acv_XY> &roi_pts, bool roi_set,
-                                           float angle_offset_deg)
+                                           float angle_offset_deg, bool legacy = false)
 {
   // Image identity: dimensions plus a cheap content sum. Not cryptographic --
   // it only has to notice "somebody swapped the reference picture".
@@ -7147,11 +7768,18 @@ static std::string shape_cache_fingerprint(const cv::Mat &templ,
   char buf[512];
   std::string pyr;
   for (size_t i = 0; i < pyrT.size(); i++) pyr += std::to_string(pyrT[i]) + ",";
+  if (!legacy)
+  {
+    snprintf(buf, sizeof(buf), "v1|%dx%d|%.0f|nf%d|T%s|w%.2f|s%.2f|ao%.4f",
+             templ.cols, templ.rows, sum, num_features, pyr.c_str(), weak, strong,
+             angle_offset_deg);
+    return std::string(buf);
+  }
+  // The pre-2026-08-30 string, kept only so an existing cache still matches.
   snprintf(buf, sizeof(buf), "v1|%dx%d|%.0f|nf%d|T%s|w%.2f|s%.2f|roi%d:%zu|ao%.4f",
            templ.cols, templ.rows, sum, num_features, pyr.c_str(), weak, strong,
            roi_set ? 1 : 0, roi_pts.size(), angle_offset_deg);
   std::string fp(buf);
-  // The ROI points participate: they change which refine samples are chosen.
   for (const acv_XY &p : roi_pts)
   {
     snprintf(buf, sizeof(buf), "|%.4f,%.4f", p.x, p.y);
@@ -7160,25 +7788,187 @@ static std::string shape_cache_fingerprint(const cv::Mat &templ,
   return fp;
 }
 
-static cJSON *shape_cache_serialise(const sbm::FeatureSet &fs, const cv::Rect &crop,
-                                    const cv::Point2f &origin_in_crop,
-                                    const std::string &fingerprint)
-{
-  cJSON *o = cJSON_CreateObject();
-  cJSON_AddNumberToObject(o, "ver", 1);
-  cJSON_AddStringToObject(o, "fp", fingerprint.c_str());
-  cJSON *c = cJSON_AddArrayToObject(o, "crop");
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.x));
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.y));
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.width));
-  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.height));
-  cJSON *og = cJSON_AddArrayToObject(o, "origin");
-  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.x));
-  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.y));
-  cJSON_AddNumberToObject(o, "tw", fs.templ_width);
-  cJSON_AddNumberToObject(o, "th", fs.templ_height);
+// ---------------------------------------------------------------------------
+// SELF-CONTAINED DEFS: the pixels ROI refine needs, and nothing else.
+//
+// The def used to carry a feature set but not the picture it was taken from, so
+// locating still needed the sidecar .png on disk -- and the whole crop of it.
+// For a part that fills a 5 MP sensor that is 3.6 MB of base64 per def.
+//
+// It is also far more than the refiner reads. Each selected point is touched
+// over +/-(kDefaultROIHalf + search_extra) = +/-25 px, so what actually matters
+// is a small window per point. Eight of those is ~20 kB of PNG REGARDLESS of
+// how big the part is -- 176x smaller than the crop, and constant.
+//
+// The consequence is deliberate rather than a limitation: a def stored this way
+// must also carry its POINT SELECTION, because auto-selection scores candidates
+// by reading the image around each one, and outside the stored windows there is
+// nothing to read. That is the same thing the operator is doing when they check
+// that a feature point does not appear where it must not -- the selection IS
+// the curated artifact, so freezing the pixels and freezing the choice are one
+// act rather than two.
+static const int kRoiTileHalf = 28;   // 25 read + 2 for the 3x3 blur + 1 spare
 
-  cJSON *lv = cJSON_AddArrayToObject(o, "levels");
+static bool b64_decode(const char *in, std::vector<unsigned char> &out)
+{
+  static int8_t rev[256];
+  static bool init = false;
+  if (!init)
+  {
+    memset(rev, -1, sizeof(rev));
+    static const char *tbl =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (int i = 0; i < 64; i++) rev[(unsigned char)tbl[i]] = (int8_t)i;
+    init = true;
+  }
+  out.clear();
+  if (in == NULL) return false;
+  int acc = 0, bits = 0;
+  for (const char *p = in; *p != 0; p++)
+  {
+    if (*p == '=' || *p == '\n' || *p == '\r' || *p == ' ') continue;
+    int8_t v = rev[(unsigned char)*p];
+    if (v < 0) return false;
+    acc = (acc << 6) | v; bits += 6;
+    if (bits >= 8) { bits -= 8; out.push_back((unsigned char)((acc >> bits) & 0xFF)); }
+  }
+  return true;
+}
+
+// The points this def will refine with, decided once here rather than at every
+// match. user_opt_points when the def named them; otherwise whatever the
+// selector would have chosen, frozen at the defaults the matcher uses.
+static std::vector<cv::Point2f> roi_points_to_freeze(sbm::FeatureSet &fs)
+{
+  if (fs.user_opt_points_set) return fs.user_opt_points;
+  return fs.selectOptimizedPoints(sbm::kDefaultOptPointsPublic, -1.0f, false);
+}
+
+// One PNG holding every window side by side, plus where each one came from.
+static cJSON *roi_tiles_serialise(sbm::FeatureSet &fs)
+{
+  if (fs.templ_image.empty()) return NULL;
+  std::vector<cv::Point2f> sel = roi_points_to_freeze(fs);
+  if (sel.empty()) return NULL;
+
+  const int H = kRoiTileHalf, S = 2 * H;
+  if (fs.templ_image.cols < S || fs.templ_image.rows < S) return NULL;
+  const float tcx = fs.templ_width / 2.0f, tcy = fs.templ_height / 2.0f;
+
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "half", H);
+  cJSON *at  = cJSON_AddArrayToObject(o, "at");    // tile top-left, template px
+  cJSON *pts = cJSON_AddArrayToObject(o, "pts");   // the frozen selection
+
+  std::vector<cv::Mat> tiles;
+  for (size_t i = 0; i < sel.size(); i++)
+  {
+    int tx = (int)std::lround(sel[i].x + tcx) - H;
+    int ty = (int)std::lround(sel[i].y + tcy) - H;
+    // Clamp so the window is whole. A clipped tile would silently change what
+    // the refiner sees against the run that produced it.
+    tx = std::max(0, std::min(fs.templ_image.cols - S, tx));
+    ty = std::max(0, std::min(fs.templ_image.rows - S, ty));
+    tiles.push_back(fs.templ_image(cv::Rect(tx, ty, S, S)).clone());
+    cJSON *a = cJSON_CreateArray();
+    cJSON_AddItemToArray(a, cJSON_CreateNumber(tx));
+    cJSON_AddItemToArray(a, cJSON_CreateNumber(ty));
+    cJSON_AddItemToArray(at, a);
+
+    // The nearest refine point, carried with the selection. Match time looks it
+    // up by proximity for the constraint normal and the cornerness; storing the
+    // one that answers means the dense candidate set -- hundreds of points that
+    // exist only to be searched -- does not have to travel at all.
+    int best = -1; float bd = 1e18f;
+    for (size_t k = 0; k < fs.refine_points.size(); k++)
+    {
+      float dx = sel[i].x - fs.refine_points[k].px;
+      float dy = sel[i].y - fs.refine_points[k].py;
+      float d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = (int)k; }
+    }
+    const sbm::FeatureSet::RefinePt *rp = (best >= 0) ? &fs.refine_points[best] : NULL;
+    cJSON *pj = cJSON_CreateArray();
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(sel[i].x));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(sel[i].y));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? rp->nx : 0.0f));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? rp->ny : 0.0f));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? rp->cornerness : 0.0f));
+    cJSON_AddItemToArray(pj, cJSON_CreateNumber(rp ? (double)rp->type : 0.0));
+    cJSON_AddItemToArray(pts, pj);
+  }
+
+  cv::Mat strip;
+  cv::hconcat(tiles, strip);
+  std::vector<unsigned char> buf;
+  std::vector<int> params;
+  params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+  params.push_back(9);
+  // LOSSLESS, and it has to be. The refiner fits an edge to sub-pixel; a lossy
+  // codec moves the intensities it fits to, and the answer moves with them.
+  if (!cv::imencode(".png", strip, buf, params)) { cJSON_Delete(o); return NULL; }
+  std::string b64 = base64_encode(NULL, buf.data(), buf.size());
+  cJSON_AddStringToObject(o, "png", b64.c_str());
+  return o;
+}
+
+// Rebuild the FeatureSet's picture from the windows: a full-size image with the
+// tiles painted back where they came from. Every reader indexes templ_image by
+// absolute template coordinates and only ever touches the stored windows, so
+// nothing downstream has to know the rest of it was never there.
+static bool roi_tiles_load(cJSON *roi, sbm::FeatureSet &fs, int tw, int th)
+{
+  if (roi == NULL || tw <= 0 || th <= 0) return false;
+  cJSON *jh = cJSON_GetObjectItem(roi, "half");
+  cJSON *at = cJSON_GetObjectItem(roi, "at");
+  cJSON *pt = cJSON_GetObjectItem(roi, "pts");
+  cJSON *pg = cJSON_GetObjectItem(roi, "png");
+  if (!cJSON_IsNumber(jh) || !cJSON_IsArray(at) || !cJSON_IsArray(pt) ||
+      !cJSON_IsString(pg)) return false;
+  const int H = (int)jh->valuedouble, S = 2 * H;
+  const int n = cJSON_GetArraySize(at);
+  if (H <= 0 || n <= 0 || cJSON_GetArraySize(pt) != n) return false;
+
+  std::vector<unsigned char> raw;
+  if (!b64_decode(pg->valuestring, raw)) return false;
+  cv::Mat strip = cv::imdecode(raw, cv::IMREAD_GRAYSCALE);
+  if (strip.empty() || strip.rows != S || strip.cols != S * n) return false;
+
+  fs.templ_width = tw; fs.templ_height = th;
+  fs.templ_image = cv::Mat::zeros(th, tw, CV_8U);
+  fs.refine_points.clear();
+  fs.user_opt_points.clear();
+
+  for (int i = 0; i < n; i++)
+  {
+    cJSON *a = cJSON_GetArrayItem(at, i);
+    if (!cJSON_IsArray(a) || cJSON_GetArraySize(a) != 2) return false;
+    int tx = (int)cJSON_GetArrayItem(a, 0)->valuedouble;
+    int ty = (int)cJSON_GetArrayItem(a, 1)->valuedouble;
+    if (tx < 0 || ty < 0 || tx + S > tw || ty + S > th) return false;
+    strip(cv::Rect(i * S, 0, S, S)).copyTo(fs.templ_image(cv::Rect(tx, ty, S, S)));
+
+    cJSON *pj = cJSON_GetArrayItem(pt, i);
+    if (!cJSON_IsArray(pj) || cJSON_GetArraySize(pj) != 6) return false;
+    sbm::FeatureSet::RefinePt rp;
+    rp.px = (float)cJSON_GetArrayItem(pj, 0)->valuedouble;
+    rp.py = (float)cJSON_GetArrayItem(pj, 1)->valuedouble;
+    rp.nx = (float)cJSON_GetArrayItem(pj, 2)->valuedouble;
+    rp.ny = (float)cJSON_GetArrayItem(pj, 3)->valuedouble;
+    rp.cornerness = (float)cJSON_GetArrayItem(pj, 4)->valuedouble;
+    rp.type = (cJSON_GetArrayItem(pj, 5)->valuedouble >= 0.5)
+              ? sbm::FeatureSet::RefinePt::CORNER
+              : sbm::FeatureSet::RefinePt::EDGE;
+    fs.refine_points.push_back(rp);
+    fs.user_opt_points.push_back(cv::Point2f(rp.px, rp.py));
+  }
+  fs.user_opt_points_set = true;
+  return true;
+}
+
+static cJSON *shape_levels_serialise(const sbm::FeatureSet &fs)
+{
+  cJSON *lv = cJSON_CreateArray();
   for (const auto &L : fs.levels)
   {
     cJSON *e = cJSON_CreateObject();
@@ -7199,53 +7989,14 @@ static cJSON *shape_cache_serialise(const sbm::FeatureSet &fs, const cv::Rect &c
     }
     cJSON_AddItemToArray(lv, e);
   }
-  return o;
+  return lv;
 }
 
-// Returns true only when the cache is present, well-formed AND its fingerprint
-// matches what this def+image would produce now.
-static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
-                             sbm::FeatureSet &fs, cv::Rect &crop,
-                             cv::Point2f &origin_in_crop)
+// Returns the feature total, or -1 when malformed.
+static int shape_levels_load(cJSON *lv, sbm::FeatureSet &fs)
 {
-  if (cache == NULL || !cJSON_IsObject(cache)) return false;
-  cJSON *v = cJSON_GetObjectItem(cache, "ver");
-  if (!v || v->valuedouble != 1) { LOGW("[shape] cache ver mismatch; re-extracting"); return false; }
-  cJSON *fp = cJSON_GetObjectItem(cache, "fp");
-  if (!fp || !cJSON_IsString(fp) || fingerprint != fp->valuestring)
-  {
-    // Print BOTH, because "stale" alone does not say whether a parameter moved
-    // by design or the reference picture was replaced -- and the answer decides
-    // whether one def needs regenerating or every def in the fleet does. The
-    // fields are | separated and in a fixed order, so the differing one is
-    // visible by eye without tooling.
-    LOGW("[shape] cache stale; re-extracting || was: %s || now: %s",
-         (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
-         fingerprint.c_str());
-    // Also on stderr under SHAPE_DBG: the ring log is not reachable from a
-    // shell, and this is the message that says whether ONE def needs
-    // regenerating or every def does.
-    if (getenv("SHAPE_DBG"))
-      fprintf(stderr, "[SHAPE_DBG] cache stale\n  was: %s\n  now: %s\n",
-              (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
-              fingerprint.c_str());
-    return false;
-  }
-  cJSON *c = cJSON_GetObjectItem(cache, "crop");
-  cJSON *og = cJSON_GetObjectItem(cache, "origin");
-  cJSON *lv = cJSON_GetObjectItem(cache, "levels");
-  if (!cJSON_IsArray(c) || cJSON_GetArraySize(c) != 4 ||
-      !cJSON_IsArray(og) || cJSON_GetArraySize(og) != 2 ||
-      !cJSON_IsArray(lv) || cJSON_GetArraySize(lv) == 0)
-  { LOGW("[shape] cache malformed; re-extracting"); return false; }
-
-  crop = cv::Rect((int)cJSON_GetArrayItem(c,0)->valuedouble, (int)cJSON_GetArrayItem(c,1)->valuedouble,
-                  (int)cJSON_GetArrayItem(c,2)->valuedouble, (int)cJSON_GetArrayItem(c,3)->valuedouble);
-  origin_in_crop = cv::Point2f((float)cJSON_GetArrayItem(og,0)->valuedouble,
-                               (float)cJSON_GetArrayItem(og,1)->valuedouble);
+  if (!cJSON_IsArray(lv) || cJSON_GetArraySize(lv) == 0) return -1;
   fs.levels.clear();
-  fs.templ_width  = (int)JFetch_NUMBER_ex(cache, "tw", 0);
-  fs.templ_height = (int)JFetch_NUMBER_ex(cache, "th", 0);
   int nf_total = 0;
   cJSON *e = NULL;
   cJSON_ArrayForEach(e, lv)
@@ -7257,8 +8008,7 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
     L.width = (int)JFetch_NUMBER_ex(e, "w", 0);
     L.height= (int)JFetch_NUMBER_ex(e, "h", 0);
     cJSON *f = cJSON_GetObjectItem(e, "f");
-    if (!cJSON_IsArray(f) || (cJSON_GetArraySize(f) % 5) != 0)
-    { LOGW("[shape] cache level malformed; re-extracting"); return false; }
+    if (!cJSON_IsArray(f) || (cJSON_GetArraySize(f) % 5) != 0) return -1;
     int n = cJSON_GetArraySize(f) / 5;
     L.features.reserve(n);
     for (int i = 0; i < n; i++)
@@ -7274,6 +8024,172 @@ static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
     nf_total += n;
     fs.levels.push_back(std::move(L));
   }
+  return nf_total;
+}
+
+// The optional "scaled" block: features re-extracted from the template resized by
+// shape_match_scale, so the down-scaled detector matches features selected and
+// oriented at ITS resolution instead of the full-res set with halved coordinates.
+// {scale, w, h, levels}. Absent -> the matcher coordinate-scales (as before).
+static cJSON *shape_scaled_serialise(const sbm::FeatureSet &fs, float scale)
+{
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "scale", scale);
+  cJSON_AddNumberToObject(o, "w", fs.templ_width);
+  cJSON_AddNumberToObject(o, "h", fs.templ_height);
+  cJSON_AddItemToObject(o, "levels", shape_levels_serialise(fs));
+  return o;
+}
+static bool shape_scaled_load(cJSON *cache, sbm::FeatureSet &fs, float &scale)
+{
+  cJSON *o = cache ? cJSON_GetObjectItem(cache, "scaled") : NULL;
+  if (!o || !cJSON_IsObject(o)) return false;
+  scale = (float)JFetch_NUMBER_ex(o, "scale", 0);
+  fs.templ_width  = (int)JFetch_NUMBER_ex(o, "w", 0);
+  fs.templ_height = (int)JFetch_NUMBER_ex(o, "h", 0);
+  if (!(scale > 0.1f && scale < 1.0f) || fs.templ_width <= 0) return false;
+  return shape_levels_load(cJSON_GetObjectItem(o, "levels"), fs) >= 16;
+}
+
+static cJSON *shape_cache_serialise(sbm::FeatureSet &fs, const cv::Rect &crop,
+                                    const cv::Point2f &origin_in_crop,
+                                    const std::string &fingerprint,
+                                    const sbm::FeatureSet *scaled = NULL, float scaled_at = 0.0f)
+{
+  cJSON *o = cJSON_CreateObject();
+  cJSON_AddNumberToObject(o, "ver", 1);
+  cJSON_AddStringToObject(o, "fp", fingerprint.c_str());
+  cJSON *c = cJSON_AddArrayToObject(o, "crop");
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.x));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.y));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.width));
+  cJSON_AddItemToArray(c, cJSON_CreateNumber(crop.height));
+  cJSON *og = cJSON_AddArrayToObject(o, "origin");
+  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.x));
+  cJSON_AddItemToArray(og, cJSON_CreateNumber(origin_in_crop.y));
+  // tw/th are NOT written. They were always crop.width/height -- checked across
+  // every def on this machine, 11 of 11 identical -- because the template IS the
+  // crop. Two names for one number is two things that can disagree, and the one
+  // that would win is whichever the reader happened to use.
+
+  cJSON_AddItemToObject(o, "levels", shape_levels_serialise(fs));
+  if (scaled != NULL && !scaled->levels.empty() && scaled_at > 0.1f && scaled_at < 1.0f)
+    cJSON_AddItemToObject(o, "scaled", shape_scaled_serialise(*scaled, scaled_at));
+
+  // The pixels, so this def stops needing the picture it was made from.
+  // Absent for a feature set with no template image (nothing to cut windows
+  // out of), and then the def behaves exactly as it did before.
+  cJSON *roi = roi_tiles_serialise(fs);
+  if (roi != NULL) cJSON_AddItemToObject(o, "roi", roi);
+  return o;
+}
+
+// Returns true when the cache is present and well-formed. THE FINGERPRINT IS
+// NOT A GATE.
+//
+// It used to be: a mismatch refused the cache, and outside the studio implicit
+// re-extraction is off, so the def silently fell back to sig360 -- a different
+// localizer, for a def that carries a perfectly good trained model.
+//
+// The cache IS the trained model. Producing it is an explicit act (generate
+// features in the SBM studio), and the fields the fingerprint covers -- feature
+// count, pyramid, the two thresholds, the angle offset -- are inputs to THAT
+// act and to nothing else. Once the model exists they describe how it was made,
+// not whether it is usable. Refusing to load a model because the recipe that
+// would produce a DIFFERENT model has changed is a category error, and its
+// failure mode is the worst kind: the machine keeps running, on another
+// localizer, saying nothing anyone would notice.
+//
+// It also never worked as advertised. Every def in the field is stamped with
+// the pre-2026-08-30 string, so this check failed on EVERY load and a second,
+// looser comparison rescued it -- while the log said "cache stale;
+// re-extracting", which was not what happened and had been printing for weeks.
+//
+// What still refuses a cache is what actually makes it unusable: wrong version,
+// malformed structure, or (at the call site) a crop that does not fit the
+// reference image. A fingerprint difference is now reported and no more. It is
+// real information -- somebody changed an extraction parameter, or swapped the
+// picture -- and the answer to it is to press regenerate, not to have the
+// machine quietly change localizer underneath the operator.
+// The stored fingerprint's PARAMETER fields, checked without the picture.
+//
+// A self-contained def never recomputes its fingerprint (that needs the image),
+// so the extraction knobs it carries -- shape_num_features, shape_pyramid_T,
+// shape_weak_thres, shape_strong_thres -- were compared with nothing. Edit one
+// and save: the def says 32 features and runs 128, forever, silently. The
+// tuner's first run "accepted" exactly that on 148 recipes. The number fields
+// are | separated in a fixed order, so the def's current values can be matched
+// against the stamp as a substring; the image sum is left alone. Returns the
+// stamp's parameter segment when it differs, empty when it matches or the stamp
+// is not in the v1 format.
+static std::string shape_cache_fp_param_mismatch(const std::string &fp, int num_features,
+                                                 const std::vector<int> &pyrT,
+                                                 float weak, float strong)
+{
+  if (fp.compare(0, 3, "v1|") != 0) return std::string();
+  std::string pyr;
+  for (size_t i = 0; i < pyrT.size(); i++) pyr += std::to_string(pyrT[i]) + ",";
+  char buf[160];
+  snprintf(buf, sizeof(buf), "|nf%d|T%s|w%.2f|s%.2f|", num_features, pyr.c_str(), weak, strong);
+  if (fp.find(buf) != std::string::npos) return std::string();
+  size_t a = fp.find("|nf"); size_t b = (a == std::string::npos) ? a : fp.find("|ao", a);
+  return (a == std::string::npos) ? fp : fp.substr(a, b == std::string::npos ? std::string::npos : b - a + 1);
+}
+
+static bool shape_cache_load(cJSON *cache, const std::string &fingerprint,
+                             sbm::FeatureSet &fs, cv::Rect &crop,
+                             cv::Point2f &origin_in_crop)
+{
+  if (cache == NULL || !cJSON_IsObject(cache)) return false;
+  cJSON *v = cJSON_GetObjectItem(cache, "ver");
+  if (!v || v->valuedouble != 1) { LOGW("[shape] cache ver mismatch; re-extracting"); return false; }
+  cJSON *fp = cJSON_GetObjectItem(cache, "fp");
+  // An EMPTY fingerprint means the caller had nothing to compare with, not that
+  // the comparison failed. The self-contained path passes one: computing a
+  // fingerprint needs the reference image, and that path exists precisely so
+  // the image is not needed. Reporting "stamped with different extraction
+  // parameters || now: " on every such load would be a warning about a
+  // comparison that never happened.
+  if (!fingerprint.empty() && (!fp || !cJSON_IsString(fp) || fingerprint != fp->valuestring))
+  {
+    // Print BOTH, because "stale" alone does not say whether a parameter moved
+    // by design or the reference picture was replaced -- and the answer decides
+    // whether one def needs regenerating or every def in the fleet does. The
+    // fields are | separated and in a fixed order, so the differing one is
+    // visible by eye without tooling.
+    // A warning, because it is worth seeing and worth acting on -- and only a
+    // warning, because nothing here refuses anything.
+    LOGW("[shape] cache was stamped with different extraction parameters; using it "
+         "as-is (regenerate the features to re-extract) || was: %s || now: %s",
+         (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
+         fingerprint.c_str());
+    // Also on stderr under SHAPE_DBG: the ring log is not reachable from a
+    // shell, and this is the message that says whether ONE def needs
+    // regenerating or every def does.
+    if (getenv("SHAPE_DBG"))
+      fprintf(stderr, "[SHAPE_DBG] cache fingerprint differs (loading anyway)\n  was: %s\n  now: %s\n",
+              (fp && cJSON_IsString(fp)) ? fp->valuestring : "(absent)",
+              fingerprint.c_str());
+    // and carry on loading it.
+  }
+  cJSON *c = cJSON_GetObjectItem(cache, "crop");
+  cJSON *og = cJSON_GetObjectItem(cache, "origin");
+  cJSON *lv = cJSON_GetObjectItem(cache, "levels");
+  if (!cJSON_IsArray(c) || cJSON_GetArraySize(c) != 4 ||
+      !cJSON_IsArray(og) || cJSON_GetArraySize(og) != 2 ||
+      !cJSON_IsArray(lv) || cJSON_GetArraySize(lv) == 0)
+  { LOGW("[shape] cache malformed; re-extracting"); return false; }
+
+  crop = cv::Rect((int)cJSON_GetArrayItem(c,0)->valuedouble, (int)cJSON_GetArrayItem(c,1)->valuedouble,
+                  (int)cJSON_GetArrayItem(c,2)->valuedouble, (int)cJSON_GetArrayItem(c,3)->valuedouble);
+  origin_in_crop = cv::Point2f((float)cJSON_GetArrayItem(og,0)->valuedouble,
+                               (float)cJSON_GetArrayItem(og,1)->valuedouble);
+  // The template's size is the crop's size, by construction: templ_use is
+  // templ(cropRect). Read from the one field that says it.
+  fs.templ_width  = crop.width;
+  fs.templ_height = crop.height;
+  int nf_total = shape_levels_load(lv, fs);
+  if (nf_total < 0) { LOGW("[shape] cache level malformed; re-extracting"); return false; }
   if (nf_total < 16) { LOGW("[shape] cache has only %d features; re-extracting", nf_total); return false; }
   LOGI("[shape] loaded %d features from def cache (no re-extraction)", nf_total);
   // The cache-HIT counterpart of the "cache stale" line above. Without it
@@ -7345,11 +8261,201 @@ ShapeExtractWindow::ShapeExtractWindow(bool force)
 }
 ShapeExtractWindow::~ShapeExtractWindow() { g_shape_extract_allowed = prev; g_shape_force_extract = prevForce; }
 
+void FeatureManager_sig360_circle_line::liftShapeForUI(
+    const sbm::FeatureSet &fs, const cv::Rect &crop,
+    float reg_sin, float reg_cos, float reg_flip_f, const cv::Point2f &originPx)
+{
+  shape_feat_mm.clear();
+  shape_roi_mm.clear();
+  if (!(def_mmpp > 0)) return;
+  auto px_to_obj = [&](float fx, float fy) {
+    acv_XY full = { fx + (float)crop.x, fy + (float)crop.y };
+    return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
+                                       acv_XY(originPx.x, originPx.y), def_mmpp);
+  };
+  if (!fs.levels.empty())
+  {
+    const auto &lv = fs.levels[0];
+    shape_feat_mm.reserve(lv.features.size());
+    for (const auto &f : lv.features)
+      shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
+  }
+  const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
+  // THE SAME COUNT THE MATCHER ASKS FOR, not 16.
+  //
+  // selectOptimizedPoints caches by max_points and the first call wins: a
+  // cached 16 satisfies a later request for 8, so this preview used to decide
+  // what the localizer ran with. Opening the studio changed the machine's
+  // behaviour, and the points on screen were never the points in use.
+  std::vector<cv::Point2f> rpts =
+      const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(sbm::kDefaultOptPointsPublic);
+  shape_roi_mm.reserve(rpts.size());
+  for (const auto &rp : rpts)
+    shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
+}
+
 int FeatureManager_sig360_circle_line::trainShapeMatcher()
 {
   shape_ready = false;
+  shape_coarse_only = false;
   shapeMatcher.reset();
   shapeFeatureSet.reset();
+
+  // A DEF THAT CARRIES ITS OWN PIXELS NEEDS NOTHING FROM DISK.
+  //
+  // Before any path is resolved, because the point is that there is no path:
+  // the windows ROI refine reads are in the def, and so is the selection they
+  // belong to. Everything below this -- imread, Otsu, connected components,
+  // extraction -- exists to rebuild what such a def already contains.
+  //
+  // Regeneration still goes the long way round: re-extracting means looking at
+  // the picture again, and stored windows are the old picture by definition.
+  // def_mmpp is in the guard because both the registration origin and the UI
+  // lift divide by it; without it there is no object frame to lift into.
+  if (!shape_force_extract() && shape_cache_in != NULL && has_reg && def_mmpp > 0 &&
+      cJSON_GetObjectItem(shape_cache_in, "roi") != NULL)
+  {
+    sbm::FeatureSet fsc;
+    cv::Rect ccrop; cv::Point2f corg;
+    // No fingerprint: computing one needs the image, and this path exists so
+    // that the image is not needed. Nothing is being validated against inputs
+    // here because nothing is being DERIVED from inputs -- the def is the
+    // artifact, not a recipe for rebuilding it, so there is nothing to go
+    // stale against.
+    if (shape_cache_load(shape_cache_in, std::string(), fsc, ccrop, corg) &&
+        roi_tiles_load(cJSON_GetObjectItem(shape_cache_in, "roi"), fsc,
+                       fsc.templ_width, fsc.templ_height))
+    {
+      { sbm::FeatureSet sc; float at = 0; shapeScaledSet.reset(); shape_scaled_at = 0;
+        if (shape_scaled_load(shape_cache_in, sc, at)) { shapeScaledSet = std::make_shared<sbm::FeatureSet>(sc); shape_scaled_at = at; } }
+      fsc.setOrigin(corg.x, corg.y);
+      // Same offset the disk path derives, from the same def field. The other
+      // two origin sources down there (sig360 centre, Otsu blob) both need the
+      // picture, so a def without def_image_reg cannot be self-contained --
+      // which is why the guard above requires it.
+      fsc.setAngleOffset(has_reg ? reg_angle_rad * 180.0f / (float)M_PI : 0.0f);
+      shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fsc);
+      shape_crop = ccrop;
+      shape_origin_in_crop = corg;
+      int nv = buildShapeMatcher(1.0f);
+      if (nv <= 0) { LOGE("[shape] addModel from a self-contained def failed (%d)", nv); return -1; }
+      shape_ready = true;
+
+      // THE STUDIO ASKS THE CORE FOR THESE. It does not compute them itself.
+      //
+      // This was skipped, reasoning that a machine running parts previews
+      // nothing and curation happens in the studio where the picture is open
+      // anyway. Both halves are true and the conclusion was still wrong:
+      // opening the SBM studio sends an SF to ask what the def already locates
+      // with, and an empty answer is indistinguishable, at that end, from an
+      // extraction that produced nothing. A def loaded this way -- working,
+      // accurate, verified against the truth -- greeted the operator with
+      // "生成特徵失敗".
+      //
+      // Both lists are already in the FeatureSet; lifting them into object-frame
+      // mm is one pass over data in memory and needs no picture.
+      {
+        const float rs = -sinf(reg_angle_rad), rc = cosf(reg_angle_rad);
+        const float rf = reg_flipped ? -1.0f : 1.0f;
+        const cv::Point2f org((float)(reg_center_mm.x / def_mmpp),
+                              (float)(reg_center_mm.y / def_mmpp));
+        liftShapeForUI(*shapeFeatureSet, ccrop, rs, rc, rf, org);
+      }
+
+      // The fingerprint the def already carries, handed back unchanged.
+      //
+      // getShapeFeaturePointsJson only emits shape_cache when this is set, so
+      // leaving it empty meant an SF reply with no cache in it -- and the studio
+      // patches edit_info.__shape_cache from that reply. Recomputing one here
+      // would need the reference image, which is the whole point of not needing
+      // it; carrying the def's own forward says exactly what it is.
+      {
+        cJSON *fpj = cJSON_GetObjectItem(shape_cache_in, "fp");
+        shape_cache_fp = (fpj != NULL && cJSON_IsString(fpj) && fpj->valuestring != NULL)
+                         ? std::string(fpj->valuestring) : std::string("self-contained");
+        std::string was = shape_cache_fp_param_mismatch(shape_cache_fp, shape_num_features,
+                                                        shape_pyramid_T, shape_weak_thres, shape_strong_thres);
+        if (!was.empty())
+          LOGW("[shape] def sets extraction knobs (nf%d T%s w%.2f s%.2f) that differ from the "
+               "features it carries (%s). The CACHE runs; the knobs do nothing until "
+               "生成特徵點 regenerates. Reported as locate.code=cache_stale.",
+               shape_num_features, [&]{ std::string p; for (int t : shape_pyramid_T) p += std::to_string(t) + ","; return p; }().c_str(),
+               shape_weak_thres, shape_strong_thres, was.c_str());
+        shape_cache_stale = !was.empty();
+      }
+      LOGI("[shape] self-contained def: %d ROI window(s), crop [%d,%d %dx%d] "
+           "origin(%.1f,%.1f) variants=%d -- no template file was read",
+           (int)shapeFeatureSet->user_opt_points.size(), ccrop.x, ccrop.y,
+           ccrop.width, ccrop.height, corg.x, corg.y, nv);
+      return 0;
+    }
+    // Say so rather than quietly taking the long way: a def that MEANT to be
+    // self-contained and is not has a broken payload, and the sidecar it falls
+    // back to may not be the picture those windows came from.
+    LOGE("[shape] this def carries ROI windows but they did not load -- "
+         "falling back to the template file on disk");
+  }
+
+  // A CACHE WITH LEVELS BUT NO WINDOWS LOCATES COARSELY, AND SAYS SO.
+  //
+  // This is the format every def written before the windows existed is in, and
+  // -- until the WebUI stopped emitting roi_refine_points:[] -- the format a
+  // freshly migrated def came out in too. It used to be refused outside the
+  // studio (rc -2, "untrained", sig360 fallback), which meant a def that asked
+  // for shape_based ran on a different localizer with a green verdict panel and
+  // one string in the report envelope to say so. Decided 2026-09-04: ROI refine
+  // is the bonus, not the entry ticket. Load the levels, run the coarse stage,
+  // and report coarse_only on every frame.
+  //
+  // Only when extraction is NOT allowed: the studio's 生成特徵點 must still go
+  // the long way and produce the windows, or nothing ever gets better.
+  // has_reg and def_mmpp for the same reason as the self-contained path: the
+  // origin and the UI lift need them, and the other origin sources need the
+  // picture this path exists to do without.
+  if (!shape_extract_allowed() && shape_cache_in != NULL && has_reg && def_mmpp > 0 &&
+      cJSON_GetObjectItem(shape_cache_in, "roi") == NULL)
+  {
+    sbm::FeatureSet fsc;
+    cv::Rect ccrop; cv::Point2f corg;
+    if (shape_cache_load(shape_cache_in, std::string(), fsc, ccrop, corg))
+    { sbm::FeatureSet sc; float at = 0; shapeScaledSet.reset(); shape_scaled_at = 0;
+      if (shape_scaled_load(shape_cache_in, sc, at)) { shapeScaledSet = std::make_shared<sbm::FeatureSet>(sc); shape_scaled_at = at; } }
+    if (!fsc.levels.empty())
+    {
+      fsc.setOrigin(corg.x, corg.y);
+      fsc.setAngleOffset(reg_angle_rad * 180.0f / (float)M_PI);
+      shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fsc);
+      shape_crop = ccrop;
+      shape_origin_in_crop = corg;
+      int nv = buildShapeMatcher(1.0f);
+      if (nv <= 0) { LOGE("[shape] addModel from a coarse-only cache failed (%d)", nv); return -1; }
+      shape_ready = true;
+      shape_coarse_only = true;
+      {
+        const float rs = -sinf(reg_angle_rad), rc = cosf(reg_angle_rad);
+        const float rf = reg_flipped ? -1.0f : 1.0f;
+        const cv::Point2f org((float)(reg_center_mm.x / def_mmpp),
+                              (float)(reg_center_mm.y / def_mmpp));
+        liftShapeForUI(*shapeFeatureSet, ccrop, rs, rc, rf, org);
+      }
+      {
+        cJSON *fpj = cJSON_GetObjectItem(shape_cache_in, "fp");
+        shape_cache_fp = (fpj != NULL && cJSON_IsString(fpj) && fpj->valuestring != NULL)
+                         ? std::string(fpj->valuestring) : std::string("coarse-only");
+        shape_cache_stale = !shape_cache_fp_param_mismatch(shape_cache_fp, shape_num_features,
+                              shape_pyramid_T, shape_weak_thres, shape_strong_thres).empty();
+      }
+      // The matcher's ROI stage is gated on templ_image, which this FeatureSet
+      // does not have, so the refine is skipped by construction -- not by a
+      // flag that could drift out of step with the data.
+      LOGW("[shape] COARSE-ONLY: this def's features carry no ROI windows, so "
+           "it locates at coarse accuracy (a few px, not sub-pixel). Reported as "
+           "locate.code=coarse_only on every frame. Open the SBM studio and press "
+           "生成特徵點, then save, to get the windows.");
+      return 0;
+    }
+    LOGW("[shape] coarse-only cache did not load; falling back to the template file on disk");
+  }
 
   // Resolve the template image path, in priority order:
   //   1. "_ref_image_path": a FULL path supplied at runtime (e.g. the WebUI stamps it
@@ -7383,6 +8489,16 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
   cv::Mat templ = cv::imread(png, cv::IMREAD_GRAYSCALE);
   if (templ.empty()) { LOGE("[shape] cannot read template image: %s", png.c_str()); return -1; }
+  // WHICH FILE, EVERY TIME. The core trains from a file on disk, never from the
+  // picture the studio is showing, and when those two are not the same image
+  // every symptom downstream is misleading. One line, so a log from the line
+  // answers "what was it actually looking at" without a second visit.
+  {
+    cv::Scalar mu, sd;
+    cv::meanStdDev(templ, mu, sd);
+    LOGI("[shape] template %s (%dx%d, mean=%.1f sd=%.1f)",
+         png.c_str(), templ.cols, templ.rows, mu[0], sd[0]);
+  }
 
   // Derive the object mask + centroid via Otsu. The part is the largest
   // connected component that does NOT touch the image border -- the backlit
@@ -7676,115 +8792,30 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   // "line2Dup features: 0" while the localizer was working perfectly. That was
   // invisible until defs started carrying caches, at which point pressing the
   // button made the existing overlay vanish and nothing replace it.
+  // Thin wrapper so the two call sites below read as they always did; the
+  // implementation is a member because the self-contained load path needs it
+  // too and never reaches this point in the function.
   auto liftForUI = [&](const sbm::FeatureSet &fs, const cv::Rect &crop) {
-    shape_feat_mm.clear();
-    shape_roi_mm.clear();
-    if (!(def_mmpp > 0)) return;
-    auto px_to_obj = [&](float fx, float fy) {
-      acv_XY full = { fx + (float)crop.x, fy + (float)crop.y };
-      return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
-                                         acv_XY(originPx.x, originPx.y), def_mmpp);
-    };
-    if (!fs.levels.empty())
-    {
-      const auto &lv = fs.levels[0];
-      shape_feat_mm.reserve(lv.features.size());
-      for (const auto &f : lv.features)
-        shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
-    }
-    const float tcx = crop.width / 2.0f, tcy = crop.height / 2.0f;
-    // THE SAME COUNT THE MATCHER ASKS FOR, not 16.
-    //
-    // selectOptimizedPoints caches by max_points and the first call wins: a
-    // cached 16 satisfies a later request for 8, so this preview used to decide
-    // what the localizer ran with. Opening the studio changed the machine's
-    // behaviour, and the points on screen were never the points in use.
-    std::vector<cv::Point2f> rpts =
-        const_cast<sbm::FeatureSet &>(fs).selectOptimizedPoints(sbm::kDefaultOptPointsPublic);
-    shape_roi_mm.reserve(rpts.size());
-    for (const auto &rp : rpts)
-      shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
+    liftShapeForUI(fs, crop, reg_sin, reg_cos, reg_flip_f, originPx);
   };
 
-  // Cache hit? Then the crop and the features are already known: take the crop
-  // straight out of the sidecar and skip Otsu + connectedComponents +
-  // extractFeatures entirely. The sidecar imread above still had to happen --
-  // ROI refine matches against those pixels -- but a def is loaded once per
-  // inspection session, so that read costs nothing per part.
+  // THERE IS ONE WAY TO LOAD A TRAINED LOCALISER, and it is above: a def that
+  // carries its own pixels. What used to sit here was a second one -- take the
+  // feature levels out of the def, then go to disk for the picture -- and the
+  // two disagreed in a way nothing reported. That path did not carry
+  // refine_points, so a def loaded through it located at coarse accuracy with a
+  // high score and a report that read as normal; the accuracy simply was not
+  // there. Having two routes to the same object is also what made a dangling
+  // `if` above a `return` survive: with one route there is nothing to fall
+  // through to.
+  //
+  // A def in the old format now falls through to extraction, which is refused
+  // outside the studio -- see shape_extract_allowed. That is the intended
+  // outcome and not a regression to work around: open it in the SBM studio and
+  // press generate. The features it produces are the ones that get stored, and
+  // storing them completely is the whole point.
   if (shape_force_extract())
-    LOGI("[shape] regenerate requested: ignoring any cached feature set");
-  else
-  {
-    const std::string fp = shape_cache_fingerprint(templ, shape_num_features, shape_pyramid_T,
-                                                   shape_weak_thres, shape_strong_thres,
-                                                   roi_pts_mm, roi_pts_set, angle_offset_deg);
-    sbm::FeatureSet cached;
-    cv::Rect ccrop; cv::Point2f corg;
-    if (shape_cache_load(shape_cache_in, fp, cached, ccrop, corg))
-    {
-      // The crop must still be inside this image; a cache whose geometry does
-      // not fit the sidecar is stale in a way the fingerprint cannot see.
-      cv::Rect fitted = ccrop & cv::Rect(0, 0, templ.cols, templ.rows);
-      if (fitted != ccrop || ccrop.width < 16 || ccrop.height < 16)
-      {
-        LOGW("[shape] cached crop [%d,%d %dx%d] does not fit %dx%d image; re-extracting",
-             ccrop.x, ccrop.y, ccrop.width, ccrop.height, templ.cols, templ.rows);
-      }
-      else
-      {
-        cached.templ_image = templ(ccrop).clone();   // ROI refine reads this
-        cached.setOrigin(corg.x, corg.y);
-        cached.setAngleOffset(angle_offset_deg);
-
-        // The user's ROI refine points are NOT part of the cached feature set --
-        // they are a def field, and the def may have been edited since. Rebuild
-        // them here exactly as the extraction path does, from the crop geometry
-        // the cache carries: originPx = crop.tl() + origin_in_crop.
-        //
-        // Skipping this was a real defect, not a cosmetic one: without the
-        // explicit points the matcher silently fell back to auto-selected ones
-        // and the located centre moved 2px (0.028mm) against the extraction
-        // path. A cache that changes the answer is worse than no cache.
-        if (roi_pts_set && def_mmpp > 0)
-        {
-#ifdef SBM_HAS_USER_OPT_POINTS
-          const cv::Point2f orgFull(ccrop.x + corg.x, ccrop.y + corg.y);
-          const float tcx = ccrop.width / 2.0f, tcy = ccrop.height / 2.0f;
-          cached.user_opt_points.clear();
-          cached.user_opt_points.reserve(roi_pts_mm.size());
-          for (const acv_XY &q : roi_pts_mm)
-          {
-            acv_XY full = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
-                                                      acv_XY(orgFull.x, orgFull.y), def_mmpp);
-            cached.user_opt_points.push_back(cv::Point2f(full.x - ccrop.x - tcx,
-                                                         full.y - ccrop.y - tcy));
-          }
-          cached.user_opt_points_set = true;
-          LOGI("[shape] cache + %d explicit ROI refine points (user)",
-               (int)cached.user_opt_points.size());
-          dump_roi_tiles("cache", cached.templ_image, ccrop,
-                         acv_XY(orgFull.x, orgFull.y), roi_pts_mm, cached.user_opt_points,
-                         reg_sin, reg_cos, reg_flip_f, def_mmpp);
-#else
-          LOGW("[shape] this build lacks sbm user_opt_points; cached def's explicit "
-               "ROI points IGNORED (auto-selection used)");
-#endif
-        }
-        shapeFeatureSet = std::make_shared<sbm::FeatureSet>(cached);
-        shape_crop = ccrop;
-        shape_origin_in_crop = corg;
-        shape_cache_fp = fp;
-        int nv = buildShapeMatcher(1.0f);
-        if (nv <= 0) { LOGE("[shape] addModel from cache failed (%d)", nv); return -1; }
-        shape_ready = true;
-        liftForUI(*shapeFeatureSet, ccrop);
-        LOGI("[shape] from def cache: crop [%d,%d %dx%d] origin(%.1f,%.1f) variants=%d",
-             ccrop.x, ccrop.y, ccrop.width, ccrop.height, corg.x, corg.y, nv);
-        if (getenv("SHAPE_DBG"))
-        return 0;
-      }
-    }
-  }
+    LOGI("[shape] regenerate requested: extracting from the reference image");
 
   // FROM HERE DOWN IS EXTRACTION, and extraction is an AUTHORING action.
   //
@@ -7802,10 +8833,22 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   // pressed a button and is looking at the result.
   if (!shape_extract_allowed())
   {
-    LOGE("[shape] this def has no usable __shape_cache and implicit extraction "
-         "is off -- open the SBM studio and press 生成特徵點, then save. "
-         "(escape hatch for recovering a machine without an editing session: "
-         "SBM_ALLOW_IMPLICIT_EXTRACT=1)");
+    // Name the two cases apart. "No features" and "features in a format this
+    // core no longer loads" send whoever is standing at the machine to
+    // different places, and the second one is now the common one.
+    const bool legacy = (shape_cache_in != NULL &&
+                         cJSON_GetObjectItem(shape_cache_in, "roi") == NULL);
+    if (legacy)
+      // Reached only when the coarse-only load above was skipped, i.e. the def
+      // has a cache but no def_image_reg (or no mmpp) to place it with.
+      LOGE("[shape] this def stores feature levels but no ROI windows AND no "
+           "def_image_reg, so the cache cannot be placed without the picture. "
+           "Open it in the SBM studio, set 定位, press 生成特徵點, then save.");
+    else
+      LOGE("[shape] this def has no features and implicit extraction is off -- "
+           "open the SBM studio and press 生成特徵點, then save. "
+           "(escape hatch for recovering a machine without an editing session: "
+           "SBM_ALLOW_IMPLICIT_EXTRACT=1)");
     return -2;
   }
 
@@ -7823,7 +8866,58 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     }
     if (fset.numFeatures() < 16)
     {
-      LOGE("[shape] only %d features extractable; aborting shape training", fset.numFeatures());
+      // SAY WHAT WE WERE LOOKING AT.
+      //
+      // Zero features with the mask REMOVED is not a region problem and not a
+      // threshold problem -- it means the picture line2Dup was handed has no
+      // edges in it. From the operator's side that is indistinguishable from
+      // "the region excluded the part", and the studio's message said exactly
+      // that, so the next hour goes into redrawing a region that was never
+      // wrong. The one thing that separates the two is what the image looks
+      // like, so print it: a template that is blank, or the wrong file, shows
+      // up here as a near-zero spread.
+      double lo = 0, hi = 0;
+      cv::Scalar mu, sd;
+      if (!templ_use.empty())
+      {
+        cv::Mat g1 = templ_use;
+        if (g1.channels() != 1) cv::cvtColor(templ_use, g1, cv::COLOR_BGR2GRAY);
+        cv::minMaxLoc(g1, &lo, &hi);
+        cv::meanStdDev(g1, mu, sd);
+      }
+      LOGE("[shape] only %d features extractable; aborting shape training. "
+           "template %dx%d ch%d  min=%.0f max=%.0f mean=%.1f sd=%.1f  "
+           "(weak=%.1f strong=%.1f). sd near 0 means the template file is blank "
+           "or is not the picture on screen -- check <recipe>.png / _ref_image_path",
+           fset.numFeatures(), templ_use.cols, templ_use.rows, templ_use.channels(),
+           lo, hi, mu[0], sd[0], shape_weak_thres, shape_strong_thres);
+
+      // IS IT THE THRESHOLDS? Ask, instead of leaving it to be guessed.
+      //
+      // A picture with plenty of edges still yields nothing when weak/strong sit
+      // above its gradient magnitudes -- a low-contrast part, a dimmer lamp, a
+      // shorter exposure. That reads identically to a blank template from the
+      // outside, and the two want opposite actions. One extra extraction at a
+      // deliberately low threshold separates them, and it costs nothing because
+      // we only get here when the training has already failed.
+      try
+      {
+        sbm::FeatureSet probe = sbm::extractFeatures(templ_use, cv::Mat(), shape_num_features,
+                                                     shape_pyramid_T, 10.0f, 20.0f);
+        if (probe.numFeatures() >= 16)
+          LOGE("[shape] ...but weak=10 strong=20 yields %d features on the SAME image: "
+               "this is a THRESHOLD problem, not a blank template and not the region. "
+               "Lower 邊緣門檻 (weak/strong) in the SBM studio's 參數 and re-generate.",
+               probe.numFeatures());
+        else
+          LOGE("[shape] and even weak=10 strong=20 yields only %d: the image itself "
+               "has nothing to extract -- wrong or blank template file.",
+               probe.numFeatures());
+      }
+      catch (const std::exception &e)
+      {
+        LOGE("[shape] threshold probe failed: %s", e.what());
+      }
       return -1;
     }
     fset.setOrigin(origin_use.x, origin_use.y);
@@ -7863,6 +8957,38 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     }
 
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
+    // The down-scaled detector's own features: extract from the template resized
+    // by shape_match_scale (INTER_AREA, the same resize the scene gets), so its
+    // features are selected and oriented at match resolution. Stored in the cache
+    // as "scaled" and used when the live match scale equals this one.
+    // EXPERIMENTAL, off unless SBM_STORE_SCALED=1. Measured 2026-09-06 on six
+    // regenerated recipes: a small part resized by 0.3 keeps 9-23 features at the
+    // coarse level (ok68: 9), every match saturates to 100 and clutter climbs to
+    // 0.88; the true pose's coarse rank got WORSE (ok97: 772nd). Only the big
+    // parts (MODEL3131 131/66) came out well-populated. Needs a feature floor and
+    // probably scale-adjusted thresholds before it can be the default.
+    shapeScaledSet.reset(); shape_scaled_at = 0.0f;
+    if (getenv("SBM_STORE_SCALED") && shape_match_scale > 0.1f && shape_match_scale < 1.0f)
+    {
+      cv::Mat t_small, m_small;
+      cv::resize(templ_use, t_small, cv::Size(), shape_match_scale, shape_match_scale, cv::INTER_AREA);
+      if (!mask_use.empty()) cv::resize(mask_use, m_small, t_small.size(), 0, 0, cv::INTER_NEAREST);
+      sbm::FeatureSet sc = sbm::extractFeatures(t_small, m_small, shape_num_features,
+                                                shape_pyramid_T, shape_weak_thres, shape_strong_thres);
+      if (sc.numFeatures() < 16 && !m_small.empty())
+        sc = sbm::extractFeatures(t_small, cv::Mat(), shape_num_features,
+                                  shape_pyramid_T, shape_weak_thres, shape_strong_thres);
+      if (sc.numFeatures() >= 16)
+      {
+        shapeScaledSet = std::make_shared<sbm::FeatureSet>(sc);
+        shape_scaled_at = shape_match_scale;
+        LOGI("[shape] scaled feature set at %.3f: %d / %d features (full-res %d / %d)", shape_match_scale,
+             sc.levels.size() > 0 ? (int)sc.levels[0].features.size() : 0,
+             sc.levels.size() > 1 ? (int)sc.levels[1].features.size() : 0,
+             fset.levels.size() > 0 ? (int)fset.levels[0].features.size() : 0,
+             fset.levels.size() > 1 ? (int)fset.levels[1].features.size() : 0);
+      }
+    }
     // Remember what produced this set so it can be written into the def.
     shape_crop = cropRect;
     shape_origin_in_crop = origin_use;
@@ -7970,11 +9096,25 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   if (const char *rm = getenv("SHAPE_REFINE")) {   // diagnostic override
     if (strcmp(rm, "none") == 0) mc.refine = sbm::RefineMode::None;
     else if (strcmp(rm, "icp") == 0) mc.refine = sbm::RefineMode::ICP;
+    else if (strcmp(rm, "icp_ls") == 0) mc.refine = sbm::RefineMode::ICP_Subpixel;  // all-points; pair with SBM_ICP_ROBUST=1 SBM_ICP_WEIGHT_DIR=1
   }
   mc.T_levels         = shape_pyramid_T;
   mc.weak_threshold   = shape_weak_thres;
   mc.strong_threshold = shape_strong_thres;
   mc.blur_kernel_size = shape_blur;
+  mc.roi_search_half  = shape_roi_search;
+  mc.roi_prescale     = shape_roi_prescale;
+  if (shape_roi_spacing != 0.0f) mc.roi_min_spacing = shape_roi_spacing;   // def opt-in; else the (off) default
+  // Refine robustness (noise reject), match-time so they work on frozen defs with no
+  // re-migration: weight each constraint by its point's self-match distinctiveness
+  // (lock_major/minor), and drop a match scoring far below the point's score_floor
+  // (a gross wrong-edge/mirror lock). Env for evaluation now; def fields once swept.
+  if (getenv("SBM_WEIGHT_BY_LOCK"))  mc.roi_weight_by_distinct = atoi(getenv("SBM_WEIGHT_BY_LOCK")) != 0;
+  if (getenv("SBM_REJECT_LOW_SCORE")) mc.roi_reject_low_score  = atoi(getenv("SBM_REJECT_LOW_SCORE")) != 0;
+  if (getenv("SBM_REJECT_PCT"))       mc.roi_reject_pct        = (float)atof(getenv("SBM_REJECT_PCT"));
+  if (getenv("SHAPE_DBG"))
+    fprintf(stderr, "[SHAPE_DBG] matcher knobs: step %.2f scale %.3f roi_search %d roi_prescale %.2f nf %d roi_spacing %.2f\n",
+            shape_angle_step_deg, shape_match_scale, shape_roi_search, shape_roi_prescale, shape_num_features, mc.roi_min_spacing);
 
   // Coarse downscale, carried across magnifications instead of written per def.
   //
@@ -8015,6 +9155,26 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
 
   sbm::ModelConfig modc;
   modc.angle.start = 0; modc.angle.end = 360; modc.angle.step = shape_angle_step_deg;
+  // THE DEF'S ANGLE MARGIN APPLIES HERE TOO. It used to be sig360-only, and the
+  // shape search was always the full circle. On 10333 CON-LT14BH2051-01 the
+  // coarse silhouette repeats every 15 deg, and 6 of 20 perturbed frames came
+  // back +15 deg off at similarity 0.99 (2026-09-04). A machine knows how its
+  // parts arrive; a margin under 180 deg is that knowledge, and it now bounds
+  // the raw template rotation the same way it bounds the signature search.
+  // The raw angle is what the matcher reports before angle_offset is added
+  // back (user_angle = raw + angle_offset), so the window is shifted by it.
+  if (matching_angle_margin > 0 && matching_angle_margin < (float)M_PI - 1e-4f)
+  {
+    const float reg_off = shapeFeatureSet ? shapeFeatureSet->angle_offset : 0.0f;
+    const float off_deg = matching_angle_offset * 180.0f / (float)M_PI - reg_off;
+    const float mg_deg  = matching_angle_margin * 180.0f / (float)M_PI;
+    modc.angle.start = off_deg - mg_deg;
+    modc.angle.end   = off_deg + mg_deg;
+    LOGI("[shape] angle search bounded by def margin: raw %.1f..%.1f deg "
+         "(offset %.1f, margin %.1f, reg offset %.2f)",
+         modc.angle.start, modc.angle.end,
+         matching_angle_offset * 180.0f / (float)M_PI, mg_deg, reg_off);
+  }
   // Diagnostic override: SHAPE_ANG_RANGE="start,end" (raw template-rotation deg) to
   // test a constrained angle search before wiring it to the def margin.
   if (const char *ar = getenv("SHAPE_ANG_RANGE")) {
@@ -8024,7 +9184,15 @@ int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
   // Pre-scale the model variants (magnification portability). 1.0 = teach scale.
   modc.scale.min = scale; modc.scale.max = scale; modc.scale.step = 1.0f;
 
-  int nv = m->addModel("def", *shapeFeatureSet, modc);
+  // SBM_NO_SCALED_SET=1: ignore a stored scaled set (A/B against coordinate scaling).
+  const sbm::FeatureSet *scaledUse = NULL;
+  if (shapeScaledSet && !getenv("SBM_NO_SCALED_SET"))
+  {
+    if (fabsf(shape_scaled_at - ms_eff) < 1e-3f) scaledUse = shapeScaledSet.get();
+    else LOGW("[shape] stored scaled features are at %.3f but the live match scale is %.3f; "
+              "coordinate-scaling the full-res set instead (regenerate to refresh)", shape_scaled_at, ms_eff);
+  }
+  int nv = m->addModel("def", *shapeFeatureSet, modc, scaledUse);
   if (nv <= 0) return nv;
   shapeMatcher      = m;
   shape_built_scale = scale;
@@ -8075,7 +9243,8 @@ cJSON *FeatureManager_sig360_circle_line::getShapeFeaturePointsJson()
   // set, so what gets saved is exactly what just ran.
   if (shapeFeatureSet && !shape_cache_fp.empty())
     cJSON_AddItemToObject(root, "shape_cache",
-      shape_cache_serialise(*shapeFeatureSet, shape_crop, shape_origin_in_crop, shape_cache_fp));
+      shape_cache_serialise(*shapeFeatureSet, shape_crop, shape_origin_in_crop, shape_cache_fp,
+                            shapeScaledSet.get(), shape_scaled_at));
 
   cJSON *rois = cJSON_AddArrayToObject(root, "roi");
   for (const acv_XY &p : shape_roi_mm)
@@ -8102,11 +9271,24 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   if (!shapeMatcher || originalImage_cv.empty()) return -1;
 
   cv::Mat scene;
-  // Source is BGR-replicated grayscale (B=G=R), so pull channel 0 -- much cheaper
-  // than a weighted cvtColor on a multi-megapixel frame.
-  if (originalImage_cv.channels() == 1) scene = originalImage_cv;
-  else cv::extractChannel(originalImage_cv, scene, 0);
-  if (!scene.isContinuous()) scene = scene.clone();
+  // Phase timing, in the four pieces that would be acted on differently:
+  // `prep` is pixel shuffling, `sbm` is the shape matcher, `morph` is the
+  // anchor re-location iteration, `measure` is the caliper/judge tree. Nesting
+  // is deliberate -- morph and measure are per-object and sum over the loop.
+  mephase::Timer _ph_prep("prep");
+  // The full frame, still interleaved. Channel 0 is pulled out AFTER the
+  // station crop is known, not here.
+  //
+  // Doing it here cost 5.1 ms of the 14.6 ms inspection -- 35% -- measured on
+  // test1: an extractChannel over 2448x2048 followed by a clone of the crop,
+  // to hand line2Dup a window that is a few hundred px on a side. 99% of those
+  // pixels were converted and thrown away. It is pure memory traffic; there is
+  // no arithmetic in it to optimise, only work not to do.
+  //
+  // Nothing downstream sees a difference: the crop rect is computed against
+  // the frame's dimensions, which extractChannel never changed, and the
+  // extract-then-crop and crop-then-extract results are the same pixels.
+  cv::Mat srcFull = originalImage_cv;
 
   // Magnification portability: rescale the model to the live mmpp before matching so
   // a def teach-ed on one camera locates correctly on a different-magnification one
@@ -8162,7 +9344,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
                   (int)std::floor(bacpac->insp_region_y - sOff.y),
                   (int)std::ceil(bacpac->insp_region_w),
                   (int)std::ceil(bacpac->insp_region_h));
-    cv::Rect crop = want & cv::Rect(0, 0, scene.cols, scene.rows);
+    cv::Rect crop = want & cv::Rect(0, 0, srcFull.cols, srcFull.rows);
     // Is the region big enough to hold the part AT EVERY ANGLE?
     //
     // The footprint that has to fit is the level-0 FEATURE bounding box, not
@@ -8236,20 +9418,43 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
                      crop.width, crop.height, need, need);
     }
     if (crop.width > 0 && crop.height > 0 &&
-        (crop.width < scene.cols || crop.height < scene.rows))
+        (crop.width < srcFull.cols || crop.height < srcFull.rows))
     {
       LOGI_EVERY_N(100, "[shape] station crop %dx%d at (%d,%d) no pad (scene was %dx%d)",
-                   crop.width, crop.height, crop.x, crop.y, scene.cols, scene.rows);
-      scene = scene(crop).clone();     // line2Dup wants a continuous buffer
+                   crop.width, crop.height, crop.x, crop.y, srcFull.cols, srcFull.rows);
+      srcFull = srcFull(crop);         // a view; the copy happens in the extract below
       sceneCropOff = crop.tl();
     }
   }
 
+  // Channel pull, on the region and not the frame. Source is BGR-replicated
+  // grayscale (B=G=R), so channel 0 is the image -- much cheaper than a
+  // weighted cvtColor. extractChannel writes a fresh continuous buffer, which
+  // is also what line2Dup requires, so the crop's clone() is subsumed here
+  // rather than being a second pass over the same pixels.
+  if (srcFull.channels() == 1) scene = srcFull;
+  else cv::extractChannel(srcFull, scene, 0);
+  if (!scene.isContinuous()) scene = scene.clone();
+
   // Scene downscaling for speed is the def's shape_match_scale (handled inside
   // ShapeMatcher); ROI refine restores full-res accuracy.
   std::vector<sbm::MatchResult> ms;
-  try { ms = shapeMatcher->match(scene); }
-  catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+  _ph_prep.stop();            // prep ends here; the matcher is its own phase
+  {
+    ME_PHASE("sbm");
+    try { ms = shapeMatcher->match(scene); }
+    catch (const std::exception &e)
+    {
+      // Surface it: a thrown match used to come back as "0 objects, error 0", which hid a
+      // padding bug for every non-{4,8} pyramid. locate.code is the field for "why there is
+      // no object", so the UI and the tools can tell a crash from an empty scene.
+      LOGE("[shape] match exception: %s", e.what());
+      auto &L = report.data.sig360_circle_line.locate;
+      snprintf(L.code, sizeof(L.code), "match_except");
+      snprintf(L.reason, sizeof(L.reason), "shape matcher threw: %.200s", e.what());
+      return -1;
+    }
+  }
 
   // Lift crop-local poses back to scene px immediately, so every consumer below
   // -- the station test, the measurement, the report -- sees exactly the values
@@ -8304,10 +9509,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   // Calipers measure on the full-res original (same source sig360's eT uses).
   p_cropImg_cv = originalImage_cv;
   cropOffset.x = 0; cropOffset.y = 0;
-
+  // ONE OBJECT, SEVERAL POSES, THE FIRST THAT PASSES ITS ORIENTATION TEST.
+  //
+  // The matcher tags alternate poses of one location with the same `group`
+  // (best coarse score first). The sig360 path has always retried the next
+  // candidate when an orientation-essential judge fails; this path dropped the
+  // object instead -- measured 2026-09-05 on a 180-deg-symmetric spring: one
+  // pose, one failed judge, zero objects. Now a group is measured in order and
+  // the first pose that passes is the object; later members of a group that
+  // already produced one are skipped, so a part is never reported twice.
+  std::set<int> group_done;
   for (int mi = 0; mi < (int)ms.size(); mi++)
   {
     sbm::MatchResult &m = ms[mi];
+    if (m.group >= 0 && group_done.count(m.group)) continue;
 
     // Inspection region (the station). No longer the mechanism, and since the
     // crop has no pad, no longer doing much either: the scene IS the region, so
@@ -8382,10 +9597,92 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     if (dbg)
       fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
               singleReport.Center.x, singleReport.Center.y, m.angle, corr_deg, (int)m.flipped);
+    // Localization trust (emit-only first cut: report residual/inliers and the tripped
+    // gate; does NOT yet force judges NA -- that lands after the fleet false-flag budget
+    // is measured). See docs/SBM_TRUST_SCORE_DESIGN.md.
+    singleReport.trust_residual = m.refine_residual;
+    singleReport.trust_npts     = m.refine_npts;
+    singleReport.trust_ninliers = m.refine_ninliers;
+    singleReport.trust_code[0]  = 0;
+    // Ambiguity: the best OTHER pose residual at this location (the alternates NMS kept
+    // in the same group -- mirror / alias, already refined this frame). If an alternate
+    // fits about as well as the chosen pose, the pick is a coin flip (the mirror-lock
+    // case coarse similarity cannot see). alt_residual = min refine_residual over other
+    // same-group members.
+    float altRes = -1.0f, altScore = -1.0f, faceAltScore = -1.0f;
+    if (m.group >= 0) {
+      for (size_t _j = 0; _j < ms.size(); ++_j) {
+        if ((int)_j == mi) continue;
+        if (ms[_j].group != m.group) continue;
+        // Face confidence: the best coarse score the OTHER face reached at this
+        // place, whatever its angle. Near the chosen score = the faces are
+        // indistinguishable to the coarse stage (mirror-symmetric part, or a
+        // template that lost its handedness); far below = the face is certain.
+        if (ms[_j].flipped != m.flipped && ms[_j].score > faceAltScore) faceAltScore = ms[_j].score;
+        // A genuinely different pose, not a near-duplicate in the same basin.
+        float _da = std::fabs(ms[_j].angle - m.angle); if (_da > 180.f) _da = 360.f - _da;
+        if (_da < 5.0f && ms[_j].flipped == m.flipped) continue;
+        if (ms[_j].score > altScore) altScore = ms[_j].score;
+        if (ms[_j].refine_residual < 0.0f) continue;
+        if (altRes < 0.0f || ms[_j].refine_residual < altRes) altRes = ms[_j].refine_residual;
+      }
+    }
+    singleReport.trust_alt_residual   = altRes;
+    singleReport.trust_alt_score      = altScore;
+    singleReport.trust_face_alt_score = faceAltScore;
+    {
+      // Def first (per-recipe, set from the deformation budget), env as the bench
+      // override, then the global default.
+      static const float kResMaxEnv = getenv("SBM_TRUST_RES_MAX") ? (float)atof(getenv("SBM_TRUST_RES_MAX")) : 3.0f;   // loose by design: a recipe tightens it
+      static const float kInlFracEnv = getenv("SBM_TRUST_INL_FRAC") ? (float)atof(getenv("SBM_TRUST_INL_FRAC")) : 0.75f;
+      const float kResMax  = shape_trust_res_max  > 0.0f ? shape_trust_res_max  : kResMaxEnv;
+      const float kInlFrac = shape_trust_inl_frac > 0.0f ? shape_trust_inl_frac : kInlFracEnv;
+      static const float kAmbPx  = getenv("SBM_TRUST_AMB_PX")  ? (float)atof(getenv("SBM_TRUST_AMB_PX"))  : 0.3f;
+      static const float kAmbRat = getenv("SBM_TRUST_AMB_RATIO") ? (float)atof(getenv("SBM_TRUST_AMB_RATIO")) : 1.5f;
+      if (m.refine_residual >= 0.0f && m.refine_residual > kResMax)
+        snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "poor_fit");
+      else if (m.refine_npts > 0 && m.refine_ninliers < (int)std::ceil(kInlFrac * m.refine_npts))
+        snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "low_inliers");
+      else if (altRes >= 0.0f && m.refine_residual >= 0.0f &&
+               (altRes - m.refine_residual < kAmbPx || altRes < kAmbRat * m.refine_residual))
+        snprintf(singleReport.trust_code, sizeof(singleReport.trust_code), "ambiguous_pose");
+    }
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
     if (dbg)
-      fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
-    if (ret == 0) reports.push_back(singleReport);
+      fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f group=%d\n", ret, singleReport.rotate, m.group);
+    if (ret == 0)
+    {
+      // Trust -> judges. A pose that failed a trust gate must not hand out PASS
+      // verdicts (uInsp 不可檢錯): every judge of this detection goes NA, then the
+      // judge's own NAasNG applies, exactly as if the judge had not measured.
+      // ambiguous_pose NEVER forces: if the recipe has an orientation-essential
+      // judge, that judge already accepted THIS pose (ret==0) or rejected it (-2);
+      // if it has none, the operator declared orientation irrelevant (symmetric
+      // part) and the alias pose measures the same thing. Forcing it NA rejected
+      // every good frame of ok37/38/67/221 on the bench. It stays emit-only.
+      if (shape_trust_na && singleReport.trust_code[0])
+      {
+        const bool ambiguous = strcmp(singleReport.trust_code, "ambiguous_pose") == 0;
+        if (!ambiguous)
+        {
+          for (auto &jr : *singleReport.judgeReports)
+          {
+            jr.status = (jr.def && jr.def->NAasNG)
+                          ? FeatureReport_sig360_circle_line_single::STATUS_FAILURE
+                          : FeatureReport_sig360_circle_line_single::STATUS_NA;
+            jr.measured_val = NAN;
+          }
+          singleReport.trust_forced_na = true;
+          LOGI("[shape] trust gate '%s' (res %.3f alt %.3f inl %d/%d) forced %d judge(s) NA",
+               singleReport.trust_code, singleReport.trust_residual, singleReport.trust_alt_residual,
+               singleReport.trust_ninliers, singleReport.trust_npts, (int)singleReport.judgeReports->size());
+        }
+      }
+      reports.push_back(singleReport);
+      if (m.group >= 0) group_done.insert(m.group);
+    }
+    // ret == -2: an orientation-essential judge rejected THIS pose; the next
+    // member of the group, if any, gets its turn when the loop reaches it.
   }
 
   // A REJECTED CANDIDATE IS NOT A FAILED LOCATE.
@@ -8403,6 +9700,35 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   {
     auto &L = report.data.sig360_circle_line.locate;
     L.reason[0] = 0; L.code[0] = 0;
+  }
+  // COARSE-ONLY IS NOT A COMPLAINT ABOUT THIS FRAME, IT IS A FACT ABOUT THE DEF,
+  // and it has to be on every report, found or not. Stamped AFTER the clear
+  // above, and only into an empty slot: a real locate failure (no_candidate,
+  // below_thres) answers a more urgent question and keeps its place.
+  if (shape_coarse_only)
+  {
+    auto &L = report.data.sig360_circle_line.locate;
+    if (L.code[0] == 0)
+    {
+      snprintf(L.code, sizeof(L.code), "coarse_only");
+      snprintf(L.reason, sizeof(L.reason),
+               "SBM coarse locating only: the def's features carry no ROI windows "
+               "(accuracy a few px, not sub-pixel). Open the SBM studio, press "
+               "generate, and save.");
+    }
+  }
+  // Same shape of fact: the def's extraction knobs are not what its cache was
+  // built with. Only into an empty slot -- it changes nothing about this frame.
+  if (shape_cache_stale)
+  {
+    auto &L = report.data.sig360_circle_line.locate;
+    if (L.code[0] == 0)
+    {
+      snprintf(L.code, sizeof(L.code), "cache_stale");
+      snprintf(L.reason, sizeof(L.reason),
+               "the def's shape_num_features / thresholds differ from the features it "
+               "carries; the cache runs, the knobs do nothing until regenerated.");
+    }
   }
   return 0;
 }
@@ -8466,6 +9792,7 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   float cached_sin = sin(angle);
 
   // ---- locating-anchor morph loop (mirror SingleMatching 5172-5259) ----
+  mephase::Timer _ph_morph("morph");
   for (int j = 0; j < detectedSearchPoints.size(); j++)
     cm.anchorPairs[j].to = acv_XY(NAN, NAN);
   cm.resetTransform();
@@ -8498,6 +9825,7 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
       }
     }
     cm.solve();
+    morph_dump(cm, searchPointList, k);
     if (k + 1 < morph_max_iter)
     {
       float maxd = 0; bool any_prev = false;
@@ -8521,6 +9849,8 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   morph_place_alpha = 1.0f;   // final measurement uses the full converged warp
 
   // ---- official measurement (mirror SingleMatching 5261-5314) ----
+  _ph_morph.stop();
+  ME_PHASE("measure");
   RESET_REPORT(singleReport);
   for (int j = 0; j < judgeReports.size(); j++)
   {

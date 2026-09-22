@@ -36,6 +36,11 @@ export function caliperField(countDefault, geomLengthFn) {
       width: 'input-number',
       min_inliers: 'input-number',
       max_error: 'input-number',
+      // 0 = the hard inlier mask (a hit is in or out); 1 = its weight falls
+      // smoothly to zero at the same threshold, so a hit sitting on the edge
+      // of the band contributes nothing either way and cannot swing the fit by
+      // flickering in and out. In between blends the two.
+      soft_reject: 'input-number',
     } : undefined,
     // The seed itself lives in _caliperSeed so the offline converter
     // (tools/def_convert.mjs) runs THIS rule rather than a copy of it. A second
@@ -85,6 +90,23 @@ export function edgeField({ method = 'strongest', polarity = 'falling', min_stre
       // which edges exist at all. The core answers a missing one with NA and
       // says so, rather than guessing and thereby deciding the verdict.
       min_strength: 'input-number',
+      // floor = max(min_strength, rel_strength x strongest peak in the window);
+      // the core's hidden 0.15 (caliper) / 0.40 (search point) until 2026-09-05.
+      // 自動 writes 0 so a measured min_strength is absolute.
+      rel_strength: 'input-number',
+      // Distance decay, px: a candidate's strength is scaled by
+      // exp(-|d|/dist_decay), d being how far it sits from where the def put
+      // the point. It is what stops an edge that flickers in and out nearer
+      // than the real one -- a neighbour, a burr, a hair -- from taking the
+      // measurement with it, which strength alone cannot see. 0 = off, and off
+      // is exactly the behaviour before this existed. Search points only.
+      dist_decay:   'input-number',
+      // Row consensus: the nearest edge must be seen by at least this many
+      // rows of the band (within include_range of it) or it is treated as a
+      // speck and the next nearest is taken. 0 = off. Search points only.
+      min_rows:     'input-number',
+      // across-edge Gaussian before differencing, px; 0 = none (line/arc only)
+      sigma:        'input-number',
     } : undefined,
     derive: (shape) => (shape.locating === 'caliper') ? {
       method, polarity, nth: 0, min_strength,

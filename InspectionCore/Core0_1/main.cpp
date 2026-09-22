@@ -182,8 +182,12 @@ int main(int argc, char **argv)
        * actually up -- otherwise there'd be NO log output at all. Keep stderr
        * too with INSP_LOG_KEEP_STDERR=1 (e.g. for a live `tail`). */
       if (drainer_pid > 0) {
-        if (const char *k = std::getenv("INSP_LOG_KEEP_STDERR"); !(k && *k == '1'))
-          log_set_stderr_enabled(0);
+        const char *k = std::getenv("INSP_LOG_KEEP_STDERR");
+        const int keep = (k && *k == '1') ? 1 : 0;
+        if (!keep) log_set_stderr_enabled(0);
+        /* The drainer can die silently (observed 2026-08-06 and again 2026-09-07:
+         * core alive, no inspd_log, 4091 closed, nothing said so). Watch it. */
+        log_start_drainer_watch(exe.c_str(), 5, keep);
       }
     }
   }

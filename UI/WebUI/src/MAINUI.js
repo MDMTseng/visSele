@@ -3,9 +3,10 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupViolations, tagGroupsPreset } from './component/rdxComponent.jsx';
 import { CustomDisplayPicker } from './component/CustomDisplayPicker.jsx';
 import { DEF_EXTENSION, defFileFilter } from 'UTIL/BPG_Protocol';
+import { stripExtension } from 'UTIL/fileNameCheck.mjs';
 import QRCode from 'qrcode'
 import JSum from 'jsum'
 import dclone from 'clone';
@@ -15,6 +16,37 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx, { SnapPolicyPanel_rdx, uploadSkipOf, statSettingOf } from './InspectionUI';
+import { autoExitSecondsOf, AUTO_EXIT_KEYS, AUTO_EXIT_DEFAULT_S } from 'UTIL/autoExitRule.mjs';
+import { ranksOf, rankOf } from 'UTIL/measureRank.mjs';
+
+// A labelled number field for the settings page.
+//
+// AT MODULE SCOPE, WHICH IS THE WHOLE POINT. Three panels on this page each
+// declared their own `F` inside the render, closing over that panel's `eff` and
+// `setF`. A component declared during a render is a NEW COMPONENT TYPE on every
+// render, and React does not reconcile a changed type -- it unmounts the old
+// tree and mounts a new one. So every keystroke destroyed the input that was
+// being typed into and put a fresh one in its place: the field lost focus after
+// exactly one character, on all three panels.
+//
+// Defined once, here, it is the same type every time and the input survives.
+// The cost is that the value and the handler have to be passed in rather than
+// captured, which is what a component is supposed to take anyway.
+// precision: a number fixes the decimals; null lets antd keep what is typed,
+// which is what the millimetre fields need -- 0.66 must not be rounded to 1
+// while it is still being typed.
+function SettingNumField({ name, hint, value, onChange,
+                           min = 0, step = 1, precision = 0 }) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <span style={{ display: 'inline-block', minWidth: 210 }}>{name}</span>
+      <InputNumber min={min} step={step} inputMode="numeric"
+        {...(precision === null ? {} : { precision })}
+        style={{ width: 110 }} value={value} onChange={onChange} />
+      <span style={{ marginLeft: 10, fontSize: 12, color: '#888' }}>{hint}</span>
+    </div>
+  );
+}
 import { usePerifConn } from './perif/PerifAPI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import CalibrationUI_rdx from './CalibrationUI';
@@ -23,6 +55,8 @@ import InstInspUI_rdx from './InstInspUI';
 
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
+import Select from 'antd/lib/select';
+import { configureOverlay, OVERLAY_DEFAULTS } from 'JSSRCROOT/canvas/overlayKit';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack, dictLookUp} from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.main');
@@ -31,7 +65,8 @@ import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
 
-import { BPG_FileBrowser, BPG_FileSavingBrowser,BPG_FileBrowser_varify_info } from './component/baseComponent.jsx';
+import { BPG_FileBrowser, BPG_FileSavingBrowser } from './component/baseComponent.jsx';
+import { getRecentDefFiles, noteRecentDefFile } from 'UTIL/recentDefFiles';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 
 import { default as AntButton } from 'antd/lib/button';
@@ -253,12 +288,9 @@ function isString(data) {
   return (typeof data === 'string' || data instanceof String);
 }
 
-function getLocalStorage_RecentFiles()
-{
-  let LocalS_RecentDefFiles =LocalStorageTools.getlist("RecentDefFiles");
-  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter(BPG_FileBrowser_varify_info);
-  return LocalS_RecentDefFiles;
-}
+// The list lives in UTIL/recentDefFiles.js now; every def loader (this
+// screen, DefConfUI's 載入, the catalogue picker) records through it.
+function getLocalStorage_RecentFiles() { return getRecentDefFiles(); }
 
 // Which def opens when the app starts.
 //
@@ -283,6 +315,19 @@ function setBootDefFile(pathNoExt)
   catch (e) { log.warn("[boot-def] could not store", String(e)); return false; }
 }
 
+function clearBootDefFile()
+{
+  try { window.localStorage.removeItem(BOOT_DEF_LS_KEY); return true; }
+  catch (e) { return false; }
+}
+
+// The boot key holds the def path without extension, forward slashes -- the
+// form ACT_Def_Model_Path_Update takes. A recent-list entry carries ".hydef".
+function bootPathOf(p)
+{
+  return String(p || '').replace(/\\/g, '/').replace(new RegExp('\\.' + DEF_EXTENSION + '$', 'i'), '');
+}
+
 function getBootDefFile()
 {
   const o = LocalStorageTools.getobj(BOOT_DEF_LS_KEY);
@@ -291,12 +336,8 @@ function getBootDefFile()
 
 function appendLocalStorage_RecentFiles(fileInfo)
 {
-  
-  return LocalStorageTools.appendlist("RecentDefFiles",fileInfo,
-    (ls_fileInfo,idx) =>
-      (idx<100)&&//Do list length limiting
-      (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
-
+  if (!fileInfo || typeof fileInfo.path !== 'string') return false;
+  return noteRecentDefFile(stripExtension(fileInfo.path, DEF_EXTENSION), fileInfo, DEF_EXTENSION);
 }
 
 
@@ -335,6 +376,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   
   const _mus = useSelector(state => state.UIData.machine_custom_setting);
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
+  // Bumped when the boot def changes so the open 近期檔案 dialog re-renders.
+  const [bootTick, setBootTick] = useState(0);
   
   const [stepIdx,setStepIdx]=useState(0);
   const [isVertical,setIsVertical]=useState(false);
@@ -505,39 +548,69 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   // does NOT strip `javascript:` / `data:` schemes — so a malicious core could
   // make window.open() execute. Allow only http(s)/ws(s); anything else → ignore.
   const _safeMonitorScheme = (u) => typeof u === 'string' && /^(https?|wss?):/i.test(u);
-  let InspectionMonitor_URL_overvall = _safeMonitorScheme(_mus.inspection_monitor_url) ? _mus.inspection_monitor_url : undefined;
 
-  // The configured URL carries a `sha=` for whichever recipe was open when
-  // someone pasted it (…&sha=f6d5900d28&). Left alone it sends the operator to
-  // a monitor page for a DIFFERENT recipe than the one on screen -- a page that
-  // loads, renders, and is simply about something else, which is the kind of
-  // wrong that gets believed. Point it at the def actually loaded.
+  // THE MONITOR PAGE'S QUERY IS BUILT, NOT APPENDED TO.
   //
-  // Truncated to the length of whatever was configured rather than sent whole:
-  // DefFileHash is a full featureSet sha1 and the placeholders in use are short
-  // prefixes, so a 40-char value would stop matching on a server that was set
-  // up to compare 10. An empty `sha=` takes the full hash, having expressed no
-  // preference.
-  if (InspectionMonitor_URL_overvall !== undefined && isString(DefFileHash)) {
-    InspectionMonitor_URL_overvall = InspectionMonitor_URL_overvall.replace(
-      /([?&]sha=)([^&#]*)/i,
-      (_m, lead, had) => lead + (had.length ? DefFileHash.slice(0, had.length) : DefFileHash));
-  }
-  let InspectionMonitor_URL_w_info   = InspectionMonitor_URL_overvall;
-  if (InspectionMonitor_URL_overvall!==undefined && isString(DefFileHash) && DefFileHash.length > 5) {
+  // What the server actually reads is:
+  //
+  //   ?sha=78561a7f17&name=10155&from=<epoch ms>&to=<epoch ms>&at=top
+  //
+  // The old code appended `v=0` and `search_name=`, and the page reads neither
+  // -- so the "檢測資料搜尋" button and the QR code both opened a page
+  // that loaded, rendered, and was about the wrong thing, which is the kind of
+  // wrong that gets believed.
+  //
+  // The configured value in machine_setting.json is a TEMPLATE. Whatever it
+  // carries is kept -- at=top, a host, a port, anything added later -- and only
+  // the four fields that describe "which recipe, over what period" are written.
+  //
+  //   sha    the def actually loaded, truncated to the length of whatever
+  //          placeholder was configured (the servers match on a short prefix),
+  //          or ten characters if none was.
+  //   name   the def's name up to the first space: "10155  3G2570090B-1" is
+  //          filed as "10155". Derived from one known-good URL, so if the rule
+  //          is really something else this is the line to change.
+  //   from   now minus `days` (default 1), in epoch ms
+  //   to     now
+  //
+  // `days=` stays the knob in the settings box because that is what a person
+  // can write down; it is converted here and does not travel.
+  const _monitorURL = (cfg, withName) => {
+    if (!_safeMonitorScheme(cfg)) return undefined;
+    let u;
+    try { u = new URL(cfg); } catch (e) { return undefined; }
+    const p = u.searchParams;
 
-    if(InspectionMonitor_URL_overvall.includes("?")==false)
-    {
-      InspectionMonitor_URL_overvall+="?"
+    if (isString(DefFileHash) && DefFileHash.length > 5) {
+      const had = p.get('sha');
+      p.set('sha', DefFileHash.slice(0, (had && had.length) ? had.length : 10));
     }
-    InspectionMonitor_URL_overvall+="v=" + 0;
 
+    const _days = Number(p.get('days'));
+    const _span = ((Number.isFinite(_days) && _days > 0) ? _days : 1) * 86400000;
+    p.delete('days');
+    const _now = Date.now();
+    p.set('from', String(_now - _span));
+    p.set('to', String(_now));
 
-    InspectionMonitor_URL_w_info= InspectionMonitor_URL_overvall + "&search_name=" + DefFileName;
+    // The part number, not the whole descriptive name. A Chinese or
+    // hyphenated tail would be percent-encoded into several times its length,
+    // which matters most in the QR code -- every character there is area on a
+    // square somebody scans from across a room.
+    const _short = isString(DefFileName) ? String(DefFileName).trim().split(/\s+/)[0] : '';
+    if (withName && _short) p.set('name', _short); else p.delete('name');
 
-    InspectionMonitor_URL_overvall = encodeURI(InspectionMonitor_URL_overvall);
-    InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);
-  }
+    return u.toString();
+  };
+
+  // The full-database view is the same page without a recipe filter.
+  const _cfgMonitor = _mus.inspection_monitor_url;
+  let InspectionMonitor_URL_overvall = _monitorURL(_cfgMonitor, false);
+  let InspectionMonitor_URL_w_info   = _monitorURL(_cfgMonitor, true);
+  // The QR is read by a phone held up to the screen and carries the same thing
+  // the button opens -- being right matters more than being short.
+  let InspectionMonitor_URL_qr       = InspectionMonitor_URL_w_info;
+
   DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
 
   if(caruselRef.current!==undefined)
@@ -577,6 +650,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             // Only after the load actually resolved: a def that failed to open
             // must not become the one the machine tries again at every boot.
             setBootDefFile(filePath);
+            noteRecentDefFile(filePath, undefined, DEF_EXTENSION);   // catalogue picks count as recent too
             ACT_Def_Model_Path_Update(filePath);
             actionChannel(pkts);
             ACT_InspOptionalTag_Update(setTags);
@@ -645,16 +719,26 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       // per-製程, in the control margin rows -- which is where an operator sets
       // them, in the margin editor. Reading one source offered an empty list
       // and no way to choose a level at all.
-      const mids = new Set((shapeListForRank||[])
-        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure).map(sh => sh.id));
+      //
+      // AND AN UNRANKED MEASURE SITS ON LEVEL 0, the same as everywhere else
+      // (UTIL/measureRank.mjs). It used to be skipped entirely, so a recipe
+      // with one ranked measure among twenty unranked ones offered a single
+      // level and no tag group at all -- while the twenty were in fact a level
+      // of their own, the one the machine falls back to. The def editor has
+      // always read a missing rank as 0; this is the last place that did not.
+      //
+      // A control-margin ROW without a rank is different and still ignored: it
+      // expresses no override, and the measure it points at has already
+      // contributed its own level above.
+      const measuresForRank = (shapeListForRank||[])
+        .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure);
+      const mids = new Set(measuresForRank.map(sh => sh.id));
       const cmi = (Info_decorator||{}).control_margin_info || {};
       const ranks = [...new Set([
-        ...(shapeListForRank||[])
-          .filter(sh => sh && sh.type === UIAct.SHAPE_TYPE.measure && sh.rank !== undefined)
-          .map(sh => sh.rank),
+        ...ranksOf(measuresForRank),
         ...Object.values(cmi).flat()
-          .filter(r => r && r.rank !== undefined && mids.has(r.id))
-          .map(r => r.rank),
+          .filter(r => r && r.rank !== undefined && r.rank !== null && mids.has(r.id))
+          .map(r => rankOf(r)),
       ])].sort((a,b)=>a-b);
       if (ranks.length > 1) {
         new_tagGroupsPreset=[
@@ -668,22 +752,38 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
     let isFileOK=(DefFileHash!==undefined&&isSystemReadyForInsp) ;
     
-    isOK=isFileOK && isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
+    // Readiness is judged against the list the picker RENDERS
+    // (new_tagGroupsPreset), not the static preset. Until 2026-09-07 it was the
+    // static one, so the recipe's 已設定範圍 group (maxCount 1) drew its warning
+    // triangle while play stayed enabled, and two selected margin tags were
+    // then resolved by selection order (AUDIT_BACKLOG P1). Now: a violated
+    // group -- two mutually exclusive tags, or a required group left empty --
+    // keeps play from starting, and pressing it says which group and why.
+    const tagViolations = tagGroupViolations(inspOptionalTag, new_tagGroupsPreset);
+    isOK=isFileOK && tagViolations.length===0;
     // Why play is refusing, for the probes. data-ready=0 alone cannot tell a
     // correct refusal from a wrong one -- "no recipe loaded" and "a tag group
-    // is unsatisfied" look identical, and so does "ready when it should not
-    // be". Deliberately reported against BOTH lists: readiness is computed
-    // from tagGroupsPreset while the picker renders new_tagGroupsPreset (the
-    // margin group is in the second and not the first), so `tags_shown`
-    // disagreeing with `tags_checked` is exactly the gap, and now it is
-    // visible rather than inferred. Reporting only; nothing here changes what
-    // the button does.
+    // is unsatisfied" look identical. 'tags-shown-only' is kept as a value so
+    // older probes still parse, but it can no longer occur.
     const playReason =
       !isSystemReadyForInsp ? 'system-not-ready'
       : DefFileHash === undefined ? 'no-def'
-      : !isTagFulFillRequrement(inspOptionalTag, tagGroupsPreset) ? 'tags'
-      : !isTagFulFillRequrement(inspOptionalTag, new_tagGroupsPreset) ? 'tags-shown-only'
+      : tagViolations.length ? 'tags'
       : 'ok';
+    // The refusal, in the operator's words.
+    const explainTags = () => {
+      const lines = tagViolations.map((v) => v.kind === 'max'
+        ? `「${v.name}」只能選 ${v.maxCount} 個,目前選了 ${v.matched.length} 個:${v.matched.join('、')}`
+        : `「${v.name}」至少要選 ${v.minCount} 個,目前沒有選`);
+      setInfoPopUp({
+        title: "標籤設定有衝突,無法開始檢驗",
+        onOK: undefined, onCancel: undefined,
+        content: <div style={{ width: "100%", padding: "12px 20px" }}>
+          {lines.map((l, i) => <div key={i} style={{ fontSize: 18, margin: "6px 0" }}>⚠ {l}</div>)}
+          <div style={{ marginTop: 12, opacity: 0.75 }}>互斥的標籤只能留一個;必要的群組要選一個。改好後再按開始。</div>
+        </div>
+      });
+    };
     let twoPanelClass1="s height12 width4";
     let twoPanelClass2="s height12 width8";
     if(isVertical)
@@ -859,10 +959,28 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     UI_Stack.push(
       <div key="UI_Step0" className="s width12 height12 overlayCon" style={{background: "rgb(250,250,250)"}}>
         
-        <div className={twoPanelClass1} style={{padding: "10px",overflow:"scroll"}}>
+        {/* A full-height panel: it holds the tag display and the 製程 list, and it
+            is never the thing that scrolls -- the list inside it is. Flex column
+            so the list gets what is left after the display above it, rather than
+            asking for 100% of the whole panel and overflowing by the height of
+            its own sibling. Measured on the machine: the panel was over by 30 px
+            and grew a second scrollbar beside the list's own. */}
+        <div className={twoPanelClass1}
+             style={{padding: "10px", overflow: "hidden",
+                     display: "flex", flexDirection: "column", minHeight: 0}}>
           
-          <TagDisplay_rdx closable/>
-          <TagOptions_rdx className="s width12 HXA" size="middle" tagGroups={new_tagGroupsPreset}/>
+          {/* SELECTED ON TOP, THE PICKER IN THE MIDDLE, THE INPUT AT THE FOOT.
+              
+              Wrapped, because TagDisplay renders its tags as SIBLINGS rather
+              than inside one box -- so in a flex column each selected tag became
+              a flex item of its own and stretched to the full width, one per
+              row. The wrapper puts them back in normal flow and makes the group
+              a single item at its natural height. */}
+          <div style={{flex: "0 0 auto"}}>
+            <TagDisplay_rdx closable/>
+          </div>
+          <TagOptions_rdx className="s width12 HXA" size="middle"
+            tagGroups={new_tagGroupsPreset} newTagFooter/>
         </div>
         <ComponentBoundary name="MainCanvas" fallbackHeight="60vh">
           <CanvasComponent_rdx className={twoPanelClass2} showInspectionNote={showInspectionNote} />
@@ -929,7 +1047,28 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
             let fileGroups = [
-              { name: "history", list: getLocalStorage_RecentFiles() },
+              // 近期檔案 carries the boot-default controls. Which def opens at
+              // start was otherwise settable only from the custom-display
+              // catalogue (CT asked for it here, 2026-09-09). Each row can be
+              // made the boot def, the current one is tagged, and 清除 falls
+              // back to "most recently opened". Both read the boot key at
+              // render time; bootTick re-renders the open dialog.
+              { name: "history", list: getLocalStorage_RecentFiles(),
+                rowActionTitle: '開機',
+                rowAction: (file) => {
+                  const bootNow = getBootDefFile();
+                  const p = bootPathOf(file.path);
+                  return (bootNow !== undefined && p === bootPathOf(bootNow))
+                    ? <span style={{ color: '#389e0d', fontWeight: 600 }}>★ 開機配方</span>
+                    : <AntButton size="small" onClick={() => { setBootDefFile(p); setBootTick((t) => t + 1); }}>設為開機</AntButton>;
+                },
+                header: () => {
+                  const bootNow = getBootDefFile();
+                  return <span>開機載入:{bootNow !== undefined
+                    ? <><b>{bootNow}</b>　<AntButton size="small" onClick={() => { clearBootDefFile(); setBootTick((t) => t + 1); }}>清除(改用最近開啟的)</AntButton></>
+                    : <span style={{ color: '#888' }}>未指定,開機載入最近開啟的檔案</span>}</span>;
+                },
+              },
               
             ];
             let fileSelectFilter = defFileFilter;
@@ -967,7 +1106,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               <Button onClick={() => window.open(InspectionMonitor_URL_overvall)} >完整資料庫搜尋</Button>
               <Button onClick={() => window.open(InspectionMonitor_URL_w_info)} >檢測資料搜尋</Button>
               <QR_Canvas className="veleX" style={{height:"100%"}}
-                    onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_w_info} />
+                    onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_qr} />
             </>} 
             trigger={"hover|click"}>
             <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={false} icon={<QrcodeOutlined/> }/>
@@ -987,8 +1126,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
             data-testid="main-play" data-ready={isOK ? '1' : '0'} data-reason={playReason}
             style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text"
-            disabled={!isOK}
-            onClick={onPrepareOK}/>
+            disabled={!isOK && playReason !== 'tags'}
+            onClick={playReason === 'tags' ? explainTags : onPrepareOK}/>
 
 
 
@@ -1024,6 +1163,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           setFileSelectorInfo(undefined);
         }}
         
+        renderTick={bootTick}
         fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
         additionalFuncs={(fileSelectorInfo !== undefined)?fileSelectorInfo.additionalFuncs:undefined}
         fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
@@ -1162,6 +1302,10 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     CI:"檢驗",
     FI:"全檢",
     FI_C:"觸發檢驗",
+    // Hand-placed, still object: the core waits for the scene to stop changing,
+    // averages the frames and inspects that average once. See the SI branch in
+    // InspectionUI and InspMode in wiringPanel.
+    SI:"靜置檢驗",
   }
   
   const InspectionModeOptionMenu = (
@@ -1256,6 +1400,51 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
         the policy defaulted to all-off and nothing was being saved at all. */}
     <SnapPolicyPanel_rdx />
 
+
+    <Divider>閒置自動退出檢測</Divider>
+
+    {/* How long the machine waits before taking itself off the inspection
+        screen. In SECONDS, which is what somebody standing at the machine says
+        out loud, and what makes a twenty-second window sayable when testing.
+
+        This came back from the field: at thirty and sixty seconds it was
+        throwing people out mid-job, because the old windows measured how long
+        the PICTURE had been unchanged and nobody setting a part up is doing
+        anything to the picture. Touching the screen now restarts every one of
+        these, so what they really bound is "nobody has been here for".
+
+        0 = never. A site that does not want this has to be able to say so, and
+        the alternative -- typing a very large number -- is a thing to get wrong
+        by one digit. Each is separate because they are separately annoying: the
+        same-object one fires while somebody examines a part, the others do not.
+
+        FI is deliberately absent. A line legitimately has gaps, and a machine
+        that took itself out of full inspection because nothing came past would
+        be far worse than the power it saved. */}
+    {(() => {
+      const eff = autoExitSecondsOf(st_machine_custom_setting);
+      const setF = (k, v) => {
+        const n = parseInt(v);
+        if (!Number.isFinite(n) || n < 0) return;
+        set_st_machine_custom_setting({ ...st_machine_custom_setting, [AUTO_EXIT_KEYS[k]]: n });
+      };
+      const H = (k, hint) => (eff[k] === 0 ? '不自動退出' : hint);
+      return (
+        <div>
+          <SettingNumField name="抽檢 (CI) 無物件 (秒)" hint={H('noObj', '盤上一直沒東西')}
+            value={eff.noObj} onChange={(v) => setF('noObj', v)} />
+          <SettingNumField name="抽檢 (CI) 同一物件停留 (秒)" hint={H('sameObj', '同一顆一直在鏡頭前')}
+            value={eff.sameObj} onChange={(v) => setF('sameObj', v)} />
+          <SettingNumField name="靜置 (SI) 未量測 (秒)" hint={H('siIdle', '沒按量測也沒碰畫面')}
+            value={eff.siIdle} onChange={(v) => setF('siIdle', v)} />
+          <div style={{ fontSize: 12, color: '#888', lineHeight: 1.7 }}>
+            預設 {AUTO_EXIT_DEFAULT_S.noObj} 秒。觸碰畫面會重新計時,最後 60 秒畫面底部
+            會顯示倒數。全檢 (FI) 不適用。
+          </div>
+        </div>
+      );
+    })()}
+
     <Divider>報告上傳</Divider>
 
     {/* Sampling rate for the inspection DB: 1 report uploaded out of every N.
@@ -1308,30 +1497,120 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
         else { const n = parseInt(v); if (!Number.isFinite(n) || n < 0) return; cur[field] = n; }
         set_st_machine_custom_setting({...st_machine_custom_setting, [k]: cur});
       };
-      const F = ({field, name, hint}) => (
-        <div style={{marginBottom:4}}>
-          <span style={{display:'inline-block',minWidth:210}}>{name}</span>
-          <InputNumber min={0} precision={0} inputMode="numeric" style={{width:110}}
-            value={eff[field]} onChange={(v)=>setF(field,v)} />
-          <span style={{marginLeft:10,fontSize:12,color:'#888'}}>{hint}</span>
-        </div>
+      const F = (field, name, hint) => (
+        <SettingNumField name={name} hint={hint}
+          value={eff[field]} onChange={(v)=>setF(field,v)} />
       );
       return (
         <div key={mode} style={{marginBottom:12}}>
           <div style={{fontWeight:600,marginBottom:4}}>{label}</div>
-          <F field="keepInTrackingTime_ms" name="留在追蹤視窗的時間 (ms)"
-             hint="0 = 看完一次就離開,不做平均" />
-          <F field="minReportRepeat"       name="至少重複幾次才採計"
-             hint="低於此次數的觀測不進統計" />
-          <F field="maxReportRepeat"       name="最多平均幾次"
-             hint="清空 = 不設上限,持續平均" />
-          <F field="headReportSkip"        name="開頭丟棄幾次"
-             hint="剛進視野的前幾次不採計" />
-          <F field="historyReportlimit"    name="歷史報告保留筆數"
-             hint="0 會被當成 100" />
+          {F("keepInTrackingTime_ms", "留在追蹤視窗的時間 (ms)", "0 = 看完一次就離開,不做平均")}
+          {F("minReportRepeat",       "至少重複幾次才採計",     "低於此次數的觀測不進統計")}
+          {F("maxReportRepeat",       "最多平均幾次",           "清空 = 不設上限,持續平均")}
+          {F("headReportSkip",        "開頭丟棄幾次",           "剛進視野的前幾次不採計")}
+          {F("historyReportlimit",    "歷史報告保留筆數",       "0 會被當成 100")}
         </div>
       );
     })}
+
+    <Divider>畫面標註尺寸</Divider>
+
+    {/* THE HOUSE STYLE, and it belongs in the machine's file.
+        Every stroke width in the overlay is a multiple of one root size, and
+        every label size of one root font size. Stating those two in
+        millimetres OF SCREEN is what makes two machines with different panels
+        and different resolutions draw the same picture -- a pixel count
+        cannot, because a pixel is not the same size twice.
+
+        Written into machine_setting.json like everything else on this page, so
+        it travels with the machine and can be copied between machines. The
+        console path (window.OVERLAY_TUNE) still exists for experimenting; it
+        writes to localStorage, which is per browser profile and deliberately
+        NOT what this uses. */}
+    {(() => {
+      const k = 'OVERLAY_SIZE';
+      const cur = st_machine_custom_setting[k] || {};
+      const eff = { ...OVERLAY_DEFAULTS.size, ...cur };
+      const setF = (field, v) => {
+        const next = { ...cur };
+        if (v === null || v === undefined || v === '') delete next[field];
+        else next[field] = v;
+        set_st_machine_custom_setting({ ...st_machine_custom_setting, [k]: next });
+        // Live, so the number is judged against the picture and not guessed at.
+        try { configureOverlay({ size: next }, { persist: false }); } catch (e) { }
+      };
+      const N = (field, name, hint, step, min) => (
+        <SettingNumField name={name} hint={hint} precision={null}
+          min={min === undefined ? 0 : min} step={step || 0.01}
+          value={eff[field]} onChange={(v) => setF(field, v)} />
+      );
+      const mmMode = eff.unit === 'screen_mm';
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ display: 'inline-block', minWidth: 210 }}>尺寸基準</span>
+            <Select style={{ width: 230 }} value={eff.unit}
+              onChange={(v) => setF('unit', v)}
+              options={[
+                { value: 'screen_mm', label: '螢幕毫米（跨機器一致）' },
+                { value: 'screen',    label: 'CSS 像素' },
+                { value: 'view',      label: '畫面比例（千分比）' },
+                { value: 'mm',        label: '零件毫米（隨縮放變）' },
+              ]} />
+          </div>
+          {mmMode ? <>
+            {N("primitive_screen_mm", "線寬基準 (mm)", "螢幕上的實體毫米，所有線寬都是它的倍數", 0.02)}
+            {N("font_screen_mm", "字高基準 (mm)", "同上，標籤的根", 0.1)}
+          </> : null}
+          {N("stroke_scale", "整體粗細", "1.0 是 2026-09-10 之前的粗細", 0.05)}
+          {N("px_min", "最細像素下限", "低於一個像素的線會斷成灰霧", 0.1)}
+          {N("panel_ppi", "面板實際 PPI", "空白 = 相信作業系統縮放。OS 縮放和面板不符時才填", 1, 0)}
+        </div>
+      );
+    })()}
+
+    <Divider>靜置檢驗 (SI)</Divider>
+
+    {/* SI is NOT in the block above, and that is the point: those numbers are
+        the tracking window's, read by the reducer, and SI's tracking window is
+        deliberately off -- the core has already averaged the PICTURE, and
+        averaging the measurements again on top of it is a second average that
+        no saved image can be replayed against.
+
+        These go to the core as ST INSP_SI_PARAM. They are pushed on entering
+        SI, so changing one here takes effect the next time the mode is
+        entered. */}
+    {(() => {
+      const k = 'SI_MODE_PARAM';
+      const eff = { ...((System_Setting||{})[k] || {}), ...(st_machine_custom_setting[k] || {}) };
+      const setF = (field, v, intOnly) => {
+        const cur = {...(st_machine_custom_setting[k] || {})};
+        if (v === null || v === undefined || v === '') delete cur[field];
+        else { const n = intOnly ? parseInt(v) : parseFloat(v);
+               if (!Number.isFinite(n) || n < 0) return; cur[field] = n; }
+        set_st_machine_custom_setting({...st_machine_custom_setting, [k]: cur});
+      };
+      const F = (field, name, hint, step, intOnly) => (
+        <SettingNumField name={name} hint={hint} step={step||1}
+          precision={intOnly===false?1:0} value={eff[field]}
+          onChange={(v)=>setF(field,v,intOnly!==false)} />
+      );
+      return (
+        <div style={{marginBottom:12}}>
+          {F("avg_frames",  "平均張數 (N)",       "按下量測後累積幾張影像,平均後檢驗一次")}
+          {F("head_skip",   "按下後先丟棄幾張",   "吸收按壓造成的震動;這幾張的變動不算失敗")}
+          {F("diff_global", "變動門檻 (灰階)",
+             "每像素 RMS 差。實測背景雜訊 2.1,位移 1px 動到 2% 的像素", 0.5, false)}
+          {F("diff_local",  "單點變動門檻 (灰階)", "單一像素差超過就算變動")}
+          {F("diff_skip",   "抽樣間隔 (像素)",     "每 N 個像素取一個來比,10 = 1% 的畫面")}
+          <div style={{fontSize:12,color:'#888',lineHeight:1.7,marginTop:6}}>
+            靜置檢驗由畫面上的「量測」按鈕觸發。累積過程中畫面有變動就算失敗,
+            會出一份報告說明,而不是安靜地重來。累積期間不做檢驗也不送報告,
+            只送影像;報告只在量測完成或失敗時各出一份。
+          </div>
+        </div>
+      );
+    })()}
 
     <Divider>後端位址</Divider>
 

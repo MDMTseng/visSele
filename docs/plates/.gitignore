@@ -1,0 +1,5 @@
+# The plates are generated output -- ~4 MB of JPEG that changes wholesale every
+# time a word moves. plates.html is the source and it is what gets reviewed in a
+# diff; run the export to get the images back (see README.md, ~13s).
+*.jpg
+INDEX.tsv

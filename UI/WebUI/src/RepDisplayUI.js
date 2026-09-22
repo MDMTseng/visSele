@@ -27,6 +27,7 @@ class CanvasComponent extends React.Component {
   }
 
   componentDidUpdate(prevProps) {
+    if (prevProps.stationOverlay !== this.props.stationOverlay) this.syncStation();
   }
 
 
@@ -74,7 +75,17 @@ class CanvasComponent extends React.Component {
       this.props.onCanvasInit(this.ec_canvas);
 
     this.onResize(500, 500)
+    this.syncStation();
     //this.updateCanvas(this.props.c_state);
+  }
+
+  // Geometry only, and pushed on every update: the overlay is small, and
+  // diffing it here would mean this component deciding when the station has
+  // "really" changed -- which is the sort of guess that leaves a stale box on
+  // screen after somebody drags the region.
+  syncStation() {
+    if (this.ec_canvas && typeof this.ec_canvas.SetStationOverlay === 'function')
+      this.ec_canvas.SetStationOverlay(this.props.stationOverlay);
   }
 
   componentWillUnmount() {
@@ -127,7 +138,15 @@ class CanvasComponent extends React.Component {
 
 
 
-export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel,downSampleFactor=1 }) {
+// stationOverlay: {region:{x,y,w,h}, clean:[{x,y,w,h,name}]} in FULL-SENSOR px,
+// or undefined to draw nothing. Passed straight to the canvas.
+//
+// It is a prop rather than something this component fetches, because the
+// station belongs to the machine and this component belongs to whoever is
+// showing a report -- 快速驗證 knows it is looking at the live station, the
+// history viewer is looking at a frame from last Tuesday and must not claim
+// today's station applied to it.
+export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel,downSampleFactor=1, stationOverlay }) {
 
   
   const [editInfo,setEditInfo]=useState(Edit_info_Empty());
@@ -251,6 +270,7 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
         edit_info={editInfo}
         ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL}
         BPG_Channel={BPG_Channel}
+        stationOverlay={stationOverlay}
         downSampleFactor={downSampleFactor}/>
     </ComponentBoundary>
   </div>);

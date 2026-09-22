@@ -457,7 +457,11 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
     ImgStageBackLightCalib();
   
     return ()=>{
-      BPG_Channel( "CI", 0, {_PGID_:stream_PGID_,_PGINFO_:{keep:true}});
+      // keep:FALSE. keep:true preserves the subscription -- it does not end
+      // it -- so this unmount handler left its stream running for the life of
+      // the core process. Same mistake in three screens; see DefConfUI's
+      // CancelNowInsp for the measurement.
+      BPG_Channel( "CI", 0, {_PGID_:stream_PGID_,_PGINFO_:{keep:false}});
     }}, [])
 
 

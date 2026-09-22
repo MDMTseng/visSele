@@ -1,0 +1,47 @@
+16707 profiles, 6638 held out (44 recipes), positives 15077, load 4.3s
+params 4562
+epoch  1 loss 1.0353  44s
+epoch  2 loss 0.5301  84s
+epoch  3 loss 0.4211  124s
+epoch  4 loss 0.3914  164s
+epoch  5 loss 0.3760  204s
+epoch  6 loss 0.3655  245s
+epoch  7 loss 0.3561  284s
+epoch  8 loss 0.3571  325s
+epoch  9 loss 0.3509  365s
+epoch 10 loss 0.3529  405s
+epoch 11 loss 0.3462  446s
+epoch 12 loss 0.3470  486s
+epoch 13 loss 0.3466  526s
+epoch 14 loss 0.3406  567s
+epoch 15 loss 0.3430  607s
+epoch 16 loss 0.3421  648s
+epoch 17 loss 0.3407  688s
+epoch 18 loss 0.3354  728s
+epoch 19 loss 0.3317  769s
+epoch 20 loss 0.3328  809s
+epoch 21 loss 0.3318  849s
+epoch 22 loss 0.3340  890s
+epoch 23 loss 0.3318  930s
+epoch 24 loss 0.3274  971s
+epoch 25 loss 0.3263  1011s
+
+== held-out recipes: 6638 calipers  inliers 6331  outliers 10  misses 295  window samples median 73 max 204
+  inliers : |NN - fit| median 0.32 px, 90% 0.88 px   |selector - fit| median 0.22, 90% 0.79
+  outliers: NN within 1.0 px of the fit 10.0%   (selector 0.0%)
+  outliers: NN within 1.5 px of the fit 10.0%   (selector 10.0%)
+  outliers: NN within 3.0 px of the fit 100.0%   (selector 100.0%)
+  edge score q: inliers mean 0.99, outliers 0.94, misses 0.12;  q<0.5 on misses 89.2%, q>=0.5 on inliers 99.8%
+  offender ok244_A10704_BOS-LT17DR2221 n 10 NN med 2.3 px sel med 1.98 step 1.00 px window 119
+  line inliers  4406: NN median 0.28 px  selector 0.22 px
+  arc  inliers  1925: NN median 0.45 px  selector 0.22 px
+
+== training recipes: 10069 calipers  inliers 8731  outliers 5  misses 1331  window samples median 68 max 400
+  inliers : |NN - fit| median 0.21 px, 90% 0.89 px   |selector - fit| median 0.17, 90% 0.85
+  outliers: NN within 1.0 px of the fit 0.0%   (selector 0.0%)
+  outliers: NN within 1.5 px of the fit 0.0%   (selector 0.0%)
+  outliers: NN within 3.0 px of the fit 60.0%   (selector 100.0%)
+  edge score q: inliers mean 0.99, outliers 1.00, misses 0.11;  q<0.5 on misses 90.5%, q>=0.5 on inliers 99.8%
+  line inliers  5868: NN median 0.18 px  selector 0.13 px
+  arc  inliers  2863: NN median 0.30 px  selector 0.26 px
+saved _nn_weights.npz

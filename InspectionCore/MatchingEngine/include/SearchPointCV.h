@@ -21,6 +21,10 @@
 
 enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 
+// SearchPointClip -- the band's clip geometry -- is declared in FeatureReport.h
+// (included above for CaliperHit). Declaring it here would close an include
+// cycle, since the report structs there carry one.
+
 // gray: source image (the edgeTracking crop). pt/searchDir in that image's px.
 // margin = search half-depth (px, region spans +/-margin along searchDir).
 // width  = band across the edge (px). polarity per SPEdgeType (search-dir gradient
@@ -31,6 +35,8 @@ enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 // strength-gated row edge (the `eps` set). status=2 if within considerRange
 // of the perp-top (contributed to the final point), else 1; strength=peak
 // gradient. Coords in the SAME frame as outPt (gray's image coords).
+// outPeaks (optional): every candidate the selector saw, UNGATED -- the
+// evidence a min_strength is set against. See SearchPointPeaks.
 bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      float edgeSuppress, float considerRange,
@@ -41,6 +47,55 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      // image. The band is then not the band the def asked for,
                      // and the answer is a best-effort over whatever was left --
                      // which is exactly what a measurement must not silently be.
-                     bool *outClipped = nullptr);
+                     bool *outClipped = nullptr,
+                     SearchPointPeaks *outPeaks = nullptr,
+                     // relStrength: keep candidates at or above this fraction of
+                     // the strongest peak in the window, then take the nearest
+                     // survivor. 0.40 is what this was hard-coded to; 0 turns it
+                     // off and leaves min_strength as the only floor. See
+                     // featureDef_searchPoint::rel_strength for why it is a
+                     // number now rather than a constant.
+                     float relStrength = 0.40f,
+                     // Set to the number of candidates that cleared
+                     // min_strength, sat NEARER than the one measured, and were
+                     // dropped by relStrength -- i.e. how much of the answer
+                     // came from the relative rule rather than the def's floor.
+                     int *outRelMoved = nullptr,
+                     // distDecay: strength is scaled by exp(-|d|/distDecay), d
+                     // being the candidate's distance from the def's own point
+                     // along the search axis. 0 = off, and off is bit-identical
+                     // to the code before it existed. See
+                     // featureDef_searchPoint::dist_decay.
+                     float distDecay = 0.0f,
+                     // WHERE the band left the image, not just that it did.
+                     //
+                     // `outClipped` is one bool, and a bool cannot tell a band
+                     // that lost a corner from one that lost its near half --
+                     // which is the difference between a measurement that is
+                     // certainly unaffected and one that may have had a nearer
+                     // edge hidden from it. Nothing downstream could make that
+                     // distinction, so every clipped band was refused alike and
+                     // the record kept no way to tell afterwards which it was.
+                     //
+                     // Diagnostic only: nothing here changes what is measured or
+                     // which scans are refused.
+                     SearchPointClip *outClip = nullptr,
+                     // minRows: an apex must be supported by at least this
+                     // many rows within considerRange, else it is discarded
+                     // and the next nearest is tried. 0 = off. See
+                     // featureDef_searchPoint::min_rows.
+                     int minRows = 0,
+                     // nth: take the Nth DISTINCT edge along the search axis
+                     // instead of the nearest. Distinct means separated by more
+                     // than considerRange, which is already this scan's
+                     // definition of "the same edge". 0 = nearest, i.e. what a
+                     // first-hit scan has always done. The CALLER decides
+                     // whether the def asked for it (edge.method == nth),
+                     // matching how the caliper path reads edge.nth.
+                     int nth = 0,
+                     // momentMult: window for the candidate moments, as a
+                     // multiple of considerRange. 0 = do not compute them.
+                     float momentMult = 0.0f,
+                     SearchPointMoments *outMoments = nullptr);
 
 #endif // SEARCH_POINT_CV_H

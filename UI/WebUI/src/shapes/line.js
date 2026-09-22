@@ -5,6 +5,7 @@ import Color from 'color';
 import { EDGE_MIN_STRENGTH } from './_caliperSeed';
 import { LineCentralNormal } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { overlayKit, OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { caliperField, edgeField, drawLineCalipers, drawCaliperHits } from './_caliperFields';
 export { LinePropertySheet as PropertySheet } from './_propertySheet/LinePropertySheet';
@@ -18,6 +19,18 @@ export const type = 'line';
 // switching to "caliper" lazy-inits them with the core's defaults (count=30).
 export const fields = {
   vertex_touch_searching: { editor: 'switch', default: false, normalize: (v) => v === true },
+  // Envelope fit: the DIRECTION is always least squares, only the OFFSET moves
+  // -- the line slides along its own normal onto the extreme inlier. Sibling of
+  // the arc's fit_mode, where the centre stays LS and only the radius becomes an
+  // envelope. Caliper mode only; the contour path has vertex_touch_searching.
+  // Core: featureDef_line.fit_mode.
+  fit_mode: {
+    editor: (ctx) => (ctx.edit_tar.locating === 'caliper')
+      ? { __OBJ__: ctx.renderMethods.Dropdown_List, list: ['ls', 'front', 'back'] }
+      : undefined,
+    default: 'ls',
+    normalize: (v) => (v === 'front' || v === 'back') ? v : 'ls',
+  },
   locating: {
     editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['contour', 'caliper'] }),
     default: 'contour',
@@ -79,8 +92,11 @@ export function applyDefaults(shape) {
 // the legacy renderUTIL class (drawReportLine, drawpoint, line-size helper).
 // Keystone step 3: per-shape draw owns its rendering.
 export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
-  let shapeColor = SHAPE_TYPE_COLOR[type] || SHAPE_TYPE_COLOR.default;
-  shapeColor = Color(shapeColor).alpha(0.8);
+  // Colour is a ROLE, not a type: a fitted line is "the feature being
+  // measured". Sizes, dashes and colours all come from canvas/overlayKit.
+  const K = overlayKit(ctx, renderer);
+  const { C, ps, S, withAlpha } = K;
+  const shapeColor = C.feature;
 
   let cnormal = LineCentralNormal(shape);
   const isCaliper = (shape.locating === 'caliper');
@@ -92,6 +108,10 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   if (!isCaliper) {
     let drawMargin = renderer.getSearchDirectionLineSize();
     if (inFullDisplay) drawMargin = shape.margin;
+    // The search range has AREA. Drawn in the search role at low alpha it no
+    // longer hides the image underneath, and it no longer inherits whatever
+    // strokeStyle the caller happened to leave behind.
+    ctx.strokeStyle = withAlpha(C.search, OVERLAY.alpha.search * 2.6);
     ctx.lineWidth = drawMargin * 2;
     renderer.drawReportLine(ctx, {
       x0: shape.pt1.x, y0: shape.pt1.y,
@@ -99,7 +119,7 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
     });
 
     ctx.lineWidth = renderer.getSearchDirectionLineSize();
-    ctx.strokeStyle = shapeColor;
+    ctx.strokeStyle = withAlpha(C.search, 0.9);
     let marginOffset = drawMargin + ctx.lineWidth / 2;
     renderer.drawReportLine(ctx, {
       x0: shape.pt1.x + cnormal.vx * marginOffset, y0: shape.pt1.y + cnormal.vy * marginOffset,
@@ -116,9 +136,30 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
     });
   }
 
-  ctx.strokeStyle = 'gray';
-  renderer.drawpoint(ctx, shape.pt1);
-  renderer.drawpoint(ctx, shape.pt2);
+  ctx.strokeStyle = shapeColor;
+  if (!OVERLAY.ctrl.edit_only || K.isEditing(shape)) {
+    renderer.drawpoint(ctx, shape.pt1);
+    renderer.drawpoint(ctx, shape.pt2);
+  }
+
+  // A line used to carry no text at all, and its scan side was legible only as
+  // "the faint line is over there". Name plate + one arrow fixes both.
+  if (inFullDisplay) {
+    const mid = { x: (shape.pt1.x + shape.pt2.x) / 2, y: (shape.pt1.y + shape.pt2.y) / 2 };
+    if (!isCaliper) {
+      const dir = Math.atan2(cnormal.vy, cnormal.vx);
+      ctx.save();
+      ctx.strokeStyle = ctx.fillStyle = C.search;
+      K.arrow(K.at(mid, dir, (shape.margin || 2 * ps) + 2 * ps), dir, S.arrow_head * ps);
+      ctx.restore();
+    }
+    // LOD: a line only a few primitive-sizes long on screen gets geometry only.
+    if (OVERLAY.label.show_primitive_names && shape.name && K.showDetail(Math.hypot(shape.pt2.x - shape.pt1.x, shape.pt2.y - shape.pt1.y))) {
+      const up = Math.atan2(-cnormal.vy, -cnormal.vx);
+      const at = K.at(mid, up, S.chip_gap * ps);
+      K.chip(shape.name, at.x, at.y, shapeColor, OVERLAY.font.tag);
+    }
+  }
 
   // Caliper-mode overlay: N caliper boxes along the line. Editor-mode only.
   // shape.caliper may be undefined just after the user toggles locating to

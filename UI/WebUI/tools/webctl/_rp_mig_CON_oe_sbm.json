@@ -1,0 +1,36 @@
+{
+	"type":	"binary_processing_group",
+	"error":	0,
+	"mmpp":	0.00884157419204712,
+	"subFeatureDefSha1":	"f7ddfde4c681a2656f0a9384f264eac2adec6a1b",
+	"reports":	[{
+			"type":	"sig360_circle_line",
+			"ver":	"0.0.0.0",
+			"region_dropped":	0,
+			"locator":	"shape_based",
+			"locate":	{
+				"reason":	"orientation-essential judge '1' measured 89.1992, outside -2.0000~2.0000 -- detection rejected: that window decides which way round the part is",
+				"code":	"orient_judge",
+				"candidates":	2
+			},
+			"cam_param":	{
+				"ppb2b":	1,
+				"mmpb2b":	0.00884157419204712
+			},
+			"error":	0,
+			"reports":	[]
+		}],
+	"machine_hash":	"0000000000000000",
+	"insp_wall_ms":	2326.6516,
+	"insp_cpu_ms":	2328,
+	"insp_phase_ms":	{
+		"prep":	0.00139999389648438,
+		"sbm":	1499.50180000067,
+		"morph":	3.79719999432564,
+		"sp_gather":	12.2021999806166,
+		"sp_scan":	3.01789997518063,
+		"measure":	17.4694000035524
+	},
+	"def_build_ms":	190.9302,
+	"def_build_cpu_ms":	190
+}

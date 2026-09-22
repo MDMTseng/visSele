@@ -103,7 +103,12 @@ struct Config {
      * disables it). The name here said INSP_LOG_PERSIST, which is not the
      * variable the parser reads -- setting it looked like it worked and
      * changed nothing. */
-    int         persist_min_lv = LOG_LV_OFF;
+    /* 2026-09-07: default is WARN, not OFF. OFF meant a restart erased every
+     * warning and error the machine ever logged unless someone was watching
+     * live (CORE0_1_CAVEATS J13.1). WARN+ is a trickle -- bounded anyway by
+     * rotate_bytes x rotate_keep (10 MB x 5). INSP_LOG_PERSIST_LEVEL=off restores
+     * the old behaviour; =info for a machine under development. */
+    int         persist_min_lv = LOG_LV_WARN;
     /* WS log-stream server for the WebUI "Core Logs" panel
      * (CoreLogClient -> ws://127.0.0.1:4091/log). On by default now that the
      * daemon is; set INSP_LOG_WS_PORT=0 to disable. */
@@ -490,7 +495,7 @@ static bool a2l_resolve(const std::string &a2l, const std::string &sym,
 }
 
 /* mkdir -p. mkdir_p_one is a single level, and the dump directory is three
- * deep (data/crash_reports/<date>) the first time a machine ever crashes. */
+ * deep (data/crashlog/<date>) the first time a machine ever crashes. */
 static void mkdir_p(const std::string &path) {
     std::string acc;
     for (size_t i = 0; i <= path.size(); ++i) {
@@ -503,7 +508,7 @@ static void mkdir_p(const std::string &path) {
     }
 }
 
-/* Where a dump and its frames go: <log_dir>/crash_reports/<YYYYMMDD>/.
+/* Where a dump and its frames go: <log_dir>/crashlog/<YYYYMMDD>/.
  *
  * log_dir is the MACHINE's data directory (the producer points us at it after
  * its chdir; see main.cpp). Dumps used to land in the drainer's cwd, which is
@@ -512,12 +517,17 @@ static void mkdir_p(const std::string &path) {
  * rather than beside that machine's own data.
  *
  * Dated because a machine that crashes twice in a week should not make the
- * operator read timestamps to find out which day they are looking at. */
+ * operator read timestamps to find out which day they are looking at.
+ *
+ * ONE FOLDER, named crashlog: the minidump written from inside the crash
+ * handler (log_crash_win.cpp) lands in <log_dir>/crashlog too, so the two
+ * halves of one crash -- the .dmp and this .dump of the ring -- are found
+ * together. It was crash_reports/ and the .dmp was not in it. */
 static std::string dump_dir_for_today(const Config &cfg) {
     time_t now = std::time(nullptr);
     char day[16];
     std::strftime(day, sizeof(day), "%Y%m%d", std::gmtime(&now));
-    std::string dir = cfg.log_dir + "/crash_reports/" + day;
+    std::string dir = cfg.log_dir + "/crashlog/" + day;
     mkdir_p(dir);
     return dir;
 }

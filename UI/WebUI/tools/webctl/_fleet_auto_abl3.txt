@@ -1,0 +1,30 @@
+(node:5928) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/w2110/Documents/workspace/visSele/UI/WebUI/src/shapes/_edgeAuto.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\w2110\Documents\workspace\visSele\UI\WebUI\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+judges OK: seed 1412 | T(polarity+floor) 1470 | TS(+sigma) 1469 | TSW(+window shrink) 1494 | TS+NA floor 1475   (sig360 1555)
+primitives auto-set 2653  polarity changed 414  sigma set 831  length shrunk 466  margin shrunk 1427  NA floors 53  no answer 120
+better: 22
+   ok01_10221_BOS-LT12BH4211_M18 10->13/17
+   ok04_10324_CTA_AMP_FINGER-1 6->7/8
+   ok25_10514_MODEL3131 4->7/8
+   ok39_10801_CG5247086B_AN114970 0->1/7
+   ok40_10803_SO65093042N_Sorting 0->4/5
+   ok42_10804_3S50A4200B_AN115116 5->7/11
+   ok50_10907_1791-1B 5->6/10
+   ok57_11002_1BD1-0000-0013 1->2/3
+   ok60_11009_PS8095003S_50-P-BTM-1 12->14/19
+   ok95_11501_LN7870119S-1 3->4/8
+   ok96_11501_LN7870119S-2 1->3/6
+   ok133_92038_2290300328 3->11/13
+   ok154_93028_BCS-20X38X20 0->6/6
+   ok155_93028_CG2038020B 0->7/7
+   ok156_93028_CS203820B 0->6/6
+   ok162_93037_57B8G20045045-00 5->6/12
+   ok163_93037_58B8G20045045-00 3->12/13
+   ok164_93037_8G2045045B-00 5->6/12
+   ok166_93037_2200300150_RHC-CP-45803 3->4/4
+   ok218_98015_RHC-CP-62A01 1->2/7
+   ok228_99003_8G2570090B 0->1/5
+   ok244_A10704_BOS-LT17DR2221 0->1/7
+worse: 0

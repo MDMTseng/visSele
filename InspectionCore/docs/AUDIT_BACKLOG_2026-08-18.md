@@ -199,7 +199,7 @@ still encodes the assumption implicitly. Consider naming it in the firmware.
 commented-out reference mapping at `CameraLayerManager.hpp:49-51` shows the
 1:1 intent.
 
-**Play is ready while a rendered tag group is unsatisfied** — VERIFIED
+**Play is ready while a rendered tag group is unsatisfied** — VERIFIED, **FIXED 2026-09-07** (readiness now judged against the rendered `new_tagGroupsPreset`; a violated group -- two mutually exclusive tags, or a required group left empty -- keeps play from starting and pressing it pops the list of violations in the operator's words. The owner chose "refuse to start + explain".)
 `UI/WebUI/src/MAINUI.js:580` vs `:574`
 Readiness is computed against `tagGroupsPreset`; the picker renders
 `new_tagGroupsPreset`, which additionally carries the recipe's `已設定範圍`
@@ -242,7 +242,7 @@ machine may tolerate before stopping — not a call a test should make in
 passing.
 
 
-**`--insp` never loads `clean_regions`** — VERIFIED
+**`--insp` never loads `clean_regions`** — VERIFIED, **FIXED 2026-09-07** (loads both, applies the clean gate after DefRead like live; `INSP_CLEAN_REGIONS=0` / `INSP_AREA_BYPASS=1` opt-outs; loud logs. See RUNNING_CORE0_1.md.)
 `InspectionCore/Core0_1/wiringPanel.cpp:10614` vs `:2528-2529`
 The live path loads both region kinds; the offline path loads only
 `inspection_region`. So the entire clean-space feature has no offline gate,

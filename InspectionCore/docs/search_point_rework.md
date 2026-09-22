@@ -221,7 +221,7 @@ cmake --build /Users/mdm/workspace/visSele/InspectionCore/build/mac-arm64 --targ
 
 # run (from Core0_1/)
 cd /Users/mdm/workspace/visSele/InspectionCore/Core0_1
-../build/mac-arm64/visSele --insp "data/10155  3G2570090B-1.png" /tmp/def_sponly_cal.hydef /tmp/sp_cal_out.json
+../build/mac-arm64/visSele --insp "data/_test/10155  3G2570090B-1.png" /tmp/def_sponly_cal.hydef /tmp/sp_cal_out.json
 ```
 
 `--insp <img> <def.hydef> <out.json>` — headless inspection, writes report JSON
@@ -241,7 +241,7 @@ cd /Users/mdm/workspace/visSele/InspectionCore/Core0_1
 ### Defs used
 - `/tmp/def_sponly_cal.hydef` — search points with `locating:"caliper"` (new path).
 - `/tmp/def_line1_contour.hydef` — pure legacy (`locating` unset), for `SP_LEGACY_DUMP`.
-- Golden image: `Core0_1/data/10155  3G2570090B-1.png`.
+- Golden image: `Core0_1/data/_test/10155  3G2570090B-1.png`.
 
 ### Full-image overlay (after a SPCV_DUMP run)
 `/tmp/spcv_imgpts.csv` has `FINAL/BOX/EDGE` rows in image coords; render with a small
@@ -321,7 +321,7 @@ Caveats when judging values (lessons learned):
 ```bash
 cmake --build /Users/mdm/workspace/visSele/InspectionCore/build/mac-arm64 --target visSele -j8
 cd /Users/mdm/workspace/visSele/InspectionCore/Core0_1
-IMG="data/10155  3G2570090B-1.png"
+IMG="data/_test/10155  3G2570090B-1.png"
 
 # 1) new (caliper) path, with dumps
 SPCV_DUMP=1 SP_PT_DUMP=1 ../build/mac-arm64/visSele --insp "$IMG" /tmp/def_sponly_cal.hydef /tmp/sp_cal_out.json

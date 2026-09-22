@@ -2732,9 +2732,10 @@ cancels it. A zero that moves with plate speed is what a station offset must not
 have. The trailing edge is also a point on the PART, so it moves with the part's
 length and orientation; the centre halves that too.
 
-`gate.gate_ref` = `trailing` (default, what every shipped offset was calibrated
-against) or `center`. Switching moves every station by half a part, ~142 ticks
-at the measured `w_mean` of 285.
+`gate.gate_ref` = `center` (DEFAULT since 2026-09-08, owner's call) or
+`trailing` (what every offset shipped before that was calibrated against; a
+board whose saved config says so keeps it across a firmware update). Switching
+moves every station by half a part, ~142 ticks at the measured `w_mean` of 285.
 
 ### Accuracy, measured
 

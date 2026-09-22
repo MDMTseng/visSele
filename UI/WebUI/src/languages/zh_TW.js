@@ -11,6 +11,67 @@ export default {
     },
 
     _:{
+        // Primitive-editing vocabulary, shared by every property sheet.
+        //
+        // These fields were on screen in English -- locating, min_strength,
+        // include_range, manual_offset -- on a machine operated in Chinese. A
+        // setting nobody can read is a setting nobody adjusts, which is how
+        // min_strength ended up at whatever the default was on every def in the
+        // field.
+        //
+        // Here rather than under line/arc/search_point: they mean the same thing
+        // in all three, and three copies is three chances to drift.
+        locating:"定位方式",
+        caliper:"卡尺",
+        edge:"邊緣",
+        count:"卡尺數",
+        min_inliers:"最少有效點",
+        fill:"填滿",
+        fill_hint:"寬度 = 相鄰卡尺的間距,讓卡尺相連、蓋滿整條邊",
+        max_error:"容許殘差",
+        method:"選邊規則",
+        polarity:"邊緣明暗",
+        nth:"第幾個",
+        min_strength:"邊緣強度門檻",
+        include_range:"納入範圍",
+        manual_offset:"人工偏移",
+        rel_strength:"相對強度門檻",
+        // Dropdown VALUES. Prefixed because the stored value stays English and
+        // some of them collide with a field name ("nth" is both a rule and a
+        // field).
+        opt_contour:"輪廓",
+        opt_caliper:"卡尺",
+        opt_strongest:"最強",
+        opt_first:"最近",
+        opt_last:"最遠",
+        opt_middle:"中間",
+        opt_nth:"第 n 個",
+        // WHAT THE SCAN CROSSES, not a word for a sign.
+        //
+        // "rising"/"falling" name the sign of the gradient, which is a fact
+        // about the arithmetic. What the operator can check against the picture
+        // is the brightness change along the search: on this backlit station the
+        // part is dark on a bright field, so the silhouette's outer edge is the
+        // white-to-black one. Deliberately no 外緣/內緣 note -- the polarity is
+        // relative to the SEARCH DIRECTION, so which side is "outer" depends on
+        // which way the arrow points, and a hint that is right half the time is
+        // worse than the transition stated plainly.
+        opt_any:"不限",
+        opt_rising:"黑→白",
+        opt_falling:"白→黑",
+        pick_ref:"（點選）",
+        // Envelope fit: the centre is least-squares either way, the RADIUS is
+        // the mean, the largest, or the smallest |centre-hit|. "平均/外包/內包"
+        // is what the shop calls them.
+        fit_mode:"擬合方式",
+        opt_ls:"平均",
+        opt_outer:"外包",
+        opt_inner:"內包",
+        // The line's two envelope sides. Which one is "front" is fixed by the
+        // direction the def drew the line (p0->p1), so it is a thing to try and
+        // see rather than a thing to reason about from the words.
+        opt_front:"前凸點",
+        opt_back:"後凸點",
         ERROR:"錯誤",
         ERROR_INFO:"系統訊息",
         WARNING:"警告",
@@ -22,6 +83,10 @@ export default {
         
         apoint:"交點/APOINT",
         aux_point:"交點",
+        aline:"兩點線/ALINE",
+        aux_line:"兩點線",
+        // short labels for the two-column primitive grid
+        line_s:"線段", arc_s:"弧", apoint_s:"交點", aline_s:"兩點線", spoint_s:"搜尋點", measure_s:"測量",
         '<':"返回",
         measure:"測量/MEASURE",
         edit:"編輯測量/Edit",
@@ -94,14 +159,20 @@ export default {
     },
     connection:{
       server_connected:"已連結",
-      server_disconnected:"斷線!! 數據不會上傳",
+      // Just the state. It used to say 數據不會上傳, which stopped being true
+      // when spooling landed: the records are kept and sent when the link comes
+      // back. The button carrying this label already prints how many are
+      // waiting (待補傳 N), and the one case where something really is lost --
+      // a full spool -- has its own loud 已丟棄 badge. Neither needs a word
+      // here, and the label shares a narrow button with three counters.
+      server_disconnected:"斷線暫存中",
       server_disconnecting:"嘗試連線中",
       connect:"連線"
     },
     measure:{
       quality_essential:"品質必需",
-      NGasNA:"NG->A",
-      NAasNG:"NA->G",
+      NGasNA:"NG→NA",
+      NAasNG:"NA→NG",
       orientation_essential:"朝向必需",
 
       value_adjust:"數值加",
@@ -127,7 +198,33 @@ export default {
       LCT:"下管制公差",
 
       importance:"重要等級",
-      quadrant:"量測象限"
+      quadrant:"量測象限",
+
+      // The rest of the measure sheet. The limits already had words here and
+      // the sheet was printing the keys anyway -- USL/LSL/UCL/LCL were on
+      // screen in English next to a dictionary that has said 規格上限 all along.
+      target:"目標與規格",
+      back:"背面",
+      behavior:"判定行為",
+      value_mapping:"數值換算",
+      value_A:"換算 A",
+      value_B:"換算 B",
+      value_X:"換算 X",
+      value_Y:"換算 Y",
+      baseLine:"基準線",
+      calc_f:"運算式",
+      // Subtypes, shown translated and stored as they are.
+      opt_distance:"距離",
+      opt_angle:"角度",
+      opt_radius:"半徑",
+      opt_calc:"運算",
+      opt_circle_info:"圓資訊",
+      opt_max_diameter:"最大直徑",
+      opt_min_diameter:"最小直徑",
+      opt_roughness_max:"最大粗糙度",
+      opt_roughness_min:"最小粗糙度",
+      opt_roughness_rmse:"粗糙度 RMSE",
+      opt_NA:"未設定"
     },
     search_point:{
       search_far:"近/遠",

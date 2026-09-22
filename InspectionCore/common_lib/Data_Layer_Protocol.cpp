@@ -243,6 +243,14 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       
       dataBuff[buffIdx++]=c;
 
+      // Hand every byte of an error section over, not just the one that
+      // started it. INIT_CHAR_ERROR fires once and then the parser sits in
+      // ERROR_SEC scanning for a RESET_PACKET, so hooking the error itself
+      // captured a single character of what is usually hundreds -- an ESP32
+      // panic backtrace, or the 115200 boot ROM read at 230400. The whole
+      // episode is what identifies it; one byte identifies nothing.
+      if(recvType==RTYPE::ERROR_SEC) recv_stray(c);
+
       // if(buffIdx%20==1)
       // {
       //   printf("buffIdx  %d\n",buffIdx);

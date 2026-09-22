@@ -1,0 +1,53 @@
+16707 profiles, 6638 held out (44 recipes), positives 15077, load 4.2s
+params 4562
+epoch  1 loss 1.0670  45s
+epoch  2 loss 0.6091  85s
+epoch  3 loss 0.5066  125s
+epoch  4 loss 0.4686  164s
+epoch  5 loss 0.4608  204s
+epoch  6 loss 0.4482  244s
+epoch  7 loss 0.4347  283s
+epoch  8 loss 0.4231  323s
+epoch  9 loss 0.4250  363s
+epoch 10 loss 0.4240  403s
+epoch 11 loss 0.4109  442s
+epoch 12 loss 0.4052  482s
+epoch 13 loss 0.4040  522s
+epoch 14 loss 0.4108  562s
+epoch 15 loss 0.4093  601s
+epoch 16 loss 0.4016  641s
+epoch 17 loss 0.4052  681s
+epoch 18 loss 0.3928  720s
+epoch 19 loss 0.3964  760s
+epoch 20 loss 0.3852  799s
+epoch 21 loss 0.3855  839s
+epoch 22 loss 0.3932  879s
+epoch 23 loss 0.3938  919s
+epoch 24 loss 0.3837  958s
+epoch 25 loss 0.3862  998s
+
+== held-out recipes: 6638 calipers  inliers 6331  outliers 10  misses 295  window samples median 73 max 204
+  inliers : |NN - fit| median 0.28 px, 90% 0.89 px   |selector - fit| median 0.22, 90% 0.79
+  outliers: NN within 1.0 px of the fit 10.0%   (selector 0.0%)
+  outliers: NN within 1.5 px of the fit 10.0%   (selector 10.0%)
+  outliers: NN within 3.0 px of the fit 100.0%   (selector 100.0%)
+  edge score q: inliers mean 0.97, outliers 0.89, misses 0.16;  q<0.5 on misses 88.1%, q>=0.5 on inliers 99.7%
+  offender ok244_A10704_BOS-LT17DR2221 n 10 NN med 2.8 px sel med 1.98 step 1.00 px window 119
+  line inliers  4406: NN median 0.27 px  selector 0.22 px
+  arc  inliers  1925: NN median 0.31 px  selector 0.22 px
+  speck depth 0.10 (5185 profiles): rule taken away (>1.5 px) 2.1%  NN 3.3%   medians rule 0.22 NN 0.28 px   (clean rule was 1.9% >1.5px)
+  speck depth 0.20 (5185 profiles): rule taken away (>1.5 px) 2.6%  NN 3.5%   medians rule 0.23 NN 0.29 px   (clean rule was 1.9% >1.5px)
+  speck depth 0.40 (5185 profiles): rule taken away (>1.5 px) 16.2%  NN 4.1%   medians rule 0.28 NN 0.30 px   (clean rule was 1.9% >1.5px)
+
+== training recipes: 10069 calipers  inliers 8731  outliers 5  misses 1331  window samples median 68 max 400
+  inliers : |NN - fit| median 0.21 px, 90% 0.91 px   |selector - fit| median 0.17, 90% 0.85
+  outliers: NN within 1.0 px of the fit 0.0%   (selector 0.0%)
+  outliers: NN within 1.5 px of the fit 0.0%   (selector 0.0%)
+  outliers: NN within 3.0 px of the fit 80.0%   (selector 100.0%)
+  edge score q: inliers mean 0.99, outliers 1.00, misses 0.11;  q<0.5 on misses 90.5%, q>=0.5 on inliers 99.9%
+  line inliers  5868: NN median 0.18 px  selector 0.13 px
+  arc  inliers  2863: NN median 0.31 px  selector 0.26 px
+  speck depth 0.10 (7094 profiles): rule taken away (>1.5 px) 3.6%  NN 4.1%   medians rule 0.17 NN 0.24 px   (clean rule was 3.4% >1.5px)
+  speck depth 0.20 (7094 profiles): rule taken away (>1.5 px) 6.3%  NN 4.3%   medians rule 0.18 NN 0.24 px   (clean rule was 3.4% >1.5px)
+  speck depth 0.40 (7094 profiles): rule taken away (>1.5 px) 18.8%  NN 4.8%   medians rule 0.24 NN 0.25 px   (clean rule was 3.4% >1.5px)
+saved _nn_weights.npz

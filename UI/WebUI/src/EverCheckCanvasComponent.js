@@ -27,6 +27,7 @@ import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { CameraCtrl } from './canvas/CameraCtrl';
 import renderUTIL from './canvas/renderUTIL';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './canvas/renderConst';
+import { rankShown } from 'UTIL/measureRank.mjs';
 export { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR };
 
 // How long the core took on this frame, drawn just above the image's top-left
@@ -86,6 +87,38 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   if (loc === 'shape_based') txt += '   定位 SBM';
   else if (loc === 'sig360') txt += '   定位 sig360';
 
+  // WHERE THE TIME WENT, on a second line.
+  //
+  // One number cannot say whether a slow CHECK is the shape matcher, the
+  // caliper windows, or a channel extract nobody suspected -- and that is the
+  // question the editor asks after every change it makes.
+  //
+  // The four that PARTITION the match are shown in the order they run and
+  // summed; anything else the core sent is nested inside one of them and is
+  // listed after a divider, never added. Unknown names are printed as they
+  // arrive rather than dropped: a phase added in the core should appear here
+  // without this file having to be edited to allow it.
+  const TOP = [['prep', '前處理'], ['sbm', '形狀比對'],
+               ['morph', '形變'], ['measure', '量測']];
+  const ph = rp.phase_ms;
+  let sub = '';
+  if (ph && typeof ph === 'object') {
+    const seen = {};
+    const parts = [];
+    for (const [k, label] of TOP) {
+      if (typeof ph[k] !== 'number') continue;
+      seen[k] = 1;
+      parts.push(label + ' ' + ph[k].toFixed(2));
+    }
+    const nested = Object.keys(ph)
+      .filter((k) => !seen[k] && typeof ph[k] === 'number' && ph[k] > 0)
+      .map((k) => k + ' ' + ph[k].toFixed(2));
+    if (parts.length) {
+      sub = parts.join('  ');
+      if (nested.length) sub += '   〔內含 ' + nested.join('  ') + '〕';
+    }
+  }
+
   ctx.save();
   // setTransform directly, NOT self.setMatrix(): that helper is defined on some
   // canvas subclasses and not others (the inspection view has no such method),
@@ -93,9 +126,21 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   // which in InspectionUI means the frame stops rendering, not just the
   // caption. identityMat does live on the shared prototype; fall back to the
   // identity anyway so this can never be the thing that breaks a draw.
-  const I = self.identityMat;
-  if (I) ctx.setTransform(I.a, I.b, I.c, I.d, I.e, I.f);
-  else   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // IN CSS PIXELS, NOT DEVICE PIXELS.
+  //
+  // Every number below -- 14px and 11px of type, a 216px inset for the side
+  // panel, 6px of padding, a 3px outline -- was written as a screen size and
+  // was one, for as long as the canvas was backed in CSS pixels. Backing it in
+  // device pixels turned all of them into device pixels, so on a 2x display
+  // the whole caption came out at half the size it was written to be, which is
+  // exactly what it looked like.
+  //
+  // Scaling the transform by the device pixel ratio gives the literals their
+  // meaning back, and is the only change: the anchor and the clamp are in
+  // device pixels, so they are divided by it once, here.
+  const capDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  ctx.setTransform(capDpr, 0, 0, capDpr, 0, 0);
+  const capW = self.canvas.width / capDpr, capH = self.canvas.height / capDpr;
   ctx.font = '600 14px Arial';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
@@ -109,10 +154,40 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   // The left inset clears the side panel, which is an overlay on top of a
   // full-width canvas; clamping to the canvas edge put the caption underneath
   // it, visible as a sliver. Only applies when the corner is off-screen left.
-  const pad = 6, safeLeft = 216;
-  const x = Math.min(Math.max(imgTopLeft_dev.x, safeLeft),
-                     Math.max(safeLeft, self.canvas.width - ctx.measureText(txt).width - pad));
-  const y = Math.min(Math.max(imgTopLeft_dev.y - 4, 18), self.canvas.height - pad);
+  const pad = 6;
+  // ASK THE PANEL HOW WIDE IT IS.
+  //
+  // 216 was a guess at the side panel, and the inspection screen's panel is
+  // more than twice that -- so when the image's top-left corner is off-screen
+  // and the clamp takes over, the caption landed UNDERNEATH the panel and the
+  // first half of the line was simply not there. It only showed up when the
+  // corner was off-screen left, which is why it survived: at most zoom levels
+  // the clamp never fires.
+  //
+  // The panel is a DOM overlay on top of a full-width canvas, so its right edge
+  // is a fact that can be read rather than guessed. In CSS pixels, matching the
+  // transform above. Invisible or collapsed panels do not count: the caption
+  // should use the whole width when there is nothing over it.
+  let safeLeft = 216;
+  try {
+    const panel = document.querySelector('.MenuAnim');
+    if (panel) {
+      const op = parseFloat(getComputedStyle(panel).opacity);
+      if (!(op >= 0) || op > 0.1) {
+        const pr = panel.getBoundingClientRect();
+        const cr = self.canvas.getBoundingClientRect();
+        if (pr.width > 0 && pr.right > cr.left) {
+          safeLeft = Math.max(safeLeft, (pr.right - cr.left) + 10);
+        }
+      }
+    }
+  } catch (e) { /* no DOM, or a layout this does not know: keep the default */ }
+  const x = Math.min(Math.max(imgTopLeft_dev.x / capDpr, safeLeft),
+                     Math.max(safeLeft, capW - ctx.measureText(txt).width - pad));
+  // Room for the second line when there is one, so the breakdown cannot be the
+  // half that falls off the bottom edge.
+  const y = Math.min(Math.max(imgTopLeft_dev.y / capDpr - 4, 18),
+                     capH - pad - (sub ? 14 : 0));
 
   // Readable over both the pale plate and whatever falls outside it.
   ctx.lineWidth = 3;
@@ -120,10 +195,309 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   ctx.strokeText(txt, x, y);
   ctx.fillStyle = '#00b0ff';
   ctx.fillText(txt, x, y);
+  if (sub) {
+    // Smaller and dimmer: it is the detail behind the headline number, and it
+    // must not compete with it or with the part underneath.
+    ctx.font = '600 11px Arial';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(sub, x, y + 13);
+    ctx.fillStyle = 'rgba(0,176,255,0.75)';
+    ctx.fillText(sub, x, y + 13);
+  }
   ctx.restore();
 }
 
+// HOW FAR A FINGER TRAVELS BEFORE IT COUNTS AS A DRAG, in millimetres of
+// screen. 5 mm is about a third of a fingertip: far enough that resting on a
+// handle to read its value never moves it, close enough that a deliberate drag
+// does not feel stuck.
+// HOW FAR A POINTER TRAVELS BEFORE IT COUNTS AS A DRAG, in millimetres of
+// screen. A finger gets 10 mm: the contact patch is 8-10 mm across, it is
+// resting on the thing it might move, and a bench operator's hand is not
+// steady -- so the dead zone has to be bigger than the tremor, not just bigger
+// than the pixel grid. A cursor is a pixel and reports exactly where it is, so
+// 5 mm is already generous there.
+const EDIT_DRAG_ARM_TOUCH_MM = 10;
+const EDIT_DRAG_ARM_MOUSE_MM = 5;
+// How near a press has to be to count as being on a control point, in
+// millimetres of screen. A fingertip contact patch is 8-10 mm across, so 6 mm
+// is "the handle is inside the touch", while a cursor is a pixel and 3 mm is
+// already generous.
+const EDIT_HIT_TOUCH_MM = 6;
+const EDIT_HIT_MOUSE_MM = 3;
+
 class EverCheckCanvasComponent_proto {
+
+  // MOVED UP FROM INSP_CanvasComponent so every canvas can show the station.
+  //
+  // The station is a property of the MACHINE, not of whichever screen happens
+  // to be open, and the screens that most need to show it are the ones that
+  // were not showing it: 快速驗證 runs the production filter and drew no hint
+  // of where it was, so an object dropped for being off-station looked
+  // identical to a def that could not locate.
+
+  // The station: inspection region + clean-space regions, in FULL-SENSOR pixels.
+  //
+  // Drawn from draw(), not from inside draw_INSP(), because draw_INSP bails
+  // early when there is no report or no edit_DB_info -- and setting the region
+  // up is exactly when you have neither. It must be visible on an empty plate.
+  //
+  // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
+  // in full-sensor px; undefined draws nothing.
+  // GEOMETRY ONLY. The boxes belong to the person dragging them, so they land
+  // immediately. The STATE is not passed in at all -- see draw_station_overlay.
+  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
+
+  draw_station_overlay() {
+    const ov = this.stationOverlay;
+    if (!ov || this.img_info === undefined) return;
+    const mmpp = this.rUtil.get_mmpp();
+    if (!(mmpp > 0)) return;
+    const ctx = this.canvas.getContext('2d');
+    const m = this.worldTransform();
+    ctx.save();
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+    // SOLID UNLESS THIS FUNCTION SAYS OTHERWISE.
+    //
+    // ctx.save() preserves the dash pattern, it does not clear it, so whatever
+    // the previous draw left set is inherited here. draw_INSP() runs
+    // immediately before this and leaves a 4-segment pattern behind, so every
+    // station box came out dashed -- including the inspection region, whose
+    // dash is supposed to MEAN something ("設定中·未過濾", below). A line style
+    // that carries a state is worthless if it also appears by accident.
+    ctx.setLineDash([]);
+
+    // Two rectangles, two jobs. The OUTER one is identity and never changes
+    // colour -- blue is the inspection region, orange is a clean region, and you
+    // can always tell which box you are looking at. The INNER one is state.
+    //
+    // Colouring the outer box by state was the first attempt and it was worse:
+    // when everything went green you could no longer tell the station from the
+    // clean regions at a glance, which is the one thing the overlay has to make
+    // obvious while parts are moving.
+    const LBL_FS = 0.42, LBL_PAD = 0.12;   // world mm
+    const labelQueue = [];
+    const box = (r, stroke, fill, label, sub, state) => {
+      if (!r || !(r.w > 0) || !(r.h > 0)) return;
+      const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
+      const lw = this.rUtil.getIndicationLineSize();
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = stroke;
+      ctx.strokeRect(x, y, w, h);
+      if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
+
+      if (state) {
+        // Half a stroke width. Both strokes are centred on their own path, so
+        // at this inset they sit edge to edge and read as one double line --
+        // enough to carry a second colour without turning the box into a
+        // frame-within-a-frame that eats the region it is describing.
+        const g = lw * 0.5;
+        if (w > g * 3 && h > g * 3) {
+          ctx.strokeStyle = state.color;
+          ctx.strokeRect(x + g, y + g, w - g * 2, h - g * 2);
+          if (state.fill) { ctx.fillStyle = state.fill;
+                            ctx.fillRect(x + g, y + g, w - g * 2, h - g * 2); }
+        }
+      }
+
+      // Text goes BELOW the box. Inside, it sits on top of the parts -- which
+      // is the one thing in the frame the operator is actually trying to look
+      // at. Above collides with the neighbouring box's text as soon as the
+      // stations sit a part-pitch apart, and below the plate is empty.
+      //
+      // But "below its own box" is not enough on its own: the inspection region
+      // and the clean regions inside it end within a few mm of each other, so
+      // four captions land on the same band of pixels and overprint into an
+      // unreadable stack. They are QUEUED here and laid out once every box has
+      // been drawn -- a caption cannot avoid a neighbour that does not exist
+      // yet. See placeLabels below.
+      //
+      // Small, because getFontStyle takes a size in WORLD mm: the 1 the
+      // measurement overlay passes renders enormous for a station label, and
+      // there are two lines per box.
+      if (!label && !sub) return;
+      labelQueue.push({
+        x: x + LBL_PAD, top: y + h,
+        alpha: ctx.globalAlpha,
+        lines: [label ? { text: label, color: stroke } : null,
+                sub ? { text: sub, color: state ? state.color : stroke } : null]
+               .filter(Boolean),
+      });
+    };
+
+    // --- caption layout ------------------------------------------------------
+    //
+    // Each caption wants to sit directly under its own box. When that would
+    // overprint one already placed, it drops by whole lines until it is clear.
+    // Nothing moves sideways and nothing changes box: a caption that wandered
+    // to a free spot would be describing whichever box it landed near.
+    //
+    // Highest box first, so the order on screen matches the order down the
+    // image and a caption never jumps over the box above it.
+    const placeLabels = () => {
+      ctx.font = this.rUtil.getFontStyle(LBL_FS);
+      const lh = LBL_FS * 1.2;
+      const placed = [];
+      labelQueue.sort((a, b) => a.top - b.top);
+      for (const q of labelQueue) {
+        const w = Math.max(...q.lines.map((l) => ctx.measureText(l.text).width));
+        const h = lh * q.lines.length + LBL_PAD;
+        let y = q.top + LBL_PAD;
+        // Restart the scan after every move: dropping past one neighbour can
+        // land on another.
+        for (let guard = 0; guard < 24; guard++) {
+          const hit = placed.find((p) =>
+            q.x < p.x + p.w && p.x < q.x + w && y < p.y + p.h && p.y < y + h);
+          if (!hit) break;
+          y = hit.y + hit.h;
+        }
+        placed.push({ x: q.x, y, w, h });
+        const a0 = ctx.globalAlpha;
+        ctx.globalAlpha = q.alpha;
+        // A leader, but only when the caption was actually pushed away from its
+        // box. Drawn under every caption it would be four vertical ticks the
+        // eye has to dismiss; drawn only where the link is in doubt, it answers
+        // the one question the displacement creates -- which box is this about.
+        if (y > q.top + LBL_PAD * 2) {
+          ctx.save();
+          ctx.strokeStyle = q.lines[0].color;
+          ctx.lineWidth = LBL_FS * 0.06;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(q.x, q.top);
+          ctx.lineTo(q.x, y + LBL_FS * 0.9);
+          ctx.stroke();
+          ctx.restore();
+        }
+        q.lines.forEach((l, i) => {
+          ctx.fillStyle = l.color;
+          ctx.fillText(l.text, q.x, y + LBL_FS + lh * i);
+        });
+        ctx.globalAlpha = a0;
+      }
+      labelQueue.length = 0;
+    };
+
+    // State comes from edit_DB_info, NOT from the panel.
+    //
+    // It has to travel with the image or it draws on the wrong picture, and
+    // edit_DB_info is already the snapshot InspectionUI swaps only when a new
+    // image arrives -- so reading it here makes the pairing automatic.
+    //
+    // Routing it through the panel instead was the previous attempt and it
+    // could not work: the panel writes state from a useEffect while the canvas
+    // is driven from a class componentWillUpdate. When React batches a report
+    // and an image into one render, the canvas runs first and promotes the
+    // PREVIOUS state onto the new image. More batching at higher rates, which
+    // is exactly where the symptom lived. One snapshot, one gate, no race.
+    const ST = (this.edit_DB_info && this.edit_DB_info.station) || null;
+    const R = (() => {
+      if (!ST || ST.result === undefined) return {};
+      const cat = ST.cat;
+      const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
+      if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
+      if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
+      // The cause, when the core named one. INSP_REGION_TOO_SMALL (5) is the
+      // one an operator can fix on the spot and the one they cannot see: the
+      // box is smaller than the part, so the locator has nowhere to put the
+      // template and NA is the only possible answer, on every frame. Without
+      // this line the picture looks perfectly good and the box looks
+      // deliberate. Codes come from FeatureReport_ERROR in FeatureReport.h.
+      const ERR = { 5: '(檢驗區域小於物件,請放大框選範圍)',
+                    4: '(背景不乾淨)',
+                    2: '(區域內不只一個物件)' };
+      // Two different NAs, and the operator needs to be able to tell them
+      // apart. clean_err means the clean area was dirty, so the part was
+      // never measured at all -- the engine is handed no candidate objects
+      // (FeatureManager::no_candidate_frame) and nothing is judged. Saying
+      // "零件本身 OK" there would be a claim about a measurement
+      // that did not happen; result_obj is STATUS_UNSET (-100), not 0, which
+      // is why that suffix stops appearing on its own.
+      return { tone: 'na', text: 'NA → 不動作'
+               + (ERR[ST.insp_err] || '')
+               + (ST.clean_err !== undefined ? '(淨空區不乾淨,未量測)' : '')
+               + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
+    })();
+    const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
+    // NO fill on the inspection region, in either layer. What is inside it is
+    // the part being measured -- the one thing in the frame worth looking at --
+    // and a tint over it costs contrast on exactly the edges the measurement is
+    // about. The two rings and the caption carry the state without touching the
+    // pixels. Clean regions get none either: a region whose purpose is to show
+    // specks is the last place to put a wash.
+    const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
+                 : R.tone === 'ng' ? { color: '#ff5252', fill: null }
+                 : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
+                 : null;
+    // Dashed when the core is not filtering by it. The region only applies in
+    // FI; CI is the setup view and deliberately shows every object, including
+    // the ones a run would drop. A solid box that is not selecting anything
+    // looks exactly like one that is -- until a part goes the wrong way -- so
+    // the line itself says which state it is in.
+    const regionOff = !!(ST && ST.region && ST.region.active === false);
+    if (regionOff) ctx.setLineDash([4 * mmpp, 3 * mmpp]);
+    box(ov.region, '#00b0ff', null,
+        ov.region ? (regionOff ? '檢驗區域(設定中·未過濾)' : '檢驗區域') : null,
+        R.text || null, rState);
+    if (regionOff) ctx.setLineDash([]);
+
+    (ov.clean || []).forEach((c, i) => {
+      const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));
+      c = { ...c, dirty: m ? m.dirty : undefined,
+            detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
+      const known = c.dirty !== undefined;
+      // QUIET UNTIL IT MATTERS.
+      //
+      // Clean regions are background: they are supposed to be empty, and while
+      // they are, their boxes, tints and captions sit on top of the part the
+      // operator is actually reading. On a part with several of them the
+      // measurement overlay is competing with three orange rectangles that are
+      // all saying "nothing to report".
+      //
+      // So the operator can ask for them to be hidden -- and a hidden one still
+      // appears the moment it is dirty, which is the only time it has anything
+      // to say. Hiding a region that is FAILING would be hiding the reason the
+      // part was rejected, and that is never what "hide" is meant to mean.
+      //
+      // Unknown state (no report yet) counts as quiet: before the first image
+      // there is nothing to show, and the boxes are still visible while the
+      // switch is off, which is where they get set up.
+      //
+      // "Hidden" is drawn at a tenth, not dropped. Gone entirely, the operator
+      // cannot tell a quiet clean region from one that was never set up, and
+      // the part underneath is equally readable either way -- a tenth is below
+      // the threshold where the box competes with the measurements, and still
+      // enough to see where the region is when you look for it.
+      const faint = ov.hideClean && c.dirty !== true;
+      const st = !known ? null
+               : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
+                         : { color: '#00e676', fill: null };
+      const alpha0 = ctx.globalAlpha;
+      if (faint) ctx.globalAlpha = alpha0 * 0.1;
+      // Faint keeps the OUTLINE only. A caption at a tenth is not quiet, it is
+      // unreadable -- and an unreadable word still occupies the space, and
+      // still takes a slot in the caption stacking below, pushing the captions
+      // that DO have something to say further from their boxes.
+      // NO tint, for the same reason the inspection region has none: the whole
+      // job of a clean region is to show specks, and a wash over it is exactly
+      // the contrast those specks are made of. The outline carries the region.
+      box(c, '#ffab00', null,
+          faint ? null : (c.name || ('淨空' + (i + 1))),
+          faint ? null
+                : (known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null), st);
+      ctx.globalAlpha = alpha0;
+    });
+
+    if (ov.pending) {
+      ctx.setLineDash([6 * mmpp, 4 * mmpp]);
+      box(ov.pending, '#ffffff', null, null);
+      ctx.setLineDash([]);
+    }
+    placeLabels();
+    ctx.restore();
+  }
 
   // The localizer's include/exclude regions belong to the SBM studio, which
   // draws them itself from this same shapeList. They are not measurement
@@ -142,11 +516,21 @@ class EverCheckCanvasComponent_proto {
   }
 
 
+  // Pointer events arrive in CSS pixels; everything in here works in canvas
+  // pixels. Taken from the element itself rather than devicePixelRatio, so any
+  // other CSS scaling of the canvas is covered by the same line.
+  static cssToCanvas(canvas, rect) {
+    const sx = (rect.width  > 0) ? (canvas.width  / rect.width)  : 1;
+    const sy = (rect.height > 0) ? (canvas.height / rect.height) : 1;
+    return { sx, sy };
+  }
+
   getMousePos(canvas, evt) {
     var rect = canvas.getBoundingClientRect();
+    const { sx, sy } = EverCheckCanvasComponent_proto.cssToCanvas(canvas, rect);
     let mouse = {
-      x: evt.clientX - rect.left,
-      y: evt.clientY - rect.top
+      x: (evt.clientX - rect.left) * sx,
+      y: (evt.clientY - rect.top) * sy
     };
     return mouse;
   }
@@ -158,6 +542,14 @@ class EverCheckCanvasComponent_proto {
       let t = e.touches[key];
       if (key !== "length") {
         touches.push({
+          // WHICH KIND OF POINTER THIS IS, carried on the event itself.
+          //
+          // A touch is replayed through onmousedown / onmousemove, so by the
+          // time the edit logic sees it there is nothing left to tell it apart
+          // from a mouse -- and the two want different things from a drag: a
+          // finger hides what it is on, a cursor does not. One field, set at
+          // the one place touches are turned into mouse events.
+          isTouch: true,
           clientX: t.clientX,
           clientY: t.clientY,
           force: t.force,
@@ -178,6 +570,24 @@ class EverCheckCanvasComponent_proto {
   constructor(canvasDOM) {
     this.canvas = canvasDOM;
 
+    // A DEFAULT, because the base class CALLS this on its own.
+    //
+    // zoom_emit fires 500 ms after any pan or zoom, from a debounce timer, and
+    // every subclass but one assigns an EmitEvent in its constructor. The one
+    // that does not is DrawHook_CanvasComponent -- the SBM studio's canvas --
+    // which has no event consumer at all: it draws through a hook, and the
+    // down_samp_level negotiation zoom_emit exists for means nothing to it.
+    //
+    // So panning the studio canvas threw `this.EmitEvent is not a function`
+    // out of a timer, half a second after the pointer stopped. The console said
+    // so; the screen did not, and the next React commit after it landed did not
+    // happen -- which is how the studio's own 套用並離開 stopped closing the
+    // modal. Found by the journey test, which pans the canvas the way a person
+    // does instead of dispatching to it.
+    //
+    // Subclasses assign over this after super(), so nothing else changes.
+    this.EmitEvent = (event) => { log.debug(event); };
+
     this.canvas.onmousemove = this.onmousemove.bind(this);
     this.canvas.onmousedown = (ev)=>{
       ev.preventDefault();
@@ -196,9 +606,10 @@ class EverCheckCanvasComponent_proto {
 
     function getTouchPos(canvasDom, touchEvent) {
       var rect = canvasDom.getBoundingClientRect();
+      const s = EverCheckCanvasComponent_proto.cssToCanvas(canvasDom, rect);
       return {
-        x: touchEvent.touches[0].clientX - rect.left,
-        y: touchEvent.touches[0].clientY - rect.top
+        x: (touchEvent.touches[0].clientX - rect.left) * s.sx,
+        y: (touchEvent.touches[0].clientY - rect.top) * s.sy
       };
     }
 
@@ -259,11 +670,59 @@ class EverCheckCanvasComponent_proto {
               Math.hypot(pts_cur[0].clientX - pts_cur[1].clientX, pts_cur[0].clientY - pts_cur[1].clientY) /
               Math.hypot(pts_pre[0].clientX - pts_pre[1].clientX, pts_pre[0].clientY - pts_pre[1].clientY);
 
+            // IN CANVAS PIXELS, like every other point handed to scaleCanvas.
+            //
+            // scaleCanvas measures the centre against canvas.width/2, and the
+            // wheel path reaches it through getMousePos, which converts. This
+            // one subtracted rect.left and stopped -- CSS pixels. The two were
+            // the same number for as long as the backing store was allocated
+            // in CSS pixels; now that it is device pixels, a display at 150%
+            // put the pinch centre at two thirds of the distance from the
+            // top-left corner and the picture zoomed about a point that was
+            // not between the fingers. Only visible where dpr != 1, which on
+            // this app is the touch machine -- so the mouse stayed correct and
+            // the gesture did not.
+            //
+            // The ratio above is a ratio of two distances, so its units cancel
+            // and clientX is right for it.
+            const cs = EverCheckCanvasComponent_proto.cssToCanvas(this.canvas, rect);
             let center = {
-              x: (pts_pre[0].clientX + pts_pre[1].clientX) / 2-rect.left,
-              y: (pts_pre[0].clientY + pts_pre[1].clientY) / 2-rect.top,
+              x: ((pts_pre[0].clientX + pts_pre[1].clientX) / 2 - rect.left) * cs.sx,
+              y: ((pts_pre[0].clientY + pts_pre[1].clientY) / 2 - rect.top) * cs.sy,
             }
             this.scaleCanvas(center, 1, scale);
+
+            // AND PAN, in the same gesture.
+            //
+            // A pinch is two fingers moving, and only the part of that motion
+            // that changes the distance between them was being used. The part
+            // that moves both of them together -- which is how anybody frames
+            // what they are zooming into -- was thrown away, so the picture
+            // zoomed about wherever the fingers first landed and the operator
+            // had to let go and drag to bring the feature back.
+            //
+            // The midpoint's travel IS that component: scale about the old
+            // midpoint first, then translate by how far the midpoint moved, so
+            // the point under the fingers stays under the fingers.
+            //
+            // Through StartDrag/EndDrag because that is the camera's existing
+            // screen-space translation: CameraTransform applies tmpMatrix
+            // before the camera matrix, so the vector is in canvas pixels, and
+            // EndDrag folds it in permanently. Doing it with SetOffset would
+            // not work -- SetOffset translates in the matrix's own space and
+            // GetCameraOffset reads raw m41/m42, so the two are not inverses.
+            const mid = (pts) => ({
+              x: ((pts[0].clientX + pts[1].clientX) / 2 - rect.left) * cs.sx,
+              y: ((pts[0].clientY + pts[1].clientY) / 2 - rect.top) * cs.sy,
+            });
+            const mNow = mid(pts_cur), mPre = mid(pts_pre);
+            const dx = mNow.x - mPre.x, dy = mNow.y - mPre.y;
+            if (dx || dy) {
+              this.camera.StartDrag({ x: dx, y: dy });
+              this.camera.EndDrag();
+              this.debounce_zoom_emit();
+              this.draw();
+            }
             break;
         }
 
@@ -290,21 +749,64 @@ class EverCheckCanvasComponent_proto {
 
         //console.log(ti);
       }
+      // THE BROWSER GETS NONE OF THESE GESTURES.
+      //
+      // touch-action:none first, because it is the only part that works before
+      // any JavaScript runs: it tells the compositor not to pan or pinch-zoom
+      // this element, so a drag cannot start scrolling the page on the frame
+      // before the handler is reached. preventDefault alone cannot win that
+      // race -- the scroll has already begun by the time it is called.
+      //
+      // Then preventDefault on all three, with { passive: false } stated rather
+      // than relied on. touchmove already called it and got away with it only
+      // because a non-document element is still non-passive by default; that is
+      // a default, and defaults on this have moved before.
+      //
+      // touchstart matters for a reason that is not about scrolling: without it
+      // the browser ALSO synthesises a mouse event from the tap, and
+      // this.canvas.onmousedown is live -- so every touch ran onmousedown
+      // twice, once from touchStatus and once from the synthetic mousedown.
+      // It is also what stops double-tap zoom and the long-press menu, both of
+      // which a bench operator hits by accident within a shift.
+      this.canvas.style.touchAction = 'none';
+      this.canvas.style.webkitUserSelect = 'none';
+      this.canvas.style.userSelect = 'none';
+      // Kills the grey flash Chromium paints over a tapped element.
+      this.canvas.style.webkitTapHighlightColor = 'transparent';
+
       this.canvas.addEventListener("touchstart", (e) => {
         touchStatus(e);
-      }, false);
+        e.preventDefault();
+      }, { passive: false });
       this.canvas.addEventListener("touchmove", (e) => {
         touchStatus(e);
         e.preventDefault();
-      }, false);
+      }, { passive: false });
       this.canvas.addEventListener("touchend", (e) => {
         touchStatus(e);
-      }, false);
+        e.preventDefault();
+      }, { passive: false });
+      // A cancelled touch (the OS taking over -- a system gesture, a call) must
+      // leave the gesture state machine where a touchend would, or the next
+      // touch continues a drag the operator stopped making.
+      this.canvas.addEventListener("touchcancel", (e) => {
+        touchStatus(e);
+      }, { passive: false });
 
     }
 
 
-    this.canvas.addEventListener('wheel', this.onmouseswheel.bind(this), false);
+    // NOT passive: the wheel zooms the canvas, and without preventDefault the
+    // page scrolls at the same time -- and with ctrl held, Chromium zooms the
+    // whole UI instead, which on a bench leaves the operator looking at a
+    // 150%-scaled application with no obvious way back.
+    // Bound ONCE and kept. resourceClean() passed a fresh .bind(this) to
+    // removeEventListener, and bind returns a new function every call -- so the
+    // two below never matched the one registered here and the wheel listener
+    // was never actually removed. Noticed while making this listener
+    // non-passive; the leak predates that.
+    this._onWheelBound = this.onmouseswheel.bind(this);
+    this.canvas.addEventListener('wheel', this._onWheelBound, { passive: false });
 
     this.mouseStatus = { x: -1, y: -1, px: -1, py: -1, status: 0, pstatus: 0 };
 
@@ -332,6 +834,9 @@ class EverCheckCanvasComponent_proto {
     };
 
     this.rUtil = new renderUTIL(null, this.camera);
+    // unit:'view' sizes against the canvas, so the renderer has to see it.
+    // Set again in resize(), where the backing store is reallocated.
+    this.rUtil.hostCanvas = this.canvas;
     this.rUtil.setColorSet(this.colorSet);
 
 
@@ -350,7 +855,7 @@ class EverCheckCanvasComponent_proto {
   }
 
   resourceClean() {
-    this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    if (this._onWheelBound) this.canvas.removeEventListener('wheel', this._onWheelBound);
     this.releaseRawImg();
     log.debug("resourceClean......")
   }
@@ -606,7 +1111,7 @@ class EverCheckCanvasComponent_proto {
       (ViewPortY - offset.y - cH / 2) / totalScale,
       ViewPortW / totalScale,
       ViewPortH / totalScale];
-    let down_samp_level = 1.0 * crop[2] / (cW);
+    let down_samp_level = 1.0 * crop[2] / (cW / (this.pixelRatio || 1));  // CSS px, not device: see resize()
     this.EmitEvent(
       {
         type: "down_samp_level_update",
@@ -633,7 +1138,8 @@ class EverCheckCanvasComponent_proto {
     );
   }
   onmouseswheel(evt) {
-    //
+    // The zoom is ours; the browser's is not wanted on top of it.
+    evt.preventDefault();
     let ret_val = this.scaleCanvas(this.mouseStatus, evt.deltaY / 4);
     this.debounce_zoom_emit();
     return ret_val;
@@ -708,6 +1214,9 @@ class EverCheckCanvasComponent_proto {
     this.mouseStatus.x = pos.x;
     this.mouseStatus.y = pos.y;
     this.mouseStatus.status = 1;
+    // Set on the press and left alone for the rest of the gesture: what the
+    // gesture STARTED as is what it is.
+    this.mouseStatus.isTouch = !!(evt && evt.isTouch);
 
     this.ctrlLogic();
     this.draw();
@@ -732,9 +1241,42 @@ class EverCheckCanvasComponent_proto {
 
 
   resize(width, height) {
-    if(Math.abs(this.canvas.height - height)+Math.abs(this.canvas.width - width)<5)return;
-    this.canvas.width = width;
-    this.canvas.height = height;
+    // THE BACKING STORE IS IN DEVICE PIXELS. THE LAYOUT IS IN CSS PIXELS.
+    //
+    // This set canvas.width to the CSS width the resize detector reported, so
+    // on any display that is not at 100% -- Windows at 125% or 150%, a
+    // HiDPI panel, an Electron zoom -- the canvas held FEWER pixels than the
+    // box it was stretched across, and the compositor scaled the whole overlay
+    // up. Every line, every glyph, every caliper tick was resampled. That is
+    // the stair-stepped, broken-looking lettering: not the font, not the
+    // anti-aliasing, and not a Windows visual effect. Canvas 2D anti-aliases
+    // in greyscale (never subpixel/LCD, which is disabled on a canvas with an
+    // alpha channel), and greyscale AA cannot survive being magnified.
+    //
+    // So: allocate width*dpr by height*dpr, and pin the CSS box to the size
+    // the layout asked for. Everything downstream already works in canvas
+    // pixels -- worldTransform centres on canvas.width/2, camera.Scale fits
+    // the image to canvas.width -- so the picture is identical, drawn at the
+    // resolution the screen actually has.
+    //
+    // Two places have to be told, because they are the two that DON'T mean
+    // device pixels: the mouse, which arrives in CSS pixels, and the stream
+    // negotiation, which must keep asking for the same number of image pixels
+    // as before or the bandwidth goes up with the display scaling.
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    // Compared in CSS pixels: the old guard compared the DEVICE width against
+    // the CSS width it was handed, so at any dpr != 1 it never matched and
+    // every resize event reallocated the backing store.
+    if (this._cssW !== undefined &&
+        Math.abs(this._cssH - height) + Math.abs(this._cssW - width) < 5 &&
+        this.pixelRatio === dpr) return;
+    this._cssW = width; this._cssH = height;
+    this.pixelRatio = dpr;
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    this.canvas.style.width = width + "px";
+    this.canvas.style.height = height + "px";
+    if (this.rUtil) this.rUtil.hostCanvas = this.canvas;
     //this.ctrlLogic();
     // The stream resolution is chosen from the canvas size, so a canvas that
     // changes size without saying so leaves the core sending the wrong number
@@ -803,6 +1345,19 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   // Fit the loaded image to the view once, on first SetImg.
+  //
+  // The fit divides by rUtil's mmpp, which HookCanvasComponent now sets from
+  // the def before handing over the picture -- without it the mmpp was 1 and a
+  // newly captured object came up about seventy times too small.
+  //
+  // It still lands at roughly a fifth of the canvas rather than filling it,
+  // because the proto sizes the view from img_info.scale * img_info.width while
+  // this canvas draws secCanvas at mmpp per secCanvas pixel. Computing it from
+  // secCanvas instead was tried and is WRONG here: at the first SetImg that
+  // buffer is still the low-resolution preview, so the fit overshoots by the
+  // downsample factor and the picture opens larger than the view. Fixing it
+  // properly means re-fitting when the full-resolution frame lands, not
+  // changing the arithmetic.
   SetImg(img_info) {
     super.SetImg(img_info);
     if (!this._fitDone && this.img_info) { this.scaleImageToFitScreen(); this._fitDone = true; }
@@ -859,6 +1414,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    // Which control point is selected, and whether a drag may move it.
+    this.EditPointSel = null;
+    this.EditPointArmed = false;
+    this.EditGrab = null;
     this.ShowInspectionNote = false;
     // Standalone preview: show a raw live frame at the INSTRUMENT's own scale,
     // using no def-file state whatsoever. See SetStandalonePreview below.
@@ -965,10 +1524,29 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.db_obj = edit_DB_info._obj;
     if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
     this.rUtil.setEditor_db_obj(this.db_obj);
-    let imageChanged=edit_DB_info.img!=this.img_info;
-    this.SetImg(edit_DB_info.img);
+    // A pushed stream frame must not replace what this preview is showing.
+    // The slot it lives in is shared with the def's own picture, so a machine
+    // running an inspection behind this screen used to animate the preview of
+    // a recipe nobody was inspecting. Requested images (def load, image switch,
+    // CHECK) are unmarked and still land.
+    const streamed = !!(edit_DB_info.img && edit_DB_info.img.fromStream);
+    let imageChanged = !streamed && edit_DB_info.img != this.img_info;
+    if (!streamed) this.SetImg(edit_DB_info.img);
     
-    let mmpp = this.db_obj.getsig360info_mmpp();
+    // getEditorMmpp, NOT the raw getsig360info_mmpp.
+    //
+    // The raw one reads sig360info.reports[0].mmpp and returns 1 out of its
+    // catch when there is no signature. A def built through TAKE -> SBM never
+    // runs a sig360 extraction, so it has no @__SIGNATURE__ at all -- and this
+    // preview then rendered it at one millimetre per pixel while an older def
+    // that had been migrated from sig360 rendered correctly beside it. Same
+    // code, same machine, same mmpp in the file; the only difference was
+    // whether a signature happened to be present.
+    //
+    // getEditorMmpp exists for exactly this: signature first, then the
+    // instrument, then cam_param, then 1. See mmppRule.mjs.
+    let mmpp = this.db_obj.getEditorMmpp
+      ? this.db_obj.getEditorMmpp() : this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp = mmpp;
     if(imageChanged)
       this.scaleImageToFitScreen();
@@ -1023,9 +1601,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
       ctx.scale(scale * mmpp, scale * mmpp);
-      // if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-      //   ctx.translate((this.img_info.offsetX) / scale-0.5, (this.img_info.offsetY) / scale-0.5);
-      // }
+      if (this.img_info !== undefined && this.img_info.offsetX !== undefined
+          && this.img_info.offsetY !== undefined) {
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
+      }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
 
@@ -1050,68 +1629,50 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
         // a def image, so it must NOT apply def_image_reg rotation -- ignore reg
         // and fall through to the centering-only branch below.
         const reg = this.disableImageAlign ? null : (this.edit_DB_info && this.edit_DB_info.def_image_reg);
-        const ref = this.db_obj && this.db_obj.sig360info && this.db_obj.sig360info.reports
-                    && this.db_obj.sig360info.reports[0];
-        if (reg && ref && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
-          const refAngle = ref.orientation || 0;
-          const imgAngle = reg.angle || 0;
-          const flip = reg.isFlipped || false;
-          const differs = reg.cx !== ref.cx || reg.cy !== ref.cy || imgAngle !== refAngle;
-          // The CENTRING happens either way. Only the ROTATION is conditional.
-          //
-          // `if (differs)` used to wrap both, and for an init-image save --
-          // where the registration is by construction identical to the
-          // reference -- that meant NO TRANSFORM AT ALL: the image drawn at the
-          // origin, correct scale, zero offset, with the def features sitting
-          // wherever the object frame put them. The legacy path below centres
-          // every other def by exactly this amount, so skipping it here was
-          // never "identity", it was a missing translate.
-          //
-          // It surfaces the day a def gains a def_image_reg and not before:
-          // without one, `reg` is falsy and the legacy path centres correctly.
-          // Re-saving a def writes it -- which is why this arrived with a def
-          // edit and not with any change to the rendering code.
-          flip ? ctx.scale(1, -1) : ctx.scale(1, 1);
-          if (differs) ctx.rotate(imgAngle);   // -> reference orientation
-          ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp);   // image sig360 -> origin
+        // ONE PATH, because there is only one computation.
+        //
+        // THE SIGNATURE CARRIES NO ANGLE. The reference frame IS the source
+        // image at 0 degrees -- measured on this bench, sig360's
+        // reports[0].orientation is 0 on every def, whatever angle the part was
+        // sitting at. All of the rotation lives in def_image_reg.angle, which
+        // is written straight off an inspection report and is in ROTATE space,
+        // so rotating the image BY it brings the object upright.
+        //
+        // This used to be two branches. The one for defs with a sig360 report
+        // rotated; the one for defs without -- every def built through
+        // TAKE -> SBM, which never runs a sig360 extraction -- only translated.
+        // Those defs came up in the main preview at the right scale, in the
+        // right place, at the ORIGINAL angle, while the def editor showed the
+        // same recipe upright because it rectifies against a live inspection
+        // report. Reported as a preview bug; it was this missing rotate.
+        //
+        // The old rotate was also guarded by `differs` (reg not equal to the
+        // reference). With orientation always 0 that guard only ever suppressed
+        // a rotate(0), so collapsing the branches changes nothing that worked
+        // and gives the two kinds of def one behaviour.
+        //
+        // Same three operations, same order, as the def editor's own fallback
+        // (DEFCONF_CanvasComponent) and as SBMStudio's drawImage: mirror,
+        // rotate the object upright, then put its origin at (0,0). The features
+        // and every measurement were authored in that frame.
+        if (reg && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
+          if (reg.isFlipped) ctx.scale(1, -1);
+          if (reg.angle) ctx.rotate(reg.angle);
+          ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp);
         }
         else
         {
-          // The centering-only path, and the one that silently did nothing.
+          // No registration at all: legacy sig360 defs, and the calibration
+          // preview, which deliberately ignores reg (disableImageAlign).
           //
-          // getsig360infoCenter() throws when sig360info is not loaded yet --
-          // which is exactly the state the canvas is in on the FIRST draw after
-          // a def is opened. The empty catch below swallowed it, the translate
-          // never ran, and the image was drawn at the origin with the correct
-          // SCALE and no offset: the def features in one corner and the part in
-          // another, with nothing logged anywhere.
+          // getsig360infoCenter() catches internally and returns {0,0} when
+          // there is no report, and translate(0,0) is a no-op -- so a def with
+          // neither used to be drawn at the origin, correct scale, no offset,
+          // silently. It says so now.
           let center = (this.db_obj && this.db_obj.getsig360infoCenter)
                        ? this.db_obj.getsig360infoCenter() : { x: 0, y: 0 };
-          // SHAPE-BASED DEFS HAVE NO SIG360 REPORT, and both paths above ask
-          // for one.
-          //
-          // `ref` is the RUNTIME sig360 report, not the def's stored data, so a
-          // def whose locating_engine is shape_based never has it -- the branch
-          // above is skipped however good its def_image_reg is, and this branch
-          // then calls getsig360infoCenter(), which does not throw: it catches
-          // internally and returns {0,0}. translate(0,0) is a no-op, so the
-          // image is drawn at the origin with the correct SCALE and no offset,
-          // silently. That is the whole bug, and it appeared the day a def was
-          // switched from sig360 to SBM -- nothing in the rendering path
-          // changed.
-          //
-          // The stored registration is the same quantity the sig360 centre
-          // would have been (on test1.hydef def_image_reg.cx/cy is 15.025,
-          // 9.305 -- identical to the @__SIGNATURE__ anchor), so it is the
-          // correct fallback rather than an approximation. Used only when the
-          // sig360 centre is absent, so nothing that works today changes.
-          if (!center.x && !center.y && reg
-              && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
-            center = { x: reg.cx, y: reg.cy };
-            log.info("[imgAlign] no sig360 report (shape-based def) -- placing "
-                     + "the def image from def_image_reg", center);
-          }
-          if (center && isFinite(center.x) && isFinite(center.y))
+          if (center && isFinite(center.x) && isFinite(center.y)
+              && (center.x || center.y))
             ctx.translate(-center.x/mmpp, -center.y/mmpp);
           else
             log.error("[imgAlign] no sig360 centre and no def_image_reg -- the "
@@ -1129,8 +1690,12 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
                   + "UNPLACED (scale right, offset zero):", e && e.message, e);
       }
 
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
       
+      // The boundary moves with the image, on purpose: it bounds the drawn
+      // pixels, so it belongs at -0.5 and width-0.5 -- the outer edges of the
+      // first and last pixel, not the centres of them.
       ctx.strokeStyle = "rgba(120, 120, 120,30)";
       let curScale=this.camera.GetCameraScale();
       ctx.lineWidth = 200/curScale/scale;
@@ -1258,6 +1823,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    // Which control point is selected, and whether a drag may move it.
+    this.EditPointSel = null;
+    this.EditPointArmed = false;
+    this.EditGrab = null;
 
     this.ROISettingCallBack = undefined;
     this.EmitEvent = (event) => { log.info(event); };
@@ -1273,7 +1842,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
  
   resourceClean() {
-    this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    if (this._onWheelBound) this.canvas.removeEventListener('wheel', this._onWheelBound);
     this.stream_img=null;
     log.debug("resourceClean......")
   }
@@ -1533,161 +2102,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   };
 
   draw() {
+    // draw_INSP draws the station itself, underneath the results (see there).
+    // This call is the fallback for the frames where it BAILED -- no report, no
+    // edit_DB_info, no image yet -- which is exactly when the station is being
+    // set up and must still be visible on an empty plate. That was the original
+    // reason it lived out here; it still holds, it is just no longer the only
+    // case.
+    this._stationDrawnThisFrame = false;
     this.draw_INSP();
-    this.draw_station_overlay();
-  }
-
-  // The station: inspection region + clean-space regions, in FULL-SENSOR pixels.
-  //
-  // Drawn from draw(), not from inside draw_INSP(), because draw_INSP bails
-  // early when there is no report or no edit_DB_info -- and setting the region
-  // up is exactly when you have neither. It must be visible on an empty plate.
-  //
-  // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
-  // in full-sensor px; undefined draws nothing.
-  // GEOMETRY ONLY. The boxes belong to the person dragging them, so they land
-  // immediately. The STATE is not passed in at all -- see draw_station_overlay.
-  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
-
-  draw_station_overlay() {
-    const ov = this.stationOverlay;
-    if (!ov || this.img_info === undefined) return;
-    const mmpp = this.rUtil.get_mmpp();
-    if (!(mmpp > 0)) return;
-    const ctx = this.canvas.getContext('2d');
-    const m = this.worldTransform();
-    ctx.save();
-    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
-    ctx.lineWidth = this.rUtil.getIndicationLineSize();
-
-    // Two rectangles, two jobs. The OUTER one is identity and never changes
-    // colour -- blue is the inspection region, orange is a clean region, and you
-    // can always tell which box you are looking at. The INNER one is state.
-    //
-    // Colouring the outer box by state was the first attempt and it was worse:
-    // when everything went green you could no longer tell the station from the
-    // clean regions at a glance, which is the one thing the overlay has to make
-    // obvious while parts are moving.
-    const box = (r, stroke, fill, label, sub, state) => {
-      if (!r || !(r.w > 0) || !(r.h > 0)) return;
-      const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
-      const lw = this.rUtil.getIndicationLineSize();
-      ctx.lineWidth = lw;
-      ctx.strokeStyle = stroke;
-      ctx.strokeRect(x, y, w, h);
-      if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
-
-      if (state) {
-        // Half a stroke width. Both strokes are centred on their own path, so
-        // at this inset they sit edge to edge and read as one double line --
-        // enough to carry a second colour without turning the box into a
-        // frame-within-a-frame that eats the region it is describing.
-        const g = lw * 0.5;
-        if (w > g * 3 && h > g * 3) {
-          ctx.strokeStyle = state.color;
-          ctx.strokeRect(x + g, y + g, w - g * 2, h - g * 2);
-          if (state.fill) { ctx.fillStyle = state.fill;
-                            ctx.fillRect(x + g, y + g, w - g * 2, h - g * 2); }
-        }
-      }
-
-      // Text goes BELOW the box. Inside, it sits on top of the parts -- which
-      // is the one thing in the frame the operator is actually trying to look
-      // at. Above collides with the neighbouring box's text as soon as the
-      // stations sit a part-pitch apart, and below the plate is empty.
-      //
-      // Small, because getFontStyle takes a size in WORLD mm: the 1 the
-      // measurement overlay passes renders enormous for a station label, and
-      // there are two lines per box.
-      const fs = 0.42, pad = 0.12;
-      ctx.font = this.rUtil.getFontStyle(fs);
-      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + h + fs + pad); }
-      if (sub)   { ctx.fillStyle = state ? state.color : stroke;
-                   ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
-    };
-
-    // State comes from edit_DB_info, NOT from the panel.
-    //
-    // It has to travel with the image or it draws on the wrong picture, and
-    // edit_DB_info is already the snapshot InspectionUI swaps only when a new
-    // image arrives -- so reading it here makes the pairing automatic.
-    //
-    // Routing it through the panel instead was the previous attempt and it
-    // could not work: the panel writes state from a useEffect while the canvas
-    // is driven from a class componentWillUpdate. When React batches a report
-    // and an image into one render, the canvas runs first and promotes the
-    // PREVIOUS state onto the new image. More batching at higher rates, which
-    // is exactly where the symptom lived. One snapshot, one gate, no race.
-    const ST = (this.edit_DB_info && this.edit_DB_info.station) || null;
-    const R = (() => {
-      if (!ST || ST.result === undefined) return {};
-      const cat = ST.cat;
-      const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
-      if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
-      if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
-      // The cause, when the core named one. INSP_REGION_TOO_SMALL (5) is the
-      // one an operator can fix on the spot and the one they cannot see: the
-      // box is smaller than the part, so the locator has nowhere to put the
-      // template and NA is the only possible answer, on every frame. Without
-      // this line the picture looks perfectly good and the box looks
-      // deliberate. Codes come from FeatureReport_ERROR in FeatureReport.h.
-      const ERR = { 5: '(檢驗區域小於物件,請放大框選範圍)',
-                    4: '(背景不乾淨)',
-                    2: '(區域內不只一個物件)' };
-      // Two different NAs, and the operator needs to be able to tell them
-      // apart. clean_err means the clean area was dirty, so the part was
-      // never measured at all -- the engine is handed no candidate objects
-      // (FeatureManager::no_candidate_frame) and nothing is judged. Saying
-      // "零件本身 OK" there would be a claim about a measurement
-      // that did not happen; result_obj is STATUS_UNSET (-100), not 0, which
-      // is why that suffix stops appearing on its own.
-      return { tone: 'na', text: 'NA → 不動作'
-               + (ERR[ST.insp_err] || '')
-               + (ST.clean_err !== undefined ? '(淨空區不乾淨,未量測)' : '')
-               + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
-    })();
-    const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
-    // NO fill on the inspection region, in either layer. What is inside it is
-    // the part being measured -- the one thing in the frame worth looking at --
-    // and a tint over it costs contrast on exactly the edges the measurement is
-    // about. The two rings and the caption carry the state without touching the
-    // pixels. Clean regions keep their tint: they are supposed to be empty, so
-    // there is nothing there to obscure.
-    const rState = R.tone === 'ok' ? { color: '#00e676', fill: null }
-                 : R.tone === 'ng' ? { color: '#ff5252', fill: null }
-                 : R.tone === 'na' ? { color: '#bdbdbd', fill: null }
-                 : null;
-    // Dashed when the core is not filtering by it. The region only applies in
-    // FI; CI is the setup view and deliberately shows every object, including
-    // the ones a run would drop. A solid box that is not selecting anything
-    // looks exactly like one that is -- until a part goes the wrong way -- so
-    // the line itself says which state it is in.
-    const regionOff = !!(ST && ST.region && ST.region.active === false);
-    if (regionOff) ctx.setLineDash([4 * mmpp, 3 * mmpp]);
-    box(ov.region, '#00b0ff', null,
-        ov.region ? (regionOff ? '檢驗區域(設定中·未過濾)' : '檢驗區域') : null,
-        R.text || null, rState);
-    if (regionOff) ctx.setLineDash([]);
-
-    (ov.clean || []).forEach((c, i) => {
-      const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));
-      c = { ...c, dirty: m ? m.dirty : undefined,
-            detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
-      const known = c.dirty !== undefined;
-      const st = !known ? null
-               : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }
-                         : { color: '#00e676', fill: null };
-      box(c, '#ffab00', 'rgba(255,171,0,0.06)',
-          c.name || ('淨空' + (i + 1)),
-          known ? (c.dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null, st);
-    });
-
-    if (ov.pending) {
-      ctx.setLineDash([6 * mmpp, 4 * mmpp]);
-      box(ov.pending, '#ffffff', null, null);
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
+    if (!this._stationDrawnThisFrame) this.draw_station_overlay();
   }
 
 
@@ -1717,7 +2140,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ViewPortW / totalScale,
       ViewPortH / totalScale];
     
-    let down_samp_level = 1.0 * crop[2] / (cW);
+    let down_samp_level = 1.0 * crop[2] / (cW / (this.pixelRatio || 1));  // CSS px, not device: see resize()
     // Sensor pixels per canvas pixel -- the whole basis for choosing a stream
     // resolution, computed HERE because this is the only place that holds both
     // halves of it consistently.
@@ -1744,7 +2167,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
           (this.img_info.full_height+100)*mmpp,
           (this.img_info.full_width+100)*mmpp];
           
-        let new_down_samp_level = 1.0 * crop[2] / (cW);
+        let new_down_samp_level = 1.0 * crop[2] / (cW / (this.pixelRatio || 1));  // CSS px, not device: see resize()
         if(down_samp_level<new_down_samp_level)
           down_samp_level=new_down_samp_level;
       }
@@ -1878,9 +2301,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
         ctx.scale(mmpp_mult, mmpp_mult);
         if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-          ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
+          ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
         }
-        // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+        this.rUtil.alignImagePixelGrid(ctx);
         ctx.drawImage(this.secCanvas, 0, 0);
 
         // Screen position of image pixel (0,0), for the timing caption below.
@@ -1900,6 +2323,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         try{
           ctx.imageSmoothingEnabled=false;
           ctx.scale(mmpp, mmpp);
+          this.rUtil.alignImagePixelGrid(ctx);
           ctx.drawImage(this.stream_img, 0, 0);
         } catch (error) {
           log.error("[stream-drawImage]", { stream_img: this.stream_img, error });
@@ -1908,6 +2332,20 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         
       }
       ctx.restore();
+
+      // THE STATION, BETWEEN THE IMAGE AND THE RESULTS.
+      //
+      // It is a frame around where the work is -- the same rectangle every
+      // frame, saying which part of the image is being judged. The measurements
+      // are the answer the operator came for and they land inside it, so drawn
+      // afterwards it covered readings with a line that says nothing about
+      // them. Drawn before, it is background, which is what it is.
+      //
+      // Not in draw() ahead of this function: draw_INSP clears the canvas and
+      // repaints the image, so anything drawn before it is simply erased. That
+      // is what putting it first in draw() did.
+      this.draw_station_overlay();
+      this._stationDrawnThisFrame = true;
 
       // Same caption as the def editor, same keys. On this path the core sends
       // no def_build_ms -- CI/FI build the engine once at session open -- so it
@@ -1951,11 +2389,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
 
-        listClone=listClone.filter(ff=>{
-          if(ff.rank===undefined)return true;
-          if(ff.rank<=this.measureDisplayRank)return true;
-          return false;
-        });
+        listClone=listClone.filter(ff=>rankShown(ff, this.measureDisplayRank));
 
 
         listClone.forEach((eObj) => {
@@ -2075,7 +2509,17 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
         ctx.restore();
         //console.log(listClone);
+        // WHICH HANDEDNESS THIS GROUP WAS FOUND IN.
+        //
+        // The core measures a signed angle in the OBJECT's frame, where the
+        // part is not mirrored. A group detected as 反 therefore reports the
+        // opposite sign to the turn you can see between the same two lines on
+        // screen -- both correct, in different frames. Overlays that draw a
+        // DIRECTION (the angle arc and its arrowhead) need to know which frame
+        // they are in, and until now nothing downstream of here was told.
+        this.rUtil.objIsFlipped = !!report.isFlipped;
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
+        this.rUtil.objIsFlipped = false;
       }
     });
 
@@ -2106,21 +2550,40 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.rect(x, y, w, h);
       ctx.stroke();
       ctx.closePath();
+      // Put it back. This is where the station overlay's stray dashes came
+      // from: a pattern set for one rectangle and left set for everything
+      // drawn after it.
+      ctx.setLineDash([]);
     }
   }
 
   ctrlLogic() {
 
-
-
-    if (
-      this.edit_DB_info.inherentShapeList === null ||
-      this.edit_DB_info.inherentShapeList === undefined ||
-      this.edit_DB_info.inherentShapeList.length == 0) {
+    // AN EMPTY inherentShapeList IS NOT A CORRUPT DEF.
+    //
+    // This used to raise ERROR on it, and ERROR takes the state machine out of
+    // the inspection screen. inherentShapeList is built from the def's INHERENT
+    // features, and for sig360 defs that is the signature -- its silhouette,
+    // centre and orientation shapes -- so "empty" really did mean "nothing
+    // loaded". A shape_based def has no signature: its only inherent entry is
+    // @__SBM_INFO__, which is data, not a drawable shape, so the list is
+    // legitimately empty and the def is perfectly good.
+    //
+    // The symptom was precise and baffling: in InspectionUI you could zoom
+    // (draw() only) as much as you liked, but the first DRAG dropped you back
+    // to the main menu -- because a drag is the one interaction that runs this
+    // function. Nothing was wrong with the recipe.
+    //
+    // So: only a MISSING def is an error now. An empty list just means there
+    // are no shapes to hit-test, and returning early leaves panning alone --
+    // the camera drag is started in onmousemove, before this is called.
+    if (!this.edit_DB_info || !this.edit_DB_info._obj) {
       this.ERROR_LOCK = true;
       this.EmitEvent({ type: "ERROR", data: ("Define Config is not valid or the corrupted...") });
       return;
     }
+    const _inherent = this.edit_DB_info.inherentShapeList;
+    if (!_inherent || _inherent.length === 0) return;
     //let mmpp = this.rUtil.get_mmpp();
     let wMat = this.worldTransform();
     //log.debug("this.camera.matrix::",wMat);
@@ -2155,6 +2618,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    // Which control point is selected, and whether a drag may move it.
+    this.EditPointSel = null;
+    this.EditPointArmed = false;
+    this.EditGrab = null;
     this.mouseTriggeredUpdate=false;
     this.EmitEvent = (event) => { log.debug(event); };
   }
@@ -2181,7 +2648,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
-    this.SetImg(edit_DB_info.img);
+    // Same rule as the preview: the editor stays on the frame being edited.
+    // The TAKE dialog's viewfinder is a separate canvas that reads the slot
+    // directly, so it still sees every streamed frame -- which is what stops
+    // the canvas BEHIND the dialog animating along with it.
+    if (!(edit_DB_info.img && edit_DB_info.img.fromStream))
+      this.SetImg(edit_DB_info.img);
 
     this.SetEditShape(edit_DB_info.edit_tar_info);
 
@@ -2200,6 +2672,34 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   SetEditShape(EditShape) {
     this.EditShape = EditShape;
+
+    // RE-DERIVE THE SELECTED POINT FROM THE SHAPE WE NOW HOLD.
+    //
+    // EditPoint is a REFERENCE INTO EditShape -- moving the point IS moving the
+    // shape, which only works while the two are the same object. This method
+    // replaces EditShape with whatever came back through redux and never
+    // touched EditPoint, so from the first round trip onwards the editor was
+    // dragging a point inside an object nothing else could see: the marker
+    // followed the finger, the shape and its other handles stayed where they
+    // were, and the edit went nowhere.
+    //
+    // It survived for as long as redux happened to hand back the same object it
+    // was given. That is not a property anything guarantees, and it stopped
+    // being true as soon as the shape passed through a reducer that copies.
+    //
+    // EditPointSel is the durable name for the selection -- a shape id and a
+    // key -- so it can be resolved against the new object every time.
+    if (this.EditPointSel && this.EditShape
+        && this.EditShape.id === this.EditPointSel.id) {
+      const p = this.EditShape[this.EditPointSel.key];
+      if (p && typeof p === 'object') this.EditPoint = p;
+    } else if (this.EditPointSel) {
+      // A different shape is being edited now; the old selection is not in it.
+      this.EditPointSel = null;
+      this.EditPoint = null;
+      this.EditPointArmed = false;
+      this.EditGrab = null;
+    }
 
     log.debug(this.tmp_EditShape_id);
     if (this.EditShape != null && this.EditShape.id != undefined && this.tmp_EditShape_id != this.EditShape.id) {
@@ -2314,7 +2814,82 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       matrix.d, matrix.e, matrix.f);
   }
 
+  // The dead zone in device pixels. Stated in millimetres of screen because
+  // the thing being avoided is a fingertip, and a fingertip is the same size on
+  // every machine while a pixel is not. The CSS pixel is 1/96 inch by
+  // definition; a device pixel is a CSS pixel over the device pixel ratio.
+  // HOW CLOSE COUNTS AS ON A HANDLE, in device pixels.
+  //
+  // mouse_close_dist is 10, and it used to mean 10 CSS pixels because the
+  // canvas was backed in CSS pixels. Backing it in device pixels turned the
+  // same constant into 10 DEVICE pixels -- about 1.3 mm on a 2x touch panel,
+  // which no fingertip can land inside. The number was never about pixels: it
+  // is how near the operator has to get, and that is a physical distance.
+  //
+  // A finger gets more room than a cursor, for the obvious reason. Never
+  // smaller than the old constant, so nothing on a 1x display gets harder.
+  hitRadiusPx() {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const mm = this.isTouchInput() ? EDIT_HIT_TOUCH_MM : EDIT_HIT_MOUSE_MM;
+    return Math.max(this.mouse_close_dist, mm * (96 / 25.4) * dpr);
+  }
+
+  // IS A FINGER ON THE GLASS RIGHT NOW?
+  //
+  // Asked of the gesture state machine rather than of a flag copied onto a
+  // synthesised mouse event: that flag has to survive being set in one handler
+  // and read in another, and every link in that chain is a way for it to
+  // arrive false. The touch list is the fact itself and cannot be stale.
+  isTouchInput() {
+    return !!((this.mouseStatus && this.mouseStatus.isTouch)
+      || (this.multiTouchInfo && this.multiTouchInfo.touchStatus
+          && this.multiTouchInfo.touchStatus.length > 0));
+  }
+
+  editArmThresholdPx() {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const mm = this.isTouchInput() ? EDIT_DRAG_ARM_TOUCH_MM : EDIT_DRAG_ARM_MOUSE_MM;
+    return mm * (96 / 25.4) * dpr;
+  }
+
+  // Every point on the selected shape, whatever type it is: pt1/pt2 on a line,
+  // pt1/pt2/pt3 on an arc, and whatever a future one calls them. Found by shape
+  // rather than listed per type, so a new primitive gets handles for free.
+  // Every point-like property of a shape: pt1/pt2 on a line, pt1/pt2/pt3 on an
+  // arc, and whatever a future one calls them. Found BY SHAPE rather than
+  // listed per type, so a new primitive gets handles for free.
+  shapeCtrlPoints(sh) {
+    if (!sh) return [];
+    const out = [];
+    for (const k of Object.keys(sh)) {
+      const v = sh[k];
+      if (v && typeof v === 'object' && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+        out.push({ key: k, pt: v });
+      }
+    }
+    return out;
+  }
+
+  editShapeCtrlPoints() {
+    const sh = this.EditShape;
+    if (!sh) return [];
+    const out = [];
+    for (const k of Object.keys(sh)) {
+      const v = sh[k];
+      if (v && typeof v === 'object' && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+        out.push({ key: k, pt: v });
+      }
+    }
+    return out;
+  }
+
   draw_DEFCONF() {
+    // The shape modules gate their own control points on K.isEditing(shape),
+    // which compares against `renderer.EditShape` -- a property nothing ever
+    // set, so it answered false for every shape and those handles were never
+    // drawn at all. Set here, at the top of the draw, which is the one place
+    // that runs for every path that can change the selection.
+    this.rUtil.EditShape = this.EditShape;
 
     let mmpp = this.rUtil.get_mmpp();
     let ctx = this.canvas.getContext('2d');
@@ -2425,13 +3000,11 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       let mmpp_mult = scale * mmpp;
       
       ctx.scale(mmpp_mult, mmpp_mult);
-      if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        //ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+      if (this.img_info !== undefined && this.img_info.offsetX !== undefined
+          && this.img_info.offsetY !== undefined) {
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
       }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
-      //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
-      
-      
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
 
       // Where the image's top-left corner ends up on screen.
@@ -2512,10 +3085,65 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                                      this.edit_DB_info._obj.shapeList);
 
 
+    // ALL OF THE SELECTED SHAPE'S HANDLES, not only the one last touched.
+    //
+    // Drawn here rather than left to the shape modules, which gate theirs on a
+    // rendering flag (OVERLAY.ctrl.edit_only): where a selected shape can be
+    // grabbed is the editor's business, and it should not have to turn on a
+    // display option to say so.
+    // IN EDIT MODE, EVERY SHAPE SHOWS WHERE IT CAN BE GRABBED.
+    //
+    // Not just the selected one: the question an operator has in this mode is
+    // "what can I take hold of", and answering it only for the shape already
+    // in hand means hunting for the others by feel. Half size and dim, so a
+    // dozen shapes' worth of handles reads as texture rather than as twelve
+    // things competing with the one that is selected.
+    // ONLY WHILE NOTHING IS SELECTED.
+    //
+    // With no selection the question is "what is there to take hold of", and
+    // every shape answering it is the answer. Once one IS selected the question
+    // has changed to "where can I move THIS", and the other shapes' handles are
+    // a field of dots for the eye to sort through -- the picture in the
+    // screenshot that prompted this. They go away.
+    if (this.EditShape == null
+        && this.state && this.state.substate === UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT) {
+      ctx.strokeStyle = "rgba(150,170,190,0.55)";
+      // Same size as a selected shape's handles: these ARE the grab points,
+      // and something that has to be aimed at should not be drawn smaller than
+      // it can be hit.
+      const sz = 1.0 * this.rUtil.getPointSize();
+      for (const sh of displayShape) {
+        if (!sh) continue;
+        for (const c of this.shapeCtrlPoints(sh)) {
+          // drawpoint(ctx, point, TYPE, size) -- the third argument is the
+          // marker shape, not the size. Passing a number there silently
+          // selected the default circle at the default size, which is why
+          // every handle came out identical however the caller scaled it.
+          this.rUtil.drawpoint(ctx, c.pt, null, sz);
+        }
+      }
+    }
+
+    // The selected shape's own handles, full size: it is the one being worked
+    // on, so its grab points outrank everything else on the picture.
+    if (this.EditShape != null) {
+      ctx.strokeStyle = "rgba(150,170,190,0.85)";
+      for (const c of this.editShapeCtrlPoints()) {
+        this.rUtil.drawpoint(ctx, c.pt, null, 1.0 * this.rUtil.getPointSize());
+      }
+    }
+
     if (this.EditPoint != null) {
-      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
-      ctx.strokeStyle = "green";
-      this.rUtil.drawpoint(ctx, this.EditPoint, 2 * this.rUtil.getPointSize());
+      // TWO STATES, TWO COLOURS. Selected and armed are different things now --
+      // one can be dragged and the other cannot -- so which one this is has to
+      // be visible before a finger moves. Green is armed, as it always was;
+      // amber is selected, and safe to touch.
+      ctx.strokeStyle = this.EditPointArmed ? "green" : "rgba(240,184,73,0.95)";
+      // Only enough larger than its siblings to be found at a glance. It was
+      // 2.2, which on a zoomed-in line covered the feature it is placed
+      // against -- a handle you cannot see past is not a handle.
+      this.rUtil.drawpoint(ctx, this.EditPoint, null,
+        (this.EditPointArmed ? 1.5 : 1.25) * this.rUtil.getPointSize());
     }
 
 
@@ -2523,7 +3151,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     if (this.CandEditPointInfo != null) {
       //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
       ctx.strokeStyle = "rgba(0,255,0,0.3)";
-      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt, 2 * this.rUtil.getPointSize());
+      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt, null, 2 * this.rUtil.getPointSize());
     }
 
 
@@ -2682,7 +3310,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           this.EditShape._cursor = { x: mouseOnCanvas2.x, y: mouseOnCanvas2.y };  // rubber-band preview
           if (this.mouseStatus.status == 1 && ifOnMouseLeftClickEdge) {
             const pts = this.EditShape.points;
-            const closeDist = this.mouse_close_dist / this.camera.GetCameraScale();
+            const closeDist = this.hitRadiusPx() / this.camera.GetCameraScale();
             if (pts.length >= 3 &&
                 Math.hypot(mouseOnCanvas2.x - pts[0].x, mouseOnCanvas2.y - pts[0].y) < closeDist) {
               delete this.EditShape._cursor;
@@ -2711,7 +3339,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             if (pt_info.dist > pt_info2.dist) {
               pt_info = pt_info2;
             }
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+            if (pt_info.pt != null && pt_info.dist < this.hitRadiusPx() / this.camera.GetCameraScale()) {
               this.CandEditPointInfo = pt_info;
             }
             else {
@@ -2803,7 +3431,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               pt_info = pt_info2;
             }
 
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+            if (pt_info.pt != null && pt_info.dist < this.hitRadiusPx() / this.camera.GetCameraScale()) {
               this.CandEditPointInfo = pt_info;
             }
             else {
@@ -2822,17 +3450,44 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               if (tar_ele_trace == null || tar_ele_trace === undefined) {
                 //If there is no tar_ele_trace was set,ie. if user didn't select ref
                 if (this.CandEditPointInfo != null) {
-                  let pt_info = this.CandEditPointInfo;
+                  // A PRESS SELECTS. IT DOES NOT MOVE ANYTHING.
+                  //
+                  // The drag that followed a press used to ASSIGN the pointer's
+                  // position to the point, so the handle teleported to wherever
+                  // the finger landed. With a mouse the press is on the handle
+                  // and the jump is a pixel; with a finger the contact patch is
+                  // millimetres wide, so the geometry moved every time somebody
+                  // touched it to read a value. Losing a value by looking at it
+                  // is not a trade anybody agreed to.
+                  //
+                  // What arms the drag is TRAVEL -- see the dead zone below.
+                  const pi = this.CandEditPointInfo;
+                  const sel = this.EditPointSel;
+                  const already = !!(this.EditShape && sel
+                                     && sel.id === pi.shape.id && sel.key === pi.key);
                   this.CandEditPointInfo = null;
-                  this.EditShape = dclone(pt_info.shape);//Deep copy
-                  this.EditPoint = this.EditShape[pt_info.key];
-                  this.tmp_EditShape_id = this.EditShape.id;
+                  if (!already) {
+                    this.EditShape = dclone(pi.shape);//Deep copy
+                    this.EditPoint = this.EditShape[pi.key];
+                    this.EditPointSel = { id: pi.shape.id, key: pi.key };
+                    this.tmp_EditShape_id = this.EditShape.id;
+                    this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+                  }
+                  // Every press starts unarmed, and remembers where it started.
+                  this.EditPointArmed = false;
+                  this.EditGrab = {
+                    mx: mouseOnCanvas2.x, my: mouseOnCanvas2.y,
+                    px: this.EditPoint.x, py: this.EditPoint.y,
+                  };
                 }
                 else {
                   this.EditPoint = null;
                   this.EditShape = null;
+                  this.EditPointSel = null;
+                  this.EditPointArmed = false;
+                  this.EditGrab = null;
+                  this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
                 }
-                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
               }
               else {
                 if (this.CandEditPointInfo != null) {
@@ -2844,10 +3499,76 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               }
             }
             else {
-              if (this.EditPoint != null) {
-                this.EditPoint.x = mouseOnCanvas2.x;
-                this.EditPoint.y = mouseOnCanvas2.y;
-                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+              // THE DEAD ZONE, MEASURED ON THE GLASS.
+              //
+              // Below EDIT_DRAG_ARM_MM of finger travel nothing moves at all.
+              // Past it the point starts following -- and it follows from WHERE
+              // IT ARMED, so crossing the threshold does not hand the point a
+              // 5 mm jump either.
+              //
+              // Travel, not distance-from-handle: the question is whether this
+              // gesture is a look or a drag, and only the finger's own movement
+              // answers that.
+              if (this.EditPoint != null && this.EditGrab) {
+                const dx = mouseOnCanvas2.x - this.EditGrab.mx;
+                const dy = mouseOnCanvas2.y - this.EditGrab.my;
+                if (!this.EditPointArmed) {
+                  // mouseOnCanvas2 is in WORLD units and the threshold is on
+                  // the screen, so it is compared after the camera scale.
+                  const travelPx = Math.hypot(dx, dy) * this.camera.GetCameraScale();
+                  if (travelPx >= this.editArmThresholdPx()) {
+                    this.EditPointArmed = true;
+                    // WHERE THE DRAG BEGAN, which is not where the press was.
+                    //
+                    // The touch branch measures from here, so the dead zone the
+                    // finger just travelled becomes part of the gap between the
+                    // finger and the handle -- which is the point of it. Measure
+                    // from the PRESS instead and the 5 mm cancels out, leaving
+                    // only however far off the press landed: usually a
+                    // millimetre or two, and indistinguishable from the cursor
+                    // behaviour. That is exactly what it looked like.
+                    this.EditGrab.ax = mouseOnCanvas2.x;
+                    this.EditGrab.ay = mouseOnCanvas2.y;
+                  }
+                }
+                if (this.EditPointArmed) {
+                  // A FINGER KEEPS THE OFFSET. A CURSOR DOES NOT.
+                  //
+                  // They are aimed differently. A cursor is a single pixel the
+                  // operator can see, so the handle belongs exactly under it --
+                  // keeping an offset there means aiming somewhere other than
+                  // where the point should go, and the offset would be the
+                  // press error plus the whole dead zone.
+                  //
+                  // A fingertip is millimetres wide and, worse, it is ON TOP of
+                  // the thing being placed. Snapping the handle to the contact
+                  // centre puts it under the finger where it cannot be seen,
+                  // and moves it by however far off the press landed. Keeping
+                  // the offset means the handle stays visible beside the finger
+                  // and travels exactly as far as the finger does.
+                  // IS A FINGER ON THE GLASS RIGHT NOW?
+                  //
+                  // Asked of the gesture state machine rather than of a flag
+                  // copied onto the synthesised mouse event. The flag has to
+                  // survive being set in one handler and read in another, and
+                  // every link in that chain is a way for it to arrive false --
+                  // which is what it did: the drag took the cursor branch and
+                  // the offset the operator asked for was gone. The touch list
+                  // is the fact itself, and it cannot be stale.
+                  if (this.isTouchInput()) {
+                    // From where it ARMED (ax/ay), not from the press: the
+                    // handle keeps the whole dead zone as clearance, so it stays
+                    // beside the fingertip instead of under it.
+                    const ax = (this.EditGrab.ax !== undefined) ? this.EditGrab.ax : this.EditGrab.mx;
+                    const ay = (this.EditGrab.ay !== undefined) ? this.EditGrab.ay : this.EditGrab.my;
+                    this.EditPoint.x = this.EditGrab.px + (mouseOnCanvas2.x - ax);
+                    this.EditPoint.y = this.EditGrab.py + (mouseOnCanvas2.y - ay);
+                  } else {
+                    this.EditPoint.x = mouseOnCanvas2.x;
+                    this.EditPoint.y = mouseOnCanvas2.y;
+                  }
+                  this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+                }
               }
             }
           }
@@ -2998,9 +3719,9 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
       }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
@@ -3203,9 +3924,9 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
       }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+      this.rUtil.alignImagePixelGrid(ctx);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
@@ -3562,11 +4283,27 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
           }
           
           
+          // See the note at the other drawInspectionShapeList call: a 反 group
+          // reports its angles in a mirrored frame.
+          this.rUtil.objIsFlipped = !!report.isFlipped;
           this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
+          this.rUtil.objIsFlipped = false;
         });
       //this.stage_light_report
     }
 
+
+    // The station. Same call the inspection canvas makes; it lives on the
+    // shared proto now. Without it, 快速驗證 enforces the station filter with
+    // nothing on screen saying where the station IS, and an object dropped for
+    // standing outside it is indistinguishable from a def that could not
+    // locate.
+    //
+    // Last here, unlike the inspection canvas, because this path has already
+    // finished drawing by the time it reaches this line -- reordering it would
+    // mean restructuring the whole method, and the def canvas has no live
+    // measurement overlay for it to cover.
+    this.draw_station_overlay();
   }
 
   ctrlLogic() {

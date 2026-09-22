@@ -1,8 +1,10 @@
 #include "SearchPointCV.h"
+#include "MEPhase.h"
 #include <opencv2/opencv.hpp>
 #include "CvBridge.h"                // cvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
 #include <vector>
+#include <algorithm>
 #include <cmath>
 
 // One edge candidate: centered region coords (searchCoord along s, perpCoord along
@@ -33,13 +35,18 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outW, int spId,
-                     std::vector<CaliperHit> *outHits, bool *outClipped)
+                     std::vector<CaliperHit> *outHits, bool *outClipped,
+                     SearchPointPeaks *outPeaks, float relStrength,
+                     int *outRelMoved, float distDecay, SearchPointClip *outClip,
+                     int minRows, int nth, float momentMult, SearchPointMoments *outMoments)
 {
   if (outClipped) *outClipped = false;
+  if (outClip) *outClip = SearchPointClip{};
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.x != s.x || s.y != s.y) return false;
   acv_XY perp = { -s.y, s.x };
+  if (outClip) { outClip->pt = pt; outClip->bar = s; }
 
   // Legacy band axes (verified): |proj onto SEARCH dir| < width/2, |proj onto PERP| < margin.
   // The rectified buffer is rotated 90deg CCW vs the old layout (search was cols, perp was
@@ -59,6 +66,33 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (!(width >= 3.0f) || !(margin > 0.0f)) return false;
   int nS = (int)lroundf(width);          if (nS < 3) return false; // search-depth (rows)
   int nP = (int)lroundf(2.0f * margin);  if (nP < 3) nP = 3;       // perp/lateral (cols)
+  // A LOCAL MAXIMUM NEEDS BOTH NEIGHBOURS, AND THE WINDOW EDGE HAS ONLY ONE.
+  //
+  // The maxima search below compared the first in-window column against a
+  // zero standing in for the column outside. Any window that STARTS on a
+  // slope -- the gradient at column 0 above min_strength and not smaller than
+  // column 1 -- therefore reported an edge at its own boundary. Measured on
+  // 93007 8G2570062B, search point @search_point_2_copy_copy_copy_copy[1]:
+  // margin 0.2 / 0.15 / 0.1 / 0.06 mm read 0.020 / 0.068 / 0.117 / 0.157 mm
+  // for the same wire -- value + margin = 0.217 in every case, i.e. the hit
+  // was pinned to the window's near edge, and the "measurement" was the
+  // margin the operator typed. sig360 read 0.147 on the same picture.
+  //
+  // So the band is gathered one guard column wider on each side. The guard
+  // columns supply real neighbours for the window's edge columns and are
+  // never candidates themselves; every interior column's gradient is
+  // bit-identical to before (same rows, same +-1 columns). Column 0 and
+  // nP-1 of the def's window are no longer candidates either -- a peak
+  // there still has a made-up neighbour on one side. The guard columns are
+  // also not part of the clipped test: the window the def asked for is the
+  // one that has to be in-image, not the pixel beyond it.
+  const int nPg = nP + 2;                                            // gathered cols
+  if (outClip) {
+    outClip->samples_total = nS * nP;
+    outClip->rows_total = nS;
+    outClip->width = (float)nS;
+    outClip->depth = (float)nP;
+  }
   // The failure Caliper.cpp guards with CELL_LIMIT, and the same realistic
   // trigger: not a hostile def, but a pixel figure typed into a field that
   // wants millimetres. Measured before this guard: margin=width=3e4 allocated
@@ -78,36 +112,92 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       return false;
     }
   }
+  mephase::count("spcv_scan", 1);
+  mephase::count("spcv_samp", (double)nS * (double)nP);
+  // Where an early exit COULD have stopped, counted before writing one.
+  //
+  // This is a first-hit search that samples the entire band before looking at
+  // any of it. Scanning the perp axis from the near end and stopping once the
+  // answer is bracketed is the obvious optimisation -- but it needs the global
+  // maximum gone, i.e. edge.rel_strength = 0, and it is a rewrite of a
+  // numerically delicate loop. So the saving is measured first, with the answer
+  // the scan actually produced, and the loop is left alone until the number
+  // says it is worth the risk. See mephase::count in Caliper.cpp for the same
+  // discipline applied to the line band.
+  const int spcv_nS = nS, spcv_nP = nP;
+
   float cs = (nS - 1) * 0.5f;            // row -> searchCoord (cs - i)
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 
   const bool dbg = (getenv("SPCV_DUMP") != nullptr);
   int gW = gray.cols, gH = gray.rows;
-  cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
-  cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
+  cv::Mat g(nS, nPg, CV_8U);                    // rows = search dir, cols = perp (+guards)
+  cv::Mat valid(nS, nPg, CV_8U, cv::Scalar(1)); // 1 = sampled in-image
+  // GATHER vs SCAN, because they answer different questions.
+  //
+  // An early exit along the perp axis only saves the part of the work that is
+  // proportional to how far it scans. If the cost is the GATHER -- a bilinear
+  // remap plus a backlight-factor lookup per sample, on rotated coordinates
+  // that touch the source image all over -- then stopping early saves it. If
+  // the cost is the SCAN, a fused Sobel over a band small enough to sit in L1,
+  // then stopping early saves almost nothing and the rewrite is not worth its
+  // risk. Nobody knew which, so it is measured before it is optimised.
+  { mephase::Timer _g("sp_gather");
   for (int i = 0; i < nS; i++)
   {
     float searchCoord = cs - i;
     unsigned char *d = g.ptr<unsigned char>(i), *vv = valid.ptr<unsigned char>(i);
-    for (int j = 0; j < nP; j++)
+    for (int j = 0; j < nPg; j++)
     {
-      acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
+      acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, (j - 1) - cp)));
       if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1)
       {
         // Not just an unusable sample -- evidence that the WINDOW is not the
         // one the def specified. Reported up so the caller can refuse the
         // measurement rather than average what is left.
         d[j] = 0; vv[j] = 0;
-        if (outClipped) *outClipped = true;
+        if (j >= 1 && j <= nP)
+        {
+          if (outClipped) *outClipped = true;
+          if (outClip)
+          {
+            outClip->samples_off++;
+            // Columns 0 and nP-1 of the def's window are never candidates --
+            // the local-max test needs a real neighbour on both sides, so the
+            // loop runs def columns 1..nP-2. A missing sample in the outermost
+            // column cannot hide an edge, so it must not count as one that
+            // could.
+            const float pc = (float)((j - 1) - cp);
+            if (j >= 2 && j <= nP - 1 &&
+                (outClip->nearest_bad != outClip->nearest_bad || pc < outClip->nearest_bad))
+              outClip->nearest_bad = pc;
+          }
+        }
         continue;
       }
       float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
+      // The backlight factor already costs nothing when there is no calibration
+      // to apply: sampleBackLightFactor_ImgCoord returns 1 on a NaN exposure.
+      // Measured on this bench, which has none -- gather 0.64 ms with it and
+      // 0.63/0.64 without, i.e. inside the noise. On a station that IS
+      // calibrated, factorSampling() runs per sample and its cost is unmeasured.
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       // !(v > 0) catches NaN as well as negatives: the backlight factor is
       // NaN outside the calibration grid, and casting a NaN float to
       // unsigned char is UB, not "some grey value".
       d[j] = !(v > 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
     }
+    // A row with nothing in the image contributes no candidate at all. That
+    // costs one sample of the average, which is a loss of precision; it is not
+    // the same failure as losing the near columns, which can cost the ANSWER.
+    // Counted apart so the two can be told from each other afterwards.
+    if (outClip)
+    {
+      bool anyIn = false;
+      for (int j = 1; j <= nP && !anyIn; j++) if (vv[j]) anyIn = true;
+      if (!anyIn) outClip->rows_off++;
+    }
+  }
   }
 
   // FUSED PASS: per interior search row, walk the contiguous perp line once. Gradient along
@@ -115,16 +205,34 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // +/-1 perp difference) -- this also subsumes the old "blur along the edge". Sign by
   // polarity, subtract the noise floor, then emit every strict local maximum (sub-pixel via
   // a 3-point parabola). One row buffer, no strided access.
-  auto sgn = [&](int gx) -> float {
+  auto pol = [&](int gx) -> float {
     float e = (float)gx;
     if (polarity == SP_LIGHT_TO_DARK) e = -e;
     else if (polarity == SP_BOTH) e = fabsf(e);
-    e -= edgeSuppress; return e < 0 ? 0.f : e;
+    return e;
+  };
+  auto sgn = [&](int gx) -> float {
+    float e = pol(gx) - edgeSuppress; return e < 0 ? 0.f : e;
   };
   std::vector<SPEdgePt> cand;
-  cv::Mat sobViz; if (dbg) sobViz = cv::Mat::zeros(nS, nP, CV_16S);
-  std::vector<float> eline(nP);
+  // The SAME peaks, without min_strength taken out of them.
+  //
+  // sgn() subtracts the floor before the local-maximum search, so a candidate
+  // weaker than the current setting does not merely fail a test -- it never
+  // exists. Reporting `cand` as "the evidence" would therefore show only what
+  // the floor already admits, and a panel for LOWERING a threshold that cannot
+  // show anything below it is worse than none: it looks like proof that there
+  // is nothing down there.
+  //
+  // So when someone is going to look, the peaks are found a second time on the
+  // unsuppressed gradient. Strictly extra work, and only when the payload is
+  // asked for; the measurement below still runs on `cand` and is untouched.
+  std::vector<SPEdgePt> candRaw;
+  cv::Mat sobViz; if (dbg) sobViz = cv::Mat::zeros(nS, nPg, CV_16S);
+  std::vector<float> eline(nPg);
+  std::vector<float> eraw(outPeaks ? nPg : 0);
   float maxPeak = 0;
+  mephase::Timer _sc("sp_scan");
   for (int i = 1; i < nS - 1; i++)
   {
     const unsigned char *r0 = g.ptr<unsigned char>(i-1), *r1 = g.ptr<unsigned char>(i), *r2 = g.ptr<unsigned char>(i+1);
@@ -151,48 +259,210 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     const unsigned char *vr = valid.ptr<unsigned char>(i);
     const unsigned char *v2 = valid.ptr<unsigned char>(i+1);
     int16_t *sv = dbg ? sobViz.ptr<int16_t>(i) : nullptr;
-    eline[0] = eline[nP-1] = 0.f;
-    for (int j = 1; j < nP - 1; j++)
+    eline[0] = eline[nPg-1] = 0.f;
+    for (int j = 1; j < nPg - 1; j++)            // gradient at every def column, guards as neighbours
     {
       int gx = (r0[j+1] + 2*r1[j+1] + r2[j+1]) - (r0[j-1] + 2*r1[j-1] + r2[j-1]); // perp gradient
       if (sv) sv[j] = (int16_t)gx;
+      const bool bad = (!vr[j-1] || !vr[j] || !vr[j+1] ||
+                        !v0[j-1] || !v0[j+1] || !v2[j-1] || !v2[j+1]);
       float e = sgn(gx);
-      if (!vr[j-1] || !vr[j] || !vr[j+1] ||
-          !v0[j-1] || !v0[j+1] || !v2[j-1] || !v2[j+1]) e = 0;  // off-image -> drop spurious border edge
+      if (bad) e = 0;  // off-image -> drop spurious border edge
       eline[j] = e;
+      if (outPeaks) { float r = pol(gx); eraw[j] = (bad || r < 0) ? 0.f : r; }
     }
-    for (int j = 1; j < nP - 1; j++)               // local maxima along the contiguous perp line
+    if (outPeaks)
+    {
+      eraw[0] = eraw[nPg-1] = 0.f;
+      for (int j = 2; j < nPg - 2; j++)            // candidates: def columns 1..nP-2, real neighbours both sides
+      {
+        float e = eraw[j];
+        if (e <= 0 || e < eraw[j-1] || e < eraw[j+1]) continue;
+        float den = eraw[j-1] - 2.f*e + eraw[j+1];
+        float sub = (den != 0.f) ? 0.5f * (eraw[j-1] - eraw[j+1]) / den : 0.f;
+        if (sub > 1) sub = 1; if (sub < -1) sub = -1;
+        candRaw.push_back({cs - i, (j - 1 + sub) - cp, e});
+      }
+    }
+    for (int j = 2; j < nPg - 2; j++)              // local maxima, def columns 1..nP-2 only
     {
       float e = eline[j];
       if (e <= 0 || e < eline[j-1] || e < eline[j+1]) continue;
       float denom = eline[j-1] - 2.f*e + eline[j+1];
       float sub = (denom != 0.f) ? 0.5f * (eline[j-1] - eline[j+1]) / denom : 0.f;
       if (sub > 1) sub = 1; if (sub < -1) sub = -1;
-      cand.push_back({cs - i, (j + sub) - cp, e});  // {searchCoord, perpCoord, peak}
+      cand.push_back({cs - i, (j - 1 + sub) - cp, e});  // {searchCoord, perpCoord, peak} in def-window coords
       if (e > maxPeak) maxPeak = e;
     }
   }
+  // Every candidate, before the selector's gate touches them. Emitted even
+  // when the scan goes on to fail: "nothing here cleared the floor" and "there
+  // is no edge here" are the same outcome and completely different pictures.
+  //
+  // perpCoord is signed and centred; the panel wants a distance along the
+  // search, so it is shifted to start at 0 at the near end. Sign follows the
+  // first-hit rule (min perpCoord), so smaller stays nearer.
+  if (outPeaks)
+  {
+    outPeaks->span = (float)nP;
+    outPeaks->pos.reserve(candRaw.size());
+    outPeaks->str.reserve(candRaw.size());
+    outPeaks->along.reserve(candRaw.size());
+    for (const SPEdgePt &c : candRaw)
+    {
+      outPeaks->pos.push_back(c.perpCoord + cp);
+      outPeaks->str.push_back(c.peak);
+      outPeaks->along.push_back(c.searchCoord);
+    }
+  }
+  _sc.stop();
   if (cand.empty()) return false;
 
-  // STRENGTH GATE: keep only edges whose peak gradient is a strong fraction of the strongest.
-  const float peakFrac = 0.40f;
+  // STRENGTH GATE, relative to the strongest peak in the window.
+  //
+  // A number rather than a constant since 2026-09-02, defaulting to the 0.40 it
+  // was hard-coded to. 0 leaves min_strength as the only floor -- which is
+  // where this should end up, once floors are set against the edge profile
+  // instead of guessed. See featureDef_searchPoint::rel_strength.
+  const float peakFrac = (relStrength > 0) ? relStrength : 0.0f;
   float peakThresh = maxPeak * peakFrac;
+
+  // DISTANCE DECAY.
+  //
+  // Strength alone cannot tell a real edge from a bright thing that happens to
+  // be in the window, and the selector's other rule -- take the nearest
+  // survivor -- rewards exactly the intruder that is nearer than the edge. So
+  // distance from where the def SAID the edge is becomes part of being
+  // believed: strength is scaled by exp(-|d| / distDecay), d measured along
+  // the search axis from the def's own point. perpCoord is centred on that
+  // point, so d is perpCoord itself.
+  //
+  // Applied to the gate and to the averaging weights, and therefore to which
+  // candidates can be the nearest survivor -- which is where the flicker
+  // lives. NOT applied to maxPeak: the relative floor stays relative to the
+  // strongest real thing in the window, wherever that is.
+  //
+  // distDecay <= 0 skips all of it and the result is bit-identical to the
+  // code before this existed.
+  const bool useDecay = (distDecay > 0);
+  auto decay = [&](float perpCoord) -> float {
+    return useDecay ? expf(-fabsf(perpCoord) / distDecay) : 1.0f;
+  };
+
   std::vector<SPEdgePt> eps;
-  for (auto &c : cand) if (c.peak >= peakThresh) eps.push_back(c);
+  for (auto &c : cand) if (c.peak * decay(c.perpCoord) >= peakThresh) eps.push_back(c);
   if (eps.empty()) return false;
 
   // TOP selection: of all per-row edge maxima, take the one nearest the search origin along
   // the perpendicular (min perpCoord = "top" of the cap). perp = acvVecNormal(s) matches the
   // legacy searchVec and flips with search_far, so min-perp == legacy's most-negative-perp
   // extreme. Average the edges within `considerRange` of the top (legacy reng), peak-weighted.
+  if (considerRange <= 0) considerRange = 1;
   float pMin = 1e9f;
   for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;   // top along perpendicular
+  // THE NTH EDGE, not the nearest.
+  //
+  // A first-hit scan answers "where does the part begin". Some features need
+  // the edge after that -- the far side of a wire, the second of two lips --
+  // and until now a search point could only say it by moving the window until
+  // the wanted edge happened to be the nearest thing in it, which is a
+  // placement that stops working as soon as the part moves.
+  //
+  // A cluster is one edge: candidates within considerRange of each other, the
+  // same grouping the apex average already uses. Skipping `nth` of them walks
+  // outward along the search axis.
+  for (int skip = 0; skip < nth; skip++)
+  {
+    std::vector<SPEdgePt> keep;
+    keep.reserve(eps.size());
+    for (auto &e : eps) if (e.perpCoord - pMin > considerRange) keep.push_back(e);
+    if (keep.empty()) return false;          // fewer edges in the band than nth
+    eps.swap(keep);
+    pMin = 1e9f;
+    for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;
+    if (dbg) fprintf(stderr, "[SPCV] nth: skipped edge %d, next top at perp %.1f, %zu candidates left\n", skip, pMin, eps.size());
+  }
+
+  // ROW CONSENSUS. A top that only one or two rows can see is a speck, not the
+  // part; discard everything within considerRange of it and look again. The
+  // loop ends when a top has enough rows behind it or nothing is left.
+  // The support window is at least 3 px, whatever include_range says: per-row
+  // sub-pixel edges jitter by a pixel or two at a weak or curved edge, and with
+  // include_range unset (1 px) a 34-row band at an arc apex counted 3-4 rows
+  // of support and threw the real apex away for the next thing 9 mm out.
+  if (minRows > 1)
+  {
+    const float supportWin = (considerRange > 3.0f) ? considerRange : 3.0f;
+    for (;;)
+    {
+      int support = 0;
+      for (auto &e : eps) if (e.perpCoord - pMin <= supportWin) support++;
+      if (support >= minRows) break;
+      std::vector<SPEdgePt> keep;
+      keep.reserve(eps.size());
+      for (auto &e : eps) if (e.perpCoord - pMin > supportWin) keep.push_back(e);
+      if (dbg) fprintf(stderr, "[SPCV] top at perp %.1f had %d rows < min_rows %d -- dropped, %zu candidates left\n", pMin, support, minRows, keep.size());
+      eps.swap(keep);
+      if (eps.empty()) return false;
+      pMin = 1e9f;
+      for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;
+    }
+  }
+  // THE SHAPE OF THE EVIDENCE, over a window wider than the one that is
+  // averaged. Peak-weighted moments of the gated candidates, about the apex.
+  // Costs a pass over a list already in memory; reads nothing from the image.
+  if (outMoments && momentMult > 0)
+  {
+    const float R = considerRange * momentMult;
+    double m0 = 0, m1 = 0, m2 = 0, m3 = 0;
+    int n = 0; float lo = 1e9f, hi = -1e9f;
+    for (auto &e : eps)
+    {
+      const float d = e.perpCoord - pMin;
+      if (d < -R || d > R) continue;
+      const double w = e.peak;
+      m0 += w; m1 += w * d; n++;
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    if (m0 > 0)
+    {
+      const double mean = m1 / m0;
+      for (auto &e : eps)
+      {
+        const float d = e.perpCoord - pMin;
+        if (d < -R || d > R) continue;
+        const double w = e.peak, u = d - mean;
+        m2 += w * u * u; m3 += w * u * u * u;
+      }
+      const double var = m2 / m0;
+      const double sd = (var > 0) ? sqrt(var) : 0.0;
+      outMoments->n = n;
+      outMoments->range = R;
+      outMoments->mass = (float)m0;
+      outMoments->mean = (float)mean;
+      outMoments->sd = (float)sd;
+      // Fisher skew; undefined for a spike, and 0 would read as "symmetric".
+      outMoments->skew = (sd > 1e-6) ? (float)((m3 / m0) / (sd * sd * sd)) : NAN;
+      outMoments->span = (n > 0) ? (hi - lo) : NAN;
+    }
+  }
+
+  // How much of that answer came from the relative rule: candidates that
+  // cleared min_strength (every entry of `cand` has, by construction) and sit
+  // NEARER than the one chosen, but did not survive peakThresh. Zero means the
+  // def's own floor would have produced the same point.
+  if (outRelMoved)
+  {
+    int n = 0;
+    for (auto &c : cand) if (c.perpCoord < pMin && c.peak * decay(c.perpCoord) < peakThresh) n++;
+    *outRelMoved = n;
+  }
   if (dbg) {
     float pa=1e9,pb=-1e9,sa=1e9,sb=-1e9; for(auto&e:eps){pa=std::min(pa,e.perpCoord);pb=std::max(pb,e.perpCoord);sa=std::min(sa,e.searchCoord);sb=std::max(sb,e.searchCoord);}
     fprintf(stderr,"[SPCV] pt=(%.0f,%.0f) eps=%zu perp[%.0f,%.0f] search[%.0f,%.0f] perpTop=%.0f\n",pt.x,pt.y,eps.size(),pa,pb,sa,sb,pMin);
     if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   }
-  if (considerRange <= 0) considerRange = 1;
   // Strictly below considerRange: equal makes the (considerRange-alphaKeep)
   // denominator below 0, and 0/0 = NaN poisons every weight and the result.
   if (alphaKeep >= considerRange) alphaKeep = considerRange * 0.999f;
@@ -207,7 +477,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     if (dist > considerRange) continue;
     float a = 1.0f - (dist - alphaKeep) / (considerRange - alphaKeep);
     if (a > 1) a = 1; if (a < 0) a = 0;
-    float ww = e.peak * a;
+    float ww = e.peak * a * decay(e.perpCoord);
     Ws += ww; Ss += (double)e.searchCoord * ww; Ps += (double)e.perpCoord * ww; nUsed++;
   }
   if (!(Ws > 0)) return false;                         // also catches NaN
@@ -218,11 +488,11 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (dbg) // debug: save rectified gray | edge marker
   {
     // buffer pos of a centered coord: col = perpCoord + cp, row = cs - searchCoord
-    auto bx = [&](float perpCoord){ return (int)lroundf(perpCoord + cp); };
+    auto bx = [&](float perpCoord){ return (int)lroundf(perpCoord + cp + 1); };  // +1: guard column
     auto by = [&](float searchCoord){ return (int)lroundf(cs - searchCoord); };
     cv::Mat vis; std::vector<cv::Mat> ch = {g, g, g}; cv::merge(ch, vis);
-    for (auto &e: eps){ int xx=bx(e.perpCoord), yy=by(e.searchCoord); if(yy>=0&&yy<nS&&xx>=0&&xx<nP) cv::circle(vis,cv::Point(xx,yy),2,cv::Scalar(0,255,0),-1); }
-    { int xx=bx(eP), yy=by(eS); if(yy>=0&&yy<nS&&xx>=0&&xx<nP){ cv::circle(vis,cv::Point(xx,yy),5,cv::Scalar(255,0,0),2); cv::drawMarker(vis,cv::Point(xx,yy),cv::Scalar(255,0,0),cv::MARKER_CROSS,11,1);} } // final blue
+    for (auto &e: eps){ int xx=bx(e.perpCoord), yy=by(e.searchCoord); if(yy>=0&&yy<nS&&xx>=0&&xx<nPg) cv::circle(vis,cv::Point(xx,yy),2,cv::Scalar(0,255,0),-1); }
+    { int xx=bx(eP), yy=by(eS); if(yy>=0&&yy<nS&&xx>=0&&xx<nPg){ cv::circle(vis,cv::Point(xx,yy),5,cv::Scalar(255,0,0),2); cv::drawMarker(vis,cv::Point(xx,yy),cv::Scalar(255,0,0),cv::MARKER_CROSS,11,1);} } // final blue
     int sc = (std::max(nS, nP) < 400) ? 3 : 1;  // uniform upscale for small remaps (keep aspect ratio)
     cv::Mat visBig; cv::resize(vis, visBig, cv::Size(), sc, sc, cv::INTER_NEAREST);
     char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.x,(int)pt.y,nP,nS); cv::imwrite(fn,visBig);
@@ -242,6 +512,15 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
       fclose(cf);
     }
   }
+  {
+    // Columns needed to bracket the answer: everything up to the first hit,
+    // plus the consider band it averages over, plus the two-column lag any
+    // 3x3-based scan carries.
+    const double needed = (double)(pMin + cp) + (double)considerRange + 2.0;
+    const double cols = needed < 3 ? 3 : (needed > spcv_nP ? spcv_nP : needed);
+    mephase::count("spcv_samp_min", (double)spcv_nS * cols);
+  }
+  if (outPeaks) { outPeaks->sel_pos = eP + cp; outPeaks->sel_along = eS; outPeaks->sel_ok = true; }
   if (outPt) *outPt = acvVecAdd(pt, acvVecAdd(acvVecMult(s, eS), acvVecMult(perp, eP)));
   if (outW) *outW = (float)Ws;
 
@@ -249,14 +528,28 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   // edge becomes one CaliperHit; status=2 if within considerRange of pMin
   // (contributed to the final average), 1 otherwise.
   if (outHits) {
+    // BOUNDED. With rel_strength 0 (an absolute floor) `eps` is every row
+    // maximum over min_strength -- on a 700-row window in noise that is tens
+    // of thousands, and the report writer appended them one cJSON item at a
+    // time. Measured 2026-09-05: minutes per frame, the core looking hung.
+    // The overlay needs the hits that made the answer (st=2) and a picture of
+    // the rest; it does not need every one of the rest. Keep all st=2, then
+    // the strongest others up to HITS_MAX in total.
+    const size_t HITS_MAX = 600;
     outHits->clear();
-    outHits->reserve(eps.size());
-    for (auto &e : eps) {
-      acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e.searchCoord),
-                                          acvVecMult(perp, e.perpCoord)));
-      int st = (e.perpCoord - pMin <= considerRange) ? 2 : 1;
-      outHits->push_back(CaliperHit{ep, st, e.peak});
+    std::vector<const SPEdgePt *> used, rest;
+    for (auto &e : eps) ((e.perpCoord - pMin <= considerRange) ? used : rest).push_back(&e);
+    if (used.size() + rest.size() > HITS_MAX) {
+      std::sort(rest.begin(), rest.end(), [](const SPEdgePt *a, const SPEdgePt *b) { return a->peak > b->peak; });
+      rest.resize(used.size() >= HITS_MAX ? 0 : HITS_MAX - used.size());
     }
+    outHits->reserve(used.size() + rest.size());
+    for (int pass = 0; pass < 2; pass++)
+      for (const SPEdgePt *e : (pass == 0 ? used : rest)) {
+        acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e->searchCoord),
+                                            acvVecMult(perp, e->perpCoord)));
+        outHits->push_back(CaliperHit{ep, pass == 0 ? 2 : 1, e->peak});
+      }
   }
   return true;
 }

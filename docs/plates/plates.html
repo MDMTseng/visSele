@@ -1,0 +1,1030 @@
+<title>visSele 圖解機台</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ink:#141a21; --ink-2:#3d4b5a; --ink-3:#6b7d8f;
+  --paper:#f2f4f6; --card:#ffffff; --rule:#ccd4dc; --rule-2:#e3e8ed;
+  --amber:#b57300; --amber-bg:#fff3d6;
+  --ok:#1f7a45; --ng:#b3261e; --na:#6b7d8f;
+  --wire:#8ea2b4; --hot:#0a5fa8; --hot-bg:#e3f0fb;
+  --shadow:0 1px 2px rgba(20,26,33,.06),0 8px 22px -14px rgba(20,26,33,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ink:#dce4ec; --ink-2:#a3b3c3; --ink-3:#7b8b9b;
+    --paper:#0e1319; --card:#151c24; --rule:#2c3742; --rule-2:#212a33;
+    --amber:#ffab00; --amber-bg:#3a2c05;
+    --ok:#4cc27d; --ng:#ff6b5e; --na:#8b9bab;
+    --wire:#55677a; --hot:#5fb0f4; --hot-bg:#10293f;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px -14px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#dce4ec; --ink-2:#a3b3c3; --ink-3:#7b8b9b;
+  --paper:#0e1319; --card:#151c24; --rule:#2c3742; --rule-2:#212a33;
+  --amber:#ffab00; --amber-bg:#3a2c05;
+  --ok:#4cc27d; --ng:#ff6b5e; --na:#8b9bab;
+  --wire:#55677a; --hot:#5fb0f4; --hot-bg:#10293f;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px -14px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+code,.mono,tt{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+.wrap{max-width:1040px; margin:0 auto; padding-inline:16px; padding-block:0 72px}
+
+/* ---- masthead ---- */
+header.mast{padding-block:56px 28px; border-bottom:2px solid var(--ink)}
+.kicker{font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink-3)}
+h1{font-size:clamp(30px,6vw,46px); line-height:1.15; margin:.25em 0 .2em; font-weight:700;
+  text-wrap:balance; letter-spacing:-.01em}
+.dek{color:var(--ink-2); max-width:62ch; margin:0}
+.mastmeta{display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:20px;
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-3)}
+
+/* ---- plate index ---- */
+nav.idx{position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+  background:color-mix(in srgb,var(--paper) 92%,transparent);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--rule);
+  margin-inline:-16px; padding:8px 16px; overflow-x:auto}
+nav.idx ol{display:flex; gap:4px; list-style:none; margin:0; padding:0}
+nav.idx a{display:block; white-space:nowrap; text-decoration:none; color:var(--ink-2);
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; padding:4px 9px; border-radius:3px}
+nav.idx a:hover,nav.idx a:focus-visible{background:var(--rule-2); color:var(--ink)}
+
+/* ---- plates ---- */
+section.plate{padding-block:52px 8px; border-bottom:1px solid var(--rule-2)}
+section.plate:last-of-type{border-bottom:0}
+.pnum{font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.14em;
+  color:var(--amber); font-weight:600}
+h2{font-size:clamp(21px,3.4vw,27px); margin:.2em 0 .35em; font-weight:700; text-wrap:balance}
+.lede{color:var(--ink-2); max-width:64ch; margin:0 0 26px}
+figure{margin:0 0 20px}
+figcaption{font-size:12.5px; color:var(--ink-3); margin-top:10px; max-width:70ch;
+  border-left:2px solid var(--rule); padding-left:10px}
+.frame{background:var(--card); border:1px solid var(--rule); border-radius:5px;
+  padding:22px 18px; box-shadow:var(--shadow); overflow-x:auto}
+svg{display:block; max-width:100%; height:auto; margin-inline:auto}
+svg text{font-family:"IBM Plex Mono",monospace}
+
+/* ---- building blocks ---- */
+.lane{display:flex; align-items:stretch; gap:10px; flex-wrap:wrap}
+.node{flex:1 1 150px; min-width:0; border:1.5px solid var(--rule); border-radius:4px;
+  background:var(--card); padding:11px 12px}
+.node h4{margin:0 0 3px; font-size:13.5px; font-weight:700}
+.node p{margin:0; font-size:11.5px; color:var(--ink-3); line-height:1.5}
+.node .mono{font-size:11px; color:var(--ink-3)}
+.node.hot{border-color:var(--hot); background:var(--hot-bg)}
+.node.warn{border-color:var(--amber); background:var(--amber-bg)}
+.port{font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  color:var(--hot); border:1px solid var(--hot); border-radius:2px; padding:0 4px;
+  display:inline-block; margin-right:4px}
+
+table{border-collapse:collapse; width:100%; font-size:12.5px}
+th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--rule-2);
+  vertical-align:top}
+th{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3); border-bottom:1px solid var(--rule)}
+td.mono,th.mono{font-family:"IBM Plex Mono",monospace}
+tbody tr:last-child td{border-bottom:0}
+.tw{overflow-x:auto}
+
+.chip{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+  font-weight:600; padding:1px 6px; border-radius:2px; border:1px solid currentColor;
+  line-height:1.6}
+.c-ok{color:var(--ok)} .c-ng{color:var(--ng)} .c-na{color:var(--na)}
+.c-amber{color:var(--amber)} .c-hot{color:var(--hot)}
+
+.note{border-left:3px solid var(--amber); background:var(--amber-bg);
+  padding:11px 14px; border-radius:0 4px 4px 0; font-size:13px; margin:18px 0}
+.note strong{color:var(--amber)}
+.note.stop{border-left-color:var(--ng); background:transparent;
+  border:1px solid var(--ng); border-left-width:3px}
+.note.stop strong{color:var(--ng)}
+
+.cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px}
+dl.kv{margin:0} dl.kv div{display:grid; grid-template-columns:max-content 1fr; gap:4px 12px;
+  padding:5px 0; border-bottom:1px solid var(--rule-2)}
+dl.kv div:last-child{border-bottom:0}
+dl.kv dt{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-3)}
+dl.kv dd{margin:0; font-size:12.5px}
+
+
+/* code-structure plates */
+.band{display:grid; grid-template-columns:104px 1fr; gap:0 14px; align-items:start}
+.band > .bl{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3);
+  text-align:right; padding:6px 0; white-space:nowrap}
+.band > .bb{border-left:3px solid var(--rule); padding:6px 0 6px 12px; position:relative}
+.band > .bb.k{border-left-color:var(--hot)}
+.band > .bb.w{border-left-color:var(--amber)}
+.band > .bb b{font-size:13px; display:block; font-weight:600}
+.band > .bb span{font-size:11.5px; color:var(--ink-3)}
+.tree{font-family:"IBM Plex Mono",monospace; font-size:12px; line-height:1.95; margin:0}
+.tree .d{color:var(--hot); font-weight:600}
+.tree .n{color:var(--ink-3)}
+.tree .big{color:var(--amber); font-weight:600}
+.tree .row{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px;
+  border-bottom:1px solid var(--rule-2); padding:1px 0}
+.tree .row:last-child{border-bottom:0}
+.tree .row em{font-style:normal; color:var(--ink-3); font-family:"Noto Sans TC",sans-serif;
+  font-size:11.5px; text-align:right; white-space:nowrap}
+footer{padding-block:40px 0; border-top:2px solid var(--ink); margin-top:48px;
+  font-size:12px; color:var(--ink-3)}
+a{color:var(--hot)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="kicker">visSele · 圖解機台</div>
+  <h1>一台分選機,十四張圖</h1>
+  <p class="dek">旋轉玻璃盤高速全檢分選機。零件從震動送料進轉盤,gate 感測器看到它,
+    背光下相機拍一張,core 量完給判定,板子在 SEL 工位吹一口氣把它分進料道。
+    這頁把散在 <code>SYSTEM_MAP.md</code> 與 <code>SYSTEM_OVERVIEW.md</code>
+    裡的東西畫出來 —— 邊界在哪、資料往哪流、什麼會咬人。</p>
+  <div class="mastmeta">
+    <span>校準 2026-08-27 · 行數 2026-09-18</span><span>五層架構</span>
+    <span>Core0_1 · 一代機 · 產線在跑</span>
+  </div>
+</header>
+
+<nav class="idx" aria-label="圖版索引"><ol>
+  <li><a href="#p1">01 機器</a></li>
+  <li><a href="#p2">02 五層</a></li>
+  <li><a href="#p3">03 埠位</a></li>
+  <li><a href="#p4">04 開機</a></li>
+  <li><a href="#p5">05 一格影像的旅程</a></li>
+  <li><a href="#p6">06 BPG 合約</a></li>
+  <li><a href="#p7">07 配對</a></li>
+  <li><a href="#p8">08 板子狀態機</a></li>
+  <li><a href="#p9">09 執行緒與鎖</a></li>
+  <li><a href="#p10">10 設定檔</a></li>
+  <li><a href="#p11">11 跑產紅綠燈</a></li>
+  <li><a href="#p12">12 WebUI 程式碼</a></li>
+  <li><a href="#p13">13 Core 程式碼</a></li>
+  <li><a href="#p14">14 韌體程式碼</a></li>
+</ol></nav>
+
+<!-- ══════════════════════════ 01 ══════════════════════════ -->
+<section class="plate" id="p1">
+  <div class="pnum">PLATE 01</div>
+  <h2>這是什麼機器</h2>
+  <p class="lede">一顆零件從料斗到料道,會經過六個位置。整台機器的所有軟體,
+    存在的理由就是在中間那兩格之間把「它長什麼樣」變成「它去哪一道」。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 900 340" role="img" aria-label="零件在轉盤上的實體流程:送料、gate、拍照、量測、SEL 吹氣、料道">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="var(--wire)"/>
+    </marker>
+  </defs>
+  <!-- plate -->
+  <circle cx="450" cy="185" r="128" fill="none" stroke="var(--rule)" stroke-width="1.5"/>
+  <circle cx="450" cy="185" r="104" fill="none" stroke="var(--rule-2)" stroke-width="1"/>
+  <text x="450" y="190" text-anchor="middle" font-size="12" fill="var(--ink-3)">轉盤</text>
+  <text x="450" y="207" text-anchor="middle" font-size="10" fill="var(--ink-3)">SYS_STEP_COUNT</text>
+  <path d="M520 78 a128 128 0 0 1 48 58" fill="none" stroke="var(--wire)"
+        stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- feeder -->
+  <rect x="18" y="150" width="104" height="52" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="70" y="172" text-anchor="middle" font-size="12" fill="var(--ink)">震動送料</text>
+  <text x="70" y="189" text-anchor="middle" font-size="10" fill="var(--ink-3)">FEEDER(21)</text>
+  <path d="M124 176 H196" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- stations on the rim -->
+  <g>
+    <circle cx="340" cy="90" r="7" fill="var(--amber)"/>
+    <text x="330" y="66" text-anchor="middle" font-size="11.5" fill="var(--ink)">gate</text>
+    <text x="330" y="50" text-anchor="middle" font-size="10" fill="var(--ink-3)">GPIO 27 · 去彈跳</text>
+  </g>
+  <g>
+    <circle cx="560" cy="90" r="7" fill="var(--hot)"/>
+    <text x="594" y="66" text-anchor="middle" font-size="11.5" fill="var(--ink)">CAM1 拍照</text>
+    <text x="600" y="50" text-anchor="middle" font-size="10" fill="var(--ink-3)">背光 L1A · 記 cam_us</text>
+  </g>
+  <g>
+    <circle cx="560" cy="280" r="7" fill="var(--ok)"/>
+    <text x="596" y="300" text-anchor="middle" font-size="11.5" fill="var(--ink)">SWITCH / SEL</text>
+    <text x="604" y="316" text-anchor="middle" font-size="10" fill="var(--ink-3)">SEL1/2/3 吹氣</text>
+  </g>
+
+  <!-- camera -->
+  <rect x="640" y="108" width="112" height="46" rx="4" fill="var(--card)" stroke="var(--hot)" stroke-width="1.5"/>
+  <text x="696" y="128" text-anchor="middle" font-size="11.5" fill="var(--ink)">相機</text>
+  <text x="696" y="144" text-anchor="middle" font-size="10" fill="var(--ink-3)">MV-CA050-11UM</text>
+  <path d="M574 96 L638 122" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- core -->
+  <rect x="770" y="100" width="112" height="62" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="826" y="122" text-anchor="middle" font-size="11.5" fill="var(--ink)">core 量測</text>
+  <text x="826" y="138" text-anchor="middle" font-size="10" fill="var(--ink-3)">MatchingEngine</text>
+  <text x="826" y="153" text-anchor="middle" font-size="10" fill="var(--ink-3)">OK / NG / NA</text>
+  <path d="M754 131 H768" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar)"/>
+  <path d="M826 164 V236 H600 L586 268" stroke="var(--wire)" stroke-width="1.5"
+        stroke-dasharray="4 3" marker-end="url(#ar)" fill="none"/>
+  <text x="712" y="230" text-anchor="middle" font-size="10" fill="var(--ink-3)">判定回送板子</text>
+
+  <!-- chutes -->
+  <g>
+    <rect x="18" y="248" width="104" height="26" rx="3" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+    <text x="70" y="266" text-anchor="middle" font-size="11" fill="var(--ok)">OK 料道</text>
+    <rect x="18" y="280" width="104" height="26" rx="3" fill="none" stroke="var(--ng)" stroke-width="1.5"/>
+    <text x="70" y="298" text-anchor="middle" font-size="11" fill="var(--ng)">NG 料道</text>
+    <rect x="18" y="312" width="104" height="26" rx="3" fill="none" stroke="var(--na)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="70" y="330" text-anchor="middle" font-size="11" fill="var(--na)">NA → 重繞一圈</text>
+  </g>
+  <path d="M546 292 H140" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar)"/>
+</svg>
+  </div>
+  <figcaption>NA 不是第三種瑕疵,是「這一顆我沒看清楚」。板子讓它留在盤上再繞一圈,
+    而不是猜一個答案 —— 這是 uInsp 的第一條原則:<strong>不可檢錯 &gt; best effort &gt; 盡量不停機</strong>。</figcaption>
+  </figure>
+
+  <div class="note"><strong>一句話的設計原則:</strong>
+    preview 拖慢判定就是缺陷。整條資料路徑每一段都 drop-oldest,不對相機回壓。
+    <em>看畫面的人可以掉格,判定不行。</em></div>
+</section>
+
+<!-- ══════════════════════════ 02 ══════════════════════════ -->
+<section class="plate" id="p2">
+  <div class="pnum">PLATE 02</div>
+  <h2>五層,不是三層</h2>
+  <p class="lede">多數舊文件寫「三方」。Launcher 是 2026-08-23 之後才有的,
+    <code>SYSTEM_MAP.md</code> 完全沒有它。由上而下,每層只跟相鄰層講話。</p>
+
+  <figure><div class="frame">
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div class="node"><h4>Launcher <span class="chip c-hot">Electron / JS</span></h4>
+        <p>選版本、spawn core、健康檢查、監督、更新與回退。<span class="mono">UI/Launcher/</span> 原始碼,
+          <span class="mono">export_v2/launcher/</span> 打包。<strong>它不知道任何 visSele 專屬的事</strong> —— 所以舊 launcher 能跑新版本。</p></div>
+      <div class="node"><h4>WebUI <span class="chip c-hot">React + Redux + antd</span></h4>
+        <p>def 編輯器、SBM Studio、產檢畫面、校正、報表。<span class="mono">UI/WebUI/</span></p></div>
+      <div class="node hot"><h4>Core (visSele) <span class="chip c-hot">C++</span></h4>
+        <p>取像、MatchingEngine 量測、產判定、對 WebUI 的 BPG/WS、對板子的序列通道。
+          <span class="mono">InspectionCore/Core0_1/</span>,樞紐檔 <span class="mono">wiringPanel.cpp（15,232 行）</span></p></div>
+      <div class="node"><h4>uInsp 板 (ESP32) <span class="chip c-hot">C++ / Arduino</span></h4>
+        <p>實時層:盤時基(ISR)、gate、觸發相機、frame↔件配對、執行判定(吹氣)。
+          單檔韌體 <span class="mono">LegacyFirmware.cpp（12,017 行）</span></p></div>
+      <div class="node"><h4>相機 <span class="chip c-hot">Hikrobot</span></h4>
+        <p>MV-CA050-11UM,硬體觸發(Line0)。<span class="mono">InspectionCore/CameraLayer/</span></p></div>
+    </div>
+  </div>
+  <figcaption>每層的樞紐檔都很大而且只有一個。要改行為,先找到那一個檔。</figcaption>
+  </figure>
+
+  <div class="note stop"><strong>世代警告 —— 每個新手都會踩:</strong>
+    <code>CoreHub</code> 是二代、<code>uInspESP32_v2</code> 是停滯的重寫、
+    <code>UI/WebUI2</code> 是新 UI。<strong>沒有一個是產線在跑的東西。</strong>
+    除非明確要做二代,不要讀那些目錄。</div>
+</section>
+
+<!-- ══════════════════════════ 03 ══════════════════════════ -->
+<section class="plate" id="p3">
+  <div class="pnum">PLATE 03</div>
+  <h2>埠位圖</h2>
+  <p class="lede">四個 TCP 埠加一條序列線。其中兩個埠長得很像而且常被搞混,
+    所以它們在圖上分開畫。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 880 400" role="img" aria-label="埠位圖:launcher 經 4098 監督 core;WebUI 經 4090 與 core 通訊;4091 log;4099 perif console 預設不開">
+  <defs>
+    <marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="var(--wire)"/></marker>
+  </defs>
+  <!-- launcher -->
+  <rect x="300" y="14" width="280" height="56" rx="5" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="440" y="38" text-anchor="middle" font-size="13" fill="var(--ink)">Launcher (Electron)</text>
+  <text x="440" y="56" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">選版本 → spawn → 監督</text>
+
+  <!-- webui -->
+  <rect x="26" y="14" width="212" height="56" rx="5" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="132" y="38" text-anchor="middle" font-size="13" fill="var(--ink)">WebUI</text>
+  <text x="132" y="56" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">vite :8081 (dev)</text>
+
+  <!-- links down -->
+  <path d="M440 72 V132" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <rect x="396" y="88" width="88" height="20" rx="3" fill="var(--hot-bg)" stroke="var(--hot)"/>
+  <text x="440" y="102" text-anchor="middle" font-size="10.5" fill="var(--hot)">4098 control</text>
+  <text x="556" y="102" text-anchor="middle" font-size="10" fill="var(--ink-3)">ping / shutdown</text>
+
+  <path d="M132 72 V132" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <rect x="86" y="88" width="92" height="20" rx="3" fill="var(--hot-bg)" stroke="var(--hot)"/>
+  <text x="132" y="102" text-anchor="middle" font-size="10.5" fill="var(--hot)">4090 BPG/WS</text>
+
+  <!-- core -->
+  <rect x="26" y="134" width="554" height="74" rx="5" fill="var(--card)" stroke="var(--hot)" stroke-width="2"/>
+  <text x="303" y="162" text-anchor="middle" font-size="14" fill="var(--ink)">core visSele</text>
+  <text x="303" y="182" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">cwd = Core/ · chdir = &lt;workingDir&gt;</text>
+  <text x="303" y="199" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">必須在 Core0_1/ 目錄下執行</text>
+
+  <!-- side ports -->
+  <path d="M580 158 H612" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <rect x="616" y="140" width="252" height="34" rx="4" fill="var(--card)" stroke="var(--rule)"/>
+  <text x="742" y="155" text-anchor="middle" font-size="10.5" fill="var(--ink)">4091 log/WS · inspd_log 子行程</text>
+  <text x="742" y="169" text-anchor="middle" font-size="10" fill="var(--ink-3)">subprotocol inspd_log.v1 · 路徑 /log</text>
+
+  <path d="M580 190 H612" stroke="var(--wire)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+  <rect x="616" y="176" width="252" height="34" rx="4" fill="none" stroke="var(--amber)" stroke-dasharray="4 3"/>
+  <text x="742" y="191" text-anchor="middle" font-size="10.5" fill="var(--amber)">4099 perif console · 預設不開</text>
+  <text x="742" y="205" text-anchor="middle" font-size="10" fill="var(--ink-3)">INSP_PERIF_CONSOLE=4099 才開</text>
+
+  <!-- devices -->
+  <path d="M170 210 V272" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <text x="248" y="245" text-anchor="middle" font-size="10" fill="var(--ink-3)">USB3Vision (Aravis / HikRobot)</text>
+  <rect x="86" y="274" width="168" height="52" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="170" y="296" text-anchor="middle" font-size="12" fill="var(--ink)">相機</text>
+  <text x="170" y="313" text-anchor="middle" font-size="10" fill="var(--ink-3)">Line0 ← CAM1</text>
+
+  <path d="M430 210 V272" stroke="var(--ng)" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <text x="560" y="238" text-anchor="middle" font-size="10" fill="var(--ng)">serial 230400 8N1</text>
+  <text x="560" y="253" text-anchor="middle" font-size="10" fill="var(--ng)">DTR → EN:開埠 = 板子重開機</text>
+  <rect x="326" y="274" width="236" height="66" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="444" y="296" text-anchor="middle" font-size="12" fill="var(--ink)">uInspESP32 板</text>
+  <text x="444" y="313" text-anchor="middle" font-size="10" fill="var(--ink-3)">gate(27) 步進(22/23/13)</text>
+  <text x="444" y="329" text-anchor="middle" font-size="10" fill="var(--ink-3)">L1A(16) CAM1(17) SEL1/2/3(25/26/32)</text>
+</svg>
+  </div>
+  <figcaption>bench 上還有兩個工具埠:webctld(Playwright) <code>:8765</code>、
+    <code>uinsp_panel.py :8766</code>。panel 與 core <strong>互斥佔用序列埠</strong>,開 panel 前先停 core。</figcaption>
+  </figure>
+
+  <h3 style="font-size:15px;margin:26px 0 8px">4098 vs 4099 —— 這一組最容易搞錯</h3>
+  <div class="cols">
+    <div class="node hot"><h4><span class="port">4098</span>launcher 的監督通道</h4>
+      <p>只答 <span class="mono">ping</span>(回 pid/uptime/version/git)與 <span class="mono">shutdown</span>。
+        回應帶 <strong>pid</strong>,因為只靠埠號認不出是誰 —— 上一輪殘留的 core 會用同一個埠回答,
+        看起來跟剛啟動的子行程一模一樣。<em>曾經真的發生:測試把 shutdown 送給了陌生人。</em></p></div>
+    <div class="node warn"><h4><span class="port" style="color:var(--amber);border-color:var(--amber)">4099</span>問板子問題的 dev console</h4>
+      <p>可以下 ~58 種板子命令,單一 client —— 第二條連線會把第一條無聲踢掉。
+        <strong>預設不開。</strong>產線機器不該只因為某個工程師需要就開控制埠。</p></div>
+  </div>
+  <div class="note"><strong>過時警告:</strong> <code>docs/README.md</code> §2 的鐵則寫
+    「改問核心的 console:<code>nc 127.0.0.1 4099</code>」。在 launcher 起的 core 上
+    <strong>那個埠是關的</strong>,命令會直接連不上。</div>
+</section>
+
+<!-- ══════════════════════════ 04 ══════════════════════════ -->
+<section class="plate" id="p4">
+  <div class="pnum">PLATE 04</div>
+  <h2>開機與更新</h2>
+  <p class="lede">版本包自己帶開機配方。launcher 只做三件事:讀 <code>current.json</code>、
+    照那一版的 <code>boot.js</code> 開起來、盯著它。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 860 300" role="img" aria-label="app root 目錄結構與開機流程">
+  <defs><marker id="ar3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 z" fill="var(--wire)"/></marker></defs>
+  <!-- tree -->
+  <text x="20" y="22" font-size="11.5" fill="var(--ink-3)">&lt;appRoot&gt;/</text>
+  <text x="40" y="46" font-size="11.5" fill="var(--amber)">current.json</text>
+  <text x="180" y="46" font-size="10.5" fill="var(--ink-3)">{version, previous, selectedAt} ← 現在要跑哪版</text>
+  <text x="40" y="68" font-size="11.5" fill="var(--ink)">last_good.json</text>
+  <text x="180" y="68" font-size="10.5" fill="var(--ink-3)">{version, ranForS, at} ← 跑滿門檻才升格</text>
+  <text x="40" y="94" font-size="11.5" fill="var(--ink)">1.1.104/</text>
+  <text x="62" y="116" font-size="11.5" fill="var(--ink-3)">info.json</text>
+  <text x="62" y="138" font-size="11.5" fill="var(--hot)">scripts/boot.js</text>
+  <text x="200" y="138" font-size="10.5" fill="var(--ink-3)">← 這版怎麼開,由這版自己說</text>
+  <text x="62" y="160" font-size="11.5" fill="var(--ink-3)">Core/</text>
+  <text x="200" y="160" font-size="10.5" fill="var(--ink-3)">visSele.exe + 相機 SDK 的 DLL 與 .cti</text>
+  <text x="62" y="182" font-size="11.5" fill="var(--ink-3)">WebUI/</text>
+  <text x="200" y="182" font-size="10.5" fill="var(--ink-3)">打包好的前端 assets/index-*.js</text>
+  <path d="M30 32 V176 H56" stroke="var(--rule)" stroke-width="1" fill="none"/>
+
+  <!-- install flow -->
+  <text x="20" y="226" font-size="11" fill="var(--ink-3)">安裝更新包</text>
+  <g font-size="10.5">
+    <rect x="20" y="238" width="126" height="34" rx="3" fill="var(--card)" stroke="var(--rule)"/>
+    <text x="83" y="253" text-anchor="middle" fill="var(--ink)">zip + manifest</text>
+    <text x="83" y="266" text-anchor="middle" fill="var(--ink-3)">逐檔 SHA256</text>
+    <path d="M148 255 H180" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar3)"/>
+    <rect x="182" y="238" width="140" height="34" rx="3" fill="var(--card)" stroke="var(--rule)"/>
+    <text x="252" y="253" text-anchor="middle" fill="var(--ink)">全部通過才放進去</text>
+    <text x="252" y="266" text-anchor="middle" fill="var(--ink-3)">不動工作目錄</text>
+    <path d="M324 255 H356" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar3)"/>
+    <rect x="358" y="238" width="150" height="34" rx="3" fill="var(--card)" stroke="var(--rule)"/>
+    <text x="433" y="253" text-anchor="middle" fill="var(--ink)">仍然是舊版在跑</text>
+    <text x="433" y="266" text-anchor="middle" fill="var(--ink-3)">直到按「設為現行」</text>
+    <path d="M510 255 H542" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar3)"/>
+    <rect x="544" y="238" width="160" height="34" rx="3" fill="var(--amber-bg)" stroke="var(--amber)"/>
+    <text x="624" y="253" text-anchor="middle" fill="var(--amber)">只寫一個 current.json</text>
+    <text x="624" y="266" text-anchor="middle" fill="var(--ink-3)">失敗不動到正在用的版本</text>
+  </g>
+</svg>
+  </div>
+  <figcaption>切換是一次寫入,所以回退也是一次寫入。這是整個更新機制唯一的安全保證。</figcaption>
+  </figure>
+
+  <div class="note stop"><strong>這棵樹在 bench 上有兩份,部署錯了不會有人告訴你。</strong>
+    <code>export_v2/</code> 底下同時有 <code>1.1.104/</code>(soak 與 launcher 實際跑的)
+    和 <code>app/</code>(自己的 current.json 與另外三個版本目錄)。
+    「我明明修好了」有兩次都是修到沒在跑的那一份。</div>
+</section>
+
+<!-- ══════════════════════════ 05 ══════════════════════════ -->
+<section class="plate" id="p5">
+  <div class="pnum">PLATE 05</div>
+  <h2>一格影像的旅程</h2>
+  <p class="lede">從相機 driver 的 callback 到板子吹氣,中間四個佇列。
+    每一個都 drop-oldest,沒有一個會回壓相機。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 880 300" role="img" aria-label="影像資料流:driver callback 經 inspQueue 到量測,再分岔到 perifSendQueue 與 datViewQueue">
+  <defs><marker id="ar4" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 z" fill="var(--wire)"/></marker></defs>
+
+  <rect x="14" y="108" width="122" height="56" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="75" y="130" text-anchor="middle" font-size="11.5" fill="var(--ink)">driver callback</text>
+  <text x="75" y="147" text-anchor="middle" font-size="10" fill="var(--ink-3)">pool → ExtractFrame</text>
+
+  <path d="M138 136 H184" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar4)"/>
+  <rect x="186" y="110" width="104" height="52" rx="4" fill="var(--amber-bg)" stroke="var(--amber)" stroke-width="1.5"/>
+  <text x="238" y="132" text-anchor="middle" font-size="11.5" fill="var(--amber)">inspQueue(10)</text>
+  <text x="238" y="148" text-anchor="middle" font-size="10" fill="var(--ink-3)">滿了丟舊的</text>
+
+  <path d="M292 136 H338" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar4)"/>
+  <rect x="340" y="102" width="150" height="68" rx="4" fill="var(--card)" stroke="var(--hot)" stroke-width="2"/>
+  <text x="415" y="124" text-anchor="middle" font-size="12" fill="var(--ink)">量測 + 判定</text>
+  <text x="415" y="141" text-anchor="middle" font-size="10" fill="var(--ink-3)">抱 matchingEnglock</text>
+  <text x="415" y="157" text-anchor="middle" font-size="10" fill="var(--ink-3)">整 frame 抱 camera_lifetime_lock</text>
+
+  <!-- branch up: preview -->
+  <path d="M492 120 H540 V58 H578" stroke="var(--wire)" stroke-width="1.5" fill="none" marker-end="url(#ar4)"/>
+  <rect x="580" y="32" width="128" height="52" rx="4" fill="var(--amber-bg)" stroke="var(--amber)" stroke-width="1.5"/>
+  <text x="644" y="54" text-anchor="middle" font-size="11" fill="var(--amber)">datViewQueue(10)</text>
+  <text x="644" y="70" text-anchor="middle" font-size="10" fill="var(--ink-3)">preview 執行緒</text>
+  <path d="M710 58 H752" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar4)"/>
+  <rect x="754" y="32" width="112" height="52" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+  <text x="810" y="54" text-anchor="middle" font-size="11" fill="var(--ink)">WS 訂閱者</text>
+  <text x="810" y="70" text-anchor="middle" font-size="10" fill="var(--ink-3)">SS→RP→IM→SS</text>
+
+  <!-- branch down: verdict -->
+  <path d="M492 152 H540 V214 H578" stroke="var(--wire)" stroke-width="1.5" fill="none" marker-end="url(#ar4)"/>
+  <rect x="580" y="188" width="128" height="52" rx="4" fill="var(--amber-bg)" stroke="var(--amber)" stroke-width="1.5"/>
+  <text x="644" y="210" text-anchor="middle" font-size="11" fill="var(--amber)">perifSendQueue(256)</text>
+  <text x="644" y="226" text-anchor="middle" font-size="10" fill="var(--ink-3)">perif-send 節流 2ms</text>
+  <path d="M710 214 H752" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar4)"/>
+  <rect x="754" y="188" width="112" height="52" rx="4" fill="var(--card)" stroke="var(--ok)" stroke-width="1.5"/>
+  <text x="810" y="210" text-anchor="middle" font-size="11" fill="var(--ok)">板子吹氣</text>
+  <text x="810" y="226" text-anchor="middle" font-size="10" fill="var(--ink-3)">SEL 工位</text>
+
+  <text x="415" y="272" text-anchor="middle" font-size="11" fill="var(--ink-3)">往下這條慢一格 = 漏檢;往上那條慢一格 = 沒人在意</text>
+  <path d="M348 262 L332 262" stroke="var(--ng)" stroke-width="1.5"/>
+  <path d="M482 262 L498 262" stroke="var(--ink-3)" stroke-width="1.5"/>
+</svg>
+  </div>
+  <figcaption>WebUI 端還有一次配對:報告以 25–40/s 進來,影像被
+    <code>OK/NG/NA_MAX_FPS</code> 壓在 ~6/s。canvas 每張影像凍結一份
+    <code>frameReportList</code>,左側面板才不會顯示到另一顆件的數字。</figcaption>
+  </figure>
+</section>
+
+<!-- ══════════════════════════ 06 ══════════════════════════ -->
+<section class="plate" id="p6">
+  <div class="pnum">PLATE 06</div>
+  <h2>BPG 合約(:4090)</h2>
+  <p class="lede">WebUI 與 core 之間只有這一條路。封包長這樣,每個請求以
+    <code>SS</code> 收尾。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 800 92" role="img" aria-label="BPG 封包格式:TL 2 bytes、prop 1、pgID BE16、len BE32、JSON payload">
+  <g font-size="11">
+    <rect x="10" y="20" width="92" height="42" rx="3" fill="var(--hot-bg)" stroke="var(--hot)" stroke-width="1.5"/>
+    <text x="56" y="40" text-anchor="middle" fill="var(--hot)">TL</text>
+    <text x="56" y="55" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">2 bytes</text>
+    <rect x="106" y="20" width="84" height="42" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="148" y="40" text-anchor="middle" fill="var(--ink)">prop</text>
+    <text x="148" y="55" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">1</text>
+    <rect x="194" y="20" width="110" height="42" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="249" y="40" text-anchor="middle" fill="var(--ink)">pgID</text>
+    <text x="249" y="55" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">BE16</text>
+    <rect x="308" y="20" width="110" height="42" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="363" y="40" text-anchor="middle" fill="var(--ink)">len</text>
+    <text x="363" y="55" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">BE32</text>
+    <rect x="422" y="20" width="368" height="42" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="5 3"/>
+    <text x="606" y="40" text-anchor="middle" fill="var(--ink)">payload (JSON)</text>
+    <text x="606" y="55" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">上限 16 MiB</text>
+  </g>
+</svg>
+  </div></figure>
+
+  <div class="tw"><table>
+    <thead><tr><th class="mono">TL</th><th>方向</th><th>意義</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">HR</td><td>雙向</td><td>握手/心跳。core 版 HR 是 <strong>SPLASH 的唯一出口</strong>(pgID 0xFF)</td></tr>
+      <tr><td class="mono">SB</td><td>in</td><td>訂閱/退訂串流 <code>{"stream":bool}</code></td></tr>
+      <tr><td class="mono">SV</td><td>in</td><td>存檔(def、<code>__CACHE_IMG__</code>、machine_setting);tmp + fsync + rename</td></tr>
+      <tr><td class="mono">FB / LB</td><td>in</td><td>目錄瀏覽 / 二進位檔(縮圖)→ BL</td></tr>
+      <tr><td class="mono">GS</td><td>in</td><td>讀值:camera_info、perif_pairing、佇列狀態、路徑</td></tr>
+      <tr><td class="mono">LD</td><td>in</td><td>讀檔回傳。<strong>不會載 def 進引擎</strong> —— 那要用 FI / <code>!fi</code></td></tr>
+      <tr><td class="mono">II</td><td>in</td><td>單張檢驗(編輯器 CHECK)</td></tr>
+      <tr><td class="mono">CI / FI</td><td>in</td><td>開檢驗 session。<strong>CI</strong>=free-run、station region OFF(setup 用);
+        <strong>FI</strong>=硬體觸發、region 強制、判定送板</td></tr>
+      <tr><td class="mono">RC</td><td>in</td><td>動作群:camera_ez_reconnect(3s 限流)、lens_calibrate、field_calib_*、bmp_carousel</td></tr>
+      <tr><td class="mono">ST</td><td>in</td><td>設定群:InspAreaBypass、InspectionParam、CameraSetting、串流 FPS/JPEG</td></tr>
+      <tr><td class="mono">PD</td><td>in</td><td>周邊通道:CONNECT / DISCONNECT / MESSAGE(轉發 JSON 給板子)</td></tr>
+      <tr><td class="mono">SS RP IM DF FL SG BL</td><td>out</td><td>session 框 / 報告 / 影像 / 檔案 / 簽章。每 frame 一批 = SS→RP→IM→SS</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="font-size:15px;margin:26px 0 8px">門鈴(推播,省輪詢)</h3>
+  <div class="cols">
+    <div class="node"><h4>camera_state <span class="chip c-hot">pgID 0xCA11</span></h4>
+      <p>事件驅動(handler 轉變當下推)＋ 1s 取樣器當 safety net。</p></div>
+    <div class="node"><h4>perif_state <span class="chip c-hot">pgID 0xCA12</span></h4>
+      <p>WebUI 收到就 poke 對應的 single-flight 查詢鏈,不自己輪詢。</p></div>
+  </div>
+
+  <div class="note"><strong>多 client:</strong> 全收;第一個成為 default_peer 並自動訂閱串流,
+    其他用 SB 加入。<strong>最後一個 peer 關閉 → TriggerMode(1) + perif teardown</strong>
+    —— log 裡那條孤零零的 <code>DELETED</code> 通常就是這條路徑,不是故障。</div>
+</section>
+
+<!-- ══════════════════════════ 07 ══════════════════════════ -->
+<section class="plate" id="p7">
+  <div class="pnum">PLATE 07</div>
+  <h2>配對:frame ↔ 件</h2>
+  <p class="lede">相機拍到的那一張,是盤上哪一顆?這個問題<strong>由板子回答</strong>。
+    有兩套方法,只有一套還活著。</p>
+
+  <figure><div class="frame">
+    <div class="cols">
+      <div class="node" style="border-color:var(--ok);border-width:2px">
+        <h4><span class="chip c-ok">在用</span> CAM_SYNC(時戳)</h4>
+        <p style="margin-top:6px">板子在 CAM1 邊緣記 <code>cam_us</code>;相機 frame 帶 <code>cam_ts</code>;
+          core 報告把 <code>cam_ts</code> 原樣送回。offset 由 8 顆校正脈衝學得
+          —— <strong>一般報告不教</strong>(循環論證)。漂移補償 slope 常開。</p>
+        <p style="margin-top:8px;color:var(--ng)">窗外連兩次 → <code>CAM_CLOCK_LOST(13)</code>
+          <strong>停機不猜</strong>。</p>
+      </div>
+      <div class="node" style="border-color:var(--na);border-style:dashed">
+        <h4><span class="chip c-na">已淘汰</span> CAM_PCNT(計數)</h4>
+        <p style="margin-top:6px">不是備援,也不是第二意見。程式碼還在
+          (<code>report_match_pcnt</code> 可開),但實機恆 false。</p>
+      </div>
+    </div>
+
+    <div style="margin-top:16px" class="tw"><table>
+      <thead><tr><th>為什麼淘汰</th><th>量到的事</th></tr></thead>
+      <tbody>
+        <tr><td>超過相機幀率下限時它<strong>不是盲,是自信地給錯答案</strong></td>
+          <td>相機用自己的節奏出圖而 <code>ExtTriggerCount</code> 仍約 1:1 前進,每張再滑 ~420µs,
+            約每 12 張繞完一圈。用 PRBS 背光裁決:150Hz <span class="c-ok mono">104/104</span>,
+            200Hz <span class="c-ng mono">53/92</span>(＝亂猜)</td></tr>
+        <tr><td>它連 offset 都學不到</td>
+          <td><code>pcnt</code> 只在 host 開 <code>INSP_CAM_TRIG_WATERMARK</code> 時才進報告,而它是關的</td></tr>
+        <tr><td><code>CAM_PULSE_N</code> 會數<strong>韌體驅動 CAM1 的每一條路徑</strong></td>
+          <td>包含 <code>calFireNow</code> 與 <code>trig_cam_*</code>:測試工具每打一發脈衝就把 offset
+            永久推一格,而且跟真的滑移長得一模一樣</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <figcaption><strong><code>cam_ts</code> 是對「成像事件」的量測,可以棄權;
+    <code>pcnt</code> 是對「請求」的記帳,不能棄權。兩者不對等。</strong></figcaption>
+  </figure>
+
+  <div class="note stop"><strong>判定回送的格式裡 <code>tid</code> 恆為 −1。</strong>
+    配對是板子的事 —— 2026-08-12 起 core 端的配對函式已經淘空。
+    另外:<code>reset_running_stat</code> 會殺掉時鐘模型,run 中不可恢復;
+    A/B 只能用 <code>reset_latency_stat</code>。</div>
+</section>
+
+<!-- ══════════════════════════ 08 ══════════════════════════ -->
+<section class="plate" id="p8">
+  <div class="pnum">PLATE 08</div>
+  <h2>板子的狀態機</h2>
+  <p class="lede">看到機器「不動」的時候,先 <code>poll</code> 看狀態碼。
+    101 和 104 就是產中。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 860 290" role="img" aria-label="uInsp 狀態機:INIT IDLE CAL SPINUP READY RECAL ERROR FATAL">
+  <defs><marker id="ar5" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="var(--wire)"/></marker>
+    <marker id="ar5r" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="var(--ng)"/></marker></defs>
+  <g font-size="11">
+    <rect x="14" y="94" width="86" height="42" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="57" y="112" text-anchor="middle" fill="var(--ink)">0 INIT</text>
+    <path d="M102 115 H140" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+    <rect x="142" y="94" width="96" height="42" rx="4" fill="var(--card)" stroke="var(--ink-2)" stroke-width="2"/>
+    <text x="190" y="112" text-anchor="middle" fill="var(--ink)">100 IDLE</text>
+    <text x="190" y="127" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">可下設定</text>
+    <path d="M240 115 H278" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar5)"/>
+    <text x="259" y="106" text-anchor="middle" font-size="9" fill="var(--ink-3)">enter_insp_mode</text>
+
+    <rect x="280" y="94" width="96" height="42" rx="4" fill="var(--amber-bg)" stroke="var(--amber)" stroke-width="1.5"/>
+    <text x="328" y="112" text-anchor="middle" fill="var(--amber)">102 CAL</text>
+    <text x="328" y="127" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">時鐘校正</text>
+    <path d="M378 115 H416" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+    <rect x="418" y="94" width="96" height="42" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="466" y="112" text-anchor="middle" fill="var(--ink)">103 SPINUP</text>
+    <text x="466" y="127" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">盤加速</text>
+    <path d="M516 115 H554" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+    <rect x="556" y="90" width="118" height="50" rx="4" fill="var(--card)" stroke="var(--ok)" stroke-width="2.5"/>
+    <text x="615" y="110" text-anchor="middle" fill="var(--ok)">101 READY</text>
+    <text x="615" y="127" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">到速分選 · 產中</text>
+
+    <!-- recal -->
+    <path d="M615 88 V50 H720 V90" stroke="var(--wire)" stroke-width="1.5" fill="none" marker-end="url(#ar5)"/>
+    <rect x="676" y="90" width="92" height="42" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="722" y="108" text-anchor="middle" fill="var(--ink)">104 RECAL</text>
+    <text x="722" y="123" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">跑中補校</text>
+    <path d="M768 111 H800 V70 H630 V88" stroke="var(--wire)" stroke-width="1.5" fill="none" marker-end="url(#ar5)"/>
+
+    <!-- error -->
+    <path d="M600 142 V186" stroke="var(--ng)" stroke-width="1.5" marker-end="url(#ar5r)"/>
+    <rect x="530" y="188" width="150" height="46" rx="4" fill="var(--card)" stroke="var(--ng)" stroke-width="2"/>
+    <text x="605" y="207" text-anchor="middle" fill="var(--ng)">112 ERROR</text>
+    <text x="605" y="223" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">鎖存 · clear_error 解</text>
+    <path d="M528 211 H250" stroke="var(--wire)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar5)"/>
+    <text x="390" y="203" text-anchor="middle" font-size="9" fill="var(--ink-3)">clear_error → IDLE</text>
+    <path d="M190 138 V211 H248" stroke="var(--wire)" stroke-width="1" fill="none" opacity="0"/>
+    <path d="M248 211 H196 V140" stroke="var(--wire)" stroke-width="1.5" fill="none" marker-end="url(#ar5)"/>
+
+    <rect x="700" y="188" width="140" height="46" rx="4" fill="none" stroke="var(--ng)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="770" y="207" text-anchor="middle" fill="var(--ng)">113 FATAL</text>
+    <text x="770" y="223" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">140 TEST 另計</text>
+    <path d="M682 211 H698" stroke="var(--ng)" stroke-width="1.5" marker-end="url(#ar5r)"/>
+  </g>
+</svg>
+  </div>
+  <figcaption><code>102 CAL</code> 是<strong>阻塞相位</strong>:gate 關、feeder 停,
+    韌體打出的「sync pulse」每一發都吃掉一次真的相機觸發與一次檢驗。
+    校正物件走 <code>0x40000000+</code> 的 tid 空間,不會傳到 WebUI。</figcaption>
+  </figure>
+
+  <div class="tw"><table>
+    <thead><tr><th class="mono" style="width:60px">碼</th><th>錯誤</th><th class="mono" style="width:60px">碼</th><th>錯誤</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">1</td><td>判定無對象</td><td class="mono">12</td><td>host 斷訊</td></tr>
+      <tr><td class="mono">2</td><td>到 SWITCH 未答</td><td class="mono">13</td><td>時鐘失配</td></tr>
+      <tr><td class="mono">10</td><td>cam_trig 佇列滿</td><td class="mono">14</td><td>校正不收斂</td></tr>
+      <tr><td class="mono">11</td><td>序列協定錯(<strong>鎖死到 RESET</strong>)</td><td class="mono">15</td><td>spin-up 逾時</td></tr>
+      <tr><td class="mono">16</td><td>兩配對法不一致</td><td class="mono">0xff</td><td>SEL 配額用盡</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ══════════════════════════ 09 ══════════════════════════ -->
+<section class="plate" id="p9">
+  <div class="pnum">PLATE 09</div>
+  <h2>Core 的執行緒與鎖序</h2>
+  <p class="lede">mainLoop 生出全部執行緒,<strong>從不 join</strong>,關機直接 <code>_exit(0)</code>。
+    鎖必須照這個順序拿。</p>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 840 130" role="img" aria-label="鎖序:camera_lifetime_lock 到 matchingEnglock 到 subscribersLock 到 linkLayerLock 到 image_send_lock 到 per-conn sendMutex">
+  <defs><marker id="ar6" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="var(--wire)"/></marker></defs>
+  <g font-size="10.5">
+    <rect x="8" y="30" width="136" height="36" rx="3" fill="var(--card)" stroke="var(--hot)" stroke-width="1.5"/>
+    <text x="76" y="53" text-anchor="middle" fill="var(--ink)">camera_lifetime_lock</text>
+    <path d="M146 48 H168" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar6)"/>
+    <rect x="170" y="30" width="120" height="36" rx="3" fill="var(--card)" stroke="var(--hot)" stroke-width="1.5"/>
+    <text x="230" y="53" text-anchor="middle" fill="var(--ink)">matchingEnglock</text>
+    <path d="M292 48 H314" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar6)"/>
+    <rect x="316" y="22" width="130" height="52" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="381" y="42" text-anchor="middle" fill="var(--ink)">subscribersLock</text>
+    <text x="381" y="60" text-anchor="middle" fill="var(--ink)">→ linkLayerLock</text>
+    <path d="M448 48 H470" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar6)"/>
+    <rect x="472" y="30" width="116" height="36" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="530" y="53" text-anchor="middle" fill="var(--ink)">image_send_lock</text>
+    <path d="M590 48 H612" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ar6)"/>
+    <rect x="614" y="30" width="126" height="36" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="677" y="53" text-anchor="middle" fill="var(--ink)">per-conn sendMutex</text>
+
+    <rect x="8" y="88" width="196" height="32" rx="3" fill="var(--amber-bg)" stroke="var(--amber)" stroke-dasharray="4 3"/>
+    <text x="106" y="108" text-anchor="middle" fill="var(--amber)">perif_tx_lock（獨立)</text>
+    <text x="216" y="108" font-size="10" fill="var(--ink-3)">規矩:先鎖再重讀 perifCH</text>
+    <text x="470" y="108" font-size="10" fill="var(--ng)">MT_LOCK 是 no-op —— 別信它</text>
+  </g>
+</svg>
+  </div></figure>
+
+  <div class="cols">
+    <div class="node"><h4>main</h4><p>WS select + 全部 TL dispatch</p></div>
+    <div class="node hot"><h4>inspection</h4><p>ImgPipeProcess:整 frame 抱 camera_lifetime_lock,量測抱 matchingEnglock</p></div>
+    <div class="node"><h4>preview</h4><p>datView → SS/RP/IM/SS</p></div>
+    <div class="node"><h4>perif-send</h4><p>節流 2ms</p></div>
+    <div class="node"><h4>perif-ping</h4><p>~2s 心跳;第 20 拍夾帶 comm_lost_backup 重武裝</p></div>
+    <div class="node"><h4>perif-watchdog</h4><p>2ms 排程遲滯量測</p></div>
+    <div class="node"><h4>CamStateWatch</h4><p>1s 門鈴取樣器</p></div>
+    <div class="node"><h4>inspd_log 子行程</h4><p>shm ring 16MB → :4091</p></div>
+  </div>
+
+  <div class="note"><strong>wiringPanel.cpp 找路</strong>(行號會過時,用來抓區塊):
+    全域/佇列/鎖 → PerifChannel → <code>g_inspCtx</code>(校正與站台 knobs 的家)→
+    相機 glue → <strong>toUpperLayer TL dispatch(最大一塊)</strong> → 相機 frame callback →
+    InspResultAction → perifDeliverResult → 輔助執行緒群 → ImgPipeProcessCenter → mainLoop → cp_main。</div>
+</section>
+
+<!-- ══════════════════════════ 10 ══════════════════════════ -->
+<section class="plate" id="p10">
+  <div class="pnum">PLATE 10</div>
+  <h2>設定檔:誰擁有什麼</h2>
+  <p class="lede">同一個檔常常兩邊都讀,但各自只看自己那幾個 key。
+    搞錯所有權就會出現「我改了但沒有用」。</p>
+
+  <figure><div class="frame"><div class="tw"><table>
+    <thead><tr><th style="width:190px">檔</th><th style="width:150px">誰讀</th><th>關鍵</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">machine_setting.json</td><td>core + WebUI</td>
+        <td>core 讀 <code>inspection_region</code> / <code>clean_regions</code>(<strong>全感測器 px</strong>,
+          相機 ROI 原點由 sampler 補償)。WebUI 讀 <code>InspectionMode</code>、
+          <code>uInspESP32_peripheral_conn_info</code>。<br>
+          <span class="chip c-amber">慣例</span> key 尾加 <code>1</code> = 停用。<code>"pairing"</code> key 已死。</td></tr>
+      <tr><td class="mono">default_camera_setting.json</td><td>core + WebUI</td>
+        <td>exposure / gain / gamma / blacklevel / framerate(−1 = 不限,<strong>限了會吃觸發</strong>)。<br>
+          <span class="chip c-ng">陷阱</span> 裁切要用 <code>InspectionROI</code>;存進來的 <code>ROI</code> key 會被刪掉。</td></tr>
+      <tr><td class="mono">lens_calib.json</td><td>core <strong>啟動自動載</strong></td>
+        <td>遠心模型;換入必在 matchingEnglock 下。</td></tr>
+      <tr><td class="mono">field_calib.json</td><td>core <strong>僅 on-demand</strong></td>
+        <td>16×16 亮/暗場格。啟動<strong>不</strong>自動載 —— headless 缺口,BUILD.md 的樣例是舊的。</td></tr>
+      <tr><td class="mono">*.hydef</td><td>CI/FI/II/SF</td>
+        <td>def 本體;sidecar <code>&lt;base&gt;.png</code> 模板;<code>featureSet_sha1</code> 完整性
+          (載入驗、存檔衝突檢查)。</td></tr>
+      <tr><td class="mono">板子 NVS</td><td>板子自己</td>
+        <td>wire JSON 原樣存。<strong>版本不合 = 回編譯預設</strong> —— io_on_level 事故的根源。
+          現在無極性預設:未定義極性 = high-Z + <code>IO_ARMED=false</code> 拒進檢。壽命計數器跨重啟。</td></tr>
+    </tbody>
+  </table></div></div>
+  <figcaption>量測改動要跑 golden gate(<code>--insp</code>)之前,
+    先備份並清掉 machine_setting 的 <code>inspection_region</code> / <code>clean_regions</code>
+    —— 這個陷阱已經咬過三次。</figcaption>
+  </figure>
+</section>
+
+<!-- ══════════════════════════ 11 ══════════════════════════ -->
+<section class="plate" id="p11">
+  <div class="pnum">PLATE 11</div>
+  <h2>機器正在跑產的時候</h2>
+  <p class="lede">FI session 進行中、板子 101 READY。動手之前查這張表。
+    經驗法則:<strong>開序列埠、刪相機、換 session、reset 帶 running 字樣 = 破壞性;
+    GS / 訂閱 / 差值讀數 = 安全。</strong></p>
+
+  <figure><div class="frame">
+    <div style="display:grid;gap:14px">
+      <div class="node" style="border-color:var(--ok);border-width:2px">
+        <h4 class="c-ok">✅ 安全 —— 純觀察,不改任何狀態</h4>
+        <p style="margin-top:6px"><code>fi_watch.mjs</code>(只 SB 訂閱數 RP/IM) ·
+          <code>perifstat.mjs</code> / <code>caminfo.mjs</code> / 任意 GS 讀值 ·
+          <code>peek.py</code>(走 console 免重置;前提是 4099 沒有別的 client) ·
+          <code>get_running_stat</code> / <code>poll</code> / <code>get_verdict_log</code> 的<strong>前後差值</strong> ·
+          WebUI 只進 MAIN 看狀態 · <code>dv_bench.mjs</code></p>
+      </div>
+      <div class="node warn">
+        <h4 class="c-amber">⚠️ 會擾動但可恢復 —— 不要在乎產出的那一輪做</h4>
+        <p style="margin-top:6px">進出 InspectionUI(會重開 CI/FI session、切相機 TriggerMode;
+          <em>離開檢驗讓板子停機是設計上的正常行為</em>) ·
+          DefConfUI 的 INST_CHECK(搶 matchingEnglock、量測會插隊) ·
+          ST InspAreaBypass / InspectionParam / CameraSetting(立即改變在線判定) ·
+          <code>reset_latency_stat</code> · <code>!fi</code> 重注 def</p>
+      </div>
+      <div class="node" style="border-color:var(--ng);border-width:2px">
+        <h4 class="c-ng">❌ 禁止 —— 毀掉一輪 run 或更糟</h4>
+        <p style="margin-top:6px"><strong>PD CONNECT / DISCONNECT</strong>(任何重開序列埠的動作,
+          包含 uinsp_panel):DTR → <strong>板子斷電重開</strong>,盤上件全 NA、時鐘模型歸零、RAM 設定回 NVS ·
+          <strong>RC camera_ez_reconnect</strong>(含 WebUI 的相機重連鈕):delete 相機重建,觸發鏈斷 ·
+          <code>bpg_sweep.mjs</code> · <code>churn.mjs</code> / <code>slow_client*.mjs</code>(設計上就是製造壓力) ·
+          <strong><code>reset_running_stat</code></strong>(殺 CAM_SYNC 時鐘模型,~10s 後 112 停機) ·
+          core 重啟 / 燒韌體(= 序列重開 = 板子重開機)</p>
+      </div>
+    </div>
+  </div>
+  <figcaption>不確定的時候先 <code>poll</code> 看 state —— 101 / 104 就是產中。</figcaption>
+  </figure>
+
+  <h3 style="font-size:15px;margin:30px 0 10px">最貴的十個陷阱</h3>
+  <div class="frame"><dl class="kv">
+    <div><dt>1</dt><dd>machine_setting 的 region 吃掉 golden 基準(<strong>三次</strong>)</dd></div>
+    <div><dt>2</dt><dd><code>!ld</code> 不會載 def 進引擎</dd></div>
+    <div><dt>3</dt><dd><code>!fi</code> 太早或重複 —— 全幅 bench 沒開 <code>TRIGMODE_ONCE</code> 會殺相機</dd></div>
+    <div><dt>4</dt><dd>LineStatusAll 輪詢看不到 ms 等級的脈衝</dd></div>
+    <div><dt>5</dt><dd>板子的 <code>PIN_ON</code> / <code>PIN_MODE</code> 這版<strong>沒有 ack</strong>,會默默忽略</dd></div>
+    <div><dt>6</dt><dd>NVS 計數是壽命值,一律用差值</dd></div>
+    <div><dt>7</dt><dd>WebUI <code>MAIN + EXIT = SPLASH</code> 死路 —— 只有 HR 能出來</dd></div>
+    <div><dt>8</dt><dd>合成 DOM 事件無效,要用 Playwright</dd></div>
+    <div><dt>9</dt><dd>log ring「沒在 log 裡」不代表沒發生</dd></div>
+    <div><dt>10</dt><dd><code>git commit -a</code> 會毀 submodule —— <strong>永遠列明路徑</strong></dd></div>
+  </dl></div>
+</section>
+
+
+<!-- ══════════ 12 ══════════ -->
+<section class="plate" id="p12">
+  <div class="pnum">PLATE 12</div>
+  <h2>WebUI 程式碼結構</h2>
+  <p class="lede">約 53,000 行,一半集中在四個畫面檔。
+    <code>script.jsx</code> 是樞紐 —— 找不到東西從那裡往外找。</p>
+
+  <figure><div class="frame"><div class="tree">
+    <div class="row"><span><span class="d">src/</span></span><em>行數</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="big">script.jsx</span> <span class="n">← 樞紐:組裝、路由、把 redux 接上各畫面</span></span><em>2,115</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="big">DefConfUI.js</span> <span class="n">def 編輯器(最大的一個)</span></span><em>5,068</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="big">InspectionUI.js</span> <span class="n">產檢畫面 + rank + 全螢幕</span></span><em>4,690</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="big">EverCheckCanvasComponent.js</span> <span class="n">canvas 基類,各模式繼承它</span></span><em>3,892</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="big">MAINUI.js</span> <span class="n">MAIN 下的 local submenu(不是狀態機態)</span></span><em>2,243</em></div>
+    <div class="row"><span>&nbsp;&nbsp;SBMStudio2.jsx <span class="n">· SBMStudio.jsx</span></span><em>1,840 + 493</em></div>
+    <div class="row"><span>&nbsp;&nbsp;CalibrationUI · RepDisplayUI · InstInspUI · BackLightCalibUI</span><em>759 / 717 / 513</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">component/</span> <span class="n">14 個面板</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="big">uInspESP32_UI.jsx</span> <span class="n">板子面板(卡片的子元件未展開就不掛載)</span></span><em>3,718</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;rdxComponent.jsx <span class="n">· baseComponent.jsx</span></span><em>2,292 + 1,224</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;StationRegionPanel · CoreLogPanel · CoreStatusPanel · CameraParamPanel</span><em>661 / 504 / …</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;DBStatusPanel · InspSamplePanel · OrphanDefFinder · UpdateNotice · uInspDeviceSettings</span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">canvas/</span> <span class="n">renderUTIL.js(畫圖本體,NA 置灰在這) · overlayKit · renderConst · CameraCtrl.ts</span></span><em>1,024 …</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">shapes/</span> <span class="n">per-shape 垂直切片:line/arc/aux_*/loc_*/search_point/obj_detect</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;measure/ <span class="n">angle · distance · radius · circle_info · calc</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;_propertySheet/ <span class="n">每種 shape 的屬性面板 + EdgeProfileView</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">comm/</span> <span class="n">BPG_WS.js(reqWindow、pgID 0-500、斷線 10s 重撥) · CoreLogClient.js</span></span><em>604</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">perif/</span> <span class="n">PerifAPI.js(自己的 store,不在 redux 裡) · PerifStatus.jsx · fmt.mjs</span></span><em>1,589</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">redux/</span> <span class="n">reducer/UICtrlReducer(1,453) · ConnectionInfoReducer · spcStats</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;middleware/ <span class="n">ECStateMachine · ActionThrottle · MW_API</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;actions/ <span class="n">UIAct.js(態名字全在這) · DefConfAct.js</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">UTIL/</span> <span class="n">InspectionEditorLogic(2,115) · BPG_Protocol · websocket · diagLog · … 23 個</span></span><em></em></div>
+  </div></div>
+  <figcaption><code>perif/PerifAPI.js</code> 有自己的 store,<strong>不走 redux</strong> ——
+    找連線態要去那裡,不是 <code>ConnInfo</code>。</figcaption>
+  </figure>
+
+  <figure><div class="frame">
+<svg viewBox="0 0 840 200" role="img" aria-label="WebUI 狀態機:SPLASH 經 HR 進 MAIN,再分岐到三個模式">
+  <defs><marker id="ars" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="var(--wire)"/></marker>
+  <marker id="arsr" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="var(--ng)"/></marker></defs>
+  <g font-size="11">
+    <rect x="16" y="78" width="120" height="46" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="76" y="97" text-anchor="middle" fill="var(--ink)">SPLASH</text>
+    <text x="76" y="113" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">等 core 的 HR</text>
+    <path d="M138 101 H196" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ars)"/>
+    <text x="167" y="93" text-anchor="middle" font-size="9.5" fill="var(--hot)">HR</text>
+
+    <rect x="198" y="74" width="126" height="54" rx="4" fill="var(--card)" stroke="var(--hot)" stroke-width="2"/>
+    <text x="261" y="96" text-anchor="middle" fill="var(--ink)">MAIN</text>
+    <text x="261" y="113" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">下面還有 local submenu</text>
+
+    <path d="M326 88 H392" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ars)"/>
+    <path d="M326 101 H392" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ars)"/>
+    <path d="M326 114 H392" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#ars)"/>
+    <rect x="394" y="20" width="176" height="40" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="482" y="44" text-anchor="middle" fill="var(--ink)">DEFCONF_MODE</text>
+    <rect x="394" y="82" width="176" height="40" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="482" y="106" text-anchor="middle" fill="var(--ink)">INSP_MODE</text>
+    <rect x="394" y="144" width="176" height="40" rx="4" fill="var(--card)" stroke="var(--rule)" stroke-width="1.5"/>
+    <text x="482" y="168" text-anchor="middle" fill="var(--ink)">INSTINSP_MODE</text>
+
+    <path d="M261 72 V40 H392" stroke="var(--wire)" stroke-width="1" fill="none" opacity="0"/>
+    <path d="M261 130 V166 H84 V126" stroke="var(--ng)" stroke-width="1.5" fill="none" marker-end="url(#arsr)"/>
+    <text x="176" y="180" text-anchor="middle" font-size="10" fill="var(--ng)">MAIN + EXIT → SPLASH 是死路:只有 HR 能再出來</text>
+
+    <rect x="596" y="74" width="230" height="56" rx="4" fill="var(--amber-bg)" stroke="var(--amber)" stroke-dasharray="4 3"/>
+    <text x="711" y="94" text-anchor="middle" font-size="10.5" fill="var(--amber)">ECStateMachine(自製 middleware)</text>
+    <text x="711" y="110" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">解讀 xstate 形狀的表</text>
+    <text x="711" y="124" text-anchor="middle" font-size="9.5" fill="var(--ink-3)">但不是 xstate 庫</text>
+  </g>
+</svg>
+  </div>
+  <figcaption>因為 MAIN+EXIT 是死路,測試的 <code>toMain</code> 必須
+    「讀態 + dispatch 同一次 in-page eval」,卡在 SPLASH 就踢 socket。</figcaption>
+  </figure>
+
+  <div class="note"><strong>def 的一生:</strong>
+    LD 載入(驗 <code>featureSet_sha1</code>,錯即擋)→ 編輯 →
+    triggerSave <strong>先重讀磁碟 sha1 防衝突</strong> → SV。
+    離開編輯器比 sha1 → 未存檔警告。</div>
+</section>
+
+<!-- ══════════ 13 ══════════ -->
+<section class="plate" id="p13">
+  <div class="pnum">PLATE 13</div>
+  <h2>Core 程式碼結構</h2>
+  <p class="lede">九個模組,但重量集中在兩個檔:<code>wiringPanel.cpp</code>(15,232 行)
+    與 <code>FeatureManager_sig360_circle_line.cpp</code>(9,884 行)。</p>
+
+  <figure><div class="frame"><div class="tree">
+    <div class="row"><span><span class="d">InspectionCore/</span></span><em>行數</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">Core0_1/</span> <span class="n">一代機、工廠部署中</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="big">wiringPanel.cpp</span> <span class="n">樞紐:WS、TL dispatch、相機、執行緒、perif</span></span><em>15,232</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;include/main.h <span class="n">· DatCH_CallBack_WSBPG.hpp</span></span><em>402</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;camTrigAugment.cpp <span class="n">· main.cpp · democode / playground / tmpCodes</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="d">data/</span> <span class="n">machine_setting · default_camera_setting · lens/field_calib · *.hydef</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">MatchingEngine/</span> <span class="n">量測本體</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="big">FeatureManager_sig360_circle_line.cpp</span></span><em>9,884</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;MatchingCore.cpp <span class="n">· ContourGrid · FM_GenMatching · FeatureReport_UTIL</span></span><em>1,901 / 1,009 / 892</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;Caliper.cpp <span class="n">· SignatureTools · SearchPointCV · FeatureManager_group</span></span><em>690 / 625 / …</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">CameraLayer/</span> <span class="n">一個介面,多個驅動</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;CameraLayer_Aravis <span class="n">· _HikRobot_Camera · _GIGE_MindVision</span></span><em>2,440 / 1,286 / 677</em></div>
+    <div class="row"><span>&nbsp;&nbsp;&nbsp;&nbsp;CameraLayer_BMP <span class="n">· _BMP_carousel ← 假相機,bench 靠這兩個</span></span><em>720 / 509</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">BPG_Protocol/</span> <span class="n">ws_server_util.cpp —— :4090 的地基</span></span><em>983</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">logctrl/</span> <span class="n">inspd_log 子行程、shm ring 16MB → :4091</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">MLNN/</span> <span class="n">· <span class="d">GLAcc/</span> · <span class="d">MJPEG_Streamer/</span> · <span class="d">common_lib/</span></span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="n">⚠ <span class="d">CoreHub/</span> 是二代 —— 不是產線在跑的東西</span></span><em></em></div>
+  </div></div></figure>
+
+  <h3 style="font-size:15px;margin:26px 0 10px">wiringPanel.cpp 的地層(實測行號,2026-09-18)</h3>
+  <figure><div class="frame"><div class="band">
+    <div class="bl">1 – 1,500</div><div class="bb"><b>全域、佇列、鎖、image_pipe_info</b>
+      <span>frame ring、資源池、<code>snap_verdict_of</code>、執行緒心跳</span></div>
+    <div class="bl">1,528 – 2,550</div><div class="bb"><b>PerifChannel 與判定回送</b>
+      <span><code>sendReportTo_perifCH</code>、<code>g_inspCtx</code>(校正與站台 knobs 的家)</span></div>
+    <div class="bl">2,550 – 4,290</div><div class="bb"><b>相機 glue 與校正載入</b>
+      <span><code>load_lens_calib</code> / <code>load_field_calib</code>、<code>CameraSetup</code>(3,007)、
+        <code>LoadCameraSetting</code>(3,287)、<code>apply_insp_region</code>(3,392)</span></div>
+    <div class="bl">4,296 – ~7,800</div><div class="bb k"><b>toUpperLayer_dispatch —— 最大一塊(~3,400 行)</b>
+      <span>所有 TL 都在這裡:HR/SB/SV/FB/LB/GS/LD/II/CI/FI/EX/RC/SC/ST/PD</span></div>
+    <div class="bl">~7,800 – 9,800</div><div class="bb"><b>preview / datView / 輔助</b>
+      <span>串流節流、影像重送快取</span></div>
+    <div class="bl">9,800 – 11,010</div><div class="bb"><b>InspResultAction_s</b>
+      <span>一格判定出來之後往哪送:板子、訂閱者、存檔</span></div>
+    <div class="bl">11,013 – 12,480</div><div class="bb"><b>perifDeliverResult 與 perif 執行緒群</b>
+      <span>send(節流 2ms)、ping(~2s,第 20 拍重武裝)、watchdog(2ms 遲滯量測)</span></div>
+    <div class="bl">12,481 – 13,980</div><div class="bb k"><b>ImgPipeProcessCenter_imp —— 每 frame 的主體</b>
+      <span>抱 camera_lifetime_lock 整格;量測段抱 matchingEnglock</span></div>
+    <div class="bl">13,986 – 14,490</div><div class="bb"><b>mainLoop</b>
+      <span>WS select + 生出全部執行緒(<strong>從不 join</strong>)</span></div>
+    <div class="bl">14,498 – 15,232</div><div class="bb w"><b>cp_main(CLI)</b>
+      <span><code>--insp</code> 離線單張 golden gate(exit 2/3/4)、crash handler</span></div>
+  </div></div>
+  <figcaption>舊文件寫的行號(2,841-5,908 dispatch、8,704 ImgPipe、9,846 mainLoop)已全數失效,
+    上表是今天量的。<strong>檔案還在長,所以用區塊順序找路,不要記行號。</strong></figcaption>
+  </figure>
+</section>
+
+<!-- ══════════ 14 ══════════ -->
+<section class="plate" id="p14">
+  <div class="pnum">PLATE 14</div>
+  <h2>uInspESP32 韌體程式碼結構</h2>
+  <p class="lede">一個檔 12,017 行,加三個小模組。ISR 鏈在中段,
+    命令面在後半 —— 那是一條四千行的 <code>strcmp</code> 分派。</p>
+
+  <figure><div class="frame"><div class="tree">
+    <div class="row"><span><span class="d">Peripheral/uInspESP32/</span></span><em>行數</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">src/app/</span><span class="big">LegacyFirmware.cpp</span> <span class="n">全部的機器邏輯</span></span><em>12,017</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">src/comm/</span>Data_Layer_Protocol.cpp <span class="n">· json_seg_parser.cpp</span></span><em>665 / 394</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">src/config/</span>MachineConfig.cpp <span class="n">NVS 讀寫;版本不合 = 回編譯預設</span></span><em>595</em></div>
+    <div class="row"><span>&nbsp;&nbsp;src/main.cpp <span class="n">← 只有 13 行,真的入口在 LegacyFirmware</span></span><em>13</em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">tools/</span> <span class="n">~25 支 Python 測試 —— peek.py · uinsp_panel.py · burst_pairing · jitter_sweep …</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="d">docs/</span> <span class="n">FIRMWARE_CONTRACT.md(必守不變量) · MACHINE_FLOW.md · UINSP_CAVEATS.md</span></span><em></em></div>
+    <div class="row"><span>&nbsp;&nbsp;<span class="n">⚠ <span class="d">uInspESP32_v2/</span> 是停滞的重寫世代 —— 不要誤入</span></span><em></em></div>
+  </div></div></figure>
+
+  <h3 style="font-size:15px;margin:26px 0 10px">LegacyFirmware.cpp 的地層(實測行號,2026-09-18)</h3>
+  <figure><div class="frame"><div class="band">
+    <div class="bl">1 – 1,700</div><div class="bb"><b>全域狀態、IO 極性、設定</b>
+      <span><code>ioConfigCheck</code>(146)、<code>ioArm</code>(177) ——
+        未定義極性 = high-Z + <code>IO_ARMED=false</code>,拒絕進檢</span></div>
+    <div class="bl">1,700 – 2,800</div><div class="bb"><b>步進與 stage 位置/寬度</b>
+      <span><code>STAGE_PULSE_OFFSET_publish</code>、<code>STAGE_PULSE_WIDTH_apply</code>、
+        <code>RESET_ALL_PIPELINE_QUEUE</code></span></div>
+    <div class="bl">2,793 – 3,500</div><div class="bb"><b>錯誤與狀態生命週期</b>
+      <span><code>ERROR_LOG_PUSH</code>、<code>SYS_STATE_LIFECYCLE</code>(3,072)、
+        <code>SYS_STATE_Transfer</code>(3,418)</span></div>
+    <div class="bl">3,505 – 4,420</div><div class="bb k"><b>stage 任務註冊與執行(ISR)</b>
+      <span><code>ActRegister_pipeLineInfo</code>、<code>newPulseEvent</code>、
+        <code>Run_ACTS</code>(3,663) —— <strong>ISR 內禁浮點</strong></span></div>
+    <div class="bl">4,423 – 5,130</div><div class="bb k"><b>ISR 鏈本體(IRAM 全鏈)</b>
+      <span><code>GateSensing</code>(4,480,去彈跳/寬度/最小距離)、<code>StepGo</code>(4,751)、
+        <code>phantomServiceISR</code>(4,924)、<code>onTimer</code>(4,979)</span></div>
+    <div class="bl">5,398 – 5,700</div><div class="bb w"><b>時鐘校正</b>
+      <span><code>calibrationBegin</code> / <code>calibrationEnd</code> / <code>syncTombstone</code>
+        —— 102 CAL 這個阻塞相位就是這裡</span></div>
+    <div class="bl">5,700 – 9,800</div><div class="bb k"><b>JSON 命令面 —— ~58 型的 strcmp 分派</b>
+      <span>讀:<code>poll</code> / <code>get_setup</code> / <code>get_running_stat</code> /
+        <code>get_verdict_log</code>;寫:<code>set_setup</code>(grouped keys,未知 key 整包拒收);
+        注入:<code>virt_pulse</code> / <code>trig_cam_*</code> / <code>jog</code> / <code>sel_act</code></span></div>
+    <div class="bl">9,804 – 10,000</div><div class="bb"><b>MData_JR 傳輸層</b>
+      <span><code>send_data</code> / <code>msg_printf</code> / <code>handleResetCommand</code></span></div>
+    <div class="bl">10,000 – 12,017</div><div class="bb"><b>統計與狀態輸出</b>
+      <span>RBuf 消耗、壽命計數器、<code>get_running_stat</code> 的組裝
+        —— <strong>~2,886 / 3,072 B 溢位邊緣,會靜默掉欄位</strong></span></div>
+  </div></div>
+  <figcaption>要加新的回報欄位,<strong>開一個新命令</strong>,不要塞進
+    <code>get_running_stat</code> —— 它已經貼著緩衝上限,溢位是無聲的。</figcaption>
+  </figure>
+
+  <div class="note stop"><strong>序列層的三條規矩:</strong>
+    <code>setRxBufferSize(2048)</code> 必須在 <code>begin</code> 之前 ·
+    host watchdog 要由 core 武裝 · <strong>DTR = 重開機</strong>。
+    另外 <code>PIN_ON</code> / <code>PIN_MODE</code> 這版<strong>沒有 ack,會默默忽略</strong>。
+    一個壞 frame → err 11 鎖死到 <code>RESET</code>。</div>
+</section>
+
+<footer>
+  <p>來源:<code>docs/SYSTEM_MAP.md</code>(2026-08-18 校準,合約與不干擾矩陣仍最完整)與
+    <code>docs/SYSTEM_OVERVIEW.md</code>(2026-08-27,launcher 與埠位以這份為準)。
+    行號一律以區塊順序表示,因為原文件的行號已全數失效。</p>
+  <p style="margin-top:10px">這是<strong>現況文件</strong> —— 描述機器現在的行為。發現不符,就當場改。</p>
+</footer>
+
+</div>

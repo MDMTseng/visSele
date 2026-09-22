@@ -1,6 +1,7 @@
 // WebSocket + BPG transport for the core connection. Relocated verbatim from
 // script.jsx (Path A): same behavior, deps (comp, StoreX) injected via constructor.
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
+import { configureOverlay } from 'JSSRCROOT/canvas/overlayKit';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -51,7 +52,7 @@ function urlConcat(base, add) {
           // "machine stopped keeping NG evidence because the disk filled" was
           // invisible in the UI. The Core modal shows all three together.
           this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "GS", 0,
-          { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","save_snap_disk_low_skip_count","binary_path","data_path"] },
+          { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","save_snap_disk_low_skip_count","slow_frame","binary_path","data_path"] },
           undefined, 
           {
             resolve: (stacked_pkts,P) => {
@@ -229,7 +230,7 @@ function urlConcat(base, add) {
                   log.debug("[ld] machine_setting", data);
                   if (data[0].type == "FL") {
                     let info = data[0].data;//complete the necessary info
-                    if(info.InspectionMode!="FI_C" &&info.InspectionMode!="FI" && info.InspectionMode!="CI" )
+                    if(["FI_C","FI","CI","SI"].indexOf(info.InspectionMode)<0)
                     {
                       info.InspectionMode="CI";
                     }
@@ -242,6 +243,26 @@ function urlConcat(base, add) {
 
                     info.__priv={
                       path:machineSettingPath
+                    }
+
+                    // OVERLAY SIZING IS A PROPERTY OF THE MACHINE, NOT OF THIS BROWSER.
+                    //
+                    // overlayKit already had a tuning path, but it persists to
+                    // localStorage -- per browser profile, invisible to anyone
+                    // else, and gone the moment somebody opens the UI from a
+                    // different machine or a cleared profile. That is the exact
+                    // opposite of "every screen in the building draws the same
+                    // weights". Read here instead, from the one file the
+                    // machine's settings live in, at the one place it is loaded.
+                    //
+                    // persist:false on purpose: the file is the record, and
+                    // writing a copy into localStorage as well would let a stale
+                    // browser copy outlive a change to the file.
+                    if (info.OVERLAY_SIZE && typeof info.OVERLAY_SIZE === 'object') {
+                      try {
+                        configureOverlay({ size: info.OVERLAY_SIZE }, { persist: false });
+                        log.info("[ld] overlay sizing from machine_setting.json", info.OVERLAY_SIZE);
+                      } catch (e) { log.warn("[ld] OVERLAY_SIZE rejected", e); }
                     }
 
                     if(info.inspection_db_ws_url!==undefined)
@@ -429,7 +450,25 @@ function urlConcat(base, add) {
           if (req_pkt !== undefined)//Find the tracking req
           {
             if (parsed_pkt !== undefined)//There is an act, push into the req acts
+            {
               req_pkt.pkts.push(parsed_pkt);
+              // PROGRESS, for a request whose answer arrives in pieces.
+              //
+              // A session resolves once, at its SS, with everything it
+              // collected -- right for a reply, useless for a job that streams
+              // results over seconds (the core-side robustness sweep sends one
+              // report per step for ~15s). Without a hook the only choices were
+              // a frozen panel until the end, or splitting the job back into
+              // one request per step, which is what moving it into the core
+              // undid. onPacket is optional and nothing else passes it.
+              const _op = req_pkt.promiseCBs && req_pkt.promiseCBs.onPacket;
+              if (_op) {
+                // A throwing consumer must not take the socket's read loop with
+                // it: every other session on this connection is parsed here too.
+                try { _op(parsed_pkt); }
+                catch (e) { console.error('[bpg] onPacket threw', e); }
+              }
+            }
 
             if (!SS_start && header.type == "SS")//Get the termination session[SS] pkt
             {//remove tracking(reqWindow) info and Dispatch the pkt
@@ -451,7 +490,13 @@ function urlConcat(base, add) {
                 //   rawData:req_pkt
                 // };
                 // this.props.DISPATCH(acts)
-                this.comp.WSDataDispatch(stacked_pkts);
+                // No promise on this session: nobody asked for it, so it is a
+                // pushed STREAM batch (a viewfinder, the running inspection),
+                // not a reply. Screens that requested an image get it through
+                // resolve() instead -- including the ones that hand their own
+                // reply to WSDataDispatch, which is why this is marked here at
+                // the call site and not inside WSDataDispatch.
+                this.comp.WSDataDispatch(stacked_pkts, true);
                 // req_pkt.pkts.forEach((pkt)=>
                 // {
                 //   let act=map_BPG_Packet2Act(pkt);

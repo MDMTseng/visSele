@@ -6,6 +6,7 @@ export const EVENT = {
   Edit_Tar_Ele_Cand_Update:"Edit_Tar_Ele_Cand_Update",
   Shape_List_Update:"Shape_List_Update",
   Def_Retake:"Def_Retake",
+  Instrument_Mmpp_Set:"Instrument_Mmpp_Set",
   Shape_Set:"Shape_Set",
   Shape_Decoration_ID_Order_Update:"Shape_Decoration_ID_Order_Update",
   Shape_Decoration_Extra_Info_Update:"Shape_Decoration_Extra_Info_Update",
@@ -68,10 +69,22 @@ export function Shape_List_Update(shapeList)
 // <defModelPath>.png, and _ref_image_path is the HIGHEST priority template
 // source: the SBM studio trained and tested against the previous product's
 // saved picture while showing the new one.
-export function Def_Retake()
+// keepMeasurements: the retake replaces the PICTURE but the measurement features
+// and matching parameters stay. Everything the localizer owns still goes, because
+// it describes a frame the new image does not have.
+// The machine's own mm/px, from lens calibration. Only TAKE sets it, and only
+// for a frame that came off the camera -- see getEditorMmpp.
+export function Instrument_Mmpp_Set(mmpp)
 {
   return {
-    type: EVENT.Def_Retake
+    type: EVENT.Instrument_Mmpp_Set, data: mmpp
+  }
+}
+
+export function Def_Retake(keepMeasurements)
+{
+  return {
+    type: EVENT.Def_Retake, data: { keepMeasurements: !!keepMeasurements }
   }
 }
 export function Shape_Decoration_ID_Order_Update(shape_id_order)

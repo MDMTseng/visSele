@@ -33,7 +33,7 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
   float gmax = 0;
   for (int i = 0; i < n; i++) { float a = fabsf(g[i]); if (a > gmax) gmax = a; }
   float floor_ = p.min_strength;
-  float adaptive = 0.15f * gmax;
+  float adaptive = (p.rel_strength > 0 ? p.rel_strength : 0.f) * gmax;
   if (adaptive > floor_) floor_ = adaptive;
   if (gmax <= 0) return false;
 

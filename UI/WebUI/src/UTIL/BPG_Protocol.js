@@ -131,7 +131,7 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
       "payload="+payloadAvail);
   }
 
-  if (ret_obj.format === 1 || ret_obj.format === 2) {
+  if (ret_obj.format === 1 || ret_obj.format === 2 || ret_obj.format === 3) {
     // JPEG (1=BGR, 2=grayscale): entire remainder is the JPEG bitstream.
     // Copy out so the typed-array view stays valid after WS recycles the
     // ArrayBuffer (Blob ctor below holds a reference to whatever we hand it).
@@ -257,7 +257,9 @@ export function map_BPG_Packet2Act(parsed_packet)
       if (!pkg.image) break;
       let objx = { ...pkg };
       delete objx.image;
-      if (pkg.format === 1 || pkg.format === 2) {
+      // 3 is PNG, kept samples. Self-describing like the JPEGs, and handled
+      // the same way: hand the encoded bytes to the browser's decoder.
+      if (pkg.format === 1 || pkg.format === 2 || pkg.format === 3) {
         // JPEG (1=BGR, 2=grayscale): hand the ENCODED BYTES on as a
         // Uint8Array. Copy them — the underlying ArrayBuffer is the WS message
         // buffer, which gets recycled on the next onmessage.

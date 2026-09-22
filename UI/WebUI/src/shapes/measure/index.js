@@ -6,6 +6,7 @@ import * as angleMod from './angle';
 import * as radiusMod from './radius';
 import * as circleInfoMod from './circle_info';
 import * as calcMod from './calc';
+import { OVERLAY } from 'JSSRCROOT/canvas/overlayKit';
 
 // Per-shape module: MEASURE.
 // Part of the per-shape vertical-slice keystone (see OPENQUESTION). This file
@@ -263,12 +264,19 @@ export function draw(ctx, shape, renderer, {
                 shape.inspection_value=Number.NaN;
               }
             }
+            // The value MAPPING (value_A~value_B => value_X~value_Y) stays off
+            // the canvas. It is a property of the recipe, not a reading: it
+            // says how the raw measurement is rescaled before judging, which
+            // is settled once when the def is written and never looked at
+            // again while inspecting. Printed after every number it doubled
+            // the length of the longest line in every label. It is still in
+            // the property sheet, where it is edited.
             let measValueAdjStr = "";
-            
-            if(shape.value_A!==undefined && shape.value_B!==undefined && shape.value_X!==undefined && shape.value_Y!==undefined)
-            {
-
-              measValueAdjStr+=" "+shape.value_A+"~"+shape.value_B+" => "+shape.value_X+"~"+shape.value_Y;
+            if (OVERLAY.label.show_value_mapping
+                && shape.value_A !== undefined && shape.value_B !== undefined
+                && shape.value_X !== undefined && shape.value_Y !== undefined) {
+              measValueAdjStr += " " + shape.value_A + "~" + shape.value_B
+                               + " => " + shape.value_X + "~" + shape.value_Y;
             }
 
             // console.log(shape);

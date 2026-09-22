@@ -26,6 +26,8 @@
 //
 // Accepts either key for the angle: a report says `rotate`, def_image_reg says
 // `angle`. Two names for one quantity is how the wrong one gets read as 0.
+import { pickByPosition, nearestDistance } from './sbmExpectPose.mjs';
+
 export function objFromImage(pose) {
   const cx = pose && Number.isFinite(pose.cx) ? pose.cx : 0;
   const cy = pose && Number.isFinite(pose.cy) ? pose.cy : 0;
@@ -89,7 +91,11 @@ const GROUPS = [
   ['auxPoints', 'aux_point', (o) => ({ x: o.x, y: o.y })],
 ];
 
-export function inspectSummary(rp, authoredReg) {
+// `opts` may carry { expect, tolMm } -- where the part must be, in object-frame
+// mm, and how far off it may sit. Given those, the object is chosen BY POSITION
+// instead of by score rank; see sbmExpectPose.mjs for why rank is not identity.
+// Omit them and the behaviour is unchanged.
+export function inspectSummary(rp, authoredReg, opts) {
   const top = rp && rp.reports && rp.reports[0];
   const one = top && top.reports && top.reports[0];
   if (!one) {
@@ -174,6 +180,13 @@ export function inspectSummary(rp, authoredReg) {
   const poses = objs.map((obj) => {
     const pose = { cx: obj.cx, cy: obj.cy, rotate: obj.rotate,
                    isFlipped: !!obj.isFlipped, similarity: obj.similarity };
+    // Face confidence, from the core's trust block: the other face's best
+    // coarse score over this pose's. 1.0 = the faces tied (no confidence);
+    // 0.7 = the other face was 30% worse. undefined when the core saw no
+    // opposite-face candidate (matching_face fixed, or none above threshold).
+    const _fa = obj.trust && Number.isFinite(obj.trust.face_alt_score) ? obj.trust.face_alt_score : undefined;
+    if (_fa !== undefined && Number.isFinite(obj.similarity) && obj.similarity > 0)
+      pose.faceRatio = (_fa / 100) / obj.similarity;
     pose.at = toCanvas({ x: pose.cx, y: pose.cy });     // where to draw its marker
     // The object's 0-degree axis, as a SECOND POINT through the same transform
     // rather than as an angle through a formula.
@@ -199,11 +212,31 @@ export function inspectSummary(rp, authoredReg) {
     return pose;
   });
 
-  // The first object stays the headline, because the single-value readouts and
-  // the sweep are written against one number. Which one it is is now stated
-  // rather than assumed.
-  const pose = poses[0];
+  // WHICH object is the headline.
+  //
+  // poses[0] is the top SCORER. That is the part only when there is one
+  // candidate; with several it is a ranking that a perturbation can reorder,
+  // and every number computed from it then silently belongs to a different
+  // object. Measured on a real def: four candidates, the runner-up at 0.9826
+  // against 1.0000.
+  //
+  // When the caller knows where the part must be -- it does whenever it chose
+  // the perturbation -- pick by position instead, and REFUSE rather than fall
+  // back to the top scorer. Falling back would reintroduce exactly the answer
+  // this is here to avoid, at the moment it is least likely to be noticed.
+  const _o = opts || {};
+  let headIdx = 0;
+  if (_o.expect) {
+    headIdx = pickByPosition(poses, _o.expect, _o.tolMm);
+    if (headIdx < 0) {
+      const d = nearestDistance(poses, _o.expect);
+      return { located: false, rows: [], counts: { ok: 0, na: 0, ng: 0 }, poses,
+        why: `找到 ${poses.length} 個候選,但沒有一個在預期位置附近`
+             + (Number.isFinite(d) ? `(最近的差 ${d.toFixed(3)} mm)` : '') };
+    }
+  }
+  const pose = poses[headIdx];
   const poseDelta = pose.delta || null;
 
-  return { located: true, pose, poses, poseDelta, rows, counts, toCanvas, why: '' };
+  return { located: true, pose, poses, headIdx, poseDelta, rows, counts, toCanvas, why: '' };
 }

@@ -21,29 +21,75 @@ import { mkLog } from "UTIL/logger";
 // template that could not be measured must never differ only in saturation.
 const NA_CANVAS_FILTER = 'grayscale(1) opacity(0.7)';
 
-// A RUNTIME SWITCH, because this is a leak suspect and suspicion is not a
-// finding. Chromium renders every draw made under a non-'none' ctx.filter
-// through a temporary offscreen surface; on an accelerated canvas that surface
-// is GPU memory, and a soak measured the GPU process climbing about 15-16 KB
-// per inspection report -- with the JS heap flat and a forced collection
-// handing it all back at once, which is what "allocated per draw, swept late"
-// looks like. The greying arrived the same day as the measurement, so it is the
-// first thing to rule in or out.
+// ctx.filter IS THE COST. Measured by removing it: with the NA branch drawn and
+// this filter set, the field machine stalls for 100-450 ms on the frames that
+// go NA; with the branch skipped entirely it is smooth. Chromium renders every
+// draw made under a non-'none' ctx.filter through a temporary offscreen
+// surface, per draw call -- so the price is paid once for each stroke, arc and
+// glyph of every NA shape, on every frame, and it is paid on the main thread.
+// (The same allocation is why a soak saw the GPU process climb ~15-16 KB per
+// report with the JS heap flat.)
 //
-// window.__NA_FILTER_OFF__ = 1 turns it off without a rebuild, so one binary can
-// run both halves of the A/B. Absent means on, which is the shipped behaviour.
+// So the greying no longer goes through a filter. It is done with the two
+// things a 2D context can do for free:
+//
+// The colour, and nothing else: NA resolves to the neutral role colour at a
+// reduced alpha, written into the rgba the way every other transparency in this
+// file is. NOT globalAlpha -- alpha there MULTIPLIES whatever the shape already
+// carries, so the fills that are drawn at 0.14 by design would come out at
+// 0.10, and it applies to everything inside the block rather than to the thing
+// being dimmed.
+//
+// What is lost is the desaturation of anything a module colours FOR ITSELF and
+// against the verdict -- search_point's datum anchor is the deliberate case.
+// That is a small price for the stall, and arguably right: that colour outranks
+// the verdict by design, which is exactly why the module sets it.
+//
+// window.__NA_FILTER_ON__ = 1 restores the old filter path without a rebuild,
+// for comparing the two.
+const NA_DIM_ALPHA = 0.7;
 function naFilterOn() {
-  return !(typeof window !== 'undefined' && window.__NA_FILTER_OFF__);
+  return !!(typeof window !== 'undefined' && window.__NA_FILTER_ON__);
 }
-const NA_REASON_COLOR  = 'rgba(255, 210, 60, 0.95)';
+// The NA marker rides with the shape it belongs to, so it is grey like the rest
+// of it. It used to be yellow to catch the eye; against a fully greyed NA that
+// made the marker the loudest thing on a result that has nothing to report.
+const NA_REASON_COLOR  = 'rgba(120, 132, 143, 0.95)';
 // How near the pointer has to be, in SCREEN pixels, for a marker to show its
 // reason. Generous: the marker is small and the operator is aiming with a mouse
 // on a machine, not a stylus.
 const NA_HOVER_RADIUS_PX = 18;
+// The region an NA looked in. Two colours, because the first question about a
+// failed scan is which KIND of failure it was: the window was where it should
+// be and the edge was not there (neutral), or the window ran off the picture
+// and the answer could not have been in it (warning). Fainter than the marker
+// -- it is context for the feature, not a second feature.
+const NA_REGION_COLOR     = 'rgba(120, 132, 143, 0.75)';
+const NA_REGION_OFF_COLOR = 'rgba(232, 120, 48, 0.95)';
+// The clipped-window caveat, in the core's own words.
+//
+// The core writes na_reason only when it REFUSES, and it no longer refuses a
+// clipped band. So the one case the operator now sees most -- an answer
+// measured from a window that ran off the picture -- would have a box drawn
+// for it and nothing to say when pointed at. Same numbers the refusal used
+// to print, same shape of sentence, so the two read as one family.
+function scanClipNote(clip) {
+  if (!clip || !(clip.samples_off > 0)) return null;
+  const pct = clip.samples_total > 0
+    ? (100 * clip.samples_off / clip.samples_total).toFixed(1) : '?';
+  const nb = clip.nearest_bad;
+  const side = !isFinite(nb) ? 'none' : (nb < 0 ? 'NEAR side' : 'far side');
+  const near = isFinite(nb) ? `${nb > 0 ? '+' : ''}${nb.toFixed(0)}px` : 'n/a';
+  return `scan window off-frame: ${pct}% of samples (${clip.samples_off}/${clip.samples_total}), `
+       + `${clip.rows_off}/${clip.rows_total} rows, nearest ${near} (${side}) `
+       + `-- measured from what was in frame`;
+}
+
 const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './renderConst';
+import { overlayKit, OVERLAY, measureLabelName } from 'JSSRCROOT/canvas/overlayKit';
 import { getShapeModule } from 'JSSRCROOT/shapes';
 
 class renderUTIL {
@@ -72,11 +118,22 @@ class renderUTIL {
     // EverCheckCanvasComponent before each draw so per-shape drawInspection
     // can gate the overlay without reading redux.
     this.show_caliper_hits = true;
+    // Set per report group before its shapes are drawn (see
+    // EverCheckCanvasComponent). False everywhere else -- the def editor
+    // draws the taught geometry, which is never mirrored.
+    this.objIsFlipped = false;
     this.renderParam = {
       base_Size: 2.5,
       size_Multiplier: 1,
       mmpp: 0.1,
-      font_Base_Size: 1,
+      // 1 until the labels were typeset correctly (draw_Text). At a 1 px font
+      // the rasteriser rounds every stem, every cap height and every advance
+      // up to whole pixels before the old code magnified the result, so the
+      // text came out roughly 40% larger than the size asked for. Typeset at
+      // the right size it is suddenly the size it was always configured to be,
+      // which on screen reads as "the font shrank". This is the size it had
+      // been looking like for years; it is now the size it IS.
+      font_Base_Size: 1.6,
       font_Style: "bold ",
       
 
@@ -126,30 +183,125 @@ class renderUTIL {
   get_mmpp() {
     return this.renderParam.mmpp;
   }
+  // DEVICE pixels -> world units. Everything downstream draws in world units,
+  // so this is the one place the choice of unit has to be made.
+  _pxToWorld(px) {
+    const k = this.camCtrl.GetCameraScale();
+    return (k > 0) ? (px / k) : px;
+  }
+
+  // THE CANVAS IS BACKED BY DEVICE PIXELS, AND A STYLE CONSTANT MUST NOT BE.
+  //
+  // The camera scale is device pixels per world unit, so any constant divided
+  // by it is being stated in DEVICE pixels -- and then the same number draws
+  // half as thick on a 200% display as on a 100% one. That is precisely the
+  // property that stops two machines producing the same picture, so the
+  // 'screen' constants are read as CSS pixels and converted here.
+  _dpr() {
+    return (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  }
+
+  // Millimetres ON THE DISPLAY -> device pixels.
+  //
+  // The CSS pixel is defined as 1/96 inch, so 96/25.4 CSS pixels make a
+  // millimetre of glass, and a device pixel is a CSS pixel divided by the
+  // device pixel ratio. That chain is exact only as far as the OS scaling
+  // describes the panel it is driving; where it does not, OVERLAY.size
+  // .panel_ppi states the panel's real pixels per inch and is used directly.
+  _screenMmToPx(mm) {
+    const ppi = (OVERLAY.size || {}).panel_ppi;
+    if (ppi > 0) return mm * ppi / 25.4;
+    return mm * (96 / 25.4) * this._dpr();
+  }
+
+  // The canvas short edge in device pixels, for unit:'view'. hostCanvas is
+  // handed over by the canvas component; without it 'view' cannot be resolved
+  // and the screen constants are used instead, which is the safe direction.
+  _viewShortEdge() {
+    const c = this.hostCanvas;
+    if (!c || !c.width || !c.height) return 0;
+    return Math.min(c.width, c.height);
+  }
+
+  // The floor and ceiling, applied in device pixels. Outside the band the size
+  // stops tracking whatever it was tracking and holds a constant screen size,
+  // so the overlay neither vanishes nor takes over at the ends of the range.
+  _clampPx(px, lo, hi) {
+    return this._pxToWorld(Math.min(hi, Math.max(lo, px)));
+  }
+
   getPrimitiveSize() {
-    return this.renderParam.base_Size * this.renderParam.size_Multiplier/ this.camCtrl.GetCameraScale();
+    const S = OVERLAY.size || {};
+    const lo = S.px_min ?? 1.2, hi = S.px_max ?? 24;
+    const mult = this.renderParam.size_Multiplier;
+
+    if (S.unit === 'mm') {
+      const mm = (S.primitive_mm ?? 0.10) * mult;
+      const px = mm * this.camCtrl.GetCameraScale();
+      return (px >= lo && px <= hi) ? mm : this._clampPx(px, lo, hi);
+    }
+    if (S.unit === 'screen_mm') {
+      // Straight to device pixels: the size is a property of the glass, so
+      // nothing about the picture or the zoom enters into it.
+      return this._clampPx(this._screenMmToPx((S.primitive_screen_mm ?? 0.66) * mult), lo, hi);
+    }
+    if (S.unit === 'view') {
+      const edge = this._viewShortEdge();
+      if (edge > 0)
+        return this._clampPx((S.primitive_permille ?? 3.1) / 1000 * edge * mult, lo, hi);
+      // no canvas yet -- fall through to the screen constants
+    }
+    return this._pxToWorld(this.renderParam.base_Size * mult * this._dpr());
   }
 
   getPointSize() {
     return this.getPrimitiveSize()*2;
   }
   getIndicationLineSize() {
-    return this.getPrimitiveSize()*2;
+    // One knob for how heavy the whole overlay draws. Every module's stroke
+    // width comes from here (directly, or via overlayKit's size multipliers),
+    // so this is the only place it has to be said.
+    return this.getPrimitiveSize() * 2 * (OVERLAY.size.stroke_scale ?? 1);
   }
   getSearchDirectionLineSize() {
     return this.getPrimitiveSize();
   }
 
+  // Despite the name it returns WORLD units -- draw_Text multiplies by it.
   getFontHeightPx(size = this.renderParam.font_Base_Size) {
-    return 1.5*size * this.renderParam.size_Multiplier*16/ this.camCtrl.GetCameraScale();;
+    const S = OVERLAY.size || {};
+    const lo = S.font_px_min ?? 9, hi = S.font_px_max ?? 96;
+    const mult = this.renderParam.size_Multiplier;
+
+    if (S.unit === 'mm') {
+      const mm = (S.font_mm ?? 0.95) * size * mult;
+      const px = mm * this.camCtrl.GetCameraScale();
+      return (px >= lo && px <= hi) ? mm : this._clampPx(px, lo, hi);
+    }
+    if (S.unit === 'screen_mm') {
+      return this._clampPx(this._screenMmToPx((S.font_screen_mm ?? 6.35) * size * mult), lo, hi);
+    }
+    if (S.unit === 'view') {
+      const edge = this._viewShortEdge();
+      if (edge > 0)
+        return this._clampPx((S.font_permille ?? 30) / 1000 * edge * size * mult, lo, hi);
+    }
+    return this._pxToWorld(1.5 * size * mult * 16 * this._dpr());
   }
 
   getFixSizingReg() {
     return 1;//50 / this.camCtrl.GetCameraScale();
   }
 
+  // Arial has no CJK, and a measure's name can be anything the operator typed.
+  // Without the fallbacks the browser picks its own, which is how 正 came out
+  // in a serif next to Arial digits.
+  static get FONT_FAMILY() {
+    return "Arial, 'Noto Sans TC', 'Microsoft JhengHei', 'PingFang TC', sans-serif";
+  }
+
   getFontStyle(size_px = this.getFontHeightPx()) {
-    return this.renderParam.font_Style + size_px + "px Arial";
+    return this.renderParam.font_Style + size_px + "px " + renderUTIL.FONT_FAMILY;
   }
 
   setEditor_db_obj(editor_db_obj) {
@@ -369,6 +521,14 @@ class renderUTIL {
   draw_Text(ctx, text, scale, x, y, screenOffset = false) {
     ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.013;
     ctx.save();
+    // strokeText OBEYS THE DASH PATTERN. Every label here is filled and then
+    // outlined, and the outline was picking up whatever dash the last caller
+    // happened to leave set -- so a label drawn after an extension line came
+    // out with a dotted outline, which reads as a different kind of mark
+    // entirely. Setting lineWidth was never enough; this is the other half of
+    // the same statement, and doing it here fixes every caller at once instead
+    // of chasing whichever one leaked.
+    ctx.setLineDash([]);
     if (screenOffset && (this.viewRotation || this.viewFlip)) {
       const r = this.viewRotation || 0;
       let vx, vy;
@@ -390,7 +550,61 @@ class renderUTIL {
       if (this.viewFlip) { ctx.scale(1, -1); ctx.rotate(_r); }
       else ctx.rotate(-_r);
     }
-    ctx.scale(scale, scale);
+    // TYPESET AT THE SIZE IT WILL APPEAR, NOT AT 1 PX AND NOT AT 100.
+    //
+    // Every caller set `ctx.font = this.getFontStyle(1)` -- a ONE PIXEL font --
+    // and this then did ctx.scale(fontPx, fontPx) to bring it up to size. A
+    // glyph is laid out at the font size, so at 1 px every advance width and
+    // every outline coordinate is rounded to something near a whole pixel
+    // before the scale magnifies the error twentyfold. That is the doubled,
+    // overlapping, evenly-pitched lettering the overlay used to show:
+    // "[3]lik|jop|pos|pof" with the stems landing on top of each other.
+    //
+    // The obvious repair -- typeset at a fixed large size and scale DOWN --
+    // trades one artefact for another. Curve flattening and stroke geometry
+    // are resolved against a tolerance in USER space, so a 100 px glyph shrunk
+    // to a twentieth comes out visibly faceted: straight little steps all
+    // along every round, which reads as a broken or low-resolution edge.
+    //
+    // So typeset at the size it is actually going to occupy ON SCREEN. Read
+    // the world-to-device scale off the transform, size the font in device
+    // pixels, and the residual scale is ~1 -- rounding and flattening both
+    // happen at the resolution the glyph is drawn at, which is the only place
+    // they are harmless.
+    const _tf = (typeof ctx.getTransform === 'function') ? ctx.getTransform() : null;
+    const devScale = _tf ? (Math.hypot(_tf.a, _tf.b) || 1) : 1;
+    let BASE = scale * devScale;
+    if (!isFinite(BASE) || BASE <= 0) BASE = 16;
+    // Clamped so a wildly zoomed view cannot ask for a font size no rasteriser
+    // will cache. Outside the clamp the old scaling takes over and the text is
+    // illegibly small or huge anyway.
+    BASE = Math.min(512, Math.max(6, BASE));
+    const s = scale / BASE;
+    // lineWidth is in USER units, so the scale multiplies it. The outline has
+    // to come out the thickness it always did: it used to be stroked at `lw`
+    // under a scale of `scale`, i.e. lw*scale on screen, so under a scale of
+    // scale/BASE it is lw*BASE.
+    const lw = ctx.lineWidth;
+    ctx.scale(s, s);
+    ctx.font = this.renderParam.font_Style + BASE + "px " + renderUTIL.FONT_FAMILY;
+    // AN OUTLINE THINNER THAN A PIXEL IS NOT A THIN OUTLINE, IT IS A BROKEN ONE.
+    //
+    // Because BASE is the glyph's size in device pixels, s cancels the world
+    // scale exactly and ctx.lineWidth here IS device pixels. lw*BASE is the
+    // width this outline has always had, and measured off a screenshot it
+    // comes out well under one pixel on a lot of the glyph: a sub-pixel stroke
+    // is rasterised as partial coverage, so the outline turns into a grey haze
+    // whose darkness follows the angle of the stroke it is tracing. Along a
+    // curve that reads as an edge that keeps breaking up -- which is what it
+    // was, on the text AND on every thin indication line next to it.
+    //
+    // A floor of 1.2 px, never a ceiling: wherever the outline was already a
+    // pixel or more this changes nothing at all.
+    ctx.lineWidth = Math.max(lw * BASE, 1.2);
+    // Round joins, because the alternative on a glyph's corners is a miter
+    // spike longer than the stroke is wide.
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
     ctx.fillText(text, 0, 0);
     ctx.strokeText(text, 0, 0);
     ctx.restore();
@@ -419,6 +633,28 @@ class renderUTIL {
 
   drawDefMeasureInfoText(ctx,name,value,InfoLU,InfoCurVal,fontPx)
   {
+    // AN NA IS A RESULT, SO IT GETS THE RESULT LAYOUT.
+    //
+    // Every measure module falls back to this call when the report carried no
+    // inspection_value, and this is the SETUP block: the nominal, the limits,
+    // and a "Now:" computed from the geometry on screen. On a running machine
+    // that is four lines of specification where the operator is looking for one
+    // number, and the one number it does show is the least trustworthy of the
+    // four -- it is what the canvas can derive, not what the core measured.
+    //
+    // While the NA pass is drawing (this.naDim), collapse it to the same single
+    // line a passing result gets -- and put NO NUMBER on that line. The canvas
+    // can derive a value from the geometry, but a number on an overlay is read
+    // as "this is what it measured", and nothing measured it. A derived figure
+    // dressed up with a qualifier is worse than none: it still gets read, and
+    // now it also has to be decoded.
+    if (this.naDim) {
+      if (this.renderParam.measureInfoText.name == true)
+        this.draw_Text(ctx, name, fontPx, 0, 0, true);
+      if (this.renderParam.measureInfoText.value == true)
+        this.draw_Text(ctx, 'NA', fontPx, 0, fontPx, true);
+      return;
+    }
 
     let Y_offset = 0;
 
@@ -494,30 +730,29 @@ class renderUTIL {
       }
 
 
-      ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
+      // ISO 129-1 linear dimension: witness (extension) lines from the two
+      // features out past the dimension line, arrowheads at both ends of the
+      // dimension line itself. Before this the measured span was a bare
+      // segment, so which pair of features it spanned was guesswork.
+      const K = overlayKit(ctx, this);
+      const A = { x: extended_ind_line.x0, y: extended_ind_line.y0 };
+      const B = { x: extended_ind_line.x1, y: extended_ind_line.y1 };
+      const dimAng = Math.atan2(B.y - A.y, B.x - A.x);
 
-      this.drawReportLine(ctx, {
+      K.construction(A, point_onAlignLine);
+      K.construction(B, point);
+      K.construction(B, eObject.pt1);
 
-        x0: extended_ind_line.x0, y0: extended_ind_line.y0,
-        x1: point_onAlignLine.x, y1: point_onAlignLine.y
-      });
-
-      this.drawReportLine(ctx, {
-
-        x0: extended_ind_line.x1, y0: extended_ind_line.y1,
-        x1: point.x, y1: point.y
-      });
-
-
-      this.drawReportLine(ctx, {
-
-        x0: extended_ind_line.x1, y0: extended_ind_line.y1,
-        x1: eObject.pt1.x, y1: eObject.pt1.y
-      });
+      ctx.save();
       ctx.setLineDash([]);
-
-
+      ctx.strokeStyle = ctx.fillStyle = K.C.reading;
+      ctx.lineWidth = K.lw * K.S.line_w;
       this.drawReportLine(ctx, extended_ind_line);
+      if (Math.hypot(B.y - A.y, B.x - A.x) > 6 * K.ps) {
+        K.arrow(A, dimAng + Math.PI, K.S.arrow_head * K.ps);
+        K.arrow(B, dimAng, K.S.arrow_head * K.ps);
+      }
+      ctx.restore();
 
       this.drawpoint(ctx, eObject.pt1);
 
@@ -538,7 +773,7 @@ class renderUTIL {
           -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
         
         this.drawInspMeasureInfoText(ctx,
-          eObject.name,
+          measureLabelName(eObject),
           "D" + (eObject.inspection_value * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           marginPC,fontPx);
 
@@ -550,10 +785,13 @@ class renderUTIL {
         measureValue=Math.hypot(point.x - point_on_line.x, point.y - point_on_line.y);
         
         this.drawDefMeasureInfoText(ctx,
-          eObject.name,
+          measureLabelName(eObject),
           "D" + eObject.value.toFixed(this.fixedDigit.D) + unitConvert.unit,
-          "L:" + eObject.LSL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit + 
-          " U:" + eObject.USL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit,
+          // (LSL * unitConvert.mult).toFixed(...), NOT LSL * mult.toFixed(...):
+          // the old form called toFixed on the MULTIPLIER and multiplied by the
+          // resulting string, so both shown limits were garbage.
+          "L:" + (eObject.LSL * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit +
+          " U:" + (eObject.USL * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           "Now:" + (measureValue * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit + measValueAdjStr,
           fontPx)
 
@@ -630,9 +868,38 @@ class renderUTIL {
 
 
   drawInspectionShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false,inFullDisplay=true) {
-    let normalRenderGroup = [];
-    // NA shapes, drawn last so a grey template can never overdraw a real result.
-    let naRenderGroup = [];
+    // DRAW ORDER: MEASUREMENTS UNDERNEATH, PRIMITIVES ON TOP.
+    //
+    // A measurement draws more than its own reading. It extends the lines it
+    // was taken between, runs a leader out to wherever the label was parked,
+    // and sweeps an arc across the space in between -- construction that is
+    // deliberately long, because it has to reach. The primitive is the thing
+    // that was actually FOUND on the part, and it is small.
+    //
+    // Drawn in the other order -- which is what this did, because primitives
+    // were dispatched inline and measurements were collected and drawn after --
+    // every one of those extension lines lay across the edges and arcs the
+    // operator is trying to check. The overlay covered its own subject.
+    //
+    // So both classes are collected and neither is dispatched inline. The
+    // measurement's construction still reaches wherever it needs to; it just
+    // passes behind the shapes rather than over them.
+    //
+    // THREE LAYERS, NOT TWO. Construction is not only the measurements':
+    // aux_line and aux_point are registered as primitives and dispatch through
+    // the same drawInspection path as a found edge, so the first version of
+    // this put them on the top layer along with it. They are exactly what the
+    // layering is for -- overlayKit calls their dash "virtual extension /
+    // construction" -- and a virtual line drawn over a real one hides the thing
+    // that was actually measured behind a thing that was inferred.
+    //
+    // The rule is what a shape MEANS, not which draw path it happens to take:
+    // anything that reasons about the part goes underneath, anything the core
+    // actually FOUND on the part goes on top.
+    const IS_CONSTRUCTION = (t) => (t === SHAPE_TYPE.aux_line || t === SHAPE_TYPE.aux_point);
+    let measureNormal = [], measureNA = [];
+    let auxNormal = [],     auxNA = [];
+    let primNormal = [],    primNA = [];
     eObjects.forEach((eObject) => {
       if (eObject == null) return;
 
@@ -658,40 +925,199 @@ class renderUTIL {
         else
           ctx.strokeStyle = eObject.color;
       }
-      // Keystone step 3 — inspection-mode draw also dispatched per-shape.
-      // measure has no drawInspection (it's deferred to the editor-style draw
-      // via normalRenderGroup below). Unregistered types pass through.
+      // Sorted, not drawn. Nothing is dispatched from this loop any more --
+      // see the note at the top. Note the per-shape strokeStyle set above is
+      // therefore no longer what a shape is drawn with; the draw passes below
+      // set it again, per shape, at the moment they draw it.
       if (eObject.type === SHAPE_TYPE.measure) {
-        (isNA ? naRenderGroup : normalRenderGroup).push(eObject);
+        (isNA ? measureNA : measureNormal).push(eObject);
+      } else if (IS_CONSTRUCTION(eObject.type)) {
+        (isNA ? auxNA : auxNormal).push(eObject);
       } else {
-        const mod = getShapeModule(eObject.type);
-        if (mod && mod.drawInspection) {
-          if (isNA) {
-            const savedFilter = ctx.filter;
-            const useF = naFilterOn();
-            if (useF) ctx.filter = NA_CANVAS_FILTER;
-            mod.drawInspection(ctx, eObject, this, { shapeList });
-            if (useF) ctx.filter = savedFilter;
-            // The reason is NOT greyed -- it is the one thing on an NA that
-            // should catch the eye.
-            this.drawNAReason(ctx, eObject);
-          } else {
-            mod.drawInspection(ctx, eObject, this, { shapeList });
-          }
-        }
+        (isNA ? primNA : primNormal).push(eObject);
       }
     });
 
-    this.drawShapeList(ctx, normalRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
-    if (naRenderGroup.length) {
+    // A PRIMITIVE'S COLOUR IN INSPECTION IS ITS VERDICT.
+    //
+    // It was not a colour at all before: four of the six drawInspection()
+    // functions set no strokeStyle, so they drew in whatever the caller had
+    // left set -- eObject.color, which falls back to SHAPE_TYPE_COLOR's
+    // `default` of rgba(100,50,100). That is where the inspection view's purple
+    // came from. Nobody chose it; it is the fallback of a per-TYPE table that
+    // the overlay kit's per-ROLE palette replaced everywhere except here, so
+    // the same fitted line was kit-yellow in DefConf and leftover-purple in
+    // inspection.
+    //
+    // Role is the right answer in the editor, where nothing has been measured
+    // yet and the only thing a colour can say is what kind of element this is.
+    // In inspection there is something better to say: whether this feature was
+    // found and passed. That is the question the operator is at the screen to
+    // answer, and a primitive is the one mark on the part that can answer it.
+    //
+    // UNSET keeps the role colour -- the feature is drawn, nothing is claimed
+    // about it. NA additionally goes through the grey filter below, which is
+    // why neutral rather than a fourth signal colour: it is about to be
+    // desaturated anyway, and NA's real signal is drawNAReason's text.
+    //
+    // A module may still override -- search_point paints a locating anchor with
+    // the datum colour, because "this one also holds the object frame" outranks
+    // its verdict and nothing else on the canvas carries it.
+    const K = overlayKit(ctx, this);
+    const verdictColor = (o) => {
+      switch (o.inspection_status) {
+        case INSPECTION_STATUS.SUCCESS: return K.C.ok;
+        case INSPECTION_STATUS.FAILURE: return K.C.ng;
+        // Dimmed in the colour itself -- see the note on NA_DIM_ALPHA.
+        case INSPECTION_STATUS.NA:      return naFilterOn() ? K.C.neutral
+                                                            : K.withAlpha(K.C.neutral, NA_DIM_ALPHA);
+
+        default:                        return K.C.feature;
+      }
+    };
+
+    // The primitives, whose modules draw one shape at a time.
+    const drawPrims = (list, greyed) => {
+      if (!list.length) return;
+      const savedFilter = ctx.filter;
+      const useF = greyed && naFilterOn();
+      if (useF) ctx.filter = NA_CANVAS_FILTER;
+      // Set BEFORE the modules run: each one builds its own kit from the
+      // renderer, and the palette is chosen at that moment.
+      else if (greyed) this.naDim = NA_DIM_ALPHA;
+      list.forEach((eObject) => {
+        const mod = getShapeModule(eObject.type);
+        if (!mod || !mod.drawInspection) return;
+        // An explicit ShapeColor from the caller still wins: that is how a
+        // single shape gets highlighted (drag preview, candidate), and a
+        // verdict colour there would fight the reason it was passed.
+        ctx.strokeStyle = (ShapeColor !== undefined && ShapeColor !== null)
+                          ? ShapeColor
+                          : (IS_CONSTRUCTION(eObject.type) ? K.C.region
+                                                           : verdictColor(eObject));
+        ctx.fillStyle = ctx.strokeStyle;
+        mod.drawInspection(ctx, eObject, this, { shapeList });
+      });
+      if (useF) ctx.filter = savedFilter;
+      this.naDim = 0;
+      // The reason is NOT greyed -- it is the one thing on an NA that should
+      // catch the eye -- so it goes outside the filter, after the shapes.
+      if (greyed) list.forEach((o) => { this.drawNARegion(ctx, o); this.drawNAReason(ctx, o); });
+      // A SUCCESSFUL scan whose window ran off the picture still shows it.
+      //
+      // A clipped band is measured now rather than refused, which is the right
+      // default -- the edge was usually in frame and the part is where the
+      // station puts it. But "measured from what was in frame" is a caveat on
+      // the number, and a caveat nobody can see is not one. Only when clipped:
+      // drawing every healthy scan's window would bury the ones that matter.
+      else list.forEach((o) => this.drawNARegion(ctx, o, true));
+    };
+
+    // ---- pass 1: measurements, underneath ----------------------------------
+    this.drawShapeList(ctx, measureNormal, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+    if (measureNA.length) {
       const savedFilter = ctx.filter;
       const useF = naFilterOn();
       if (useF) ctx.filter = NA_CANVAS_FILTER;
-      this.drawShapeList(ctx, naRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+      else this.naDim = NA_DIM_ALPHA;
+      // Neutral unless the caller asked for a specific colour -- that request
+      // is how a single shape gets highlighted and must still win.
+      const naColor = (ShapeColor !== undefined && ShapeColor !== null) ? ShapeColor
+                    : (useF ? ShapeColor : K.withAlpha(K.C.neutral, NA_DIM_ALPHA));
+      this.drawShapeList(ctx, measureNA, naColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
       if (useF) ctx.filter = savedFilter;
-      naRenderGroup.forEach((o) => this.drawNAReason(ctx, o));
+      this.naDim = 0;
+      // A measure has no region of its own -- it is arithmetic over features.
+      // drawNARegion draws nothing for one, and the features it refers to are
+      // NA in their own right and draw theirs in pass 2.
+      measureNA.forEach((o) => { this.drawNARegion(ctx, o); this.drawNAReason(ctx, o); });
     }
 
+    // ---- pass 2: construction primitives, still underneath -----------------
+    drawPrims(auxNormal, false);
+    drawPrims(auxNA, true);
+
+    // ---- pass 3: what was actually found, on top ---------------------------
+    // NA after normal within each class, unchanged: a greyed template must not
+    // be what you see where a real result also exists.
+    drawPrims(primNormal, false);
+    drawPrims(primNA, true);
+  }
+
+  // WHERE A FAILED FEATURE LOOKED.
+  //
+  // An NA says the machine did not get an answer. It does not say whether it
+  // looked in the right place, and on a deformed part or a pose that is a few
+  // tenths out those are completely different problems with completely
+  // different fixes -- one is the recipe's edge settings, the other is the
+  // window. The record carries the geometry the scan actually used (after the
+  // pose AND the anchor morph), so the screen can stop making the operator
+  // imagine it: `scan_clip` for a search point's band, `cal_geom` + `cal_hits`
+  // for the radial calipers of an arc.
+  //
+  // Geometry, not text, and therefore drawn for EVERY NA rather than on hover:
+  // two outlines near each other stay readable where two sentences do not (see
+  // drawNAReason for what that cost). The numbers behind it -- how much of the
+  // band was off the picture, how near -- stay in the hover sentence, which
+  // the core already writes.
+  drawNARegion(ctx, eObject, onlyIfClipped = false) {
+    if (!eObject) return;
+    const clip = eObject.scan_clip, geom = eObject.cal_geom;
+    if (!clip && !geom) return;
+    if (onlyIfClipped && !(clip && clip.samples_off > 0)) return;
+    const save = { s: ctx.strokeStyle, f: ctx.fillStyle, w: ctx.lineWidth, d: ctx.getLineDash() };
+    ctx.lineWidth = this.getPrimitiveSize() * 0.5;
+
+    if (clip && isFinite(clip.x) && isFinite(clip.y) && clip.width > 0) {
+      // The band: width along the bar, depth along the search axis. Dashed,
+      // so it never reads as a measured edge.
+      const bx = clip.bar_x, by = clip.bar_y;
+      const bn = Math.hypot(bx, by) || 1;
+      const ux = bx / bn, uy = by / bn;      // along the band
+      const vx = -uy, vy = ux;               // along the search
+      const hw = clip.width / 2, hd = clip.depth / 2;
+      const off = clip.samples_off > 0;
+      ctx.strokeStyle = off ? NA_REGION_OFF_COLOR : NA_REGION_COLOR;
+      ctx.setLineDash([this.getPrimitiveSize() * 1.5, this.getPrimitiveSize() * 1.5]);
+      ctx.beginPath();
+      const corner = (a, b) => [clip.x + ux * a + vx * b, clip.y + uy * a + vy * b];
+      const c0 = corner(-hw, -hd), c1 = corner(hw, -hd), c2 = corner(hw, hd), c3 = corner(-hw, hd);
+      ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]);
+      ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]);
+      ctx.closePath(); ctx.stroke();
+      // WHICH END IT SEARCHED FROM. A first-hit scan takes the nearest edge,
+      // so the near edge of the band is the half that decides the answer, and
+      // a band drawn without it is a rectangle that could have been swept
+      // either way. Solid, on the near edge only.
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]);
+      ctx.stroke();
+    }
+
+    if (!onlyIfClipped && geom && isFinite(geom.c0x) && isFinite(geom.c0y) && geom.len > 0) {
+      // Each caliper swept +-len along its own radius. cal_hits carries where
+      // each one sat -- including the ones that found nothing, which is the
+      // set that matters here -- so the rays are drawn from those and not from
+      // a re-derived arc span the report does not contain.
+      const hits = eObject.cal_hits;
+      if (hits && hits.length) {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = NA_REGION_COLOR;
+        ctx.beginPath();
+        for (const h of hits) {
+          const dx = h.x - geom.c0x, dy = h.y - geom.c0y;
+          const n = Math.hypot(dx, dy);
+          if (!(n > 0)) continue;
+          const ex = dx / n, ey = dy / n;
+          ctx.moveTo(h.x - ex * geom.len, h.y - ey * geom.len);
+          ctx.lineTo(h.x + ex * geom.len, h.y + ey * geom.len);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash(save.d);
+    ctx.lineWidth = save.w; ctx.strokeStyle = save.s; ctx.fillStyle = save.f;
   }
 
   // The core's reason for an NA, written beside the shape.
@@ -701,7 +1127,9 @@ class renderUTIL {
   // between "NA" and "NA because the scan window is off-frame" is the
   // difference between an hour of guessing and a fix.
   drawNAReason(ctx, eObject) {
-    if (!eObject || !eObject.na_reason) return;
+    if (!eObject) return;
+    const reasonText = eObject.na_reason || scanClipNote(eObject.scan_clip);
+    if (!reasonText) return;
     const anchor = eObject.pt1 || eObject.pt || eObject.center;
     if (!anchor || !isFinite(anchor.x) || !isFinite(anchor.y)) return;
     // The label convention, not drawText().
@@ -737,7 +1165,9 @@ class renderUTIL {
     const saveFill = ctx.fillStyle, saveStroke = ctx.strokeStyle;
     const saveLW = ctx.lineWidth, saveFont = ctx.font;
     const off = this.getPointSize() * 1.2;
-    ctx.fillStyle = NA_REASON_COLOR;
+    // An answer with a caveat is not a failure: colour the marker like the
+    // window it is about, not like an NA.
+    ctx.fillStyle = eObject.na_reason ? NA_REASON_COLOR : NA_REGION_OFF_COLOR;
     ctx.strokeStyle = "black";
     ctx.lineWidth = this.getPrimitiveSize() * 0.35;
     ctx.beginPath();
@@ -745,15 +1175,31 @@ class renderUTIL {
     ctx.fill();
     ctx.stroke();
 
+    // The band is a second place to point at.
+    //
+    // The marker sits on the feature's own point, and for a wide scan that can
+    // be millimetres from the rectangle drawn for it -- the two total-width
+    // scans on 10221 look 3-4 mm away from the edge they measure, by design.
+    // An operator who wants to know why that box is where it is points AT THE
+    // BOX. Whichever of the two was hovered is where the sentence is written,
+    // so the text never appears somewhere the pointer is not.
     let hovered = false;
+    let label = anchor;
     try {
       const h = this.hoverScreen;
       if (h) {
         const m = ctx.getTransform();
-        const sx = m.a * anchor.x + m.c * anchor.y + m.e;
-        const sy = m.b * anchor.x + m.d * anchor.y + m.f;
-        const dx = sx - h.x, dy = sy - h.y;
-        hovered = (dx * dx + dy * dy) <= NA_HOVER_RADIUS_PX * NA_HOVER_RADIUS_PX;
+        const clip = eObject.scan_clip;
+        const spots = [anchor];
+        if (clip && isFinite(clip.x) && isFinite(clip.y)) spots.push(clip);
+        for (const p of spots) {
+          const sx = m.a * p.x + m.c * p.y + m.e;
+          const sy = m.b * p.x + m.d * p.y + m.f;
+          const dx = sx - h.x, dy = sy - h.y;
+          if ((dx * dx + dy * dy) <= NA_HOVER_RADIUS_PX * NA_HOVER_RADIUS_PX) {
+            hovered = true; label = p; break;
+          }
+        }
       }
     } catch (e) { hovered = false; }
 
@@ -765,12 +1211,41 @@ class renderUTIL {
       ctx.font = this.getFontStyle(1);
       ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier * 0.02;
       ctx.save();
-      ctx.translate(anchor.x + off, anchor.y - off);
-      this.draw_Text(ctx, eObject.na_reason, fontPx, 0, 0);
+      ctx.translate(label.x + off, label.y - off);
+      this.draw_Text(ctx, reasonText, fontPx, 0, 0);
       ctx.restore();
     }
     ctx.font = saveFont; ctx.lineWidth = saveLW;
     ctx.strokeStyle = saveStroke; ctx.fillStyle = saveFill;
+  }
+
+  // THE HALF PIXEL.
+  //
+  // The core and the canvas disagree about what an integer coordinate means.
+  // The core's sampler (CvBridge.h, cvUnsignedMap1Sampling) returns pixel k's
+  // value exactly at x = k, so an integer coordinate is a pixel's CENTRE --
+  // the OpenCV convention, and the one every number in a report is in.
+  // ctx.drawImage(img, 0, 0) puts pixel k's top-left CORNER at k, so its centre
+  // lands at k + 0.5.
+  //
+  // Uncorrected, every overlay sits half a pixel up and left of the pixel it
+  // was measured on. Invisible at normal zoom; unmistakable once you are zoomed
+  // in far enough to see the pixels -- which is exactly when someone is checking
+  // whether an edge was found in the right place.
+  //
+  // The IMAGE moves, not the overlays. That leaves the coordinate system alone
+  // -- mouse picking, stored def geometry and every reported number keep meaning
+  // what they meant -- and simply puts the picture where those coordinates say
+  // it is. Call it immediately before drawImage, inside the image's own
+  // transform, and let the enclosing restore() undo it.
+  //
+  // It existed before as a `- 0.5` buried inside an image-offset translate, in
+  // three of the six places that draw an image and commented out in two more,
+  // so the same frame sat half a pixel apart between DefConf and the inspection
+  // view and moved depending on whether img_info happened to carry an offset.
+  // One place to say it, one place to change it.
+  alignImagePixelGrid(ctx) {
+    ctx.translate(-0.5, -0.5);
   }
 
   drawImageBoundaryGrid(ctx,imgInfo={

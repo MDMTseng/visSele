@@ -6,6 +6,11 @@
 
 本目錄涵蓋:**WebUI (1gen)**。
 
+本目錄目前的現況文件:
+
+- [`NEW_OBJECT_FLOW.md`](NEW_OBJECT_FLOW.md) — 建立新物件的完整 UX 流程
+  (take → 取景器 → SBM studio → 存檔),含 mm/px 來源、清除/保留矩陣、已知落差。
+
 三種文件要用三種讀法:
 
 - `*_CAVEATS.md` 是**追加式紀錄**,不要通讀,`grep` 你的症狀。

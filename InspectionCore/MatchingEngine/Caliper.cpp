@@ -1,4 +1,5 @@
 #include "Caliper.h"
+#include "MEPhase.h"
 #include "CvBridge.h"                // cvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
 #include <math.h>
@@ -134,10 +135,36 @@ static void caliper_dump_line_strip(const char *prefix, const char *name, const 
 static bool profile_to_edge(const float *profile, int nAcross, float step, float L,
                             const EdgeSelectParams &edge, acv_XY center, acv_XY s,
                             acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
-                            float *outPos, const uint8_t *valid = nullptr)
+                            float *outPos, const uint8_t *valid = nullptr,
+                            std::vector<float> *outGrad = nullptr)
 {
   std::vector<float> grad(nAcross, 0);
-  for (int i = 1; i < nAcross - 1; i++) grad[i] = profile[i + 1] - profile[i - 1];
+  // Optional across-edge smoothing, sigma in px -> samples. Off-image
+  // samples (valid==0) are left out of the kernel sum rather than read as 0,
+  // for the same reason the gradient guard below exists.
+  std::vector<float> sm;
+  const float *prof = profile;
+  if (edge.sigma > 0 && step > 0)
+  {
+    const float sg = edge.sigma / step;
+    const int R = std::max(1, (int)ceilf(3.0f * sg));
+    std::vector<float> k(2 * R + 1);
+    for (int d = -R; d <= R; d++) k[d + R] = expf(-0.5f * (float)(d * d) / (sg * sg));
+    sm.assign(nAcross, 0.f);
+    for (int i = 0; i < nAcross; i++)
+    {
+      double acc = 0, wsum = 0;
+      for (int d = -R; d <= R; d++)
+      {
+        int j = i + d; if (j < 0 || j >= nAcross) continue;
+        if (valid && !valid[j]) continue;
+        acc += (double)k[d + R] * profile[j]; wsum += k[d + R];
+      }
+      sm[i] = (wsum > 0) ? (float)(acc / wsum) : profile[i];
+    }
+    prof = sm.data();
+  }
+  for (int i = 1; i < nAcross - 1; i++) grad[i] = prof[i + 1] - prof[i - 1];
   grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
   // Kill the gradient wherever the central difference reads a sample that is
   // not image. The taps for i are i-1 and i+1, so those are what is checked --
@@ -153,6 +180,10 @@ static bool profile_to_edge(const float *profile, int nAcross, float step, float
     if (!valid[0]) grad[0] = 0;
     if (!valid[nAcross - 1]) grad[nAcross - 1] = 0;
   }
+  // Copied out BEFORE the selector runs, and copied out even when the selector
+  // finds nothing: "no edge passed the floor" is exactly the case the operator
+  // needs to see the profile for.
+  if (outGrad) *outGrad = grad;
   float pos, str;
   if (!edge_select(grad.data(), nAcross, edge, &pos, &str, outInfo)) return false;
   if (outPos) *outPos = pos;
@@ -165,7 +196,8 @@ static bool profile_to_edge(const float *profile, int nAcross, float step, float
 bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
-                     std::vector<float> *outProfile, float *outPos)
+                     std::vector<float> *outProfile, float *outPos,
+                     std::vector<float> *outGrad)
 {
   if (outInfo) *outInfo = EdgeSelectInfo();
   if (gray.empty()) return false;
@@ -190,6 +222,18 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   int nAcross = (int)nAcross_d;
   int halfW = (int)(W / 2);
 
+  // What this caliper is about to cost, in the unit the cost scales with.
+  //
+  // The time is not the portable number: it is this part, this def, this
+  // estimator. The SAMPLE COUNT is what a bigger part, a longer window, or a
+  // denser row of calipers multiplies -- and it is what an estimator that
+  // stops looking at three points around the peak and starts comparing the
+  // whole profile would multiply again. Divide the phase time by this and the
+  // answer transfers.
+  // Per-caliper gather: the single path for lines, arcs and direct callers.
+  mephase::count("cal_scan", 1);
+  mephase::count("cal_samp", (double)nAcross * (double)(2 * halfW + 1));
+
   std::vector<float> profile(nAcross, 0);
   // 1 = this profile entry is backed by at least one real sample.
   std::vector<uint8_t> vprof(nAcross, 0);
@@ -213,9 +257,15 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   }
   if (outProfile) *outProfile = profile;
   return profile_to_edge(profile.data(), nAcross, step, L, p.edge, center, s,
-                         outPt, outStrength, outInfo, outPos, vprof.data());
+                         outPt, outStrength, outInfo, outPos, vprof.data(), outGrad);
 }
 
+// NO CALLERS as of 2026-09-02. The live search point is SearchPointCV.cpp's
+// search_point_cv, which is a different algorithm (rectified band + fused
+// Sobel + per-row first hit), not a variant of this one. Left in place rather
+// than deleted because the header documents it as the search-point contract
+// and removing it is a separate decision -- but anything measured here is
+// measuring nothing the machine runs.
 bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
                        float length, float width, float step,
                        const EdgeSelectParams &edge, FeatureManager_BacPac *bacpac,
@@ -230,6 +280,12 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
   if (nAlong < 3) return false;
   int nCols = (int)width; if (nCols < 1) nCols = 1;
   int halfC = nCols / 2;
+
+  // Counted in the same unit as caliper_measure: a search point is a scan of
+  // nCols columns x nAlong samples, and it is bought and paid for out of the
+  // same measure phase.
+  mephase::count("sp_scan", 1);
+  mephase::count("sp_samp", (double)nAlong * (double)nCols);
 
   std::vector<float> prof(nAlong), grad(nAlong);
   std::vector<float> dist, wgt;                // per-column first-hit distance + strength
@@ -271,6 +327,22 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
 // inlier points coincident (zero covariance -- atan2(0,0) would "fit" a
 // horizontal line with rms 0, i.e. always in spec, which is the one answer a
 // degenerate input must never produce).
+// The residual weight at |res| given the current inlier threshold. soft=0 is
+// the hard mask the fits have always used (1 inside, 0 outside); soft=1 is a
+// Tukey biweight that reaches 0 AT the threshold, so a point sitting on the
+// boundary contributes nothing from either side and its flicker cannot move
+// the fit. In between the two are blended.
+static inline float caliper_res_weight(float absRes, float thr, float soft)
+{
+  if (!(thr > 0)) return 1.0f;
+  if (absRes > thr) return 0.0f;
+  if (!(soft > 0)) return 1.0f;
+  float u = absRes / thr, t = 1.0f - u * u;
+  float bw = t * t;                       // 1 at the centre, 0 at thr
+  if (soft >= 1.0f) return bw;
+  return (1.0f - soft) + soft * bw;       // blend toward the hard mask
+}
+
 static bool wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
                     const std::vector<char> &use, acv_XY &anchor, acv_XY &dir)
 {
@@ -308,123 +380,52 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   std::vector<float> dConf;                  // per-caliper confidence (dbg), -1 if none
   std::vector<int> ptCaliper;                // pts index -> caliper index (dbg)
 
-  // RECTIFY-ONCE + PREFIX-SUM. All calipers on a straight line share one rotated band,
-  // so sample it a single time into a contiguous buffer B[nAlong][nAcross] (rows = along
-  // the line, cols = across the edge), instead of re-gathering a diagonal grid per
-  // caliper. The per-caliper along-edge box average then becomes an O(nAcross) prefix-sum
-  // subtraction. Edge picking is identical (profile_to_edge) to caliper_measure.
+  // Cheap validity check on the caliper geometry, before placing anything.
+  // caliper_measure re-derives these itself and rejects the same inputs, so
+  // this is an early-out and not a second opinion: a step so small that
+  // 2*L/step overflows an int is UB in the conversion, not a large number, and
+  // it is worth refusing by name rather than as a silent miss on every caliper.
   float L = cal.length, step = (cal.step > 0 ? cal.step : 1.0f);
-  // Same double-first sizing as caliper_measure: a tiny step overflows the
-  // (int) conversion (UB; arm64 saturates INT_MAX) before the CELL_LIMIT
-  // below ever sees a sane number.
   double nAcross_d = 2.0 * L / step + 1.0;
   if (!(nAcross_d >= 3) || nAcross_d > 8e6)
   {
     if (nAcross_d > 8e6)
-      printf("caliper: refusing a %.0f-sample band width -- check that "
+      printf("caliper: refusing a %.0f-sample profile -- check that "
              "caliper step is in mm, not px\n", nAcross_d);
-    r.nValid = 0; return r;
+    r.nValid = 0;
+    if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count);
+    return r;
   }
-  int nAcross = (int)nAcross_d;
-  // A negative width has no meaning, and it used to KILL THE PROCESS: halfW
-  // went negative, nAlong = alongLen + 2*halfW + 1 went negative with it, and
-  // (size_t)negative * nAcross is astronomically large -> std::length_error ->
-  // uncaught -> abort. Not a crash in this frame: the whole core, i.e. the
-  // machine, on one mistyped def value. (The sibling caliper_measure path
-  // survives the same input by accident -- its `for (w=-halfW; w<=halfW; w++)`
-  // simply never executes -- which is why this only ever showed up here.)
-  int halfW = (int)(cal.width / 2);
-  if (halfW < 0) halfW = 0;
-  float alongLen = (float)hypot(p1.x - p0.x, p1.y - p0.y);
+  // Sampled only when someone is going to look at it. The gradient is a
+  // by-product -- profile_to_edge builds it either way -- so what this costs is
+  // the copy and the wire bytes, not the measurement.
+  const bool wantProf = DbgEmit("edge_profile");
+  if (wantProf) { r.prof.step = step; r.prof.L = L; r.prof.grad.reserve(count); }
   std::vector<acv_XY> pts; std::vector<float> w;
-  if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
-  int nAlong = (int)lroundf(alongLen) + 2 * halfW + 1; // a in [0,nAlong) -> along dist (a - halfW)
-  // Belt and braces: alongLen comes from the def's own endpoints and nothing
-  // upstream promises it is finite or positive. The allocation below is the
-  // one place where a bad number stops being a bad measurement and becomes a
-  // dead process, so it does not get to trust its inputs.
-  if (nAlong < 1) { r.nValid = 0; return r; }
-  // The other end of the same range. The def's clamps (count<=512, width<=64,
-  // length<=256) are in MILLIMETRES and are applied before the /= mmpp
-  // conversion; at this machine's ~72-135 px/mm they still permit nAcross in
-  // the tens of thousands and halfW in the thousands, so the two buffers below
-  // reach gigabytes and the std::bad_alloc aborts the process -- the same
-  // "one mistyped def value kills the machine" failure as the negative width,
-  // approached from above. The realistic trigger is not a hostile def, it is
-  // someone typing a pixel figure into a field that wants millimetres.
+  // ONE GATHER PER CALIPER, exactly as the arc path does.
   //
-  // Those clamps were sized against caliper_measure's cost model, which only
-  // allocates nAcross floats per caliper; this path allocates nAlong*nAcross
-  // for the whole band, so the clamps bound the CPU but not this memory.
+  // This used to rectify the whole line into a band and prefix-sum it, so that
+  // every caliper's along-edge average was an O(nAcross) subtraction. The
+  // sharing only pays for itself if there are enough calipers to share it:
+  // the band costs nAlong x nAcross regardless of `count`, where nAlong is the
+  // LINE LENGTH, while `count` separate gathers cost count x (2*halfW+1) x
+  // nAcross. Measured 2026-09-02 on test1 (count=10, the parser default):
+  // 10,111 samples per line for the band against ~4,550 for per-caliper
+  // gathering -- the band was 2.2x the work, on every line in the def, and the
+  // break-even for that geometry sits above count=20.
   //
-  // A real caliper is far below this: a 5mm span at 0.01mm steps with a 1mm
-  // width is well under a million cells.
-  {
-    const size_t cells = (size_t)nAlong * (size_t)nAcross;
-    const size_t CELL_LIMIT = 8u * 1024u * 1024u;   // ~32MB float + ~64MB double
-    if (cells > CELL_LIMIT)
-    {
-      printf("caliper: refusing a %dx%d band (%zu cells) -- check that "
-             "caliper length/width/step are in mm, not px\n",
-             nAlong, nAcross, cells);
-      r.nValid = 0;
-      return r;
-    }
-  }
-  acv_XY perpStep = acvVecMult(perp, step);
-  std::vector<float> B((size_t)nAlong * nAcross);
-  // Off-image samples are NaN, and a NaN stored into B poisons the column
-  // prefix sum below: every LATER caliper window touching that column averages
-  // to NaN, so one corner of the band off-frame silently blinds all downstream
-  // calipers on the line. The arc path (caliper_measure) drops such samples and
-  // averages what is left ("don't NaN the whole row"); this path now does the
-  // same via a parallel valid-count prefix sum. Bvalid is allocated lazily so
-  // the common all-on-image band pays nothing.
-  std::vector<uint8_t> Bvalid;
-  bool hasNaN = false;
-  for (int a = 0; a < nAlong; a++)
-  {
-    acv_XY rowBase = acvVecAdd(p0, acvVecMult(lineDir, (float)(a - halfW)));
-    acv_XY q = acvVecAdd(rowBase, acvVecMult(perp, -L));
-    float *Brow = &B[(size_t)a * nAcross];
-    for (int x = 0; x < nAcross; x++)
-    {
-      float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
-      if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
-      if (v != v) // off-image (or NaN backlight factor): drop the sample
-      {
-        if (!hasNaN) { hasNaN = true; Bvalid.assign(B.size(), 1); }
-        Bvalid[(size_t)a * nAcross + x] = 0;
-        v = 0;
-      }
-      Brow[x] = v;
-      q = acvVecAdd(q, perpStep);
-    }
-  }
-  // column prefix sums over the along axis: S[a+1][x] = S[a][x] + B[a][x]; S[0]=0.
-  std::vector<double> S((size_t)(nAlong + 1) * nAcross, 0.0);
-  // valid-sample-count prefix, same layout; only materialised when needed.
-  std::vector<int> Scnt;
-  if (hasNaN) Scnt.assign((size_t)(nAlong + 1) * nAcross, 0);
-  for (int a = 0; a < nAlong; a++)
-  {
-    const float *Brow = &B[(size_t)a * nAcross];
-    const double *Sp = &S[(size_t)a * nAcross];
-    double *Sc = &S[(size_t)(a + 1) * nAcross];
-    for (int x = 0; x < nAcross; x++) Sc[x] = Sp[x] + Brow[x];
-    if (hasNaN)
-    {
-      const uint8_t *Vrow = &Bvalid[(size_t)a * nAcross];
-      const int *Cp = &Scnt[(size_t)a * nAcross];
-      int *Cc = &Scnt[(size_t)(a + 1) * nAcross];
-      for (int x = 0; x < nAcross; x++) Cc[x] = Cp[x] + Vrow[x];
-    }
-  }
+  // Two other things come with it, both in the right direction. The caliper
+  // centre is no longer rounded to a whole buffer row (`lroundf(u*alongLen)`),
+  // so a caliper sits where the def put it. And the peak memory for a line
+  // drops from a nAlong x nAcross float band plus a double prefix array to one
+  // profile -- which is what the CELL_LIMIT guard removed below existed to
+  // bound.
+  //
+  // If a def ever runs a genuinely dense row of calipers, the band is the
+  // better structure and this is the wrong trade. It is not what the defs do.
 
-  std::vector<float> profile(nAcross);
-  // Per-entry: 1 = backed by real image, 0 = placeholder for off-image.
-  std::vector<uint8_t> vprof(nAcross, 1);
+  std::vector<float> profile;
   // Per-caliper hits, always tracked (one entry per caliper i in [0,count)).
   // status starts at 0=missed; flipped to 2=inlier after the fit (then some may
   // be demoted to 1=outlier when MAD rejection runs).
@@ -436,38 +437,17 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   {
     float u = (float)i / (count - 1);
     acv_XY c = acvVecAdd(p0, acvVecMult(acvVecSub(p1, p0), u)); // caliper center on the line
-    int aCtr = (int)lroundf(u * alongLen) + halfW;             // buffer row of the center
-    int aLo = aCtr - halfW, aHi = aCtr + halfW;                // window rows [aLo, aHi]
-    if (aLo < 0) aLo = 0; if (aHi > nAlong - 1) aHi = nAlong - 1;
-    int cnt = aHi - aLo + 1;
-    const double *Shi = &S[(size_t)(aHi + 1) * nAcross];
-    const double *Slo = &S[(size_t)aLo * nAcross];
-    if (!hasNaN)
-    {
-      for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
-      // No sample anywhere in this band left the image, so every entry is real.
-      std::fill(vprof.begin(), vprof.end(), (uint8_t)1);
-    }
-    else
-    {
-      // average over the VALID samples in the window; a fully-off-image column
-      // yields 0, same as caliper_measure's `(cnt > 0) ? sum/cnt : 0`.
-      const int *Chi = &Scnt[(size_t)(aHi + 1) * nAcross];
-      const int *Clo = &Scnt[(size_t)aLo * nAcross];
-      for (int x = 0; x < nAcross; x++)
-      {
-        int vc = Chi[x] - Clo[x];
-        profile[x] = (vc > 0) ? (float)((Shi[x] - Slo[x]) / vc) : 0.0f;
-        // The 0 above is a placeholder, NOT a measurement. Recording that here
-        // is the whole fix: the edge search used to receive it as an ordinary
-        // dark sample and duly found the strongest edge in the profile sitting
-        // on the frame boundary. See profile_to_edge.
-        vprof[x] = (vc > 0) ? 1 : 0;
-      }
-    }
 
+    // Search ACROSS the edge, average ALONG it -- caliper_measure's own
+    // geometry, so the off-image handling (drop the sample, mark the profile
+    // entry as not-a-measurement) is the shared one rather than a second
+    // implementation of it that has to be kept in agreement.
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
-    bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos, vprof.data());
+    std::vector<float> grad;
+    bool ok = caliper_measure(gray, c, perp, cal, bacpac, &pt, &str, &info,
+                              dbg ? &profile : nullptr, &pos,
+                              wantProf ? &grad : nullptr);
+    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); }
     // Lens-undistort BEFORE the fit so a distortion-curved edge fits the true
     // straight line, not a biased one. We also undistort the nominal anchor
     // `c` so the missed-caliper visualization (stored as a CaliperHit with
@@ -507,6 +487,9 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   if (r.nValid < 2) { if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
+  // The weights the fit actually solves with. Identical to w until a residual
+  // weight is applied, which is why soft_reject=0 is bit-identical.
+  std::vector<float> wf(w);
   acv_XY anchor = {0,0}, dir = {1,0};
   // If the fit NEVER succeeds, r must not be ok: anchor/dir would still hold
   // their initialisers and the "measurement" below would be a fabrication with
@@ -514,7 +497,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
-    if (!wlsLine(pts, w, use, anchor, dir)) break;
+    if (!wlsLine(pts, wf, use, anchor, dir)) break;
     fitOk = true;
     acv_XY n = { -dir.y, dir.x };
     std::vector<float> res(pts.size());
@@ -527,7 +510,14 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     float thr = 3.0f * 1.4826f * med + 0.5f; // MAD-based, +0.5px floor
     if (cal.max_error > 0 && thr > cal.max_error) thr = cal.max_error;
     int changed = 0;
-    for (size_t i = 0; i < pts.size(); i++) { char nu = fabsf(res[i]) <= thr ? 1 : 0; if (nu != use[i]) changed++; use[i] = nu; }
+    for (size_t i = 0; i < pts.size(); i++)
+    {
+      const float rw = caliper_res_weight(fabsf(res[i]), thr, cal.soft_reject);
+      wf[i] = w[i] * rw;
+      char nu = (rw > 0) ? 1 : 0;
+      if (nu != use[i]) changed++;
+      use[i] = nu;
+    }
     if (!changed) break;
   }
   // final stats
@@ -603,6 +593,12 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   while (span < 0) span += 2 * (float)M_PI;
   while (span >= 2 * (float)M_PI) span -= 2 * (float)M_PI;
 
+  // Sampled only when someone is going to look at it. The gradient is a
+  // by-product -- profile_to_edge builds it either way -- so what this costs is
+  // the copy and the wire bytes, not the measurement.
+  const bool wantProf = DbgEmit("edge_profile");
+  if (wantProf) { r.prof.step = (cal.step > 0 ? cal.step : 1.0f);
+                  r.prof.L = cal.length; r.prof.grad.reserve(count); }
   std::vector<acv_XY> pts; std::vector<float> w;
   // Per-caliper hits, always tracked. See caliper_locate_line for the encoding.
   r.hits.assign(count, CaliperHit{{0,0}, 0, 0.0f});
@@ -613,9 +609,11 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     acv_XY dir = { cosf(a), sinf(a) };               // radial = across-edge
     acv_XY c = acvVecAdd(center0, acvVecMult(dir, radius0));
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
-    std::vector<float> prof;
+    std::vector<float> prof, grad;
     bool ok = caliper_measure(gray, c, dir, cal, bacpac, &pt, &str, &info,
-                              dbg ? &prof : nullptr, &pos);
+                              dbg ? &prof : nullptr, &pos,
+                              wantProf ? &grad : nullptr);
+    if (wantProf) { r.prof.grad.push_back(std::move(grad)); r.prof.sel.push_back(ok ? pos : -1.f); }
     // Undistort the inlier hit (used for the Kasa fit) and the nominal radial
     // anchor (used as the missed-caliper marker at status=0) -- see
     // caliper_locate_line for the rationale and the NaN demote-on-divergence.
@@ -641,6 +639,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   if (r.nValid < 3) { if (dbg) caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
+  std::vector<float> wf(w);          // see the line fit
   acv_XY cen = center0; float rad = radius0;
   // Same guard as the line path: if Kasa never solves, cen/rad still hold the
   // def's NOMINAL circle, residuals against it are ~0 (the calipers were
@@ -649,7 +648,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   bool fitOk = false;
   for (int iter = 0; iter < 3; iter++)
   {
-    if (!kasaCircle(pts, w, use, cen, rad)) break;
+    if (!kasaCircle(pts, wf, use, cen, rad)) break;
     fitOk = true;
     std::vector<float> absr;
     for (size_t i = 0; i < pts.size(); i++) if (use[i])
@@ -661,7 +660,14 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     if (cal.max_error > 0 && thr > cal.max_error) thr = cal.max_error;
     int changed = 0;
     for (size_t i = 0; i < pts.size(); i++)
-    { float d = fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad); char nu = d<=thr?1:0; if (nu!=use[i])changed++; use[i]=nu; }
+    {
+      float d = fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad);
+      const float rw = caliper_res_weight(d, thr, cal.soft_reject);
+      wf[i] = w[i] * rw;
+      char nu = (rw > 0) ? 1 : 0;
+      if (nu != use[i]) changed++;
+      use[i] = nu;
+    }
     if (!changed) break;
   }
   double sq = 0, sumw = 0; int ni = 0;

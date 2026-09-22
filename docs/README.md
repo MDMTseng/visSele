@@ -5,6 +5,10 @@
 
 先讀本頁的 §1 §2 §5,再依你要做的事跳到對應文件。其餘不要通讀。
 
+> 🖼 **想更快的話:`docs/plates/` 是整個系統的圖解版 —— 14 張 JPG,直接 `Read` 就好。**
+> 機器長怎樣、埠位、資料流、配對、狀態機、鎖序、設定檔所有權、跑產中什麼不能碰,
+> 一張一個主題。先看 `docs/plates/README.md` 的對照表挑要看哪張。
+
 ---
 
 ## 1. 這是什麼機器
@@ -55,6 +59,7 @@ Core0_1 ↔ uInspESP32 走 **USB serial 230400**,核心的周邊 console 在 **4
 | 三方邊界合約(BPG 封包表、uInsp 狀態碼、跑產不干擾矩陣) | `docs/SYSTEM_MAP.md` | 2026-08-18;合約仍最完整,**但行號與埠位已失效** — 先讀 SYSTEM_OVERVIEW §8 |
 | **接手 Core0_1:現在做到哪、下一步、哪些會誤導你** | `InspectionCore/docs/HANDOVER_2026-08-26c.md` → `_26b` → `_26` | **最新,2026-08-27**;三份接續,c 最新。`HANDOVER_2026-08-18.md` 是上一輪的地圖 |
 | **def 檔長什麼樣、哪些欄位在 hash 裡、改哪個會讓訓練特徵失效** | `InspectionCore/docs/DEF_FILE_FORMAT.md` | **2026-08-27 新增**;結構、指紋、閉集字彙的地雷 |
+| **建立一個新物件:take 到 SBM 定位設定完成的完整 UX 流程** | `UI/WebUI/docs/NEW_OBJECT_FLOW.md` | **2026-08-29 新增**;取景器、mm/px 來源、清除/保留矩陣、三個會擋人的地方、已知落差 |
 | SBM 定位:studio 怎麼用、強健性怎麼量、特徵快取怎麼運作 | `InspectionCore/docs/HANDOVER_2026-08-26c.md` | 2026-08-27;含實測數字(ROI refine 值 15 倍、±30° 不退化) |
 | 想知道有哪些已知 bug / 哪些已修 | `InspectionCore/docs/AUDIT_BACKLOG_2026-08-18.md`(本輪)、`AUDIT_BACKLOG_2026-08-15.md`(上一輪) | 逐項標 VERIFIED/REPORTED、FIXED/OPEN |
 | 要測 / 想知道有哪些回歸測試 | `InspectionCore/docs/REGRESSION_TESTS.md` | **2026-08-19 更新**,四層測試的總索引 + 13 條坑 |

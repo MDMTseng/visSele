@@ -147,7 +147,7 @@ frames to parts by clock rather than by position.
 ## 5. Reference def and images
 
 ```
-def     Core0_1/data/10155  3G2570090B-1.hydef        (+ .png of the same name)
+def     Core0_1/data/_test/10155  3G2570090B-1.hydef        (+ .png of the same name)
 type    binary_processing_group -> sig360_circle_line
 ```
 

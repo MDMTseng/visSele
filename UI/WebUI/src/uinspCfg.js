@@ -33,6 +33,18 @@ export const CFG_GROUP = {
   gate_debounce_rise:    ["gate", "debounce_rise"],
   gate_debounce_fall:    ["gate", "debounce_fall"],
   min_detect_dist_um:    ["gate", "min_detect_dist_um"],
+  gate_ref:              ["gate", "gate_ref"],      // 'center' | 'trailing' -- the object's zero in the gate pulse
+  gate_cam_mode:         ["gate", "cam_mode"],
+  gate_cam_margin_pct:   ["gate", "cam_margin_pct"],
+  gate_proc_capacity_pct:["gate", "proc_capacity_pct"],
+  gate_proc_mode:        ["gate", "proc_mode"],
+  gate_proc_rate_hz:     ["gate", "proc_rate_hz"],
+  gate_proc_sep_us:      ["gate", "proc_sep_us"],
+  gate_proc_iir_shift:   ["gate", "proc_iir_shift"],
+  gate_proc_auto:        ["gate", "proc_auto"],
+  gate_proc_auto_max_us: ["gate", "proc_auto_max_us"],
+  gate_proc_auto_rho_pct:["gate", "proc_auto_rho_pct"],
+  gate_cam_stale_ms:     ["gate", "cam_stale_ms"],
 
   report_match_ts:       ["cam", "report_match_ts"],
   // report_match_pcnt is NOT mapped any more: pulse-count pairing was removed
@@ -51,6 +63,7 @@ export const CFG_GROUP = {
   // "stop_only" | "none"; the firmware still parses the older names.
   skip_policy_mode:      ["skip_policy", "mode"],
   unanswered_stop_after: ["skip_policy", "stop_after"],
+  nomatch_stop_after:    ["skip_policy", "nomatch_stop_after"],
 };
 
 // [group, key] -> flat name

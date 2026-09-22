@@ -32,6 +32,15 @@ export const LABEL_STYLE = {
 };
 export const VALUE_STYLE = {
   flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 3,
+  // Read-only values inherit their colour, and what they were inheriting was
+  // the app's dark-theme white -- invisible on this sheet. The inputs never
+  // showed it because INPUT_STYLE sets its own #222; the plain text next to
+  // them did, so "類型 線段/Line" read as a label with nothing after it.
+  //
+  // Set on the value cell rather than on each span: the cell is where a value
+  // lives whatever kind it is, and a per-call colour is a thing to forget the
+  // next time a row is added.
+  color: '#222',
 };
 export const INPUT_STYLE = {
   width: '100%', height: 22, fontSize: 12, padding: '0 4px',
@@ -126,7 +135,19 @@ export function Section({ label, onClick, children }) {
 //                   field's own value + onCommit.
 //   quickActions  — escape hatch: raw JSX for non-numeric tweak patterns
 //                   (used by shape-specific button groups).
-export function NumberField({ label, value, onCommit, step = 0.0001, quickActions, tweak }) {
+// min/max/int: the field's CONTRACT, enforced on commit and not only offered to
+// the spinner.
+//
+// `type=number` with min/max constrains the arrows and nothing else -- typing
+// -5 into a caliper count, or 0 where the core runs 2, was accepted, written to
+// the def and then silently re-interpreted by the core's own clamp. The value on
+// screen was not the value the machine used, which is the same class of defect
+// as edge.min_strength defaulting to 10 with nothing saying so.
+//
+// Clamping shows itself: the box snaps to the bound as soon as it commits, so a
+// refused number is visible rather than quietly rewritten deeper down.
+export function NumberField({ label, value, onCommit, step = 0.0001,
+                              min, max, int, quickActions, tweak }) {
   const [local, setLocal] = useState(() => toFixed4(value));
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setLocal(toFixed4(value)); }, [value]);
@@ -135,7 +156,10 @@ export function NumberField({ label, value, onCommit, step = 0.0001, quickAction
     editing.current = false;
     const n = parseFloat(local);
     if (Number.isFinite(n)) {
-      const rounded = parseFloat(n.toFixed(4));
+      let v = int ? Math.round(n) : parseFloat(n.toFixed(4));
+      if (typeof min === 'number' && v < min) v = min;
+      if (typeof max === 'number' && v > max) v = max;
+      const rounded = int ? v : parseFloat(v.toFixed(4));
       onCommit(rounded);
       setLocal('' + rounded);
     } else {
@@ -151,12 +175,13 @@ export function NumberField({ label, value, onCommit, step = 0.0001, quickAction
             value={value} onCommit={onCommit}
             mul={typeof tweak === 'object' ? tweak.mul : undefined}
             add={typeof tweak === 'object' ? tweak.add : undefined}
+            extra={typeof tweak === 'object' ? tweak.extra : undefined}
           />
         : undefined);
 
   return <Row label={label} actions={actions}>
     <input
-      type="number" step={step} style={INPUT_STYLE} value={local}
+      type="number" step={step} min={min} max={max} style={INPUT_STYLE} value={local}
       onChange={(e) => { editing.current = true; setLocal(e.target.value); }}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -201,10 +226,15 @@ export function SwitchField({ label, checked, onChange }) {
 // ───── DropdownField ─────────────────────────────────────────────────────
 // Single-select list. `value` is the current selection; clicking shows a
 // menu of `options`; onChange is called with the new value.
-export function DropdownField({ label, value, options, onChange }) {
+// optionLabel: how a stored value is SHOWN. The value written to the def stays
+// English -- it is a wire format -- while the operator reads the transition or
+// the rule in their own language. Identity by default, so a caller that has
+// nothing to translate is unchanged.
+export function DropdownField({ label, value, options, onChange, optionLabel }) {
+  const show = optionLabel || ((v) => v);
   const menu = (
     <Menu onClick={(ev) => onChange(options[ev.key])}>
-      {options.map((opt, idx) => <Menu.Item key={idx}>{opt}</Menu.Item>)}
+      {options.map((opt, idx) => <Menu.Item key={idx}>{show(opt)}</Menu.Item>)}
     </Menu>
   );
   return <Row label={label}>
@@ -217,7 +247,7 @@ export function DropdownField({ label, value, options, onChange }) {
         minWidth: 96, gap: 6,
       }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {value ?? '—'}
+          {value === undefined || value === null ? '—' : show(value)}
         </span>
         <CaretDownOutlined />
       </a>
@@ -242,7 +272,10 @@ export function StepButton({ onClick, title, children }) {
 // Default pattern (`tweak: true` shorthand) covers the common "double/halve
 // + nudge by 0.1 / 0.01" use case for size-like fields.
 const DEFAULT_TWEAK = { mul: [], add: [] };
-export function NumberTweakActions({ value, onCommit, mul, add }) {
+// `extra`: [{ label, title, value: () => number }] -- named presets beside
+// the arithmetic ones (the caliper width's 填滿, which needs the shape's
+// geometry the popover does not have, so the caller computes it).
+export function NumberTweakActions({ value, onCommit, mul, add, extra }) {
   const v = Number(value);
   const cleanV = Number.isFinite(v) ? v : 0;
   const m = mul ?? DEFAULT_TWEAK.mul;
@@ -256,6 +289,9 @@ export function NumberTweakActions({ value, onCommit, mul, add }) {
       onClick={() => onCommit(cleanV + d)} title={`+ ${d}`}>+{d}</StepButton>)}
     {a.map((d) => <StepButton key={`-${d}`}
       onClick={() => onCommit(cleanV - d)} title={`− ${d}`}>−{d}</StepButton>)}
+    {(extra || []).map((x, i) => <StepButton key={`x_${i}`}
+      onClick={() => { const n = Number(x.value()); if (Number.isFinite(n) && n > 0) onCommit(n); }}
+      title={x.title || x.label}>{x.label}</StepButton>)}
   </>;
 }
 
@@ -264,11 +300,15 @@ export function NumberTweakActions({ value, onCommit, mul, add }) {
 // clicks call `onPick()` which the parent routes to ref-pick mode.
 // `refEntry` is the {id, element} object from shape.ref[slotIdx].
 // `shapeList` is consulted to resolve the referenced shape's display name.
-export function RefSlot({ refEntry, shapeList, onPick }) {
+// emptyLabel: what an unfilled slot says. Passed in rather than hard-coded so
+// the words stay in the dictionary with the rest of the sheet's; a slot that
+// HAS a reference shows that shape's own name, which is the def author's text
+// and is never translated.
+export function RefSlot({ refEntry, shapeList, onPick, emptyLabel }) {
   const resolved = refEntry && shapeList && shapeList.find((s) => s.id === refEntry.id);
   const label = resolved
     ? (resolved.name || `id ${resolved.id}`)
-    : (refEntry && refEntry.id !== undefined ? `id ${refEntry.id}` : '(pick)');
+    : (refEntry && refEntry.id !== undefined ? `id ${refEntry.id}` : (emptyLabel || '(pick)'));
   return <AntButton size="small" onClick={onPick} style={{
     fontSize: 11, height: 22, padding: '0 8px',
     maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',

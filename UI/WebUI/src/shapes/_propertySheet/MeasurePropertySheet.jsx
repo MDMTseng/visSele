@@ -11,15 +11,17 @@
 // Calc subtype: the bespoke `calc_f` editor (postfix-expression builder)
 // remains as Measure_Calc_Editor in DefConfUI.js; we embed it directly here
 // instead of redoing it as primitives.
+import { B } from './bounds';
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { fields as measureFields } from '../measure';
+import { ANGLE_RANGES } from '../measure/angle';
 import { BACK_SIDE_LIMITS_ENABLED } from 'UTIL/backSideLimits';
 import { Measure_Calc_Editor } from 'JSSRCROOT/DefConfUI';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
-  RefSlot, StepButton, translate,
+  RefSlot, StepButton, NumberTweakActions, translate,
 } from './primitives.jsx';
 
 const SUBTYPES = Object.values(SHAPE_TYPE.measure_subtype).filter(v => v !== 'NA');
@@ -40,8 +42,44 @@ function commitField(shape, key, newVal, onUpdate) {
 
 const wrap360 = (v) => ((Number(v) % 360) + 360) % 360;
 
+// SETTING A NUMBER SHOULD NOT REQUIRE A KEYBOARD.
+//
+// Target and limits are the numbers an operator changes most, on a machine
+// where typing is the slowest and least reliable thing they can do. Two buttons
+// remove nearly all of it:
+//
+//   目標   ← the value just measured, rounded to 0.01. Rounding is the point:
+//          a target of 2.3175 is a reading, not a specification.
+//   規格/管制上下限  ← the target, as a starting point. From there +0.1 / +0.01
+//          walks it out, which is how a tolerance is actually chosen.
+//
+// They sit in the same popover as the existing +/- steps, so they cost no
+// vertical space in a 200px column, and each offers itself only when it has
+// something to give -- no CHECK yet, no measured value, no button.
+function TargetActions({ measured, value, onCommit, tweak }) {
+  const has = Number.isFinite(measured);
+  return <>
+    {has && <StepButton title={'用量測值 ' + measured.toFixed(4)}
+      onClick={() => onCommit(Math.round(measured * 100) / 100)}>
+      ←{(Math.round(measured * 100) / 100).toFixed(2)}
+    </StepButton>}
+    <NumberTweakActions value={value} onCommit={onCommit}
+      mul={tweak && tweak.mul} add={tweak && tweak.add} />
+  </>;
+}
+
+function LimitActions({ target, value, onCommit, tweak }) {
+  const has = Number.isFinite(target);
+  return <>
+    {has && <StepButton title={'跟隨目標 ' + target}
+      onClick={() => onCommit(target)}>←目標</StepButton>}
+    <NumberTweakActions value={value} onCommit={onCommit}
+      mul={tweak && tweak.mul} add={tweak && tweak.add} />
+  </>;
+}
+
 export function MeasurePropertySheet({
-  shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'measure',
+  shape, shapeList, onUpdate, onTracePick, dict, dictTheme = 'measure', measured,
 }) {
   const t = (key) => translate(dict, dictTheme, key);
   const set = (key) => (v) => commitField(shape, key, v, onUpdate);
@@ -58,6 +96,11 @@ export function MeasurePropertySheet({
 
   const isCalc       = shape.subtype === SHAPE_TYPE.measure_subtype.calc;
   const isCircleInfo = shape.subtype === SHAPE_TYPE.measure_subtype.circle_info;
+  const isAngle      = shape.subtype === SHAPE_TYPE.measure_subtype.angle;
+  const ANGLE_MODES  = ['signed', 'quadrant'];
+  const angleModeLabel = (m) => (m === 'signed' ? '向量(新)' : '夾角(象限,舊)');
+  const rangeLabel = (k) => { const r = ANGLE_RANGES.find((x) => x.key === k); return r ? r.label : k; };
+  const rangeHint = (k) => { const r = ANGLE_RANGES.find((x) => x.key === k); return r ? r.hint : ''; };
   const refCount     = isCalc ? 0 : 3;
 
   return <div>
@@ -65,25 +108,61 @@ export function MeasurePropertySheet({
     <TextField label={t('name')} value={shape.name}
       onCommit={(name) => onUpdate({ ...shape, name })} />
     <DropdownField label={t('subtype')} value={shape.subtype}
-      options={SUBTYPES}
+      options={SUBTYPES} optionLabel={(v) => t('opt_' + v)}
       onChange={(subtype) => onUpdate({ ...shape, subtype })} />
 
+    {/* Angle mode. 'signed' is the parallelism / squareness measure: the
+        rotation from line A (ref 0, the reference) to line B minus the
+        nominal, wrapped into -90..+90, CCW positive. No intersection, no
+        quadrant, so two parallel lines read exactly 0 and the label point
+        only places the overlay. Absent = the classic quadrant angle. */}
+    {isAngle && <Section label="角度模式">
+      <DropdownField label="模式" value={shape.angle_mode || 'quadrant'}
+        options={ANGLE_MODES} optionLabel={angleModeLabel}
+        onChange={(m) => onUpdate({ ...shape, angle_mode: m === 'signed' ? 'signed' : undefined,
+                                    ...(m === 'signed' && shape.nominal_deg === undefined ? { nominal_deg: 0 } : {}) })} />
+      {shape.angle_mode === 'signed' && <>
+        <DropdownField label="範圍" value={shape.angle_range || 'signed90'}
+          options={ANGLE_RANGES.map((r) => r.key)} optionLabel={rangeLabel}
+          onChange={(k) => onUpdate({ ...shape, angle_range: k })} />
+        <Row label=""><span style={{ fontSize: 11, color: '#888' }}>{rangeHint(shape.angle_range || 'signed90')}</span></Row>
+        <NumberField label="標稱" unit="º" step={1} value={shape.nominal_deg ?? 0}
+          onCommit={(v) => onUpdate({ ...shape, nominal_deg: Number(v) || 0 })}
+          quickActions={<>
+            <StepButton onClick={() => onUpdate({ ...shape, nominal_deg: 0 })}>0 平行</StepButton>
+            <StepButton onClick={() => onUpdate({ ...shape, nominal_deg: 90 })}>90 垂直</StepButton>
+          </>} />
+        <Row label=""><span style={{ fontSize: 11, color: '#888' }}>
+          以兩條線的方向向量算,線 A = 參照 0,逆時針為正,先減標稱再折到所選範圍;標籤點只決定畫在哪。</span></Row>
+      </>}
+    </Section>}
+
     {/* Target + control/spec limits */}
-    <Section label="target">
+    <Section label={t('target')}>
       {shape.angleDeg !== undefined &&
-        <NumberField label={t('angleDeg')} value={shape.angleDeg}
+        <NumberField {...B.angleDeg} label={t('angleDeg')} value={shape.angleDeg}
           onCommit={(v) => commitField(shape, 'angleDeg', wrap360(v), onUpdate)}
           quickActions={angleActs('angleDeg', shape.angleDeg)} />}
-      <NumberField label={t('value')} value={shape.value}
-        onCommit={set('value')} tweak={limitTweak} />
-      <NumberField label="USL" value={shape.USL}
-        onCommit={set('USL')} tweak={limitTweak} />
-      <NumberField label="LSL" value={shape.LSL}
-        onCommit={set('LSL')} tweak={limitTweak} />
-      <NumberField label="UCL" value={shape.UCL}
-        onCommit={set('UCL')} tweak={limitTweak} />
-      <NumberField label="LCL" value={shape.LCL}
-        onCommit={set('LCL')} tweak={limitTweak} />
+      <NumberField {...B.limit} label={t('value')} value={shape.value}
+        onCommit={set('value')}
+        quickActions={<TargetActions measured={measured} value={shape.value}
+          onCommit={set('value')} tweak={limitTweak} />} />
+      <NumberField {...B.limit} label={t('USL')} value={shape.USL}
+        onCommit={set('USL')}
+        quickActions={<LimitActions target={shape.value} value={shape.USL}
+          onCommit={set('USL')} tweak={limitTweak} />} />
+      <NumberField {...B.limit} label={t('LSL')} value={shape.LSL}
+        onCommit={set('LSL')}
+        quickActions={<LimitActions target={shape.value} value={shape.LSL}
+          onCommit={set('LSL')} tweak={limitTweak} />} />
+      <NumberField {...B.limit} label={t('UCL')} value={shape.UCL}
+        onCommit={set('UCL')}
+        quickActions={<LimitActions target={shape.value} value={shape.UCL}
+          onCommit={set('UCL')} tweak={limitTweak} />} />
+      <NumberField {...B.limit} label={t('LCL')} value={shape.LCL}
+        onCommit={set('LCL')}
+        quickActions={<LimitActions target={shape.value} value={shape.LCL}
+          onCommit={set('LCL')} tweak={limitTweak} />} />
     </Section>
 
     {/* Back-side limit set (toggle + nested copy) */}
@@ -96,22 +175,22 @@ export function MeasurePropertySheet({
     {BACK_SIDE_LIMITS_ENABLED && <SwitchField label={t('back_value_setup')}
       checked={!!shape.back_value_setup}
       onChange={(v) => commitField(shape, 'back_value_setup', v, onUpdate)} />}
-    {BACK_SIDE_LIMITS_ENABLED && shape.back_value_setup && <Section label="back">
-      <NumberField label="value_b" value={shape.value_b}
+    {BACK_SIDE_LIMITS_ENABLED && shape.back_value_setup && <Section label={t('back')}>
+      <NumberField {...B.limit} label={t('value_b')} value={shape.value_b}
         onCommit={set('value_b')} tweak={limitTweak} />
-      <NumberField label="USL_b" value={shape.USL_b}
+      <NumberField {...B.limit} label={t('USL_b')} value={shape.USL_b}
         onCommit={set('USL_b')} tweak={limitTweak} />
-      <NumberField label="LSL_b" value={shape.LSL_b}
+      <NumberField {...B.limit} label={t('LSL_b')} value={shape.LSL_b}
         onCommit={set('LSL_b')} tweak={limitTweak} />
-      <NumberField label="UCL_b" value={shape.UCL_b}
+      <NumberField {...B.limit} label={t('UCL_b')} value={shape.UCL_b}
         onCommit={set('UCL_b')} tweak={limitTweak} />
-      <NumberField label="LCL_b" value={shape.LCL_b}
+      <NumberField {...B.limit} label={t('LCL_b')} value={shape.LCL_b}
         onCommit={set('LCL_b')} tweak={limitTweak} />
     </Section>}
 
     {/* Behavior */}
-    <Section label="behavior">
-      <NumberField label={t('importance')} value={shape.importance} step={1}
+    <Section label={t('behavior')}>
+      <NumberField {...B.importance} label={t('importance')} value={shape.importance}
         onCommit={set('importance')} tweak={{ add: [1] }} />
       {/* <NumberField label={t('width')} value={shape.width}
         onCommit={set('width')} tweak={sizeTweak} /> */}
@@ -121,30 +200,30 @@ export function MeasurePropertySheet({
       <SwitchField label={t('orientation_essential')}
         checked={!!shape.orientation_essential}
         onChange={(v) => commitField(shape, 'orientation_essential', v, onUpdate)} />
-      <SwitchField label="NGasNA" checked={!!shape.NGasNA}
+      <SwitchField label={t('NGasNA')} checked={!!shape.NGasNA}
         onChange={(v) => commitField(shape, 'NGasNA', v, onUpdate)} />
-      <SwitchField label="NAasNG" checked={!!shape.NAasNG}
+      <SwitchField label={t('NAasNG')} checked={!!shape.NAasNG}
         onChange={(v) => commitField(shape, 'NAasNG', v, onUpdate)} />
     </Section>
 
     {/* Calibration mapping value_A/B → value_X/Y */}
-    <Section label="value mapping">
-      <NumberField label="value_A" value={shape.value_A} onCommit={set('value_A')} tweak={sizeTweak} />
-      <NumberField label="value_B" value={shape.value_B} onCommit={set('value_B')} tweak={sizeTweak} />
-      <NumberField label="value_X" value={shape.value_X} onCommit={set('value_X')} tweak={sizeTweak} />
-      <NumberField label="value_Y" value={shape.value_Y} onCommit={set('value_Y')} tweak={sizeTweak} />
+    <Section label={t('value_mapping')}>
+      <NumberField {...B.mapping} label={t('value_A')} value={shape.value_A} onCommit={set('value_A')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_B')} value={shape.value_B} onCommit={set('value_B')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_X')} value={shape.value_X} onCommit={set('value_X')} tweak={sizeTweak} />
+      <NumberField {...B.mapping} label={t('value_Y')} value={shape.value_Y} onCommit={set('value_Y')} tweak={sizeTweak} />
     </Section>
 
     {/* circle_info subtype: which scalar to extract */}
     {isCircleInfo && <DropdownField label={t('info_type')}
       value={shape.info_type}
-      options={CIRCLE_INFO_TYPES}
+      options={CIRCLE_INFO_TYPES} optionLabel={(v) => t('opt_' + v)}
       onChange={(info_type) => onUpdate({ ...shape, info_type })} />}
 
     {/* References */}
     <Section label={t('ref_baseLine') || 'ref_baseLine'}>
       <Row label={t('baseLine') || '0'}>
-        <RefSlot refEntry={shape.ref_baseLine} shapeList={shapeList}
+        <RefSlot emptyLabel={t('pick_ref')} refEntry={shape.ref_baseLine} shapeList={shapeList}
           onPick={() => onTracePick && onTracePick(['ref_baseLine'])} />
       </Row>
     </Section>
@@ -152,7 +231,7 @@ export function MeasurePropertySheet({
     {refCount > 0 && <Section label={t('ref') || 'ref'}>
       {Array.from({ length: refCount }).map((_, i) => (
         <Row key={i} label={String(i)}>
-          <RefSlot refEntry={shape.ref && shape.ref[i]} shapeList={shapeList}
+          <RefSlot emptyLabel={t('pick_ref')} refEntry={shape.ref && shape.ref[i]} shapeList={shapeList}
             onPick={() => onTracePick && onTracePick(['ref', String(i)])} />
         </Row>
       ))}
@@ -162,13 +241,13 @@ export function MeasurePropertySheet({
         Measure_Calc_Editor (DefConfUI export) — bespoke widget that's not
         worth re-implementing as primitives yet. */}
     {isCalc && <CalcFEditor shape={shape} shapeList={shapeList}
-      onUpdate={onUpdate} onTracePick={onTracePick} />}
+      onUpdate={onUpdate} onTracePick={onTracePick} calcLabel={t('calc_f')} />}
   </div>;
 }
 
 // Wraps Measure_Calc_Editor in a JsonEditBlock-style { target, onChange,
 // renderContext } adapter so the legacy component drops in unchanged.
-function CalcFEditor({ shape, shapeList, onUpdate, onTracePick }) {
+function CalcFEditor({ shape, shapeList, onUpdate, onTracePick, calcLabel }) {
   // measure_list: every other measure (Measure_Calc_Editor filters internally
   // for loop avoidance via refChainHasLoop, but we pre-filter by type at least).
   const measure_list = (shapeList || []).filter(s => s.type === SHAPE_TYPE.measure);
@@ -179,7 +258,7 @@ function CalcFEditor({ shape, shapeList, onUpdate, onTracePick }) {
     if (!next) return;
     onUpdate({ ...shape, calc_f: next });
   };
-  return <Section label="calc_f">
+  return <Section label={calcLabel}>
     <Measure_Calc_Editor target={target} onChange={onChange} className=""
       renderContext={{
         measure_list,
