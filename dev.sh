@@ -118,6 +118,16 @@ install_core() {
     [[ -f "$src/$exe" ]] || continue
     cp -f "$src/$exe" "$APP_DIR/Core/$exe" || die "could not replace $APP_DIR/Core/$exe (is it running?)"
     n=$((n + 1))
+    # The symbols go with the binary they describe, when the build made any.
+    #
+    # A full build strips the exe and writes <exe>.debug beside it, and this
+    # copied only the exe -- so the shipped app had a stripped core and NO
+    # symbols, and a crash on a machine resolved to bare addresses. The fast
+    # path deletes any .debug for the opposite reason (it installs an
+    # unstripped exe, and a .debug from an older build describes a different
+    # binary), so the two paths together kept the app permanently without them
+    # and it was being papered over by copying the files across by hand.
+    [[ -f "$src/$exe.debug" ]] && cp -f "$src/$exe.debug" "$APP_DIR/Core/$exe.debug"
   done
   [[ "$n" -gt 0 ]] || die "nothing to install from $src"
   ok "installed $n core binaries into $APP_DIR/Core"
