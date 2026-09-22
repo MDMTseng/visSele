@@ -240,9 +240,14 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     return undefined;
   });
   const edit_info = useSelector(state => state.UIData.edit_info);
+  // To read the def BACK OFF THE DISK rather than rebuild it from memory.
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
+  const SEND_CORE = (tl,prop,data,promiseCBs) =>
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID,tl,prop,data,undefined,promiseCBs));
   // Reaches the DB_WS instance itself, for query() -- which is NOT send(). See
   // the note on query() in script.jsx: send() wraps its argument in an insert
   // envelope and writes it, so asking a question through it stores the question.
@@ -390,43 +395,61 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
 
   // PUSHING IT IS THE FIX; WARNING IS ONLY THE NOTICE.
   //
-  // The def is generated the same way the save path generates it, because
-  // defFileGeneration is what stamps featureSet_sha1 -- so this uploads the
-  // document the sha actually names.
+  // THE FILE ON DISK IS WHAT GETS UPLOADED. Not a def rebuilt from what is in
+  // memory -- read back through the core with LD, the same command that loaded
+  // it, and sent verbatim.
   //
-  // And it is CHECKED against the sha we asked about. If the regenerated def
-  // hashes to something else then the def in memory is not the def the records
-  // are being written against, and uploading it would create a THIRD sha:
-  // one nobody asked about, one still missing, and a new document that adopts
-  // nothing. Refuse and say so instead -- that case is a different bug and
-  // hiding it under a successful-looking upload is how it would survive.
+  // It used to regenerate from edit_info, and for any recipe carrying 製程
+  // control-margin rows that could never work. Entering inspection merges those
+  // overrides and folds the display level into quality_essential, then puts the
+  // ALTERED def back into the store; the copy sent to the core keeps the file's
+  // sha as a label (see the note by InspFilingSha) so the rows file under it.
+  // So the store holds content B labelled B, the rows point at A, and
+  // regenerating could only ever produce B. The button refused -- correctly,
+  // because uploading B would leave a third sha and A still missing -- and
+  // there was no path left that worked. The advice it printed, reload the
+  // recipe, does the same thing again.
+  //
+  // Reading the file also removes a question nobody could answer from the
+  // screen: whether the thing being uploaded had been altered in memory since
+  // it was loaded. The file cannot have been.
   const pushDef = React.useCallback(() => {
-    let rep;
-    try { rep = defFileGeneration(edit_info); }
-    catch (e) {
-      Modal.error({ title: '無法產生設定檔', content: String(e && e.message || e) });
+    if (!defModelPath) {
+      Modal.error({ title: '不知道這個配方的檔案位置',
+                    content: '請回設定畫面重新載入這個配方後再試。' });
       return;
     }
-    if (rep.featureSet_sha1 !== defSha) {
-      Modal.error({
-        title: '設定檔對不上,沒有上傳',
-        width: 560,
-        content: (<div style={{ lineHeight: 1.9 }}>
-          <div>畫面上的設定檔重新產生後是另一個 sha,和正在檢驗的那一份不同。</div>
-          <div style={{ marginTop: 8 }}>
-            檢驗中 <code>{String(defSha).slice(0, 12)}…</code><br/>
-            重新產生 <code>{String(rep.featureSet_sha1).slice(0, 12)}…</code>
-          </div>
-          <div style={{ marginTop: 8, color: '#a8071a' }}>
-            上傳它只會多一份沒有人在用的設定檔,原本那一份還是缺的。請回設定畫面重新載入這個配方。
-          </div>
-        </div>),
-      });
+    if (CORE_ID === undefined) {
+      Modal.error({ title: '核心沒有連線', content: '設定檔要透過核心讀取。' });
       return;
     }
-    // Legacy bare-payload shape, the same one the save path and the inspection
-    // writer use -- the server reads a message with no dbcmd as an insert.
-    WS_SEND(DefFile_DB_W_ID, rep)
+    const done = (rep) => {
+      // The FILE's own sha against the sha the rows carry. They can differ:
+      // somebody edited and saved the recipe after this session started
+      // inspecting, so the file is no longer the document these records are
+      // against. Uploading it would file the wrong content under A.
+      if (rep && rep.featureSet_sha1 !== defSha) {
+        Modal.error({
+          title: '磁碟上的設定檔已經不是這一份',
+          width: 560,
+          content: (<div style={{ lineHeight: 1.9 }}>
+            <div>檔案讀回來的 sha 和正在檢驗的這一份不同,表示這個配方在檢驗開始後被存檔過。</div>
+            <div style={{ marginTop: 8 }}>
+              檢驗中 <code>{String(defSha).slice(0, 12)}…</code><br/>
+              檔案上 <code>{String(rep.featureSet_sha1).slice(0, 12)}…</code>
+            </div>
+            <div style={{ marginTop: 8, color: '#a8071a' }}>
+              上傳它會把另一份內容存成這一份的 sha。請回設定畫面重新載入這個配方,
+              再重新進入檢驗。
+            </div>
+          </div>),
+        });
+        return;
+      }
+      // Legacy bare-payload shape, the same one the save path and the
+      // inspection writer use -- the server reads a message with no dbcmd as
+      // an insert.
+      WS_SEND(DefFile_DB_W_ID, rep)
       .then(() => {
         setDefInDb('known');
         message.success('設定檔已上傳,先前的檢驗資料也會接回來');
@@ -440,7 +463,31 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
           </div>),
         });
       });
-  }, [edit_info, defSha, DefFile_DB_W_ID]);   // eslint-disable-line react-hooks/exhaustive-deps
+    };
+
+    // LD is how the def was loaded in the first place, so this is the same
+    // document by the same route. Nothing is dispatched: the reply is read and
+    // dropped, because loading it into the store is exactly what must not
+    // happen -- that would restart the session's def from under it.
+    SEND_CORE('LD', 0, { deffile: defModelPath + '.' + DEF_EXTENSION }, {
+      resolve: (pkts) => {
+        const df = (pkts || []).find((p) => p && p.type === 'DF');
+        if (!df || !df.data) {
+          Modal.error({ title: '讀不到設定檔',
+                        content: defModelPath + '.' + DEF_EXTENSION + ' 沒有回傳內容。' });
+          return;
+        }
+        done(df.data);
+      },
+      reject: (e) => Modal.error({
+        title: '讀不到設定檔',
+        content: (<div style={{ lineHeight: 1.9 }}>
+          <div>{defModelPath + '.' + DEF_EXTENSION}</div>
+          <div style={{ marginTop: 8 }}>原因:{(e && e.message) ? e.message : '沒有回應'}</div>
+        </div>),
+      }),
+    });
+  }, [defModelPath, CORE_ID, defSha, DefFile_DB_W_ID]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (defInDb !== 'missing') return;
