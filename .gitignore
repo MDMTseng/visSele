@@ -36,11 +36,8 @@ InspectionCore/contrib/wfqueue/makefile
 InspectionCore/CoreHub/CMakeFiles
 cmake_install.cmake
 InspectionCore/CoreHub/Makefile
-UI/Electron_XPLAT/release-builds
 InspectionCore/contrib/aravis/test/arvTool/arvtool
 InspectionCore/contrib/smem_channel/test/node_napi/build/
-UI/Electron_XPLAT/build
-UI/Electron_XPLAT/app_setup_info.json
 InspectionCore/Core0_1/visSele
 InspectionCore/Core0_1/CMakeFiles/
 InspectionCore/Core0_1/Makefile
@@ -68,7 +65,6 @@ Peripheral/MStepperECat/.sync/
 venv/
 InspectionCore/CoreHub/playground
 InspectionCore/CoreHub/PluginTemp
-UI/Electron_XPLAT/build_
 InspectionCore/contrib/cJSONPP/test/build
 InspectionCore/CoreHub/PluginRemote/
 InspectionCore/MatchingEngine/build/
