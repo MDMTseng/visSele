@@ -37,16 +37,14 @@ export_APP_Core:
 	(cd $(abspath .)/InspectionCore/Core0_1/ ; make -f Makefile_mods export_binary EXPORT_PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core)
 
 	
+	# scripts/ no longer carries a GraphQL server: DB/apollo_gql_server and the
+	# v1 launcher script that started it were deleted 2026-09-23, dead since 2021.
 	#Export scripts
 	cp -r scripts $(EXP_APP_Core_Folder)
 	
 	-@mkdir -p $(EXP_APP_Core_Folder)/scripts/InspMonitor
 	cp -r UI/InspectionMonitor/build/* $(EXP_APP_Core_Folder)/scripts/InspMonitor
 
-	-@mkdir -p $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
-	cp -r DB/apollo_gql_server/schema $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
-	cp -r DB/apollo_gql_server/server $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
-	cp -r DB/apollo_gql_server/node_modules $(EXP_APP_Core_Folder)/scripts/
 	
 
 	
