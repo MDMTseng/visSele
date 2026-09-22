@@ -6,6 +6,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupViolations, tagGroupsPreset } from './component/rdxComponent.jsx';
 import { CustomDisplayPicker } from './component/CustomDisplayPicker.jsx';
 import { DEF_EXTENSION, defFileFilter } from 'UTIL/BPG_Protocol';
+import { stripExtension } from 'UTIL/fileNameCheck.mjs';
 import QRCode from 'qrcode'
 import JSum from 'jsum'
 import dclone from 'clone';
@@ -336,7 +337,7 @@ function getBootDefFile()
 function appendLocalStorage_RecentFiles(fileInfo)
 {
   if (!fileInfo || typeof fileInfo.path !== 'string') return false;
-  return noteRecentDefFile(fileInfo.path.replace("." + DEF_EXTENSION, ""), fileInfo, DEF_EXTENSION);
+  return noteRecentDefFile(stripExtension(fileInfo.path, DEF_EXTENSION), fileInfo, DEF_EXTENSION);
 }
 
 

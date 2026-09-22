@@ -28,6 +28,7 @@ import {
 
 import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
+import { fileNameIssue } from 'UTIL/fileNameCheck.mjs'
 import Space from 'antd/lib/space'
 
 
@@ -507,13 +508,28 @@ export class BPG_FileSavingBrowser extends React.Component{
       folderInfo:undefined
     };
   }
+  // Kept for callers outside this file; the name box no longer uses it.
   isASCII(str, extended=false) {
     return (extended ? /^[\x00-\xFF]*$/ : /^[\x00-\x7F]*$/).test(str);
   }
   render()
   {
+    // WITH OR WITHOUT THE EXTENSION, IT IS THE SAME FILE.
+    //
+    // The default name comes from the loaded def's path, which carries no
+    // extension, while every name in the folder listing has one -- so the
+    // commonest save of all, re-saving the recipe just loaded, compared "part"
+    // against "part.hydef" and concluded the file was new. The overwrite
+    // warning never appeared for it: the button stayed blue and a recipe could
+    // be replaced with nothing on screen saying so.
+    const _typed = String(this.state.fileName || '');
+    const _ext = this.props.defaultExtension;
+    const _withExt = (_ext && !_typed.toLowerCase().endsWith('.' + String(_ext).toLowerCase()))
+      ? _typed + '.' + _ext : _typed;
     let isTarFileExist = this.state.folderInfo!=undefined && this.state.folderInfo.files!==undefined&&
-     ((this.state.folderInfo.files.find((file)=>file.name==this.state.fileName))!==undefined);
+     ((this.state.folderInfo.files.find((file)=>file.name==_typed || file.name==_withExt))!==undefined);
+    // The extension is appended by the caller, so a trailing dot is fine.
+    const _issue = fileNameIssue(_typed, { extensionFollows: !!_ext });
     
     return <BPG_FileBrowser_proto {...this.props}
         onFileSelected={(file)=>{
@@ -524,22 +540,26 @@ export class BPG_FileSavingBrowser extends React.Component{
     
     footer={
       <div>
-        <Input className="width9" placeholder="File Name" 
+        <Input className="width9" placeholder="File Name (A-Z a-z 0-9)" 
         value={this.state.fileName}  style={{float:"left"}}
-        onChange={(ev)=>{
-          let fileName = ev.target.value;
-          if(this.isASCII(fileName))
-          {
-            this.setState({...this.state,fileName})
-          }
-          }}/>
+        onChange={(ev)=>this.setState({...this.state,fileName:ev.target.value})}/>
+        {/* The keystroke is taken, then what is wrong with it is said. Refusing
+            the character outright -- which is what this did -- leaves an
+            operator with a keyboard that appears broken and no way to find out
+            why. */}
         
         <AntButtonGroup className="width2"  style={{float:"left"}}>
           <AntButton onClick={this.props.onCancel}>Cancel</AntButton>
           <AntButton onClick={()=>this.props.onOk(this.state.folderInfo,this.state.fileName,isTarFileExist)} 
             type={isTarFileExist?"danger":"primary"}
-            disabled={(this.state.fileName.length==0 || this.state.folderInfo===undefined)}>OK</AntButton>
+            disabled={(!!_issue || this.state.folderInfo===undefined)}>OK</AntButton>
         </AntButtonGroup>
+        {_issue
+          ? <div style={{clear:"both",paddingTop:6,color:"#a8071a",fontSize:12}}>{_issue}</div>
+          : (isTarFileExist
+              ? <div style={{clear:"both",paddingTop:6,color:"#d46b08",fontSize:12}}>
+                  這個檔案已經存在,按 OK 會覆蓋它。</div>
+              : null)}
       </div>
     }
     onFolderLoaded={(folderStruct)=>{

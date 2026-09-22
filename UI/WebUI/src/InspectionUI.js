@@ -25,6 +25,7 @@ import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionE
 import { usePerifConn, getPerifAPI } from './perif/PerifAPI';
 import { withPerifConns } from './perif/PerifStatus';
 import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { fileNameIssue } from 'UTIL/fileNameCheck.mjs';
 import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -4506,6 +4507,13 @@ class APP_INSP_MODE extends React.Component {
               modalInfo:{
                 title:"快照命名",
                 onOk:()=>{
+                  // Checked here as well as shown under the box: the dialog is
+                  // generic and its OK button is not wired to this validity, so
+                  // this is what actually stops an unwritable name from being
+                  // sent. Returning leaves the dialog open with the reason
+                  // already on screen.
+                  // The core appends .xreps and .png to this name.
+                  if (fileNameIssue(this.state.modalInfo.targetName, { extensionFollows: true })) return;
 
                   this.setState({
                     modalInfo:{...this.state.modalInfo,confirmLoading:true}})
@@ -4622,14 +4630,32 @@ class APP_INSP_MODE extends React.Component {
                 onCancel:()=>this.setState({modalInfo:undefined}),
 
                 targetName:targetName,
+                // The button has to LOOK unavailable. Blocking in onOk alone
+                // means a press does nothing at all, which is the same silence
+                // this check exists to remove -- and worse, because the
+                // operator has already decided they are done.
+                okButtonProps:{ disabled: !!fileNameIssue(targetName, { extensionFollows: true }) },
                 children:(modalInfo)=><>
                 路徑:{default_dst_Path}<br/>
                 名稱:
                 <Input size="small"
-                  value={modalInfo.targetName} 
+                  value={modalInfo.targetName}
+                  placeholder="英數字檔名"
                   onChange={(ev)=> this.setState({
-                    modalInfo:{...modalInfo,targetName:ev.target.value}})}
+                    modalInfo:{...modalInfo,
+                      targetName:ev.target.value,
+                      okButtonProps:{ disabled: !!fileNameIssue(ev.target.value,
+                                                                { extensionFollows: true }) }}})}
                 />
+                {/* This box had no check at all, while the def save dialog
+                    silently refused the same characters. A name the core
+                    cannot write produces no file and no error -- see
+                    UTIL/fileNameCheck.mjs, and the note above about 製程 tags
+                    being dropped out of this name for the same reason. */}
+                {fileNameIssue(modalInfo.targetName, { extensionFollows: true })
+                  ? <div style={{color:'#a8071a',fontSize:12,marginTop:6}}>
+                      {fileNameIssue(modalInfo.targetName, { extensionFollows: true })}</div>
+                  : null}
               
                 </>
               }

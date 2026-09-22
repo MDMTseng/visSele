@@ -4851,13 +4851,32 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
             return false;
           }
           std::string p = path;
-          // Has a recognized extension? OpenCV dispatches on .png/.jpg/.jpeg/.bmp/.tif/.tiff.
+          // A RECOGNISED IMAGE EXTENSION, not merely a dot.
+          //
+          // This used to ask "is there a dot after the last slash", and a
+          // recipe called "10155  3G2570090BSORTING.OK" has one. The WebUI
+          // sends the template path WITHOUT an extension and expects .png to be
+          // added; on that name nothing was added, cv::imwrite could not pick
+          // an encoder from "OK", threw, and the save came back refused. The
+          // operator got "暫存樣板影像寫入失敗" and, later and further away,
+          // 生成特徵點 failing because the template it needed was never
+          // written. Every recipe with a dot in its name was in this position.
+          //
+          // A dot is punctuation; only these six mean "already an image file".
           auto dot = p.find_last_of('.');
           auto slash = p.find_last_of("/\\");
-          bool hasExt = (dot != std::string::npos) &&
-                        (slash == std::string::npos || dot > slash) &&
-                        (dot + 1 < p.size());
-          if (!hasExt) { p += ".png"; LOGW("imwrite: no ext on %s → using %s", path, p.c_str()); }
+          bool hasExt = false;
+          if (dot != std::string::npos &&
+              (slash == std::string::npos || dot > slash) &&
+              dot + 1 < p.size())
+          {
+            std::string ext = p.substr(dot);
+            for (auto &c : ext) c = (char)tolower((unsigned char)c);
+            static const char *kImgExt[] = { ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" };
+            for (const char *e : kImgExt)
+              if (ext == e) { hasExt = true; break; }
+          }
+          if (!hasExt) { p += ".png"; LOGW("imwrite: no image ext on %s -> using %s", path, p.c_str()); }
           try {
             return cv::imwrite(p, img);
           } catch (const cv::Exception &ex) {
@@ -9080,8 +9099,15 @@ int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *
 // "<dir>/<base>.hydef" -> "<dir>/<base>.png"
 static std::string def_sidecar_png(const std::string &defPath)
 {
+  // The dot has to be in the FILE NAME. "data/v1.2/part" has a dot, in the
+  // directory, and cutting there gives "data/v1.png" -- a path in the wrong
+  // folder, named after half a version number. Same family as the template
+  // writer's extension test: a dot is punctuation, not a marker.
   size_t dot = defPath.find_last_of('.');
-  return (dot == std::string::npos ? defPath : defPath.substr(0, dot)) + ".png";
+  size_t slash = defPath.find_last_of("/\\");
+  bool inName = dot != std::string::npos &&
+                (slash == std::string::npos || dot > slash);
+  return (inName ? defPath.substr(0, dot) : defPath) + ".png";
 }
 static std::string path_basename(const std::string &p)
 {
