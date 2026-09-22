@@ -73,10 +73,75 @@ export const OVERLAY_DEFAULTS = {
   },
   // ---- sizes, all in multiples of getPrimitiveSize() ---------------------
   size: {
+    // WHAT THE NUMBERS BELOW ARE MEASURED AGAINST.
+    //
+    // Three different questions, and only one of them is "does the overlay
+    // look the same on the next machine".
+    //
+    // 'screen'  CSS pixels. A CSS pixel is 1/96 inch by definition, so this is
+    //           a PHYSICAL size on the glass: 2.5 is the same fraction of a
+    //           millimetre of screen on a 1080p 24" and on a 4K 15", provided
+    //           the OS scaling matches the panel. Independent of window size,
+    //           so the same overlay on a smaller window covers more of the
+    //           picture. What the overlay has always meant -- but see the
+    //           device-pixel note in renderUTIL: it had quietly become
+    //           dpr-dependent, which is the exact property that breaks the
+    //           moment you look at a second machine.
+    //
+    // 'view'    Per mille of the canvas short edge. The drawing keeps its
+    //           PROPORTIONS whatever the resolution or the window size, so two
+    //           screenshots scaled to the same width are the same picture.
+    //           This is the one for output that has to be comparable between
+    //           machines and inside a report.
+    //
+    // 'mm'      Millimetres on the PART. The overlay becomes a ruler: a stroke
+    //           that looks thin beside a feature really is thin. Varies with
+    //           zoom by design, so it says nothing about house style -- it is
+    //           a measurement aid.
+    // 'screen_mm' MILLIMETRES ON THE DISPLAY. A 0.25 mm stroke is 0.25 mm of
+    //           glass on every machine, and zooming the picture does not
+    //           change it. This is the house style: state the drawing the way
+    //           a drawing standard states it, in real widths, and every screen
+    //           in the building renders the same weights.
+    //
+    //           It is derived from the CSS pixel, which the spec fixes at 1/96
+    //           inch. That is exact when the OS display scaling matches the
+    //           panel -- Windows at 100% on a ~96 dpi monitor, at 150% on a
+    //           ~144 dpi one. Where it does not (a 157 dpi laptop panel run at
+    //           150% is off by 8%), set panel_ppi below and the conversion
+    //           uses the real number instead of trusting the OS.
+    unit: 'screen_mm',   // 'screen_mm' | 'screen' | 'view' | 'mm'
+
+    // unit:'screen_mm' -- millimetres ON THE DISPLAY, zoom-independent.
+    // 0.66 and 6.35 are the previous pixel weights converted at 96 dpi, so
+    // switching to this mode changes nothing on a 100% display.
+    primitive_screen_mm: 0.66,
+    font_screen_mm:      6.35,
+    // The panel's true pixels per inch, when the OS scaling does not match it.
+    // null = trust the OS (96 CSS ppi, which is what the CSS pixel means).
+    panel_ppi: null,
+
+    // unit:'view' -- per mille (1/1000) of the canvas short edge. 3.1 and 30
+    // reproduce the 'screen' weights on a canvas about 800 px tall.
+    primitive_permille: 3.1,
+    font_permille:     30,
+
+    primitive_mm: 0.10,  // unit:'mm' -- the root of every stroke, on the part
+    px_min: 1.2,         // never thinner than this on screen: sub-pixel breaks up
+    px_max: 24,          // and never heavier than this
+
+    font_mm: 0.95,       // unit:'mm' -- label size on the part
+    font_px_min: 9,      // unreadable below this
+    font_px_max: 96,     // pointless above it
+
     // Overall weight of every overlay stroke. getIndicationLineSize() carries
     // it, and every module's width is a multiple of that, so this thins or
     // fattens the whole drawing at once.
-    stroke_scale: 0.49,   // 0.7 of 0.7 -- thinned twice, on the machine
+    // 0.49 was two 30% cuts made while the labels were still typeset at 1px
+    // and magnified, which rounded every stroke up to a whole pixel and hid
+    // how thin this had become. With the text rendering fixed the real weight
+    // showed, so it comes back one step. 1.0 is the pre-2026-09-10 weight.
+    stroke_scale: 0.7,
     line_w:      1.0,    // x getIndicationLineSize()
     thin_w:      0.7,    // x getIndicationLineSize()
     // Extension / projection lines, as a fraction of a primitive's own line.

@@ -509,6 +509,12 @@ add_executable(jpeg_bench tools/jpeg_bench.cpp)
 add_executable(sbm_bench tools/sbm_bench.cpp)
 target_link_libraries(sbm_bench PRIVATE shape_based_matching ${OpenCV_LIBS})
 
+# What arbitrary scaling of the template features costs -- separating the part
+# that is paid in discrimination (rounded coordinates collapse and jitter) from
+# the part that is paid in time (every scale adds a full set of angles).
+add_executable(sbm_scale_probe tools/sbm_scale_probe.cpp)
+target_link_libraries(sbm_scale_probe PRIVATE shape_based_matching ${OpenCV_LIBS})
+
 target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
 
 # latency_stages -- build the core's timing up one layer at a time, to find the

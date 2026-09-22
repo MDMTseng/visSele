@@ -18,6 +18,7 @@ let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
 import { DEF_EXTENSION, defFileFilter, makeExtensionFilter, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { stripExtension } from 'UTIL/fileNameCheck.mjs';
 import { unsupportedCoreOps } from 'UTIL/expr';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -2540,7 +2541,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     if (defConf_lock_level > 2) return;
     setFileSavingCallBack((prevs, props) => (folderInfo, fileName, existed) => {
       log.debug("[file-exists]", { folderInfo, fileName, existed });
-      let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
+      // Anchored at the END and case-insensitive. A plain replace takes the
+      // FIRST occurrence anywhere in the name.
+      let fileNamePath = folderInfo.path + "/" + stripExtension(fileName, DEF_EXTENSION);
       var enc = new TextEncoder();
       // SEED def_image_reg BEFORE generating, never after.
       //
@@ -3317,7 +3320,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       key="LOAD"
       text="load" onClick={() => {
         setFileSelectedCallBack(()=>(filePath, fileInfo) => {
-          let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
+          let fileNamePath = stripExtension(filePath, DEF_EXTENSION);
 
           loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
@@ -3866,6 +3869,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           setFileSavingCallBack(undefined);
         }}
         fileFilter={defFileFilter}
+        // So "part" and "part.hydef" are recognised as the same file and the
+        // overwrite warning actually appears.
+        defaultExtension={DEF_EXTENSION}
       />);
 
   }

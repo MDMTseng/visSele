@@ -772,6 +772,26 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
                   let newTags=[...inspOptionalTag,tag];
                   ACT_InspOptionalTag_Update(newTags);
                 }
+                else if(group.maxCount===1)
+                {
+                  // PICK-ONE GROUPS REPLACE RATHER THAN REFUSE.
+                  //
+                  // 檢測等級 and 已設定範圍 allow one tag, and a click on a
+                  // second one used to do nothing at all -- no movement, no
+                  // message. The operator had to work out for themselves that
+                  // the way to change the answer was to unset the old one
+                  // first, which is two actions and a guess for what reads as
+                  // one choice.
+                  //
+                  // Only for maxCount 1. Where several are allowed there is no
+                  // answer to "which of them did you mean to drop", and
+                  // choosing one on the operator's behalf would silently
+                  // discard something they set on purpose; those groups still
+                  // refuse, which is at least honest.
+                  let newTags=inspOptionalTag.filter((t)=>group.tags.indexOf(t)<0);
+                  newTags.push(tag);
+                  ACT_InspOptionalTag_Update(newTags);
+                }
                 else
                 {
                   //Over size pass

@@ -36,7 +36,7 @@ const { execFile } = require('node:child_process');
 // literal inline kept getting mangled by the tooling that edits this file.
 const SPLIT_LINES = new RegExp('\r?\n');
 
-const { AppStore, cmpVersion, STAGING, REPLACED, REQUIRED_ENTRIES, POSTINSTALL, INFO } = require('./apps');
+const { AppStore, cmpVersion, libFamily, STAGING, REPLACED, REQUIRED_ENTRIES, POSTINSTALL, INFO } = require('./apps');
 
 // Zip extraction with no npm dependency. The old launcher pulled in `unzipper`
 // and its tree for this one operation; the operating system already ships
@@ -175,7 +175,26 @@ class Updater {
       const finish = (v) => { if (!done) { done = true; resolve(v); } };
       const child = execFile(process.execPath, [script], {
         cwd: dir,
-        env: { ...process.env, INSP_APP_DIR: dir, INSP_APP_VERSION: version },
+        env: {
+          ...process.env,
+          INSP_APP_DIR: dir,
+          INSP_APP_VERSION: version,
+          // AS NODE, NOT AS AN ELECTRON APP.
+          //
+          // process.execPath is the packaged launcher. Handed a script path it
+          // does NOT run it: a packaged Electron always runs its own
+          // resources/app and treats argv[1] as an argument to it. Measured
+          // 2026-09-22 -- the child exited 0, the script never executed, and
+          // the update reported a successful post-install that had not
+          // happened. ELECTRON_RUN_AS_NODE makes the same binary behave as the
+          // Node it contains, so argv[1] is the script and its exit code is
+          // the script's.
+          ELECTRON_RUN_AS_NODE: '1',
+          // Where the launcher's own code lives, from the launcher. A package
+          // that wants to replace it must not have to guess a layout that is
+          // allowed to differ between a bench and a machine.
+          INSP_LAUNCHER_APP_DIR: path.join(process.resourcesPath || '', 'app'),
+        },
         // Long enough for a real installer, short enough that a script waiting
         // on a prompt nobody can answer does not hang the update forever.
         timeout: 10 * 60 * 1000,
@@ -217,6 +236,15 @@ class Updater {
     if (!fs.existsSync(zipPath)) throw new Error(`no such file: ${zipPath}`);
     const zipSize = fs.statSync(zipPath).size;
     log(`package: ${zipPath} (${(zipSize / 1048576).toFixed(1)} MB)`);
+    // SAY IT BEFORE DOING IT, not after.
+    //
+    // Every long step here used to announce itself on the way OUT, so the
+    // screen went quiet for the seconds that actually took time and then
+    // printed what had already finished. An operator watching a machine that
+    // says nothing assumes it is stuck, and the thing they do about it --
+    // clicking again, closing the window, cutting the power -- is the one
+    // thing an install must not have done to it.
+    log('正在檢查更新包…');
     log(`package sha256: ${await sha256File(zipPath)}`);
 
     const staging = path.join(this.apps.dir, STAGING);
@@ -224,10 +252,12 @@ class Updater {
     fs.mkdirSync(staging, { recursive: true });
 
     try {
-      log('extracting...');
+      log(`正在解壓 ${(zipSize / 1048576).toFixed(0)} MB，請稍候…`);
+      const _tx = Date.now();
       await extractZip(zipPath, staging);
+      log(`解壓完成 (${((Date.now() - _tx) / 1000).toFixed(1)}s)`);
 
-      const root = findRoot(staging);
+      let root = findRoot(staging);
       if (!root) throw new Error(`no ${INFO} at the top of the package -- is this an application update?`);
 
       // --- version ---
@@ -271,6 +301,95 @@ class Updater {
         throw new Error(`manifest says ${manifest.version} but ${INFO} says ${info.version}`);
       }
 
+      // --- a delta package is made whole here, BEFORE it is verified ------
+      //
+      // The zip carried only what changed; the manifest describes the complete
+      // version. The rest is taken from what the machine already has.
+      //
+      // WHAT IT ASKS FOR IS A LIB GENERATION, NOT A PARTICULAR VERSION. The
+      // second field of the version number says which runtime a build was made
+      // against (see libFamily in apps.js), so a delta for 2.0.6 needs "some
+      // 2.0.x", and a machine that skipped three updates has one. Asking for an
+      // exact predecessor instead would refuse precisely the machines that are
+      // furthest behind and most in need of updating.
+      //
+      // Each file is taken BY HASH: the manifest says what it must be, the
+      // candidate is hashed, and it is used only if it matches. So the version
+      // number is a hint about where to look and never a claim to be believed.
+      // A file that has rotted on disk, been edited, or turns out to differ
+      // between two builds of the same generation is simply not a match, and
+      // the install stops with its name rather than assembling a version out of
+      // mismatched halves.
+      //
+      // Everything here is read-only except the directory under .staging, which
+      // the finally removes on any failure.
+      if (typeof manifest.libBase === 'string' && manifest.libBase.length) {
+        // Listed BEFORE the assembly directory exists. A zip that does not wrap
+        // itself in a folder extracts flat into staging, so root IS staging --
+        // and walking it afterwards would find the version being built inside
+        // it and lay it over itself.
+        const carriedRels = walk(root);
+        const carried = new Set(carriedRels);
+        const wanted = Object.keys(manifest.files).filter((rel) => !carried.has(rel));
+
+        // Same generation first, newest first within it -- the newest is the
+        // likeliest to match and is usually the running version. Other
+        // generations are tried afterwards rather than not at all: a vendor DLL
+        // that did not change across a generation bump is still the right file
+        // if it hashes correctly, and refusing it would mean copying 200 MB
+        // through a USB stick to install a file the machine already has.
+        const installed = this.apps.list().filter((e) => e.valid).map((e) => e.version);
+        const sameGen = installed.filter((v) => libFamily(v) === manifest.libBase);
+        const otherGen = installed.filter((v) => libFamily(v) !== manifest.libBase);
+        if (!sameGen.length) {
+          log(`no ${manifest.libBase}.x is installed; looking in the other versions`);
+        }
+        const sources = [...sameGen, ...otherGen].map((v) => this.apps.versionDir(v));
+
+        log(`delta package: ${carriedRels.length} file(s) carried, `
+            + `${wanted.length} from lib base ${manifest.libBase}`);
+
+        const assembled = path.join(staging, '.assembled');
+        fs.rmSync(assembled, { recursive: true, force: true });
+        fs.mkdirSync(assembled, { recursive: true });
+
+        const put = (from, rel) => {
+          const dst = path.join(assembled, rel);
+          fs.mkdirSync(path.dirname(dst), { recursive: true });
+          fs.copyFileSync(from, dst);
+        };
+        for (const rel of carriedRels) put(path.join(root, rel), rel);
+
+        const t0 = Date.now();
+        const misses = [];
+        let _done = 0;
+        const _step = Math.max(1, Math.ceil(wanted.length / 10));
+        for (const rel of wanted) {
+          const want = manifest.files[rel];
+          let found = null;
+          for (const src of sources) {
+            const cand = path.join(src, rel);
+            if (!fs.existsSync(cand)) continue;
+            // eslint-disable-next-line no-await-in-loop
+            if (await sha256File(cand) === want) { found = cand; break; }
+          }
+          if (found) put(found, rel);
+          else misses.push(rel);
+          if (++_done % _step === 0 && _done < wanted.length) {
+            log(`  ${_done}/${wanted.length} (${Math.round(_done * 100 / wanted.length)}%)`);
+          }
+        }
+        if (misses.length) {
+          throw new Error(
+            `${misses.length} file(s) of this version are not on the machine and were not `
+            + `in the package -- it expects a ${manifest.libBase}.x installation to take them `
+            + `from. Install the full package for ${manifest.libBase} instead. `
+            + `Missing: ${misses.slice(0, 5).join(', ')}`);
+        }
+        log(`  reused ${wanted.length} file(s) (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+        root = assembled;
+      }
+
       const onDisk = walk(root).filter((f) => f !== 'manifest.json');
       const listed = Object.keys(manifest.files);
       const notListed = onDisk.filter((f) => !(f in manifest.files));
@@ -282,12 +401,19 @@ class Updater {
       // scripts/boot.js that the launcher is going to execute.
       if (notListed.length) throw new Error(`package has ${notListed.length} file(s) not in the manifest: ${notListed.slice(0, 5).join(', ')}`);
 
-      log(`verifying ${listed.length} files...`);
+      log(`正在逐檔比對 ${listed.length} 個檔…`);
       let checked = 0;
+      // Roughly ten updates whatever the package size. It was every 200 files,
+      // which on a 159-file package printed NOTHING between "verifying" and
+      // "verified" -- nine seconds of silence in the middle of the step that
+      // takes longest.
+      const _every = Math.max(1, Math.ceil(listed.length / 10));
       for (const rel of listed) {
         const actual = await sha256File(path.join(root, rel));
         if (actual !== manifest.files[rel]) throw new Error(`checksum mismatch on ${rel}`);
-        if (++checked % 200 === 0) log(`  ${checked}/${listed.length}`);
+        if (++checked % _every === 0 && checked < listed.length) {
+          log(`  ${checked}/${listed.length} (${Math.round(checked * 100 / listed.length)}%)`);
+        }
       }
       log(`all ${listed.length} files verified`);
 

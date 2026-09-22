@@ -25,6 +25,7 @@ import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionE
 import { usePerifConn, getPerifAPI } from './perif/PerifAPI';
 import { withPerifConns } from './perif/PerifStatus';
 import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { fileNameIssue } from 'UTIL/fileNameCheck.mjs';
 import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -81,7 +82,10 @@ import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
 import { applyInspFrameRate } from 'UTIL/inspRatePolicy.mjs';
-import { autoExitDecision, autoExitApplies } from 'UTIL/autoExitRule.mjs';
+import { autoExitDecision, autoExitApplies,
+         siAutoExitDecision, siAutoExitApplies,
+         autoExitWindowsOf } from 'UTIL/autoExitRule.mjs';
+import { ranksOf, rankShown } from 'UTIL/measureRank.mjs';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/input';
 import Dropdown from 'antd/lib/dropdown'
@@ -237,9 +241,14 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     return undefined;
   });
   const edit_info = useSelector(state => state.UIData.edit_info);
+  // To read the def BACK OFF THE DISK rather than rebuild it from memory.
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
+  const SEND_CORE = (tl,prop,data,promiseCBs) =>
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID,tl,prop,data,undefined,promiseCBs));
   // Reaches the DB_WS instance itself, for query() -- which is NOT send(). See
   // the note on query() in script.jsx: send() wraps its argument in an insert
   // envelope and writes it, so asking a question through it stores the question.
@@ -387,43 +396,61 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
 
   // PUSHING IT IS THE FIX; WARNING IS ONLY THE NOTICE.
   //
-  // The def is generated the same way the save path generates it, because
-  // defFileGeneration is what stamps featureSet_sha1 -- so this uploads the
-  // document the sha actually names.
+  // THE FILE ON DISK IS WHAT GETS UPLOADED. Not a def rebuilt from what is in
+  // memory -- read back through the core with LD, the same command that loaded
+  // it, and sent verbatim.
   //
-  // And it is CHECKED against the sha we asked about. If the regenerated def
-  // hashes to something else then the def in memory is not the def the records
-  // are being written against, and uploading it would create a THIRD sha:
-  // one nobody asked about, one still missing, and a new document that adopts
-  // nothing. Refuse and say so instead -- that case is a different bug and
-  // hiding it under a successful-looking upload is how it would survive.
+  // It used to regenerate from edit_info, and for any recipe carrying 製程
+  // control-margin rows that could never work. Entering inspection merges those
+  // overrides and folds the display level into quality_essential, then puts the
+  // ALTERED def back into the store; the copy sent to the core keeps the file's
+  // sha as a label (see the note by InspFilingSha) so the rows file under it.
+  // So the store holds content B labelled B, the rows point at A, and
+  // regenerating could only ever produce B. The button refused -- correctly,
+  // because uploading B would leave a third sha and A still missing -- and
+  // there was no path left that worked. The advice it printed, reload the
+  // recipe, does the same thing again.
+  //
+  // Reading the file also removes a question nobody could answer from the
+  // screen: whether the thing being uploaded had been altered in memory since
+  // it was loaded. The file cannot have been.
   const pushDef = React.useCallback(() => {
-    let rep;
-    try { rep = defFileGeneration(edit_info); }
-    catch (e) {
-      Modal.error({ title: '無法產生設定檔', content: String(e && e.message || e) });
+    if (!defModelPath) {
+      Modal.error({ title: '不知道這個配方的檔案位置',
+                    content: '請回設定畫面重新載入這個配方後再試。' });
       return;
     }
-    if (rep.featureSet_sha1 !== defSha) {
-      Modal.error({
-        title: '設定檔對不上,沒有上傳',
-        width: 560,
-        content: (<div style={{ lineHeight: 1.9 }}>
-          <div>畫面上的設定檔重新產生後是另一個 sha,和正在檢驗的那一份不同。</div>
-          <div style={{ marginTop: 8 }}>
-            檢驗中 <code>{String(defSha).slice(0, 12)}…</code><br/>
-            重新產生 <code>{String(rep.featureSet_sha1).slice(0, 12)}…</code>
-          </div>
-          <div style={{ marginTop: 8, color: '#a8071a' }}>
-            上傳它只會多一份沒有人在用的設定檔,原本那一份還是缺的。請回設定畫面重新載入這個配方。
-          </div>
-        </div>),
-      });
+    if (CORE_ID === undefined) {
+      Modal.error({ title: '核心沒有連線', content: '設定檔要透過核心讀取。' });
       return;
     }
-    // Legacy bare-payload shape, the same one the save path and the inspection
-    // writer use -- the server reads a message with no dbcmd as an insert.
-    WS_SEND(DefFile_DB_W_ID, rep)
+    const done = (rep) => {
+      // The FILE's own sha against the sha the rows carry. They can differ:
+      // somebody edited and saved the recipe after this session started
+      // inspecting, so the file is no longer the document these records are
+      // against. Uploading it would file the wrong content under A.
+      if (rep && rep.featureSet_sha1 !== defSha) {
+        Modal.error({
+          title: '磁碟上的設定檔已經不是這一份',
+          width: 560,
+          content: (<div style={{ lineHeight: 1.9 }}>
+            <div>檔案讀回來的 sha 和正在檢驗的這一份不同,表示這個配方在檢驗開始後被存檔過。</div>
+            <div style={{ marginTop: 8 }}>
+              檢驗中 <code>{String(defSha).slice(0, 12)}…</code><br/>
+              檔案上 <code>{String(rep.featureSet_sha1).slice(0, 12)}…</code>
+            </div>
+            <div style={{ marginTop: 8, color: '#a8071a' }}>
+              上傳它會把另一份內容存成這一份的 sha。請回設定畫面重新載入這個配方,
+              再重新進入檢驗。
+            </div>
+          </div>),
+        });
+        return;
+      }
+      // Legacy bare-payload shape, the same one the save path and the
+      // inspection writer use -- the server reads a message with no dbcmd as
+      // an insert.
+      WS_SEND(DefFile_DB_W_ID, rep)
       .then(() => {
         setDefInDb('known');
         message.success('設定檔已上傳,先前的檢驗資料也會接回來');
@@ -437,7 +464,31 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
           </div>),
         });
       });
-  }, [edit_info, defSha, DefFile_DB_W_ID]);   // eslint-disable-line react-hooks/exhaustive-deps
+    };
+
+    // LD is how the def was loaded in the first place, so this is the same
+    // document by the same route. Nothing is dispatched: the reply is read and
+    // dropped, because loading it into the store is exactly what must not
+    // happen -- that would restart the session's def from under it.
+    SEND_CORE('LD', 0, { deffile: defModelPath + '.' + DEF_EXTENSION }, {
+      resolve: (pkts) => {
+        const df = (pkts || []).find((p) => p && p.type === 'DF');
+        if (!df || !df.data) {
+          Modal.error({ title: '讀不到設定檔',
+                        content: defModelPath + '.' + DEF_EXTENSION + ' 沒有回傳內容。' });
+          return;
+        }
+        done(df.data);
+      },
+      reject: (e) => Modal.error({
+        title: '讀不到設定檔',
+        content: (<div style={{ lineHeight: 1.9 }}>
+          <div>{defModelPath + '.' + DEF_EXTENSION}</div>
+          <div style={{ marginTop: 8 }}>原因:{(e && e.message) ? e.message : '沒有回應'}</div>
+        </div>),
+      }),
+    });
+  }, [defModelPath, CORE_ID, defSha, DefFile_DB_W_ID]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (defInDb !== 'missing') return;
@@ -1656,12 +1707,7 @@ class ObjInfoList extends React.Component {
 
       let judgeInRank = judgeReports
       .map(rep=>({...rep,def:this.props.shape_def.find(def=>def.id==rep.id)}))
-      .filter(rep=>{
-        let rdef=rep.def;
-        if(rdef.rank===undefined)return true;
-        if(rdef.rank<=this.props.measureDisplayRank)return true;
-        return false;
-      });
+      .filter(rep=>rankShown(rep.def, this.props.measureDisplayRank));
 
 
       // WHAT DECIDES THE PART.
@@ -2252,6 +2298,18 @@ class CanvasComponent extends React.Component {
       // updateImgOnly keeps the previous edit_DB_info, i.e. the overlay keeps
       // matching what is on screen, while statistics and upload still see every
       // report through redux, untouched.
+      // FREEZE AFTER INSPECTION.
+      //
+      // The measured picture is the one the numbers on screen were taken from.
+      // Left live, it is replaced by the next frame within a fraction of a
+      // second, so what the operator reads the result against is a DIFFERENT
+      // picture from the one that was measured -- and in SI, where the whole
+      // point is that one averaged image was inspected, that is the only image
+      // worth looking at.
+      //
+      // Held until the next press, which is the next thing the operator does
+      // anyway. Off by default and remembered per browser: it is a way of
+      // working, not a machine setting.
       const _imgChanged = (this.pre_img !== props.img);
       // Consumed by the first image after the request, whatever it is: a resend
       // that never arrives must not leave this armed for a genuinely new frame.
@@ -2261,8 +2319,20 @@ class CanvasComponent extends React.Component {
       {
         // updateImgOnly is exactly what a resend wants: take the new picture,
         // keep the overlay that was already matched to it.
-        this.ec_canvas.EditDBInfoSync(props._edit_info,
-                                      /*updateImgOnly=*/ !_imgChanged || _isResend);
+        //
+        // HELD: the whole sync is skipped, image and overlay together.
+        //
+        // The first attempt cleared _imgChanged instead, which does the
+        // opposite of what it reads like -- a false _imgChanged selects
+        // updateImgOnly, and updateImgOnly TAKES THE NEW PICTURE. The frame
+        // went through exactly as before. No argument to this call means "no
+        // new picture"; not calling it is how that is said.
+        //
+        // Everything after this point still runs, so a rank or settings change
+        // is reflected on the held frame instead of waiting for the release.
+        if (!props.siFrozen)
+          this.ec_canvas.EditDBInfoSync(props._edit_info,
+                                        /*updateImgOnly=*/ !_imgChanged || _isResend);
         // THE LIST BESIDE THE PICTURE IS PART OF THE PICTURE.
         //
         // EditDBInfoSync froze the reports belonging to this frame (its own
@@ -2276,7 +2346,7 @@ class CanvasComponent extends React.Component {
         // Hand it the same frozen array. No second clone -- this is the one the
         // canvas just made -- and the list now re-renders once per IMAGE
         // instead of once per report, which is fewer renders, not more.
-        if (_imgChanged && !_isResend && props.onFrameReports)
+        if (_imgChanged && !_isResend && !props.siFrozen && props.onFrameReports)
           props.onFrameReports(this.ec_canvas.frameReportList);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
@@ -2560,7 +2630,7 @@ class DataStatsTable extends React.Component {
     let measureList = statstate.statisticValue.measureList;
 
     // console.log(measureList);
-    let measureReports = measureList.filter(m=>m.rank===undefined || m.rank<=this.props.measureDisplayRank).map((measure) =>
+    let measureReports = measureList.filter(m=>rankShown(m, this.props.measureDisplayRank)).map((measure) =>
       ({
         id: measure.id,
         name: measure.name,
@@ -3156,8 +3226,9 @@ export const SNAP_POLICY_DEFAULT = {
 export function uploadSkipOf(machine_custom_setting, System_Setting) {
   const mcs = machine_custom_setting || {};
   const sys = System_Setting || {};
-  const isCI = mcs.InspectionMode == "CI";
-  const key = isCI ? "CI_MODE_UPLOAD_SKIP" : "FI_MODE_UPLOAD_SKIP";
+  // Keyed by the mode's own name rather than a CI/not-CI question: with three
+  // modes "not CI" stopped meaning FI.
+  const key = (mcs.InspectionMode || "FI") + "_MODE_UPLOAD_SKIP";
   const v = (mcs[key] !== undefined && mcs[key] !== null) ? mcs[key] : sys[key];
   const n = parseInt(v);
   return Number.isFinite(n) && n >= 1 ? n : 1;
@@ -3178,8 +3249,25 @@ export function uploadSkipOf(machine_custom_setting, System_Setting) {
 export function statSettingOf(machine_custom_setting, System_Setting, mode) {
   const mcs = machine_custom_setting || {};
   const sys = System_Setting || {};
-  const key = (mode === "CI") ? "CI_MODE_StatSettingParam" : "FI_MODE_StatSettingParam";
-  return { ...(sys[key] || {}), ...(mcs[key] || {}) };
+  // By the mode's own name: with three modes "not CI" stopped meaning FI, and
+  // SI in particular must NOT inherit CI's tracking window -- the core already
+  // averaged the picture, and averaging the measurements again on top of it is
+  // a second average that no image can be replayed against.
+  const key = (mode === "CI") ? "CI_MODE_StatSettingParam"
+            : (mode === "SI") ? "SI_MODE_StatSettingParam"
+                              : "FI_MODE_StatSettingParam";
+  const merged = { ...(sys[key] || {}), ...(mcs[key] || {}) };
+
+  // SI TAKES ITS RESULT IMMEDIATELY, because nothing will come along to take it
+  // later. The tracking window retires a report when the NEXT one pushes it
+  // out, which works in FI and CI where parts keep arriving -- but SI measures
+  // once, on a press, and then the core stops reporting until the scene
+  // changes. So the one report of the part sat in the window and was never
+  // uploaded, until the operator happened to move the part.
+  //
+  // Set here, where the mode is known, rather than sniffed for in the reducer.
+  if (mode === "SI") merged.flushImmediately = true;
+  return merged;
 }
 
 export function snapPolicyOf(machine_custom_setting) {
@@ -3300,6 +3388,22 @@ class APP_INSP_MODE extends React.Component {
 
   
   componentDidMount() {
+    // WHO IS STILL HERE -- listened for on the document, in the capture
+    // phase.
+    //
+    // Not on the canvas, for two reasons. The canvas consumes its own events
+    // for panning, pinching and ROI dragging, and a handler downstream of
+    // that can miss the very gestures that prove somebody is present; and
+    // wrapping it in a listening div would put an extra node into a flex
+    // layout whose heights are shared between the canvas and the stats table.
+    // Capture on the document sees everything and changes no structure.
+    //
+    // Passive: this only reads a clock and must never be able to hold up a
+    // scroll or a pinch.
+    for (const ev of ['pointerdown', 'touchstart', 'wheel', 'keydown'])
+      document.addEventListener(ev, this.noteInteractionBound, { capture: true, passive: true });
+    this._siIdleTimer = setInterval(() => this._siIdleTick(), 1000);
+
     let DefFileHash=this.props.edit_info.DefFileHash;
     // Trigger-mode policy: only CI InspMode runs the camera free-running.
     // Flip to continuous on mount and back to trigger=On on unmount so the
@@ -3413,7 +3517,7 @@ class APP_INSP_MODE extends React.Component {
         // and the level must be applied to the rank that ends up in force.
         if (rankLimit !== undefined) {
           newShapeList = newShapeList.map((shape, idx) => {
-            if (shape.rank === undefined || shape.rank <= rankLimit) return shape;
+            if (rankShown(shape, rankLimit)) return shape;
             if (shape.quality_essential === false) return shape;
             remember(idx);
             return { ...shape, quality_essential: false };
@@ -3564,6 +3668,27 @@ class APP_INSP_MODE extends React.Component {
         });
         applyInspFrameRate(this.CameraCtrl, 'FI');
       }
+      else if (this.props.machine_custom_setting.InspectionMode == "SI") {
+        // Hand-placed, still object: the core waits for the scene to settle,
+        // averages the frames and inspects that average once. Frame rate as
+        // CI -- the camera is streaming for the settle detector, not for
+        // throughput.
+        applyInspFrameRate(this.CameraCtrl, 'CI');
+        this.props.ACT_WS_SEND_CORE_BPG( "SI", 0,
+          { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: wireDef },
+          undefined, { resolve:insp_resolve, reject:(e)=>{} });
+        // The core resets these per session, so this push is what the machine
+        // actually uses -- same contract as INSP_SNAP_POLICY.
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, {
+          INSP_SI_PARAM: {
+            ...(this.props.System_Setting || {}).SI_MODE_PARAM,
+            ...(this.props.machine_custom_setting || {}).SI_MODE_PARAM,
+          },
+          INSP_SNAP_POLICY: snapPolicyOf(this.props.machine_custom_setting),
+        });
+        this.props.ACT_StatSettingParam_Update(statSettingOf(
+          this.props.machine_custom_setting, this.props.System_Setting, "SI"))
+      }
       else if (this.props.machine_custom_setting.InspectionMode == "CI") {
 
         // The rate and the reasoning both live in inspRatePolicy.mjs now.
@@ -3618,6 +3743,7 @@ class APP_INSP_MODE extends React.Component {
 
       this.exitGate=false;
 
+
       
       this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
         if(api===undefined)return;
@@ -3629,6 +3755,9 @@ class APP_INSP_MODE extends React.Component {
 
   componentWillUnmount() {
     if (this._autoExitTimer !== null) { clearTimeout(this._autoExitTimer); this._autoExitTimer = null; }
+    for (const ev of ['pointerdown', 'touchstart', 'wheel', 'keydown'])
+      document.removeEventListener(ev, this.noteInteractionBound, { capture: true });
+    if (this._siIdleTimer !== null) { clearInterval(this._siIdleTimer); this._siIdleTimer = null; }
     this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
       if(api===undefined)return;
       api.send({type: "exit_inspection"},
@@ -3702,17 +3831,49 @@ class APP_INSP_MODE extends React.Component {
     // user puts objects on the plate and the camera streams + re-inspects the
     // same scene forever. If nobody is there (no object) or the same object just
     // sits stuck, the machine burns power/heat computing the same frame over and
-    // over. So: no object for NO_OBJ_MS, OR the same object persisting for
-    // SAME_OBJ_MS, flashes a reason then exits inspection mode entirely.
+    // over. So: no object for the no-object window, OR the same object
+    // persisting for the same-object one, flashes a reason then exits
+    // inspection mode entirely. Both windows are set in 設定, in seconds.
     // Both are time-based (epoch ms), so they're robust to render cadence.
-    this.NO_OBJ_MS = 30 * 1000;     // no object on the plate -> idle line
-    this.SAME_OBJ_MS = 60 * 1000;   // same object stuck in view -> user walked off
-    this._noObjSince = null;        // epoch ms when the no-object streak began
+    //
+    // FIVE MINUTES, from thirty seconds and sixty. The field asked: the old
+    // numbers measured how long the PICTURE had been unchanged, and a person
+    // setting a part up, reading a result, or fetching the next tray is doing
+    // none of those things to the picture. Being thrown back to the main screen
+    // mid-job costs more than the few minutes of idle camera it saved.
+    // The windows are the machine's, set in 設定 in seconds and read fresh
+    // every time they are used -- an operator changing them must not have to
+    // leave the screen and come back for it to take effect.
+    this._noObjSince = null;          // epoch ms when the no-object streak began
+    // TOUCHING THE CANVAS IS BEING THERE. Both clocks run from this as well as
+    // from their own start, so the question stops being "has the picture
+    // changed lately" and becomes "is anyone here" -- which is the one the
+    // watchdog was always meant to be asking.
+    this._lastInteractAt = Date.now();
+    this.noteInteractionBound = () => { this._lastInteractAt = Date.now(); };
+
+    // SI's idle clock. A press, or a touch, is somebody being here; nothing
+    // about the picture counts, because a still part in front of the camera is
+    // what SI is FOR.
+    this._lastSIActivityAt = Date.now();
+    this._siIdleTimer = null;
     this._autoExiting = false;      // latch: flashing + leaving
     this._autoExitTimer = null;
+    // How long before it happens the screen starts saying so. Long enough to
+    // read and react to, short enough that it is not a permanent fixture.
+    this.AUTO_EXIT_WARN_MS = 60 * 1000;
 
     this.state = {
       frameIR: undefined,
+      // FREEZE AFTER INSPECTION. siHoldAfter is the operator's choice and is
+      // remembered per browser; siFrozen is whether a measured picture is being
+      // held right now, and is never remembered -- a session must not start
+      // showing a frame from yesterday.
+      siHoldAfter: (() => {
+        try { return localStorage.getItem('SI_HOLD_AFTER') === '1'; }
+        catch (e) { return false; }
+      })(),
+      siFrozen: false,
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
       onROISettingCallBack:undefined,
@@ -3730,7 +3891,10 @@ class APP_INSP_MODE extends React.Component {
       SettingParamInfo:undefined,
       modalInfo:undefined,
       renderObjAlignRotate:false,
-      autoExitReason:undefined
+      autoExitReason:undefined,
+      // Seconds until the idle watchdog leaves, or null when it is far enough
+      // away to be nobody's business.
+      autoExitIn: null
     };
 
     
@@ -3815,12 +3979,65 @@ class APP_INSP_MODE extends React.Component {
     }
   }
 
+  // HOLD THE MEASURED PICTURE.
+  //
+  // Called from componentDidUpdate, not from the button's render: setState
+  // during a render is dropped, which is exactly what the toggle did -- it
+  // looked switched on and nothing ever held.
+  //
+  // The edge, not the level: an SI report says state 'measured' on the one
+  // frame that was inspected, but the screen re-renders many times while that
+  // is the newest report, so acting on the level would re-freeze after every
+  // manual thaw.
+  _siHoldCheck(prevProps) {
+    if (!this.state.siHoldAfter || this.state.siFrozen) return;
+    const si = this.props.siState, was = prevProps && prevProps.siState;
+    const measured = (r) => !!(r && r.state === 'measured' && r.measured === true);
+    if (measured(si) && !measured(was)) this.setState({ siFrozen: true });
+  }
+
+  // A measurement landing counts as somebody being here too, not just the press
+  // that asked for it: a press while the scene is still moving is remembered by
+  // the core and spends itself when it settles, which can be seconds later.
+  _siNoteMeasured(prevProps) {
+    const m = (r) => !!(r && r.state === 'measured' && r.measured === true);
+    if (m(this.props.siState) && !m(prevProps && prevProps.siState))
+      this._lastSIActivityAt = Date.now();
+  }
+
+  // SI's watchdog runs on a clock of its own, not on arriving reports.
+  //
+  // The CI one is driven by reports, and SI stops sending them once the average
+  // is full and the scene is settled -- which is exactly when the machine is
+  // idle. A watchdog that goes quiet at the moment it is needed is not one.
+  //
+  // One second, which is the resolution the countdown is shown at. It runs in
+  // every mode and does nothing in the others, rather than being started and
+  // stopped as the mode changes: one timer with a guard cannot be left running
+  // by a path that forgot to stop it.
+  _siIdleTick() {
+    if (!siAutoExitApplies(this.props.machine_custom_setting.InspectionMode)) {
+      if (this.state.autoExitIn !== null) this.setState({ autoExitIn: null });
+      return;
+    }
+    if (this._autoExiting) return;
+    const d = siAutoExitDecision({
+      now: Date.now(),
+      lastActivityAt: Math.max(this._lastSIActivityAt, this._lastInteractAt),
+      idleMs: autoExitWindowsOf(this.props.machine_custom_setting).siIdleMs,
+    });
+    const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
+      ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
+    if (secs !== this.state.autoExitIn) this.setState({ autoExitIn: secs });
+    if (d.reason) this.autoExit(d.reason);
+  }
+
   // CI-only idle watchdog. Called from componentDidUpdate with each fresh
   // inspection report (already gated to CI there). Two exit triggers, both
   // time-based:
-  //  - no object on the plate for NO_OBJ_MS, or
+  //  - no object on the plate for the no-object window, or
   //  - the SAME object (reducer tracking-window identity, matched by orientation/
-  //    area/position) still present after SAME_OBJ_MS, i.e. user walked off and
+  //    area/position) still present after the same-object one -- user walked off and
   //    left a part sitting there.
   checkAutoExitForCI(report) {
     if (this._autoExiting) return;
@@ -3831,9 +4048,21 @@ class APP_INSP_MODE extends React.Component {
     const tw = this.props.reportStatisticState && this.props.reportStatisticState.trackingWindow;
     const d = autoExitDecision({
       now: Date.now(), hasObject: hasObj, noObjSince: this._noObjSince,
-      trackingWindow: tw, noObjMs: this.NO_OBJ_MS, sameObjMs: this.SAME_OBJ_MS,
+      trackingWindow: tw,
+      ...autoExitWindowsOf(this.props.machine_custom_setting),
+      lastInteractAt: this._lastInteractAt,
     });
     this._noObjSince = d.noObjSince;
+
+    // Show it, but only whole seconds and only while it is worth watching.
+    // Reports arrive at frame rate; storing the raw milliseconds would queue a
+    // re-render of this whole screen ten times a second to change a digit that
+    // moves once. Null above the threshold, so the screen is quiet for the four
+    // minutes nobody needs to be told about.
+    const secs = (d.remainMs == null || d.remainMs > this.AUTO_EXIT_WARN_MS)
+      ? null : Math.max(0, Math.ceil(d.remainMs / 1000));
+    if (secs !== this.state.autoExitIn) this.setState({ autoExitIn: secs });
+
     if (d.reason) this.autoExit(d.reason);
   }
 
@@ -3843,10 +4072,13 @@ class APP_INSP_MODE extends React.Component {
   // EXIT() does the full clean teardown after.
   autoExit(reason) {
     if (this._autoExiting) return;
-    if (!autoExitApplies(this.props.machine_custom_setting.InspectionMode)) return;
+    const _m = this.props.machine_custom_setting.InspectionMode;
+    if (!autoExitApplies(_m) && !siAutoExitApplies(_m)) return;
     this._autoExiting = true;
     this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSetting: { trigger_mode: 1 } });
-    const msg = (reason === "no_obj")
+    const msg = (reason === "si_idle")
+      ? "長時間未量測，自動退出檢測以節省電力"
+      : (reason === "no_obj")
       ? "長時間無物件，自動退出檢測以節省電力"
       : "物件長時間停滯，自動退出檢測以節省電力";
     this.setState({ autoExitReason: msg });
@@ -3855,13 +4087,10 @@ class APP_INSP_MODE extends React.Component {
 
   // The ranks this def actually uses, ascending. Empty when nothing carries
   // one, which is the ordinary case for a def that was never levelled.
-  _ranksOf(shapeList) {
-    const set = new Set();
-    for (const d of (shapeList || [])) {
-      if (d && Number.isFinite(d.rank)) set.add(d.rank);
-    }
-    return [...set].sort((a, b) => a - b);
-  }
+  // An unranked measurement is a LEVEL 0 measurement, not a measurement
+  // outside the levels -- see UTIL/measureRank.mjs. A def with one ranked item
+  // and twenty unranked ones has two levels, and the slider belongs on screen.
+  _ranksOf(shapeList) { return ranksOf(shapeList); }
 
   // Start the operator at the LOWEST level the def has -- the least cluttered
   // view, which is where someone watching a running line starts. Seeded once
@@ -3876,8 +4105,10 @@ class APP_INSP_MODE extends React.Component {
     this.setState({ measureDisplayRank: ranks.length ? ranks[0] : Infinity });
   }
 
-  componentDidUpdate() {
+  componentDidUpdate(prevProps) {
     this._seedViewRank();
+    this._siHoldCheck(prevProps);
+    this._siNoteMeasured(prevProps);
     if (this.props.machine_custom_setting.InspectionMode== "CI")
       this.checkAutoExitForCI(this.props.inspectionReport);
 
@@ -4138,6 +4369,110 @@ class APP_INSP_MODE extends React.Component {
   // cannot play back is a screenshot, and the operator already has one of
   // those. Two buttons a few centimetres apart, one of them strictly worse,
   // was the actual problem. (operator request, 2026-09-17)
+  // THE SI PRESS.
+  //
+  // SI does not decide for itself when the part is placed: a settle detector
+  // cannot tell a part that has stopped moving from one the operator has not
+  // finished adjusting. The press is that statement, and it is also what makes
+  // "any change during the accumulation is a failure" a fair rule -- the
+  // operator said it was still.
+  //
+  // Shown only in SI. The state comes from the report the core sends, so the
+  // label is what the machine is actually doing, not what this button asked
+  // for a moment ago.
+  siTriggerButton(style) {
+    const si = this.props.siState || {};
+    const st = si.state || 'idle';
+    const n = si.avg_count || 0, target = si.avg_target || 0;
+    // THE PICTURE IS BUILT IN THE BACKGROUND; THE BUTTON ONLY READS IT.
+    //
+    // So "busy" is no longer "is it accumulating" -- it is accumulating almost
+    // all the time. It is "is there a press that has not been spent yet",
+    // which is the only state the operator is actually waiting through.
+    const ready = (st === 'ready' || st === 'measured');
+    const busy = !!si.pending;
+    const ab = si.abort || {};
+    const f1 = (v) => (typeof v === 'number' ? v.toFixed(1) : '?');
+
+    // THE FAILURE HAS TO SAY BY HOW MUCH.
+    //
+    // "有變動" is unactionable on a noisy setup, and a noisy setup is exactly
+    // where this fails: if the threshold sits below the noise floor, no part
+    // will ever pass and the operator has no way to find that out from the
+    // machine. Both numbers the gate compares are here, next to the thresholds
+    // they were compared against, so the answer "your threshold is too tight"
+    // is readable off the screen instead of guessed at.
+    const label = busy
+      ? `等待靜止 ${n}/${target}`
+      : (ready ? '量測' : `量測（累積中 ${n}/${target}）`);
+
+    // The noise floor, while nothing is wrong. This is how the threshold gets
+    // chosen: watch it sit at 2 with the part still, and 6 is a sane gate; watch
+    // it sit at 7 and the gate is the problem, not the part.
+    const noiseNote = (typeof si.rms === 'number')
+      ? `目前變動 ${f1(si.rms)}，門檻 ${f1(si.thres_rms)}。` : '';
+    const tip = busy
+      ? `已按下，等畫面靜止。目前積了 ${n}/${target} 張，`
+        + `畫面一有變動就歸零。${noiseNote}`
+      : (ready
+          ? `已累積 ${n}/${target} 張靜止影像，按下立即檢驗。${noiseNote}`
+          : `畫面還在變動，目前 ${n}/${target} 張。`
+            + `現在按也可以，會等静止後自動檢驗。${noiseNote}`
+            + `若零件確實沒動，是門檻低於雜訊底線，到設定頁調高。`);
+
+    const btn = (
+      <Button
+        key="SITRIG"
+        style={style}
+        size="large"
+        type="primary"
+        danger={false}
+        loading={busy}
+        onClick={() => {
+          if (this.props.CORE_ID === undefined) return;
+          // A new measurement means the held picture is the old answer.
+          this._lastSIActivityAt = Date.now();
+          if (this.state.siFrozen) this.setState({ siFrozen: false });
+          this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { INSP_SI_TRIGGER: true });
+        }}>
+        {label}
+      </Button>
+    );
+
+    const wrapped = tip ? <Tooltip title={tip}>{btn}</Tooltip> : btn;
+
+    // The toggle lives beside the button because it changes what pressing the
+    // button leaves on the screen, and nowhere else in the app would explain
+    // that.
+    const frozen = this.state.siFrozen;
+    const toggle = (
+      <Tooltip key="SIFRZ" title={
+        '\u91cf\u6e2c\u5b8c\u6210\u5f8c\u505c\u4f4f\u756b\u9762\uff0c\u986f\u793a\u88ab\u6aa2\u9a57\u7684\u90a3\u5f35\u5e73\u5747\u5f71\u50cf\uff0c'
+        + '\u4e0d\u518d\u8ddf\u8457\u6700\u65b0\u5f71\u50cf\u66f4\u65b0\u3002\u4e0b\u4e00\u6b21\u6309\u4e0b\u91cf\u6e2c\u6642\u89e3\u9664\u3002'}>
+        <Button
+          size="large"
+          type={this.state.siHoldAfter ? 'primary' : 'default'}
+          ghost={this.state.siHoldAfter && !frozen}
+          icon={<PictureOutlined />}
+          style={{ height: style && style.height, marginLeft: 8 }}
+          onClick={() => {
+            const on = !this.state.siHoldAfter;
+            this.setState({ siHoldAfter: on, siFrozen: on ? this.state.siFrozen : false });
+            try { localStorage.setItem('SI_HOLD_AFTER', on ? '1' : '0'); } catch (e) { }
+          }}>
+          {frozen ? '\u7dad\u6301\u4e2d' : '\u7dad\u6301'}
+        </Button>
+      </Tooltip>
+    );
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ flex: 1 }}>{wrapped}</div>
+        {toggle}
+      </div>
+    );
+  }
+
   inspSnapshotButton(style) {
     return (
         <Button
@@ -4172,6 +4507,13 @@ class APP_INSP_MODE extends React.Component {
               modalInfo:{
                 title:"快照命名",
                 onOk:()=>{
+                  // Checked here as well as shown under the box: the dialog is
+                  // generic and its OK button is not wired to this validity, so
+                  // this is what actually stops an unwritable name from being
+                  // sent. Returning leaves the dialog open with the reason
+                  // already on screen.
+                  // The core appends .xreps and .png to this name.
+                  if (fileNameIssue(this.state.modalInfo.targetName, { extensionFollows: true })) return;
 
                   this.setState({
                     modalInfo:{...this.state.modalInfo,confirmLoading:true}})
@@ -4288,14 +4630,32 @@ class APP_INSP_MODE extends React.Component {
                 onCancel:()=>this.setState({modalInfo:undefined}),
 
                 targetName:targetName,
+                // The button has to LOOK unavailable. Blocking in onOk alone
+                // means a press does nothing at all, which is the same silence
+                // this check exists to remove -- and worse, because the
+                // operator has already decided they are done.
+                okButtonProps:{ disabled: !!fileNameIssue(targetName, { extensionFollows: true }) },
                 children:(modalInfo)=><>
                 路徑:{default_dst_Path}<br/>
                 名稱:
                 <Input size="small"
-                  value={modalInfo.targetName} 
+                  value={modalInfo.targetName}
+                  placeholder="英數字檔名"
                   onChange={(ev)=> this.setState({
-                    modalInfo:{...modalInfo,targetName:ev.target.value}})}
+                    modalInfo:{...modalInfo,
+                      targetName:ev.target.value,
+                      okButtonProps:{ disabled: !!fileNameIssue(ev.target.value,
+                                                                { extensionFollows: true }) }}})}
                 />
+                {/* This box had no check at all, while the def save dialog
+                    silently refused the same characters. A name the core
+                    cannot write produces no file and no error -- see
+                    UTIL/fileNameCheck.mjs, and the note above about 製程 tags
+                    being dropped out of this name for the same reason. */}
+                {fileNameIssue(modalInfo.targetName, { extensionFollows: true })
+                  ? <div style={{color:'#a8071a',fontSize:12,marginTop:6}}>
+                      {fileNameIssue(modalInfo.targetName, { extensionFollows: true })}</div>
+                  : null}
               
                 </>
               }
@@ -4575,6 +4935,11 @@ class APP_INSP_MODE extends React.Component {
         <Tooltip title="檢測快照:這一幀的影像 + 它的檢測報告（.png + .xreps，可回放）">
           {this.inspSnapshotButton()}
         </Tooltip>
+        {/* The SI trigger is NOT in this toolbar -- it is the wide bar across
+            the bottom of the screen, below the canvas. It is the one control
+            the operator uses on every single part, with a hand that has just
+            let go of that part, and it was a small button in a row of eight
+            icons. See the render below. */}
       </div>
 
       {/* Not a toolbar control -- a panel that lives wherever it is mounted. */}
@@ -4614,6 +4979,10 @@ class APP_INSP_MODE extends React.Component {
             <ComponentBoundary name="InspectionCanvas" fallbackHeight="60vh">
               <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
                 onFrameReports={this.onFrameReportsBound}
+                // Hold the measured picture. Owned by this screen, because it is
+                // the screen the operator reads the result on; the canvas only
+                // has to know whether to take the next frame.
+                siFrozen={this.state.siFrozen}
 
                 edit_info={this.props.edit_info}
                 onROISettingCallBack={this.state.onROISettingCallBack}
@@ -4641,6 +5010,22 @@ class APP_INSP_MODE extends React.Component {
 
 
         </div>
+
+        {/* THE SI TRIGGER, across the bottom of the screen.
+            Fixed rather than in the flow: the canvas and the stats table split
+            the height between them and both scroll, so anything in the flow
+            below them is off-screen at the ratios the machine actually runs
+            at. The operator presses this once per part and must not have to
+            look for it. */}
+        {this.props.machine_custom_setting.InspectionMode === "SI" ? (
+          <div style={{ position: 'fixed', bottom: 18, left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 'min(560px, 76vw)', zIndex: 30 }}>
+            {this.siTriggerButton({ width: '100%', height: 56, fontSize: 20,
+                                    fontWeight: 600, boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })}
+          </div>
+        ) : null}
+
         <Modal {...this.state.modalInfo} visible={this.state.modalInfo!==undefined}> 
           {this.state.modalInfo===undefined?null:
             ((typeof this.state.modalInfo.children === 'function')?
@@ -4675,6 +5060,27 @@ class APP_INSP_MODE extends React.Component {
 
           </Menu> */}
         </>
+
+        {/* THE IDLE COUNTDOWN.
+            Only in the last minute, and only in CI, which is the only mode the
+            watchdog applies to. An operator who is about to be taken off this
+            screen should be able to see it coming and stop it -- touching the
+            screen is what stops it, so the line says so rather than leaving
+            them to guess. Above the SI button's place and out of the canvas's
+            way. */}
+        {(this.state.autoExitIn === null || this.state.autoExitReason !== undefined
+          || !(autoExitApplies(this.props.machine_custom_setting.InspectionMode)
+               || siAutoExitApplies(this.props.machine_custom_setting.InspectionMode))) ? null : (
+          <div style={{ position: 'fixed', bottom: 84, left: '50%',
+                        transform: 'translateX(-50%)', zIndex: 29,
+                        padding: '6px 14px', borderRadius: 16,
+                        background: 'rgba(0,0,0,0.62)', color: '#ffd666',
+                        fontSize: 15, whiteSpace: 'nowrap',
+                        pointerEvents: 'none' }}>
+            {'已閒置，' + this.state.autoExitIn
+             + '秒後自動退出檢測（觸碰畫面可繼續）'}
+          </div>
+        )}
 
         <Modal
           visible={this.state.autoExitReason !== undefined}
@@ -4738,6 +5144,9 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     CORE_ID: state.ConnInfo.CORE_ID,
     WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
     inspectionReport: state.UIData.edit_info.inspReport,
+    // SI progress. Not inspectionReport.si -- an accumulating frame carries no
+    // measurement, so it never becomes an inspReport. See the reducer.
+    siState: state.UIData.edit_info.si,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
 

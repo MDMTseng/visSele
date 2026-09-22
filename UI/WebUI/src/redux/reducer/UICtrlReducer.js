@@ -11,6 +11,14 @@ import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
 import { mkLog } from 'UTIL/logger';
 import dclone from 'clone';
+
+// Reports whose statistics have already been taken.
+//
+// A WeakSet rather than a field on the report, because these objects are
+// uploaded verbatim: a bookkeeping flag set here would become a column in every
+// database row. Weak, so retiring a report never keeps it alive -- the entry
+// disappears with the report itself.
+const _retiredReports = new WeakSet();
 import JSum from 'jsum'
 
 import {GetDefaultSystemSetting} from 'JSSRCROOT/info.js';
@@ -278,16 +286,22 @@ function StateReducer(newState, action) {
                     srep_inWindow.isCurObj = false;
                   });
 
-                  //Check if the trackingWindow object is timeout(from tracking window)
-                  reportStatisticState.trackingWindow =
-                    reportStatisticState.trackingWindow.filter((srep_inWindow) => {
-                      let tdiff = currentTime_ms - srep_inWindow.time_ms;
-                      if (tdiff < statSetting.keepInTrackingTime_ms) {
-                        return true;
-                      }
-                      //if the time is longer than 4s then remove it from matchingWindow
-                      if (srep_inWindow.repeatTime > statSetting.minReportRepeat
-                        && srep_inWindow.headSkipTime == 0) {
+                  // RETIRING A REPORT: its statistics are taken, it enters the
+                  // history, and it goes on newAddedReport, which is what the
+                  // database upload consumes.
+                  //
+                  // Lifted out of the filter below so it can also be called the
+                  // moment a report arrives -- see the SI flush after the
+                  // matching block. It was reachable ONLY from that filter,
+                  // which runs when the NEXT report arrives, and that is a
+                  // promise SI does not keep: it measures once and then falls
+                  // silent, so the one report of the part sat in the window
+                  // forever and was never uploaded. Moving the part eventually
+                  // shook it loose, which is why it looked intermittent rather
+                  // than broken.
+                  const _retire = (srep_inWindow) => {
+                        if (_retiredReports.has(srep_inWindow)) return;
+                        _retiredReports.add(srep_inWindow);
                         // The SAME per-製程 override the verdict is graded
                         // against further down (cur_MarginInfo -> resultGrading).
                         // The statistics used to read the ROOT shapes instead, so
@@ -350,6 +364,23 @@ function StateReducer(newState, action) {
                         }
 
                         reportStatisticState.newAddedReport.push(srep_inWindow);
+                  };
+
+                  //Check if the trackingWindow object is timeout(from tracking window)
+                  reportStatisticState.trackingWindow =
+                    reportStatisticState.trackingWindow.filter((srep_inWindow) => {
+                      // Already retired by the immediate flush: it was kept only
+                      // so the panel had something to show, and its statistics
+                      // were taken then. Drop it without counting it twice.
+                      if (_retiredReports.has(srep_inWindow)) return false;
+                      let tdiff = currentTime_ms - srep_inWindow.time_ms;
+                      if (tdiff < statSetting.keepInTrackingTime_ms) {
+                        return true;
+                      }
+                      //if the time is longer than 4s then remove it from matchingWindow
+                      if (srep_inWindow.repeatTime > statSetting.minReportRepeat
+                        && srep_inWindow.headSkipTime == 0) {
+                        _retire(srep_inWindow);
                       }
                       else {
                         log.error("the current data only gets few samples, ignore",
@@ -758,6 +789,25 @@ function StateReducer(newState, action) {
 
                     });
 
+                    // SI: TAKE THE RESULT NOW, NOT WHEN THE NEXT ONE ARRIVES.
+                    //
+                    // flushImmediately is set for modes that do not blend at all
+                    // (see statSettingOf). For those the tracking window is a
+                    // display buffer and nothing else, so there is nothing to
+                    // wait for -- and in SI there is nothing to wait FOR, because
+                    // the measurement is one-shot and the report stream stops
+                    // until the operator does something.
+                    //
+                    // The report is KEPT in the window after being retired so the
+                    // panel beside the picture still has it to show; the guard in
+                    // the filter above stops it being counted a second time.
+                    if (statSetting.flushImmediately) {
+                      reportStatisticState.trackingWindow.forEach((srep_inWindow) => {
+                        if (srep_inWindow.repeatTime > statSetting.minReportRepeat
+                          && srep_inWindow.headSkipTime == 0) _retire(srep_inWindow);
+                      });
+                    }
+
                     //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
                     //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
                     reportStatisticState.trackingWindow =
@@ -909,6 +959,21 @@ function StateReducer(newState, action) {
               // build to report.
               newState.edit_info = { ...newState.edit_info,
                 station: GetObjElement(action,["data","station"]),
+                // SI PROGRESS, and it has to land HERE rather than on
+                // inspReport.
+                //
+                // An accumulating SI frame carries no measurement -- the core
+                // sends an empty report object with only this block on it --
+                // so it has no `type`, and EVENT_Inspection_Report below
+                // returns on the first line without building inspReport at
+                // all. The button was reading inspReport.si, which therefore
+                // never appeared: the operator pressed 量測 and the screen
+                // said nothing, all the way through a successful run and,
+                // worse, through a failed one.
+                //
+                // Sibling of station, for the same reason station is one: it
+                // describes the FRAME, not any object located in it.
+                si: GetObjElement(action,["data","si"]),
                 // WHICH LOCALIZER RAN -- from the core, not from the def.
                 //
                 // A def asking for shape_based gets it only if shape training

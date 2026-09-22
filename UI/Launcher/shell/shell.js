@@ -29,9 +29,83 @@ function appendLog(text, cls) {
   if (atBottom) logEl.scrollTop = logEl.scrollHeight;
 }
 
+// --- busy ---------------------------------------------------------------------
+//
+// Installing takes tens of seconds and said nothing while it did. The log pane
+// was carrying the lines all along, but it is a small box at the bottom of a
+// page the operator may not even be looking at, and the buttons stayed live --
+// so "nothing happened" and "press it again" were the obvious readings.
+//
+// While this is up it covers the screen and swallows clicks, the step is named
+// from the installer's own log lines, and the one instruction that matters is
+// on screen: do not cut the power.
+let busyOn = false;
+// Raised by a log line rather than by a caller that will take it down again.
+// A full-screen cover with nobody responsible for removing it is worse than the
+// silence it replaced, so an unowned one ends on the install's own last word.
+let busyAuto = false;
+
+function busyStart(title, auto) {
+  busyOn = true;
+  busyAuto = !!auto;
+  const b = $('busy');
+  if (!b) return;
+  $('busyTitle').textContent = title;
+  $('busyStep').textContent = '';
+  b.className = 'busy';
+}
+function busyStep(text) {
+  if (!busyOn) return;
+  const e = $('busyStep');
+  if (e) e.textContent = text;
+}
+function busyEnd() {
+  busyOn = false;
+  busyAuto = false;
+  const b = $('busy');
+  if (b) b.className = 'busy hidden';
+}
+
+// Run something long with the cover up, and take it down whatever happens --
+// including a throw, which is the case that would otherwise leave a machine
+// showing "installing" forever.
+async function withBusy(title, fn) {
+  busyStart(title, false);
+  try { return await fn(); }
+  finally { busyEnd(); }
+}
+
+// --- splash ------------------------------------------------------------------
+//
+// Up from the moment the shell loads. It comes down for exactly three things,
+// and all three are "a human now has to see something":
+//
+//   a banner       the setup is incomplete, or the core did not start, or it
+//                  exited. Every one of those is a reason the panels behind
+//                  are the right screen.
+//   a modal        a question. Answering it is the only thing to do.
+//   three taps     somebody asking for the tools.
+//
+// It does NOT come down when the core starts normally: the window navigates to
+// the application UI and the whole shell goes with it.
+let splashDown = false;
+
+function splashUp() {
+  if (splashDown) return;
+  const sp = $('splash');
+  if (sp) sp.className = 'splash';
+}
+function splashOff() {
+  splashDown = true;
+  const sp = $('splash');
+  if (sp) sp.className = 'splash hidden';
+}
+
 // --- banner ------------------------------------------------------------------
 
 function banner(level, title, detail) {
+  // Anything worth a banner is worth the operator seeing the panel it sits on.
+  splashOff();
   const b = $('banner');
   b.className = 'banner ' + level;
   b.replaceChildren(el('div', 'title', title));
@@ -285,6 +359,8 @@ function closeModal() {
 }
 
 function openModal(title, buildBody, actions) {
+  // A question cannot be asked from behind the splash.
+  splashOff();
   closeModal();
   const back = el('div');
   back.id = 'modal';
@@ -361,7 +437,8 @@ function showUpdateOffer(offer) {
         closeModal();
         appendLog(`安裝 ${offer.file} …`, 'lnc');
         try {
-          const r = await withUnlock('安裝 ' + offer.version, () => L.installFromSource(offer.file));
+          const r = await withUnlock('安裝 ' + offer.version,
+            () => withBusy('正在安裝 ' + offer.version, () => L.installFromSource(offer.file)));
           if (r === undefined) { refresh(); return; }   // cancelled
           if (!r.ok) { appendLog('安裝失敗:' + r.error, 'err'); refresh(); return; }
           // Installed is not selected. Pointing at it is the second half, and
@@ -437,7 +514,8 @@ function renderUpdates(st) {
       b.disabled = true;
       appendLog(`安裝 ${p.file} …`, 'lnc');
       try {
-        const r = await withUnlock('安裝 ' + p.version, () => L.installFromSource(p.file));
+        const r = await withUnlock('安裝 ' + p.version,
+          () => withBusy('正在安裝 ' + p.version, () => L.installFromSource(p.file)));
         if (r === undefined) { b.disabled = false; return; }   // cancelled
         if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
         refresh();
@@ -605,7 +683,11 @@ $('btnStop').onclick = async () => {
 };
 
 $('btnInstall').onclick = async () => {
+  // The file picker must NOT be behind the cover -- it is a dialog the operator
+  // has to use. chooseAndInstall opens it and then installs, so the cover goes
+  // up on the first log line instead of here; see onLog below.
   const r = await L.chooseAndInstall();
+  busyEnd();
   if (r.canceled) return;
   if (!r.ok) appendLog('安裝失敗:' + r.error, 'err');
   refresh();
@@ -613,7 +695,17 @@ $('btnInstall').onclick = async () => {
 
 $('btnLogs').onclick = () => L.openFolder('logs');
 
-L.onLog(({ message }) => appendLog(message, 'lnc'));
+L.onLog(({ message }) => {
+  appendLog(message, 'lnc');
+  // The installer's own words, shown where the operator is looking. It also
+  // RAISES the cover for an install nobody could wrap -- the one started from
+  // the file picker, which has to be able to open a dialog first.
+  if (!busyOn && /^package: /.test(message)) busyStart('正在安裝更新', true);
+  busyStep(message);
+  // Only ends what it raised itself; a wrapped install is ended by its own
+  // finally, after the postinstall that follows these lines.
+  if (busyAuto && /^installed to |^install failed|REFUSED/.test(message)) busyEnd();
+});
 L.onCoreLine((line) => appendLog(line, line.startsWith('[err]') ? 'err' : undefined));
 L.onHealth(() => refresh());
 // --- the three-tap setup gate ------------------------------------------------
@@ -633,20 +725,28 @@ let taps = [];
 
 function gateOpen() { return gateDeadline > Date.now(); }
 
+// The countdown and the invitation live ON the splash now, not in a strip
+// inside the panel stack -- the panel stack is what the splash is covering, so
+// a message there would have been written to a screen nobody was looking at.
 function paintGate() {
+  const main = $('splashMain'), hint = $('splashHint');
   if (!gateOpen()) {
     clearInterval(gateTimer); gateTimer = null;
     if ($('gate')) $('gate').className = 'gate hidden';
+    // The window is normally navigating to the application about now. If it is
+    // not -- the start was held, or something is about to raise a banner --
+    // the splash stays up and says the plain thing rather than a stale count.
+    if (main) main.textContent = '';
+    if (hint) hint.textContent = '連點三下進入設定模式';
     return;
   }
+  splashUp();
   const left = Math.ceil((gateDeadline - Date.now()) / 1000);
   const got = taps.length;
-  $('gate').className = 'gate';
-  $('gate').replaceChildren(
-    el('div', 'gate-main', `啟動中… ${left} 秒`),
-    el('div', 'gate-hint', got
-      ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
-      : `連點三下進入設定模式`));
+  if (main) main.textContent = `啟動中… ${left} 秒`;
+  if (hint) hint.textContent = got
+    ? `再點 ${TAPS_NEEDED - got} 下進入設定模式`
+    : `連點三下進入設定模式`;
 }
 
 L.onSetupGate((info) => {
@@ -658,13 +758,24 @@ L.onSetupGate((info) => {
 });
 
 async function onGateTap() {
-  if (!gateOpen()) return;
+  // Counted whenever the splash is up, not only during the boot window.
+  //
+  // The taps used to be live only while the gate was armed, which is a few
+  // seconds at start. Past that the splash would have been a wall: the machine
+  // is sitting on the shell -- the start held for an update check, say -- and
+  // the one gesture that exists for reaching the tools did nothing. The
+  // setup-mode REQUEST still belongs to the armed window, because that is what
+  // it means: stop the start. Outside it, three taps just uncover the panels.
+  const armed = gateOpen();
+  if (!armed && splashDown) return;
   const now = Date.now();
   taps = taps.filter((t) => now - t < TAP_WINDOW_MS);
   taps.push(now);
-  if (taps.length < TAPS_NEEDED) { paintGate(); return; }
+  if (taps.length < TAPS_NEEDED) { if (armed) paintGate(); return; }
   gateDeadline = 0; taps = [];
+  splashOff();
   paintGate();
+  if (!armed) return;
   const r = await L.requestSetup();
   if (!r || !r.ok) {
     const why = (r && r.error) || '未知原因';
@@ -717,6 +828,13 @@ async function startIfHeld() {
     await L.startCore();
   } catch (e) { appendLog('啟動失敗:' + e.message, 'err'); }
 }
+
+// Up before anything is known. Everything that could take it down -- a reason,
+// a banner, an update question -- arrives after this point, so starting
+// covered and uncovering on demand is the order that never flashes the panels
+// at an operator.
+splashUp();
+paintGate();
 
 refresh().then(askOnce, askOnce);
 setInterval(refresh, 5000);

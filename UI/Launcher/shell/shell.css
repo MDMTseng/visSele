@@ -148,6 +148,31 @@ pre#log .lnc { color: var(--accent); }
 .note.err { color: var(--bad); }
 
 
+/* The splash. Covers everything, because that is the point -- but BELOW the
+   modal layer (z-index 100), so a question that has to be answered is never
+   hidden behind it. The shell also takes it down whenever it raises a banner
+   or opens a modal; the z-order is the second line of defence, not the first.
+
+   Sized for a glance from a step away, like the rest of this file. */
+.splash {
+  position: fixed; inset: 0; z-index: 90;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 18px;
+  /* The operator taps the screen, not a control. Nothing in here is a target. */
+  user-select: none; cursor: default;
+}
+.splash.hidden { display: none; }
+.splash-brand {
+  font-size: 46px; font-weight: 700; letter-spacing: 3px; color: var(--ink);
+}
+.splash-brand span { color: var(--accent); font-weight: 400; letter-spacing: 1px; }
+.splash-main {
+  font-size: 22px; font-weight: 600; color: var(--accent);
+  font-variant-numeric: tabular-nums; min-height: 1.5em;
+}
+.splash-hint { color: var(--ink-dim); font-size: 16px; min-height: 1.5em; }
+
 /* --- modals ---------------------------------------------------------------
    Uses the panel palette, not white. The first version set a white box and no
    text colour, so the type inherited the dark theme's light grey and came out
@@ -197,3 +222,35 @@ pre#log .lnc { color: var(--accent); }
   border: 1px solid var(--line); border-radius: 4px;
 }
 .modalInput:focus { outline: none; border-color: var(--accent); }
+
+/* --- the busy cover ------------------------------------------------------ */
+/* Above the splash (90): an install can be started from the shell, so this has
+   to sit on top of anything already on screen. Pointer events are captured on
+   purpose -- while a version directory is being written, a click that reaches
+   a button behind this is a click nobody should be able to make. */
+.busy {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 12, 16, 0.86);
+}
+.busy.hidden { display: none; }
+.busy-box { width: min(560px, 84vw); text-align: center; color: #e8eaed; }
+.busy-title { font-size: 20px; font-weight: 600; margin-bottom: 14px; }
+.busy-step {
+  font-size: 13px; color: #9aa0a6; margin-top: 12px; min-height: 1.4em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.busy-warn { font-size: 13px; color: #ffcf70; margin-top: 18px; }
+/* Indeterminate on purpose. The steps take wildly different times -- extracting
+   85 MB, then hashing every file -- so a percentage across the whole install
+   would stall and jump, and a bar that lies is worse than one that only says
+   "still working". */
+.busy-bar { height: 4px; background: #2a2f37; border-radius: 2px; overflow: hidden; }
+.busy-bar > i {
+  display: block; width: 36%; height: 100%; border-radius: 2px;
+  background: #5191a5; animation: busy-slide 1.1s ease-in-out infinite;
+}
+@keyframes busy-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}

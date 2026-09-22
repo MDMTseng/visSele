@@ -349,12 +349,16 @@ if [[ -n "$EXPORT_DIR" ]]; then
         # crash here can never fail the build or leak a "Segmentation fault" line.
         ( set +e
           echo "==> self-test: crashing the bundled exe to verify in-place crash symbolication..."
-          rm -f "$EXPORT_DIR"/crash_*.dump "$EXPORT_DIR"/insp_crash_*.dmp "$EXPORT_DIR"/latest_dump.dump 2>/dev/null
+          # Crash evidence goes to <log_dir>/crashlog: the drainer's ring dump into
+          # a dated subfolder, the minidump at its root (see log_crash_win.cpp).
+          # log_dir is the cwd here, there being no chdir= argument.
+          rm -rf "$EXPORT_DIR/crashlog" 2>/dev/null
+          rm -f "$EXPORT_DIR"/latest_dump.dump 2>/dev/null
           # Background + disown so bash (non-interactive) never announces the
           # child's signal death; the drainer writes the dump within ~ms anyway.
           ( cd "$EXPORT_DIR" && ./visSele.exe --crash-test segv >/dev/null 2>&1 ) & disown 2>/dev/null
           sleep 2
-          _st_dump="$(ls -t "$EXPORT_DIR"/crash_*.dump 2>/dev/null | head -1)"
+          _st_dump="$(ls -t "$EXPORT_DIR"/crashlog/*/crash_*.dump 2>/dev/null | head -1)"
           if [[ -n "$_st_dump" ]]; then
             echo "---- crash dump: $(basename "$_st_dump") ----"
             grep -E "^(signal|producer|drainer|module):" "$_st_dump"
@@ -364,7 +368,8 @@ if [[ -n "$EXPORT_DIR" ]]; then
             else
               echo "==> self-test WARN: stack not symbolicated -- check addr2line/.debug bundling"
             fi
-            rm -f "$EXPORT_DIR"/crash_*.dump "$EXPORT_DIR"/insp_crash_*.dmp "$EXPORT_DIR"/latest_dump.dump 2>/dev/null
+            rm -rf "$EXPORT_DIR/crashlog" 2>/dev/null
+            rm -f "$EXPORT_DIR"/latest_dump.dump 2>/dev/null
           else
             echo "==> self-test WARN: no crash dump produced (drainer didn't write one)"
           fi

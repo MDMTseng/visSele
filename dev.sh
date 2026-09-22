@@ -118,6 +118,16 @@ install_core() {
     [[ -f "$src/$exe" ]] || continue
     cp -f "$src/$exe" "$APP_DIR/Core/$exe" || die "could not replace $APP_DIR/Core/$exe (is it running?)"
     n=$((n + 1))
+    # The symbols go with the binary they describe, when the build made any.
+    #
+    # A full build strips the exe and writes <exe>.debug beside it, and this
+    # copied only the exe -- so the shipped app had a stripped core and NO
+    # symbols, and a crash on a machine resolved to bare addresses. The fast
+    # path deletes any .debug for the opposite reason (it installs an
+    # unstripped exe, and a .debug from an older build describes a different
+    # binary), so the two paths together kept the app permanently without them
+    # and it was being papered over by copying the files across by hand.
+    [[ -f "$src/$exe.debug" ]] && cp -f "$src/$exe.debug" "$APP_DIR/Core/$exe.debug"
   done
   [[ "$n" -gt 0 ]] || die "nothing to install from $src"
   ok "installed $n core binaries into $APP_DIR/Core"
@@ -219,6 +229,149 @@ n = len(zipfile.ZipFile(out).namelist())
 print("   %s  (%d entries, %.1f MB)" % (out, n, os.path.getsize(out) / 1e6))
 PY
   ok "overlay zip"
+}
+
+# A REAL UPDATE PACKAGE, which is not what step_overlay makes.
+#
+# overlay writes a bare zip of Core/ + WebUI/ that somebody unzips over a
+# version directory by hand. Useful on a bench, and nothing verifies it.
+#
+# This builds the thing the launcher's updater accepts: info.json for the
+# version, scripts/boot.js for how to start it, and a manifest.json carrying a
+# SHA256 for EVERY file. The launcher refuses a package with no manifest, with a
+# listed file missing, or with a file on disk the manifest does not list -- an
+# unlisted file is a file nobody hashed. It installs to a staging directory,
+# verifies, and only then renames into place, so a bad package cannot damage the
+# version that is running.
+#
+# Into X2Updates, because that is the folder a machine picks updates up from.
+step_pack() {
+  [[ -f "$CORE_DEV_MARK" ]] && die "Core/ holds a fast build -- run './dev.sh core full' first"
+  local with_launcher=0 ver="" delta_from=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --with-launcher) with_launcher=1 ;;
+      --delta-from) delta_from="${2:-}"; shift ;;
+      *) ver="$1" ;;
+    esac
+    shift
+  done
+  ver="${ver:-$VERSION}"
+  local dst="InspectionCore/Core0_1/data/sync/DEV/X2Updates"
+  [[ -d "$dst" ]] || die "no $dst -- that is where machines look for updates"
+  [[ -f "$APP_DIR/info.json" ]] || die "no $APP_DIR/info.json -- not an assembled app"
+  [[ -f "$APP_DIR/scripts/boot.js" ]] || die "no $APP_DIR/scripts/boot.js -- the launcher needs it"
+  local out="$dst/update_${ver}_win.zip"
+
+  # DELTA: carry only what differs from a package that was already shipped.
+  #
+  # The base is named as the previous ZIP rather than as a version, because the
+  # zip carries the manifest it was verified against -- so the thing being
+  # measured against is what the machines actually have, and nothing extra has
+  # to be kept on this bench to make the next delta possible. The app folder is
+  # rebuilt in place, so it cannot be its own base.
+  #
+  # What the package then ASKS for is the lib generation (the version's second
+  # field), not this base, so a machine several updates behind can still take
+  # it. See make_package.py.
+  local delta_args=()
+  if [[ -n "$delta_from" ]]; then
+    [[ -f "$delta_from" ]] || die "--delta-from: no such package $delta_from"
+    delta_args=(--base-package "$delta_from")
+    out="$dst/update_${ver}_win_delta.zip"
+  fi
+
+  # The launcher rides INSIDE the version, under launcher/, and a postinstall
+  # script installs it. Put here rather than bolted onto the zip afterwards
+  # because every file in a package must be in manifest.json -- the launcher
+  # refuses one that is not -- and the manifest is built from this directory.
+  #
+  # Left behind when the flag is not given, so a package built without it does
+  # not silently carry the last one: both are removed first, every time.
+  rm -rf "$APP_DIR/launcher" "$APP_DIR/scripts/postinstall.js"
+  if [[ "$with_launcher" == "1" ]]; then
+    mkdir -p "$APP_DIR/launcher"
+    for f in main.js preload.js; do
+      [[ -f "UI/Launcher/$f" ]] && cp "UI/Launcher/$f" "$APP_DIR/launcher/$f"
+    done
+    for d in shell src tools; do
+      [[ -d "UI/Launcher/$d" ]] && cp -r "UI/Launcher/$d" "$APP_DIR/launcher/$d"
+    done
+    cp UI/Launcher/tools/postinstall_launcher.js "$APP_DIR/scripts/postinstall.js" \
+      || die "no UI/Launcher/tools/postinstall_launcher.js"
+    ok "launcher code added to the package ($(find "$APP_DIR/launcher" -type f | wc -l) files)"
+  fi
+
+  if [[ -n "$delta_from" ]]; then
+    say "packaging $APP_DIR as $ver, as a delta onto $(basename "$delta_from")"
+  else
+    say "packaging $APP_DIR as $ver (about 160 files, ~90 MB, under a minute)"
+  fi
+  python UI/Launcher/tools/make_package.py "$APP_DIR" "$out" --version "$ver" \
+    "${delta_args[@]+"${delta_args[@]}"}" \
+    || die "packaging failed"
+  ok "update package: $out"
+  if [[ -n "$delta_from" ]]; then
+    say "it installs on any machine that has a ${ver%.*}.x version already;"
+    say "  keep a full package in $dst for everything else"
+  fi
+  if [[ "$with_launcher" == "1" ]]; then
+    say "the launcher's JavaScript is in it; postinstall backs up the old one to"
+    say "  <launcher>/launcher_backups/<timestamp>/  and it takes effect at the next start"
+  else
+    warn "the LAUNCHER is not in this package -- add --with-launcher, or see './dev.sh -h'"
+  fi
+}
+
+# PUT BACK A LAUNCHER, from what the postinstall kept.
+#
+# The reason the postinstall makes a backup at all: a launcher that will not
+# start cannot be fixed by the launcher, so the way back has to be a file copy
+# somebody can run from here -- or by hand, which is all this does.
+step_launcher_restore() {
+  # ABSOLUTE, both of them. The copy below runs inside the backup directory, so
+  # a relative destination resolves against THAT -- which is what the first
+  # version did: it wrote every file into the backup it was reading from,
+  # touched nothing in resources/app, and said "restored". A restore that
+  # silently does nothing is worse than one that fails.
+  local lroot dst root
+  lroot="$(cd "$(dirname "$LAUNCHER")" && pwd)" || die "cannot resolve $LAUNCHER"
+  root="$lroot/launcher_backups"
+  dst="$lroot/resources/app"
+  [[ -d "$root" ]] || die "no $root -- nothing has replaced the launcher yet"
+
+  local want="${1:-}"
+  if [[ -z "$want" ]]; then
+    echo "   backups in $root:"
+    local n=0
+    for d in "$root"/*/; do
+      [[ -d "$d" ]] || continue
+      n=$((n+1))
+      local nf ver
+      # BACKUP.json is the label, not launcher code, so it is not counted.
+      nf="$(find "$d" -type f ! -name BACKUP.json | wc -l | tr -d " ")"
+      ver="$(sed -n "s/.*\"replaced_by_version\": *\"\([^\"]*\)\".*/\1/p" "$d/BACKUP.json" 2>/dev/null)"
+      printf "     %s   %s file(s)%s\n" "$(basename "$d")" "$nf" \
+             "${ver:+   replaced by $ver}"
+    done
+    [[ "$n" == 0 ]] && die "none"
+    echo "   restore one with: ./dev.sh launcher_restore <timestamp>"
+    return 0
+  fi
+
+  local src="$root/$want"
+  [[ -d "$src" ]] || die "no backup named $want in $root"
+  [[ -d "$dst" ]] || die "no $dst"
+  stop_launcher_quiet
+  local n=0
+  while IFS= read -r -d "" f; do
+    f="${f#./}"
+    mkdir -p "$dst/$(dirname "$f")"
+    cp "$src/$f" "$dst/$f" || die "could not restore $f"
+    n=$((n+1))
+  done < <(cd "$src" && find . -type f ! -name BACKUP.json -print0)
+  [[ "$n" == 0 ]] && die "$want contains no files"
+  ok "restored $n file(s) from $want into $dst -- ./dev.sh up to start it"
 }
 
 step_flash_uinspesp32() {
@@ -330,6 +483,12 @@ step_down() {
 
 step_up() {
   [[ -f "$LAUNCHER" ]] || die "launcher not found at $LAUNCHER"
+  # The launcher code goes with it, exactly as up_dev_server already did.
+  # Leaving it out here meant the two ways of starting the app disagreed about
+  # which launcher they ran: up_dev_server picked up an edit to UI/Launcher and
+  # plain `up` silently ran whatever was packaged, so a launcher change tested
+  # fine and then vanished the next time somebody started it the other way.
+  step_launcher
   stop_launcher_quiet
   powershell.exe -NoProfile -Command "Start-Process -FilePath '$(cygpath -w "$LAUNCHER" 2>/dev/null || echo "$LAUNCHER")'" \
     >/dev/null 2>&1 || die "could not start the launcher"
@@ -378,14 +537,25 @@ ${B}dev.sh${N} -- build, install and run visSele
       ./dev.sh core full       ... and strip, bundle and self-test ${DIM}~50s${N}
       ./dev.sh flash_uinspesp32 [COM3]
                                flash the uInsp ESP32             ${DIM}~35s${N}
-      ./dev.sh overlay [sha]   zip Core + WebUI for the update   ${DIM}~5s${N}
-      ./dev.sh launcher        copy UI/Launcher into the packaged app ${DIM}instant${N}
-                               ${DIM}(needed for any launcher change -- up_dev_server
-                                runs the packaged launcher, not the source)${N}
+      ./dev.sh overlay [sha]   bare Core+WebUI zip, unzip by hand ${DIM}~5s${N}
+      ./dev.sh pack [version] [--with-launcher] [--delta-from OLD.zip]
+                               a VERIFIED update package into X2Updates ${DIM}~1min${N}
+                               (info.json + boot.js + per-file SHA256; this is
+                                what the launcher's updater will accept)
+                               --delta-from carries only what changed ${DIM}~4 MB${N}
+      ./dev.sh launcher_restore [timestamp]
+                               list, or put back, a launcher the postinstall
+                               replaced
+      ./dev.sh launcher        copy UI/Launcher into the packaged app instant
+                               (up and up_dev_server both do this for you now;
+                                this is for copying it without a restart)
 
   ${B}The app${N}
 
-      ./dev.sh up              (re)start the launcher on the installed build
+      ./dev.sh up              (re)start the launcher on the INSTALLED build
+                               ${R}a WebUI edit is NOT in it until you build and
+                               install it${N} -- ./dev.sh web && ./dev.sh install,
+                               or just ./dev.sh ship
       ./dev.sh up_dev_server   (re)start it against Vite -- a WebUI edit then
                                appears in the running window with no rebuild,
                                no restart, and the session left where it was
@@ -421,6 +591,55 @@ ${B}dev.sh${N} -- build, install and run visSele
       changes where the window loads its files from -- the core, the machine
       and the data are the same ones ${B}up${N} uses, so what you see is real.
       ${B}up${N} puts it back on the installed bundle.
+    * ${R}SWITCHING FROM up_dev_server BACK TO up LOSES EVERY UNBUILT UI EDIT${N},
+      and it does it silently: ${B}up${N} loads export_v2/app/<ver>/WebUI, which is
+      whatever ${B}install${N} last put there. An afternoon of work on the dev
+      server can be sitting only in src/ and in Vite's memory, and the window
+      comes back looking like the morning. ${B}status${N} is the check -- it prints
+      "WebUI built <t1> installed <t2>" and a t2 older than t1 is exactly this.
+      Build and install before you switch, or use ${B}ship${N}, which is both.
+    * ${B}pack${N} vs ${B}overlay${N}: overlay is a bare zip for a bench, unzipped over a
+      version directory by hand and verified by nobody. ${B}pack${N} is the package
+      the launcher itself installs -- staged, hashed file by file, and renamed
+      into place only after every hash matches, so a truncated copy on a USB
+      stick cannot damage the version that is running.
+    * ${B}pack --delta-from X2Updates/update_<old>_win.zip${N} builds a package that
+      carries only the files that differ from that one -- about 4 MB instead of
+      90, because the core, its symbols and the WebUI are some 29 MB of a 238 MB
+      application and the rest is vendor runtime that changes once a year.
+      ${B}The second field of the version is the lib generation.${N} 2.0.4 and 2.0.7
+      ship the same runtime; 2.1.0 says it changed. A delta records the
+      GENERATION, not the package it was measured against, so the launcher takes
+      what it did not carry from ANY 2.0.x on the machine -- one that skipped
+      four updates included. So bump the second field whenever something outside
+      the application changes, and the packager refuses a base from a different
+      generation.
+      Every reused file is hashed against the manifest before it is used, and
+      then the whole assembled directory is verified again, file by file. The
+      version number says where to look; it is never believed. A file that
+      rotted on disk or differs between two builds of a generation is not a
+      match, and the install stops with its name.
+      The base is named as the previous ZIP because that zip carries the
+      manifest it was verified against; nothing has to be kept on this bench.
+      A machine with no version of the generation cannot use a delta, so keep a
+      full package in X2Updates and point release.json at THAT.
+    * ${B}pack --with-launcher${N} ships the launcher's JavaScript too. A package
+      installs into export_v2/app/<version>/, and the launcher lives beside
+      that tree and is what DOES the installing -- so the code rides in the
+      version under launcher/ and scripts/postinstall.js copies it into
+      resources/app after every file has been verified. It takes effect at the
+      NEXT launcher start.
+      Before replacing anything the postinstall copies what is there to
+      <launcher>/launcher_backups/<timestamp>/ and refuses to install if that
+      copy fails -- the backup is what makes this reversible, so there is no
+      version of it without one. Five are kept. Put one back with
+      ${B}./dev.sh launcher_restore${N}, which with no argument lists them.
+    * ${R}THE ELECTRON BINARY AND ITS DLLs ARE NEVER IN A PACKAGE${N}. Windows will
+      not let a running image be overwritten, and the launcher is the process
+      doing the installing, so an Electron version change needs an out-of-band
+      install. Only the JavaScript can travel this way.
+    * ${B}./dev.sh launcher${N} is the bench path: it copies the JavaScript straight
+      into the packaged app here, no package and no backup.
     * Nothing in this script commits, pushes or uploads anything.
 EOF
 }
@@ -452,6 +671,9 @@ case "$CMD" in
             else                              timed "core build" "25s" step_core; fi ;;
   overlay)  step_overlay "${1:-}" ;;
   launcher) step_launcher ;;
+  # No shift: main already consumed the command, so "$@" is the arguments.
+  pack)     step_pack "$@" ;;
+  launcher_restore) step_launcher_restore "${1:-}" ;;
   # Named for the board, not for the chip: this repo has a dozen ESP32
   # firmwares under Peripheral/ and "esp32" did not say which one.
   flash_uinspesp32) timed "uInspESP32 flash" "35s" step_flash_uinspesp32 "${1:-}" ;;

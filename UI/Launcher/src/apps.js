@@ -57,6 +57,9 @@ class AppStore {
   get currentFile() { return path.join(this.dir, 'current.json'); }
 
   versionDir(version) { return path.join(this.dir, version); }
+
+  // Every version of a lib generation has the same runtime beside it.
+  libBase(version) { return libFamily(version); }
   get updateStateFile() { return path.join(this.dir, UPDATE_STATE); }
 
   list() {
@@ -367,6 +370,14 @@ class AppStore {
     //
     // So: the last known good, and whatever the current pointer displaced, are
     // kept regardless of how far down the list they have fallen.
+    // NOTHING EXTRA IS PROTECTED FOR THE SAKE OF DELTA PACKAGES.
+    //
+    // A delta declares a lib generation, not a particular version, and takes
+    // each file it did not carry from ANY installed version of that generation
+    // whose copy hashes correctly. The currently selected version is always one
+    // of those -- it is in the generation being updated, by definition, and it
+    // is protected here already. So there is no separate thing to keep alive,
+    // and no disk-space rule that can quietly break an update.
     const good = this.lastGood();
     const protectedVersions = new Set([cur, good && good.version, this.previousVersion()].filter(Boolean));
 
@@ -390,6 +401,27 @@ class AppStore {
   }
 }
 
+// THE SECOND FIELD OF A VERSION IS THE LIB GENERATION.
+//
+//     2.0.4          major 2, lib generation 0, build 4
+//     2.1.0          the runtime beside the application changed
+//
+// Two versions with the same major.lib ship the same vendor runtime -- the
+// OpenCV, OpenBLAS, IPP and camera SDK that are 210 MB of a 238 MB application
+// and change about once a year. That is a PROMISE MADE BY WHOEVER SETS THE
+// VERSION, and it is what lets a delta package say "I need generation 2.0"
+// rather than "I need exactly 2.0.5": a machine that skipped three updates
+// still has the same runtime, so it can still be updated cheaply.
+//
+// The promise is not taken on trust. Every file a delta does not carry is
+// hashed against the manifest before it is used, so bumping the build number
+// when the runtime actually changed fails the install rather than producing a
+// version made of mismatched halves.
+function libFamily(version) {
+  const p = String(version).split('.');
+  return p.length >= 2 ? `${p[0]}.${p[1]}` : String(version);
+}
+
 // Numeric per field, with non-numeric fields compared as strings so a tag like
 // "1.2.0-rc1" still orders sensibly rather than throwing.
 function cmpVersion(a, b) {
@@ -409,4 +441,4 @@ function cmpVersion(a, b) {
   return 0;
 }
 
-module.exports = { AppStore, cmpVersion, STAGING, REPLACED, LAST_GOOD, REQUIRED_ENTRIES, POSTINSTALL, UPDATE_STATE, INFO, BOOT };
+module.exports = { AppStore, cmpVersion, libFamily, STAGING, REPLACED, LAST_GOOD, REQUIRED_ENTRIES, POSTINSTALL, UPDATE_STATE, INFO, BOOT };

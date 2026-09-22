@@ -177,7 +177,7 @@ function CalibrationUI(props) {
             const IM = rpkts.find(p => p.type === "IM");
             let url = null;
             if (IM && IM.image) {
-              if (IM.format === 1 || IM.format === 2) {
+              if (IM.format === 1 || IM.format === 2 || IM.format === 3) {
                 // JPEG: blob the bytes directly.
                 const bytes = new Uint8Array(IM.image.byteLength);
                 bytes.set(IM.image);   // copy: WS buffer is recycled on next message

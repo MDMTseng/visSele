@@ -611,7 +611,16 @@ function registerIpc() {
       return { ok: false, error: 'that version is the one already running' };
     }
     try {
-      if (!pkg.installed) await updater.install(pkg.path, shellLog);
+      // ASKED FOR IS ASKED FOR. This used to skip the install whenever a
+      // directory of that version already existed -- while the button that
+      // started it read 重新安裝. So pressing it did nothing: no files written,
+      // no line in the log, no error. The one case where somebody presses it is
+      // the case where they believe the installed copy is wrong.
+      //
+      // install() still refuses to overwrite the version that is SELECTED, which
+      // is the guard that actually matters; a version merely present on disk is
+      // not in use and can be replaced.
+      await updater.install(pkg.path, shellLog);
 
       // BETWEEN INSTALLING AND SELECTING, because that is the only moment where
       // failing is still free: the files are verified and in place, and nothing

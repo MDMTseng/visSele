@@ -257,7 +257,7 @@ inspSnapQueue {"capacity":5,"size":0,"dropped":0}
 ```
 在這之前 drop 只進 log,沒有人能從外面量。
 
-**crash dump**:`Core0_1/crash_reports/<YYYYMMDD>/`,含整個 ring。
+**crash dump**:機台的 `data/crashlog/<YYYYMMDD>/`(含整個 ring),minidump 在上一層 `data/crashlog/`。
 > ⚠️ **`PRODUCER_DIED` 不等於 crash。** 每次 `--insp` CLI 都是一個短命的 log producer,
 > 結束時 drainer 就記一筆。這在 2026-08-27 讓人以為 core 在使用者操作時掛了八次。
 > 看 `signal:` 那行,再看尾巴是不是 `--insp: wrote <path>`。

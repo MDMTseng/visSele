@@ -27,6 +27,7 @@ import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { CameraCtrl } from './canvas/CameraCtrl';
 import renderUTIL from './canvas/renderUTIL';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './canvas/renderConst';
+import { rankShown } from 'UTIL/measureRank.mjs';
 export { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR };
 
 // How long the core took on this frame, drawn just above the image's top-left
@@ -125,9 +126,21 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   // which in InspectionUI means the frame stops rendering, not just the
   // caption. identityMat does live on the shared prototype; fall back to the
   // identity anyway so this can never be the thing that breaks a draw.
-  const I = self.identityMat;
-  if (I) ctx.setTransform(I.a, I.b, I.c, I.d, I.e, I.f);
-  else   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // IN CSS PIXELS, NOT DEVICE PIXELS.
+  //
+  // Every number below -- 14px and 11px of type, a 216px inset for the side
+  // panel, 6px of padding, a 3px outline -- was written as a screen size and
+  // was one, for as long as the canvas was backed in CSS pixels. Backing it in
+  // device pixels turned all of them into device pixels, so on a 2x display
+  // the whole caption came out at half the size it was written to be, which is
+  // exactly what it looked like.
+  //
+  // Scaling the transform by the device pixel ratio gives the literals their
+  // meaning back, and is the only change: the anchor and the clamp are in
+  // device pixels, so they are divided by it once, here.
+  const capDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  ctx.setTransform(capDpr, 0, 0, capDpr, 0, 0);
+  const capW = self.canvas.width / capDpr, capH = self.canvas.height / capDpr;
   ctx.font = '600 14px Arial';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
@@ -141,13 +154,40 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   // The left inset clears the side panel, which is an overlay on top of a
   // full-width canvas; clamping to the canvas edge put the caption underneath
   // it, visible as a sliver. Only applies when the corner is off-screen left.
-  const pad = 6, safeLeft = 216;
-  const x = Math.min(Math.max(imgTopLeft_dev.x, safeLeft),
-                     Math.max(safeLeft, self.canvas.width - ctx.measureText(txt).width - pad));
+  const pad = 6;
+  // ASK THE PANEL HOW WIDE IT IS.
+  //
+  // 216 was a guess at the side panel, and the inspection screen's panel is
+  // more than twice that -- so when the image's top-left corner is off-screen
+  // and the clamp takes over, the caption landed UNDERNEATH the panel and the
+  // first half of the line was simply not there. It only showed up when the
+  // corner was off-screen left, which is why it survived: at most zoom levels
+  // the clamp never fires.
+  //
+  // The panel is a DOM overlay on top of a full-width canvas, so its right edge
+  // is a fact that can be read rather than guessed. In CSS pixels, matching the
+  // transform above. Invisible or collapsed panels do not count: the caption
+  // should use the whole width when there is nothing over it.
+  let safeLeft = 216;
+  try {
+    const panel = document.querySelector('.MenuAnim');
+    if (panel) {
+      const op = parseFloat(getComputedStyle(panel).opacity);
+      if (!(op >= 0) || op > 0.1) {
+        const pr = panel.getBoundingClientRect();
+        const cr = self.canvas.getBoundingClientRect();
+        if (pr.width > 0 && pr.right > cr.left) {
+          safeLeft = Math.max(safeLeft, (pr.right - cr.left) + 10);
+        }
+      }
+    }
+  } catch (e) { /* no DOM, or a layout this does not know: keep the default */ }
+  const x = Math.min(Math.max(imgTopLeft_dev.x / capDpr, safeLeft),
+                     Math.max(safeLeft, capW - ctx.measureText(txt).width - pad));
   // Room for the second line when there is one, so the breakdown cannot be the
   // half that falls off the bottom edge.
-  const y = Math.min(Math.max(imgTopLeft_dev.y - 4, 18),
-                     self.canvas.height - pad - (sub ? 14 : 0));
+  const y = Math.min(Math.max(imgTopLeft_dev.y / capDpr - 4, 18),
+                     capH - pad - (sub ? 14 : 0));
 
   // Readable over both the pale plate and whatever falls outside it.
   ctx.lineWidth = 3;
@@ -167,6 +207,25 @@ function drawInspTimingCaption(self, ctx, imgTopLeft_dev) {
   }
   ctx.restore();
 }
+
+// HOW FAR A FINGER TRAVELS BEFORE IT COUNTS AS A DRAG, in millimetres of
+// screen. 5 mm is about a third of a fingertip: far enough that resting on a
+// handle to read its value never moves it, close enough that a deliberate drag
+// does not feel stuck.
+// HOW FAR A POINTER TRAVELS BEFORE IT COUNTS AS A DRAG, in millimetres of
+// screen. A finger gets 10 mm: the contact patch is 8-10 mm across, it is
+// resting on the thing it might move, and a bench operator's hand is not
+// steady -- so the dead zone has to be bigger than the tremor, not just bigger
+// than the pixel grid. A cursor is a pixel and reports exactly where it is, so
+// 5 mm is already generous there.
+const EDIT_DRAG_ARM_TOUCH_MM = 10;
+const EDIT_DRAG_ARM_MOUSE_MM = 5;
+// How near a press has to be to count as being on a control point, in
+// millimetres of screen. A fingertip contact patch is 8-10 mm across, so 6 mm
+// is "the handle is inside the touch", while a cursor is a pixel and 3 mm is
+// already generous.
+const EDIT_HIT_TOUCH_MM = 6;
+const EDIT_HIT_MOUSE_MM = 3;
 
 class EverCheckCanvasComponent_proto {
 
@@ -457,11 +516,21 @@ class EverCheckCanvasComponent_proto {
   }
 
 
+  // Pointer events arrive in CSS pixels; everything in here works in canvas
+  // pixels. Taken from the element itself rather than devicePixelRatio, so any
+  // other CSS scaling of the canvas is covered by the same line.
+  static cssToCanvas(canvas, rect) {
+    const sx = (rect.width  > 0) ? (canvas.width  / rect.width)  : 1;
+    const sy = (rect.height > 0) ? (canvas.height / rect.height) : 1;
+    return { sx, sy };
+  }
+
   getMousePos(canvas, evt) {
     var rect = canvas.getBoundingClientRect();
+    const { sx, sy } = EverCheckCanvasComponent_proto.cssToCanvas(canvas, rect);
     let mouse = {
-      x: evt.clientX - rect.left,
-      y: evt.clientY - rect.top
+      x: (evt.clientX - rect.left) * sx,
+      y: (evt.clientY - rect.top) * sy
     };
     return mouse;
   }
@@ -473,6 +542,14 @@ class EverCheckCanvasComponent_proto {
       let t = e.touches[key];
       if (key !== "length") {
         touches.push({
+          // WHICH KIND OF POINTER THIS IS, carried on the event itself.
+          //
+          // A touch is replayed through onmousedown / onmousemove, so by the
+          // time the edit logic sees it there is nothing left to tell it apart
+          // from a mouse -- and the two want different things from a drag: a
+          // finger hides what it is on, a cursor does not. One field, set at
+          // the one place touches are turned into mouse events.
+          isTouch: true,
           clientX: t.clientX,
           clientY: t.clientY,
           force: t.force,
@@ -529,9 +606,10 @@ class EverCheckCanvasComponent_proto {
 
     function getTouchPos(canvasDom, touchEvent) {
       var rect = canvasDom.getBoundingClientRect();
+      const s = EverCheckCanvasComponent_proto.cssToCanvas(canvasDom, rect);
       return {
-        x: touchEvent.touches[0].clientX - rect.left,
-        y: touchEvent.touches[0].clientY - rect.top
+        x: (touchEvent.touches[0].clientX - rect.left) * s.sx,
+        y: (touchEvent.touches[0].clientY - rect.top) * s.sy
       };
     }
 
@@ -592,11 +670,59 @@ class EverCheckCanvasComponent_proto {
               Math.hypot(pts_cur[0].clientX - pts_cur[1].clientX, pts_cur[0].clientY - pts_cur[1].clientY) /
               Math.hypot(pts_pre[0].clientX - pts_pre[1].clientX, pts_pre[0].clientY - pts_pre[1].clientY);
 
+            // IN CANVAS PIXELS, like every other point handed to scaleCanvas.
+            //
+            // scaleCanvas measures the centre against canvas.width/2, and the
+            // wheel path reaches it through getMousePos, which converts. This
+            // one subtracted rect.left and stopped -- CSS pixels. The two were
+            // the same number for as long as the backing store was allocated
+            // in CSS pixels; now that it is device pixels, a display at 150%
+            // put the pinch centre at two thirds of the distance from the
+            // top-left corner and the picture zoomed about a point that was
+            // not between the fingers. Only visible where dpr != 1, which on
+            // this app is the touch machine -- so the mouse stayed correct and
+            // the gesture did not.
+            //
+            // The ratio above is a ratio of two distances, so its units cancel
+            // and clientX is right for it.
+            const cs = EverCheckCanvasComponent_proto.cssToCanvas(this.canvas, rect);
             let center = {
-              x: (pts_pre[0].clientX + pts_pre[1].clientX) / 2-rect.left,
-              y: (pts_pre[0].clientY + pts_pre[1].clientY) / 2-rect.top,
+              x: ((pts_pre[0].clientX + pts_pre[1].clientX) / 2 - rect.left) * cs.sx,
+              y: ((pts_pre[0].clientY + pts_pre[1].clientY) / 2 - rect.top) * cs.sy,
             }
             this.scaleCanvas(center, 1, scale);
+
+            // AND PAN, in the same gesture.
+            //
+            // A pinch is two fingers moving, and only the part of that motion
+            // that changes the distance between them was being used. The part
+            // that moves both of them together -- which is how anybody frames
+            // what they are zooming into -- was thrown away, so the picture
+            // zoomed about wherever the fingers first landed and the operator
+            // had to let go and drag to bring the feature back.
+            //
+            // The midpoint's travel IS that component: scale about the old
+            // midpoint first, then translate by how far the midpoint moved, so
+            // the point under the fingers stays under the fingers.
+            //
+            // Through StartDrag/EndDrag because that is the camera's existing
+            // screen-space translation: CameraTransform applies tmpMatrix
+            // before the camera matrix, so the vector is in canvas pixels, and
+            // EndDrag folds it in permanently. Doing it with SetOffset would
+            // not work -- SetOffset translates in the matrix's own space and
+            // GetCameraOffset reads raw m41/m42, so the two are not inverses.
+            const mid = (pts) => ({
+              x: ((pts[0].clientX + pts[1].clientX) / 2 - rect.left) * cs.sx,
+              y: ((pts[0].clientY + pts[1].clientY) / 2 - rect.top) * cs.sy,
+            });
+            const mNow = mid(pts_cur), mPre = mid(pts_pre);
+            const dx = mNow.x - mPre.x, dy = mNow.y - mPre.y;
+            if (dx || dy) {
+              this.camera.StartDrag({ x: dx, y: dy });
+              this.camera.EndDrag();
+              this.debounce_zoom_emit();
+              this.draw();
+            }
             break;
         }
 
@@ -708,6 +834,9 @@ class EverCheckCanvasComponent_proto {
     };
 
     this.rUtil = new renderUTIL(null, this.camera);
+    // unit:'view' sizes against the canvas, so the renderer has to see it.
+    // Set again in resize(), where the backing store is reallocated.
+    this.rUtil.hostCanvas = this.canvas;
     this.rUtil.setColorSet(this.colorSet);
 
 
@@ -982,7 +1111,7 @@ class EverCheckCanvasComponent_proto {
       (ViewPortY - offset.y - cH / 2) / totalScale,
       ViewPortW / totalScale,
       ViewPortH / totalScale];
-    let down_samp_level = 1.0 * crop[2] / (cW);
+    let down_samp_level = 1.0 * crop[2] / (cW / (this.pixelRatio || 1));  // CSS px, not device: see resize()
     this.EmitEvent(
       {
         type: "down_samp_level_update",
@@ -1085,6 +1214,9 @@ class EverCheckCanvasComponent_proto {
     this.mouseStatus.x = pos.x;
     this.mouseStatus.y = pos.y;
     this.mouseStatus.status = 1;
+    // Set on the press and left alone for the rest of the gesture: what the
+    // gesture STARTED as is what it is.
+    this.mouseStatus.isTouch = !!(evt && evt.isTouch);
 
     this.ctrlLogic();
     this.draw();
@@ -1109,9 +1241,42 @@ class EverCheckCanvasComponent_proto {
 
 
   resize(width, height) {
-    if(Math.abs(this.canvas.height - height)+Math.abs(this.canvas.width - width)<5)return;
-    this.canvas.width = width;
-    this.canvas.height = height;
+    // THE BACKING STORE IS IN DEVICE PIXELS. THE LAYOUT IS IN CSS PIXELS.
+    //
+    // This set canvas.width to the CSS width the resize detector reported, so
+    // on any display that is not at 100% -- Windows at 125% or 150%, a
+    // HiDPI panel, an Electron zoom -- the canvas held FEWER pixels than the
+    // box it was stretched across, and the compositor scaled the whole overlay
+    // up. Every line, every glyph, every caliper tick was resampled. That is
+    // the stair-stepped, broken-looking lettering: not the font, not the
+    // anti-aliasing, and not a Windows visual effect. Canvas 2D anti-aliases
+    // in greyscale (never subpixel/LCD, which is disabled on a canvas with an
+    // alpha channel), and greyscale AA cannot survive being magnified.
+    //
+    // So: allocate width*dpr by height*dpr, and pin the CSS box to the size
+    // the layout asked for. Everything downstream already works in canvas
+    // pixels -- worldTransform centres on canvas.width/2, camera.Scale fits
+    // the image to canvas.width -- so the picture is identical, drawn at the
+    // resolution the screen actually has.
+    //
+    // Two places have to be told, because they are the two that DON'T mean
+    // device pixels: the mouse, which arrives in CSS pixels, and the stream
+    // negotiation, which must keep asking for the same number of image pixels
+    // as before or the bandwidth goes up with the display scaling.
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    // Compared in CSS pixels: the old guard compared the DEVICE width against
+    // the CSS width it was handed, so at any dpr != 1 it never matched and
+    // every resize event reallocated the backing store.
+    if (this._cssW !== undefined &&
+        Math.abs(this._cssH - height) + Math.abs(this._cssW - width) < 5 &&
+        this.pixelRatio === dpr) return;
+    this._cssW = width; this._cssH = height;
+    this.pixelRatio = dpr;
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    this.canvas.style.width = width + "px";
+    this.canvas.style.height = height + "px";
+    if (this.rUtil) this.rUtil.hostCanvas = this.canvas;
     //this.ctrlLogic();
     // The stream resolution is chosen from the canvas size, so a canvas that
     // changes size without saying so leaves the core sending the wrong number
@@ -1249,6 +1414,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    // Which control point is selected, and whether a drag may move it.
+    this.EditPointSel = null;
+    this.EditPointArmed = false;
+    this.EditGrab = null;
     this.ShowInspectionNote = false;
     // Standalone preview: show a raw live frame at the INSTRUMENT's own scale,
     // using no def-file state whatsoever. See SetStandalonePreview below.
@@ -1654,6 +1823,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    // Which control point is selected, and whether a drag may move it.
+    this.EditPointSel = null;
+    this.EditPointArmed = false;
+    this.EditGrab = null;
 
     this.ROISettingCallBack = undefined;
     this.EmitEvent = (event) => { log.info(event); };
@@ -1967,7 +2140,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ViewPortW / totalScale,
       ViewPortH / totalScale];
     
-    let down_samp_level = 1.0 * crop[2] / (cW);
+    let down_samp_level = 1.0 * crop[2] / (cW / (this.pixelRatio || 1));  // CSS px, not device: see resize()
     // Sensor pixels per canvas pixel -- the whole basis for choosing a stream
     // resolution, computed HERE because this is the only place that holds both
     // halves of it consistently.
@@ -1994,7 +2167,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
           (this.img_info.full_height+100)*mmpp,
           (this.img_info.full_width+100)*mmpp];
           
-        let new_down_samp_level = 1.0 * crop[2] / (cW);
+        let new_down_samp_level = 1.0 * crop[2] / (cW / (this.pixelRatio || 1));  // CSS px, not device: see resize()
         if(down_samp_level<new_down_samp_level)
           down_samp_level=new_down_samp_level;
       }
@@ -2216,11 +2389,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
 
-        listClone=listClone.filter(ff=>{
-          if(ff.rank===undefined)return true;
-          if(ff.rank<=this.measureDisplayRank)return true;
-          return false;
-        });
+        listClone=listClone.filter(ff=>rankShown(ff, this.measureDisplayRank));
 
 
         listClone.forEach((eObj) => {
@@ -2449,6 +2618,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    // Which control point is selected, and whether a drag may move it.
+    this.EditPointSel = null;
+    this.EditPointArmed = false;
+    this.EditGrab = null;
     this.mouseTriggeredUpdate=false;
     this.EmitEvent = (event) => { log.debug(event); };
   }
@@ -2499,6 +2672,34 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   SetEditShape(EditShape) {
     this.EditShape = EditShape;
+
+    // RE-DERIVE THE SELECTED POINT FROM THE SHAPE WE NOW HOLD.
+    //
+    // EditPoint is a REFERENCE INTO EditShape -- moving the point IS moving the
+    // shape, which only works while the two are the same object. This method
+    // replaces EditShape with whatever came back through redux and never
+    // touched EditPoint, so from the first round trip onwards the editor was
+    // dragging a point inside an object nothing else could see: the marker
+    // followed the finger, the shape and its other handles stayed where they
+    // were, and the edit went nowhere.
+    //
+    // It survived for as long as redux happened to hand back the same object it
+    // was given. That is not a property anything guarantees, and it stopped
+    // being true as soon as the shape passed through a reducer that copies.
+    //
+    // EditPointSel is the durable name for the selection -- a shape id and a
+    // key -- so it can be resolved against the new object every time.
+    if (this.EditPointSel && this.EditShape
+        && this.EditShape.id === this.EditPointSel.id) {
+      const p = this.EditShape[this.EditPointSel.key];
+      if (p && typeof p === 'object') this.EditPoint = p;
+    } else if (this.EditPointSel) {
+      // A different shape is being edited now; the old selection is not in it.
+      this.EditPointSel = null;
+      this.EditPoint = null;
+      this.EditPointArmed = false;
+      this.EditGrab = null;
+    }
 
     log.debug(this.tmp_EditShape_id);
     if (this.EditShape != null && this.EditShape.id != undefined && this.tmp_EditShape_id != this.EditShape.id) {
@@ -2613,7 +2814,82 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       matrix.d, matrix.e, matrix.f);
   }
 
+  // The dead zone in device pixels. Stated in millimetres of screen because
+  // the thing being avoided is a fingertip, and a fingertip is the same size on
+  // every machine while a pixel is not. The CSS pixel is 1/96 inch by
+  // definition; a device pixel is a CSS pixel over the device pixel ratio.
+  // HOW CLOSE COUNTS AS ON A HANDLE, in device pixels.
+  //
+  // mouse_close_dist is 10, and it used to mean 10 CSS pixels because the
+  // canvas was backed in CSS pixels. Backing it in device pixels turned the
+  // same constant into 10 DEVICE pixels -- about 1.3 mm on a 2x touch panel,
+  // which no fingertip can land inside. The number was never about pixels: it
+  // is how near the operator has to get, and that is a physical distance.
+  //
+  // A finger gets more room than a cursor, for the obvious reason. Never
+  // smaller than the old constant, so nothing on a 1x display gets harder.
+  hitRadiusPx() {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const mm = this.isTouchInput() ? EDIT_HIT_TOUCH_MM : EDIT_HIT_MOUSE_MM;
+    return Math.max(this.mouse_close_dist, mm * (96 / 25.4) * dpr);
+  }
+
+  // IS A FINGER ON THE GLASS RIGHT NOW?
+  //
+  // Asked of the gesture state machine rather than of a flag copied onto a
+  // synthesised mouse event: that flag has to survive being set in one handler
+  // and read in another, and every link in that chain is a way for it to
+  // arrive false. The touch list is the fact itself and cannot be stale.
+  isTouchInput() {
+    return !!((this.mouseStatus && this.mouseStatus.isTouch)
+      || (this.multiTouchInfo && this.multiTouchInfo.touchStatus
+          && this.multiTouchInfo.touchStatus.length > 0));
+  }
+
+  editArmThresholdPx() {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const mm = this.isTouchInput() ? EDIT_DRAG_ARM_TOUCH_MM : EDIT_DRAG_ARM_MOUSE_MM;
+    return mm * (96 / 25.4) * dpr;
+  }
+
+  // Every point on the selected shape, whatever type it is: pt1/pt2 on a line,
+  // pt1/pt2/pt3 on an arc, and whatever a future one calls them. Found by shape
+  // rather than listed per type, so a new primitive gets handles for free.
+  // Every point-like property of a shape: pt1/pt2 on a line, pt1/pt2/pt3 on an
+  // arc, and whatever a future one calls them. Found BY SHAPE rather than
+  // listed per type, so a new primitive gets handles for free.
+  shapeCtrlPoints(sh) {
+    if (!sh) return [];
+    const out = [];
+    for (const k of Object.keys(sh)) {
+      const v = sh[k];
+      if (v && typeof v === 'object' && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+        out.push({ key: k, pt: v });
+      }
+    }
+    return out;
+  }
+
+  editShapeCtrlPoints() {
+    const sh = this.EditShape;
+    if (!sh) return [];
+    const out = [];
+    for (const k of Object.keys(sh)) {
+      const v = sh[k];
+      if (v && typeof v === 'object' && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+        out.push({ key: k, pt: v });
+      }
+    }
+    return out;
+  }
+
   draw_DEFCONF() {
+    // The shape modules gate their own control points on K.isEditing(shape),
+    // which compares against `renderer.EditShape` -- a property nothing ever
+    // set, so it answered false for every shape and those handles were never
+    // drawn at all. Set here, at the top of the draw, which is the one place
+    // that runs for every path that can change the selection.
+    this.rUtil.EditShape = this.EditShape;
 
     let mmpp = this.rUtil.get_mmpp();
     let ctx = this.canvas.getContext('2d');
@@ -2809,10 +3085,65 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                                      this.edit_DB_info._obj.shapeList);
 
 
+    // ALL OF THE SELECTED SHAPE'S HANDLES, not only the one last touched.
+    //
+    // Drawn here rather than left to the shape modules, which gate theirs on a
+    // rendering flag (OVERLAY.ctrl.edit_only): where a selected shape can be
+    // grabbed is the editor's business, and it should not have to turn on a
+    // display option to say so.
+    // IN EDIT MODE, EVERY SHAPE SHOWS WHERE IT CAN BE GRABBED.
+    //
+    // Not just the selected one: the question an operator has in this mode is
+    // "what can I take hold of", and answering it only for the shape already
+    // in hand means hunting for the others by feel. Half size and dim, so a
+    // dozen shapes' worth of handles reads as texture rather than as twelve
+    // things competing with the one that is selected.
+    // ONLY WHILE NOTHING IS SELECTED.
+    //
+    // With no selection the question is "what is there to take hold of", and
+    // every shape answering it is the answer. Once one IS selected the question
+    // has changed to "where can I move THIS", and the other shapes' handles are
+    // a field of dots for the eye to sort through -- the picture in the
+    // screenshot that prompted this. They go away.
+    if (this.EditShape == null
+        && this.state && this.state.substate === UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT) {
+      ctx.strokeStyle = "rgba(150,170,190,0.55)";
+      // Same size as a selected shape's handles: these ARE the grab points,
+      // and something that has to be aimed at should not be drawn smaller than
+      // it can be hit.
+      const sz = 1.0 * this.rUtil.getPointSize();
+      for (const sh of displayShape) {
+        if (!sh) continue;
+        for (const c of this.shapeCtrlPoints(sh)) {
+          // drawpoint(ctx, point, TYPE, size) -- the third argument is the
+          // marker shape, not the size. Passing a number there silently
+          // selected the default circle at the default size, which is why
+          // every handle came out identical however the caller scaled it.
+          this.rUtil.drawpoint(ctx, c.pt, null, sz);
+        }
+      }
+    }
+
+    // The selected shape's own handles, full size: it is the one being worked
+    // on, so its grab points outrank everything else on the picture.
+    if (this.EditShape != null) {
+      ctx.strokeStyle = "rgba(150,170,190,0.85)";
+      for (const c of this.editShapeCtrlPoints()) {
+        this.rUtil.drawpoint(ctx, c.pt, null, 1.0 * this.rUtil.getPointSize());
+      }
+    }
+
     if (this.EditPoint != null) {
-      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
-      ctx.strokeStyle = "green";
-      this.rUtil.drawpoint(ctx, this.EditPoint, 2 * this.rUtil.getPointSize());
+      // TWO STATES, TWO COLOURS. Selected and armed are different things now --
+      // one can be dragged and the other cannot -- so which one this is has to
+      // be visible before a finger moves. Green is armed, as it always was;
+      // amber is selected, and safe to touch.
+      ctx.strokeStyle = this.EditPointArmed ? "green" : "rgba(240,184,73,0.95)";
+      // Only enough larger than its siblings to be found at a glance. It was
+      // 2.2, which on a zoomed-in line covered the feature it is placed
+      // against -- a handle you cannot see past is not a handle.
+      this.rUtil.drawpoint(ctx, this.EditPoint, null,
+        (this.EditPointArmed ? 1.5 : 1.25) * this.rUtil.getPointSize());
     }
 
 
@@ -2820,7 +3151,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     if (this.CandEditPointInfo != null) {
       //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
       ctx.strokeStyle = "rgba(0,255,0,0.3)";
-      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt, 2 * this.rUtil.getPointSize());
+      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt, null, 2 * this.rUtil.getPointSize());
     }
 
 
@@ -2979,7 +3310,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           this.EditShape._cursor = { x: mouseOnCanvas2.x, y: mouseOnCanvas2.y };  // rubber-band preview
           if (this.mouseStatus.status == 1 && ifOnMouseLeftClickEdge) {
             const pts = this.EditShape.points;
-            const closeDist = this.mouse_close_dist / this.camera.GetCameraScale();
+            const closeDist = this.hitRadiusPx() / this.camera.GetCameraScale();
             if (pts.length >= 3 &&
                 Math.hypot(mouseOnCanvas2.x - pts[0].x, mouseOnCanvas2.y - pts[0].y) < closeDist) {
               delete this.EditShape._cursor;
@@ -3008,7 +3339,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             if (pt_info.dist > pt_info2.dist) {
               pt_info = pt_info2;
             }
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+            if (pt_info.pt != null && pt_info.dist < this.hitRadiusPx() / this.camera.GetCameraScale()) {
               this.CandEditPointInfo = pt_info;
             }
             else {
@@ -3100,7 +3431,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               pt_info = pt_info2;
             }
 
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+            if (pt_info.pt != null && pt_info.dist < this.hitRadiusPx() / this.camera.GetCameraScale()) {
               this.CandEditPointInfo = pt_info;
             }
             else {
@@ -3119,17 +3450,44 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               if (tar_ele_trace == null || tar_ele_trace === undefined) {
                 //If there is no tar_ele_trace was set,ie. if user didn't select ref
                 if (this.CandEditPointInfo != null) {
-                  let pt_info = this.CandEditPointInfo;
+                  // A PRESS SELECTS. IT DOES NOT MOVE ANYTHING.
+                  //
+                  // The drag that followed a press used to ASSIGN the pointer's
+                  // position to the point, so the handle teleported to wherever
+                  // the finger landed. With a mouse the press is on the handle
+                  // and the jump is a pixel; with a finger the contact patch is
+                  // millimetres wide, so the geometry moved every time somebody
+                  // touched it to read a value. Losing a value by looking at it
+                  // is not a trade anybody agreed to.
+                  //
+                  // What arms the drag is TRAVEL -- see the dead zone below.
+                  const pi = this.CandEditPointInfo;
+                  const sel = this.EditPointSel;
+                  const already = !!(this.EditShape && sel
+                                     && sel.id === pi.shape.id && sel.key === pi.key);
                   this.CandEditPointInfo = null;
-                  this.EditShape = dclone(pt_info.shape);//Deep copy
-                  this.EditPoint = this.EditShape[pt_info.key];
-                  this.tmp_EditShape_id = this.EditShape.id;
+                  if (!already) {
+                    this.EditShape = dclone(pi.shape);//Deep copy
+                    this.EditPoint = this.EditShape[pi.key];
+                    this.EditPointSel = { id: pi.shape.id, key: pi.key };
+                    this.tmp_EditShape_id = this.EditShape.id;
+                    this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+                  }
+                  // Every press starts unarmed, and remembers where it started.
+                  this.EditPointArmed = false;
+                  this.EditGrab = {
+                    mx: mouseOnCanvas2.x, my: mouseOnCanvas2.y,
+                    px: this.EditPoint.x, py: this.EditPoint.y,
+                  };
                 }
                 else {
                   this.EditPoint = null;
                   this.EditShape = null;
+                  this.EditPointSel = null;
+                  this.EditPointArmed = false;
+                  this.EditGrab = null;
+                  this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
                 }
-                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
               }
               else {
                 if (this.CandEditPointInfo != null) {
@@ -3141,10 +3499,76 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               }
             }
             else {
-              if (this.EditPoint != null) {
-                this.EditPoint.x = mouseOnCanvas2.x;
-                this.EditPoint.y = mouseOnCanvas2.y;
-                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+              // THE DEAD ZONE, MEASURED ON THE GLASS.
+              //
+              // Below EDIT_DRAG_ARM_MM of finger travel nothing moves at all.
+              // Past it the point starts following -- and it follows from WHERE
+              // IT ARMED, so crossing the threshold does not hand the point a
+              // 5 mm jump either.
+              //
+              // Travel, not distance-from-handle: the question is whether this
+              // gesture is a look or a drag, and only the finger's own movement
+              // answers that.
+              if (this.EditPoint != null && this.EditGrab) {
+                const dx = mouseOnCanvas2.x - this.EditGrab.mx;
+                const dy = mouseOnCanvas2.y - this.EditGrab.my;
+                if (!this.EditPointArmed) {
+                  // mouseOnCanvas2 is in WORLD units and the threshold is on
+                  // the screen, so it is compared after the camera scale.
+                  const travelPx = Math.hypot(dx, dy) * this.camera.GetCameraScale();
+                  if (travelPx >= this.editArmThresholdPx()) {
+                    this.EditPointArmed = true;
+                    // WHERE THE DRAG BEGAN, which is not where the press was.
+                    //
+                    // The touch branch measures from here, so the dead zone the
+                    // finger just travelled becomes part of the gap between the
+                    // finger and the handle -- which is the point of it. Measure
+                    // from the PRESS instead and the 5 mm cancels out, leaving
+                    // only however far off the press landed: usually a
+                    // millimetre or two, and indistinguishable from the cursor
+                    // behaviour. That is exactly what it looked like.
+                    this.EditGrab.ax = mouseOnCanvas2.x;
+                    this.EditGrab.ay = mouseOnCanvas2.y;
+                  }
+                }
+                if (this.EditPointArmed) {
+                  // A FINGER KEEPS THE OFFSET. A CURSOR DOES NOT.
+                  //
+                  // They are aimed differently. A cursor is a single pixel the
+                  // operator can see, so the handle belongs exactly under it --
+                  // keeping an offset there means aiming somewhere other than
+                  // where the point should go, and the offset would be the
+                  // press error plus the whole dead zone.
+                  //
+                  // A fingertip is millimetres wide and, worse, it is ON TOP of
+                  // the thing being placed. Snapping the handle to the contact
+                  // centre puts it under the finger where it cannot be seen,
+                  // and moves it by however far off the press landed. Keeping
+                  // the offset means the handle stays visible beside the finger
+                  // and travels exactly as far as the finger does.
+                  // IS A FINGER ON THE GLASS RIGHT NOW?
+                  //
+                  // Asked of the gesture state machine rather than of a flag
+                  // copied onto the synthesised mouse event. The flag has to
+                  // survive being set in one handler and read in another, and
+                  // every link in that chain is a way for it to arrive false --
+                  // which is what it did: the drag took the cursor branch and
+                  // the offset the operator asked for was gone. The touch list
+                  // is the fact itself, and it cannot be stale.
+                  if (this.isTouchInput()) {
+                    // From where it ARMED (ax/ay), not from the press: the
+                    // handle keeps the whole dead zone as clearance, so it stays
+                    // beside the fingertip instead of under it.
+                    const ax = (this.EditGrab.ax !== undefined) ? this.EditGrab.ax : this.EditGrab.mx;
+                    const ay = (this.EditGrab.ay !== undefined) ? this.EditGrab.ay : this.EditGrab.my;
+                    this.EditPoint.x = this.EditGrab.px + (mouseOnCanvas2.x - ax);
+                    this.EditPoint.y = this.EditGrab.py + (mouseOnCanvas2.y - ay);
+                  } else {
+                    this.EditPoint.x = mouseOnCanvas2.x;
+                    this.EditPoint.y = mouseOnCanvas2.y;
+                  }
+                  this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+                }
               }
             }
           }
