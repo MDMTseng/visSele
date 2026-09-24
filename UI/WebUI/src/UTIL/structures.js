@@ -55,7 +55,12 @@ export class CircularCounter{
     {
       if(!force)return false;
       //if we force push data then we deQ one data out
-      deQ();
+      // this.deQ(), not deQ(): a bare call here is a ReferenceError, so the
+      // one branch that exists to make room threw instead of making room.
+      // Unreachable so far only because no caller passes force -- the first
+      // one to do it would have got a crash where the signature promises an
+      // overwrite. Found by eslint no-undef, 2026-09-24.
+      this.deQ();
     }
     this._sidx+=1;
     this._sidx%=this._total_size;

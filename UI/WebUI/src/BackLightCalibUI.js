@@ -3,6 +3,11 @@ import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.calib');
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+// UIAct is used four times in mapDispatchToProps below and was never imported.
+// This screen is unreachable today (MAINUI imports it, but the state entry and
+// the button that would open it are both commented out), so the ReferenceError
+// has never had the chance to fire.
+import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ComponentBoundary from './component/ComponentBoundary';
 
@@ -139,12 +144,13 @@ function stage_light_report_maxMean(stage_light_report)
 {
   let maxMean=stage_light_report.grid_info.reduce((max,slr)=>{
 
+    // The two guards that used to sit here were AFTER this return, so they
+    // never ran, and both named `mixMean` -- an identifier that exists nowhere
+    // in the project (`maxMean` mistyped). A half-finished NaN guard.
+    //
+    // Removed rather than repaired: NaN > max is false, so a NaN mean already
+    // leaves `max` untouched, which is what the guard was reaching for.
     return (slr.mean>max)?slr.mean:max;
-    if(slr.mean!=slr.mean)return mixMean;
-    if(mixMean.mean>max)
-    {
-      return max;
-    }
   },0);
   return maxMean;
 }

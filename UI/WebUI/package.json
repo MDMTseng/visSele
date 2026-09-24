@@ -32,6 +32,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
     "less": "^3.13.1",
     "react-transition-group": "^1.2.1",
     "typescript": "^6.0.3",
@@ -45,7 +48,9 @@
     "export": "sh export.sh ../../release_export/",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview --config vite.config.prod.mjs --host --port 8082 --strictPort"
+    "preview": "vite preview --config vite.config.prod.mjs --host --port 8082 --strictPort",
+    "lint": "eslint .",
+    "lint:errors": "eslint . --quiet"
   },
   "repository": {
     "type": "git",

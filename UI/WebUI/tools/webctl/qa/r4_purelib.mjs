@@ -428,6 +428,40 @@ function testCircularCounterFifoWrap() {
   report('CircularCounter.fifoWrap', ok, why.join('; '));
 }
 
+// The force path -- the one the test above never takes.
+//
+// enQ(true) on a full counter drops the oldest entry and takes the new one. In
+// the REAL src/UTIL/structures.js that branch called a bare deQ() instead of
+// this.deQ(), so it threw a ReferenceError: the branch that exists to make room
+// was the branch that could not run. Nothing passed force, so nothing noticed
+// until eslint's no-undef was turned on (2026-09-24).
+//
+// THIS TEST DID NOT CATCH THAT AND CANNOT. The class above is a TRANSCRIPTION
+// of the module (see the banner at the top: the real one imports through vite
+// aliases and will not load in node), and the transcription already had
+// this.deQ(). Reintroducing the bug in the real file leaves this test green --
+// measured, not assumed.
+//
+// So it documents the contract and guards the copy. What guards the real file
+// is eslint no-undef, which is what found the bug in the first place. If the
+// two ever need to be the same thing, the fix is a __GP_UTIL__ hook or an
+// import map, not more tests against the copy.
+function testCircularCounterForceOverwrite() {
+  let ok = true, why = [];
+  const cc = new CircularCounter(3);
+  cc.enQ(); cc.enQ(); cc.enQ();
+  const first = cc.r();                    // the oldest slot, about to be dropped
+  let threw = null;
+  try {
+    if (cc.enQ(true) !== true) { ok = false; why.push('forced enQ should return true'); }
+  } catch (e) { threw = e; ok = false; why.push('forced enQ threw: ' + e.message); }
+  if (!threw) {
+    if (cc.size() !== 3) { ok = false; why.push(`size after forced enQ=${cc.size()}, want 3`); }
+    if (cc.r() === first) { ok = false; why.push('the oldest entry was not dropped'); }
+  }
+  report('CircularCounter.forceOverwrite', ok, why.join('; '));
+}
+
 // ---------------------------------------------------------------------------
 // Phase A — reachability probe
 // ---------------------------------------------------------------------------
@@ -527,6 +561,7 @@ async function main() {
   testDictMiss();
   testDictArrayKey();
   testCircularCounterFifoWrap();
+  testCircularCounterForceOverwrite();
 
   console.log(`\nReachability: __GP_UTIL__ ${probe.hasUtil ? 'PRESENT' : 'MISSING'} (parent should add hook to unlock browser arm)`);
   console.log(failures ? `${failures} test(s) FAILED, ${skipped} skipped` : `ALL PASS (${skipped} skipped)`);
