@@ -1556,11 +1556,32 @@ export class InspectionEditorLogic {
             x:inspAdjObj.x,
             y:inspAdjObj.y
           };
+          // THE BAND'S DIRECTION, IN THE FRAME EVERYTHING ELSE IS IN.
+          //
+          // A non-anchor point may only move along the arrow: the caliper
+          // establishes where it crossed an edge ALONG its sweep and nothing
+          // across it, so pt1 is projected onto the line that runs along the
+          // band through the measurement, which displaces it purely along the
+          // arrow. That is what closestPointOnLine below is for.
+          //
+          // But vec comes from the def's own shapes and is therefore in OBJECT
+          // frame, while by this point eObject.pt1 has been forward-transformed
+          // and inspAdjObj is the core's report -- both in IMAGE frame. So the
+          // line was anchored and projected in image frame while pointing in
+          // object frame, and on a part sitting at an angle the projection ran
+          // off by exactly that angle. Measured on the machine, def '10014
+          // 2200300327 RHC-CP-21C01' search point [3][1][1][1] -- pose rotated
+          // -34.2 deg, so the point slid ~1.0 mm sideways along the edge where
+          // the real depth correction was 0.10 mm (CT, field, 2026-09-24).
+          //
+          // A direction needs the rotation only, not the translation, which is
+          // all that separates this from pointForwardTrans.
+          const vec_img = PtRotate2d_sc(vec, sin_v, cos_v, flip_f);
           let line ={
             cx:inspAdjObj.x,
             cy:inspAdjObj.y,
-            vx:vec.x,
-            vy:vec.y,
+            vx:vec_img.x,
+            vy:vec_img.y,
           }
 
           if(eObject.locating_anchor==true)

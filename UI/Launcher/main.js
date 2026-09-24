@@ -91,6 +91,30 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => { win = null; });
 
+  // THE UI'S OWN CONSOLE, ON DISK.
+  //
+  // The WebUI logs through loglevel, which reaches the browser console and
+  // stops there. On a machine that means every UI diagnostic is invisible
+  // unless someone is standing at it with devtools open, and a bug reported
+  // from the line gets debugged by exchanging screenshots and guessing --
+  // which is exactly how an afternoon went on the CHECK snap (2026-09-24).
+  //
+  // Only warnings and errors, so this cannot become a firehose: the core's own
+  // rolling log made the same choice for the same reason.
+  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level < 2) return;   // 0 verbose, 1 info, 2 warning, 3 error
+    try {
+      const dir = cfg && cfg.logDir;
+      if (!dir) return;
+      fs.mkdirSync(dir, { recursive: true });
+      const when = new Date().toISOString();
+      const where = sourceId ? ` (${String(sourceId).split('/').pop()}:${line})` : '';
+      fs.appendFileSync(path.join(dir, 'webui_console.log'),
+                        `${when} ${level === 3 ? 'E' : 'W'} ${message}${where}
+`);
+    } catch { /* a diagnostic must never take the window down */ }
+  });
+
   // The renderer must not be able to navigate anywhere we did not send it, and
   // must never open a second window.
   win.webContents.setWindowOpenHandler(({ url }) => {
