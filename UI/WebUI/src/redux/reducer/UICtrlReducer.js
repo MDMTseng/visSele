@@ -48,6 +48,8 @@ function Default_UICtrlReducer() {
     System_Setting:GetDefaultSystemSetting(),
     showSM_graph: false,
     defConf_lock_level: 0,
+    // Set while the 快速驗証 modal is up. See the gate below.
+    quick_verify_active: false,
     edit_info: Edit_info_Empty(),
     WebUI_info: APP_INFO,
     sm: null,
@@ -872,7 +874,33 @@ function StateReducer(newState, action) {
 
   do{
         //console.log(action);
-        if (stateObj.state == UISTS.DEFCONF_MODE && newState.defConf_lock_level != 0 && action.IGNORE_DEFCONF_LOCK!=true) {
+        // TWO OWNERS, ONE GATE.
+        //
+        // defConf_lock_level is the operator's padlock. quick_verify_active is
+        // 快速驗證's, held only while its modal is up, and it exists because
+        // that modal runs a LIVE CI/FI on whatever part is under the camera
+        // while the editor is still open behind it.
+        //
+        // Those reports arrive on a session the CORE opens, not one the UI
+        // asked for -- the demux tracks it on SS_start with no promise
+        // attached, and hands the batch to WSDataDispatch at the end. So they
+        // reach redux as ordinary pushed Inspection_Report actions and
+        // overwrite edit_info.inspReport, which is the pose the def-conf canvas
+        // rectifies the editor's image with. Closing the modal then showed
+        // every shape moved, against an image rotated to match a part that was
+        // never in the editor. Scoping the UI's own PGID did not help and could
+        // not: the stray report is not on it. Measured on the machine, def
+        // '94025 CG2058050B' with the fake camera on a 90-degree-rotated frame
+        // -- rot=-2.167 rad landing 170 ms after the modal closed (2026-09-24).
+        //
+        // The modal never wanted the store: it reads its own results from its
+        // own promise and draws them itself. So the whole class is dropped
+        // while it is up, by the same filter and the same whitelist the padlock
+        // uses. IGNORE_DEFCONF_LOCK still passes, which is what keeps the
+        // editor's own display actions working underneath.
+        if (stateObj.state == UISTS.DEFCONF_MODE
+            && (newState.defConf_lock_level != 0 || newState.quick_verify_active)
+            && action.IGNORE_DEFCONF_LOCK!=true) {
           let level3Filter = [DefConfAct.EVENT.DefConf_Lock_Level_Update]
 
           let level2Filter = level3Filter.concat([DefConfAct.EVENT.Edit_Tar_Update]);
@@ -892,6 +920,10 @@ function StateReducer(newState, action) {
           case DefConfAct.EVENT.DefConf_Lock_Level_Update:
             newState = { ...newState, defConf_lock_level: action.data };
             //console.log(newState);
+            break;
+
+          case DefConfAct.EVENT.QuickVerify_Active_Update:
+            newState = { ...newState, quick_verify_active: action.data };
             break;
 
           case UISEV.StatSettingParam_Update:

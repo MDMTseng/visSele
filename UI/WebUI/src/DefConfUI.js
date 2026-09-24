@@ -3130,6 +3130,14 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     });
   }
 
+  // A GATE THAT OUTLIVES ITS MODAL IS AN EDITOR THAT HAS STOPPED UPDATING.
+  //
+  // CancelNowInsp lowers it on every way out of 快速驗證, and those are the
+  // only ways out. This is the belt for that braces: if some path ever manages
+  // to leave it raised, it is down again the next time this screen is built,
+  // rather than silently costing the operator every report until a reload.
+  useEffect(() => { dispatch(DefConfAct.QuickVerify_Active_Update(false)); }, []);
+
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
   {//FI/CI
 
@@ -3162,6 +3170,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     // every time, both ways, and cleared unconditionally when the session ends
     // rather than only when it was turned on here.
     ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { InspAreaBypass: !stationEnforced });
+
+    // The editor is still open behind this modal and the core is about to
+    // start reporting on a live part. Nothing it says describes the def image.
+    dispatch(DefConfAct.QuickVerify_Active_Update(true));
 
     let _PGID_=11004;
     ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
@@ -3221,12 +3233,41 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       // process exited, and anything opened afterwards added its own on
       // top -- which is what a rising image rate that nobody configured
       // looks like.
+      //
+      // AND THE CANCEL KEEPS THE SESSION OWNED.
+      //
+      // Sending this with no promise callbacks looked harmless -- nobody wants
+      // the reply. But send() REPLACES reqWindow[_PGID_], and the replacement
+      // has promiseCBs undefined; so a report still in flight for this stream
+      // comes back, finds a tracked session with nobody waiting on it, and is
+      // treated as an unsolicited push -- straight into WSDataDispatch and
+      // therefore into redux, where it overwrites edit_info.inspReport.
+      //
+      // That slot is the pose the def-conf canvas rectifies the editor's image
+      // with. So closing 快速驗證 left the editor drawn against whatever part
+      // was under the camera, and every shape appeared to have moved. Measured
+      // on the machine: the cancel at t, the stray report at t+170 ms, rotate
+      // -2.167 rad -- which is the live part, not the def image (2026-09-24).
+      //
+      // A no-op resolve keeps the session owned, so everything this stream
+      // produces stays inside 快速驗證, which is where it belongs: the modal
+      // reads its own data from the resolve above and never wanted the store.
       ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
-        { _PGID_: _PGID_, _PGINFO_: { keep: false } });
+        { _PGID_: _PGID_, _PGINFO_: { keep: false } },
+        undefined,
+        { resolve: () => { /* swallow: this stream is not the editor's */ },
+          reject:  () => { /* the stream is going away either way */ } });
       // And stop the camera, the way InspectionUI does on its way out. Leaving
       // it in free run keeps frames flowing into the pipeline for whatever
       // subscribes next.
       ACT_WS_SEND_BPG(CORE_ID, "ST", 0, { CameraSetting: { trigger_mode: 1 } });
+
+      // Reports already in flight land after this, so the gate comes down a
+      // beat later than the stream stops -- measured at 170 ms on the machine,
+      // and a second is cheap. Unconditional, like the bypass above: a gate
+      // that outlives its modal is an editor that has quietly stopped
+      // updating.
+      setTimeout(() => dispatch(DefConfAct.QuickVerify_Active_Update(false)), 1000);
 
     }
 

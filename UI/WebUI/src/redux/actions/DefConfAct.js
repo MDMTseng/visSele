@@ -33,6 +33,7 @@ export const EVENT = {
   ERROR:"ERROR",
 
   DefConf_Lock_Level_Update:"DefConf_Lock_Level_Update",
+  QuickVerify_Active_Update:"QuickVerify_Active_Update",
 }
 
 export function Edit_Tar_Update(targetObj)
@@ -99,6 +100,17 @@ export function DefConf_Lock_Level_Update(level)
 {
   return {
     type: EVENT.DefConf_Lock_Level_Update ,data:level
+  }
+}
+
+// 快速驗證 owns this one; the padlock beside it is the operator's and neither
+// touches the other. See the gate in UICtrlReducer.
+export function QuickVerify_Active_Update(active)
+{
+  return {
+    type: EVENT.QuickVerify_Active_Update, data: !!active,
+    // The flag has to reach the store THROUGH the gate it controls.
+    IGNORE_DEFCONF_LOCK: true,
   }
 }
 
