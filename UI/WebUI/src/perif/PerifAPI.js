@@ -1489,6 +1489,14 @@ export class SLID_API extends GenPerif_API {
 
   checkInfoState() {
     const reportStatisticState = GetObjElement(deps.getState(), ['UIData', 'edit_info', 'reportStatisticState']);
+    // THE LOOP THAT STOPS THE MACHINE MUST NOT BE THE LOOP THAT THROWS.
+    //
+    // statisticValue and its measureList are absent before the first def is
+    // loaded and again whenever the statistics are cleared, and this runs on a
+    // timer regardless. Reading through them unguarded ends the tick with an
+    // exception -- and an exception here is not a visible failure, it is a
+    // rule engine that silently stops evaluating.
+    if (reportStatisticState === undefined) return;
     const c_state = GetObjElement(deps.getState(), ['UIData', 'c_state']);
     const m_state = xstate_GetCurrentMainState(c_state);
 
@@ -1520,6 +1528,9 @@ export class SLID_API extends GenPerif_API {
       if (this.is_in_EM_STOP == false) {//check status to EM_STOP
         let needToTrigEM_STOP = false;
         const EM_STOP_src_list = [];
+        // Same reason as the guard at the top: measureList can legitimately be
+        // missing, and the NG rules below walk it.
+        const measureList = GetObjElement(reportStatisticState, ['statisticValue', 'measureList']) || [];
         if (this.EM_STOP_Rule.no_obj_detected_time_max_ms > 0 && this.no_obj_detected_time_ms >= this.EM_STOP_Rule.no_obj_detected_time_max_ms) {
           EM_STOP_src_list.push('no_obj_detected_time_ms');
           needToTrigEM_STOP = true;
@@ -1527,8 +1538,23 @@ export class SLID_API extends GenPerif_API {
         if (this.EM_STOP_Rule.no_ava_detected_time_max_ms > 0 && this.no_ava_detected_time_ms >= this.EM_STOP_Rule.no_ava_detected_time_max_ms) {
           EM_STOP_src_list.push('no_ava_detected_time_ms');
           needToTrigEM_STOP = true;
-        } else {
-          reportStatisticState.statisticValue.measureList.forEach((msure) => {
+        }
+        // EVERY RULE IS ASKED, not all-but-one.
+        //
+        // The six NG rules used to sit in the `else` of the no-available-frame
+        // timeout, so the moment that timeout tripped, none of them were
+        // evaluated. The machine still stopped -- the timeout did that -- but
+        // EM_STOP_src_list came back with one entry, and that list is the whole
+        // of what the screen shows an operator about WHY it stopped: the panel
+        // paints a rule red by `EM_STOP_src_list.includes(...)`. So a stop with
+        // three real causes was reported as one, and the other two were
+        // invisible at the moment somebody was standing there trying to
+        // understand the line.
+        //
+        // The no-object rule above was already an independent `if`; only this
+        // one carried the else, which is what an accident looks like.
+        {
+          measureList.forEach((msure) => {
             const stat_sp = msure.statistic.sp;//find every
 
             if (this.EM_STOP_Rule.SNG_Max > 0 && stat_sp.SNG_count >= this.EM_STOP_Rule.SNG_Max) {
@@ -1558,7 +1584,11 @@ export class SLID_API extends GenPerif_API {
           });
         }
         if (needToTrigEM_STOP) {
-          this.EM_STOP_src_list = EM_STOP_src_list;
+          // Deduplicated: the loop pushes per MEASUREMENT, so two shapes that
+          // both break consecutive_SNG_count named that cause twice. The table
+          // asks `.includes()` and could not tell, but the brief readout prints
+          // the list, and "the same reason twice" reads as two problems.
+          this.EM_STOP_src_list = [...new Set(EM_STOP_src_list)];
           this.trigger_EM_STOP();
         }
       }

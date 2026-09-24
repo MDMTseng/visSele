@@ -2043,7 +2043,7 @@ class ObjInfoList extends React.Component {
         <Tag style={{ 'fontSize': 15 }} 
           className={this.state.SLID_EM_STOP_src_list===undefined ||this.state.enable_EM_STOP==false?"":"Emergency_Blink"}
           color={this.state.enable_EM_STOP==false?"gray": (this.state.SLID_EM_STOP_src_list===undefined?"green":"white") }
-          >坡檢停機功能:{this.state.enable_EM_STOP==false?"停用": (this.state.SLID_EM_STOP_src_list===undefined?"正常":"停機") }</Tag>
+          >檢驗停機功能:{this.state.enable_EM_STOP==false?"停用": (this.state.SLID_EM_STOP_src_list===undefined?"正常":"停機") }</Tag>
 
 
         </Button>

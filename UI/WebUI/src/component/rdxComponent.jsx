@@ -1473,6 +1473,23 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
       obj[key]=statisticValue.measureList.map(mea=>mea.statistic.sp[key])
       return obj;
     },{})
+
+    // Math.max() of NOTHING is -Infinity, and it was going straight into the
+    // table. Before the first def is loaded, or right after the statistics are
+    // cleared, measureList is empty and every "測量資訊" cell read -Infinity --
+    // which an operator reads as a fault in the machine rather than as "no data
+    // yet".
+    //
+    // The counts themselves already respect the MACHINE's level: statReducer_sp
+    // (spcStats.js) returns early for a measurement whose quality_essential is
+    // false, which is what a rankN tag folds. So nothing the machine is not
+    // judging on can reach these numbers, or stop the line. The viewing slider
+    // is a different thing and correctly does not enter into it -- which does
+    // mean a cell here can count a measurement the operator's current level
+    // hides, so the column says how many measurements are behind the number.
+    const peak = (arr) => (arr && arr.length ? Math.max(...arr) : '—');
+    const measuredCount = statisticValue.measureList.filter(
+      (mea) => mea.quality_essential !== false).length;
     
     // let spInfoUI=
 
@@ -1505,37 +1522,37 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         SEC: '總規格NG數',
         SEC_SRC:"SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.SNG_Max} onChange={(value) => update_EM_Stop_Rule({SNG_Max:value})}/>,
-        INSP: Math.max(...sp_info_obj.SNG_count),
+        INSP: peak(sp_info_obj.SNG_count),
       },
       {
         SEC: '連續規格NG數',
         SEC_SRC:"consecutive_SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.consecutive_SNG_Max}  onChange={(value) => update_EM_Stop_Rule({consecutive_SNG_Max:value})}/>,
-        INSP: Math.max(...sp_info_obj.consecutive_SNG_count),
+        INSP: peak(sp_info_obj.consecutive_SNG_count),
       },
       {
         SEC: '模糊連續規格NG數',
         SEC_SRC:"fuzzy_consecutive_SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.fuzzy_consecutive_SNG_Max}  onChange={(value) => update_EM_Stop_Rule({fuzzy_consecutive_SNG_Max:value})}/>,
-        INSP: Math.max(...sp_info_obj.fuzzy_consecutive_SNG_count),
+        INSP: peak(sp_info_obj.fuzzy_consecutive_SNG_count),
       },
       {
         SEC: '總管制NG數',
         SEC_SRC:"CNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.CNG_Max}  onChange={(value) => update_EM_Stop_Rule({CNG_Max:value})}/>,
-        INSP: Math.max(...sp_info_obj.CNG_count),
+        INSP: peak(sp_info_obj.CNG_count),
       },
       {
         SEC: '連續管制NG數',
         SEC_SRC:"consecutive_CNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.consecutive_CNG_Max}  onChange={(value) => update_EM_Stop_Rule({consecutive_CNG_Max:value})}/>,
-        INSP: Math.max(...sp_info_obj.consecutive_CNG_count),
+        INSP: peak(sp_info_obj.consecutive_CNG_count),
       },
       {
         SEC: '模糊連續管制NG數',
         SEC_SRC:"fuzzy_consecutive_CNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.fuzzy_consecutive_CNG_Max}  onChange={(value) => update_EM_Stop_Rule({fuzzy_consecutive_CNG_Max:value})}/>,
-        INSP: Math.max(...sp_info_obj.fuzzy_consecutive_CNG_count),
+        INSP: peak(sp_info_obj.fuzzy_consecutive_CNG_count),
       },
     ];
 
@@ -1555,7 +1572,11 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         dataIndex: 'SETUP',
       },
       {
-        title: '測量資訊',
+        // The count is here because the number beside it is a max over every
+        // measurement the MACHINE judges -- which is not the same set as the
+        // one the viewing level is showing. Without it, a peak from a
+        // measurement currently hidden looks like it came from nowhere.
+        title: '測量資訊（' + measuredCount + ' 項判定中）',
         dataIndex: 'INSP',
       },
     ];
@@ -1565,7 +1586,12 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
 
 
     _UI_EM_STOP_UI=<>
-      檢驗NG停機功能:
+      {/* One name for one feature. The indicator on the inspection screen
+          called this 坡檢停機 and this panel called it 檢驗NG停機, so the
+          switch an operator was told to check and the lamp they were looking
+          at did not share a word. 檢驗停機 covers both what it watches: NG
+          counts AND the two no-detection timeouts, which are not NG at all. */}
+      檢驗停機功能:
       <Switch checked={(SLID_api.EM_STOP_Rule.enable_EM_STOP)}
         onChange={(checked)=>
           {
