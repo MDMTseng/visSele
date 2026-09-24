@@ -23,6 +23,7 @@ import { Button, InputNumber, Select, Modal } from 'antd';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { defFileGeneration, stampRefImagePath, SBM_INFO_NAME } from 'UTIL/MISC_Util';
 import { refPngPathOf } from 'UTIL/defNaming.mjs';
+import { seedSbmDefaults, SBM_CORE_DEFAULTS } from 'UTIL/InspectionEditorLogic';
 import { inspectSummary } from './sbmInspectResult';
 import { useDefImages } from 'UTIL/useDefImages';
 import Tooltip from 'antd/lib/tooltip';
@@ -659,6 +660,65 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
     }
     retakeRef.current = edit_info.__img_fresh_capture;
   }, [edit_info.__img_fresh_capture]);
+
+  // EVERY KNOB IN THIS PANEL IS A VALUE THE RECIPE ACTUALLY HAS.
+  //
+  // A control that falls back to a display value when the field is absent is
+  // lying whenever the core's own default differs -- which it does for the
+  // coarse scale (core 1.0) and the ROI spacing (core 0, off). The operator
+  // reads 0.3 and -1 off the screen, tunes around them, and the machine has
+  // been running 1.0 and 0 the whole time.
+  //
+  // A NEW recipe never gets here with anything missing: the engine switch
+  // seeds from the same table the moment it becomes shape_based, so by the
+  // time the studio opens there is nothing to add and no prompt appears.
+  // Anything this finds therefore belongs to a recipe that predates the knob.
+  //
+  // WHICH IS WHY IT ASKS. Writing the fields in silently would change what a
+  // working recipe measures -- spacing off -> auto, 1.0 -> 0.3 -- because the
+  // operator opened a panel to look at it. The prompt says which fields, and
+  // what each one is doing NOW versus what it would become, and 維持原樣 is a
+  // real answer: the recipe keeps running as it has, and the controls keep
+  // showing the core's default, which is the truth for that recipe.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    seededRef.current = true;
+    const seed = seedSbmDefaults(edit_info);
+    const keys = Object.keys(seed);
+    if (!keys.length) return;
+    const changes = keys.filter((k) => SBM_CORE_DEFAULTS[k] !== seed[k]);
+    Modal.confirm({
+      title: '這個配方少了 ' + keys.length + ' 個設定',
+      width: 520,
+      content: (
+        <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+          <div>它是在這些參數加進來之前建立的,所以檔案裡沒有它們,core 用自己的預設在跑。</div>
+          {changes.length ? (
+            <>
+              <div style={{ margin: '8px 0 2px', fontWeight: 600 }}>
+                寫進去會改變{changes.length} 項的實際行為:
+              </div>
+              {changes.map((k) => (
+                <div key={k} style={{ fontFamily: 'monospace' }}>
+                  {k}: {String(SBM_CORE_DEFAULTS[k])} → {String(seed[k])}
+                </div>
+              ))}
+              <div style={{ marginTop: 6 }}>會影響量測結果,改完請重新驗證這個配方。</div>
+            </>
+          ) : (
+            <div style={{ marginTop: 8 }}>這次補的都跟 core 的預設一樣,行為不變。</div>
+          )}
+          <div style={{ marginTop: 8, color: '#888' }}>
+            維持原樣的話,面板會顯示 core 實際在用的值,配方不會被標記為已修改。
+          </div>
+        </div>
+      ),
+      okText: '寫進配方',
+      cancelText: '維持原樣',
+      onOk: () => dispatch(DefConfAct.EditInfo_Patch(seed)),
+    });
+  }, [edit_info, dispatch]);
 
   // ROI POINTS AND FEATURES ARE INDEPENDENT. THE WINDOWS DEPEND ON THE PICTURE.
   //
@@ -1631,10 +1691,15 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
 
         <Block n="4" idx={3} title="ROI 取樣點"
           summary={(roiBusy ? '更新窗口中… ' : '') + (roiPts.length ? roiPts.length + ' 點' : '自動')}>
+          {/* Fallback is the CORE's default, not the one we seed: a recipe that
+              predates the seeding has no field, and the core runs it at 0 (off).
+              New shape_based recipes are seeded -1 in the reducer, so they show
+              -1 because that is what the file says. Every control here reads
+              the same way -- what is displayed is what runs. */}
           <Row label="ROI 最小間距" unit="px">
             <InputNumber min={-1} max={200} step={1} style={{ width: 92 }}
-              value={edit_info.shape_roi_spacing ?? -1}
-              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_roi_spacing: (typeof v === 'number') ? v : -1 }))} />
+              value={edit_info.shape_roi_spacing ?? 0}
+              onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_roi_spacing: (typeof v === 'number') ? v : 0 }))} />
           </Row>
           <Hint>自動產生時,兩點至少相隔這麼遠,視窗才不會疊在一起。
             <b style={{ color: P.ink }}>-1 = 自動</b>(一個視窗寬 30 px,視窗不重疊)、
@@ -1727,10 +1792,20 @@ export function SBMSetupView2({ sendBPG, onSave, onClose }) {
           <Hint>分數低於這個值就當作沒找到。
             <b style={{ color: P.ink }}>改它不用重新生成特徵。</b></Hint>
           <Row label="coarse scale" unit="0–1">
+            {/* The fallback is 1, which is the CORE's default -- not 0.3, which
+                is what a new recipe is now seeded with.
+                A new shape-based def gets 0.3 written into it the moment it
+                becomes shape-based (see Locating_Engine_Update), so this shows
+                0.3 because the field says 0.3. An OLDER def that predates the
+                seeding has no field at all, and the core matches it at full
+                resolution -- showing 0.3 there told the operator the machine
+                was doing something it was not. 1 is what is in force. */}
             <InputNumber min={0.1} max={1} step={0.1} style={{ width: 92 }}
-              value={edit_info.shape_match_scale ?? 0.3}
+              value={edit_info.shape_match_scale ?? 1}
               onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_match_scale: v }))} />
           </Row>
+          <Hint>未設定時是 <b>1</b>(不降採樣,最慢也最不會誤判)。
+            新建的 shape_based 配方會自動帶 0.3。</Hint>
           <Row label="angle ±" unit="度">
             <InputNumber min={0} max={180} step={5} style={{ width: 92 }}
               value={edit_info.matching_angle_margin_deg ?? 180}

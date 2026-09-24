@@ -2021,6 +2021,63 @@ export const DEF_LOCALIZER_SCOPED_KEYS = [
   '__img_fresh_capture', '__tmp_ref_image_path',
 ];
 
+// WHAT A SHAPE-BASED RECIPE IS WORTH WRITING DOWN.
+//
+// defFileGeneration writes each of these only when it is a number, and the
+// studio's controls displayed a fallback when the field was absent. So a
+// recipe could SHOW a value it had never saved, and the core ran its own
+// default instead -- which for two of them is a different value:
+//
+//   shape_match_scale   studio showed 0.3   core default 1.0 (full resolution)
+//   shape_roi_spacing   studio showed -1    core default 0   (de-overlap off)
+//
+// Measured elsewhere: 14.6 ms at 0.3 against 39 ms at 1.0. The operator had
+// tuned something that was never in the file, and the only way to make it real
+// was to nudge the control and save again.
+//
+// The fix is that the recipe carries its settings and the UI only shows what
+// the recipe says. This table is the values a shape_based recipe gets when it
+// has none; ONE list, so adding a knob later is one line here and every path
+// picks it up -- the studio back-fills on open, the engine switch seeds at
+// creation, and both call seedSbmDefaults().
+//
+// The values are the ones the studio already displayed, so nothing an operator
+// has seen on screen changes meaning. It just becomes true.
+export const SBM_DEFAULTS = {
+  shape_match_scale: 0.3,     // coarse downscale for the line2Dup pass
+  shape_roi_spacing: -1,      // -1 = auto de-overlap of auto-picked ROI points
+  shape_weak_thres: 50,       // edge magnitude, weak
+  shape_strong_thres: 80,     // edge magnitude, strong
+  shape_min_score: 50,        // match acceptance
+  shape_nms_angle: 360,       // 360 = one pose per location
+  shape_trust_res_max: 3,     // px, mean normal residual (loose)
+};
+
+// WHAT THE CORE DOES WHEN THE FIELD IS ABSENT -- not what we would like it to
+// do. Needed to tell the operator what a back-fill actually changes: for five
+// of the seven the answer is "nothing", and for two it is a different number.
+// Keyed the same as SBM_DEFAULTS; a knob added there wants a line here too.
+export const SBM_CORE_DEFAULTS = {
+  shape_match_scale: 1,       // full resolution
+  shape_roi_spacing: 0,       // de-overlap off (5x5 grid cap only)
+  shape_weak_thres: 50,
+  shape_strong_thres: 80,
+  shape_min_score: 50,
+  shape_nms_angle: 360,
+  shape_trust_res_max: 3,     // core reads 0 as "use 3.0"
+};
+
+// Returns only the fields that are MISSING, so the caller can decide what to do
+// with them (patch the store, or fold them into a fresh object) and can tell
+// whether anything was missing at all. Never overwrites: a recipe that chose
+// 0.5, or chose 1.0 deliberately, keeps it.
+export function seedSbmDefaults(edit_info) {
+  const out = {};
+  for (const k in SBM_DEFAULTS)
+    if (typeof edit_info[k] !== 'number') out[k] = SBM_DEFAULTS[k];
+  return out;
+}
+
 export const DEF_SCOPED_EDIT_INFO_KEYS = [
   'matching_angle_margin_deg', 'matching_angle_offset_deg', 'matching_face',
   'matching_version', 'inspection_downsample', 'sig_match_sim_thres',

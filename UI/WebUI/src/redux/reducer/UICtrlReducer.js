@@ -3,7 +3,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString, shapeDefFingerprint } from 'UTIL/MISC_Util';
-import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,DEF_LOCALIZER_SCOPED_KEYS,MEASURERSULTRESION,effectiveLimits } from 'UTIL/InspectionEditorLogic';
+import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,DEF_SCOPED_EDIT_INFO_KEYS,DEF_LOCALIZER_SCOPED_KEYS,MEASURERSULTRESION,effectiveLimits,seedSbmDefaults } from 'UTIL/InspectionEditorLogic';
 import { pickCtrlMargin } from 'UTIL/ctrlMarginPick';
 import { convertShapeForShapeBased } from '../../shapes/_caliperSeed';
 
@@ -1241,8 +1241,34 @@ function StateReducer(newState, action) {
             {
               // Localizer: "sig360" (contour signature) or "shape_based" (line2Dup +
               // ROI refine). The shape locator trains from the def's <base>.png sidecar.
+              const was_engine = newState.edit_info.locating_engine;
               if (action.data === 'sig360' || action.data === 'shape_based') {
                 newState.edit_info = { ...newState.edit_info, locating_engine: action.data };
+
+                // A NEW SHAPE-BASED DEF GETS ITS SETTINGS WRITTEN DOWN.
+                //
+                // Creation-side half of the rule; SBMStudio2 back-fills on open
+                // for recipes that predate it. Both read the same table, so
+                // adding a knob is one line in InspectionEditorLogic. Needed
+                // here as well as there because a recipe can be switched to
+                // shape_based and saved without the studio ever being opened.
+                // ONLY ON THE TRANSITION, NOT ON EVERY DISPATCH.
+                //
+                // Several surfaces re-assert 'shape_based' on a recipe that is
+                // already shape_based -- openSBM2 does it every time the studio
+                // button is pressed. Seeding on those would back-fill an OLD
+                // recipe silently, just before the studio mounts, and the
+                // studio's prompt would never appear because nothing was
+                // missing by then. The engine actually changing is what marks
+                // a recipe as new to SBM, and that is the only case seeded here.
+                if (action.data === 'shape_based' && was_engine !== 'shape_based') {
+                  const seed = seedSbmDefaults(newState.edit_info);
+                  const keys = Object.keys(seed);
+                  if (keys.length) {
+                    newState.edit_info = { ...newState.edit_info, ...seed };
+                    log.info('[locating] shape_based seeded ' + keys.map((k) => k + '=' + seed[k]).join(' '));
+                  }
+                }
               }
               // THE PRIMITIVES FOLLOW THE ENGINE, HERE, IN THE EDITOR'S OWN SHAPES.
               //

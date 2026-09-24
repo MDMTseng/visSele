@@ -2786,6 +2786,50 @@ static bool field_calib_capture_grid(int rows, int cols, int n_frames,
 // an uncalibrated run produces plausible numbers, so it has to be visible.
 static bool &g_calib_autoloaded = g_inspCtx.calib_autoloaded;   // P0 alias
 
+// WHO OWNS THE SCALE: the lens calibration, when there is one.
+//
+// A def carries featureSet[0].cam_param.ppb2b/mmpb2b -- the px/mm of whichever
+// machine and whichever lens state the recipe was authored on. Three places
+// copied that into the sampler's calibMap, and one of them runs on every
+// inspection start, AFTER push_mmpp_to_sampler() has put the current lens
+// calibration there. So loading an old recipe silently reverted this machine to
+// the scale it had when that recipe was made, and every millimetre it reported
+// afterwards was measured with it.
+//
+// Found on a def folder carried over from an old machine (data/sync/DEV/test/
+// old_data): lens_calib.json says m = 113.1082856 px/mm, the 2022 cam_param
+// beside it says 113.0541246852976. 0.048% -- about 5 um on a 10 mm feature,
+// systematic, and invisible: nothing failed, the numbers just meant something
+// slightly different. An older recipe can be further out than that.
+//
+// So: a lens calibration, if the machine has one, is the answer. The def's
+// cam_param survives only as the fallback for a machine that has never been
+// lens-calibrated, which is what it was before that file existed.
+//
+// NOT covered by this, deliberately: img_property.calibInfo.mmpp. That is a
+// caller saying "this particular frame is at another magnification" about the
+// image in its hand, which is a live statement, not a stale file.
+static bool lens_calib_owns_scale()
+{
+  return g_lens_calib.ok && g_lens_calib.tele.m > 0;
+}
+
+// Say it once per def, not once per frame: a machine that ignores a recipe's
+// cam_param every second would bury its own log.
+static void log_def_cam_param_ignored(const char *who, double ppb)
+{
+  static double _said = 0;
+  if (_said == ppb) return;
+  _said = ppb;
+  // LOGW, not LOGI. The rolling log this machine keeps carries E/W/F only --
+  // checked on 2026-09-24: 725 E, 419 W, 18 F, and not one I. A line nobody can
+  // read afterwards is not a record, and this one says the scale every later
+  // measurement was taken with.
+  LOGW("%s: def cam_param ppb2b=%.9f ignored -- this machine is lens-calibrated "
+       "at m=%.9f px/mm, and that is the scale being used", who, ppb,
+       g_lens_calib.tele.m);
+}
+
 static void push_mmpp_to_sampler()
 {
   if (!g_lens_calib.ok) return;
@@ -6076,7 +6120,11 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           // value and say so instead.
           double _ppb  = JFetch_NUMBER_ex(defObj.get(),"featureSet[0].cam_param.ppb2b");
           double _mmpb = JFetch_NUMBER_ex(defObj.get(),"featureSet[0].cam_param.mmpb2b");
-          if(std::isfinite(_ppb) && _ppb>0 && std::isfinite(_mmpb) && _mmpb>0)
+          if(lens_calib_owns_scale())
+          {
+            log_def_cam_param_ignored("inspection start", _ppb);
+          }
+          else if(std::isfinite(_ppb) && _ppb>0 && std::isfinite(_mmpb) && _mmpb>0)
           {
             neutral_bacpac.sampler->getCalibMap()->calibPpB=_ppb;
             neutral_bacpac.sampler->getCalibMap()->calibmmpB=_mmpb;
@@ -6387,7 +6435,11 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
           { snprintf(err_str, sizeof(err_str), "SW: def did not parse"); break; }
           double _ppb  = JFetch_NUMBER_ex(defObj.get(), "featureSet[0].cam_param.ppb2b");
           double _mmpb = JFetch_NUMBER_ex(defObj.get(), "featureSet[0].cam_param.mmpb2b");
-          if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
+          if (lens_calib_owns_scale())
+          {
+            log_def_cam_param_ignored("SW", _ppb);
+          }
+          else if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
           {
             neutral_bacpac.sampler->getCalibMap()->calibPpB  = _ppb;
             neutral_bacpac.sampler->getCalibMap()->calibmmpB = _mmpb;
@@ -9125,7 +9177,13 @@ static void apply_def_cam_param(FeatureManager_BacPac &bacpac, cJSON *dj, const 
 {
   double _ppb  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
   double _mmpb = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
-  if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
+  if (lens_calib_owns_scale())
+  {
+    // The CLI too: an offline --insp run should measure the same as the machine
+    // it is reproducing, and that machine ignores this now.
+    log_def_cam_param_ignored(who, _ppb);
+  }
+  else if (std::isfinite(_ppb) && _ppb > 0 && std::isfinite(_mmpb) && _mmpb > 0)
   {
     bacpac.sampler->getCalibMap()->calibPpB  = _ppb;
     bacpac.sampler->getCalibMap()->calibmmpB = _mmpb;
