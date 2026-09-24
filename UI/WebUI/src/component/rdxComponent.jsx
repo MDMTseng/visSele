@@ -32,6 +32,12 @@ import InputNumber from 'antd/lib/input-number';
 
 import Switch from 'antd/lib/switch';
 import * as BASE_COM from 'JSSRCROOT/component/baseComponent.jsx';
+// The peripheral panels below read link state and reach the device API through
+// these. They have been used since the phase-C move out of Redux (3036192c,
+// 2026-08-16) and the import never came with them: three panels that only
+// render when their device is actually connected, so the ReferenceError waited
+// a month for somebody to plug in a SLID.
+import { usePerifConn, getPerifAPI } from '../perif/PerifAPI';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 
 const { TabPane } = Tabs;
