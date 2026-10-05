@@ -25,6 +25,7 @@ import Modal from 'antd/lib/modal';
 import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
 import Radio from 'antd/lib/radio';
+import Select from 'antd/lib/select';
 import Tooltip from 'antd/lib/tooltip';
 import { DeviceSettingsModal } from './uInspDeviceSettings.jsx';
 import Popover from 'antd/lib/popover';
@@ -130,6 +131,100 @@ const DEFAULT_START_FREQ = 8000;
 // The restore runs on BOTH paths, and treats a refusal as done. A camera left
 // armed for a hardware line nobody drives is worse than a failed snapshot --
 // everything that expects free-run then silently has no frames.
+// Read-merge-write, never write-the-cache: this owns exactly the two keys
+// inside uInspESP32_peripheral_conn_info and re-reads the file first, the same
+// rule StationRegionPanel's save follows and for the same reason -- two
+// browsers each serialising their own stale copy silently undo each other.
+function OutletMapRow({ CORE_ID, dispatch, API_ID }) {
+  const [busy, setBusy] = useState(false);
+  // Read from the FILE, which is what this control edits and what the core
+  // re-reads on CONNECT. The live value the core reports beside the counters is
+  // the same thing one connect later; showing the file is what makes this an
+  // editor rather than a second opinion.
+  const [cat, setCat] = useState(null);     // null = not read yet
+  useEffect(() => {
+    if (!CORE_ID) return;
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, 'LD', 0,
+      { filename: 'data/machine_setting.json' }, undefined, {
+        resolve: (pkts) => {
+          const fl = (pkts || []).find((p) => p.type === 'FL');
+          const c = fl && fl.data && fl.data.uInspESP32_peripheral_conn_info;
+          setCat({ ok: (c && c.cat_ok) || 0, ng: (c && c.cat_ng) || 0 });
+        },
+        reject: () => setCat({ ok: 0, ng: 0 }),
+      }));
+  }, [CORE_ID, dispatch]);
+  const ok = cat ? cat.ok : 0;
+  const ng = cat ? cat.ng : 0;
+  // Only once the file has been read. "Not configured" is a red warning and
+  // must not be shown while the answer is still in flight.
+  const unset = !!cat && !(ok && ng);
+
+  const apply = (nextOk, nextNg) => {
+    if (!CORE_ID) { message.error('核心未連線'); return; }
+    setBusy(true);
+    const F = 'data/machine_setting.json';
+    dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, 'LD', 0, { filename: F }, undefined, {
+      resolve: (pkts) => {
+        const fl = (pkts || []).find((p) => p.type === 'FL');
+        const base = fl && fl.data;
+        if (!base || typeof base !== 'object' || Array.isArray(base)) {
+          message.error('讀不到 machine_setting.json，沒有寫入'); setBusy(false); return;
+        }
+        const conn = { ...(base.uInspESP32_peripheral_conn_info || {}) };
+        conn.cat_ok = nextOk; conn.cat_ng = nextNg;
+        const out = { ...base, uInspESP32_peripheral_conn_info: conn };
+        Object.keys(out).forEach((k) => { if (k.startsWith('_')) delete out[k]; });
+        dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, 'SV', 0, { filename: F },
+          new TextEncoder().encode(JSON.stringify(out, null, 2)), {
+            resolve: () => {
+              // The core re-reads conn_info on CONNECT and reuses the open
+              // port, so this takes effect without pulsing DTR -- which would
+              // reboot the board, stop the plate and lose everything in flight.
+              setCat({ ok: nextOk, ng: nextNg });
+              const api = getPerifAPI(API_ID);
+              if (api && api.connInfo) api.connect({ ...api.connInfo, cat_ok: nextOk, cat_ng: nextNg });
+              message.success('NG → SEL' + nextNg + '，OK → SEL' + nextOk);
+              setBusy(false);
+            },
+            reject: (e) => { message.error('寫入失敗: ' + String(e)); setBusy(false); },
+          }));
+      },
+      reject: (e) => { message.error('讀取失敗: ' + String(e)); setBusy(false); },
+    }));
+  };
+
+  const pick = (which) => (
+    <Select size="small" style={{ width: 92 }} disabled={busy}
+      value={(which === 'ng' ? ng : ok) || undefined} placeholder="未設定"
+      onChange={(v) => apply(which === 'ok' ? v : ok, which === 'ng' ? v : ng)}
+      options={[1, 2, 3].map((n) => ({ value: n, label: 'SEL' + n }))} />
+  );
+
+  return (
+    <div style={{ marginTop: 8, padding: 8,
+                  border: '1px solid ' + (unset ? '#cf1322' : '#eee') }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+        <b style={{ flex: '0 0 auto' }}>分選出口</b>
+        <span>不良 NG</span>{pick('ng')}
+        <span>良品 OK</span>{pick('ok')}
+      </div>
+      {unset ? (
+        <div style={{ color: '#cf1322', fontSize: 12, marginTop: 6, lineHeight: 1.7 }}>
+          <b>尚未設定</b> —— 未設定的通道對所有判定都回報 NA，
+          每顆都繞回去重測，噴嘴不會動作。哪一支是好品是接線事實，
+          程式推不出來，猜錯會把好壞整批對調而不會說一聲。
+        </div>
+      ) : (
+        <div style={{ color: '#888', fontSize: 11, marginTop: 6, lineHeight: 1.7 }}>
+          寫進 machine_setting.json 的 conn_info，核心會重讀，
+          <b>不會重開序列埠、也不會重置板子</b>。
+        </div>
+      )}
+    </div>
+  );
+}
+
 function snapWithBoardTrigger(api, dispatch, CORE_ID) {
   // ONE REQUEST, AND THE CORE OWNS THE CAMERA.
   //
@@ -889,6 +984,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // so a stale report can never be read as belonging to the new one.
   const [cfgBusy, setCfgBusy] = useState(null);
   const [cfgReport, setCfgReport] = useState(null);
+  // Which output's hold is mid-flight, so only that one switch is frozen.
+  const [ioHoldBusy, setIoHoldBusy] = useState(null);
   const cfgFileRef = useRef(null);
   // The import review: what a file is about to do, before it does it.
   const [impReview, setImpReview] = useState(null);   // {doc, board, unknown, missing, edits, needIo}
@@ -1930,6 +2027,21 @@ build ${fw.build}`}>
           }}>檢查預設值</Button>
         </div>
 
+        {/* WHICH OUTLET IS OK AND WHICH IS NG.
+            A wiring fact, so it lives with the station -- conn_info in
+            machine_setting.json, read by the core on every CONNECT. The panel
+            could already SHOW it (the core reports it beside the counters, so
+            the NG column is not a guess) but there was nowhere to set it, and
+            the default is the quietest failure in the machine: 0 means "not
+            configured", an unconfigured channel answers NA to everything, and
+            every part recirculates. Nothing is ejected, nothing is mis-sorted,
+            nothing is said. That is this afternoon, 2026-10-05: a hand-written
+            conn_info missing both keys, and a sorter that would not blow.
+            Re-read without reopening the port -- see the CONNECT path in
+            wiringPanel -- so applying this does not pulse DTR and reboot the
+            board mid-run. */}
+        <OutletMapRow CORE_ID={CORE_ID} dispatch={dispatch} API_ID={API_ID} />
+
         {/* WHICH PIN IS SEL2. THE RUNNING FIRMWARE IS THE ANSWER.
             io_map has been in every get_setup reply since the firmware stopped
             making people open HardwareConfig.hpp to find out -- name, pin,
@@ -1957,6 +2069,7 @@ build ${fw.build}`}>
                     <span style={{ flex: '0 0 70px' }}>GPIO</span>
                     <span style={{ flex: '0 0 70px' }}>方向</span>
                     <span style={{ flex: '0 0 110px' }}>ON 準位</span>
+                    <span style={{ flex: '0 0 76px', textAlign: 'right' }}>強制</span>
                     <span style={{ flex: '0 0 90px', textAlign: 'right' }}>即時</span>
                   </div>
                   {dev.io_map.map((p) => (
@@ -1980,6 +2093,35 @@ build ${fw.build}`}>
                           suspicion is the wiring. Absent on firmware that
                           predates it, and an input with no reading says so
                           rather than drawing a level it does not have. */}
+                      {/* OUTPUTS GET A SWITCH, so a new machine's wiring can be
+                          checked one pin at a time: flip it, listen for the
+                          valve or look at the lamp.
+                          io_hold drives through io_drive(), so ON means
+                          ENERGISED whatever io_on_level says -- the raw pin_on
+                          would do the opposite on this machine's active-low
+                          outputs. The board refuses while inspecting and
+                          releases on its own deadline, and only one channel is
+                          ever held, so nothing can be left on by walking away.
+                          Checked against the BOARD's reported hold, not local
+                          state: a switch showing its own last click is showing
+                          the operator their own input. */}
+                      <span style={{ flex: '0 0 76px', textAlign: 'right' }}>
+                        {p.dir !== 'out' || !dev.io_armed ? null : (
+                          <Switch size="small"
+                            checked={!!(stat && stat.io_hold === p.name)}
+                            disabled={ioHoldBusy === p.name}
+                            onChange={(v) => {
+                              const api = getPerifAPI(API_ID);
+                              if (!api) return;
+                              setIoHoldBusy(p.name);
+                              api.sendP({ type: 'io_hold', ch: p.name, on: v,
+                                          timeout_ms: 30000 })
+                                .then((r) => { if (r && r.err) message.warning(String(r.err)); })
+                                .catch((e) => message.error(String(e)))
+                                .then(() => setIoHoldBusy(null));
+                            }} />
+                        )}
+                      </span>
                       <span style={{ flex: '0 0 90px', textAlign: 'right' }}>
                         {p.dir !== 'in' ? null
                           : (stat && stat.di && typeof stat.di[p.name] === 'number')
@@ -1996,6 +2138,9 @@ build ${fw.build}`}>
                     <br />
                     「即時」是輸入腳的原始準位,沒有去抖動、沒有套極性 ——
                     跟三用電表量到的是同一件事。GATE 是 INPUT_PULLUP,沒接東西時是 HIGH。
+                    <br />
+                    「強制」把輸出直接驅動（開 = 導通,已套過極性）,用來確認接線。
+                    <b>一次只能持一支</b>,30 秒自動釋放,檢測中會被拒絕。
                   </div>
                 </div>
               )}
@@ -2871,12 +3016,36 @@ build ${fw.build}`}>
               dry-run / fault guard is checked on the board for every one of
               them. The round trip is a few ms, so `busy` was never a throttle
               here anyway -- it only ever cost the focus. */}
-          {[1, 2, 3].map((n) => (
-            <Button key={n} size="small"
-              onClick={() => run('blow', (api) => api.sendP({ type: 'blow', sel: n }))}>
-              吹 SEL{n}
-            </Button>
-          ))}
+          {/* DISABLED ON THE BOARD'S OWN FLAGS, not on a second opinion.
+              sel_guard carries the exact variables the firmware's guard reads,
+              so the button is grey for the same reason the command would be
+              refused and the panel cannot drift from the machine.
+              A stopped plate is not merely refused: the OFF deadline is a PULSE
+              COUNT, so with the plate still the valve would open and never
+              close. That is why this cannot simply be allowed when stopped --
+              it would need a time-based OFF, which is a different path. */}
+          {(() => {
+            const g = (stat && stat.sel_guard) || null;
+            const why = !g ? null
+              : !g.plate_running   ? '盤子沒在轉 —— 吹氣長度是用脅波數的,盤不轉閥門會開著不關'
+              : g.stepper_disabled ? '步進馬達被停用'
+              : g.dry_run          ? '乾跑模式中 —— 乾跑就是不致動'
+              : g.fault_suppress_n ? ('故障抑制中，還會吞掉 ' + g.fault_suppress_n + ' 次致動')
+              : null;
+            return (<>
+              {[1, 2, 3].map((n) => (
+                <Button key={n} size="small" disabled={!!why}
+                  onClick={() => run('blow', (api) => api.sendP({ type: 'blow', sel: n }))}>
+                  吹 SEL{n}
+                </Button>
+              ))}
+              {why ? (
+                <span style={{ color: '#cf1322', fontSize: 12, flexBasis: '100%' }}>
+                  ⚠ {why}
+                </span>
+              ) : null}
+            </>);
+          })()}
         </div>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>

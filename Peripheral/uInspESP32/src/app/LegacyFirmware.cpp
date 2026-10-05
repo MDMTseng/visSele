@@ -7469,6 +7469,39 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       if(wantRstMax) STAT_MAX_RESET_REQ = now_ms;   // applied after the reply is built
     }
 
+    // THE SELECTOR GUARD'S OWN INPUTS, so the host can refuse for the same
+    // reasons and name them.
+    //
+    // A UI that decides for itself whether a blow would be accepted is a second
+    // opinion, and the two drift. These are the actual variables the guard
+    // reads -- except faultSuppressSel(), which is NOT called here: it CONSUMES
+    // one of the suppression quota, so asking it a question would spend it. The
+    // raw counter is reported instead.
+    //
+    // plate_running is the one that matters most and is the least guessable
+    // from outside: it is PLATE_FREQ_CURRENT > 0, the ramp's live value, not
+    // the commanded setpoint and not the measured speed. And a stopped plate
+    // does not merely refuse the blow -- the OFF deadline is a PULSE COUNT, so
+    // on a plate that is not turning the valve would open and never close.
+    {
+      JsonObject jsg = retdoc.createNestedObject("sel_guard");
+      jsg["plate_running"]     = (bool)PLATE_RUNNING;
+      jsg["stepper_disabled"]  = (bool)SYS_STEPPER_DISABLED;
+      jsg["dry_run"]           = (bool)DRY_RUN;
+      jsg["fault_suppress_n"]  = (uint32_t)FAULT_SEL_SUPPRESS_N;
+    }
+
+    // Which output a manual hold is driving, if any, and how much of it is
+    // left. A switch that shows its own last click is showing the operator
+    // their own input; this is the machine's answer.
+    if(LIGHT_HOLD_pin>=0)
+    {
+      for(unsigned i=0;i<sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]);i++)
+        if(IO_POL_TAB[i].pin==LIGHT_HOLD_pin) retdoc["io_hold"]=IO_POL_TAB[i].name;
+      const int32_t left = (int32_t)(LIGHT_HOLD_deadline_ms - millis());
+      retdoc["io_hold_ms"] = left > 0 ? (uint32_t)left : 0;
+    }
+
     // LIVE INPUT LEVELS, so the wiring can be checked without a meter.
     //
     // io_map says which pin GATE is on; it did not say whether anything is on
@@ -8730,6 +8763,76 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       }
     }
   }
+  // ANY OUTPUT, BY NAME, FOR CHECKING THE WIRING ON A NEW MACHINE.
+  //
+  //   {"type":"io_hold","ch":"SEL1","on":true,"timeout_ms":30000}
+  //
+  // The same machinery as `light` above and for the same reasons, generalised
+  // from the two lamps to every output in IO_POL_TAB -- because the question
+  // "is SEL2 wired to the valve I think it is" is the same question as "is L1A
+  // wired to the lamp", and it was answerable for the lamps only.
+  //
+  // Through io_drive(), so "on" means ENERGISED whatever io_on_level says. The
+  // raw pin_on/pin_off above are digitalWrite and do the opposite of their
+  // names on this machine's active-low wiring; that is not something to put
+  // behind an operator's switch.
+  //
+  // Refused while inspecting, like the lamp hold: the stage tasks drive these
+  // pins every part, so a manual hold would be stomped within milliseconds and
+  // read as a fault.
+  //
+  // AND IT ALWAYS EXPIRES. One hold at a time, with the same deadline the lamp
+  // hold uses -- a valve left energised by somebody who walked away is a
+  // thermal risk on a coil and a waste of air at best. Switching channels
+  // releases the previous one by construction.
+  else if(strcmp(type,"io_hold")==0)
+  {
+    doRsp=true;
+    const char* ch = doc["ch"].is<const char*>() ? doc["ch"].as<const char*>() : "";
+    int pin=-1, idx=-1;
+    for(unsigned i=0;i<sizeof(IO_POL_TAB)/sizeof(IO_POL_TAB[0]);i++)
+      if(strcmp(ch,IO_POL_TAB[i].name)==0) { pin=IO_POL_TAB[i].pin; idx=IO_POL_TAB[i].idx; }
+
+    if(pin<0) { retdoc["err"]="ch must be one of IO_POL_TAB (see io_map)"; rspAck=false; }
+    else if(!IO_ARMED)
+    {
+      // Nothing to drive: the pins are inputs until a config says what ON
+      // means. Saying so beats a switch that moves and does nothing.
+      retdoc["err"]="outputs are not armed -- io_on_level is not configured";
+      retdoc["io_safe_why"]=IO_SAFE_WHY;
+      rspAck=false;
+    }
+    else
+    {
+      const bool on = doc["on"].is<bool>() ? doc["on"].as<bool>() : true;
+      if(on)
+      {
+        const char* deny=cfgPersistDeny();
+        if(deny!=NULL) { retdoc["err"]=deny; retdoc["state"]=(int)sysinfo.state; rspAck=false; }
+        else
+        {
+          uint32_t to = doc["timeout_ms"].is<uint32_t>()
+                      ? (uint32_t)doc["timeout_ms"] : LIGHT_HOLD_DEFAULT_MS;
+          if(to>LIGHT_HOLD_MAX_MS) to=LIGHT_HOLD_MAX_MS;
+          // Release whatever was held before taking the new one.
+          if(LIGHT_HOLD_pin>=0 && LIGHT_HOLD_pin!=pin)
+            io_drive(LIGHT_HOLD_pin,LIGHT_HOLD_idx,false);
+          io_drive(pin,idx,true);
+          LIGHT_HOLD_pin=pin; LIGHT_HOLD_idx=idx;
+          LIGHT_HOLD_deadline_ms=millis()+to;
+          retdoc["ch"]=ch; retdoc["on"]=true; retdoc["timeout_ms"]=to;
+          rspAck=true;
+        }
+      }
+      else
+      {
+        io_drive(pin,idx,false);
+        if(LIGHT_HOLD_pin==pin) { LIGHT_HOLD_deadline_ms=0; LIGHT_HOLD_pin=-1; LIGHT_HOLD_idx=-1; }
+        retdoc["ch"]=ch; retdoc["on"]=false;
+        rspAck=true;
+      }
+    }
+  }
   else if(strcmp(type,"pin_read")==0)
   {
     if(doc["pin"].is<int>()==true)
@@ -9077,7 +9180,19 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // this machine that ignores them, and dry run would stop meaning dry.
       const bool sel_ok = PLATE_RUNNING && SYS_STEPPER_DISABLED==false
                           && DRY_RUN==false && !faultSuppressSel();
-      if(!sel_ok) { retdoc["err"]="blocked: plate stopped, dry run, or fault"; ok=false; }
+      // NAMED, because the four have nothing in common except the refusal.
+      // One shared sentence made the operator check all four, and the one that
+      // was actually true -- the plate was not turning -- is the one that looks
+      // least like a reason, since the panel was showing a speed setpoint at
+      // the time (2026-10-05).
+      if(!sel_ok)
+      {
+        retdoc["err"] = !PLATE_RUNNING        ? "blocked: plate is not turning"
+                      : SYS_STEPPER_DISABLED  ? "blocked: stepper is disabled"
+                      : DRY_RUN               ? "blocked: dry run is on"
+                      :                         "blocked: a fault is suppressing the selectors";
+        ok=false;
+      }
       else
       {
         volatile stagePulseOffset* spo = SPO_active;

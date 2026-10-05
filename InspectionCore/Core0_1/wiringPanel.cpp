@@ -8806,6 +8806,28 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
 
               double *cok = JFetch_NUMBER(json, "cat_ok");
               double *cng = JFetch_NUMBER(json, "cat_ng");
+              // THE QUIETEST FAILURE IN THE MACHINE, until it said this.
+              //
+              // 0 means "not configured" and an unconfigured channel answers NA
+              // to every verdict: every part recirculates, nothing is ejected,
+              // nothing is mis-sorted -- and nothing is said. A sorter that will
+              // not blow looks like a pneumatic fault, a wiring fault, or an
+              // inspection that cannot decide, and the one thing it does not
+              // look like is two absent keys in a JSON file.
+              //
+              // That is where 2026-10-05 went: a hand-written conn_info with
+              // machine_type but neither cat. The deliberate default stays --
+              // which outlet is the good one cannot be inferred, and guessing it
+              // swaps good and bad wholesale -- but silence was never part of
+              // the argument for it.
+              if (cok == NULL || cng == NULL)
+                LOGW("perif cat_ok/cat_ng %s in conn_info -- this channel will "
+                     "report NA for EVERY verdict and nothing will be sorted. "
+                     "Set both (1|2|3 = SEL1|SEL2|SEL3) in that peripheral's "
+                     "*_peripheral_conn_info in machine_setting.json, or from "
+                     "the uInsp panel's 分選出口 control.",
+                     (cok == NULL && cng == NULL) ? "are both missing"
+                     : (cok == NULL) ? "is missing cat_ok" : "is missing cat_ng");
               perifCH->cat_ok = (cok != NULL) ? (int)*cok : 0;
               perifCH->cat_ng = (cng != NULL) ? (int)*cng : 0;
 
