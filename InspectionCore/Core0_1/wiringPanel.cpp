@@ -2055,6 +2055,7 @@ class PerifChannel:public Data_JsonRaw_Layer
     // flush point that matters: it fires once per episode, at the moment the
     // link recovers, and costs nothing when there was no noise.
     stray_flush("link resynchronised");
+    frame_total.fetch_add(1, std::memory_order_relaxed);
 
     if(opcode==1 )
     {
@@ -2204,8 +2205,28 @@ class PerifChannel:public Data_JsonRaw_Layer
   int      stray_len = 0;
   uint32_t stray_dropped = 0;   // bytes past the buffer: counted, not kept
 
+  // THE TWO COUNTERS THAT SAY WHETHER OUR OWN PARSER IS LATCHED.
+  //
+  // Bytes arriving while no frame completes is exactly the failure described
+  // in Data_Layer_Protocol.hpp: our parser enters ERROR_SEC on boot-ROM noise
+  // and leaves it only on an inbound RESET_PACKET, which this device never
+  // sends -- it answers a RESET with an ordinary RESET_OK frame, which the
+  // latched parser swallows as more garbage.
+  //
+  // The existing auto-recovery cannot reach this case: it triggers on the
+  // DEVICE reporting serial_error_locked, which is read in tap_device_reply,
+  // which runs inside recv_jsonRaw_data -- the function a latched parser never
+  // reaches. The one trigger is behind the fault it repairs.
+  //
+  // Atomics because the ping thread reads them; the RX thread is the only
+  // writer, so relaxed is enough -- the question is "did this change", not
+  // ordering against anything else.
+  std::atomic<uint32_t> stray_total{0};
+  std::atomic<uint32_t> frame_total{0};
+
   void recv_stray(uint8_t c) override
   {
+    stray_total.fetch_add(1, std::memory_order_relaxed);
     if (stray_len < STRAY_MAX) stray_buf[stray_len++] = (char)c;
     else                       stray_dropped++;
   }
@@ -8753,9 +8774,35 @@ int m_BPG_Protocol_Interface::toUpperLayer_dispatch(BPG_protocol_data bpgdat, vo
               }
               else
                 perifCH->machine_type = PERIF_UINSP_MEGA;
-              LOGI("perif machine_type: %s -> %d",
-                   (mt != NULL) ? mt : "(unset, default uInspMEGA)",
-                   perifCH->machine_type);
+              // A MISSING machine_type IS A SILENTLY WRONG PROTOCOL.
+              //
+              // Absent, this falls back to uInspMEGA -- which means tx_trailer
+              // stays off, and an ESP32's "*HHHH" integrity trailer is then
+              // read as a stray byte after EVERY frame. The parser enters its
+              // error section, leaves it only on an inbound RESET_PACKET the
+              // device never sends, and swallows every reply from a board that
+              // is perfectly healthy. The panel says 連線異常, the firmware
+              // version reads unknown, and nothing anywhere names the cause.
+              //
+              // That is a whole afternoon, on 2026-10-02, from one key left out
+              // of a hand-written conn_info in machine_setting.json. It was a
+              // LOGI, and this machine's rolling log keeps E/W/F only, so the
+              // one line that knew the answer was never written down.
+              //
+              // A warning when it is missing or unrecognised, because defaulting
+              // to the other dialect is a guess, not a configuration.
+              if (mt == NULL)
+                LOGW("perif machine_type is NOT SET in conn_info -- defaulting to "
+                     "uInspMEGA (no integrity trailer). If this peripheral is an "
+                     "ESP32 board, add \"machine_type\":\"uInspESP32\" to its "
+                     "*_peripheral_conn_info in machine_setting.json, or every "
+                     "reply it sends will be discarded.");
+              else if (perifCH->machine_type == PERIF_UINSP_MEGA &&
+                       strcmp(mt, "uInspMEGA") != 0)
+                LOGW("perif machine_type \"%s\" is not recognised -- treated as "
+                     "uInspMEGA. Known: uInspESP32, uInspMEGA.", mt);
+              else
+                LOGI("perif machine_type: %s -> %d", mt, perifCH->machine_type);
 
               double *cok = JFetch_NUMBER(json, "cat_ok");
               double *cng = JFetch_NUMBER(json, "cat_ng");
@@ -12636,6 +12683,47 @@ void PerifPingThread(bool *terminationflag)
       LOGE("perif: AUTO-RESYNC sent (device reported serial_error_locked). "
            "Port left open; no reconnect, so nothing in flight is lost.");
       continue;
+    }
+
+    // AND THE OTHER DIRECTION: OUR parser latched, the device perfectly well.
+    //
+    // The branch above heals a device that reported itself locked. Nothing
+    // healed US. Our parser leaves ERROR_SEC only on an inbound RESET_PACKET
+    // and this device answers a RESET with an ordinary RESET_OK frame, so a
+    // core latched by the boot ROM's 115200 output stays latched for as long
+    // as it runs -- swallowing every reply, answering every WebUI request with
+    // a timeout, while the board is measurably healthy. Observed 2026-08-20,
+    // documented in Data_Layer_Protocol.hpp, and still reachable: a freshly
+    // flashed board reboots into exactly that noise, and this is what a new
+    // uInspESP32 looked like on 2026-10-02 -- pongs and get_setup replies
+    // arriving complete and CRC-correct, dumped byte by byte to stdout by the
+    // error-section handler, and the panel stuck on 設定尚未讀取.
+    //
+    // The signal is bytes arriving with no frame completing. Nothing else
+    // produces it: a quiet link moves neither counter, and a healthy one moves
+    // frames. Three consecutive ticks because a single episode of noise mid-
+    // frame is normal and recovers by itself.
+    {
+      static uint32_t last_stray = 0, last_frames = 0;
+      static int      latched_ticks = 0;
+      const uint32_t st = bpg_pi.perifCH->stray_total.load(std::memory_order_relaxed);
+      const uint32_t fr = bpg_pi.perifCH->frame_total.load(std::memory_order_relaxed);
+      const bool bytes_came   = (st != last_stray);
+      const bool frames_came  = (fr != last_frames);
+      last_stray = st; last_frames = fr;
+      if (bytes_came && !frames_came) latched_ticks++;
+      else                            latched_ticks = 0;
+      if (latched_ticks >= 3)
+      {
+        latched_ticks = 0;
+        bpg_pi.perifCH->send_RESET();
+        bpg_pi.perifCH->send_RESET();
+        bpg_pi.perifCH->request_rx_resync();
+        LOGE("perif: AUTO-RESYNC sent -- OUR receive parser was latched "
+             "(%u stray bytes, no frame completed over 3 ticks). The device "
+             "was never asked anything it could answer.", st);
+        continue;
+      }
     }
 
     bpg_pi.perifCH->last_tx_us = perif_now_us();
