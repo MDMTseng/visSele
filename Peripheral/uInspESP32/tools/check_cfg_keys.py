@@ -35,7 +35,18 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 FW = os.path.join(ROOT, "Peripheral/uInspESP32/src/app/LegacyFirmware.cpp")
 PY = os.path.join(HERE, "uinsp_cfg.py")
 JS = os.path.join(ROOT, "UI/WebUI/src/uinspCfg.js")
-JSX = os.path.join(ROOT, "UI/WebUI/src/script.jsx")
+# SETTABLE_KEYS lives on the uInspESP32_API class, which moved out of
+# script.jsx into perif/PerifAPI.js. This path did not move with it, so the
+# check that exists to stop the four key tables drifting apart has been
+# finding nothing -- and the SystemExit below exits 0, so it reported
+# SUCCESS while checking three tables out of four. Found 2026-10-02, asked
+# to verify a WebUI setup export against the firmware.
+#
+# Both paths are tried so this works either side of the move.
+JSX_CANDIDATES = [
+    os.path.join(ROOT, "UI/WebUI/src/perif/PerifAPI.js"),
+    os.path.join(ROOT, "UI/WebUI/src/script.jsx"),
+]
 
 # The C++ locals that hold each group inside genMachineSetup/setMachineSetup.
 # Both functions use the same names, which is what makes this scannable.
@@ -135,20 +146,47 @@ def js_table(src):
     return out
 
 
+def settable_keys_src():
+    """The first candidate that actually carries the table.
+
+    A missing table is a FAILURE, not a pass: this script's whole job is to
+    notice drift, and silently checking nothing is the one outcome it must not
+    have.
+    """
+    tried = []
+    for p in JSX_CANDIDATES:
+        tried.append(p)
+        try:
+            src = read(p)
+        except OSError:
+            continue
+        if "static SETTABLE_KEYS" in src:
+            return src
+    raise SystemExit(
+        "check_cfg_keys: SETTABLE_KEYS not found in any of:\n  "
+        + "\n  ".join(tried)
+        + "\nIt has moved again. Point JSX_CANDIDATES at it -- do not "
+          "delete this check, it is the only thing watching the four tables.")
+
+
 def settable_keys(src):
     m = re.search(r"static SETTABLE_KEYS\s*=\s*\[(.*?)\n\s*\];", src, re.S)
     if not m:
-        raise SystemExit("check_cfg_keys: could not find SETTABLE_KEYS in script.jsx")
+        raise SystemExit("check_cfg_keys: SETTABLE_KEYS found but not parseable")
     # Strip // comments before harvesting, so a name mentioned in prose is not
     # mistaken for an entry.
     body = re.sub(r"//[^\n]*", "", m.group(1))
-    return set(re.findall(r'"([A-Za-z0-9_]+)"', body))
+    # Both quote styles. script.jsx wrote "name"; PerifAPI.js writes 'name', so a
+    # double-quote-only harvest returns an EMPTY set there -- and an empty
+    # SETTABLE_KEYS makes every mapped key look display-only, which is 35
+    # confident findings about nothing.
+    return set(re.findall(r'["\']([A-Za-z0-9_]+)["\']', body))
 
 
 def main():
     emitted, settable = fw_keys(read(FW))
     py, js = py_table(), js_table(read(JS))
-    sk = settable_keys(read(JSX))
+    sk = settable_keys(settable_keys_src())
 
     problems = []
 

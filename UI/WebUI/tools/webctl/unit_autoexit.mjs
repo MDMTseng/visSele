@@ -27,9 +27,16 @@ const call = (o) => autoExitDecision({ noObjMs: NO, sameObjMs: SAME, ...o });
 
 console.log('CI only:');
 check(autoExitApplies('CI') === true, 'CI should be eligible');
-for (const m of ['FI', undefined, null, '', 'ci', 'XX'])
+// FI_C belongs on this list as much as FI does, and was missing from it.
+// Both are production: FI pairs a frame to a part off the machine's own
+// trigger, FI_C waits for one, and in neither does "nothing has happened
+// lately" mean the machine is idle -- a line is allowed to have gaps. The SI
+// list below already named FI_C; this one did not, so the behaviour was right
+// and nothing held it there. Asked for explicitly, 2026-10-02: "make sure
+// those two modes would not exit automatically".
+for (const m of ['FI', 'FI_C', undefined, null, '', 'ci', 'XX'])
   check(autoExitApplies(m) === false, `${JSON.stringify(m)} must not auto-exit`);
-console.log('  FI and everything unrecognised are excluded');
+console.log('  FI, FI_C and everything unrecognised are excluded');
 
 console.log('empty plate:');
 {
