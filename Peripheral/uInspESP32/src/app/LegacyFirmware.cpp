@@ -7469,6 +7469,32 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       if(wantRstMax) STAT_MAX_RESET_REQ = now_ms;   // applied after the reply is built
     }
 
+    // LIVE INPUT LEVELS, so the wiring can be checked without a meter.
+    //
+    // io_map says which pin GATE is on; it did not say whether anything is on
+    // it right now. Commissioning a board means proving the sensor reaches the
+    // pin, and until now that took a meter or a part on the plate -- while the
+    // one device that can see the pin was already answering a poll twice a
+    // second.
+    //
+    // Driven from IO_MAP_TAB, so an input added to that table appears here
+    // without a second edit. Raw digitalRead, deliberately: no debounce, no
+    // polarity, no gate logic. That is what a meter would tell you, and the
+    // only view that helps when the suspicion is the wiring. The debounced,
+    // gate-applied reading is the gate block's, elsewhere in this same reply.
+    //
+    // This is INSIDE get_running_stat and therefore inside the K_TOP question
+    // -- but only for get_setup, which does not carry it. Added, removed on a
+    // bad measurement, and added back: board_query.py truncates its capture
+    // silently at 4001 bytes, which read as the device emitting broken JSON.
+    // The real fault was cfg_nvs_state missing from K_TOP (2026-10-02).
+    {
+      JsonObject jdi = retdoc.createNestedObject("di");
+      for(unsigned i=0;i<sizeof(IO_MAP_TAB)/sizeof(IO_MAP_TAB[0]);i++)
+        if(strcmp(IO_MAP_TAB[i].dir,"in")==0)
+          jdi[IO_MAP_TAB[i].name] = (int)digitalRead(IO_MAP_TAB[i].pin);
+    }
+
     {
       JsonArray jERROR_HIST = retdoc.createNestedArray("error_hist");
 
@@ -11228,6 +11254,16 @@ void genMachineSetup(JsonDocument &jdoc)
   // reading came from NVS or is just the compiled fallback.
   jdoc["machine_id"]=MachineConfig::machineId();
   jdoc["cfg_from_nvs"]=MachineConfig::isLoadedFromNVS();
+  // WHAT IS IN NVS, NOT JUST WHETHER IT WAS USABLE.
+  //
+  // cfg_from_nvs false meant two different things -- a board nobody has ever
+  // configured, and a board whose stored config this firmware cannot read --
+  // and they need opposite actions. A flash carrying another project's data
+  // reported exactly like a new board, so the host had no way to say so and
+  // nobody looked. cfg_nvs_state names which; cfg_nvs_why is present only when
+  // something IS stored and could not be used, and it says what was wrong.
+  jdoc["cfg_nvs_state"]=MachineConfig::nvsState();
+  if(MachineConfig::nvsWhy()[0]) jdoc["cfg_nvs_why"]=MachineConfig::nvsWhy();
   // Only when true, so it is a finding rather than noise. A board reporting this
   // still holds a config written by pre-JSON firmware and has never been saved
   // since; the packed struct cannot be deleted while any board still answers
@@ -11373,6 +11409,22 @@ static const char *const K_TOP[] =
    "cfg_from_nvs",                              // reported, harmless to echo back
    "cfg_legacy_blob",                           // ditto
    "io_armed","io_safe_why",                    // ditto
+   // EVERYTHING get_setup EMITS BELONGS HERE, or it reads as a stranger.
+   //
+   // Same mistake as nomatch_stop_after above, three more times. A key this
+   // firmware REPORTS but does not list is named back as unknown -- so the
+   // machine refuses its own get_setup output, which is precisely what a
+   // backup/restore feeds it, and cfg_stale_values grows a copy of the value
+   // to explain itself. io_map's copy is 568 bytes of pin table.
+   //
+   // That string is in every get_setup reply, and on 2026-10-02 adding
+   // cfg_nvs_state pushed it far enough that the reply stopped parsing at the
+   // host: the core's receive parser entered its error section roughly every
+   // two seconds, discarded the frame, and the panel went back to 設定尚未讀取.
+   // io_map and cfg_crc had been missing from this list all along; the new key
+   // only made it fatal.
+   "io_map","cfg_crc",                          // reported, never settable
+   "cfg_nvs_state","cfg_nvs_why",               // ditto -- see MachineConfig
    NULL};
 
 // Set when a name did not fit. The COUNT is still right, so a caller comparing

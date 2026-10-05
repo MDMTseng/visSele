@@ -210,6 +210,33 @@ namespace MachineConfig
 
   // True if begin() found a usable stored config.
   bool isLoadedFromNVS();
+
+  // WHAT begin() FOUND IN NVS, INCLUDING WHEN IT COULD NOT USE IT.
+  //
+  // isLoadedFromNVS() answers yes or no, and "no" covered two situations that
+  // need opposite actions from whoever is standing at the machine:
+  //
+  //   a board that has never been configured   -> write a setup into it
+  //   a board whose stored setup is unreadable -> this flash has something
+  //       else's config on it; erase it, or at least know not to trust what
+  //       the panel is showing
+  //
+  // begin() returned silently in both, the board reported
+  // io_safe_why "no config loaded", and the two were indistinguishable from
+  // the host. A board carrying another project's NVS therefore looked exactly
+  // like a new one -- which cost an afternoon on 2026-10-02, flashing and
+  // provisioning a board whose real problem was the blob already on it.
+  //
+  // nvsState() is one of:
+  //   "none"        nothing stored; compiled defaults, and that is correct
+  //   "json"        the current format, loaded
+  //   "legacy"      the packed struct, loaded and due for migration
+  //   "unreadable"  SOMETHING IS STORED AND THIS FIRMWARE CANNOT USE IT
+  //
+  // nvsWhy() is empty unless the state is "unreadable", where it names the
+  // reason in the form the operator needs: which store, and what was wrong.
+  const char *nvsState();
+  const char *nvsWhy();
   // True when begin() loaded the legacy packed struct rather than the JSON.
   // Reported as cfg_legacy_blob so the fleet can be audited before the struct
   // and its append-only discipline are deleted.

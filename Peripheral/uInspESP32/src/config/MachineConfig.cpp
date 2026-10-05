@@ -5,6 +5,7 @@
 #include <Arduino.h>   // ESP.getEfuseMac() for the derived machine id
 #include <cstring>
 #include <cstddef>   // offsetof
+#include <cstdarg>   // nvsUnreadable's reason string
 
 namespace
 {
@@ -79,6 +80,11 @@ namespace
 
   Preferences prefs;
   bool loadedFromNVS = false;
+  // See MachineConfig.hpp: "none" until begin() has looked. Every path out of
+  // begin() sets this, so a silent return cannot report a stocked flash as an
+  // empty one.
+  const char *nvsStateStr = "none";
+  char nvsWhyStr[96] = "";
   // Set when begin() had to fall back to the packed struct. The struct exists
   // ONLY for that migration -- save() writes JSON and deletes the blob -- so
   // this is the flag that says whether the migration is finished across the
@@ -238,14 +244,27 @@ namespace
 namespace MachineConfig
 {
 
+  // One place to say "there is something here and I cannot use it", so no
+  // branch can forget the second half of it.
+  static void nvsUnreadable(const char *fmt, ...)
+  {
+    nvsStateStr = "unreadable";
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(nvsWhyStr, sizeof(nvsWhyStr), fmt, ap);
+    va_end(ap);
+  }
+
   void begin()
   {
     loadedFromNVS = false;
     legacyBlob = false;
+    nvsStateStr = "none";
+    nvsWhyStr[0] = ' ';
 
     if (!prefs.begin(kNamespace, /*readOnly=*/true))
     {
-      // Namespace has never been written. Compiled defaults stand.
+      // Namespace has never been written. Compiled defaults stand, and "none"
+      // is the truth.
       return;
     }
 
@@ -254,10 +273,27 @@ namespace MachineConfig
     {
       String txt = prefs.getString(kJsonKey, "");
       prefs.end();
-      if (txt.length() == 0) return;
+      // THE KEY EXISTS. Whatever happens below, this flash is not blank, and
+      // saying "none" here is how another project's leftovers passed for a new
+      // board.
+      if (txt.length() == 0)
+      {
+        nvsUnreadable("stored config document is empty");
+        return;
+      }
       StaticJsonDocument<3072> jdoc;
-      if (deserializeJson(jdoc, txt) != DeserializationError::Ok)
-        return;                      // corrupt: defaults stand, nothing applied
+      DeserializationError derr = deserializeJson(jdoc, txt);
+      if (derr != DeserializationError::Ok)
+      {
+        // NoMemory is NOT corruption and must not read as it: it means the
+        // document is bigger than this firmware's 3072-byte buffer, which is
+        // what a config written by a firmware with more settings looks like.
+        // The length is carried because it is the one number that tells the
+        // difference.
+        nvsUnreadable("stored config unreadable: %s (%u bytes)",
+                      derr.c_str(), (unsigned)txt.length());
+        return;                      // defaults stand, nothing applied
+      }
 
       // What this firmware no longer understands, recorded WITH the old values
       // and never acted on.
@@ -350,6 +386,7 @@ namespace MachineConfig
 
       setMachineSetup(jdoc, /*apply_hw=*/false);
       loadedFromNVS = true;
+      nvsStateStr = "json";
     hashDirty = true;
       return;
     }
@@ -367,7 +404,14 @@ namespace MachineConfig
 
     // Two passes: the header says how much of the rest can be believed.
     size_t stored = prefs.getBytesLength(kBlobKey);
-    if (stored < kMinCompatBytes) { prefs.end(); return; }
+    if (stored == 0) { prefs.end(); return; }   // genuinely nothing stored
+    if (stored < kMinCompatBytes)
+    {
+      nvsUnreadable("legacy blob too short: %u bytes, need %u",
+                    (unsigned)stored, (unsigned)kMinCompatBytes);
+      prefs.end();
+      return;
+    }
 
     StoredConfig raw;
     size_t head = prefs.getBytes(kBlobKey, &raw,
@@ -375,8 +419,22 @@ namespace MachineConfig
     if (head < kMinCompatBytes || raw.magic != kMagic ||
         raw.version > kConfigVersion)
     {
+      // Each of these is a different thing to do about it, so each is named.
+      // A wrong magic in particular is the signature of a flash that carries
+      // SOMEBODY ELSE'S data -- another project, another product -- and that
+      // is worth saying out loud rather than treating as an empty board.
+      if (raw.magic != kMagic)
+        nvsUnreadable("legacy blob magic %08lX is not this firmware's %08lX "
+                      "-- this flash holds another project's config",
+                      (unsigned long)raw.magic, (unsigned long)kMagic);
+      else if (raw.version > kConfigVersion)
+        nvsUnreadable("stored config is version %u, this firmware reads up to %u",
+                      (unsigned)raw.version, (unsigned)kConfigVersion);
+      else
+        nvsUnreadable("legacy blob truncated: read %u of %u bytes",
+                      (unsigned)head, (unsigned)kMinCompatBytes);
       prefs.end();
-      return; // absent, corrupt, or written by a firmware newer than this one
+      return;
     }
 
     size_t want = trustedPrefix(raw.version);
@@ -395,11 +453,14 @@ namespace MachineConfig
       snprintf(IO_SAFE_WHY, sizeof(IO_SAFE_WHY),
                "legacy config v%u predates io_inv_mask", (unsigned)raw.version);
     loadedFromNVS = true;
+    nvsStateStr = "legacy";
     legacyBlob = true;      // this board has not been saved by a JSON firmware
     hashDirty = true;
   }
 
   bool ioConfigValid() { return ioCfgValid; }
+  const char *nvsState() { return nvsStateStr; }
+  const char *nvsWhy()   { return nvsWhyStr; }
   const uint32_t *defaultedMask() { return defaulted; }
   int defaultedCount() { return defaultedN; }
 
@@ -440,6 +501,8 @@ namespace MachineConfig
     prefs.end();
 
     loadedFromNVS = false;
+    nvsStateStr = "none";
+    nvsWhyStr[0] = ' ';
     return ok;
   }
 
