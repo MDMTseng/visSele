@@ -105,9 +105,53 @@ let _initialized = false;
 
 // Apply default + override levels to every registered namespace. Safe to call
 // multiple times; idempotent. Call once at boot from script.jsx after initDiag.
+// AN OBJECT ARGUMENT MUST SURVIVE BEING WRITTEN DOWN.
+//
+// console.warn('[demux] untracked packet', { type, pgID }) reads perfectly in
+// devtools and reaches the launcher's webui_console.log -- which only gets the
+// FORMATTED message -- as the string "[object Object]". Every warning whose
+// context lives in its second argument therefore logged the half without the
+// facts, which is exactly the half worth keeping: chasing a dropped peripheral
+// reply, the line that would have named the stray packet's pgID said nothing
+// at all (2026-10-02).
+//
+// Serialised here, once, rather than at each of the ~200 call sites. Depth and
+// length are bounded because a log line is not a heap dump, and anything that
+// throws (a cycle, a getter, a DOM node) falls back to the shape's name rather
+// than taking the logging path down with it.
+function inspectArg(a) {
+  if (typeof a !== 'object' || a === null) return a;
+  if (a instanceof Error) return a.stack || (a.name + ': ' + a.message);
+  try {
+    const seen = new WeakSet();
+    const out = JSON.stringify(a, (k, v) => {
+      if (typeof v === 'object' && v !== null) {
+        if (seen.has(v)) return '[circular]';
+        seen.add(v);
+      }
+      if (typeof v === 'string' && v.length > 300) return v.slice(0, 300) + '...';
+      return v;
+    });
+    if (out === undefined) return a;
+    return out.length > 2000 ? out.slice(0, 2000) + '...' : out;
+  } catch (_) {
+    return Object.prototype.toString.call(a);
+  }
+}
+
 export function initLogger() {
   if (_initialized) return;
   _initialized = true;
+
+  // Only warn and above: the serialisation costs something, and those are the
+  // levels the launcher writes to disk. debug/info stay untouched and keep
+  // devtools' expandable objects.
+  const originalFactory = loglevel.methodFactory;
+  loglevel.methodFactory = function (methodName, logLevel, loggerName) {
+    const raw = originalFactory(methodName, logLevel, loggerName);
+    if (methodName !== 'warn' && methodName !== 'error') return raw;
+    return function (...args) { raw.apply(this, args.map(inspectArg)); };
+  };
   for (const ns of Object.keys(NAMESPACES)) {
     const env = readLevelFromEnv(ns);
     const lvl = env || NAMESPACES[ns];

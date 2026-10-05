@@ -890,6 +890,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [cfgBusy, setCfgBusy] = useState(null);
   const [cfgReport, setCfgReport] = useState(null);
   const cfgFileRef = useRef(null);
+  // The import review: what a file is about to do, before it does it.
+  const [impReview, setImpReview] = useState(null);   // {doc, board, unknown, missing, edits, needIo}
 
   const [lightUntil, setLightUntil] = useState(0);   // epoch ms the board will auto-drop the hold
   const [snapWhy, setSnapWhy] = useState('');       // why the last plate snapshot did not happen
@@ -1351,7 +1353,21 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             config resync gave up, and the tag confidently described a board
             whose NVS was perfectly intact the whole time. Say "not read yet"
             when that is what is true. */}
-        {cfgRead ? (
+        {/* FOUR, once the board could tell us. "Not from NVS" covered both a
+            board nobody has configured and a board whose stored config this
+            firmware cannot read -- opposite actions, identical tag. The second
+            is what a flash carrying another project's data looks like, and it
+            passed for a new board on 2026-10-02. cfg_nvs_state names it and
+            cfg_nvs_why says what was wrong, in the firmware's own words.
+            Absent on older firmware, which falls back to the two-state tag. */}
+        {cfgRead && dev.cfg_nvs_state === 'unreadable' ? (
+          <Tooltip title={'這塊板子的 NVS 裡有設定,但這版韌體讀不懂它,所以現在跑的是編譯預設值。'
+                        + '韌體給的原因：' + (dev.cfg_nvs_why || '(未說明)')
+                        + '。常見於別的專案/舊韌體用過的板子。'
+                        + '要排除殘留就把 flash 整題清除再重燒：esptool.py erase_flash。'}>
+            <Tag color="red" data-testid="uinsp-nvs-unreadable">NVS 設定讀不懂</Tag>
+          </Tooltip>
+        ) : cfgRead ? (
           <Tag color={dev.cfg_from_nvs ? 'green' : 'orange'}>
             {dev.cfg_from_nvs ? '設定來自 NVS' : '設定非 NVS(編譯預設值)'}
           </Tag>
@@ -1713,21 +1729,194 @@ build ${fw.build}`}>
               if (!f) return;
               const api = getPerifAPI(API_ID);
               if (!api) { message.error('裝置未連線'); return; }
+              // REVIEW FIRST, WRITE SECOND.
+              //
+              // A setup file and a firmware drift apart -- that is the normal
+              // state of a fleet, not a fault. The file carries keys this build
+              // dropped or renamed, and the firmware has keys the file predates.
+              // Both were silent: unknown keys were named back by set_setup into
+              // a line nobody read, and a key the file simply lacked kept
+              // whatever the board had, which is correct behaviour and still a
+              // surprise when it is the one that matters. A real export was
+              // measured against this board on 2026-10-02 and differed by
+              // eleven keys in both directions, one of them gate_ref -- the
+              // machine runs 'trailing' and the compiled default is 'center'.
+              //
+              // THE BOARD IS THE AUTHORITY on what the firmware knows. Not a
+              // table in the UI: there are already four copies of that list
+              // (firmware, uinsp_cfg.py, uinspCfg.js, SETTABLE_KEYS) and
+              // check_cfg_keys exists because they drift -- it was itself
+              // silently checking three of the four until today. get_setup is
+              // the firmware answering for itself, and it cannot be stale.
               setCfgBusy('import'); setCfgReport(null);
               f.text()
                 .then((txt) => JSON.parse(txt))
-                .then((doc) => api.importSetupP(doc))
+                .then((doc) => api.exportSetupP().then((board) => ({ doc, board })))
+                .then(({ doc, board }) => {
+                  const flat = (o) => {
+                    // Group objects (io_on_level, stage_pulse_offset, ...) are
+                    // compared as whole keys: they are all-or-nothing on the
+                    // device and a per-member diff would invite a half-written
+                    // polarity map, which is the one mistake that energises
+                    // outputs.
+                    return Object.keys(o || {});
+                  };
+                  const bKeys = flat(board), fKeys = flat(doc);
+                  const unknown = fKeys.filter((k) => bKeys.indexOf(k) < 0);
+                  const missing = bKeys.filter((k) => fKeys.indexOf(k) < 0);
+                  setImpReview({
+                    doc, board, unknown, missing,
+                    edits: {},
+                    // The only key the device calls required (get_schema).
+                    // Without it the outputs never arm, so a file that lacks it
+                    // cannot bring a board up however complete it looks.
+                    needIo: fKeys.indexOf('io_on_level') < 0,
+                  });
+                })
+                .catch((e) => { message.error('讀取失敗: ' + String(e)); })
+                .then(() => setCfgBusy(null));
+            }} />
+
+          {/* THE REVIEW. Three lists, because there are three outcomes, and
+              each one needs a different thing from the person reading it. */}
+          <Modal open={!!impReview} width={760} title="匯入設定 —— 寫入前確認"
+            okText={'寫入' + (impReview ? (Object.keys(impReview.edits).length ? ' (含 ' + Object.keys(impReview.edits).length + ' 項補填)' : '') : '')}
+            cancelText="取消" onCancel={() => setImpReview(null)}
+            okButtonProps={{ danger: !!(impReview && impReview.needIo && !impReview.edits.io_on_level) }}
+            onOk={() => {
+              const api = getPerifAPI(API_ID);
+              if (!api || !impReview) return;
+              // Only keys the board knows. Sending the rest would be answered
+              // by set_setup naming them back -- true, and not worth looking
+              // like a partial failure every time a file is one build old.
+              const payload = {};
+              for (const k of Object.keys(impReview.doc))
+                if (impReview.unknown.indexOf(k) < 0) payload[k] = impReview.doc[k];
+              // null is the group rows' way of saying "keep what the board has".
+              // Omitting the key is how that is said on the wire -- the device's
+              // own schema: "absent keeps its default" -- and sending null would
+              // be a value, which for io_on_level is the difference between
+              // leaving a polarity map alone and clearing it.
+              for (const k of Object.keys(impReview.edits)) {
+                if (impReview.edits[k] === null) delete payload[k];
+                else payload[k] = impReview.edits[k];
+              }
+              const n = Object.keys(payload).length;
+              setImpReview(null); setCfgBusy('import'); setCfgReport(null);
+              api.importSetupP(payload)
                 .then((r) => {
                   setCfgReport(r);
-                  // importSetupP has already published the device's own re-read
-                  // copy; this is what makes the PANEL show it.
                   if (mounted.current) reseedFromDevice();
-                  if (r.mismatch.length) message.warning(`${r.written.length} 個欄位已寫入,但 ${r.mismatch.length} 個沒有生效`);
-                  else message.success(`${r.written.length} 個欄位已寫入並確認`);
+                  if (r.mismatch.length) message.warning(r.written.length + ' 個欄位已寫入,但 ' + r.mismatch.length + ' 個沒有生效');
+                  else message.success(n + ' 個欄位已寫入並確認');
                 })
                 .catch((e) => { message.error('匯入失敗: ' + String(e)); setCfgReport(null); })
                 .then(() => setCfgBusy(null));
-            }} />
+            }}>
+            {impReview && (() => {
+              const R = impReview;
+              const setEdit = (k, v) => setImpReview({ ...R, edits: { ...R.edits, [k]: v } });
+              const DIM = '#888', LINE = '1px solid #eee';
+              // EVERY KEY THE BOARD KNOWS IS EDITABLE HERE, not only the ones
+              // the file left out. A file is a starting point, not a verdict:
+              // the person doing this is usually bringing one machine up from
+              // another's export and the two differ on purpose. Being able to
+              // see the value that is ABOUT to be written, next to what the
+              // board holds now, and change it in place, is the whole job --
+              // and it is also the only place some of these keys are reachable
+              // at all. gate_ref is one: the firmware has it, this machine runs
+              // 'trailing', the compiled default is 'center', and no panel in
+              // the WebUI can write it (it is mapped but not in SETTABLE_KEYS).
+              //
+              // The control follows the TYPE OF THE VALUE THE BOARD HOLDS.
+              // Nothing else in reach says what a key is -- get_schema names
+              // only io_on_level -- and a table here would be the fifth copy of
+              // a list that already drifts four ways.
+              const field = (k) => {
+                const cur = R.board[k];
+                const has = (k in R.edits) ? R.edits[k]
+                          : (k in R.doc)   ? R.doc[k]
+                          : cur;
+                if (typeof cur === 'boolean')
+                  return <Switch size="small" checked={!!has} onChange={(v) => setEdit(k, v)} />;
+                if (typeof cur === 'number')
+                  return <InputNumber size="small" style={{ width: 140 }} value={has}
+                           onChange={(v) => { if (typeof v === 'number') setEdit(k, v); }} />;
+                if (typeof cur === 'string')
+                  return <Input size="small" style={{ width: 160 }} value={String(has)}
+                           onChange={(e) => setEdit(k, e.target.value)} />;
+                // Groups (io_on_level, stage_pulse_offset, ...) are
+                // all-or-nothing on the device. Editing members one at a time
+                // here would invite a half-written polarity map, and that is
+                // the mistake that energises valves, so the choice offered is
+                // whole-group: the file's, or the board's.
+                const fromFile = (k in R.edits) ? R.edits[k] !== null : (k in R.doc);
+                return (
+                  <Radio.Group size="small" value={fromFile ? 'file' : 'board'}
+                    onChange={(e) => setEdit(k, e.target.value === 'file' ? R.doc[k] : null)}>
+                    <Radio.Button value="file" disabled={!(k in R.doc)}>檔案</Radio.Button>
+                    <Radio.Button value="board">板子現值</Radio.Button>
+                  </Radio.Group>
+                );
+              };
+              const known = Object.keys(R.board);
+              return (
+                <div style={{ fontSize: 12, maxHeight: '62vh', overflow: 'auto' }}>
+                  {R.needIo && (
+                    <div style={{ border: '1px solid #cf1322', color: '#cf1322', padding: 8, marginBottom: 10 }}>
+                      <b>檔案沒有 io_on_level</b> —— 裝置唯一列為必填的設定。
+                      沒有它輸出永遠不會啟用,機台進不了檢測模式。下面那一列請選「板子現值」。
+                    </div>
+                  )}
+
+                  <div style={{ fontWeight: 600, margin: '10px 0 4px', color: '#b26a00' }}>
+                    韌體不認得：{R.unknown.length} 項（寫不進去）
+                  </div>
+                  {R.unknown.length === 0
+                    ? <div style={dim}>無</div>
+                    : (<>
+                        <div style={{ ...dim, marginBottom: 4 }}>
+                          檔案裡有、但這版韌體沒有的設定。通常代表檔案是從別的韌體版本
+                          匯出的 —— 它們不會生效,也不會損壞任何東西。
+                        </div>
+                        {R.unknown.map((k) => (
+                          <div key={k} style={{ padding: '2px 0', borderBottom: LINE }}>
+                            <code style={{ fontSize: 12 }}>{k}</code>
+                            <span style={{ fontSize: 11, color: DIM, marginLeft: 8 }}>= {JSON.stringify(R.doc[k])}</span>
+                          </div>
+                        ))}
+                      </>)}
+
+                  <div style={{ fontWeight: 600, margin: '14px 0 4px' }}>
+                    將要寫入：{known.length} 項（每一項都可以改）
+                  </div>
+                  <div style={{ ...dim, marginBottom: 6 }}>
+                    標記「檔案」的是從匯入檔來的,「沿用」是檔案沒帶、保留板子目前的值。
+                    两種都可以在這裡直接改。
+                  </div>
+                  {known.map((k) => {
+                    const inFile = (k in R.doc);
+                    const edited = (k in R.edits);
+                    return (
+                      <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                            padding: '3px 0', borderBottom: LINE }}>
+                        <code style={{ flex: '0 0 215px', fontSize: 12 }}>{k}</code>
+                        <Tag color={edited ? 'blue' : inFile ? 'green' : 'default'}
+                             style={{ flex: '0 0 auto', marginInlineEnd: 0 }}>
+                          {edited ? '已改' : inFile ? '檔案' : '沿用'}
+                        </Tag>
+                        <span style={{ flex: 1, fontSize: 11, color: DIM, overflow: 'hidden',
+                                       textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          板子：{JSON.stringify(R.board[k])}
+                        </span>
+                        {field(k)}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </Modal>
 
           {/* What is still on a compiled default -- the silent half. */}
           <Button size="small" loading={cfgBusy === 'schema'} onClick={() => {
@@ -1740,6 +1929,79 @@ build ${fw.build}`}>
               .then(() => setCfgBusy(null));
           }}>檢查預設值</Button>
         </div>
+
+        {/* WHICH PIN IS SEL2. THE RUNNING FIRMWARE IS THE ANSWER.
+            io_map has been in every get_setup reply since the firmware stopped
+            making people open HardwareConfig.hpp to find out -- name, pin,
+            direction and, for outputs, the level that means ON. Nothing in the
+            WebUI has ever shown it, so the one authoritative copy of the wiring
+            stayed invisible to whoever was holding the board. Added 2026-10-02,
+            commissioning a new one.
+            Read-only on purpose: the pin assignment is the firmware's build,
+            not a setting. on_level IS settable -- through io_on_level, in the
+            safe-mode block and the import review -- and is shown here because
+            a pin and the level that drives it are one fact to check.
+
+            Collapse.Panel, not the v5 `items` prop: this project is on antd
+            4.15, where `items` renders NOTHING -- silently, which is how this
+            shipped once already. Every other Collapse in this file uses Panel;
+            match them. */}
+        {Array.isArray(dev.io_map) && dev.io_map.length > 0 && (
+          <Collapse ghost style={{ marginTop: 6 }}>
+            <Collapse.Panel key="iomap"
+              header={<span style={{ fontSize: 12 }}>腳位對照表（{dev.io_map.length} 支，韌體回報）</span>}>
+              {(
+                <div style={{ fontSize: 12 }}>
+                  <div style={{ display: 'flex', fontWeight: 600, borderBottom: '1px solid #ddd', padding: '2px 0' }}>
+                    <span style={{ flex: '0 0 110px' }}>名稱</span>
+                    <span style={{ flex: '0 0 70px' }}>GPIO</span>
+                    <span style={{ flex: '0 0 70px' }}>方向</span>
+                    <span style={{ flex: '0 0 110px' }}>ON 準位</span>
+                    <span style={{ flex: '0 0 90px', textAlign: 'right' }}>即時</span>
+                  </div>
+                  {dev.io_map.map((p) => (
+                    <div key={p.name} style={{ display: 'flex', padding: '2px 0',
+                                               borderBottom: '1px solid #f0f0f0' }}>
+                      <code style={{ flex: '0 0 110px' }}>{p.name}</code>
+                      <span style={{ flex: '0 0 70px' }}>{p.pin}</span>
+                      <span style={{ flex: '0 0 70px', color: p.dir === 'in' ? '#1890ff' : '#888' }}>
+                        {p.dir === 'in' ? '輸入' : '輸出'}
+                      </span>
+                      <span style={{ flex: '0 0 110px' }}>
+                        {p.dir === 'in' ? <span style={{ color: '#888' }}>—</span>
+                          : (p.on_level === 0
+                              ? <Tag color="purple">LOW 導通</Tag>
+                              : <Tag color="cyan">HIGH 導通</Tag>)}
+                      </span>
+                      {/* LIVE, and only for inputs. get_running_stat.di is a
+                          raw digitalRead per input pin -- no debounce, no
+                          polarity, no gate logic -- which is what a meter would
+                          tell you and the only view that helps when the
+                          suspicion is the wiring. Absent on firmware that
+                          predates it, and an input with no reading says so
+                          rather than drawing a level it does not have. */}
+                      <span style={{ flex: '0 0 90px', textAlign: 'right' }}>
+                        {p.dir !== 'in' ? null
+                          : (stat && stat.di && typeof stat.di[p.name] === 'number')
+                            ? (stat.di[p.name]
+                                ? <Tag color="green" style={{ marginInlineEnd: 0 }}>HIGH</Tag>
+                                : <Tag color="red" style={{ marginInlineEnd: 0 }}>LOW</Tag>)
+                            : <span style={{ color: '#bbb', fontSize: 11 }}>無讀數</span>}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ color: '#888', marginTop: 6, fontSize: 11 }}>
+                    腳位是韌體編譯時決定的,這裡只能看。ON 準位可以改 ——
+                    在上方的安全模式區塊或匯入審閱裡的 io_on_level。
+                    <br />
+                    「即時」是輸入腳的原始準位,沒有去抖動、沒有套極性 ——
+                    跟三用電表量到的是同一件事。GATE 是 INPUT_PULLUP,沒接東西時是 HIGH。
+                  </div>
+                </div>
+              )}
+            </Collapse.Panel>
+          </Collapse>
+        )}
 
         {cfgReport && cfgReport.mismatch && (
           <div style={{ marginTop: 8, fontSize: 12 }}>
