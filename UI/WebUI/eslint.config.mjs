@@ -23,6 +23,19 @@ import globals from 'globals';
 // ten of them, drowning the seven real ones on the first run. Loading the
 // plugin makes those comments resolve without adding a third rule.
 import reactHooks from 'eslint-plugin-react-hooks';
+// THREE RULES NOW, AND THE THIRD IS THE SAME RULE AS THE FIRST.
+//
+// no-undef does not see JSX element names: `<Select ...>` with no import passes
+// it, passes the build, and takes the panel down on the operator's screen with
+// "Select is not defined". That happened on 2026-10-05, in a file where every
+// other antd component is imported one per line, so the omission looked like
+// all its neighbours.
+//
+// Only react/jsx-no-undef is enabled from this plugin. The rest of
+// eslint-plugin-react is a style opinion this project has not asked for; this
+// one is the undefined-identifier check the config already wanted, applied to
+// the half of the syntax no-undef cannot reach.
+import react from 'eslint-plugin-react';
 
 export default [
   {
@@ -48,7 +61,7 @@ export default [
         __DEV_MODE__: 'readonly',
       },
     },
-    plugins: { 'react-hooks': reactHooks },
+    plugins: { 'react-hooks': reactHooks, react },
     linterOptions: {
       // OFF, reluctantly. It is a good rule -- a file that disables something it
       // never triggers is a lie about the code. But every one of those ten
@@ -59,6 +72,9 @@ export default [
     },
     rules: {
       'no-undef': 'error',
+      // The same question as no-undef, asked of JSX element names, which
+      // no-undef does not look at. See the import note above.
+      'react/jsx-no-undef': 'error',
 
       // Warn, not error. Unused names are usually a half-finished edit rather
       // than a defect, and making them fail the command would tempt people to
